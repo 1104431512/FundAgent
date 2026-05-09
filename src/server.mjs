@@ -11,9 +11,11 @@ loadDotEnv(path.join(ROOT, ".env.local"));
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 3001);
 const CONFIG_PATH = path.resolve(process.env.CONFIG_PATH || path.join(ROOT, "data", "config.json"));
+const STATS_PATH = path.resolve(process.env.STATS_PATH || path.join(ROOT, "data", "stats.json"));
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
 const PUBLIC_DIR = path.join(ROOT, "public");
 const SKILLS_DIR = path.join(ROOT, "skills");
+const STARTED_AT = new Date();
 
 let tenantAccessTokenCache = null;
 const seenEventIds = new Map();
@@ -34,11 +36,18 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/health") {
       const config = getEffectiveConfig();
+      const stats = getRuntimeStats();
       sendJson(res, 200, {
         ok: true,
         service: "feishu-fund-assistant",
         configured: getConfigStatus(config),
-        skills: listSkills(false).length
+        skills: listSkills(false).length,
+        counters: {
+          conversations: stats.counters.conversations,
+          imagesReceived: stats.counters.imagesReceived,
+          answersSent: stats.counters.answersSent,
+          errors: stats.counters.errors
+        }
       });
       return;
     }
@@ -111,6 +120,11 @@ async function handleApiRequest(req, res, url) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/stats") {
+    sendJson(res, 200, { ok: true, stats: getRuntimeStats() });
+    return;
+  }
+
   sendJson(res, 404, { ok: false, error: "api_not_found" });
 }
 
@@ -133,6 +147,7 @@ async function handleFeishuEventRequest(req, res) {
 
   const eventId = payload?.header?.event_id || payload?.uuid || "";
   if (eventId && wasSeenRecently(eventId)) {
+    updateStats({ counters: { duplicateEvents: 1 } });
     sendJson(res, 200, { code: 0, msg: "duplicate ignored" });
     return;
   }
@@ -140,9 +155,14 @@ async function handleFeishuEventRequest(req, res) {
   sendJson(res, 200, { code: 0, msg: "ok" });
 
   if (isMessageReceiveEvent(payload)) {
+    updateStats({
+      counters: { messageEvents: 1 },
+      last: { lastMessageEventAt: new Date().toISOString() }
+    });
     setImmediate(() => {
       handleMessageEvent(payload).catch((error) => {
         console.error("[message-event-error]", error);
+        recordError(error);
       });
     });
   }
@@ -161,43 +181,147 @@ async function handleMessageEvent(payload) {
     parsedContent = {};
   }
 
-  const imageKey = extractFirstImageKey(parsedContent);
+  const imageKeys = extractImageKeys(parsedContent);
   const userText = extractUserText(message.message_type, parsedContent);
 
-  if (!imageKey && !userText) {
+  if (!imageKeys.length && !userText) {
     await replyToMessage(
       message.message_id,
-      "请发送基金截图，或直接发送基金名称、代码和关键指标，我会按 fund-screening 规则做简要评价。"
+      "请发送基金截图，或直接发送基金名称、代码和关键指标，我会按 fund-screening 规则做简要评价。",
+      { kind: "noContent" }
     );
+    updateStats({ counters: { noContentMessages: 1 } });
     return;
   }
 
+  updateStats({
+    counters: {
+      conversations: 1,
+      imagesReceived: imageKeys.length,
+      textMessages: userText ? 1 : 0
+    },
+    last: {
+      lastConversationAt: new Date().toISOString(),
+      lastMessageType: message.message_type || "unknown"
+    }
+  });
+
   try {
-    const image = imageKey ? await downloadMessageImage(message.message_id, imageKey) : null;
-    const analysis = await analyzeFundWithModel({
-      image,
-      userText,
-      messageType: message.message_type
+    await replyToMessage(message.message_id, buildProgressMessage(imageKeys.length, userText), {
+      kind: "progress"
+    }).catch((error) => {
+      console.error("[progress-reply-error]", error);
+      recordError(error, { replyFailures: 1 });
     });
-    await replyToMessage(message.message_id, normalizeFeishuText(analysis));
+
+    await replyToMessage(message.message_id, "进度：正在识别截图中的基金代码和关键字段。", {
+      kind: "progress"
+    }).catch((error) => {
+      console.error("[progress-reply-error]", error);
+      recordError(error, { replyFailures: 1 });
+    });
+
+    const images = [];
+    for (const imageKey of imageKeys) {
+      images.push(await downloadMessageImage(message.message_id, imageKey));
+    }
+
+    const extracted = await extractFundFactsWithModel({ images, userText, messageType: message.message_type });
+    const fundCodes = mergeFundCodes(extractFundCodes(userText), extracted.fundCodes);
+
+    await replyToMessage(
+      message.message_id,
+      fundCodes.length
+        ? `进度：已识别到基金代码 ${fundCodes.join("、")}，正在联网补全基金资料。`
+        : "进度：截图中未稳定识别到基金代码，将先按可见信息分析。",
+      { kind: "progress" }
+    ).catch((error) => {
+      console.error("[progress-reply-error]", error);
+      recordError(error, { replyFailures: 1 });
+    });
+
+    const enrichments = await enrichFunds(fundCodes);
+
+    const analysis = await analyzeFundWithModel({
+      images,
+      userText,
+      messageType: message.message_type,
+      extracted,
+      enrichments
+    });
+    await replyToMessage(
+      message.message_id,
+      normalizeFeishuText([buildCompletionPrefix(images.length, userText), analysis].filter(Boolean).join("\n\n")),
+      { kind: "answer" }
+    );
   } catch (error) {
     console.error("[analysis-error]", error);
+    recordError(error);
     await replyToMessage(
       message.message_id,
       [
         "这次没有完成基金分析。",
         `原因：${error.message}`,
         "可以稍后重试，或直接发送基金名称/代码、近 1/3/5 年收益、最大回撤、费率、基金经理任期等关键数据。"
-      ].join("\n")
+      ].join("\n"),
+      { kind: "error" }
     );
   }
 }
 
-async function analyzeFundWithModel({ image, userText, messageType }) {
+async function extractFundFactsWithModel({ images, userText, messageType }) {
+  if (!images?.length) {
+    return { fundCodes: extractFundCodes(userText), visibleFacts: userText ? [userText] : [], missingFields: [] };
+  }
+
+  const systemText = [
+    "你只负责从基金截图中提取可见事实，不做投资评价。",
+    "请只返回 JSON，不要 Markdown，不要解释。",
+    "如果看不清，不要猜。基金代码必须是截图中可见或用户文字中明确出现的 6 位数字。"
+  ].join("\n");
+  const userPrompt = [
+    `消息类型：${messageType || "unknown"}`,
+    userText ? `用户文字：${userText}` : "用户文字：无",
+    `图片数量：${images.length}`,
+    "",
+    "返回 JSON 结构：",
+    '{"fundCodes":["000001"],"fundNames":["示例基金"],"visibleFacts":["截图中可见的关键事实"],"missingFields":["看不清或缺失字段"]}'
+  ].join("\n");
+
+  try {
+    const raw = await callModel({ systemText, userPrompt, images, maxTokens: 900 });
+    const parsed = parseJsonFromModel(raw);
+    const fundCodes = mergeFundCodes(extractFundCodes(userText), parsed.fundCodes || []);
+    updateStats({
+      counters: { extractionCalls: 1, extractedFundCodes: fundCodes.length },
+      last: { lastExtractionAt: new Date().toISOString() }
+    });
+    return {
+      fundCodes,
+      fundNames: Array.isArray(parsed.fundNames) ? parsed.fundNames.map(String).filter(Boolean) : [],
+      visibleFacts: Array.isArray(parsed.visibleFacts) ? parsed.visibleFacts.map(String).filter(Boolean) : [],
+      missingFields: Array.isArray(parsed.missingFields) ? parsed.missingFields.map(String).filter(Boolean) : [],
+      raw: raw.slice(0, 2000)
+    };
+  } catch (error) {
+    recordError(error, { extractionFailures: 1 });
+    return {
+      fundCodes: extractFundCodes(userText),
+      fundNames: [],
+      visibleFacts: userText ? [userText] : [],
+      missingFields: ["截图事实提取失败，已退回到可见文字/图片整体分析。"],
+      extractionError: error.message
+    };
+  }
+}
+
+async function analyzeFundWithModel({ images, userText, messageType, extracted, enrichments }) {
   const skill = loadPrimarySkill();
   const systemText = [
     "你是飞书机器人“基金助手”。你的任务是根据用户发送的基金截图或基金文字信息做教育性基金筛选分析。",
     "必须严格遵循下面的 fund-screening skill：截图先保守提取可见事实；字段缺失或看不清要明确写 N/A 或“缺失”；不要编造收益、回撤、费率、排名、持仓或基金经理信息。",
+    "不要对截图逐字念稿。要先吸收截图事实和联网补全资料，再给出投资筛选评价。",
+    "如果联网补全资料与截图冲突，要明确分开“截图可见”和“联网补全”，不要硬合并。",
     "回答中文，优先简洁。默认使用 normal screening mode，除非输入明显高风险或数据严重不足。不要保证收益，不要给出个性化承诺。",
     "",
     skill.content
@@ -207,19 +331,28 @@ async function analyzeFundWithModel({ image, userText, messageType }) {
     "用户通过飞书发送了一条基金相关消息。",
     `消息类型：${messageType || "unknown"}`,
     userText ? `用户文字：${userText}` : "用户文字：无",
-    image ? "图片：已附上，请直接识别截图中的基金信息。" : "图片：无，请只根据用户文字分析。",
+    images?.length
+      ? `图片：已附上 ${images.length} 张。请逐张识别截图中的基金信息；如果多张图属于同一只基金，请合并分析；如果是多只基金，请分别给出简短结论并说明对比。`
+      : "图片：无，请只根据用户文字分析。",
+    "",
+    "截图事实提取结果：",
+    JSON.stringify(extracted || {}, null, 2),
+    "",
+    "联网补全资料：",
+    JSON.stringify(enrichments || [], null, 2),
     "",
     "请输出：Verdict、Confidence、可见事实/缺失字段、评分或无法评分原因、前三个优点、前三个主要风险、下一步需要补充的数据。"
   ].join("\n");
 
-  return callModel({ systemText, userPrompt, image, maxTokens: getEffectiveConfig().modelMaxOutputTokens });
+  return callModel({ systemText, userPrompt, images, maxTokens: getEffectiveConfig().modelMaxOutputTokens });
 }
 
 async function testModelConnection() {
+  updateStats({ counters: { modelTests: 1 }, last: { lastModelTestAt: new Date().toISOString() } });
   const text = await callModel({
     systemText: "你是一个连通性测试助手。",
     userPrompt: "请只回复：OK",
-    image: null,
+    images: [],
     maxTokens: 80
   });
 
@@ -231,6 +364,7 @@ async function testModelConnection() {
 }
 
 async function testFeishuConnection() {
+  updateStats({ counters: { feishuTests: 1 }, last: { lastFeishuTestAt: new Date().toISOString() } });
   const token = await getTenantAccessToken();
   return {
     ok: true,
@@ -239,19 +373,26 @@ async function testFeishuConnection() {
   };
 }
 
-async function callModel({ systemText, userPrompt, image, maxTokens }) {
+async function callModel({ systemText, userPrompt, images = [], maxTokens }) {
   const config = getEffectiveConfig();
   validateModelConfig(config);
 
-  if (normalizeWireApi(config.modelWireApi) === "chat_completions") {
-    return callChatCompletionsApi({ config, systemText, userPrompt, image, maxTokens });
+  updateStats({ counters: { modelCalls: 1 }, last: { lastModelCallAt: new Date().toISOString() } });
+
+  try {
+    if (normalizeWireApi(config.modelWireApi) === "chat_completions") {
+      return await callChatCompletionsApi({ config, systemText, userPrompt, images, maxTokens });
+    }
+    return await callResponsesApi({ config, systemText, userPrompt, images, maxTokens });
+  } catch (error) {
+    updateStats({ counters: { modelFailures: 1 }, last: { lastModelFailureAt: new Date().toISOString() } });
+    throw error;
   }
-  return callResponsesApi({ config, systemText, userPrompt, image, maxTokens });
 }
 
-async function callResponsesApi({ config, systemText, userPrompt, image, maxTokens }) {
+async function callResponsesApi({ config, systemText, userPrompt, images, maxTokens }) {
   const content = [{ type: "input_text", text: userPrompt }];
-  if (image) {
+  for (const image of images || []) {
     content.push({
       type: "input_image",
       image_url: `data:${image.mimeType};base64,${image.buffer.toString("base64")}`
@@ -281,9 +422,9 @@ async function callResponsesApi({ config, systemText, userPrompt, image, maxToke
   return text;
 }
 
-async function callChatCompletionsApi({ config, systemText, userPrompt, image, maxTokens }) {
+async function callChatCompletionsApi({ config, systemText, userPrompt, images, maxTokens }) {
   const userContent = [{ type: "text", text: userPrompt }];
-  if (image) {
+  for (const image of images || []) {
     userContent.push({
       type: "image_url",
       image_url: { url: `data:${image.mimeType};base64,${image.buffer.toString("base64")}` }
@@ -335,10 +476,222 @@ async function downloadMessageImage(messageId, imageKey) {
   if (!buffer.length) {
     throw new Error("飞书图片内容为空。");
   }
+  updateStats({ counters: { downloadedImages: 1 }, last: { lastImageDownloadedAt: new Date().toISOString() } });
   return { mimeType, buffer };
 }
 
-async function replyToMessage(messageId, text) {
+async function enrichFunds(fundCodes) {
+  const uniqueCodes = mergeFundCodes(fundCodes);
+  if (!uniqueCodes.length) {
+    return [];
+  }
+
+  const results = [];
+  for (const code of uniqueCodes.slice(0, 6)) {
+    try {
+      results.push(await fetchFundProfile(code));
+      updateStats({ counters: { fundEnrichmentSuccess: 1 } });
+    } catch (error) {
+      console.error("[fund-enrichment-error]", code, error);
+      recordError(error, { fundEnrichmentFailures: 1 });
+      results.push({
+        code,
+        ok: false,
+        error: error.message,
+        sources: [`https://fund.eastmoney.com/${code}.html`]
+      });
+    }
+  }
+
+  updateStats({
+    counters: { fundEnrichmentCalls: uniqueCodes.length },
+    last: { lastFundEnrichmentAt: new Date().toISOString() }
+  });
+  return results;
+}
+
+async function fetchFundProfile(code) {
+  const [valuation, profileText] = await Promise.all([
+    fetchFundValuation(code).catch((error) => ({ ok: false, error: error.message })),
+    fetchFundPingzhongData(code)
+  ]);
+
+  const profile = parseFundPingzhongData(profileText);
+  return {
+    ok: true,
+    code,
+    name: profile.name || valuation.name || "",
+    snapshotDate: valuation.jzrq || "",
+    unitNav: valuation.dwjz || "",
+    estimatedNav: valuation.gsz || "",
+    estimatedChangePct: valuation.gszzl || "",
+    estimateTime: valuation.gztime || "",
+    fees: {
+      sourceRatePct: profile.sourceRate || "",
+      currentRatePct: profile.rate || "",
+      minPurchase: profile.minPurchase || ""
+    },
+    returns: {
+      oneMonthPct: profile.syl_1y || "",
+      threeMonthPct: profile.syl_3y || "",
+      sixMonthPct: profile.syl_6y || "",
+      oneYearPct: profile.syl_1n || ""
+    },
+    scale: profile.scale,
+    assetAllocation: profile.assetAllocation,
+    performanceEvaluation: profile.performanceEvaluation,
+    managers: profile.managers,
+    topStocks: profile.topStocks,
+    sources: [
+      `https://fundgz.1234567.com.cn/js/${code}.js`,
+      `https://fund.eastmoney.com/pingzhongdata/${code}.js`,
+      `https://fund.eastmoney.com/${code}.html`
+    ]
+  };
+}
+
+async function fetchFundValuation(code) {
+  const text = await fetchText(`https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`);
+  const match = text.match(/jsonpgz\((\{[\s\S]*\})\);?/);
+  if (!match) {
+    return { ok: false };
+  }
+  return { ok: true, ...JSON.parse(match[1]) };
+}
+
+async function fetchFundPingzhongData(code) {
+  return fetchText(`https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`);
+}
+
+async function fetchText(url) {
+  const response = await fetch(url, {
+    headers: {
+      "user-agent": "Mozilla/5.0 FundAgent/1.0",
+      referer: "https://fund.eastmoney.com/"
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${url}`);
+  }
+  return response.text();
+}
+
+function parseFundPingzhongData(text) {
+  const scale = parseJsAssignment(text, "Data_fluctuationScale");
+  const assetAllocation = parseJsAssignment(text, "Data_assetAllocation");
+  const performanceEvaluation = parseJsAssignment(text, "Data_performanceEvaluation");
+  const managers = parseJsAssignment(text, "Data_currentFundManager");
+  return {
+    name: extractJsString(text, "fS_name"),
+    code: extractJsString(text, "fS_code"),
+    sourceRate: extractJsString(text, "fund_sourceRate"),
+    rate: extractJsString(text, "fund_Rate"),
+    minPurchase: extractJsString(text, "fund_minsg"),
+    syl_1n: extractJsString(text, "syl_1n"),
+    syl_6y: extractJsString(text, "syl_6y"),
+    syl_3y: extractJsString(text, "syl_3y"),
+    syl_1y: extractJsString(text, "syl_1y"),
+    scale: summarizeScale(scale),
+    assetAllocation: summarizeAssetAllocation(assetAllocation),
+    performanceEvaluation: summarizePerformanceEvaluation(performanceEvaluation),
+    managers: summarizeManagers(managers),
+    topStocks: extractTopStockCodes(text)
+  };
+}
+
+function extractJsString(text, name) {
+  const match = text.match(new RegExp(`var\\s+${escapeRegExp(name)}\\s*=\\s*\"([\\s\\S]*?)\"\\s*;`));
+  return match ? match[1] : "";
+}
+
+function parseJsAssignment(text, name) {
+  const startMatch = text.match(new RegExp(`var\\s+${escapeRegExp(name)}\\s*=\\s*`));
+  if (!startMatch?.index && startMatch?.index !== 0) {
+    return null;
+  }
+  const start = startMatch.index + startMatch[0].length;
+  let depth = 0;
+  let inString = false;
+  let quote = "";
+  let escaped = false;
+  for (let i = start; i < text.length; i += 1) {
+    const char = text[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === quote) {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      inString = true;
+      quote = char;
+      continue;
+    }
+    if (char === "{" || char === "[") depth += 1;
+    if (char === "}" || char === "]") depth -= 1;
+    if (char === ";" && depth <= 0) {
+      const raw = text.slice(start, i).trim();
+      return JSON.parse(raw);
+    }
+  }
+  return null;
+}
+
+function summarizeScale(value) {
+  if (!value?.categories?.length || !value?.series?.length) return null;
+  const lastIndex = value.categories.length - 1;
+  return {
+    date: value.categories[lastIndex],
+    valueYi: value.series[lastIndex]?.y ?? "",
+    mom: value.series[lastIndex]?.mom ?? ""
+  };
+}
+
+function summarizeAssetAllocation(value) {
+  if (!value?.categories?.length || !value?.series?.length) return null;
+  const lastIndex = value.categories.length - 1;
+  const out = { date: value.categories[lastIndex] };
+  for (const item of value.series) {
+    out[item.name] = item.data?.[lastIndex] ?? "";
+  }
+  return out;
+}
+
+function summarizePerformanceEvaluation(value) {
+  if (!value) return null;
+  return {
+    average: value.avr || "",
+    categories: value.categories || [],
+    data: value.data || []
+  };
+}
+
+function summarizeManagers(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((manager) => ({
+    name: manager.name || "",
+    star: manager.star || "",
+    workTime: manager.workTime || "",
+    fundSize: manager.fundSize || "",
+    currentFundProfitPct: manager.profit?.series?.[0]?.data?.[0]?.y ?? ""
+  }));
+}
+
+function extractTopStockCodes(text) {
+  const match = text.match(/var\s+stockCodesNew\s*=\s*(\[[\s\S]*?\])\s*;/);
+  if (!match) return [];
+  try {
+    return JSON.parse(match[1]).slice(0, 10);
+  } catch {
+    return [];
+  }
+}
+
+async function replyToMessage(messageId, text, options = {}) {
   const config = getEffectiveConfig();
   const token = await getTenantAccessToken(config);
   const url = new URL(`/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reply`, config.feishuBaseUrl);
@@ -353,6 +706,19 @@ async function replyToMessage(messageId, text) {
       Authorization: `Bearer ${token}`
     }
   );
+  const kind = options.kind || "reply";
+  updateStats({
+    counters: {
+      repliesSent: 1,
+      progressReplies: kind === "progress" ? 1 : 0,
+      answersSent: kind === "answer" ? 1 : 0,
+      errorReplies: kind === "error" ? 1 : 0
+    },
+    last: {
+      lastReplyAt: new Date().toISOString(),
+      lastReplyKind: kind
+    }
+  });
 }
 
 async function getTenantAccessToken(config = getEffectiveConfig()) {
@@ -513,6 +879,75 @@ function getConfigStatus(config) {
     model: Boolean(config.modelBaseUrl && config.modelName && config.modelApiKey),
     feishu: Boolean(config.feishuBaseUrl && config.feishuAppId && config.feishuAppSecret)
   };
+}
+
+function getDefaultStats() {
+  return {
+    startedAt: STARTED_AT.toISOString(),
+    updatedAt: STARTED_AT.toISOString(),
+    counters: {
+      messageEvents: 0,
+      duplicateEvents: 0,
+      conversations: 0,
+      imagesReceived: 0,
+      textMessages: 0,
+      noContentMessages: 0,
+      downloadedImages: 0,
+      extractionCalls: 0,
+      extractionFailures: 0,
+      extractedFundCodes: 0,
+      fundEnrichmentCalls: 0,
+      fundEnrichmentSuccess: 0,
+      fundEnrichmentFailures: 0,
+      modelCalls: 0,
+      modelFailures: 0,
+      repliesSent: 0,
+      progressReplies: 0,
+      answersSent: 0,
+      errorReplies: 0,
+      replyFailures: 0,
+      errors: 0,
+      modelTests: 0,
+      feishuTests: 0
+    },
+    last: {}
+  };
+}
+
+function getRuntimeStats() {
+  return normalizeStats(safeReadJson(STATS_PATH));
+}
+
+function updateStats(patch = {}) {
+  const stats = getRuntimeStats();
+  for (const [key, value] of Object.entries(patch.counters || {})) {
+    stats.counters[key] = Number(stats.counters[key] || 0) + Number(value || 0);
+  }
+  stats.last = { ...stats.last, ...(patch.last || {}) };
+  stats.updatedAt = new Date().toISOString();
+  ensureDir(path.dirname(STATS_PATH));
+  fs.writeFileSync(STATS_PATH, `${JSON.stringify(stats, null, 2)}\n`, "utf8");
+  return stats;
+}
+
+function normalizeStats(value) {
+  const defaults = getDefaultStats();
+  return {
+    ...defaults,
+    ...value,
+    counters: { ...defaults.counters, ...(value?.counters || {}) },
+    last: { ...defaults.last, ...(value?.last || {}) }
+  };
+}
+
+function recordError(error, extraCounters = {}) {
+  updateStats({
+    counters: { errors: 1, ...extraCounters },
+    last: {
+      lastErrorAt: new Date().toISOString(),
+      lastError: error?.message || String(error)
+    }
+  });
 }
 
 function validateModelConfig(config) {
@@ -715,28 +1150,26 @@ function getChallenge(payload) {
   return payload?.challenge || payload?.event?.challenge || "";
 }
 
-function extractFirstImageKey(value) {
+function extractImageKeys(value, output = []) {
   if (!value || typeof value !== "object") {
-    return "";
+    return output;
   }
   if (typeof value.image_key === "string") {
-    return value.image_key;
+    output.push(value.image_key);
   }
   if (typeof value.file_key === "string") {
-    return value.file_key;
+    output.push(value.file_key);
   }
   for (const child of Object.values(value)) {
     if (Array.isArray(child)) {
       for (const item of child) {
-        const found = extractFirstImageKey(item);
-        if (found) return found;
+        extractImageKeys(item, output);
       }
     } else if (child && typeof child === "object") {
-      const found = extractFirstImageKey(child);
-      if (found) return found;
+      extractImageKeys(child, output);
     }
   }
-  return "";
+  return [...new Set(output)];
 }
 
 function extractUserText(messageType, content) {
@@ -757,23 +1190,77 @@ function extractUserText(messageType, content) {
   return "";
 }
 
-function collectText(value, pieces) {
+function collectText(value, pieces, key = "") {
   if (!value) return;
+  if (["image_key", "file_key"].includes(key)) return;
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (trimmed) pieces.push(trimmed);
     return;
   }
   if (Array.isArray(value)) {
-    for (const item of value) collectText(item, pieces);
+    for (const item of value) collectText(item, pieces, key);
     return;
   }
   if (typeof value === "object") {
     if (typeof value.text === "string" && value.text.trim()) pieces.push(value.text.trim());
-    for (const child of Object.values(value)) {
-      if (child !== value.text) collectText(child, pieces);
+    for (const [childKey, child] of Object.entries(value)) {
+      if (child !== value.text) collectText(child, pieces, childKey);
     }
   }
+}
+
+function extractFundCodes(text) {
+  const codes = String(text || "").match(/(?<!\d)(\d{6})(?!\d)/g) || [];
+  return mergeFundCodes(codes);
+}
+
+function mergeFundCodes(...groups) {
+  const codes = [];
+  for (const group of groups.flat()) {
+    const code = String(group || "").trim();
+    if (/^\d{6}$/.test(code) && !codes.includes(code)) {
+      codes.push(code);
+    }
+  }
+  return codes;
+}
+
+function buildProgressMessage(imageCount, userText) {
+  const parts = ["已收到，开始处理。"];
+  if (imageCount) parts.push(`图片 ${imageCount} 张`);
+  if (userText) parts.push("包含文字说明");
+  parts.push("我会先识别截图，再联网补全基金资料，最后按 fund-screening 给出评价。");
+  return parts.join("\n");
+}
+
+function buildCompletionPrefix(imageCount, userText) {
+  const facts = [];
+  if (imageCount) facts.push(`已处理图片 ${imageCount} 张`);
+  if (userText) facts.push("已结合你的文字说明");
+  return facts.length ? `处理完成：${facts.join("，")}。` : "";
+}
+
+function parseJsonFromModel(text) {
+  const raw = String(text || "").trim();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenced) {
+      return JSON.parse(fenced[1].trim());
+    }
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      return JSON.parse(raw.slice(start, end + 1));
+    }
+    throw new Error("模型没有返回可解析 JSON。");
+  }
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function modelUrl(config, endpoint) {

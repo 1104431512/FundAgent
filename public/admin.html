@@ -18,6 +18,7 @@
         </div>
         <nav class="nav">
           <a href="#config" class="active">配置</a>
+          <a href="#runtime">运行</a>
           <a href="#tests">测试</a>
           <a href="#skills">Skills</a>
         </nav>
@@ -126,6 +127,24 @@
               <button id="reloadBtn" type="button" class="secondary">重新加载</button>
             </div>
           </form>
+        </section>
+
+        <section id="runtime" class="panel">
+          <div class="panel-head">
+            <h2>运行情况</h2>
+            <button id="refreshStatsBtn" type="button" class="secondary">刷新</button>
+          </div>
+          <div class="metric-grid">
+            <div class="metric"><span>对话数</span><strong id="statConversations">0</strong></div>
+            <div class="metric"><span>收到图片</span><strong id="statImages">0</strong></div>
+            <div class="metric"><span>回答次数</span><strong id="statAnswers">0</strong></div>
+            <div class="metric"><span>进度消息</span><strong id="statProgress">0</strong></div>
+            <div class="metric"><span>模型调用</span><strong id="statModelCalls">0</strong></div>
+            <div class="metric"><span>联网补全</span><strong id="statEnrich">0</strong></div>
+            <div class="metric"><span>错误数</span><strong id="statErrors">0</strong></div>
+            <div class="metric"><span>飞书事件</span><strong id="statEvents">0</strong></div>
+          </div>
+          <pre id="statsOutput" class="output compact"></pre>
         </section>
 
         <section id="tests" class="panel">

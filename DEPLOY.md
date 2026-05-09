@@ -100,13 +100,19 @@ echo YOUR_GITHUB_TOKEN | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password
 /app/data/config.json
 ```
 
+运行统计在容器内：
+
+```text
+/app/data/stats.json
+```
+
 Compose 已挂载：
 
 ```text
 ./data:/app/data
 ```
 
-所以容器重建后配置不会丢。不要把 `data/config.json` 提交到 Git。
+所以容器重建后配置和统计不会丢。不要把 `data/config.json` 或 `data/stats.json` 提交到 Git。
 
 ## Nginx 反向代理
 

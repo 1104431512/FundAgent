@@ -21,6 +21,7 @@ document.querySelector("#saveTokenBtn").addEventListener("click", () => {
 });
 
 document.querySelector("#reloadBtn").addEventListener("click", () => loadAll().catch(showError));
+document.querySelector("#refreshStatsBtn").addEventListener("click", () => loadStats().catch(showError));
 document.querySelector("#testModelBtn").addEventListener("click", () => runTest("model"));
 document.querySelector("#testFeishuBtn").addEventListener("click", () => runTest("feishu"));
 
@@ -43,6 +44,7 @@ loadAll().catch(showError);
 
 async function loadAll() {
   await loadConfig();
+  await loadStats();
   await loadSkills();
 }
 
@@ -104,6 +106,30 @@ async function loadSkills() {
   });
 
   document.querySelector("#skillDetail").value = currentSkills[0]?.content || "";
+}
+
+async function loadStats() {
+  const result = await apiFetch("/api/stats");
+  const stats = result.stats || {};
+  const counters = stats.counters || {};
+  setText("#statConversations", counters.conversations || 0);
+  setText("#statImages", counters.imagesReceived || 0);
+  setText("#statAnswers", counters.answersSent || 0);
+  setText("#statProgress", counters.progressReplies || 0);
+  setText("#statModelCalls", counters.modelCalls || 0);
+  setText("#statEnrich", counters.fundEnrichmentSuccess || 0);
+  setText("#statErrors", counters.errors || 0);
+  setText("#statEvents", counters.messageEvents || 0);
+  document.querySelector("#statsOutput").textContent = JSON.stringify(
+    {
+      startedAt: stats.startedAt,
+      updatedAt: stats.updatedAt,
+      last: stats.last,
+      counters
+    },
+    null,
+    2
+  );
 }
 
 async function runTest(type) {
@@ -170,6 +196,10 @@ function showToast(message) {
 
 function showError(error) {
   output.textContent = error.stack || error.message;
+}
+
+function setText(selector, value) {
+  document.querySelector(selector).textContent = value;
 }
 
 function escapeHtml(value) {

@@ -10,6 +10,9 @@
 - 飞书配置：App ID、App Secret、Verification Token、Encrypt Key
 - 连通性测试：模型回复测试、飞书 tenant_access_token 测试
 - Skill 管理视图：查看当前 skill 数量、详情、说明和文件内容
+- 运行统计：查看对话数、收到图片数、回答次数、进度消息、联网补全和错误数
+- 多图/图文混合：一条消息可包含多张截图和文字说明
+- 联网补全：识别基金代码后自动从公开基金数据源补全基础资料，再生成评价
 - Docker 部署：支持本地构建，也支持 GitHub Actions 发布 GHCR 镜像后服务器 `docker pull`
 
 ## 本地运行
@@ -43,7 +46,7 @@ docker compose up -d --build
 http://127.0.0.1:3001/admin
 ```
 
-运行时配置会保存到 `data/config.json`，该目录已被 Git 忽略，并通过 Docker volume 持久化。
+运行时配置会保存到 `data/config.json`，运行统计会保存到 `data/stats.json`，该目录已被 Git 忽略，并通过 Docker volume 持久化。
 
 ## Git 提交注意
 
