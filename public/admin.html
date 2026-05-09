@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FundAgent 管理</title>
+    <link rel="stylesheet" href="/public/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">F</div>
+          <div>
+            <h1>FundAgent</h1>
+            <p>飞书基金助手</p>
+          </div>
+        </div>
+        <nav class="nav">
+          <a href="#config" class="active">配置</a>
+          <a href="#tests">测试</a>
+          <a href="#skills">Skills</a>
+        </nav>
+      </aside>
+
+      <main class="main">
+        <section id="authPanel" class="panel hidden">
+          <div class="panel-head">
+            <h2>管理令牌</h2>
+          </div>
+          <div class="grid two">
+            <label>
+              <span>Admin Token</span>
+              <input id="adminToken" type="password" autocomplete="current-password" />
+            </label>
+            <div class="actions align-end">
+              <button id="saveTokenBtn" type="button">保存令牌</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="config" class="panel">
+          <div class="panel-head">
+            <h2>运行配置</h2>
+            <div class="status-row">
+              <span id="modelStatus" class="badge">模型未检查</span>
+              <span id="feishuStatus" class="badge">飞书未检查</span>
+            </div>
+          </div>
+
+          <form id="configForm">
+            <div class="form-section">
+              <h3>模型</h3>
+              <div class="grid two">
+                <label>
+                  <span>Base URL</span>
+                  <input name="modelBaseUrl" type="url" placeholder="https://api.openai.com/v1" />
+                </label>
+                <label>
+                  <span>Model</span>
+                  <input name="modelName" type="text" placeholder="gpt-5.5" />
+                </label>
+                <label>
+                  <span>API Key</span>
+                  <input name="modelApiKey" type="password" autocomplete="new-password" data-secret="modelApiKey" />
+                  <small id="modelApiKeyHint"></small>
+                </label>
+                <label>
+                  <span>Wire API</span>
+                  <select name="modelWireApi">
+                    <option value="responses">Responses</option>
+                    <option value="chat_completions">Chat Completions</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Reasoning</span>
+                  <select name="modelReasoningEffort">
+                    <option value="minimal">minimal</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Max Output Tokens</span>
+                  <input name="modelMaxOutputTokens" type="number" min="200" max="8000" step="100" />
+                </label>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <h3>飞书</h3>
+              <div class="grid two">
+                <label>
+                  <span>Feishu Base URL</span>
+                  <input name="feishuBaseUrl" type="url" placeholder="https://open.feishu.cn" />
+                </label>
+                <label>
+                  <span>App ID</span>
+                  <input name="feishuAppId" type="text" placeholder="cli_xxx" />
+                </label>
+                <label>
+                  <span>App Secret</span>
+                  <input name="feishuAppSecret" type="password" autocomplete="new-password" data-secret="feishuAppSecret" />
+                  <small id="feishuAppSecretHint"></small>
+                </label>
+                <label>
+                  <span>Verification Token</span>
+                  <input name="feishuVerificationToken" type="password" autocomplete="new-password" data-secret="feishuVerificationToken" />
+                  <small id="feishuVerificationTokenHint"></small>
+                </label>
+                <label>
+                  <span>Encrypt Key</span>
+                  <input name="feishuEncryptKey" type="password" autocomplete="new-password" data-secret="feishuEncryptKey" />
+                  <small id="feishuEncryptKeyHint"></small>
+                </label>
+                <label>
+                  <span>Reply Max Chars</span>
+                  <input name="replyMaxChars" type="number" min="1000" max="20000" step="500" />
+                </label>
+              </div>
+            </div>
+
+            <div class="actions">
+              <button type="submit">保存配置</button>
+              <button id="reloadBtn" type="button" class="secondary">重新加载</button>
+            </div>
+          </form>
+        </section>
+
+        <section id="tests" class="panel">
+          <div class="panel-head">
+            <h2>连通性测试</h2>
+          </div>
+          <div class="test-grid">
+            <div class="test-block">
+              <div>
+                <h3>模型测试</h3>
+                <p id="modelTestText">未运行</p>
+              </div>
+              <button id="testModelBtn" type="button">测试模型</button>
+            </div>
+            <div class="test-block">
+              <div>
+                <h3>飞书测试</h3>
+                <p id="feishuTestText">未运行</p>
+              </div>
+              <button id="testFeishuBtn" type="button">测试飞书</button>
+            </div>
+          </div>
+          <pre id="testOutput" class="output"></pre>
+        </section>
+
+        <section id="skills" class="panel">
+          <div class="panel-head">
+            <h2>Skills</h2>
+            <span id="skillCount" class="badge">0</span>
+          </div>
+          <div id="skillList" class="skill-list"></div>
+          <textarea id="skillDetail" class="skill-detail" readonly></textarea>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+    <script src="/public/admin.js"></script>
+  </body>
+</html>

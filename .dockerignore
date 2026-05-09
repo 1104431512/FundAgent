@@ -1,0 +1,11 @@
+.git
+.github
+.env
+.env.local
+data
+node_modules
+npm-debug.log*
+*.log
+*.zip
+dist
+coverage

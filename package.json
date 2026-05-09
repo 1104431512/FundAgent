@@ -1,0 +1,14 @@
+{
+  "name": "feishu-fund-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Feishu bot that evaluates fund screenshots with the local fund-screening skill.",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "check": "node --check src/server.mjs && node --check public/admin.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

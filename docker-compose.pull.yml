@@ -1,0 +1,11 @@
+services:
+  feishu-fund-assistant:
+    image: ${DOCKER_IMAGE:-ghcr.io/1104431512/fundagent:latest}
+    container_name: feishu-fund-assistant
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${PORT:-3001}:${PORT:-3001}"
+    volumes:
+      - ./data:/app/data
