@@ -341,6 +341,8 @@ async function analyzeFundWithModel({ images, userText, messageType, extracted, 
     "联网补全资料：",
     JSON.stringify(enrichments || [], null, 2),
     "",
+    "如果联网补全资料中包含 riskMetrics，请优先使用其中的 1y/3y/5y 夏普率、年化波动、最大回撤、年化收益来评分；不要再要求用户手动补这些指标。只有 riskMetrics.ok=false 或点数不足时，才把这些列为缺失。",
+    "",
     "请输出：Verdict、Confidence、可见事实/缺失字段、评分或无法评分原因、前三个优点、前三个主要风险、下一步需要补充的数据。"
   ].join("\n");
 
@@ -511,12 +513,16 @@ async function enrichFunds(fundCodes) {
 }
 
 async function fetchFundProfile(code) {
-  const [valuation, profileText] = await Promise.all([
+  const [valuation, profileText, navHistory] = await Promise.all([
     fetchFundValuation(code).catch((error) => ({ ok: false, error: error.message })),
-    fetchFundPingzhongData(code)
+    fetchFundPingzhongData(code),
+    fetchFundNavHistory(code).catch((error) => ({ ok: false, error: error.message, points: [] }))
   ]);
 
   const profile = parseFundPingzhongData(profileText);
+  const riskMetrics = navHistory.ok
+    ? computeRiskMetrics(navHistory.points)
+    : { ok: false, error: navHistory.error, note: "历史净值抓取失败，无法计算夏普率/波动/回撤。" };
   return {
     ok: true,
     code,
@@ -537,6 +543,7 @@ async function fetchFundProfile(code) {
       sixMonthPct: profile.syl_6y || "",
       oneYearPct: profile.syl_1n || ""
     },
+    riskMetrics,
     scale: profile.scale,
     assetAllocation: profile.assetAllocation,
     performanceEvaluation: profile.performanceEvaluation,
@@ -545,6 +552,7 @@ async function fetchFundProfile(code) {
     sources: [
       `https://fundgz.1234567.com.cn/js/${code}.js`,
       `https://fund.eastmoney.com/pingzhongdata/${code}.js`,
+      `https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${code}`,
       `https://fund.eastmoney.com/${code}.html`
     ]
   };
@@ -561,6 +569,160 @@ async function fetchFundValuation(code) {
 
 async function fetchFundPingzhongData(code) {
   return fetchText(`https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`);
+}
+
+async function fetchFundNavHistory(code) {
+  const endDate = new Date();
+  const startDate = new Date(endDate);
+  startDate.setFullYear(startDate.getFullYear() - 5);
+
+  const firstPage = await fetchFundNavHistoryPage(code, 1, startDate, endDate);
+  const points = [...firstPage.points];
+  const totalPages = Math.min(firstPage.pages || 1, Number(process.env.FUND_NAV_MAX_PAGES || 35));
+
+  for (let page = 2; page <= totalPages; page += 1) {
+    const pageData = await fetchFundNavHistoryPage(code, page, startDate, endDate);
+    points.push(...pageData.points);
+  }
+
+  const deduped = [...new Map(points.map((point) => [point.date, point])).values()].sort((a, b) =>
+    a.date.localeCompare(b.date)
+  );
+
+  updateStats({
+    counters: { navHistoryFetches: 1, navHistoryPoints: deduped.length },
+    last: { lastNavHistoryFetchAt: new Date().toISOString() }
+  });
+
+  return {
+    ok: true,
+    code,
+    startDate: formatDate(startDate),
+    endDate: formatDate(endDate),
+    points: deduped
+  };
+}
+
+async function fetchFundNavHistoryPage(code, page, startDate, endDate) {
+  const url = [
+    "https://fund.eastmoney.com/f10/F10DataApi.aspx",
+    `?type=lsjz&code=${encodeURIComponent(code)}`,
+    `&page=${page}`,
+    "&per=49",
+    `&sdate=${formatDate(startDate)}`,
+    `&edate=${formatDate(endDate)}`
+  ].join("");
+  const text = await fetchText(url);
+  const pages = Number(text.match(/pages:(\d+)/)?.[1] || 1);
+  return {
+    pages,
+    points: parseFundNavRows(text)
+  };
+}
+
+function parseFundNavRows(text) {
+  const rows = [];
+  const rowRegex = /<tr>([\s\S]*?)<\/tr>/g;
+  let rowMatch = null;
+  while ((rowMatch = rowRegex.exec(text))) {
+    const cells = [...rowMatch[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((match) =>
+      stripHtml(match[1]).trim()
+    );
+    if (cells.length < 4 || !/^\d{4}-\d{2}-\d{2}$/.test(cells[0])) {
+      continue;
+    }
+    rows.push({
+      date: cells[0],
+      unitNav: toNumber(cells[1]),
+      cumulativeNav: toNumber(cells[2]),
+      dailyReturnPct: toNumber(cells[3].replace("%", ""))
+    });
+  }
+  return rows.filter((row) => Number.isFinite(row.cumulativeNav) && row.cumulativeNav > 0);
+}
+
+function computeRiskMetrics(points) {
+  const ordered = [...points].sort((a, b) => a.date.localeCompare(b.date));
+  if (ordered.length < 20) {
+    return { ok: false, note: "历史净值点不足，无法稳定计算风险指标。", points: ordered.length };
+  }
+
+  const latest = ordered[ordered.length - 1];
+  const riskFreeRatePct = Number(process.env.RISK_FREE_RATE_PCT || 2);
+  const periods = {};
+  for (const years of [1, 3, 5]) {
+    periods[`${years}y`] = computePeriodRiskMetrics(ordered, latest, years, riskFreeRatePct);
+  }
+
+  return {
+    ok: true,
+    source: "computed_from_eastmoney_nav_history",
+    latestDate: latest.date,
+    points: ordered.length,
+    riskFreeRatePct,
+    periods
+  };
+}
+
+function computePeriodRiskMetrics(points, latest, years, riskFreeRatePct) {
+  const cutoff = new Date(`${latest.date}T00:00:00`);
+  cutoff.setFullYear(cutoff.getFullYear() - years);
+  const periodPoints = points.filter((point) => new Date(`${point.date}T00:00:00`) >= cutoff);
+  if (periodPoints.length < 20) {
+    return { ok: false, years, points: periodPoints.length, note: "区间净值点不足。" };
+  }
+
+  const first = periodPoints[0];
+  const last = periodPoints[periodPoints.length - 1];
+  const days = Math.max(1, (new Date(`${last.date}T00:00:00`) - new Date(`${first.date}T00:00:00`)) / 86400000);
+  const totalReturn = last.cumulativeNav / first.cumulativeNav - 1;
+  const annualizedReturn = Math.pow(1 + totalReturn, 365.25 / days) - 1;
+  const dailyReturns = [];
+  for (let i = 1; i < periodPoints.length; i += 1) {
+    const prev = periodPoints[i - 1].cumulativeNav;
+    const current = periodPoints[i].cumulativeNav;
+    if (prev > 0 && current > 0) {
+      dailyReturns.push(current / prev - 1);
+    }
+  }
+  const annualizedVolatility = standardDeviation(dailyReturns) * Math.sqrt(252);
+  const maxDrawdown = computeMaxDrawdown(periodPoints.map((point) => point.cumulativeNav));
+  const sharpe =
+    annualizedVolatility > 0
+      ? (annualizedReturn - riskFreeRatePct / 100) / annualizedVolatility
+      : null;
+
+  return {
+    ok: true,
+    years,
+    startDate: first.date,
+    endDate: last.date,
+    points: periodPoints.length,
+    totalReturnPct: round(totalReturn * 100, 2),
+    annualizedReturnPct: round(annualizedReturn * 100, 2),
+    annualizedVolatilityPct: round(annualizedVolatility * 100, 2),
+    maxDrawdownPct: round(maxDrawdown * 100, 2),
+    sharpe: sharpe === null ? null : round(sharpe, 2)
+  };
+}
+
+function computeMaxDrawdown(values) {
+  let peak = values[0] || 0;
+  let maxDrawdown = 0;
+  for (const value of values) {
+    if (value > peak) peak = value;
+    if (peak > 0) {
+      maxDrawdown = Math.min(maxDrawdown, value / peak - 1);
+    }
+  }
+  return maxDrawdown;
+}
+
+function standardDeviation(values) {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1);
+  return Math.sqrt(variance);
 }
 
 async function fetchText(url) {
@@ -689,6 +851,37 @@ function extractTopStockCodes(text) {
   } catch {
     return [];
   }
+}
+
+function stripHtml(value) {
+  return String(value || "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .trim();
+}
+
+function toNumber(value) {
+  const cleaned = String(value || "").replace(/,/g, "").replace(/%/g, "").trim();
+  if (!cleaned || cleaned === "--") return null;
+  const numeric = Number(cleaned);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function round(value, digits = 2) {
+  if (!Number.isFinite(value)) return null;
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function formatDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 async function replyToMessage(messageId, text, options = {}) {
@@ -899,6 +1092,8 @@ function getDefaultStats() {
       fundEnrichmentCalls: 0,
       fundEnrichmentSuccess: 0,
       fundEnrichmentFailures: 0,
+      navHistoryFetches: 0,
+      navHistoryPoints: 0,
       modelCalls: 0,
       modelFailures: 0,
       repliesSent: 0,
