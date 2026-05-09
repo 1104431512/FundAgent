@@ -322,6 +322,7 @@ async function analyzeFundWithModel({ images, userText, messageType, extracted, 
     "必须严格遵循下面的 fund-screening skill：截图先保守提取可见事实；字段缺失或看不清要明确写 N/A 或“缺失”；不要编造收益、回撤、费率、排名、持仓或基金经理信息。",
     "不要对截图逐字念稿。要先吸收截图事实和联网补全资料，再给出投资筛选评价。",
     "如果联网补全资料与截图冲突，要明确分开“截图可见”和“联网补全”，不要硬合并。",
+    "最终回复会以飞书卡片展示，可使用少量 Markdown 加粗和编号列表，但不要输出 Markdown 表格或代码块。",
     "回答中文，优先简洁。默认使用 normal screening mode，除非输入明显高风险或数据严重不足。不要保证收益，不要给出个性化承诺。",
     "",
     skill.content
@@ -888,17 +889,26 @@ async function replyToMessage(messageId, text, options = {}) {
   const config = getEffectiveConfig();
   const token = await getTenantAccessToken(config);
   const url = new URL(`/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reply`, config.feishuBaseUrl);
+  const payload = buildFeishuReplyPayload(text, options);
 
-  await postJson(
-    url,
-    {
-      msg_type: "text",
-      content: JSON.stringify({ text })
-    },
-    {
-      Authorization: `Bearer ${token}`
+  try {
+    await postJson(url, payload, { Authorization: `Bearer ${token}` });
+  } catch (error) {
+    if (payload.msg_type === "interactive") {
+      await postJson(
+        url,
+        {
+          msg_type: "text",
+          content: JSON.stringify({ text: normalizeFeishuText(text) })
+        },
+        {
+          Authorization: `Bearer ${token}`
+        }
+      );
+    } else {
+      throw error;
     }
-  );
+  }
   const kind = options.kind || "reply";
   updateStats({
     counters: {
@@ -912,6 +922,79 @@ async function replyToMessage(messageId, text, options = {}) {
       lastReplyKind: kind
     }
   });
+}
+
+function buildFeishuReplyPayload(text, options = {}) {
+  const config = getEffectiveConfig();
+  const kind = options.kind || "reply";
+  const useCards = String(config.feishuUseCards ?? process.env.FEISHU_USE_CARDS ?? "true") !== "false";
+
+  if (!useCards) {
+    return {
+      msg_type: "text",
+      content: JSON.stringify({ text: normalizeFeishuText(text) })
+    };
+  }
+
+  return {
+    msg_type: "interactive",
+    content: JSON.stringify(buildFeishuCard(text, kind))
+  };
+}
+
+function buildFeishuCard(text, kind) {
+  const meta = getCardMeta(kind);
+  const content = normalizeFeishuCardMarkdown(text, kind);
+  const elements = [
+    {
+      tag: "div",
+      text: {
+        tag: "lark_md",
+        content
+      }
+    }
+  ];
+
+  if (kind === "answer") {
+    elements.push(
+      { tag: "hr" },
+      {
+        tag: "note",
+        elements: [
+          {
+            tag: "plain_text",
+            content: "基金助手会结合截图识别和公开数据补全，结论仅供研究参考，不构成收益承诺。"
+          }
+        ]
+      }
+    );
+  }
+
+  return {
+    config: {
+      wide_screen_mode: true,
+      enable_forward: true
+    },
+    header: {
+      template: meta.template,
+      title: {
+        tag: "plain_text",
+        content: meta.title
+      }
+    },
+    elements
+  };
+}
+
+function getCardMeta(kind) {
+  const meta = {
+    progress: { template: "blue", title: "🔎 基金助手正在处理" },
+    answer: { template: "turquoise", title: "📊 基金分析完成" },
+    error: { template: "red", title: "⚠️ 分析遇到问题" },
+    noContent: { template: "yellow", title: "📷 请发送基金截图" },
+    reply: { template: "wathet", title: "基金助手" }
+  };
+  return meta[kind] || meta.reply;
 }
 
 async function getTenantAccessToken(config = getEffectiveConfig()) {
@@ -1483,12 +1566,80 @@ function extractResponsesText(json) {
 
 function normalizeFeishuText(text) {
   const config = getEffectiveConfig();
-  const cleaned = String(text || "").trim();
+  const cleaned = stripMarkdownForFeishu(String(text || "")).trim();
   const maxLength = Number(config.replyMaxChars || 6000);
   if (cleaned.length <= maxLength) {
     return cleaned;
   }
   return `${cleaned.slice(0, maxLength - 80)}\n\n（回复过长，已截断。可继续发送“详细分析”并附基金名称/代码。）`;
+}
+
+function normalizeFeishuCardMarkdown(text, kind) {
+  const config = getEffectiveConfig();
+  const maxLength = Number(config.replyMaxChars || 6000);
+  let cleaned = String(text || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/```[a-zA-Z0-9_-]*\n?/g, "")
+    .replace(/```/g, "")
+    .replace(/^\s{0,3}#{1,6}\s+(.+)$/gm, "**$1**")
+    .replace(/^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (kind === "progress") {
+    cleaned = `⏳ ${cleaned}`;
+  } else if (kind === "error") {
+    cleaned = `请稍后重试，或补充基金代码/名称。\n\n${cleaned}`;
+  } else if (kind === "noContent") {
+    cleaned = `可以发送一张或多张基金截图，也可以附上文字说明。\n\n${cleaned}`;
+  }
+
+  if (cleaned.length > maxLength) {
+    cleaned = `${cleaned.slice(0, maxLength - 80)}\n\n（回复过长，已截断。可继续发送“详细分析”并附基金名称/代码。）`;
+  }
+
+  return cleaned || "已收到。";
+}
+
+function stripMarkdownForFeishu(value) {
+  let text = String(value || "").replace(/\r\n/g, "\n");
+  text = text
+    .replace(/```[a-zA-Z0-9_-]*\n?/g, "")
+    .replace(/```/g, "")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1（$2）")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*\n]+)\*\*/g, "$1")
+    .replace(/__([^_\n]+)__/g, "$1")
+    .replace(/\*([^*\n]+)\*/g, "$1")
+    .replace(/_([^_\n]+)_/g, "$1")
+    .replace(/~~([^~\n]+)~~/g, "$1");
+
+  const lines = [];
+  for (const rawLine of text.split("\n")) {
+    let line = rawLine.trimEnd();
+    const trimmed = line.trim();
+    if (!trimmed) {
+      lines.push("");
+      continue;
+    }
+    if (/^[-*_]{3,}$/.test(trimmed)) {
+      continue;
+    }
+    if (/^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(trimmed)) {
+      continue;
+    }
+    line = line
+      .replace(/^\s{0,3}#{1,6}\s*/, "")
+      .replace(/^\s{0,3}>\s?/, "")
+      .replace(/^\s*[-*+]\s+/, "• ")
+      .replace(/^\s*\[\s\]\s+/, "□ ")
+      .replace(/^\s*\[x\]\s+/i, "☑ ")
+      .replace(/\s*\|\s*/g, "  ");
+    lines.push(line.trimEnd());
+  }
+
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").trim();
 }
 
 function normalizeWireApi(value) {
