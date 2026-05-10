@@ -115,9 +115,11 @@ async function loadStats() {
   setText("#statConversations", counters.conversations || 0);
   setText("#statImages", counters.imagesReceived || 0);
   setText("#statAnswers", counters.answersSent || 0);
+  setText("#statChat", counters.conversationRequests || 0);
   setText("#statScreening", counters.screeningRequests || 0);
   setText("#statRecommendation", counters.fundRecommendationRequests || 0);
   setText("#statQa", counters.fundQaRequests || 0);
+  setText("#statRouter", counters.intentRouterCalls || 0);
   setText("#statProgress", counters.progressReplies || 0);
   setText("#statModelCalls", counters.modelCalls || 0);
   setText("#statAnalyst", counters.analystReviewCalls || 0);

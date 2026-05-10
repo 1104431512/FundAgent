@@ -207,8 +207,13 @@ async function handleMessageEvent(payload) {
   });
 
   try {
-    const intent = classifyMessageIntent({ imageKeys, userText, messageType: message.message_type });
+    const intent = await classifyMessageIntent({ imageKeys, userText, messageType: message.message_type });
     recordWorkflowIntent(intent);
+
+    if (intent.workflow === "conversation") {
+      await handleConversationWorkflow({ message, userText, intent });
+      return;
+    }
 
     if (intent.workflow === "fund_recommendation") {
       await handleFundRecommendationWorkflow({ message, userText, intent });
@@ -227,9 +232,15 @@ async function handleMessageEvent(payload) {
       recordError(error, { replyFailures: 1 });
     });
 
-    await replyToMessage(message.message_id, "进度：正在识别截图中的基金代码和关键字段。", {
-      kind: "progress"
-    }).catch((error) => {
+    await replyToMessage(
+      message.message_id,
+      imageKeys.length
+        ? "进度：正在识别截图中的基金代码和关键字段。"
+        : "进度：正在识别文字中的基金名称、代码和关键字段。",
+      {
+        kind: "progress"
+      }
+    ).catch((error) => {
       console.error("[progress-reply-error]", error);
       recordError(error, { replyFailures: 1 });
     });
@@ -324,6 +335,11 @@ async function handleMessageEvent(payload) {
       { kind: "error" }
     );
   }
+}
+
+async function handleConversationWorkflow({ message, userText, intent }) {
+  const answer = await answerConversationWithModel({ userText, intent });
+  await replyToMessage(message.message_id, answer, { kind: "answer" });
 }
 
 async function handleFundRecommendationWorkflow({ message, userText, intent }) {
@@ -552,6 +568,7 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
 }
 
 async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
+  const skillContext = buildSkillContextForIntent(intent, ["fund-screening"]);
   const systemText = [
     "你是飞书机器人“基金助手”的基金发现与配置工作流。",
     "当前任务不是分析用户已经给出的某一只基金，也不是截图 screening；当前任务是根据用户文字、公开市场快照和基金候选池，给出教育性的基金方向与候选清单。",
@@ -559,7 +576,9 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "如果数据不足以支持具体基金代码，就推荐基金方向/筛选条件，并把具体代码标为待复核。",
     "回答要大胆但有边界：证据偏正面时可以给出买入或分批买入候选；不要机械地总是等待回撤。",
     "必须说明数据滞后风险和复查条件。不要保证收益，不要给出个性化承诺。",
-    "输出适合飞书卡片阅读，不要 Markdown 表格，不要代码块。"
+    "输出适合飞书卡片阅读，不要 Markdown 表格，不要代码块。",
+    "",
+    skillContext
   ].join("\n");
 
   const userPrompt = [
@@ -593,12 +612,15 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
 }
 
 async function answerFundQuestionWithModel({ userText, intent, marketSnapshot }) {
+  const skillContext = buildSkillContextForIntent(intent, ["fund-screening"]);
   const systemText = [
     "你是飞书机器人“基金助手”的基金问答工作流。",
     "当前任务是回答用户问题，不是单只基金 screening；除非用户给出明确基金代码或截图，否则不要强行输出 Verdict/Score/8 角色评审。",
     "如果传入 marketSnapshot，可用它回答近期市场/题材问题；如果没有实时数据，就明确说明限制。",
     "回答中文、简洁、可执行。不要保证收益，不要给出个性化承诺。",
-    "输出适合飞书卡片阅读，不要 Markdown 表格，不要代码块。"
+    "输出适合飞书卡片阅读，不要 Markdown 表格，不要代码块。",
+    "",
+    skillContext
   ].join("\n");
 
   const userPrompt = [
@@ -622,6 +644,43 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
   updateStats({
     counters: { fundQaModelCalls: 1 },
     last: { lastFundQaAt: new Date().toISOString() }
+  });
+  return text;
+}
+
+async function answerConversationWithModel({ userText, intent }) {
+  const skills = listSkills(false).map((skill) => ({
+    id: skill.id,
+    name: skill.name,
+    description: skill.description
+  }));
+  const systemText = [
+    "你是飞书机器人“基金助手”，也是一个可以自然对话的 GPT 助手。",
+    "当前工作流是 conversation：不要调用基金筛选、基金推荐或单基评分模板，除非用户明确要求。",
+    "如果用户问你是谁、能做什么、怎么使用，就做简洁自我介绍，并说明你会先理解意图再选择工作流。",
+    "语气自然、专业、简短，适合飞书卡片阅读。不要输出 Markdown 表格或代码块。"
+  ].join("\n");
+  const userPrompt = [
+    `用户消息：${userText || "无"}`,
+    "",
+    "路由判断：",
+    JSON.stringify(intent || {}, null, 2),
+    "",
+    "当前可用 skills：",
+    JSON.stringify(skills, null, 2),
+    "",
+    "请直接回答用户。"
+  ].join("\n");
+
+  const text = await callModel({
+    systemText,
+    userPrompt,
+    images: [],
+    maxTokens: Math.min(Number(getEffectiveConfig().modelMaxOutputTokens || 2800), 1000)
+  });
+  updateStats({
+    counters: { conversationModelCalls: 1 },
+    last: { lastConversationWorkflowAt: new Date().toISOString() }
   });
   return text;
 }
@@ -1741,9 +1800,12 @@ function getDefaultStats() {
       noContentMessages: 0,
       downloadedImages: 0,
       routedMessages: 0,
+      conversationRequests: 0,
       screeningRequests: 0,
       fundRecommendationRequests: 0,
       fundQaRequests: 0,
+      intentRouterCalls: 0,
+      intentRouterFailures: 0,
       extractionCalls: 0,
       extractionFailures: 0,
       extractedFundCodes: 0,
@@ -1761,6 +1823,7 @@ function getDefaultStats() {
       analystReviewCalls: 0,
       committeeVoteCalls: 0,
       managerReviewCalls: 0,
+      conversationModelCalls: 0,
       fundRecommendationModelCalls: 0,
       fundQaModelCalls: 0,
       modelCalls: 0,
@@ -2074,7 +2137,7 @@ function collectText(value, pieces, key = "") {
   }
 }
 
-function classifyMessageIntent({ imageKeys = [], userText = "", messageType = "" }) {
+async function classifyMessageIntent({ imageKeys = [], userText = "", messageType = "" }) {
   const text = normalizeIntentText(userText);
   const fundCodes = extractFundCodes(text);
   const hasFundWord = hasAny(text, ["基金", "etf", "lof", "qdii", "指数", "主动", "混合", "股票型", "债基", "货币"]);
@@ -2085,8 +2148,40 @@ function classifyMessageIntent({ imageKeys = [], userText = "", messageType = ""
       mode: "screenshot_or_mixed",
       reason: "message_contains_image",
       fundCodes,
+      skillIds: ["fund-screening"],
       messageType
     };
+  }
+
+  if (!text) {
+    return {
+      workflow: "conversation",
+      mode: "empty_text",
+      reason: "no_text_after_parsing",
+      fundCodes,
+      skillIds: [],
+      messageType
+    };
+  }
+
+  if (fundCodes.length) {
+    return {
+      workflow: "fund_screening",
+      mode: fundCodes.length > 1 ? "comparison_or_specific_fund" : "specific_fund_or_fund_name",
+      reason: "text_contains_fund_code",
+      fundCodes,
+      skillIds: ["fund-screening"],
+      messageType
+    };
+  }
+
+  const modelIntent = await classifyTextIntentWithModel({ userText, messageType }).catch((error) => {
+    console.error("[intent-router-error]", error);
+    recordError(error, { intentRouterFailures: 1 });
+    return null;
+  });
+  if (modelIntent?.workflow) {
+    return normalizeIntentResult(modelIntent, { fundCodes, messageType, source: "model_router" });
   }
 
   const asksRecommendation =
@@ -2119,8 +2214,9 @@ function classifyMessageIntent({ imageKeys = [], userText = "", messageType = ""
     return {
       workflow: "fund_recommendation",
       mode: "market_theme_discovery",
-      reason: "text_requests_recommendations_without_specific_fund",
+      reason: "fallback_text_requests_recommendations_without_specific_fund",
       fundCodes,
+      skillIds: ["fund-screening"],
       messageType
     };
   }
@@ -2129,23 +2225,82 @@ function classifyMessageIntent({ imageKeys = [], userText = "", messageType = ""
     return {
       workflow: "fund_screening",
       mode: asksCompare || fundCodes.length > 1 ? "comparison_or_specific_fund" : "specific_fund_or_fund_name",
-      reason: fundCodes.length ? "text_contains_fund_code" : "text_mentions_specific_fund_action",
+      reason: "fallback_text_mentions_specific_fund_action",
       fundCodes,
+      skillIds: ["fund-screening"],
       messageType
     };
   }
 
   return {
-    workflow: "fund_qa",
+    workflow: looksLikeConversation(text) ? "conversation" : "fund_qa",
     mode: shouldFetchMarketSnapshotForQuestion(text) ? "market_question" : "general_fund_question",
-    reason: "no_image_no_specific_fund_recommendation",
+    reason: "fallback_no_image_no_specific_fund_recommendation",
     fundCodes,
+    skillIds: looksLikeConversation(text) ? [] : ["fund-screening"],
     messageType
+  };
+}
+
+async function classifyTextIntentWithModel({ userText, messageType }) {
+  const skills = listSkills(false).map((skill) => ({
+    id: skill.id,
+    name: skill.name,
+    description: skill.description
+  }));
+  const systemText = [
+    "你是基金助手的意图路由器。只返回 JSON，不要解释。",
+    "你的任务是先理解用户想做什么，再选择工作流和需要加载的 skill。",
+    "不要因为机器人名称叫基金助手，就把自我介绍、寒暄、能力询问、普通聊天强行归类到基金工作流。",
+    "可选 workflow：",
+    "- conversation：自我介绍、能做什么、寒暄、帮助、普通非基金对话。",
+    "- fund_recommendation：用户让你推荐几个基金、按最近题材/市场/热点找基金、给配置清单。",
+    "- fund_screening：用户提供具体基金名称/代码、问某只基金能买吗/要不要卖/评分/对比。",
+    "- fund_qa：基金知识、市场题材解释、投资方法问题，但没有要求给候选基金清单。",
+    "如果要加载技能，只能从 availableSkills 里选择 id。"
+  ].join("\n");
+  const userPrompt = [
+    `messageType: ${messageType || "unknown"}`,
+    `userText: ${userText || ""}`,
+    "",
+    "availableSkills:",
+    JSON.stringify(skills, null, 2),
+    "",
+    "返回 JSON：",
+    '{"workflow":"conversation|fund_recommendation|fund_screening|fund_qa","mode":"short label","reason":"brief reason","skillIds":["fund-screening"],"confidence":0.0}'
+  ].join("\n");
+
+  const raw = await callModel({ systemText, userPrompt, images: [], maxTokens: 500 });
+  updateStats({
+    counters: { intentRouterCalls: 1 },
+    last: { lastIntentRouterAt: new Date().toISOString() }
+  });
+  return parseJsonFromModel(raw);
+}
+
+function normalizeIntentResult(intent, defaults = {}) {
+  const validWorkflows = new Set(["conversation", "fund_recommendation", "fund_screening", "fund_qa"]);
+  const workflow = validWorkflows.has(String(intent.workflow || "")) ? String(intent.workflow) : "fund_qa";
+  const availableSkillIds = new Set(listSkills(false).map((skill) => skill.id));
+  const skillIds = Array.isArray(intent.skillIds)
+    ? intent.skillIds.map(String).filter((id) => availableSkillIds.has(id))
+    : [];
+
+  return {
+    workflow,
+    mode: String(intent.mode || defaults.mode || workflow),
+    reason: String(intent.reason || defaults.reason || defaults.source || "model_router"),
+    fundCodes: mergeFundCodes(defaults.fundCodes || [], intent.fundCodes || []),
+    skillIds: workflow === "conversation" ? [] : skillIds,
+    confidence: Number.isFinite(Number(intent.confidence)) ? Number(intent.confidence) : null,
+    source: defaults.source || "router",
+    messageType: defaults.messageType || ""
   };
 }
 
 function recordWorkflowIntent(intent) {
   const counters = { routedMessages: 1 };
+  if (intent.workflow === "conversation") counters.conversationRequests = 1;
   if (intent.workflow === "fund_screening") counters.screeningRequests = 1;
   if (intent.workflow === "fund_recommendation") counters.fundRecommendationRequests = 1;
   if (intent.workflow === "fund_qa") counters.fundQaRequests = 1;
@@ -2164,12 +2319,45 @@ function shouldFetchMarketSnapshotForQuestion(text) {
   return hasAny(normalized, ["最近", "最新", "当前", "现在", "市场", "行情", "题材", "热点", "板块", "赛道", "机会"]);
 }
 
+function looksLikeConversation(text) {
+  const normalized = normalizeIntentText(text);
+  return hasAny(normalized, [
+    "你是谁",
+    "自我介绍",
+    "介绍一下你",
+    "你能做什么",
+    "有什么功能",
+    "怎么使用",
+    "帮助",
+    "help",
+    "你好",
+    "hello",
+    "hi",
+    "谢谢",
+    "thanks"
+  ]);
+}
+
 function normalizeIntentText(value) {
   return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 function hasAny(text, needles) {
   return needles.some((needle) => text.includes(needle.toLowerCase()));
+}
+
+function buildSkillContextForIntent(intent, fallbackSkillIds = []) {
+  const requestedIds = Array.isArray(intent?.skillIds) ? intent.skillIds : [];
+  const ids = [...new Set([...requestedIds, ...fallbackSkillIds].map(String).filter(Boolean))];
+  const skills = listSkills(true).filter((skill) => ids.includes(skill.id));
+  if (!skills.length) {
+    return "本工作流没有加载额外 skill。";
+  }
+
+  return [
+    "本工作流按需加载以下 skills。只在用户意图需要时使用，不要把 skill 模板强行套到无关对话：",
+    ...skills.map((skill) => [`# Skill: ${skill.id}`, skill.content].join("\n"))
+  ].join("\n\n");
 }
 
 function extractFundCodes(text) {
