@@ -1687,14 +1687,19 @@ function buildFundLimitCheck(profile, amount, tradingProfile) {
 }
 
 function isPortfolioTradingDay(date) {
-  const day = new Date(`${date}T00:00:00+08:00`).getDay();
+  const day = parseDateOnlyUtc(date).getUTCDay();
   return day !== 0 && day !== 6;
 }
 
 function nextPortfolioTradingDay(date) {
   let current = addDays(date, 1);
+  let guard = 0;
   while (!isPortfolioTradingDay(current)) {
     current = addDays(current, 1);
+    guard += 1;
+    if (guard > 14) {
+      throw new Error(`无法计算下一个交易日：${date}`);
+    }
   }
   return current;
 }
@@ -1710,9 +1715,25 @@ function addPortfolioTradingDays(date, days) {
 }
 
 function addDays(date, days) {
-  const value = new Date(`${date}T00:00:00+08:00`);
-  value.setDate(value.getDate() + Number(days || 0));
-  return formatDate(value);
+  const value = parseDateOnlyUtc(date);
+  value.setUTCDate(value.getUTCDate() + Number(days || 0));
+  return formatUtcDate(value);
+}
+
+function parseDateOnlyUtc(date) {
+  const match = String(date || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    throw new Error(`无效日期：${date}`);
+  }
+  const [, year, month, day] = match;
+  return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+}
+
+function formatUtcDate(date) {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 async function pushPortfolioRunIfConfigured(db, run, config) {
