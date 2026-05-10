@@ -18,6 +18,7 @@ const PUBLIC_DIR = path.join(ROOT, "public");
 const SKILLS_DIR = path.join(ROOT, "skills");
 const STARTED_AT = new Date();
 const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS || 120000);
+const DEFAULT_MODEL_HTTP_TIMEOUT_MS = Number(process.env.MODEL_HTTP_TIMEOUT_MS ?? 0);
 const PORTFOLIO_DB_REPAIRED = Symbol("portfolioDbRepaired");
 
 let tenantAccessTokenCache = null;
@@ -646,15 +647,27 @@ function finishCancelledPortfolioRun(run, error, startedAt) {
   return getPortfolioPublicState(currentDb);
 }
 
+function markPortfolioRunProgress(db, run, summary) {
+  const now = new Date().toISOString();
+  run.summary = summary;
+  run.progressAt = now;
+  db.updatedAt = now;
+  writePortfolioDb(db);
+}
+
 async function executePortfolioDecision(db, run, config) {
+  markPortfolioRunProgress(db, run, "正在处理上一轮订单和确认状态。");
   const lifecycleBefore = await processPortfolioOrderLifecycle(db, run, config);
   assertPortfolioRunActive(run);
+  markPortfolioRunProgress(db, run, "正在抓取市场快照和近期题材线索。");
   const accountBefore = summarizePortfolioAccount(db.account);
   const marketSnapshot = await fetchMarketSnapshot();
   assertPortfolioRunActive(run);
+  markPortfolioRunProgress(db, run, "正在补全当前持仓基金资料。");
   const heldCodes = db.account.positions.map((position) => position.code).filter(Boolean);
   const heldProfiles = heldCodes.length ? await enrichFunds(heldCodes) : [];
   assertPortfolioRunActive(run);
+  markPortfolioRunProgress(db, run, `资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度生成今日操作。`);
   const raw = await buildPortfolioDecisionWithModel({
     account: accountBefore,
     marketSnapshot,
@@ -662,6 +675,7 @@ async function executePortfolioDecision(db, run, config) {
     config
   });
   assertPortfolioRunActive(run);
+  markPortfolioRunProgress(db, run, "模型已返回，正在校验交易规则并生成虚拟订单。");
   const decision = normalizePortfolioDecision(raw);
   const profileCodes = decision.actions.map((action) => action.code).filter(Boolean);
   const actionProfiles = profileCodes.length ? await enrichFunds(profileCodes) : [];
@@ -706,8 +720,10 @@ async function executePortfolioDecision(db, run, config) {
 }
 
 async function executePortfolioValuation(db, run, config) {
+  markPortfolioRunProgress(db, run, "正在处理订单生命周期和晚间确认状态。");
   const lifecycle = await processPortfolioOrderLifecycle(db, run, config);
   assertPortfolioRunActive(run);
+  markPortfolioRunProgress(db, run, "正在补全持仓净值和走势数据。");
   const accountBefore = summarizePortfolioAccount(db.account);
   const positionsBefore = new Map(db.account.positions.map((position) => [position.code, { ...position }]));
   const codes = db.account.positions.map((position) => position.code).filter(Boolean);
@@ -765,6 +781,7 @@ async function executePortfolioValuation(db, run, config) {
     positions: db.account.positions.map(summarizePortfolioPosition)
   });
 
+  markPortfolioRunProgress(db, run, `估值资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度复盘。`);
   const raw = await buildPortfolioValuationWithModel({
     accountBefore,
     accountAfter: summarizePortfolioAccount(db.account),
@@ -1972,6 +1989,7 @@ function summarizePortfolioRun(run) {
     status: run.status,
     manual: run.manual,
     startedAt: run.startedAt,
+    progressAt: run.progressAt || "",
     completedAt: run.completedAt,
     durationMs: run.durationMs,
     summary: buildPortfolioRunSummary(run),
@@ -2156,16 +2174,17 @@ function normalizePortfolioDb(value) {
 }
 
 function repairStalePortfolioRuns(db) {
-  const staleMs = Number(process.env.PORTFOLIO_RUN_STALE_MINUTES || 30) * 60_000;
+  const staleMs = Number(process.env.PORTFOLIO_RUN_STALE_MINUTES || 180) * 60_000;
   const now = Date.now();
   let repaired = false;
   for (const run of db.runs || []) {
     if (run.status !== "running") continue;
-    const started = Date.parse(run.startedAt || "");
-    if (!Number.isFinite(started) || now - started > staleMs) {
+    const progressAt = Date.parse(run.progressAt || run.updatedAt || run.startedAt || "");
+    if (!Number.isFinite(progressAt) || now - progressAt > staleMs) {
       run.status = "interrupted";
       run.error = "任务超时未完成，已自动标记为中断。";
       run.completedAt = new Date().toISOString();
+      const started = Date.parse(run.startedAt || "");
       run.durationMs = Number.isFinite(started) ? now - started : 0;
       if (activePortfolioRunId === run.id) {
         cancelledPortfolioRunIds.add(run.id);
@@ -2697,7 +2716,8 @@ async function testModelConnection() {
     systemText: "你是一个连通性测试助手。",
     userPrompt: "请只回复：OK",
     images: [],
-    maxTokens: 80
+    maxTokens: 80,
+    timeoutMs: Number(process.env.MODEL_TEST_TIMEOUT_MS || 120000)
   });
 
   return {
@@ -2717,7 +2737,7 @@ async function testFeishuConnection() {
   };
 }
 
-async function callModel({ systemText, userPrompt, images = [], maxTokens }) {
+async function callModel({ systemText, userPrompt, images = [], maxTokens, timeoutMs }) {
   const config = getEffectiveConfig();
   validateModelConfig(config);
 
@@ -2725,16 +2745,16 @@ async function callModel({ systemText, userPrompt, images = [], maxTokens }) {
 
   try {
     if (normalizeWireApi(config.modelWireApi) === "chat_completions") {
-      return await callChatCompletionsApi({ config, systemText, userPrompt, images, maxTokens });
+      return await callChatCompletionsApi({ config, systemText, userPrompt, images, maxTokens, timeoutMs });
     }
-    return await callResponsesApi({ config, systemText, userPrompt, images, maxTokens });
+    return await callResponsesApi({ config, systemText, userPrompt, images, maxTokens, timeoutMs });
   } catch (error) {
     updateStats({ counters: { modelFailures: 1 }, last: { lastModelFailureAt: new Date().toISOString() } });
     throw error;
   }
 }
 
-async function callResponsesApi({ config, systemText, userPrompt, images, maxTokens }) {
+async function callResponsesApi({ config, systemText, userPrompt, images, maxTokens, timeoutMs }) {
   const content = [{ type: "input_text", text: userPrompt }];
   for (const image of images || []) {
     content.push({
@@ -2755,9 +2775,30 @@ async function callResponsesApi({ config, systemText, userPrompt, images, maxTok
     body.reasoning = { effort: reasoningEffort };
   }
 
+  if (config.modelResponsesStream) {
+    try {
+      const streamedText = await postResponsesStream(
+        modelUrl(config, "responses"),
+        body,
+        {
+          Authorization: `Bearer ${config.modelApiKey}`
+        },
+        { timeoutMs: resolveModelTimeoutMs(config, timeoutMs) }
+      );
+      if (!streamedText) {
+        throw new Error("模型返回为空。");
+      }
+      return streamedText;
+    } catch (error) {
+      if (!isResponsesStreamFallbackError(error)) {
+        throw error;
+      }
+    }
+  }
+
   const json = await postJson(modelUrl(config, "responses"), body, {
     Authorization: `Bearer ${config.modelApiKey}`
-  });
+  }, { timeoutMs: resolveModelTimeoutMs(config, timeoutMs) });
 
   const text = extractResponsesText(json);
   if (!text) {
@@ -2766,7 +2807,7 @@ async function callResponsesApi({ config, systemText, userPrompt, images, maxTok
   return text;
 }
 
-async function callChatCompletionsApi({ config, systemText, userPrompt, images, maxTokens }) {
+async function callChatCompletionsApi({ config, systemText, userPrompt, images, maxTokens, timeoutMs }) {
   const userContent = [{ type: "text", text: userPrompt }];
   for (const image of images || []) {
     userContent.push({
@@ -2787,7 +2828,8 @@ async function callChatCompletionsApi({ config, systemText, userPrompt, images, 
     },
     {
       Authorization: `Bearer ${config.modelApiKey}`
-    }
+    },
+    { timeoutMs: resolveModelTimeoutMs(config, timeoutMs) }
   );
 
   const text = json?.choices?.[0]?.message?.content?.trim();
@@ -3708,9 +3750,115 @@ async function getTenantAccessToken(config = getEffectiveConfig()) {
   return tenantAccessTokenCache.token;
 }
 
-async function postJson(url, body, headers = {}) {
-  const attempts = Number(process.env.HTTP_RETRY_ATTEMPTS || 3);
-  const timeoutMs = Number(process.env.HTTP_POST_TIMEOUT_MS || HTTP_TIMEOUT_MS);
+async function postResponsesStream(url, body, headers = {}, options = {}) {
+  const response = await fetchWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        ...headers
+      },
+      body: JSON.stringify({ ...body, stream: true })
+    },
+    Number(options.timeoutMs ?? DEFAULT_MODEL_HTTP_TIMEOUT_MS)
+  );
+
+  const contentType = response.headers.get("content-type") || "";
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    const error = new Error(`HTTP ${response.status}: ${detail.slice(0, 500)}`);
+    error.httpStatus = response.status;
+    throw error;
+  }
+
+  if (!contentType.includes("text/event-stream")) {
+    const text = await response.text();
+    const json = JSON.parse(text || "{}");
+    return extractResponsesText(json);
+  }
+
+  return readResponsesEventStream(response);
+}
+
+async function readResponsesEventStream(response) {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let output = "";
+  let completedResponse = null;
+
+  for await (const chunk of response.body) {
+    buffer += decoder.decode(chunk, { stream: true });
+    buffer = buffer.replace(/\r\n/g, "\n");
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      const block = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      const event = parseSseEvent(block);
+      if (event?.data && event.data !== "[DONE]") {
+        const parsed = JSON.parse(event.data);
+        if (parsed.type === "response.output_text.delta" && typeof parsed.delta === "string") {
+          output += parsed.delta;
+        } else if (parsed.type === "response.output_text.done" && !output && typeof parsed.text === "string") {
+          output = parsed.text;
+        } else if (parsed.type === "response.completed" && parsed.response) {
+          completedResponse = parsed.response;
+        } else if (parsed.type === "response.failed" || parsed.type === "error") {
+          throw new Error(parsed.error?.message || parsed.message || "模型流式响应失败。");
+        }
+      }
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+
+  const tail = decoder.decode();
+  if (tail) {
+    buffer += tail;
+    buffer = buffer.replace(/\r\n/g, "\n");
+  }
+  if (buffer.trim()) {
+    const event = parseSseEvent(buffer);
+    if (event?.data && event.data !== "[DONE]") {
+      const parsed = JSON.parse(event.data);
+      if (parsed.type === "response.output_text.delta" && typeof parsed.delta === "string") {
+        output += parsed.delta;
+      } else if (parsed.type === "response.completed" && parsed.response) {
+        completedResponse = parsed.response;
+      }
+    }
+  }
+
+  const text = output.trim();
+  if (text) return text;
+  return completedResponse ? extractResponsesText(completedResponse) : "";
+}
+
+function parseSseEvent(block) {
+  const event = { event: "", data: "" };
+  for (const line of String(block || "").split(/\r?\n/)) {
+    if (!line || line.startsWith(":")) continue;
+    const separator = line.indexOf(":");
+    const field = separator >= 0 ? line.slice(0, separator) : line;
+    const value = separator >= 0 ? line.slice(separator + 1).replace(/^ /, "") : "";
+    if (field === "event") event.event = value;
+    if (field === "data") event.data += `${event.data ? "\n" : ""}${value}`;
+  }
+  return event.data || event.event ? event : null;
+}
+
+function resolveModelTimeoutMs(config, override) {
+  const value = override ?? config.modelHttpTimeoutMs ?? DEFAULT_MODEL_HTTP_TIMEOUT_MS;
+  const timeoutMs = Number(value);
+  return Number.isFinite(timeoutMs) ? Math.max(0, timeoutMs) : 0;
+}
+
+function isResponsesStreamFallbackError(error) {
+  return [400, 404, 405, 415, 422].includes(Number(error?.httpStatus || 0));
+}
+
+async function postJson(url, body, headers = {}, options = {}) {
+  const attempts = Number(options.attempts || process.env.HTTP_RETRY_ATTEMPTS || 3);
+  const timeoutMs = Number(options.timeoutMs ?? process.env.HTTP_POST_TIMEOUT_MS ?? HTTP_TIMEOUT_MS);
   let lastError = null;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -3760,14 +3908,18 @@ async function postJson(url, body, headers = {}) {
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = HTTP_TIMEOUT_MS) {
-  const ms = Math.max(1000, Number(timeoutMs || HTTP_TIMEOUT_MS || 120000));
+  const ms = Number(timeoutMs);
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return fetch(url, options);
+  }
+  const boundedMs = Math.max(1000, ms);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
+  const timer = setTimeout(() => controller.abort(), boundedMs);
   try {
     return await fetch(url, { ...options, signal: options.signal || controller.signal });
   } catch (error) {
     if (error?.name === "AbortError") {
-      const timeoutError = new Error(`HTTP request timeout after ${ms}ms: ${url}`);
+      const timeoutError = new Error(`HTTP request timeout after ${boundedMs}ms: ${url}`);
       timeoutError.code = "HTTP_TIMEOUT";
       throw timeoutError;
     }
@@ -3809,6 +3961,8 @@ function getEffectiveConfig() {
     modelWireApi: process.env.MODEL_WIRE_API || codexDefaults.modelWireApi || "responses",
     modelReasoningEffort: process.env.MODEL_REASONING_EFFORT || codexDefaults.modelReasoningEffort || "high",
     modelMaxOutputTokens: Number(process.env.MODEL_MAX_OUTPUT_TOKENS || 2800),
+    modelHttpTimeoutMs: Number(process.env.MODEL_HTTP_TIMEOUT_MS ?? DEFAULT_MODEL_HTTP_TIMEOUT_MS),
+    modelResponsesStream: parseBoolean(process.env.MODEL_RESPONSES_STREAM, true),
     replyMaxChars: Number(process.env.FEISHU_REPLY_MAX_CHARS || 7000),
     portfolioEnabled: parseBoolean(process.env.PORTFOLIO_ENABLED, false),
     portfolioInitialCapital: Number(process.env.PORTFOLIO_INITIAL_CAPITAL || 100000),
@@ -3833,6 +3987,8 @@ function normalizeEffectiveConfig(config) {
   next.modelWireApi = normalizeWireApi(next.modelWireApi || "responses");
   next.modelReasoningEffort = normalizeReasoningEffort(next.modelReasoningEffort) || "high";
   next.modelMaxOutputTokens = Number(next.modelMaxOutputTokens || 2800);
+  next.modelHttpTimeoutMs = Math.max(0, Number(next.modelHttpTimeoutMs ?? DEFAULT_MODEL_HTTP_TIMEOUT_MS) || 0);
+  next.modelResponsesStream = parseBoolean(next.modelResponsesStream, true);
   next.replyMaxChars = Number(next.replyMaxChars || 7000);
   next.portfolioEnabled = parseBoolean(next.portfolioEnabled, false);
   next.portfolioInitialCapital = Math.max(1000, Number(next.portfolioInitialCapital || 100000));
@@ -3860,6 +4016,8 @@ function getPublicConfig(config = getEffectiveConfig()) {
       modelWireApi: normalizeWireApi(config.modelWireApi),
       modelReasoningEffort: config.modelReasoningEffort || "high",
       modelMaxOutputTokens: Number(config.modelMaxOutputTokens || 2800),
+      modelHttpTimeoutMs: Math.max(0, Number(config.modelHttpTimeoutMs || 0)),
+      modelResponsesStream: String(Boolean(config.modelResponsesStream)),
       replyMaxChars: Number(config.replyMaxChars || 7000),
       portfolioEnabled: String(Boolean(config.portfolioEnabled)),
       portfolioInitialCapital: Number(config.portfolioInitialCapital || 100000),
@@ -3906,7 +4064,8 @@ function saveConfigPatch(patch) {
     "portfolioRiskProfile"
   ];
   const numericFields = ["modelMaxOutputTokens", "replyMaxChars", "portfolioInitialCapital", "portfolioRetentionDays"];
-  const booleanFields = ["portfolioEnabled", "portfolioAutoBindLastChat"];
+  const zeroableNumericFields = ["modelHttpTimeoutMs"];
+  const booleanFields = ["modelResponsesStream", "portfolioEnabled", "portfolioAutoBindLastChat"];
   const secretFields = ["feishuAppSecret", "feishuVerificationToken", "feishuEncryptKey", "modelApiKey"];
 
   for (const field of textFields) {
@@ -3919,6 +4078,15 @@ function saveConfigPatch(patch) {
     if (Object.hasOwn(patch, field)) {
       const value = Number(patch[field]);
       if (Number.isFinite(value) && value > 0) {
+        next[field] = value;
+      }
+    }
+  }
+
+  for (const field of zeroableNumericFields) {
+    if (Object.hasOwn(patch, field)) {
+      const value = Number(patch[field]);
+      if (Number.isFinite(value) && value >= 0) {
         next[field] = value;
       }
     }

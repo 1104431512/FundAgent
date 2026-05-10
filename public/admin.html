@@ -76,6 +76,13 @@
                     </select>
                   </label>
                   <label>
+                    <span>Responses Stream</span>
+                    <select name="modelResponsesStream">
+                      <option value="true">启用</option>
+                      <option value="false">停用</option>
+                    </select>
+                  </label>
+                  <label>
                     <span>Reasoning</span>
                     <select name="modelReasoningEffort">
                       <option value="minimal">minimal</option>
@@ -88,6 +95,11 @@
                   <label>
                     <span>Max Output Tokens</span>
                     <input name="modelMaxOutputTokens" type="number" min="200" max="8000" step="100" />
+                  </label>
+                  <label>
+                    <span>Model Timeout Ms</span>
+                    <input name="modelHttpTimeoutMs" type="number" min="0" step="10000" />
+                    <small>0 表示不限制；只影响模型请求，不影响飞书接口。</small>
                   </label>
                 </div>
               </div>

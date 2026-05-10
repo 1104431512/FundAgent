@@ -41,6 +41,7 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const payload = Object.fromEntries(new FormData(form).entries());
   payload.modelMaxOutputTokens = Number(payload.modelMaxOutputTokens || 2800);
+  payload.modelHttpTimeoutMs = Number(payload.modelHttpTimeoutMs || 0);
   payload.replyMaxChars = Number(payload.replyMaxChars || 7000);
   payload.portfolioInitialCapital = Number(payload.portfolioInitialCapital || 100000);
   payload.portfolioRetentionDays = Number(payload.portfolioRetentionDays || 90);
@@ -311,6 +312,7 @@ function renderRuns(runs) {
           <div class="run-detail">
             <div class="run-meta">
               <span>开始：${escapeHtml(formatDateTime(run.startedAt))}</span>
+              <span>进度：${escapeHtml(formatDateTime(run.progressAt))}</span>
               <span>结束：${escapeHtml(formatDateTime(run.completedAt))}</span>
               <span>耗时：${run.durationMs ? Math.round(run.durationMs / 1000) : 0}s</span>
             </div>
