@@ -20,6 +20,12 @@ const STARTED_AT = new Date();
 const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS || 120000);
 const DEFAULT_MODEL_HTTP_TIMEOUT_MS = Number(process.env.MODEL_HTTP_TIMEOUT_MS ?? 0);
 const PUBLIC_DATA_TIMEOUT_MS = Number(process.env.PUBLIC_DATA_TIMEOUT_MS || 20000);
+const DEFAULT_PORTFOLIO_MANAGER_PROFILE = [
+  "定位：教育性虚拟基金经理，不进行真实交易；先保护本金，再在证据明确时参与基金主题轮动。",
+  "买入纪律：优先选择净值、持仓、风险指标和数据来源可验证的基金；避免仅凭热点重仓追涨。",
+  "卖出纪律：当主题证据减弱、目标仓位下降、回撤超出风格承受范围，或复盘发现原假设失效时减仓。",
+  "沟通纪律：只展示专业阶段、结论、证据和约束，不展示模型隐藏思考链。"
+].join("\n");
 const PORTFOLIO_DB_REPAIRED = Symbol("portfolioDbRepaired");
 
 let tenantAccessTokenCache = null;
@@ -525,9 +531,15 @@ async function checkPortfolioSchedule() {
 
   const now = getZonedDateTime(config.portfolioTimezone);
   const dueTasks = [
+    { type: "premarket", time: config.portfolioPremarketTime },
     { type: "decision", time: config.portfolioDecisionTime },
-    { type: "valuation", time: config.portfolioReviewTime }
-  ].filter((item) => item.time && item.time === now.hhmm);
+    { type: "valuation", time: config.portfolioReviewTime },
+    { type: "weekly", time: config.portfolioWeeklyReviewTime, weekday: config.portfolioWeeklyReviewDay }
+  ].filter((item) => {
+    if (!item.time || item.time !== now.hhmm) return false;
+    if (item.type !== "weekly") return true;
+    return getDateOnlyWeekday(now.date) === Number(item.weekday);
+  });
 
   for (const task of dueTasks) {
     if (!markPortfolioScheduledRun(task.type, now.date)) {
@@ -541,7 +553,13 @@ async function checkPortfolioSchedule() {
 
 function markPortfolioScheduledRun(type, date) {
   const db = readPortfolioDb();
-  const key = type === "valuation" ? "lastValuationDate" : "lastDecisionDate";
+  const keyByType = {
+    premarket: "lastPremarketDate",
+    decision: "lastDecisionDate",
+    valuation: "lastValuationDate",
+    weekly: "lastWeeklyReviewDate"
+  };
+  const key = keyByType[type] || "lastDecisionDate";
   db.scheduler = db.scheduler || {};
   if (db.scheduler[key] === date) {
     return false;
@@ -619,16 +637,22 @@ async function runPortfolioTask(type, options = {}) {
     updateStats({
       counters: {
         portfolioRuns: 1,
+        portfolioPremarketRuns: taskType === "premarket" ? 1 : 0,
         portfolioDecisionRuns: taskType === "decision" ? 1 : 0,
-        portfolioValuationRuns: taskType === "valuation" ? 1 : 0
+        portfolioValuationRuns: taskType === "valuation" ? 1 : 0,
+        portfolioWeeklyRuns: taskType === "weekly" ? 1 : 0
       },
       last: { lastPortfolioRunAt: startedAt, lastPortfolioRunType: taskType }
     });
 
     if (taskType === "decision") {
       await executePortfolioDecision(db, run, config);
-    } else {
+    } else if (taskType === "valuation") {
       await executePortfolioValuation(db, run, config);
+    } else if (taskType === "premarket") {
+      await executePortfolioPremarket(db, run, config);
+    } else {
+      await executePortfolioWeekly(db, run, config);
     }
 
     assertPortfolioRunActive(run);
@@ -705,6 +729,7 @@ function yieldToEventLoop() {
 }
 
 async function executePortfolioDecision(db, run, config) {
+  const profileContext = buildPortfolioManagerProfileContext(config, db);
   markPortfolioRunProgress(db, run, "正在处理上一轮订单和确认状态。");
   await yieldToEventLoop();
   const lifecycleBefore = await processPortfolioOrderLifecycle(db, run, config);
@@ -725,7 +750,8 @@ async function executePortfolioDecision(db, run, config) {
     account: accountBefore,
     marketSnapshot,
     heldProfiles,
-    config
+    config,
+    profileContext
   });
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "模型已返回，正在解析投委会决策。");
@@ -782,6 +808,7 @@ async function executePortfolioDecision(db, run, config) {
 }
 
 async function executePortfolioValuation(db, run, config) {
+  const profileContext = buildPortfolioManagerProfileContext(config, db);
   markPortfolioRunProgress(db, run, "正在处理订单生命周期和晚间确认状态。");
   await yieldToEventLoop();
   const lifecycle = await processPortfolioOrderLifecycle(db, run, config);
@@ -852,7 +879,8 @@ async function executePortfolioValuation(db, run, config) {
     accountAfter: summarizePortfolioAccount(db.account),
     positionUpdates,
     profiles,
-    config
+    config,
+    profileContext
   });
   assertPortfolioRunActive(run);
   const review = normalizePortfolioReview(raw);
@@ -881,9 +909,118 @@ async function executePortfolioValuation(db, run, config) {
   });
 }
 
-async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, config }) {
+async function executePortfolioPremarket(db, run, config) {
+  const profileContext = buildPortfolioManagerProfileContext(config, db);
+  markPortfolioRunProgress(db, run, "正在处理隔夜订单状态和盘前账本。");
+  await yieldToEventLoop();
+  const lifecycle = await processPortfolioOrderLifecycle(db, run, config);
+  assertPortfolioRunActive(run);
+  markPortfolioRunProgress(db, run, "正在抓取盘前市场快照。");
+  await yieldToEventLoop();
+  const account = summarizePortfolioAccount(db.account);
+  const marketSnapshot = await fetchMarketSnapshot();
+  assertPortfolioRunActive(run);
+  markPortfolioRunProgress(db, run, "正在补全盘前持仓观察资料。");
+  await yieldToEventLoop();
+  const codes = db.account.positions.map((position) => position.code).filter(Boolean);
+  const profiles = codes.length ? await enrichFunds(codes) : [];
+  const activeOrders = (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status));
+  assertPortfolioRunActive(run);
+  markPortfolioRunProgress(db, run, `盘前资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度生成观察清单。`);
+  await yieldToEventLoop();
+  const raw = await buildPortfolioPremarketWithModel({
+    account,
+    marketSnapshot,
+    profiles,
+    activeOrders,
+    lifecycle,
+    config,
+    profileContext
+  });
+  assertPortfolioRunActive(run);
+  const observation = normalizePortfolioPremarket(raw);
+
+  run.title = "盘前观察";
+  run.summary = observation.summary;
+  run.accountAfter = summarizePortfolioAccount(db.account);
+  run.observation = observation;
+  run.orderUpdates = lifecycle.orderUpdates;
+  run.transactions = lifecycle.transactions;
+  run.settlementEvents = lifecycle.settlementEvents;
+  run.executionNotes = lifecycle.notes;
+  run.sources = collectPortfolioSources(marketSnapshot, profiles, observation);
+  run.rawModelOutput = observation.rawModelOutput;
+  run.card = buildPortfolioPremarketCard({
+    observation,
+    account: db.account,
+    activeOrders,
+    lifecycle,
+    run
+  });
+
+  updateStats({
+    counters: {
+      portfolioOrderUpdates: lifecycle.updatedOrders,
+      portfolioPremarketModelCalls: 1
+    },
+    last: { lastPortfolioPremarketAt: new Date().toISOString() }
+  });
+}
+
+async function executePortfolioWeekly(db, run, config) {
+  const profileContext = buildPortfolioManagerProfileContext(config, db);
+  markPortfolioRunProgress(db, run, "正在整理本周订单、流水和估值记录。");
+  await yieldToEventLoop();
+  const lifecycle = await processPortfolioOrderLifecycle(db, run, config);
+  assertPortfolioRunActive(run);
+  const weeklyContext = buildPortfolioWeeklyContext(db, run.date);
+  markPortfolioRunProgress(db, run, "正在补全周总结所需持仓资料。");
+  await yieldToEventLoop();
+  const codes = mergeFundCodes(
+    db.account.positions.map((position) => position.code),
+    weeklyContext.transactions.map((item) => item.code),
+    weeklyContext.orders.map((item) => item.code)
+  );
+  const profiles = codes.length ? await enrichFunds(codes) : [];
+  assertPortfolioRunActive(run);
+  markPortfolioRunProgress(db, run, `周度资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度总结。`);
+  await yieldToEventLoop();
+  const raw = await buildPortfolioWeeklyWithModel({
+    account: summarizePortfolioAccount(db.account),
+    weeklyContext,
+    profiles,
+    lifecycle,
+    config,
+    profileContext
+  });
+  assertPortfolioRunActive(run);
+  const weekly = normalizePortfolioWeekly(raw);
+
+  run.title = "周计划与总结";
+  run.summary = weekly.summary;
+  run.accountAfter = summarizePortfolioAccount(db.account);
+  run.weeklyContext = weeklyContext;
+  run.weekly = weekly;
+  run.orderUpdates = lifecycle.orderUpdates;
+  run.transactions = weeklyContext.transactions;
+  run.settlementEvents = lifecycle.settlementEvents;
+  run.executionNotes = lifecycle.notes;
+  run.sources = collectPortfolioSources(profiles, weekly);
+  run.rawModelOutput = weekly.rawModelOutput;
+  run.card = buildPortfolioWeeklyCard({ weekly, weeklyContext, account: db.account, run });
+
+  updateStats({
+    counters: {
+      portfolioOrderUpdates: lifecycle.updatedOrders,
+      portfolioWeeklyModelCalls: 1
+    },
+    last: { lastPortfolioWeeklyAt: new Date().toISOString() }
+  });
+}
+
+async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, config, profileContext }) {
   const skillContext = buildSkillContextForIntent(
-    { skillIds: ["fund-portfolio-research", "fund-portfolio-decision", "fund-portfolio-execution"] },
+    { skillIds: ["fund-portfolio-profile", "fund-portfolio-research", "fund-portfolio-decision", "fund-portfolio-execution"] },
     []
   );
   const systemText = [
@@ -901,6 +1038,9 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     `组合本金：${account.initialCapital} 元`,
     `当前账户：${JSON.stringify(account, null, 2)}`,
     `风险风格：${config.portfolioRiskProfile || "balanced"}`,
+    "",
+    "基金经理画像与行为证据：",
+    profileContext,
     "",
     "今日公开市场/基金候选快照：",
     JSON.stringify(summarizeMarketSnapshot(marketSnapshot), null, 2),
@@ -955,9 +1095,9 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
   return text;
 }
 
-async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, positionUpdates, profiles, config }) {
+async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, positionUpdates, profiles, config, profileContext }) {
   const skillContext = buildSkillContextForIntent(
-    { skillIds: ["fund-portfolio-review", "fund-portfolio-execution"] },
+    { skillIds: ["fund-portfolio-profile", "fund-portfolio-review", "fund-portfolio-execution"] },
     []
   );
   const systemText = [
@@ -968,6 +1108,9 @@ async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, p
     skillContext
   ].join("\n");
   const userPrompt = [
+    "基金经理画像与行为证据：",
+    profileContext,
+    "",
     "估值前账户：",
     JSON.stringify(accountBefore, null, 2),
     "",
@@ -993,6 +1136,90 @@ async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, p
   updateStats({
     counters: { portfolioReviewModelCalls: 1 },
     last: { lastPortfolioReviewModelAt: new Date().toISOString() }
+  });
+  return text;
+}
+
+async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profiles, activeOrders, lifecycle, config, profileContext }) {
+  const skillContext = buildSkillContextForIntent(
+    { skillIds: ["fund-portfolio-profile", "fund-portfolio-premarket", "fund-portfolio-research", "fund-portfolio-execution"] },
+    []
+  );
+  const systemText = [
+    "你是飞书机器人“基金助手”的虚拟基金经理，正在做盘前观察。",
+    "盘前观察只给观察清单和下午决策偏向，不生成 BUY/SELL 订单。",
+    "请基于传入的市场快照、持仓资料、订单生命周期和经理画像输出 JSON，不要编造资料之外的数据。",
+    "请只返回 JSON，不要 Markdown，不要代码块。",
+    "",
+    skillContext
+  ].join("\n");
+  const userPrompt = [
+    "基金经理画像与行为证据：",
+    profileContext,
+    "",
+    "当前账户：",
+    JSON.stringify(account, null, 2),
+    "",
+    "盘前市场快照：",
+    JSON.stringify(summarizeMarketSnapshot(marketSnapshot), null, 2),
+    "",
+    "当前持仓资料：",
+    JSON.stringify(profiles || [], null, 2),
+    "",
+    "活动订单与生命周期更新：",
+    JSON.stringify({ activeOrders, lifecycle }, null, 2),
+    "",
+    "输出 JSON 结构：",
+    '{"summary":"盘前一句话结论","marketTone":"aggressive/neutral/defensive/wait","positionFocus":["持仓观察点"],"riskAlerts":["风险提醒"],"todayPlan":["今天观察什么"],"afternoonDecisionBias":"下午决策偏向","sources":["数据源"]}'
+  ].join("\n");
+
+  const text = await callModel({
+    systemText,
+    userPrompt,
+    images: [],
+    maxTokens: Math.min(Number(config.modelMaxOutputTokens || 2800), 1800)
+  });
+  return text;
+}
+
+async function buildPortfolioWeeklyWithModel({ account, weeklyContext, profiles, lifecycle, config, profileContext }) {
+  const skillContext = buildSkillContextForIntent(
+    { skillIds: ["fund-portfolio-profile", "fund-portfolio-weekly", "fund-portfolio-review", "fund-portfolio-execution"] },
+    []
+  );
+  const systemText = [
+    "你是飞书机器人“基金助手”的虚拟基金经理，正在做周计划与总结。",
+    "周总结只复盘和规划，不生成 BUY/SELL 订单；下周具体交易由每日决策任务决定。",
+    "请基于传入的账本、持仓资料和经理画像输出 JSON，不要编造资料之外的数据。",
+    "请只返回 JSON，不要 Markdown，不要代码块。",
+    "",
+    skillContext
+  ].join("\n");
+  const userPrompt = [
+    "基金经理画像与行为证据：",
+    profileContext,
+    "",
+    "当前账户：",
+    JSON.stringify(account, null, 2),
+    "",
+    "本周账本摘要：",
+    JSON.stringify(weeklyContext, null, 2),
+    "",
+    "持仓联网资料：",
+    JSON.stringify(profiles || [], null, 2),
+    "",
+    "订单生命周期更新：",
+    JSON.stringify(lifecycle, null, 2),
+    "",
+    "输出 JSON 结构：",
+    '{"summary":"本周一句话总结","pnlAttribution":["盈亏归因"],"operationReview":["操作复盘"],"disciplineReview":["纪律执行情况"],"mistakes":["错误或不足"],"nextWeekPlan":["下周计划"],"watchlist":["观察清单"],"riskNotes":["风险提醒"],"sources":["数据源"]}'
+  ].join("\n");
+
+  const text = await callModel({
+    systemText,
+    userPrompt,
+    images: [],
+    maxTokens: Math.min(Number(config.modelMaxOutputTokens || 2800), 2200)
   });
   return text;
 }
@@ -1029,6 +1256,46 @@ function normalizePortfolioReview(raw) {
     reason: String(parsed.reason || "").trim(),
     nextWatch: normalizeStringArray(parsed.nextWatch).slice(0, 5),
     learningNotes: normalizeStringArray(parsed.learningNotes).slice(0, 5),
+    sources: normalizeStringArray(parsed.sources).slice(0, 20),
+    rawModelOutput: String(raw || "").slice(0, 12000)
+  };
+}
+
+function normalizePortfolioPremarket(raw) {
+  let parsed = null;
+  try {
+    parsed = parseJsonFromModel(raw);
+  } catch {
+    parsed = {};
+  }
+  return {
+    summary: String(parsed.summary || "盘前观察已生成。").trim(),
+    marketTone: String(parsed.marketTone || "neutral").trim(),
+    positionFocus: normalizeStringArray(parsed.positionFocus).slice(0, 8),
+    riskAlerts: normalizeStringArray(parsed.riskAlerts).slice(0, 8),
+    todayPlan: normalizeStringArray(parsed.todayPlan).slice(0, 8),
+    afternoonDecisionBias: String(parsed.afternoonDecisionBias || "").trim(),
+    sources: normalizeStringArray(parsed.sources).slice(0, 20),
+    rawModelOutput: String(raw || "").slice(0, 12000)
+  };
+}
+
+function normalizePortfolioWeekly(raw) {
+  let parsed = null;
+  try {
+    parsed = parseJsonFromModel(raw);
+  } catch {
+    parsed = {};
+  }
+  return {
+    summary: String(parsed.summary || "本周组合总结已生成。").trim(),
+    pnlAttribution: normalizeStringArray(parsed.pnlAttribution).slice(0, 8),
+    operationReview: normalizeStringArray(parsed.operationReview).slice(0, 8),
+    disciplineReview: normalizeStringArray(parsed.disciplineReview).slice(0, 8),
+    mistakes: normalizeStringArray(parsed.mistakes).slice(0, 8),
+    nextWeekPlan: normalizeStringArray(parsed.nextWeekPlan).slice(0, 8),
+    watchlist: normalizeStringArray(parsed.watchlist).slice(0, 8),
+    riskNotes: normalizeStringArray(parsed.riskNotes).slice(0, 8),
     sources: normalizeStringArray(parsed.sources).slice(0, 20),
     rawModelOutput: String(raw || "").slice(0, 12000)
   };
@@ -1687,8 +1954,12 @@ function buildFundLimitCheck(profile, amount, tradingProfile) {
 }
 
 function isPortfolioTradingDay(date) {
-  const day = parseDateOnlyUtc(date).getUTCDay();
+  const day = getDateOnlyWeekday(date);
   return day !== 0 && day !== 6;
+}
+
+function getDateOnlyWeekday(date) {
+  return parseDateOnlyUtc(date).getUTCDay();
 }
 
 function nextPortfolioTradingDay(date) {
@@ -1734,6 +2005,11 @@ function formatUtcDate(date) {
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
   const day = String(date.getUTCDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function formatWeekdayLabel(value) {
+  const labels = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+  return labels[normalizeWeekday(value, 5)] || "周五";
 }
 
 async function pushPortfolioRunIfConfigured(db, run, config) {
@@ -1917,6 +2193,149 @@ function buildPortfolioValuationCard({ review, account, positionUpdates, lifecyc
     .join("\n");
 }
 
+function buildPortfolioPremarketCard({ observation, account, activeOrders = [], lifecycle = {}, run }) {
+  const orderLines = activeOrders.length
+    ? activeOrders.slice(0, 8).map((order) => `${order.side} ${order.code} ${order.name}：${order.status}，估值日 ${order.priceDate}，确认日 ${order.confirmDate}`)
+    : ["暂无未完成订单。"];
+
+  return [
+    `虚拟基金经理盘前观察 ${run.date}`,
+    "",
+    `盘前结论：${observation.summary}`,
+    observation.marketTone ? `市场姿态：${observation.marketTone}` : "",
+    observation.afternoonDecisionBias ? `下午决策偏向：${observation.afternoonDecisionBias}` : "",
+    "",
+    "持仓关注：",
+    ...(observation.positionFocus.length ? observation.positionFocus : ["当前无特别持仓关注点。"]),
+    "",
+    "今日观察计划：",
+    ...(observation.todayPlan.length ? observation.todayPlan : ["等待公开数据和下午决策任务。"]),
+    observation.riskAlerts.length ? "" : "",
+    observation.riskAlerts.length ? "风险提醒：" : "",
+    ...observation.riskAlerts,
+    "",
+    "订单状态：",
+    ...orderLines,
+    lifecycle.orderUpdates?.length ? "" : "",
+    lifecycle.orderUpdates?.length ? "隔夜订单更新：" : "",
+    ...(lifecycle.orderUpdates || []).map((item) => `${item.side} ${item.code} ${item.name}：${item.beforeStatus} -> ${item.afterStatus}`),
+    "",
+    `当前资产：${account.totalAsset}元，可用现金 ${account.cash}元，仓位 ${account.positionWeightPct}%`,
+    "",
+    `数据来源：${(run.sources || []).slice(0, 6).join("；") || "公开市场快照与组合账本"}`
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildPortfolioWeeklyCard({ weekly, weeklyContext, account, run }) {
+  return [
+    `虚拟基金经理周计划与总结 ${weeklyContext.startDate} 至 ${weeklyContext.endDate}`,
+    "",
+    `周总结：${weekly.summary}`,
+    "",
+    "盈亏归因：",
+    ...(weekly.pnlAttribution.length ? weekly.pnlAttribution : ["本周暂无足够成交或估值变化可归因。"]),
+    "",
+    "操作复盘：",
+    ...(weekly.operationReview.length ? weekly.operationReview : ["本周没有形成明确操作样本。"]),
+    weekly.disciplineReview.length ? "" : "",
+    weekly.disciplineReview.length ? "纪律执行：" : "",
+    ...weekly.disciplineReview,
+    weekly.mistakes.length ? "" : "",
+    weekly.mistakes.length ? "错误与不足：" : "",
+    ...weekly.mistakes,
+    "",
+    "下周计划：",
+    ...(weekly.nextWeekPlan.length ? weekly.nextWeekPlan : ["等待下周盘前观察和每日决策任务更新。"]),
+    weekly.watchlist.length ? "" : "",
+    weekly.watchlist.length ? "观察清单：" : "",
+    ...weekly.watchlist,
+    weekly.riskNotes.length ? "" : "",
+    weekly.riskNotes.length ? "风险提醒：" : "",
+    ...weekly.riskNotes,
+    "",
+    `本周运行：${weeklyContext.runs.length} 次任务，${weeklyContext.orders.length} 张订单，${weeklyContext.transactions.length} 笔流水。`,
+    `当前资产：${account.totalAsset}元，可用现金 ${account.cash}元，仓位 ${account.positionWeightPct}%`,
+    "",
+    `数据来源：${(run.sources || []).slice(0, 6).join("；") || "组合账本与基金公开资料"}`
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildPortfolioManagerProfileContext(config, db = null) {
+  const schedule = [
+    `盘前观察：${config.portfolioPremarketTime || "09:00"}`,
+    `操作决策：${config.portfolioDecisionTime || "14:20"}`,
+    `晚间复盘：${config.portfolioReviewTime || "21:30"}`,
+    `周计划与总结：每${formatWeekdayLabel(config.portfolioWeeklyReviewDay)} ${config.portfolioWeeklyReviewTime || "16:30"}`
+  ].join("；");
+  const behavior = db ? summarizePortfolioManagerBehavior(db) : null;
+  return [
+    `规定性画像：${normalizePortfolioManagerProfile(config.portfolioManagerProfile)}`,
+    `风险风格：${config.portfolioRiskProfile || "balanced"}`,
+    `自动汇报节奏：${schedule}`,
+    behavior ? `账本行为画像：${JSON.stringify(behavior, null, 2)}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function normalizePortfolioManagerProfile(value) {
+  const text = String(value || "").trim();
+  return (text || DEFAULT_PORTFOLIO_MANAGER_PROFILE).slice(0, 4000);
+}
+
+function summarizePortfolioManagerBehavior(db) {
+  const account = summarizePortfolioAccount(db.account || createPortfolioAccount(getEffectiveConfig()));
+  const transactions = (db.transactions || []).filter((item) => ["BUY", "SELL"].includes(item.side)).slice(-50);
+  const buys = transactions.filter((item) => item.side === "BUY");
+  const sells = transactions.filter((item) => item.side === "SELL");
+  const recentRuns = (db.runs || []).slice(-20);
+  const recentOrders = (db.orders || []).slice(-30);
+  return {
+    currentPositionWeightPct: account.positionWeightPct,
+    currentCash: account.cash,
+    recentTradeCount: transactions.length,
+    recentBuyCount: buys.length,
+    recentSellCount: sells.length,
+    averageBuyAmount: averageAmount(buys),
+    averageSellAmount: averageAmount(sells),
+    activeOrderCount: recentOrders.filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status)).length,
+    latestRunTypes: recentRuns.slice(-6).map((run) => `${run.date || ""}:${run.type || ""}:${run.status || ""}`).filter(Boolean)
+  };
+}
+
+function averageAmount(items) {
+  if (!items.length) return 0;
+  return round(items.reduce((sum, item) => sum + Number(item.amount || 0), 0) / items.length, 2);
+}
+
+function buildPortfolioWeeklyContext(db, endDate) {
+  const startDate = addDays(endDate, -6);
+  const inRange = (item) => isDateStringInRange(item.date || item.submitDate || item.createdAt || item.startedAt || item.completedAt, startDate, endDate);
+  return {
+    startDate,
+    endDate,
+    runs: (db.runs || []).filter(inRange).map(summarizePortfolioRunBrief),
+    orders: (db.orders || []).filter(inRange).map(summarizePortfolioOrder),
+    transactions: (db.transactions || []).filter(inRange).slice(-50),
+    settlements: (db.settlements || []).filter(inRange).slice(-30),
+    equity: (db.dailyEquity || []).filter(inRange).slice(-10),
+    account: summarizePortfolioAccount(db.account)
+  };
+}
+
+function isDateStringInRange(value, startDate, endDate) {
+  const date = extractDateOnly(value);
+  return Boolean(date && date >= startDate && date <= endDate);
+}
+
+function extractDateOnly(value) {
+  return String(value || "").match(/\d{4}-\d{2}-\d{2}/)?.[0] || "";
+}
+
 function buildPortfolioStatusAnswer(userText, intent) {
   const db = readPortfolioDb();
   const config = getEffectiveConfig();
@@ -1934,18 +2353,46 @@ function buildPortfolioStatusAnswer(userText, intent) {
   const positions = account.positions || [];
   const wantsOperation = isPortfolioOperationQuestion(userText);
   const wantsPosition = isPortfolioPositionQuestion(userText);
+  const wantsSchedule = isPortfolioScheduleQuestion(userText);
+  const wantsProfile = isPortfolioProfileQuestion(userText);
+  const wantsOnlyProfileOrSchedule = (wantsSchedule || wantsProfile) && !wantsOperation && !wantsPosition;
 
   const lines = ["虚拟基金经理账本"];
   lines.push("");
-  lines.push(`总资产：${account.totalAsset}元`);
-  lines.push(`可用现金：${account.cash}元`);
-  if (account.pendingBuyAmount || account.receivableCash) {
-    lines.push(`待确认申购：${account.pendingBuyAmount || 0}元，应收赎回：${account.receivableCash || 0}元`);
+  if (wantsSchedule || wantsProfile) {
+    lines.push("自动汇报节奏：");
+    lines.push(`盘前观察：每天 ${config.portfolioPremarketTime}，只观察市场和持仓，不下单。`);
+    lines.push(`操作决策：每天 ${config.portfolioDecisionTime}，生成今日手法并提交虚拟申购/赎回申请。`);
+    lines.push(`晚间复盘：每天 ${config.portfolioReviewTime}，处理订单确认、估值和当日复盘。`);
+    lines.push(`周计划与总结：每${formatWeekdayLabel(config.portfolioWeeklyReviewDay)} ${config.portfolioWeeklyReviewTime}，总结本周并规划下周。`);
+    lines.push(`时区：${config.portfolioTimezone}。`);
+    lines.push("");
   }
-  lines.push(`当前仓位：${account.positionWeightPct}%`);
-  lines.push(`累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（${formatSignedNumber(account.cumulativePnlPct)}%）`);
+  if (wantsProfile) {
+    const behavior = summarizePortfolioManagerBehavior(db);
+    lines.push("基金经理画像：");
+    lines.push(`规定性画像：${normalizePortfolioManagerProfile(config.portfolioManagerProfile)}`);
+    lines.push(`当前配置风格：${config.portfolioRiskProfile || "balanced"}。`);
+    lines.push(
+      `账本行为画像：当前仓位 ${behavior.currentPositionWeightPct}%，可用现金 ${behavior.currentCash}元；` +
+        `最近 ${behavior.recentTradeCount} 笔确认交易，买入 ${behavior.recentBuyCount} 笔、卖出 ${behavior.recentSellCount} 笔；` +
+        `平均买入 ${behavior.averageBuyAmount}元，平均卖出 ${behavior.averageSellAmount}元，未完成订单 ${behavior.activeOrderCount} 张。`
+    );
+    lines.push("");
+  }
+  if (wantsOnlyProfileOrSchedule) {
+    lines.push(`当前自动运行：${config.portfolioEnabled ? "已启用" : "已停用"}。`);
+  } else {
+    lines.push(`总资产：${account.totalAsset}元`);
+    lines.push(`可用现金：${account.cash}元`);
+    if (account.pendingBuyAmount || account.receivableCash) {
+      lines.push(`待确认申购：${account.pendingBuyAmount || 0}元，应收赎回：${account.receivableCash || 0}元`);
+    }
+    lines.push(`当前仓位：${account.positionWeightPct}%`);
+    lines.push(`累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（${formatSignedNumber(account.cumulativePnlPct)}%）`);
+  }
 
-  if (wantsPosition || !wantsOperation) {
+  if (wantsPosition || (!wantsOperation && !wantsOnlyProfileOrSchedule)) {
     lines.push("");
     lines.push("当前持仓：");
     if (positions.length) {
@@ -2049,8 +2496,11 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
     lightweight,
     retentionDays: Number(config.portfolioRetentionDays || 90),
     scheduler: {
+      premarketTime: config.portfolioPremarketTime,
       decisionTime: config.portfolioDecisionTime,
       reviewTime: config.portfolioReviewTime,
+      weeklyReviewTime: config.portfolioWeeklyReviewTime,
+      weeklyReviewDay: config.portfolioWeeklyReviewDay,
       timezone: config.portfolioTimezone,
       inFlight: portfolioRunInFlight,
       activeRunId: activePortfolioRunId || "",
@@ -2139,6 +2589,12 @@ function buildPortfolioRunSummary(run) {
   }
   if (run.type === "valuation" && run?.positionUpdates?.length) {
     return `估值更新 ${run.positionUpdates.length} 个持仓`;
+  }
+  if (run.type === "premarket" && run?.observation?.summary) {
+    return run.observation.summary;
+  }
+  if (run.type === "weekly" && run?.weekly?.summary) {
+    return run.weekly.summary;
   }
   return run?.card?.split("\n")?.find((line) => line.trim()) || "无摘要";
 }
@@ -2566,7 +3022,7 @@ function normalizeStringArray(value) {
 
 function normalizePortfolioTaskType(value) {
   const type = String(value || "decision").toLowerCase();
-  if (["decision", "valuation"].includes(type)) return type;
+  if (["premarket", "decision", "valuation", "weekly"].includes(type)) return type;
   throw new Error("未知虚拟基金经理任务类型。");
 }
 
@@ -4180,14 +4636,18 @@ function getEffectiveConfig() {
     replyMaxChars: Number(process.env.FEISHU_REPLY_MAX_CHARS || 7000),
     portfolioEnabled: parseBoolean(process.env.PORTFOLIO_ENABLED, false),
     portfolioInitialCapital: Number(process.env.PORTFOLIO_INITIAL_CAPITAL || 100000),
+    portfolioPremarketTime: process.env.PORTFOLIO_PREMARKET_TIME || "09:00",
     portfolioDecisionTime: process.env.PORTFOLIO_DECISION_TIME || "14:20",
     portfolioReviewTime: process.env.PORTFOLIO_REVIEW_TIME || "21:30",
+    portfolioWeeklyReviewTime: process.env.PORTFOLIO_WEEKLY_REVIEW_TIME || "16:30",
+    portfolioWeeklyReviewDay: Number(process.env.PORTFOLIO_WEEKLY_REVIEW_DAY || 5),
     portfolioTimezone: process.env.PORTFOLIO_TIMEZONE || "Asia/Shanghai",
     portfolioRetentionDays: Number(process.env.PORTFOLIO_RETENTION_DAYS || 90),
     portfolioPushReceiveId: process.env.PORTFOLIO_PUSH_RECEIVE_ID || "",
     portfolioPushReceiveType: process.env.PORTFOLIO_PUSH_RECEIVE_TYPE || "chat_id",
     portfolioAutoBindLastChat: parseBoolean(process.env.PORTFOLIO_AUTO_BIND_LAST_CHAT, true),
-    portfolioRiskProfile: process.env.PORTFOLIO_RISK_PROFILE || "balanced"
+    portfolioRiskProfile: process.env.PORTFOLIO_RISK_PROFILE || "balanced",
+    portfolioManagerProfile: process.env.PORTFOLIO_MANAGER_PROFILE || DEFAULT_PORTFOLIO_MANAGER_PROFILE
   };
 
   return normalizeEffectiveConfig({
@@ -4206,14 +4666,18 @@ function normalizeEffectiveConfig(config) {
   next.replyMaxChars = Number(next.replyMaxChars || 7000);
   next.portfolioEnabled = parseBoolean(next.portfolioEnabled, false);
   next.portfolioInitialCapital = Math.max(1000, Number(next.portfolioInitialCapital || 100000));
+  next.portfolioPremarketTime = normalizeClockTime(next.portfolioPremarketTime, "09:00");
   next.portfolioDecisionTime = normalizeClockTime(next.portfolioDecisionTime, "14:20");
   next.portfolioReviewTime = normalizeClockTime(next.portfolioReviewTime, "21:30");
+  next.portfolioWeeklyReviewTime = normalizeClockTime(next.portfolioWeeklyReviewTime, "16:30");
+  next.portfolioWeeklyReviewDay = normalizeWeekday(next.portfolioWeeklyReviewDay, 5);
   next.portfolioTimezone = String(next.portfolioTimezone || "Asia/Shanghai").trim() || "Asia/Shanghai";
   next.portfolioRetentionDays = Math.max(7, Math.min(3650, Number(next.portfolioRetentionDays || 90)));
   next.portfolioPushReceiveId = String(next.portfolioPushReceiveId || "").trim();
   next.portfolioPushReceiveType = String(next.portfolioPushReceiveType || "chat_id").trim() || "chat_id";
   next.portfolioAutoBindLastChat = parseBoolean(next.portfolioAutoBindLastChat, true);
   next.portfolioRiskProfile = String(next.portfolioRiskProfile || "balanced").trim() || "balanced";
+  next.portfolioManagerProfile = normalizePortfolioManagerProfile(next.portfolioManagerProfile);
   return next;
 }
 
@@ -4235,14 +4699,18 @@ function getPublicConfig(config = getEffectiveConfig()) {
       replyMaxChars: Number(config.replyMaxChars || 7000),
       portfolioEnabled: String(Boolean(config.portfolioEnabled)),
       portfolioInitialCapital: Number(config.portfolioInitialCapital || 100000),
+      portfolioPremarketTime: config.portfolioPremarketTime || "09:00",
       portfolioDecisionTime: config.portfolioDecisionTime || "14:20",
       portfolioReviewTime: config.portfolioReviewTime || "21:30",
+      portfolioWeeklyReviewTime: config.portfolioWeeklyReviewTime || "16:30",
+      portfolioWeeklyReviewDay: Number(config.portfolioWeeklyReviewDay ?? 5),
       portfolioTimezone: config.portfolioTimezone || "Asia/Shanghai",
       portfolioRetentionDays: Number(config.portfolioRetentionDays || 90),
       portfolioPushReceiveId: config.portfolioPushReceiveId || "",
       portfolioPushReceiveType: config.portfolioPushReceiveType || "chat_id",
       portfolioAutoBindLastChat: String(Boolean(config.portfolioAutoBindLastChat)),
-      portfolioRiskProfile: config.portfolioRiskProfile || "balanced"
+      portfolioRiskProfile: config.portfolioRiskProfile || "balanced",
+      portfolioManagerProfile: normalizePortfolioManagerProfile(config.portfolioManagerProfile)
     },
     secrets: {
       feishuAppSecret: Boolean(config.feishuAppSecret),
@@ -4270,12 +4738,15 @@ function saveConfigPatch(patch) {
     "modelName",
     "modelWireApi",
     "modelReasoningEffort",
+    "portfolioPremarketTime",
     "portfolioDecisionTime",
     "portfolioReviewTime",
+    "portfolioWeeklyReviewTime",
     "portfolioTimezone",
     "portfolioPushReceiveId",
     "portfolioPushReceiveType",
-    "portfolioRiskProfile"
+    "portfolioRiskProfile",
+    "portfolioManagerProfile"
   ];
   const numericFields = ["modelMaxOutputTokens", "replyMaxChars", "portfolioInitialCapital", "portfolioRetentionDays"];
   const zeroableNumericFields = ["modelHttpTimeoutMs"];
@@ -4295,6 +4766,10 @@ function saveConfigPatch(patch) {
         next[field] = value;
       }
     }
+  }
+
+  if (Object.hasOwn(patch, "portfolioWeeklyReviewDay")) {
+    next.portfolioWeeklyReviewDay = normalizeWeekday(patch.portfolioWeeklyReviewDay, 5);
   }
 
   for (const field of zeroableNumericFields) {
@@ -4384,10 +4859,14 @@ function getDefaultStats() {
       errorReplies: 0,
       replyFailures: 0,
       portfolioRuns: 0,
+      portfolioPremarketRuns: 0,
       portfolioDecisionRuns: 0,
       portfolioValuationRuns: 0,
+      portfolioWeeklyRuns: 0,
       portfolioManagerModelCalls: 0,
       portfolioReviewModelCalls: 0,
+      portfolioPremarketModelCalls: 0,
+      portfolioWeeklyModelCalls: 0,
       portfolioTransactions: 0,
       portfolioOrdersSubmitted: 0,
       portfolioOrderUpdates: 0,
@@ -5001,7 +5480,23 @@ function looksLikePortfolioStatusQuestion(text) {
     "你买了什么",
     "你卖了什么",
     "你现在买了",
-    "你现在卖了"
+    "你现在卖了",
+    "什么时候汇报",
+    "几点汇报",
+    "自动汇报",
+    "定时汇报",
+    "汇报手法",
+    "盘前观察",
+    "周计划",
+    "周总结",
+    "你的画像",
+    "人物画像",
+    "你的性格",
+    "购买习惯",
+    "投资习惯",
+    "买入习惯",
+    "卖出习惯",
+    "投资纪律"
   ];
   if (hasAny(normalized, explicitPortfolioTerms)) return true;
 
@@ -5023,7 +5518,20 @@ function looksLikePortfolioStatusQuestion(text) {
     "买入",
     "卖出",
     "交易",
-    "复盘"
+    "复盘",
+    "汇报",
+    "定时",
+    "几点",
+    "什么时候",
+    "手法",
+    "画像",
+    "性格",
+    "习惯",
+    "纪律",
+    "风格",
+    "盘前",
+    "周计划",
+    "周总结"
   ]);
 
   return refersToAssistant && asksAccountState;
@@ -5037,6 +5545,16 @@ function isPortfolioOperationQuestion(text) {
 function isPortfolioPositionQuestion(text) {
   const normalized = normalizeIntentText(text);
   return hasAny(normalized, ["仓位", "持仓", "总资产", "现金", "盈亏", "收益", "亏损", "账户", "组合", "本金"]);
+}
+
+function isPortfolioScheduleQuestion(text) {
+  const normalized = normalizeIntentText(text);
+  return hasAny(normalized, ["什么时候", "几点", "定时", "自动", "汇报", "盘前", "决策时间", "复盘时间", "周计划", "周总结"]);
+}
+
+function isPortfolioProfileQuestion(text) {
+  const normalized = normalizeIntentText(text);
+  return hasAny(normalized, ["画像", "性格", "风格", "习惯", "偏好", "纪律", "手法", "买入习惯", "卖出习惯", "购买习惯"]);
 }
 
 function normalizeIntentText(value) {
@@ -5243,6 +5761,12 @@ function normalizeClockTime(value, fallback) {
   const minute = Number(match[2]);
   if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback;
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function normalizeWeekday(value, fallback = 5) {
+  const number = Number(value);
+  if (Number.isInteger(number) && number >= 0 && number <= 6) return number;
+  return fallback;
 }
 
 function parseBoolean(value, fallback = false) {

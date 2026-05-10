@@ -30,8 +30,10 @@ document.querySelector("#saveTokenBtn").addEventListener("click", () => {
 document.querySelector("#reloadBtn").addEventListener("click", () => loadAll().catch(showError));
 document.querySelector("#refreshStatsBtn").addEventListener("click", () => loadStats().catch(showError));
 document.querySelector("#refreshPortfolioBtn").addEventListener("click", () => loadPortfolio().catch(showError));
+document.querySelector("#runPremarketBtn").addEventListener("click", () => runPortfolioTask("premarket"));
 document.querySelector("#runDecisionBtn").addEventListener("click", () => runPortfolioTask("decision"));
 document.querySelector("#runValuationBtn").addEventListener("click", () => runPortfolioTask("valuation"));
+document.querySelector("#runWeeklyBtn").addEventListener("click", () => runPortfolioTask("weekly"));
 document.querySelector("#cancelPortfolioBtn").addEventListener("click", () => cancelPortfolioTask());
 document.querySelector("#prunePortfolioBtn").addEventListener("click", () => prunePortfolio());
 document.querySelector("#resetPortfolioBtn").addEventListener("click", () => resetPortfolio());
@@ -46,6 +48,7 @@ form.addEventListener("submit", async (event) => {
   payload.replyMaxChars = Number(payload.replyMaxChars || 7000);
   payload.portfolioInitialCapital = Number(payload.portfolioInitialCapital || 100000);
   payload.portfolioRetentionDays = Number(payload.portfolioRetentionDays || 90);
+  payload.portfolioWeeklyReviewDay = Number(payload.portfolioWeeklyReviewDay ?? 5);
 
   const result = await apiFetch("/api/config", {
     method: "POST",
@@ -180,12 +183,7 @@ async function loadPortfolio() {
   setText("#portfolioPositionWeight", `${account.positionWeightPct || 0}%`);
   setText("#portfolioPending", `${formatMoney(Number(account.pendingBuyAmount || 0) + Number(account.receivableCash || 0))}`);
   setText("#portfolioPnl", `${formatSigned(account.cumulativePnl)} (${formatSigned(account.cumulativePnlPct)}%)`);
-  setText(
-    "#portfolioSchedule",
-    `${portfolio.enabled ? "已启用" : "已停用"} · 决策 ${portfolio.scheduler?.decisionTime || "-"} · 复盘 ${
-      portfolio.scheduler?.reviewTime || "-"
-    }${portfolio.scheduler?.dbFlushPending ? " · 数据保存中" : ""}${portfolio.scheduler?.dbFlushError ? " · 数据保存异常" : ""}`
-  );
+  setText("#portfolioSchedule", formatPortfolioSchedule(portfolio));
   setText(
     "#portfolioPushTarget",
     portfolio.pushTarget
@@ -231,9 +229,29 @@ function formatPortfolioOutput(portfolio) {
   return lines.join("\n");
 }
 
+function formatPortfolioSchedule(portfolio) {
+  const scheduler = portfolio.scheduler || {};
+  const weeklyDay = formatWeekday(scheduler.weeklyReviewDay ?? 5);
+  return [
+    portfolio.enabled ? "已启用" : "已停用",
+    `盘前 ${scheduler.premarketTime || "-"}`,
+    `决策 ${scheduler.decisionTime || "-"}`,
+    `复盘 ${scheduler.reviewTime || "-"}`,
+    `周总结 ${weeklyDay} ${scheduler.weeklyReviewTime || "-"}`,
+    scheduler.dbFlushPending ? "数据保存中" : "",
+    scheduler.dbFlushError ? "数据保存异常" : ""
+  ].filter(Boolean).join(" · ");
+}
+
+function formatWeekday(value) {
+  return ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][Number(value)] || "周五";
+}
+
 function updatePortfolioTaskButtons(inFlight) {
+  document.querySelector("#runPremarketBtn").disabled = inFlight;
   document.querySelector("#runDecisionBtn").disabled = inFlight;
   document.querySelector("#runValuationBtn").disabled = inFlight;
+  document.querySelector("#runWeeklyBtn").disabled = inFlight;
   document.querySelector("#cancelPortfolioBtn").disabled = !inFlight;
 }
 
@@ -400,7 +418,13 @@ function renderEquity(equity) {
 }
 
 async function runPortfolioTask(type) {
-  const button = document.querySelector(type === "decision" ? "#runDecisionBtn" : "#runValuationBtn");
+  const buttonByType = {
+    premarket: "#runPremarketBtn",
+    decision: "#runDecisionBtn",
+    valuation: "#runValuationBtn",
+    weekly: "#runWeeklyBtn"
+  };
+  const button = document.querySelector(buttonByType[type] || "#runDecisionBtn");
   button.disabled = true;
   portfolioOutput.textContent = "任务已提交，后台运行中。页面会自动刷新，不需要一直等待请求返回。";
   try {
@@ -408,7 +432,7 @@ async function runPortfolioTask(type) {
       method: "POST",
       body: JSON.stringify({ type })
     });
-    showToast(type === "decision" ? "今日操作任务已启动" : "晚间估值任务已启动");
+    showToast(getPortfolioTaskLabel(type) + "任务已启动");
     renderPortfolioResult(result);
     startPortfolioPolling();
   } catch (error) {
@@ -418,6 +442,16 @@ async function runPortfolioTask(type) {
       button.disabled = false;
     });
   }
+}
+
+function getPortfolioTaskLabel(type) {
+  const labels = {
+    premarket: "盘前观察",
+    decision: "今日操作",
+    valuation: "晚间估值",
+    weekly: "周总结"
+  };
+  return labels[type] || "组合";
 }
 
 async function cancelPortfolioTask() {
@@ -491,12 +525,7 @@ function renderPortfolioResult(result) {
     setText("#portfolioPositionWeight", `${portfolio.account.positionWeightPct || 0}%`);
     setText("#portfolioPending", `${formatMoney(Number(portfolio.account.pendingBuyAmount || 0) + Number(portfolio.account.receivableCash || 0))}`);
     setText("#portfolioPnl", `${formatSigned(portfolio.account.cumulativePnl)} (${formatSigned(portfolio.account.cumulativePnlPct)}%)`);
-    setText(
-      "#portfolioSchedule",
-      `${portfolio.enabled ? "已启用" : "已停用"} · 决策 ${portfolio.scheduler?.decisionTime || "-"} · 复盘 ${
-        portfolio.scheduler?.reviewTime || "-"
-      }${portfolio.scheduler?.dbFlushPending ? " · 数据保存中" : ""}${portfolio.scheduler?.dbFlushError ? " · 数据保存异常" : ""}`
-    );
+    setText("#portfolioSchedule", formatPortfolioSchedule(portfolio));
     renderOrders(portfolio.activeOrders || []);
     renderPositions(portfolio.positions || []);
     renderRuns(portfolio.recentRuns || []);

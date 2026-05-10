@@ -1,7 +1,7 @@
 ---
 id: fund-portfolio-manager
 name: Virtual Fund Portfolio Manager
-description: Legacy compatibility wrapper for the stateful virtual fund manager. Prefer fund-portfolio-research, fund-portfolio-decision, fund-portfolio-execution, and fund-portfolio-review for new workflows.
+description: Legacy compatibility wrapper for the stateful virtual fund manager. Prefer fund-portfolio-profile plus task-specific portfolio skills for new workflows.
 ---
 
 # Virtual Fund Portfolio Manager
@@ -9,9 +9,12 @@ description: Legacy compatibility wrapper for the stateful virtual fund manager.
 Use this only as a compact fallback for the stateful virtual portfolio manager. Prefer the modular skills:
 
 - `fund-portfolio-research` for market/theme/fund/position evidence.
+- `fund-portfolio-profile` for manager identity, schedule, investment discipline, and observed behavior.
+- `fund-portfolio-premarket` for premarket observation without orders.
 - `fund-portfolio-decision` for target-weight proposals and committee rationale.
 - `fund-portfolio-execution` for order lifecycle, cutoff, confirmation, QDII lag, and settlement constraints.
 - `fund-portfolio-review` for valuation, order progress, P&L, and learning notes.
+- `fund-portfolio-weekly` for weekly summary, learning, and next-week planning.
 
 ## Role Setup
 
