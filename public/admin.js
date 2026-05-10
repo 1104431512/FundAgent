@@ -151,6 +151,7 @@ async function loadStats() {
   setText("#statHoldings", counters.fundHoldingsFetches || 0);
   setText("#statPortfolioStatus", counters.portfolioStatusRequests || 0);
   setText("#statPortfolioRuns", counters.portfolioRuns || 0);
+  setText("#statPortfolioVerifiedTrades", counters.portfolioNavVerifiedTrades || 0);
   setText("#statPortfolioPushes", counters.portfolioPushes || 0);
   setText("#statErrors", counters.errors || 0);
   setText("#statEvents", counters.messageEvents || 0);
@@ -202,17 +203,34 @@ function renderPositions(positions) {
   }
   list.innerHTML = positions
     .map(
-      (item) => `
+      (item) => {
+        const snapshot = item.fundSnapshot || {};
+        const nav = snapshot.nav || item.lastNav || "";
+        const navDate = snapshot.navDate || item.lastNavDate || "";
+        const trend = snapshot.trendSummary || "走势数据不足";
+        const source = item.dataSource || snapshot.sources?.[0] || "";
+        return `
         <div class="data-row">
           <div>
             <strong>${escapeHtml(item.code)} ${escapeHtml(item.name)}</strong>
             <p>${escapeHtml(item.lastReason || "暂无最近操作理由")}</p>
+            <p>${escapeHtml(trend)}</p>
+            ${source ? `<small>${escapeHtml(source)}</small>` : ""}
           </div>
           <div>${formatMoney(item.currentValue)}</div>
-          <div>${item.weightPct || 0}%</div>
+          <div>
+            <strong>${item.weightPct || 0}%</strong>
+            <small>份额 ${formatNumber(item.units, 6)}</small>
+          </div>
+          <div>
+            <strong>${nav ? formatNumber(nav, 4) : "-"}</strong>
+            <small>${escapeHtml(navDate || "无净值日期")}</small>
+            <small>成本 ${item.averageCostNav ? formatNumber(item.averageCostNav, 4) : "-"}</small>
+          </div>
           <div>${formatSigned(item.unrealizedPnl)} / ${formatSigned(item.unrealizedPnlPct)}%</div>
         </div>
-      `
+      `;
+      }
     )
     .join("");
 }
@@ -250,7 +268,10 @@ function renderTransactions(transactions) {
         <div class="mini-row">
           <strong>${escapeHtml(item.side || "")} ${escapeHtml(item.code || "")}</strong>
           <span>${formatMoney(item.amount)}</span>
-          <small>${escapeHtml(item.date || "")}</small>
+          <small>${escapeHtml(item.date || "")} · 净值 ${item.nav ? formatNumber(item.nav, 4) : "-"} · 份额 ${
+            item.units ? formatNumber(item.units, 6) : "-"
+          }</small>
+          <small>${escapeHtml(item.fundSnapshot?.trendSummary || "")}</small>
         </div>
       `
     )
@@ -399,6 +420,14 @@ function formatSigned(value) {
   const number = Number(value || 0);
   const text = number.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
   return number > 0 ? `+${text}` : text;
+}
+
+function formatNumber(value, digits = 2) {
+  const number = Number(value || 0);
+  return number.toLocaleString("zh-CN", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits
+  });
 }
 
 function escapeHtml(value) {

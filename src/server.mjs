@@ -574,7 +574,8 @@ async function executePortfolioDecision(db, run, config) {
   const decision = normalizePortfolioDecision(raw);
   const profileCodes = decision.actions.map((action) => action.code).filter(Boolean);
   const actionProfiles = profileCodes.length ? await enrichFunds(profileCodes) : [];
-  const transactions = applyPortfolioActions(db, decision.actions, actionProfiles, run);
+  const execution = applyPortfolioActions(db, decision.actions, actionProfiles, run);
+  const transactions = execution.transactions;
   recalculatePortfolioAccount(db.account);
 
   run.title = "每日操作决策";
@@ -584,12 +585,17 @@ async function executePortfolioDecision(db, run, config) {
   run.team = decision.team;
   run.actions = decision.actions;
   run.transactions = transactions;
+  run.executionNotes = execution.notes;
   run.sources = collectPortfolioSources(marketSnapshot, heldProfiles, actionProfiles, decision);
   run.rawModelOutput = decision.rawModelOutput;
-  run.card = buildPortfolioDecisionCard({ decision, account: db.account, transactions, run });
+  run.card = buildPortfolioDecisionCard({ decision, account: db.account, transactions, executionNotes: execution.notes, run });
 
   updateStats({
-    counters: { portfolioTransactions: transactions.length },
+    counters: {
+      portfolioTransactions: transactions.length,
+      portfolioSkippedTrades: execution.notes.length,
+      portfolioNavVerifiedTrades: transactions.filter((item) => item.nav).length
+    },
     last: { lastPortfolioDecisionAt: new Date().toISOString() }
   });
 }
@@ -616,6 +622,8 @@ async function executePortfolioValuation(db, run, config) {
       position.lastNavDate = profile?.snapshotDate || "";
     }
     position.name = position.name || profile?.name || "";
+    position.fundSnapshot = buildPortfolioFundSnapshot(profile, position);
+    position.dataSource = profile?.sources?.[0] || position.dataSource || "";
     position.lastValuedAt = new Date().toISOString();
     positionUpdates.push({
       code: position.code,
@@ -625,6 +633,7 @@ async function executePortfolioValuation(db, run, config) {
       dayPnl: round(Number(position.currentValue || 0) - Number(before.currentValue || 0), 2),
       latestNav: nav,
       navDate: profile?.snapshotDate || "",
+      trend: position.fundSnapshot?.trendSummary || "",
       source: profile?.sources?.[0] || ""
     });
   }
@@ -676,6 +685,8 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "你的目标不是永远保守，而是在证据足够时敢于出击；但每次动作都必须写清数据来源、风险控制和复盘条件。",
     "你有一个投委会：市场分析师、题材分析师、基金研究员、组合经理、风控经理、主席。每个角色必须贡献可保存的观点。",
     "只能基于传入的公开市场快照、基金候选池和当前持仓做判断；不要编造快照中不存在的基金代码、涨跌幅或排名。",
+    "交易建议应以 targetWeightPct 为主，amount 只是建议值；系统执行时会按公开净值、现金和已有持仓重新计算真实份额。",
+    "如果候选基金缺少可验证净值或走势数据，倾向 WATCH，不要强行 BUY。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
     "",
     skillContext
@@ -853,16 +864,49 @@ function normalizePortfolioActions(value) {
 function applyPortfolioActions(db, actions, profiles, run) {
   const profileByCode = new Map((profiles || []).map((profile) => [profile.code, profile]));
   const transactions = [];
+  const notes = [];
+  recalculatePortfolioAccount(db.account);
 
   for (const action of actions) {
     if (action.action === "BUY") {
-      const amount = Math.min(Number(action.amount || 0), Number(db.account.cash || 0));
-      if (!action.code || amount <= 0) {
-        continue;
-      }
       const profile = profileByCode.get(action.code);
       const nav = getProfileNav(profile);
-      let position = db.account.positions.find((item) => item.code === action.code);
+      if (!action.code) {
+        notes.push({ action: "BUY", status: "skipped", reason: "缺少基金代码，无法执行买入。", originalAction: action });
+        continue;
+      }
+      if (!nav) {
+        notes.push({
+          action: "BUY",
+          code: action.code,
+          name: action.name || profile?.name || "",
+          status: "skipped",
+          reason: "未抓取到可验证单位净值，不写入虚拟持仓。",
+          originalAction: action
+        });
+        continue;
+      }
+      const existingPosition = db.account.positions.find((item) => item.code === action.code);
+      if (existingPosition?.units) {
+        existingPosition.currentValue = round(Number(existingPosition.units || 0) * nav, 2);
+        existingPosition.lastNav = nav;
+        existingPosition.lastNavDate = profile?.snapshotDate || existingPosition.lastNavDate || "";
+        existingPosition.fundSnapshot = buildPortfolioFundSnapshot(profile, existingPosition);
+        recalculatePortfolioAccount(db.account);
+      }
+      const amount = resolvePortfolioTradeAmount(db.account, action, "BUY");
+      if (amount <= 0) {
+        notes.push({
+          action: "BUY",
+          code: action.code,
+          name: action.name || profile?.name || "",
+          status: "skipped",
+          reason: "目标仓位未高于当前持仓，或现金不足，未执行买入。",
+          originalAction: action
+        });
+        continue;
+      }
+      let position = existingPosition;
       if (!position) {
         position = {
           code: action.code,
@@ -876,47 +920,108 @@ function applyPortfolioActions(db, actions, profiles, run) {
         db.account.positions.push(position);
       }
       const boughtUnits = nav ? amount / nav : 0;
+      const previousUnits = Number(position.units || 0);
       position.name = action.name || position.name || profile?.name || "";
       position.units = round(Number(position.units || 0) + boughtUnits, 6);
       position.costAmount = round(Number(position.costAmount || 0) + amount, 2);
-      position.currentValue = nav && position.units ? round(position.units * nav, 2) : round(Number(position.currentValue || 0) + amount, 2);
-      position.lastNav = nav || position.lastNav || null;
+      position.currentValue = round(position.units * nav, 2);
+      position.averageCostNav = position.units > 0 ? round(position.costAmount / position.units, 4) : null;
+      position.lastNav = nav;
       position.lastNavDate = profile?.snapshotDate || position.lastNavDate || "";
+      position.lastTradeNav = nav;
+      position.lastTradeUnits = round(boughtUnits, 6);
+      position.lastTradeAmount = amount;
       position.lastReason = action.reason;
       position.lastRiskControl = action.riskControl;
+      position.fundSnapshot = buildPortfolioFundSnapshot(profile, position);
+      position.dataSource = profile?.sources?.[0] || "";
       position.updatedAt = new Date().toISOString();
       db.account.cash = round(Number(db.account.cash || 0) - amount, 2);
-      transactions.push(recordPortfolioTransaction(db, run, action, amount, "BUY", profile));
+      transactions.push(recordPortfolioTransaction(db, run, action, amount, "BUY", profile, {
+        nav,
+        units: boughtUnits,
+        beforeUnits: previousUnits,
+        afterUnits: position.units
+      }));
     }
 
     if (action.action === "SELL") {
       const position = db.account.positions.find((item) => item.code === action.code);
       if (!position || Number(position.currentValue || 0) <= 0) {
+        notes.push({
+          action: "SELL",
+          code: action.code,
+          name: action.name,
+          status: "skipped",
+          reason: "组合中没有这只基金的可卖持仓。",
+          originalAction: action
+        });
         continue;
       }
-      const amount = Math.min(Number(action.amount || 0), Number(position.currentValue || 0));
+      const profile = profileByCode.get(action.code);
+      const nav = getProfileNav(profile) || position.lastNav || null;
+      if (!nav) {
+        notes.push({
+          action: "SELL",
+          code: action.code,
+          name: position.name || action.name,
+          status: "skipped",
+          reason: "缺少当前净值，无法计算卖出份额，未执行。",
+          originalAction: action
+        });
+        continue;
+      }
+      if (position.units) {
+        position.currentValue = round(Number(position.units || 0) * nav, 2);
+        position.lastNav = nav;
+        position.lastNavDate = profile?.snapshotDate || position.lastNavDate || "";
+        position.fundSnapshot = buildPortfolioFundSnapshot(profile, position);
+        recalculatePortfolioAccount(db.account);
+      }
+      const amount = resolvePortfolioTradeAmount(db.account, action, "SELL", position);
       if (amount <= 0) {
+        notes.push({
+          action: "SELL",
+          code: action.code,
+          name: position.name || action.name,
+          status: "skipped",
+          reason: "目标仓位未低于当前持仓，未执行卖出。",
+          originalAction: action
+        });
         continue;
       }
       const ratio = amount / Number(position.currentValue || 1);
+      const soldUnits = round(Number(position.units || 0) * ratio, 6);
       const costReduced = round(Number(position.costAmount || 0) * ratio, 2);
       position.costAmount = round(Number(position.costAmount || 0) - costReduced, 2);
       position.currentValue = round(Number(position.currentValue || 0) - amount, 2);
-      position.units = round(Number(position.units || 0) * (1 - ratio), 6);
+      position.units = round(Number(position.units || 0) - soldUnits, 6);
+      position.averageCostNav = position.units > 0 ? round(position.costAmount / position.units, 4) : null;
       position.realizedPnl = round(Number(position.realizedPnl || 0) + amount - costReduced, 2);
+      position.lastNav = nav;
+      position.lastNavDate = profile?.snapshotDate || position.lastNavDate || "";
+      position.lastTradeNav = nav;
+      position.lastTradeUnits = soldUnits;
+      position.lastTradeAmount = amount;
       position.lastReason = action.reason;
       position.lastRiskControl = action.riskControl;
+      position.fundSnapshot = buildPortfolioFundSnapshot(profile, position);
+      position.dataSource = profile?.sources?.[0] || position.dataSource || "";
       position.updatedAt = new Date().toISOString();
       db.account.cash = round(Number(db.account.cash || 0) + amount, 2);
-      transactions.push(recordPortfolioTransaction(db, run, action, amount, "SELL", profileByCode.get(action.code)));
+      transactions.push(recordPortfolioTransaction(db, run, action, amount, "SELL", profile, {
+        nav,
+        units: soldUnits,
+        afterUnits: position.units
+      }));
     }
   }
 
   db.account.positions = db.account.positions.filter((position) => Number(position.currentValue || 0) > 0.5);
-  return transactions;
+  return { transactions, notes };
 }
 
-function recordPortfolioTransaction(db, run, action, amount, side, profile) {
+function recordPortfolioTransaction(db, run, action, amount, side, profile, execution = {}) {
   const transaction = {
     id: createId("txn"),
     runId: run.id,
@@ -926,13 +1031,104 @@ function recordPortfolioTransaction(db, run, action, amount, side, profile) {
     code: action.code,
     name: action.name || profile?.name || "",
     amount: round(amount, 2),
+    nav: execution.nav ? round(Number(execution.nav), 4) : null,
+    navDate: profile?.snapshotDate || "",
+    units: execution.units ? round(Number(execution.units), 6) : 0,
+    beforeUnits: execution.beforeUnits === undefined ? null : round(Number(execution.beforeUnits || 0), 6),
+    afterUnits: execution.afterUnits === undefined ? null : round(Number(execution.afterUnits || 0), 6),
     reason: action.reason,
     dataBasis: action.dataBasis,
     riskControl: action.riskControl,
+    fundSnapshot: buildPortfolioFundSnapshot(profile),
     source: profile?.sources?.[0] || ""
   };
   db.transactions.push(transaction);
   return transaction;
+}
+
+function resolvePortfolioTradeAmount(account, action, side, position = null) {
+  const totalAsset = Number(account.totalAsset || 0);
+  const targetWeightPct = Number(action.targetWeightPct || 0);
+  const requestedAmount = Number(action.amount || 0);
+
+  if (side === "BUY") {
+    const currentPosition = account.positions.find((item) => item.code === action.code);
+    const currentValue = Number(currentPosition?.currentValue || 0);
+    const targetValue = targetWeightPct > 0 ? (totalAsset * targetWeightPct) / 100 : null;
+    const targetDelta = targetValue === null ? requestedAmount : Math.max(0, targetValue - currentValue);
+    const proposedAmount = requestedAmount > 0 && targetDelta > 0 ? Math.min(requestedAmount, targetDelta) : targetDelta;
+    return round(Math.min(Number(account.cash || 0), Math.max(0, proposedAmount || 0)), 2);
+  }
+
+  if (side === "SELL") {
+    const currentValue = Number(position?.currentValue || 0);
+    const targetValue = targetWeightPct > 0 ? (totalAsset * targetWeightPct) / 100 : null;
+    const targetDelta = targetValue === null ? requestedAmount : Math.max(0, currentValue - targetValue);
+    const proposedAmount = requestedAmount > 0 && targetDelta > 0 ? Math.min(requestedAmount, targetDelta) : targetDelta;
+    return round(Math.min(currentValue, Math.max(0, proposedAmount || 0)), 2);
+  }
+
+  return 0;
+}
+
+function buildPortfolioFundSnapshot(profile, position = null) {
+  if (!profile) {
+    return null;
+  }
+
+  const nav = getProfileNav(profile);
+  const periods = profile.riskMetrics?.periods || {};
+  const oneYear = periods["1y"] || {};
+  const threeYear = periods["3y"] || {};
+  const fiveYear = periods["5y"] || {};
+  const topHoldings = (profile.holdings?.equityTopHoldings || profile.topStocks || []).slice(0, 5).map((item) => {
+    if (typeof item === "string") return item;
+    return [item.code, item.name, item.netValuePct ? `${item.netValuePct}%` : ""].filter(Boolean).join(" ");
+  });
+
+  const trendParts = [
+    oneYear.ok ? `1年${formatSignedNumber(oneYear.totalReturnPct)}%` : "",
+    threeYear.ok ? `3年${formatSignedNumber(threeYear.totalReturnPct)}%` : "",
+    oneYear.ok ? `回撤${oneYear.maxDrawdownPct}%` : "",
+    oneYear.ok && oneYear.sharpe !== null ? `夏普${oneYear.sharpe}` : ""
+  ].filter(Boolean);
+
+  return {
+    code: profile.code || position?.code || "",
+    name: profile.name || position?.name || "",
+    nav: nav ? round(nav, 4) : null,
+    navDate: profile.snapshotDate || "",
+    navBasis: profile.unitNav ? "latest_confirmed_unit_nav" : profile.estimatedNav ? "estimated_nav" : "missing",
+    estimatedNav: toNumber(profile.estimatedNav),
+    estimatedChangePct: toNumber(profile.estimatedChangePct),
+    estimateTime: profile.estimateTime || "",
+    returns: profile.returns || {},
+    risk: {
+      oneYear: pickRiskPeriod(oneYear),
+      threeYear: pickRiskPeriod(threeYear),
+      fiveYear: pickRiskPeriod(fiveYear)
+    },
+    scale: profile.scale || null,
+    topHoldings,
+    trendSummary: trendParts.join("，") || "走势数据不足",
+    sources: profile.sources || []
+  };
+}
+
+function pickRiskPeriod(period) {
+  if (!period?.ok) {
+    return { ok: false, note: period?.note || "数据不足" };
+  }
+  return {
+    ok: true,
+    totalReturnPct: period.totalReturnPct,
+    annualizedReturnPct: period.annualizedReturnPct,
+    annualizedVolatilityPct: period.annualizedVolatilityPct,
+    maxDrawdownPct: period.maxDrawdownPct,
+    sharpe: period.sharpe,
+    startDate: period.startDate,
+    endDate: period.endDate
+  };
 }
 
 async function pushPortfolioRunIfConfigured(db, run, config) {
@@ -1011,18 +1207,27 @@ function capturePortfolioPushTarget(payload) {
   writePortfolioDb(db);
 }
 
-function buildPortfolioDecisionCard({ decision, account, transactions, run }) {
+function buildPortfolioDecisionCard({ decision, account, transactions, executionNotes = [], run }) {
   const actionLines = decision.actions.length
     ? decision.actions.map((action) => {
         const name = [action.code, action.name].filter(Boolean).join(" ");
-        const amount = action.amount ? ` ${action.amount}元` : "";
-        return `${action.action} ${name}${amount}：${action.reason || "见投委会意见"}`;
+        const amount = action.amount ? ` 建议${action.amount}元` : "";
+        const target = action.targetWeightPct ? ` 目标${action.targetWeightPct}%` : "";
+        return `${action.action} ${name}${amount}${target}：${action.reason || "见投委会意见"}`;
       })
     : ["今日没有生成买卖动作。"];
   const teamLines = decision.team.map((item) => `${item.agent} ${item.stance}：${item.reason}`);
   const transactionLines = transactions.length
-    ? transactions.map((item) => `${item.side} ${item.code} ${item.name} ${item.amount}元`)
+    ? transactions.map((item) => {
+        const nav = item.nav ? `，净值 ${item.nav}${item.navDate ? `（${item.navDate}）` : ""}` : "";
+        const units = item.units ? `，份额 ${item.units}` : "";
+        const trend = item.fundSnapshot?.trendSummary ? `，走势 ${item.fundSnapshot.trendSummary}` : "";
+        return `${item.side} ${item.code} ${item.name} ${item.amount}元${nav}${units}${trend}`;
+      })
     : ["无实际账本变动。"];
+  const noteLines = executionNotes.length
+    ? executionNotes.map((item) => `${item.action || "SKIP"} ${item.code || ""} ${item.name || ""}：${item.reason}`)
+    : [];
 
   return [
     `虚拟基金经理日报 ${run.date}`,
@@ -1038,6 +1243,9 @@ function buildPortfolioDecisionCard({ decision, account, transactions, run }) {
     "",
     "账本变动：",
     ...transactionLines,
+    noteLines.length ? "" : "",
+    noteLines.length ? "未执行说明：" : "",
+    ...noteLines,
     "",
     `当前资产：${account.totalAsset}元，现金 ${account.cash}元，仓位 ${account.positionWeightPct}%`,
     decision.riskNotes.length ? ["", "风险控制：", ...decision.riskNotes].join("\n") : "",
@@ -1051,7 +1259,11 @@ function buildPortfolioDecisionCard({ decision, account, transactions, run }) {
 
 function buildPortfolioValuationCard({ review, account, positionUpdates, run }) {
   const updateLines = positionUpdates.length
-    ? positionUpdates.map((item) => `${item.code} ${item.name}：${item.beforeValue} -> ${item.afterValue}，今日 ${formatSignedNumber(item.dayPnl)}元`)
+    ? positionUpdates.map((item) => {
+        const nav = item.latestNav ? `，净值 ${item.latestNav}${item.navDate ? `（${item.navDate}）` : ""}` : "";
+        const trend = item.trend ? `，走势 ${item.trend}` : "";
+        return `${item.code} ${item.name}：${item.beforeValue} -> ${item.afterValue}，今日 ${formatSignedNumber(item.dayPnl)}元${nav}${trend}`;
+      })
     : ["当前没有持仓，净值复盘只更新现金账户。"];
 
   return [
@@ -1110,6 +1322,19 @@ function buildPortfolioStatusAnswer(userText, intent) {
           `${position.code} ${position.name || ""}：${position.currentValue}元，占比 ${position.weightPct}%` +
             `，浮动盈亏 ${formatSignedNumber(position.unrealizedPnl)}元（${formatSignedNumber(position.unrealizedPnlPct)}%）`
         );
+        const snapshot = position.fundSnapshot || {};
+        const navLine = [
+          snapshot.nav ? `净值 ${snapshot.nav}` : position.lastNav ? `净值 ${position.lastNav}` : "",
+          snapshot.navDate || position.lastNavDate ? `日期 ${snapshot.navDate || position.lastNavDate}` : "",
+          position.units ? `份额 ${position.units}` : "",
+          position.averageCostNav ? `成本净值 ${position.averageCostNav}` : ""
+        ].filter(Boolean);
+        if (navLine.length) {
+          lines.push(navLine.join("，"));
+        }
+        if (snapshot.trendSummary) {
+          lines.push(`走势/风险：${snapshot.trendSummary}`);
+        }
         if (position.lastReason) {
           lines.push(`理由：${position.lastReason}`);
         }
@@ -1124,7 +1349,12 @@ function buildPortfolioStatusAnswer(userText, intent) {
     lines.push(`今日操作 ${today}：`);
     if (todayTransactions.length) {
       for (const item of todayTransactions) {
-        lines.push(`${item.side} ${item.code || ""} ${item.name || ""} ${item.amount}元：${item.reason || "见当日投委会记录"}`);
+        const tradeDetail = [
+          `${item.side} ${item.code || ""} ${item.name || ""} ${item.amount}元`,
+          item.nav ? `净值${item.nav}` : "",
+          item.units ? `份额${item.units}` : ""
+        ].filter(Boolean).join("，");
+        lines.push(`${tradeDetail}：${item.reason || "见当日投委会记录"}`);
       }
     } else if (recentDecision?.date === today) {
       lines.push("今天已生成投委会决策，但没有落到账本买卖。");
@@ -1345,6 +1575,8 @@ function normalizePortfolioPosition(position) {
     costAmount: round(Number(position.costAmount || 0), 2),
     currentValue: round(Number(position.currentValue || 0), 2),
     realizedPnl: round(Number(position.realizedPnl || 0), 2),
+    averageCostNav: position.averageCostNav ? round(Number(position.averageCostNav), 4) : null,
+    fundSnapshot: position.fundSnapshot || null,
     lastNav: position.lastNav ? Number(position.lastNav) : null
   };
 }
@@ -1391,6 +1623,11 @@ function summarizePortfolioPosition(position) {
     weightPct: round(Number(position.weightPct || 0), 2),
     lastNav: position.lastNav || null,
     lastNavDate: position.lastNavDate || "",
+    averageCostNav: position.averageCostNav || null,
+    lastTradeNav: position.lastTradeNav || null,
+    lastTradeUnits: position.lastTradeUnits || null,
+    fundSnapshot: position.fundSnapshot || null,
+    dataSource: position.dataSource || "",
     unrealizedPnl: round(Number(position.unrealizedPnl || 0), 2),
     unrealizedPnlPct: round(Number(position.unrealizedPnlPct || 0), 2),
     lastReason: position.lastReason || "",
@@ -3074,6 +3311,8 @@ function getDefaultStats() {
       portfolioManagerModelCalls: 0,
       portfolioReviewModelCalls: 0,
       portfolioTransactions: 0,
+      portfolioNavVerifiedTrades: 0,
+      portfolioSkippedTrades: 0,
       portfolioEquitySnapshots: 0,
       portfolioPushes: 0,
       portfolioPushFailures: 0,

@@ -373,16 +373,22 @@ button:disabled {
 
 .data-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) 0.7fr 0.5fr 0.8fr;
+  grid-template-columns: minmax(0, 1.8fr) 0.7fr 0.6fr 0.7fr 0.8fr;
   gap: 12px;
   align-items: center;
   padding: 13px 14px;
 }
 
-.data-row p {
+.data-row p,
+.data-row small {
   color: var(--muted);
   font-size: 13px;
   margin-top: 5px;
+}
+
+.data-row small {
+  display: block;
+  overflow-wrap: anywhere;
 }
 
 .mini-row {
