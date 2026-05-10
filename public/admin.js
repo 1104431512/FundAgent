@@ -299,6 +299,11 @@ function renderRuns(runs) {
       const orders = run.orders?.length ? run.orders.map((item) => `${item.side} ${item.code} ${item.status}`).join(" · ") : "";
       const transactions = run.transactions?.length ? `${run.transactions.length} 笔确认成交` : "";
       const notes = run.executionNotes?.length ? `${run.executionNotes.length} 条执行说明` : "";
+      const durationSeconds = run.durationMs
+        ? Math.round(run.durationMs / 1000)
+        : run.status === "running" && run.startedAt
+          ? Math.max(0, Math.round((Date.now() - new Date(run.startedAt).getTime()) / 1000))
+          : 0;
       return `
         <details class="run-item">
           <summary>
@@ -314,7 +319,7 @@ function renderRuns(runs) {
               <span>开始：${escapeHtml(formatDateTime(run.startedAt))}</span>
               <span>进度：${escapeHtml(formatDateTime(run.progressAt))}</span>
               <span>结束：${escapeHtml(formatDateTime(run.completedAt))}</span>
-              <span>耗时：${run.durationMs ? Math.round(run.durationMs / 1000) : 0}s</span>
+              <span>耗时：${durationSeconds}s</span>
             </div>
             ${
               run.error
@@ -498,14 +503,28 @@ async function runTest(type) {
 
 async function apiFetch(url, options = {}) {
   const token = localStorage.getItem("fundagent_admin_token") || "";
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      "content-type": "application/json",
-      ...(token ? { "x-admin-token": token } : {}),
-      ...(options.headers || {})
+  const timeoutMs = Number(options.timeoutMs || 20000);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      signal: options.signal || controller.signal,
+      headers: {
+        "content-type": "application/json",
+        ...(token ? { "x-admin-token": token } : {}),
+        ...(options.headers || {})
+      }
+    });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error(`请求超时：${url}`);
     }
-  });
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 
   const text = await response.text();
   const data = text ? JSON.parse(text) : {};

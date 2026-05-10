@@ -19,6 +19,7 @@ const SKILLS_DIR = path.join(ROOT, "skills");
 const STARTED_AT = new Date();
 const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS || 120000);
 const DEFAULT_MODEL_HTTP_TIMEOUT_MS = Number(process.env.MODEL_HTTP_TIMEOUT_MS ?? 0);
+const PUBLIC_DATA_TIMEOUT_MS = Number(process.env.PUBLIC_DATA_TIMEOUT_MS || 20000);
 const PORTFOLIO_DB_REPAIRED = Symbol("portfolioDbRepaired");
 
 let tenantAccessTokenCache = null;
@@ -652,22 +653,31 @@ function markPortfolioRunProgress(db, run, summary) {
   run.summary = summary;
   run.progressAt = now;
   db.updatedAt = now;
+  console.log(`[portfolio-progress] ${run.id} ${run.type} ${summary}`);
   writePortfolioDb(db);
+}
+
+function yieldToEventLoop() {
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 async function executePortfolioDecision(db, run, config) {
   markPortfolioRunProgress(db, run, "正在处理上一轮订单和确认状态。");
+  await yieldToEventLoop();
   const lifecycleBefore = await processPortfolioOrderLifecycle(db, run, config);
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "正在抓取市场快照和近期题材线索。");
+  await yieldToEventLoop();
   const accountBefore = summarizePortfolioAccount(db.account);
   const marketSnapshot = await fetchMarketSnapshot();
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "正在补全当前持仓基金资料。");
+  await yieldToEventLoop();
   const heldCodes = db.account.positions.map((position) => position.code).filter(Boolean);
   const heldProfiles = heldCodes.length ? await enrichFunds(heldCodes) : [];
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, `资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度生成今日操作。`);
+  await yieldToEventLoop();
   const raw = await buildPortfolioDecisionWithModel({
     account: accountBefore,
     marketSnapshot,
@@ -675,11 +685,16 @@ async function executePortfolioDecision(db, run, config) {
     config
   });
   assertPortfolioRunActive(run);
-  markPortfolioRunProgress(db, run, "模型已返回，正在校验交易规则并生成虚拟订单。");
+  markPortfolioRunProgress(db, run, "模型已返回，正在解析投委会决策。");
+  await yieldToEventLoop();
   const decision = normalizePortfolioDecision(raw);
+  markPortfolioRunProgress(db, run, `已解析 ${decision.actions.length} 条动作，正在补全拟交易基金净值。`);
+  await yieldToEventLoop();
   const profileCodes = decision.actions.map((action) => action.code).filter(Boolean);
   const actionProfiles = profileCodes.length ? await enrichFunds(profileCodes) : [];
   assertPortfolioRunActive(run);
+  markPortfolioRunProgress(db, run, "正在校验交易规则并生成虚拟订单。");
+  await yieldToEventLoop();
   const execution = submitPortfolioOrders(db, decision.actions, actionProfiles, run, config);
   const transactions = lifecycleBefore.transactions;
   recalculatePortfolioAccount(db.account);
@@ -721,9 +736,11 @@ async function executePortfolioDecision(db, run, config) {
 
 async function executePortfolioValuation(db, run, config) {
   markPortfolioRunProgress(db, run, "正在处理订单生命周期和晚间确认状态。");
+  await yieldToEventLoop();
   const lifecycle = await processPortfolioOrderLifecycle(db, run, config);
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "正在补全持仓净值和走势数据。");
+  await yieldToEventLoop();
   const accountBefore = summarizePortfolioAccount(db.account);
   const positionsBefore = new Map(db.account.positions.map((position) => [position.code, { ...position }]));
   const codes = db.account.positions.map((position) => position.code).filter(Boolean);
@@ -782,6 +799,7 @@ async function executePortfolioValuation(db, run, config) {
   });
 
   markPortfolioRunProgress(db, run, `估值资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度复盘。`);
+  await yieldToEventLoop();
   const raw = await buildPortfolioValuationWithModel({
     accountBefore,
     accountAfter: summarizePortfolioAccount(db.account),
@@ -1002,7 +1020,8 @@ function normalizePortfolioActions(value) {
         riskControl: String(item?.riskControl || "").trim()
       };
     })
-    .filter((item) => item.action === "HOLD" || item.action === "WATCH" || item.code);
+    .filter((item) => item.action === "HOLD" || item.action === "WATCH" || item.code)
+    .slice(0, 10);
 }
 
 function submitPortfolioOrders(db, actions, profiles, run, config = getEffectiveConfig()) {
@@ -2179,6 +2198,16 @@ function repairStalePortfolioRuns(db) {
   let repaired = false;
   for (const run of db.runs || []) {
     if (run.status !== "running") continue;
+    const isActiveInThisProcess = portfolioRunInFlight && activePortfolioRunId === run.id;
+    if (!isActiveInThisProcess) {
+      run.status = "interrupted";
+      run.error = "服务已重启或运行任务已丢失，已自动标记为中断。";
+      run.completedAt = new Date().toISOString();
+      const started = Date.parse(run.startedAt || "");
+      run.durationMs = Number.isFinite(started) ? now - started : 0;
+      repaired = true;
+      continue;
+    }
     const progressAt = Date.parse(run.progressAt || run.updatedAt || run.startedAt || "");
     if (!Number.isFinite(progressAt) || now - progressAt > staleMs) {
       run.status = "interrupted";
@@ -2872,22 +2901,23 @@ async function enrichFunds(fundCodes) {
     return [];
   }
 
-  const results = [];
-  for (const code of uniqueCodes.slice(0, 6)) {
+  const codes = uniqueCodes.slice(0, 6);
+  const results = await Promise.all(codes.map(async (code) => {
     try {
-      results.push(await fetchFundProfile(code));
+      const profile = await fetchFundProfile(code);
       updateStats({ counters: { fundEnrichmentSuccess: 1 } });
+      return profile;
     } catch (error) {
       console.error("[fund-enrichment-error]", code, error);
       recordError(error, { fundEnrichmentFailures: 1 });
-      results.push({
+      return {
         code,
         ok: false,
         error: error.message,
         sources: [`https://fund.eastmoney.com/${code}.html`]
-      });
+      };
     }
-  }
+  }));
 
   updateStats({
     counters: { fundEnrichmentCalls: uniqueCodes.length },
@@ -3342,12 +3372,16 @@ function standardDeviation(values) {
 }
 
 async function fetchText(url, referer = "https://fund.eastmoney.com/") {
-  const response = await fetch(url, {
-    headers: {
-      "user-agent": "Mozilla/5.0 FundAgent/1.0",
-      referer
-    }
-  });
+  const response = await fetchWithTimeout(
+    url,
+    {
+      headers: {
+        "user-agent": "Mozilla/5.0 FundAgent/1.0",
+        referer
+      }
+    },
+    PUBLIC_DATA_TIMEOUT_MS
+  );
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}: ${url}`);
   }
