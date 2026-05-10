@@ -125,6 +125,7 @@ async function loadStats() {
   setText("#statManager", counters.managerReviewCalls || 0);
   setText("#statMarket", counters.marketSnapshotCalls || 0);
   setText("#statEnrich", counters.fundEnrichmentSuccess || 0);
+  setText("#statHoldings", counters.fundHoldingsFetches || 0);
   setText("#statErrors", counters.errors || 0);
   setText("#statEvents", counters.messageEvents || 0);
   document.querySelector("#statsOutput").textContent = JSON.stringify(

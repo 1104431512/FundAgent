@@ -455,7 +455,8 @@ function buildFundCommitteeEvidencePrompt({ images = [], userText, messageType, 
     "联网补全资料：",
     JSON.stringify(enrichments || [], null, 2),
     "",
-    "如果联网补全资料中包含 riskMetrics，请优先使用其中的 1y/3y/5y 夏普率、年化波动、最大回撤、年化收益来评分；不要再要求用户手动补这些指标。只有 riskMetrics.ok=false 或点数不足时，才把这些列为缺失。"
+    "如果联网补全资料中包含 riskMetrics，请优先使用其中的 1y/3y/5y 夏普率、年化波动、最大回撤、年化收益来评分；不要再要求用户手动补这些指标。只有 riskMetrics.ok=false 或点数不足时，才把这些列为缺失。",
+    "如果联网补全资料中包含 holdings，请优先使用 equityTopHoldings / bondTopHoldings 做持仓风格分析。港股通、QDII、债基和指数基金可能分别出现在股票投资明细、债券投资明细或资产配置字段中；不要在已有 holdings 时说缺少十大持仓。"
   ].join("\n");
 }
 
@@ -952,10 +953,11 @@ function parseFundRankData(text, label) {
 }
 
 async function fetchFundProfile(code) {
-  const [valuation, profileText, navHistory] = await Promise.all([
+  const [valuation, profileText, navHistory, holdings] = await Promise.all([
     fetchFundValuation(code).catch((error) => ({ ok: false, error: error.message })),
-    fetchFundPingzhongData(code),
-    fetchFundNavHistory(code).catch((error) => ({ ok: false, error: error.message, points: [] }))
+    fetchFundPingzhongData(code).catch(() => ""),
+    fetchFundNavHistory(code).catch((error) => ({ ok: false, error: error.message, points: [] })),
+    fetchFundHoldings(code).catch((error) => ({ ok: false, error: error.message, equityTopHoldings: [], bondTopHoldings: [] }))
   ]);
 
   const profile = parseFundPingzhongData(profileText);
@@ -987,11 +989,14 @@ async function fetchFundProfile(code) {
     assetAllocation: profile.assetAllocation,
     performanceEvaluation: profile.performanceEvaluation,
     managers: profile.managers,
-    topStocks: profile.topStocks,
+    holdings,
+    topStocks: holdings.equityTopHoldings?.length ? holdings.equityTopHoldings : profile.topStocks,
     sources: [
       `https://fundgz.1234567.com.cn/js/${code}.js`,
       `https://fund.eastmoney.com/pingzhongdata/${code}.js`,
       `https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${code}`,
+      `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${code}`,
+      `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=zqcc&code=${code}`,
       `https://fund.eastmoney.com/${code}.html`
     ]
   };
@@ -1008,6 +1013,61 @@ async function fetchFundValuation(code) {
 
 async function fetchFundPingzhongData(code) {
   return fetchText(`https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`);
+}
+
+async function fetchFundHoldings(code) {
+  const [equity, bond] = await Promise.all([
+    fetchFundArchiveHoldings(code, "jjcc").catch((error) => ({ ok: false, error: error.message, items: [] })),
+    fetchFundArchiveHoldings(code, "zqcc").catch((error) => ({ ok: false, error: error.message, items: [] }))
+  ]);
+
+  updateStats({
+    counters: {
+      fundHoldingsFetches: 1,
+      fundHoldingsFailures: equity.ok || bond.ok ? 0 : 1
+    },
+    last: { lastFundHoldingsFetchAt: new Date().toISOString() }
+  });
+
+  return {
+    ok: Boolean(equity.ok || bond.ok),
+    equityTopHoldings: equity.items || [],
+    bondTopHoldings: bond.items || [],
+    equityDisclosureDate: equity.disclosureDate || "",
+    bondDisclosureDate: bond.disclosureDate || "",
+    notes: [
+      "股票/港股/QDII 持仓来自基金 F10 季报股票投资明细；债基持仓来自债券投资明细。",
+      "持仓披露通常按季度更新，可能滞后于当前真实仓位。"
+    ],
+    errors: [equity, bond]
+      .filter((item) => item && item.ok === false && item.error)
+      .map((item) => item.error),
+    sources: [
+      `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${code}`,
+      `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=zqcc&code=${code}`
+    ]
+  };
+}
+
+async function fetchFundArchiveHoldings(code, type) {
+  const url = new URL("https://fundf10.eastmoney.com/FundArchivesDatas.aspx");
+  url.searchParams.set("type", type);
+  url.searchParams.set("code", code);
+  url.searchParams.set("topline", "10");
+  url.searchParams.set("year", "");
+  url.searchParams.set("month", "");
+  url.searchParams.set("rt", String(Date.now()));
+
+  const text = await fetchText(url.href, `https://fundf10.eastmoney.com/ccmx_${code}.html`);
+  const rows = parseFundArchiveRows(text);
+  const disclosureDate = extractDisclosureDate(text);
+  const items = (type === "zqcc" ? rows.map(mapBondHoldingRow) : rows.map(mapEquityHoldingRow)).filter(Boolean);
+  return {
+    ok: items.length > 0,
+    type,
+    disclosureDate,
+    items: items.slice(0, 10)
+  };
 }
 
 async function fetchFundNavHistory(code) {
@@ -1164,11 +1224,11 @@ function standardDeviation(values) {
   return Math.sqrt(variance);
 }
 
-async function fetchText(url) {
+async function fetchText(url, referer = "https://fund.eastmoney.com/") {
   const response = await fetch(url, {
     headers: {
       "user-agent": "Mozilla/5.0 FundAgent/1.0",
-      referer: "https://fund.eastmoney.com/"
+      referer
     }
   });
   if (!response.ok) {
@@ -1198,6 +1258,79 @@ function parseFundPingzhongData(text) {
     managers: summarizeManagers(managers),
     topStocks: extractTopStockCodes(text)
   };
+}
+
+function parseFundArchiveRows(text) {
+  const bodyMatch = String(text || "").match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i);
+  if (!bodyMatch) {
+    return [];
+  }
+
+  const rows = [];
+  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch = null;
+  while ((rowMatch = rowRegex.exec(bodyMatch[1]))) {
+    const cells = [...rowMatch[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((match) =>
+      normalizeCellText(match[1])
+    );
+    if (cells.length) {
+      rows.push(cells);
+    }
+  }
+  return rows;
+}
+
+function mapEquityHoldingRow(cells) {
+  if (cells.length < 7) return null;
+  return {
+    rank: toNumber(cells[0]),
+    code: cells[1] || "",
+    name: cells[2] || "",
+    latestPrice: normalizeMissingValue(cells[3]),
+    changePct: normalizeMissingValue(cells[4]),
+    netValuePct: toNumber(cells[6]),
+    sharesWan: toNumber(cells[7]),
+    marketValueWan: toNumber(cells[8]),
+    assetType: inferHoldingAssetType(cells[1])
+  };
+}
+
+function mapBondHoldingRow(cells) {
+  if (cells.length < 5) return null;
+  return {
+    rank: toNumber(cells[0]),
+    code: cells[1] || "",
+    name: cells[2] || "",
+    netValuePct: toNumber(cells[3]),
+    marketValueWan: toNumber(cells[4]),
+    assetType: "bond"
+  };
+}
+
+function extractDisclosureDate(text) {
+  const normalized = normalizeCellText(String(text || ""));
+  return normalized.match(/截止至[:：]?\s*(\d{4}-\d{2}-\d{2})/)?.[1] || "";
+}
+
+function inferHoldingAssetType(code) {
+  const value = String(code || "").trim().toUpperCase();
+  if (/^[A-Z]{1,5}$/.test(value)) return "overseas_stock";
+  if (/^\d{4}$/.test(value)) return "overseas_stock";
+  if (/^\d{5}$/.test(value)) return "hk_stock";
+  if (/^\d{6}$/.test(value)) return "stock";
+  return "stock_or_equity";
+}
+
+function normalizeCellText(value) {
+  return stripHtml(value)
+    .replace(/\s+/g, " ")
+    .replace(/^--$/, "")
+    .trim();
+}
+
+function normalizeMissingValue(value) {
+  const text = String(value || "").trim();
+  return text === "--" ? "" : text;
 }
 
 function extractJsString(text, name) {
@@ -1617,6 +1750,8 @@ function getDefaultStats() {
       fundEnrichmentCalls: 0,
       fundEnrichmentSuccess: 0,
       fundEnrichmentFailures: 0,
+      fundHoldingsFetches: 0,
+      fundHoldingsFailures: 0,
       marketSnapshotCalls: 0,
       marketSnapshotFailures: 0,
       marketBoardFetches: 0,
