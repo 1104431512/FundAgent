@@ -17,11 +17,15 @@ const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
 const PUBLIC_DIR = path.join(ROOT, "public");
 const SKILLS_DIR = path.join(ROOT, "skills");
 const STARTED_AT = new Date();
+const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS || 120000);
+const PORTFOLIO_DB_REPAIRED = Symbol("portfolioDbRepaired");
 
 let tenantAccessTokenCache = null;
 const seenEventIds = new Map();
 let portfolioSchedulerTimer = null;
 let portfolioRunInFlight = false;
+let activePortfolioRunId = "";
+const cancelledPortfolioRunIds = new Set();
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
@@ -136,14 +140,27 @@ async function handleApiRequest(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/portfolio/run") {
     const body = await readJsonBody(req);
-    const result = await runPortfolioTask(body.type || "decision", { manual: true });
+    const portfolioState = getPortfolioPublicState();
+    if (portfolioState.scheduler?.inFlight) {
+      sendJson(res, 409, { ok: false, error: "虚拟组合任务正在运行，请先等待完成或手动结束。", portfolio: portfolioState });
+      return;
+    }
+    runPortfolioTask(body.type || "decision", { manual: true }).catch((error) => {
+      console.error("[portfolio-run-error]", error);
+    });
+    sendJson(res, 202, { ok: true, accepted: true, portfolio: getPortfolioPublicState() });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/portfolio/cancel") {
+    const result = cancelPortfolioTask();
     sendJson(res, 200, { ok: true, portfolio: result });
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/portfolio/reset") {
     const body = await readJsonBody(req);
-    const result = resetPortfolioAccount(body.initialCapital);
+    const result = resetPortfolioAccount(body.initialCapital, { clearHistory: body.clearHistory !== false });
     sendJson(res, 200, { ok: true, portfolio: result });
     return;
   }
@@ -482,7 +499,6 @@ async function checkPortfolioSchedule() {
     }
     runPortfolioTask(task.type, { manual: false, scheduledDate: now.date }).catch((error) => {
       console.error("[portfolio-run-error]", error);
-      recordError(error, { portfolioErrors: 1 });
     });
   }
 }
@@ -497,6 +513,45 @@ function markPortfolioScheduledRun(type, date) {
   db.scheduler[key] = date;
   writePortfolioDb(db);
   return true;
+}
+
+function cancelPortfolioTask() {
+  const db = readPortfolioDb();
+  const now = new Date().toISOString();
+  let cancelled = 0;
+
+  for (const run of db.runs || []) {
+    if (run.status !== "running") continue;
+    run.status = "cancelled";
+    run.error = "管理后台手动结束。";
+    run.completedAt = now;
+    run.durationMs = Date.parse(now) - Date.parse(run.startedAt || now);
+    cancelledPortfolioRunIds.add(run.id);
+    cancelled += 1;
+  }
+
+  if (activePortfolioRunId) {
+    cancelledPortfolioRunIds.add(activePortfolioRunId);
+  }
+  portfolioRunInFlight = false;
+  activePortfolioRunId = "";
+  db.updatedAt = now;
+  writePortfolioDb(db);
+  updateStats({
+    counters: { portfolioCancelledRuns: cancelled },
+    last: { lastPortfolioCancelAt: now }
+  });
+  return getPortfolioPublicState(db);
+}
+
+function assertPortfolioRunActive(run) {
+  if (isPortfolioRunCancelled(run.id)) {
+    throw new Error("任务已被管理后台手动结束。");
+  }
+}
+
+function isPortfolioRunCancelled(runId) {
+  return cancelledPortfolioRunIds.has(runId);
 }
 
 async function runPortfolioTask(type, options = {}) {
@@ -517,6 +572,7 @@ async function runPortfolioTask(type, options = {}) {
     status: "running",
     startedAt
   };
+  activePortfolioRunId = run.id;
 
   let db = readPortfolioDb();
   ensurePortfolioAccount(db, config);
@@ -539,6 +595,7 @@ async function runPortfolioTask(type, options = {}) {
       await executePortfolioValuation(db, run, config);
     }
 
+    assertPortfolioRunActive(run);
     run.status = "completed";
     run.completedAt = new Date().toISOString();
     run.durationMs = Date.parse(run.completedAt) - Date.parse(startedAt);
@@ -548,33 +605,67 @@ async function runPortfolioTask(type, options = {}) {
     await pushPortfolioRunIfConfigured(db, run, config);
     return getPortfolioPublicState(db);
   } catch (error) {
+    if (isPortfolioRunCancelled(run.id)) {
+      return finishCancelledPortfolioRun(run, error, startedAt);
+    }
     run.status = "failed";
     run.error = error.message;
     run.completedAt = new Date().toISOString();
+    run.durationMs = Date.parse(run.completedAt) - Date.parse(startedAt);
     db.updatedAt = run.completedAt;
     writePortfolioDb(db);
     recordError(error, { portfolioErrors: 1 });
     throw error;
   } finally {
-    portfolioRunInFlight = false;
+    if (activePortfolioRunId === run.id) {
+      portfolioRunInFlight = false;
+      activePortfolioRunId = "";
+    }
+    cancelledPortfolioRunIds.delete(run.id);
   }
+}
+
+function finishCancelledPortfolioRun(run, error, startedAt) {
+  const now = new Date().toISOString();
+  run.status = "cancelled";
+  run.error = error.message;
+  run.completedAt = now;
+  run.durationMs = Date.parse(now) - Date.parse(startedAt);
+
+  const currentDb = readPortfolioDb();
+  const storedRun = (currentDb.runs || []).find((item) => item.id === run.id);
+  if (storedRun) {
+    storedRun.status = run.status;
+    storedRun.error = run.error;
+    storedRun.completedAt = run.completedAt;
+    storedRun.durationMs = run.durationMs;
+    currentDb.updatedAt = now;
+    writePortfolioDb(currentDb);
+    return getPortfolioPublicState(currentDb);
+  }
+  return getPortfolioPublicState(currentDb);
 }
 
 async function executePortfolioDecision(db, run, config) {
   const lifecycleBefore = await processPortfolioOrderLifecycle(db, run, config);
+  assertPortfolioRunActive(run);
   const accountBefore = summarizePortfolioAccount(db.account);
   const marketSnapshot = await fetchMarketSnapshot();
+  assertPortfolioRunActive(run);
   const heldCodes = db.account.positions.map((position) => position.code).filter(Boolean);
   const heldProfiles = heldCodes.length ? await enrichFunds(heldCodes) : [];
+  assertPortfolioRunActive(run);
   const raw = await buildPortfolioDecisionWithModel({
     account: accountBefore,
     marketSnapshot,
     heldProfiles,
     config
   });
+  assertPortfolioRunActive(run);
   const decision = normalizePortfolioDecision(raw);
   const profileCodes = decision.actions.map((action) => action.code).filter(Boolean);
   const actionProfiles = profileCodes.length ? await enrichFunds(profileCodes) : [];
+  assertPortfolioRunActive(run);
   const execution = submitPortfolioOrders(db, decision.actions, actionProfiles, run, config);
   const transactions = lifecycleBefore.transactions;
   recalculatePortfolioAccount(db.account);
@@ -616,10 +707,12 @@ async function executePortfolioDecision(db, run, config) {
 
 async function executePortfolioValuation(db, run, config) {
   const lifecycle = await processPortfolioOrderLifecycle(db, run, config);
+  assertPortfolioRunActive(run);
   const accountBefore = summarizePortfolioAccount(db.account);
   const positionsBefore = new Map(db.account.positions.map((position) => [position.code, { ...position }]));
   const codes = db.account.positions.map((position) => position.code).filter(Boolean);
   const profiles = codes.length ? await enrichFunds(codes) : [];
+  assertPortfolioRunActive(run);
   const profileByCode = new Map(profiles.map((profile) => [profile.code, profile]));
   const positionUpdates = [];
 
@@ -679,6 +772,7 @@ async function executePortfolioValuation(db, run, config) {
     profiles,
     config
   });
+  assertPortfolioRunActive(run);
   const review = normalizePortfolioReview(raw);
 
   run.title = "晚间估值复盘";
@@ -1840,7 +1934,9 @@ function getPortfolioPublicState(db = readPortfolioDb()) {
       decisionTime: config.portfolioDecisionTime,
       reviewTime: config.portfolioReviewTime,
       timezone: config.portfolioTimezone,
-      inFlight: portfolioRunInFlight
+      inFlight: portfolioRunInFlight,
+      activeRunId: activePortfolioRunId || "",
+      activeRunStartedAt: (db.runs || []).find((run) => run.id === activePortfolioRunId)?.startedAt || ""
     },
     pushTarget: target
       ? {
@@ -1878,12 +1974,35 @@ function summarizePortfolioRun(run) {
     startedAt: run.startedAt,
     completedAt: run.completedAt,
     durationMs: run.durationMs,
-    summary: run.type === "decision" ? run?.actions?.map((item) => `${item.action} ${item.code || ""} ${item.name || ""}`).join("；") : run?.card?.split("\n")?.[2] || "",
+    summary: buildPortfolioRunSummary(run),
     card: run.card || "",
+    actions: (run.actions || []).slice(0, 10),
+    orders: (run.orders || []).slice(0, 10).map(summarizePortfolioOrder),
+    transactions: (run.transactions || []).slice(0, 10),
+    orderUpdates: (run.orderUpdates || []).slice(0, 10),
+    executionNotes: (run.executionNotes || []).slice(0, 10),
+    settlementEvents: (run.settlementEvents || []).slice(0, 10),
     sources: run.sources || [],
     push: run.push || null,
     error: run.error || ""
   };
+}
+
+function buildPortfolioRunSummary(run) {
+  if (run.summary) return run.summary;
+  if (run.status === "running") return "任务运行中，等待模型或公开数据源返回。";
+  if (run.status === "cancelled") return run.error || "任务已手动结束。";
+  if (run.error) return run.error;
+  if (run.type === "decision") {
+    const orders = run?.orders?.map((item) => `${item.side} ${item.code || ""} ${item.name || ""}`).filter(Boolean);
+    if (orders?.length) return `提交订单：${orders.join("；")}`;
+    const actions = run?.actions?.map((item) => `${item.action} ${item.code || ""} ${item.name || ""}`).filter(Boolean);
+    if (actions?.length) return actions.join("；");
+  }
+  if (run.type === "valuation" && run?.positionUpdates?.length) {
+    return `估值更新 ${run.positionUpdates.length} 个持仓`;
+  }
+  return run?.card?.split("\n")?.find((line) => line.trim()) || "无摘要";
 }
 
 function summarizePortfolioOrder(order) {
@@ -1912,23 +2031,43 @@ function summarizePortfolioOrder(order) {
   };
 }
 
-function resetPortfolioAccount(initialCapital) {
+function resetPortfolioAccount(initialCapital, options = {}) {
   const config = getEffectiveConfig();
   const db = readPortfolioDb();
+  const activeRunId = activePortfolioRunId;
+  if (activeRunId) {
+    cancelledPortfolioRunIds.add(activeRunId);
+  }
   db.account = createPortfolioAccount({
     ...config,
     portfolioInitialCapital: Number(initialCapital || config.portfolioInitialCapital || 100000)
   });
-  db.orders = [];
-  db.settlements = [];
-  db.transactions.push({
-    id: createId("txn"),
-    side: "RESET",
-    date: getZonedDateTime(config.portfolioTimezone).date,
-    createdAt: new Date().toISOString(),
-    amount: db.account.initialCapital,
-    reason: "管理后台重置虚拟组合。"
-  });
+  if (options.clearHistory !== false) {
+    db.runs = [];
+    db.orders = [];
+    db.transactions = [];
+    db.settlements = [];
+    db.dailyEquity = [];
+    db.scheduler = {};
+  } else {
+    db.orders = [];
+    db.settlements = [];
+    db.transactions.push({
+      id: createId("txn"),
+      side: "RESET",
+      date: getZonedDateTime(config.portfolioTimezone).date,
+      createdAt: new Date().toISOString(),
+      amount: db.account.initialCapital,
+      reason: "管理后台重置虚拟组合。"
+    });
+  }
+  portfolioRunInFlight = false;
+  activePortfolioRunId = "";
+  for (const runId of [...cancelledPortfolioRunIds]) {
+    if (runId !== activeRunId) {
+      cancelledPortfolioRunIds.delete(runId);
+    }
+  }
   db.updatedAt = new Date().toISOString();
   writePortfolioDb(db);
   updateStats({ counters: { portfolioResets: 1 }, last: { lastPortfolioResetAt: db.updatedAt } });
@@ -1973,7 +2112,11 @@ function keepRecentPortfolioItems(items, cutoff, keepLatest, keepActive = false)
 }
 
 function readPortfolioDb() {
-  return normalizePortfolioDb(safeReadJson(PORTFOLIO_DB_PATH));
+  const db = normalizePortfolioDb(safeReadJson(PORTFOLIO_DB_PATH));
+  if (db[PORTFOLIO_DB_REPAIRED]) {
+    writePortfolioDb(db);
+  }
+  return db;
 }
 
 function writePortfolioDb(db) {
@@ -2006,7 +2149,36 @@ function normalizePortfolioDb(value) {
   db.dailyEquity = Array.isArray(db.dailyEquity) ? db.dailyEquity : [];
   db.scheduler = db.scheduler && typeof db.scheduler === "object" ? db.scheduler : {};
   ensurePortfolioAccount(db, config);
+  if (repairStalePortfolioRuns(db)) {
+    db[PORTFOLIO_DB_REPAIRED] = true;
+  }
   return db;
+}
+
+function repairStalePortfolioRuns(db) {
+  const staleMs = Number(process.env.PORTFOLIO_RUN_STALE_MINUTES || 30) * 60_000;
+  const now = Date.now();
+  let repaired = false;
+  for (const run of db.runs || []) {
+    if (run.status !== "running") continue;
+    const started = Date.parse(run.startedAt || "");
+    if (!Number.isFinite(started) || now - started > staleMs) {
+      run.status = "interrupted";
+      run.error = "任务超时未完成，已自动标记为中断。";
+      run.completedAt = new Date().toISOString();
+      run.durationMs = Number.isFinite(started) ? now - started : 0;
+      if (activePortfolioRunId === run.id) {
+        cancelledPortfolioRunIds.add(run.id);
+        portfolioRunInFlight = false;
+        activePortfolioRunId = "";
+      }
+      repaired = true;
+    }
+  }
+  if (repaired) {
+    db.updatedAt = new Date().toISOString();
+  }
+  return repaired;
 }
 
 function ensurePortfolioAccount(db, config = getEffectiveConfig()) {
@@ -3538,18 +3710,23 @@ async function getTenantAccessToken(config = getEffectiveConfig()) {
 
 async function postJson(url, body, headers = {}) {
   const attempts = Number(process.env.HTTP_RETRY_ATTEMPTS || 3);
+  const timeoutMs = Number(process.env.HTTP_POST_TIMEOUT_MS || HTTP_TIMEOUT_MS);
   let lastError = null;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json; charset=utf-8",
-          ...headers
+      const response = await fetchWithTimeout(
+        url,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            ...headers
+          },
+          body: JSON.stringify(body)
         },
-        body: JSON.stringify(body)
-      });
+        timeoutMs
+      );
 
       const text = await response.text();
       let json = null;
@@ -3582,8 +3759,29 @@ async function postJson(url, body, headers = {}) {
   throw lastError;
 }
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = HTTP_TIMEOUT_MS) {
+  const ms = Math.max(1000, Number(timeoutMs || HTTP_TIMEOUT_MS || 120000));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: options.signal || controller.signal });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      const timeoutError = new Error(`HTTP request timeout after ${ms}ms: ${url}`);
+      timeoutError.code = "HTTP_TIMEOUT";
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function isRetryableHttpError(error) {
   const code = error?.cause?.code || error?.code || "";
+  if (code === "HTTP_TIMEOUT" || error?.name === "AbortError") {
+    return false;
+  }
   if (["EAI_AGAIN", "ETIMEDOUT", "ECONNRESET", "ECONNREFUSED", "ENOTFOUND", "UND_ERR_CONNECT_TIMEOUT"].includes(code)) {
     return true;
   }
@@ -3820,6 +4018,7 @@ function getDefaultStats() {
       portfolioPruneRuns: 0,
       portfolioPrunedItems: 0,
       portfolioResets: 0,
+      portfolioCancelledRuns: 0,
       portfolioErrors: 0,
       errors: 0,
       modelTests: 0,

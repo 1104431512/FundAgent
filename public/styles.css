@@ -308,6 +308,16 @@ button:disabled {
   max-height: 220px;
 }
 
+.raw-panel {
+  margin-top: 14px;
+}
+
+.raw-panel summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 700;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -415,14 +425,47 @@ button:disabled {
   padding: 13px 14px;
 }
 
+.run-item summary > div {
+  min-width: 0;
+}
+
+.run-item summary p,
+.run-item summary small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.run-detail {
+  border-top: 1px solid var(--line);
+  background: #ffffff;
+}
+
+.run-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 11px 14px;
+  color: var(--muted);
+  font-size: 12px;
+  background: #f4f7f9;
+}
+
+.run-detail > p {
+  padding: 0 14px 12px;
+  margin-top: 10px;
+}
+
 .run-item pre {
   margin: 0;
   padding: 13px 14px;
-  border-top: 1px solid var(--line);
   white-space: pre-wrap;
   color: var(--text);
   background: #ffffff;
   font-family: inherit;
+  line-height: 1.58;
+  overflow-wrap: anywhere;
 }
 
 .split-grid {
@@ -441,6 +484,10 @@ button:disabled {
 
 .ok-text {
   color: var(--ok);
+}
+
+.warn-text {
+  color: var(--warn);
 }
 
 .bad-text {

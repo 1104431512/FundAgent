@@ -8,6 +8,7 @@ const authPanel = document.querySelector("#authPanel");
 const adminTokenInput = document.querySelector("#adminToken");
 
 let currentSkills = [];
+let portfolioPollTimer = null;
 
 const tokenFromUrl = new URLSearchParams(location.search).get("token");
 if (tokenFromUrl) {
@@ -30,6 +31,7 @@ document.querySelector("#refreshStatsBtn").addEventListener("click", () => loadS
 document.querySelector("#refreshPortfolioBtn").addEventListener("click", () => loadPortfolio().catch(showError));
 document.querySelector("#runDecisionBtn").addEventListener("click", () => runPortfolioTask("decision"));
 document.querySelector("#runValuationBtn").addEventListener("click", () => runPortfolioTask("valuation"));
+document.querySelector("#cancelPortfolioBtn").addEventListener("click", () => cancelPortfolioTask());
 document.querySelector("#prunePortfolioBtn").addEventListener("click", () => prunePortfolio());
 document.querySelector("#resetPortfolioBtn").addEventListener("click", () => resetPortfolio());
 document.querySelector("#testModelBtn").addEventListener("click", () => runTest("model"));
@@ -194,7 +196,20 @@ async function loadPortfolio() {
   renderRuns(portfolio.recentRuns || []);
   renderTransactions(portfolio.recentTransactions || []);
   renderEquity(portfolio.recentEquity || []);
+  const inFlight = Boolean(portfolio.scheduler?.inFlight);
+  updatePortfolioTaskButtons(inFlight);
+  if (inFlight) {
+    startPortfolioPolling();
+  } else {
+    stopPortfolioPolling();
+  }
   portfolioOutput.textContent = JSON.stringify(portfolio, null, 2);
+}
+
+function updatePortfolioTaskButtons(inFlight) {
+  document.querySelector("#runDecisionBtn").disabled = inFlight;
+  document.querySelector("#runValuationBtn").disabled = inFlight;
+  document.querySelector("#cancelPortfolioBtn").disabled = !inFlight;
 }
 
 function renderOrders(orders) {
@@ -278,17 +293,37 @@ function renderRuns(runs) {
     return;
   }
   list.innerHTML = runs
-    .map(
-      (run) => `
+    .map((run) => {
+      const statusClass = run.status === "failed" || run.status === "interrupted" ? "bad-text" : run.status === "running" ? "warn-text" : "ok-text";
+      const orders = run.orders?.length ? run.orders.map((item) => `${item.side} ${item.code} ${item.status}`).join(" · ") : "";
+      const transactions = run.transactions?.length ? `${run.transactions.length} 笔确认成交` : "";
+      const notes = run.executionNotes?.length ? `${run.executionNotes.length} 条执行说明` : "";
+      return `
         <details class="run-item">
           <summary>
-            <span>${escapeHtml(run.date || "")} · ${escapeHtml(run.title || run.type || "")}</span>
-            <strong class="${run.status === "failed" ? "bad-text" : "ok-text"}">${escapeHtml(run.status || "")}</strong>
+            <div>
+              <strong>${escapeHtml(run.date || "")} · ${escapeHtml(run.title || run.type || "")}</strong>
+              <p>${escapeHtml(run.summary || "无摘要")}</p>
+              <small>${escapeHtml([orders, transactions, notes].filter(Boolean).join(" · "))}</small>
+            </div>
+            <strong class="${statusClass}">${escapeHtml(run.status || "")}</strong>
           </summary>
-          <pre>${escapeHtml(run.card || run.error || "无内容")}</pre>
+          <div class="run-detail">
+            <div class="run-meta">
+              <span>开始：${escapeHtml(formatDateTime(run.startedAt))}</span>
+              <span>结束：${escapeHtml(formatDateTime(run.completedAt))}</span>
+              <span>耗时：${run.durationMs ? Math.round(run.durationMs / 1000) : 0}s</span>
+            </div>
+            ${
+              run.error
+                ? `<p class="bad-text">${escapeHtml(run.error)}</p>`
+                : ""
+            }
+            <pre>${escapeHtml(run.card || run.summary || (run.status === "running" ? "任务仍在运行，刷新后查看最新状态。" : "无内容"))}</pre>
+          </div>
         </details>
-      `
-    )
+      `;
+    })
     .join("");
 }
 
@@ -336,18 +371,57 @@ function renderEquity(equity) {
 async function runPortfolioTask(type) {
   const button = document.querySelector(type === "decision" ? "#runDecisionBtn" : "#runValuationBtn");
   button.disabled = true;
-  portfolioOutput.textContent = "运行中。这个任务会调用模型和公开数据源，可能需要几十秒。";
+  portfolioOutput.textContent = "任务已提交，后台运行中。页面会自动刷新，不需要一直等待请求返回。";
   try {
     const result = await apiFetch("/api/portfolio/run", {
       method: "POST",
       body: JSON.stringify({ type })
     });
-    showToast(type === "decision" ? "今日操作已生成" : "晚间估值已更新");
+    showToast(type === "decision" ? "今日操作任务已启动" : "晚间估值任务已启动");
     renderPortfolioResult(result);
+    startPortfolioPolling();
   } catch (error) {
     showError(error);
   } finally {
-    button.disabled = false;
+    await loadPortfolio().catch(() => {
+      button.disabled = false;
+    });
+  }
+}
+
+async function cancelPortfolioTask() {
+  if (!confirm("确定要结束当前运行中的虚拟组合任务吗？已经提交的订单和历史记录不会被删除。")) {
+    return;
+  }
+  const result = await apiFetch("/api/portfolio/cancel", { method: "POST" });
+  showToast("运行中任务已结束");
+  renderPortfolioResult(result);
+  stopPortfolioPolling();
+}
+
+function startPortfolioPolling() {
+  if (portfolioPollTimer) {
+    return;
+  }
+  portfolioPollTimer = setInterval(async () => {
+    try {
+      const result = await apiFetch("/api/portfolio");
+      const portfolio = result.portfolio || {};
+      renderPortfolioResult(portfolio);
+      if (!portfolio.scheduler?.inFlight) {
+        stopPortfolioPolling();
+      }
+    } catch (error) {
+      stopPortfolioPolling();
+      showError(error);
+    }
+  }, 5000);
+}
+
+function stopPortfolioPolling() {
+  if (portfolioPollTimer) {
+    clearInterval(portfolioPollTimer);
+    portfolioPollTimer = null;
   }
 }
 
@@ -358,12 +432,12 @@ async function prunePortfolio() {
 }
 
 async function resetPortfolio() {
-  if (!confirm("确定要重置虚拟组合账户吗？历史决策记录会保留，但当前现金和持仓会回到初始本金。")) {
+  if (!confirm("确定要彻底重置虚拟组合吗？这会清空持仓、订单、交易流水、决策日志和估值记录，并恢复初始本金。")) {
     return;
   }
   const result = await apiFetch("/api/portfolio/reset", {
     method: "POST",
-    body: JSON.stringify({ initialCapital: Number(form.elements.portfolioInitialCapital.value || 100000) })
+    body: JSON.stringify({ initialCapital: Number(form.elements.portfolioInitialCapital.value || 100000), clearHistory: true })
   });
   showToast("组合已重置");
   renderPortfolioResult(result);
@@ -372,7 +446,27 @@ async function resetPortfolio() {
 function renderPortfolioResult(result) {
   const portfolio = result.portfolio || result;
   loadStats().catch(showError);
-  setTimeout(() => loadPortfolio().catch(showError), 0);
+  if (portfolio.account) {
+    setText("#portfolioTotalAsset", formatMoney(portfolio.account.totalAsset));
+    setText("#portfolioCash", formatMoney(portfolio.account.cash));
+    setText("#portfolioPositionWeight", `${portfolio.account.positionWeightPct || 0}%`);
+    setText("#portfolioPending", `${formatMoney(Number(portfolio.account.pendingBuyAmount || 0) + Number(portfolio.account.receivableCash || 0))}`);
+    setText("#portfolioPnl", `${formatSigned(portfolio.account.cumulativePnl)} (${formatSigned(portfolio.account.cumulativePnlPct)}%)`);
+    renderOrders(portfolio.activeOrders || []);
+    renderPositions(portfolio.positions || []);
+    renderRuns(portfolio.recentRuns || []);
+    renderTransactions(portfolio.recentTransactions || []);
+    renderEquity(portfolio.recentEquity || []);
+    const inFlight = Boolean(portfolio.scheduler?.inFlight);
+    updatePortfolioTaskButtons(inFlight);
+    if (inFlight) {
+      startPortfolioPolling();
+    } else {
+      stopPortfolioPolling();
+    }
+  } else {
+    setTimeout(() => loadPortfolio().catch(showError), 0);
+  }
   portfolioOutput.textContent = JSON.stringify(portfolio, null, 2);
 }
 
@@ -456,6 +550,13 @@ function formatSigned(value) {
   const number = Number(value || 0);
   const text = number.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
   return number > 0 ? `+${text}` : text;
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("zh-CN", { hour12: false });
 }
 
 function formatNumber(value, digits = 2) {
