@@ -12,6 +12,7 @@ const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 3001);
 const CONFIG_PATH = path.resolve(process.env.CONFIG_PATH || path.join(ROOT, "data", "config.json"));
 const STATS_PATH = path.resolve(process.env.STATS_PATH || path.join(ROOT, "data", "stats.json"));
+const PORTFOLIO_DB_PATH = path.resolve(process.env.PORTFOLIO_DB_PATH || path.join(ROOT, "data", "portfolio-db.json"));
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
 const PUBLIC_DIR = path.join(ROOT, "public");
 const SKILLS_DIR = path.join(ROOT, "skills");
@@ -19,6 +20,8 @@ const STARTED_AT = new Date();
 
 let tenantAccessTokenCache = null;
 const seenEventIds = new Map();
+let portfolioSchedulerTimer = null;
+let portfolioRunInFlight = false;
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
@@ -87,6 +90,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   console.log(`Feishu Fund Assistant listening on http://${HOST}:${PORT}`);
   console.log(`Admin UI: http://127.0.0.1:${PORT}/admin`);
+  startPortfolioScheduler();
 });
 
 async function handleApiRequest(req, res, url) {
@@ -122,6 +126,31 @@ async function handleApiRequest(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/stats") {
     sendJson(res, 200, { ok: true, stats: getRuntimeStats() });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/portfolio") {
+    sendJson(res, 200, { ok: true, portfolio: getPortfolioPublicState() });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/portfolio/run") {
+    const body = await readJsonBody(req);
+    const result = await runPortfolioTask(body.type || "decision", { manual: true });
+    sendJson(res, 200, { ok: true, portfolio: result });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/portfolio/reset") {
+    const body = await readJsonBody(req);
+    const result = resetPortfolioAccount(body.initialCapital);
+    sendJson(res, 200, { ok: true, portfolio: result });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/portfolio/prune") {
+    const result = prunePortfolioDatabase();
+    sendJson(res, 200, { ok: true, portfolio: result });
     return;
   }
 
@@ -173,6 +202,8 @@ async function handleMessageEvent(payload) {
   if (!message?.message_id) {
     return;
   }
+
+  capturePortfolioPushTarget(payload);
 
   let parsedContent = {};
   try {
@@ -392,6 +423,953 @@ async function handleFundQaWorkflow({ message, userText, intent }) {
   const marketSnapshot = needsMarketSnapshot ? await fetchMarketSnapshot() : null;
   const answer = await answerFundQuestionWithModel({ userText, intent, marketSnapshot });
   await replyToMessage(message.message_id, answer, { kind: "answer" });
+}
+
+function startPortfolioScheduler() {
+  if (portfolioSchedulerTimer) {
+    return;
+  }
+
+  portfolioSchedulerTimer = setInterval(() => {
+    checkPortfolioSchedule().catch((error) => {
+      console.error("[portfolio-scheduler-error]", error);
+      recordError(error, { portfolioErrors: 1 });
+    });
+  }, Number(process.env.PORTFOLIO_SCHEDULER_INTERVAL_MS || 30_000));
+
+  setTimeout(() => {
+    checkPortfolioSchedule().catch((error) => {
+      console.error("[portfolio-scheduler-error]", error);
+      recordError(error, { portfolioErrors: 1 });
+    });
+  }, 3000);
+}
+
+async function checkPortfolioSchedule() {
+  const config = getEffectiveConfig();
+  if (!config.portfolioEnabled) {
+    return;
+  }
+
+  const now = getZonedDateTime(config.portfolioTimezone);
+  const dueTasks = [
+    { type: "decision", time: config.portfolioDecisionTime },
+    { type: "valuation", time: config.portfolioReviewTime }
+  ].filter((item) => item.time && item.time === now.hhmm);
+
+  for (const task of dueTasks) {
+    if (!markPortfolioScheduledRun(task.type, now.date)) {
+      continue;
+    }
+    runPortfolioTask(task.type, { manual: false, scheduledDate: now.date }).catch((error) => {
+      console.error("[portfolio-run-error]", error);
+      recordError(error, { portfolioErrors: 1 });
+    });
+  }
+}
+
+function markPortfolioScheduledRun(type, date) {
+  const db = readPortfolioDb();
+  const key = type === "valuation" ? "lastValuationDate" : "lastDecisionDate";
+  db.scheduler = db.scheduler || {};
+  if (db.scheduler[key] === date) {
+    return false;
+  }
+  db.scheduler[key] = date;
+  writePortfolioDb(db);
+  return true;
+}
+
+async function runPortfolioTask(type, options = {}) {
+  const taskType = normalizePortfolioTaskType(type);
+  if (portfolioRunInFlight) {
+    throw new Error("虚拟基金经理已有任务正在运行，请稍后再试。");
+  }
+
+  portfolioRunInFlight = true;
+  const config = getEffectiveConfig();
+  const startedAt = new Date().toISOString();
+  const run = {
+    id: createId("run"),
+    type: taskType,
+    date: getZonedDateTime(config.portfolioTimezone).date,
+    manual: Boolean(options.manual),
+    scheduledDate: options.scheduledDate || "",
+    status: "running",
+    startedAt
+  };
+
+  let db = readPortfolioDb();
+  ensurePortfolioAccount(db, config);
+  db.runs.push(run);
+  writePortfolioDb(db);
+
+  try {
+    updateStats({
+      counters: {
+        portfolioRuns: 1,
+        portfolioDecisionRuns: taskType === "decision" ? 1 : 0,
+        portfolioValuationRuns: taskType === "valuation" ? 1 : 0
+      },
+      last: { lastPortfolioRunAt: startedAt, lastPortfolioRunType: taskType }
+    });
+
+    if (taskType === "decision") {
+      await executePortfolioDecision(db, run, config);
+    } else {
+      await executePortfolioValuation(db, run, config);
+    }
+
+    run.status = "completed";
+    run.completedAt = new Date().toISOString();
+    run.durationMs = Date.parse(run.completedAt) - Date.parse(startedAt);
+    prunePortfolioDb(db, config.portfolioRetentionDays);
+    db.updatedAt = new Date().toISOString();
+    writePortfolioDb(db);
+    await pushPortfolioRunIfConfigured(db, run, config);
+    return getPortfolioPublicState(db);
+  } catch (error) {
+    run.status = "failed";
+    run.error = error.message;
+    run.completedAt = new Date().toISOString();
+    db.updatedAt = run.completedAt;
+    writePortfolioDb(db);
+    recordError(error, { portfolioErrors: 1 });
+    throw error;
+  } finally {
+    portfolioRunInFlight = false;
+  }
+}
+
+async function executePortfolioDecision(db, run, config) {
+  const accountBefore = summarizePortfolioAccount(db.account);
+  const marketSnapshot = await fetchMarketSnapshot();
+  const heldCodes = db.account.positions.map((position) => position.code).filter(Boolean);
+  const heldProfiles = heldCodes.length ? await enrichFunds(heldCodes) : [];
+  const raw = await buildPortfolioDecisionWithModel({
+    account: accountBefore,
+    marketSnapshot,
+    heldProfiles,
+    config
+  });
+  const decision = normalizePortfolioDecision(raw);
+  const profileCodes = decision.actions.map((action) => action.code).filter(Boolean);
+  const actionProfiles = profileCodes.length ? await enrichFunds(profileCodes) : [];
+  const transactions = applyPortfolioActions(db, decision.actions, actionProfiles, run);
+  recalculatePortfolioAccount(db.account);
+
+  run.title = "每日操作决策";
+  run.marketSnapshot = summarizeMarketSnapshot(marketSnapshot);
+  run.accountBefore = accountBefore;
+  run.accountAfter = summarizePortfolioAccount(db.account);
+  run.team = decision.team;
+  run.actions = decision.actions;
+  run.transactions = transactions;
+  run.sources = collectPortfolioSources(marketSnapshot, heldProfiles, actionProfiles, decision);
+  run.rawModelOutput = decision.rawModelOutput;
+  run.card = buildPortfolioDecisionCard({ decision, account: db.account, transactions, run });
+
+  updateStats({
+    counters: { portfolioTransactions: transactions.length },
+    last: { lastPortfolioDecisionAt: new Date().toISOString() }
+  });
+}
+
+async function executePortfolioValuation(db, run, config) {
+  const accountBefore = summarizePortfolioAccount(db.account);
+  const positionsBefore = new Map(db.account.positions.map((position) => [position.code, { ...position }]));
+  const codes = db.account.positions.map((position) => position.code).filter(Boolean);
+  const profiles = codes.length ? await enrichFunds(codes) : [];
+  const profileByCode = new Map(profiles.map((profile) => [profile.code, profile]));
+  const positionUpdates = [];
+
+  for (const position of db.account.positions) {
+    const before = positionsBefore.get(position.code) || {};
+    const profile = profileByCode.get(position.code);
+    const nav = getProfileNav(profile);
+    if (nav && position.units) {
+      position.currentValue = round(position.units * nav, 2);
+      position.lastNav = nav;
+      position.lastNavDate = profile?.snapshotDate || "";
+    } else if (nav && position.lastNav && position.currentValue) {
+      position.currentValue = round(position.currentValue * (nav / position.lastNav), 2);
+      position.lastNav = nav;
+      position.lastNavDate = profile?.snapshotDate || "";
+    }
+    position.name = position.name || profile?.name || "";
+    position.lastValuedAt = new Date().toISOString();
+    positionUpdates.push({
+      code: position.code,
+      name: position.name,
+      beforeValue: round(Number(before.currentValue || 0), 2),
+      afterValue: round(Number(position.currentValue || 0), 2),
+      dayPnl: round(Number(position.currentValue || 0) - Number(before.currentValue || 0), 2),
+      latestNav: nav,
+      navDate: profile?.snapshotDate || "",
+      source: profile?.sources?.[0] || ""
+    });
+  }
+
+  recalculatePortfolioAccount(db.account);
+  const previousEquity = [...db.dailyEquity].reverse().find((item) => item.date !== run.date);
+  const dayPnl = previousEquity ? round(db.account.totalAsset - Number(previousEquity.totalAsset || 0), 2) : 0;
+  db.account.dayPnl = dayPnl;
+  db.dailyEquity.push({
+    id: createId("equity"),
+    date: run.date,
+    createdAt: new Date().toISOString(),
+    totalAsset: db.account.totalAsset,
+    cash: db.account.cash,
+    investedValue: db.account.investedValue,
+    dayPnl,
+    cumulativePnl: db.account.cumulativePnl,
+    cumulativePnlPct: db.account.cumulativePnlPct,
+    positions: db.account.positions.map(summarizePortfolioPosition)
+  });
+
+  const raw = await buildPortfolioValuationWithModel({
+    accountBefore,
+    accountAfter: summarizePortfolioAccount(db.account),
+    positionUpdates,
+    profiles,
+    config
+  });
+  const review = normalizePortfolioReview(raw);
+
+  run.title = "晚间估值复盘";
+  run.accountBefore = accountBefore;
+  run.accountAfter = summarizePortfolioAccount(db.account);
+  run.positionUpdates = positionUpdates;
+  run.sources = collectPortfolioSources(null, profiles, review);
+  run.rawModelOutput = review.rawModelOutput;
+  run.card = buildPortfolioValuationCard({ review, account: db.account, positionUpdates, run });
+
+  updateStats({
+    counters: { portfolioEquitySnapshots: 1 },
+    last: { lastPortfolioValuationAt: new Date().toISOString() }
+  });
+}
+
+async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, config }) {
+  const skillContext = buildSkillContextForIntent({ skillIds: ["fund-portfolio-manager"] }, []);
+  const systemText = [
+    "你是飞书机器人“基金助手”的虚拟基金经理。你每天管理一个教育性虚拟组合，不进行真实交易。",
+    "你的目标不是永远保守，而是在证据足够时敢于出击；但每次动作都必须写清数据来源、风险控制和复盘条件。",
+    "你有一个投委会：市场分析师、题材分析师、基金研究员、组合经理、风控经理、主席。每个角色必须贡献可保存的观点。",
+    "只能基于传入的公开市场快照、基金候选池和当前持仓做判断；不要编造快照中不存在的基金代码、涨跌幅或排名。",
+    "请只返回 JSON，不要 Markdown，不要代码块。",
+    "",
+    skillContext
+  ].join("\n");
+  const userPrompt = [
+    `组合本金：${account.initialCapital} 元`,
+    `当前账户：${JSON.stringify(account, null, 2)}`,
+    `风险风格：${config.portfolioRiskProfile || "balanced"}`,
+    "",
+    "今日公开市场/基金候选快照：",
+    JSON.stringify(summarizeMarketSnapshot(marketSnapshot), null, 2),
+    "",
+    "当前持仓联网资料：",
+    JSON.stringify(heldProfiles || [], null, 2),
+    "",
+    "输出 JSON 结构：",
+    JSON.stringify(
+      {
+        summary: "一句话今日操作手法",
+        marketView: "市场判断和关键数据",
+        team: [
+          { agent: "市场分析师", stance: "正/中/负", reason: "理由", dataBasis: ["数据来源或字段"] },
+          { agent: "题材分析师", stance: "正/中/负", reason: "理由", dataBasis: ["数据来源或字段"] },
+          { agent: "基金研究员", stance: "正/中/负", reason: "理由", dataBasis: ["数据来源或字段"] },
+          { agent: "组合经理", stance: "正/中/负", reason: "理由", dataBasis: ["数据来源或字段"] },
+          { agent: "风控经理", stance: "正/中/负", reason: "理由", dataBasis: ["数据来源或字段"] },
+          { agent: "主席", stance: "正/中/负", reason: "最终拍板理由", dataBasis: ["数据来源或字段"] }
+        ],
+        actions: [
+          {
+            action: "BUY/SELL/HOLD/WATCH",
+            code: "6位基金代码，只有 HOLD 组合现金时可为空",
+            name: "基金名称",
+            amount: 0,
+            targetWeightPct: 0,
+            reason: "为什么今天这么做",
+            dataBasis: ["使用了哪些数据"],
+            riskControl: "止损、复查或减仓触发条件"
+          }
+        ],
+        riskNotes: ["最多3条"],
+        learningNotes: ["这次值得回溯学习的点"],
+        sources: ["数据源 URL 或快照字段名"]
+      },
+      null,
+      2
+    )
+  ].join("\n");
+
+  const text = await callModel({
+    systemText,
+    userPrompt,
+    images: [],
+    maxTokens: Math.min(Number(config.modelMaxOutputTokens || 2800), 3600)
+  });
+  updateStats({
+    counters: { portfolioManagerModelCalls: 1 },
+    last: { lastPortfolioManagerModelAt: new Date().toISOString() }
+  });
+  return text;
+}
+
+async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, positionUpdates, profiles, config }) {
+  const skillContext = buildSkillContextForIntent({ skillIds: ["fund-portfolio-manager"] }, []);
+  const systemText = [
+    "你是飞书机器人“基金助手”的虚拟基金经理，正在做晚间估值复盘。",
+    "请解释今日盈亏、仓位变化和明天观察重点。不要编造传入资料之外的数据。",
+    "请只返回 JSON，不要 Markdown，不要代码块。",
+    "",
+    skillContext
+  ].join("\n");
+  const userPrompt = [
+    "估值前账户：",
+    JSON.stringify(accountBefore, null, 2),
+    "",
+    "估值后账户：",
+    JSON.stringify(accountAfter, null, 2),
+    "",
+    "持仓估值变化：",
+    JSON.stringify(positionUpdates, null, 2),
+    "",
+    "持仓联网资料：",
+    JSON.stringify(profiles || [], null, 2),
+    "",
+    "输出 JSON 结构：",
+    '{"summary":"今日盈亏复盘","reason":"为什么变动","nextWatch":["明天观察点"],"learningNotes":["可回溯学习点"],"sources":["数据源"]}'
+  ].join("\n");
+
+  const text = await callModel({
+    systemText,
+    userPrompt,
+    images: [],
+    maxTokens: Math.min(Number(config.modelMaxOutputTokens || 2800), 1800)
+  });
+  updateStats({
+    counters: { portfolioReviewModelCalls: 1 },
+    last: { lastPortfolioReviewModelAt: new Date().toISOString() }
+  });
+  return text;
+}
+
+function normalizePortfolioDecision(raw) {
+  let parsed = null;
+  try {
+    parsed = parseJsonFromModel(raw);
+  } catch {
+    parsed = {};
+  }
+
+  return {
+    summary: String(parsed.summary || "今日不做强制交易，先保存投委会观察。").trim(),
+    marketView: String(parsed.marketView || "").trim(),
+    team: normalizePortfolioTeam(parsed.team),
+    actions: normalizePortfolioActions(parsed.actions),
+    riskNotes: normalizeStringArray(parsed.riskNotes).slice(0, 5),
+    learningNotes: normalizeStringArray(parsed.learningNotes).slice(0, 5),
+    sources: normalizeStringArray(parsed.sources).slice(0, 20),
+    rawModelOutput: String(raw || "").slice(0, 12000)
+  };
+}
+
+function normalizePortfolioReview(raw) {
+  let parsed = null;
+  try {
+    parsed = parseJsonFromModel(raw);
+  } catch {
+    parsed = {};
+  }
+  return {
+    summary: String(parsed.summary || "今日估值已更新。").trim(),
+    reason: String(parsed.reason || "").trim(),
+    nextWatch: normalizeStringArray(parsed.nextWatch).slice(0, 5),
+    learningNotes: normalizeStringArray(parsed.learningNotes).slice(0, 5),
+    sources: normalizeStringArray(parsed.sources).slice(0, 20),
+    rawModelOutput: String(raw || "").slice(0, 12000)
+  };
+}
+
+function normalizePortfolioTeam(value) {
+  const defaults = ["市场分析师", "题材分析师", "基金研究员", "组合经理", "风控经理", "主席"];
+  const input = Array.isArray(value) ? value : [];
+  const byAgent = new Map(input.map((item) => [String(item?.agent || "").trim(), item]));
+  return defaults.map((agent) => {
+    const item = byAgent.get(agent) || {};
+    return {
+      agent,
+      stance: String(item.stance || "中").trim(),
+      reason: String(item.reason || "暂无明确意见。").trim(),
+      dataBasis: normalizeStringArray(item.dataBasis).slice(0, 5)
+    };
+  });
+}
+
+function normalizePortfolioActions(value) {
+  const input = Array.isArray(value) ? value : [];
+  return input
+    .map((item) => {
+      const action = String(item?.action || "WATCH").trim().toUpperCase();
+      const normalizedAction = ["BUY", "SELL", "HOLD", "WATCH"].includes(action) ? action : "WATCH";
+      const code = String(item?.code || "").match(/^\d{6}$/)?.[0] || "";
+      return {
+        action: normalizedAction,
+        code,
+        name: String(item?.name || "").trim(),
+        amount: Math.max(0, round(Number(item?.amount || 0), 2) || 0),
+        targetWeightPct: round(Number(item?.targetWeightPct || 0), 2) || 0,
+        reason: String(item?.reason || "").trim(),
+        dataBasis: normalizeStringArray(item?.dataBasis).slice(0, 8),
+        riskControl: String(item?.riskControl || "").trim()
+      };
+    })
+    .filter((item) => item.action === "HOLD" || item.action === "WATCH" || item.code);
+}
+
+function applyPortfolioActions(db, actions, profiles, run) {
+  const profileByCode = new Map((profiles || []).map((profile) => [profile.code, profile]));
+  const transactions = [];
+
+  for (const action of actions) {
+    if (action.action === "BUY") {
+      const amount = Math.min(Number(action.amount || 0), Number(db.account.cash || 0));
+      if (!action.code || amount <= 0) {
+        continue;
+      }
+      const profile = profileByCode.get(action.code);
+      const nav = getProfileNav(profile);
+      let position = db.account.positions.find((item) => item.code === action.code);
+      if (!position) {
+        position = {
+          code: action.code,
+          name: action.name || profile?.name || "",
+          units: 0,
+          costAmount: 0,
+          currentValue: 0,
+          realizedPnl: 0,
+          createdAt: new Date().toISOString()
+        };
+        db.account.positions.push(position);
+      }
+      const boughtUnits = nav ? amount / nav : 0;
+      position.name = action.name || position.name || profile?.name || "";
+      position.units = round(Number(position.units || 0) + boughtUnits, 6);
+      position.costAmount = round(Number(position.costAmount || 0) + amount, 2);
+      position.currentValue = nav && position.units ? round(position.units * nav, 2) : round(Number(position.currentValue || 0) + amount, 2);
+      position.lastNav = nav || position.lastNav || null;
+      position.lastNavDate = profile?.snapshotDate || position.lastNavDate || "";
+      position.lastReason = action.reason;
+      position.lastRiskControl = action.riskControl;
+      position.updatedAt = new Date().toISOString();
+      db.account.cash = round(Number(db.account.cash || 0) - amount, 2);
+      transactions.push(recordPortfolioTransaction(db, run, action, amount, "BUY", profile));
+    }
+
+    if (action.action === "SELL") {
+      const position = db.account.positions.find((item) => item.code === action.code);
+      if (!position || Number(position.currentValue || 0) <= 0) {
+        continue;
+      }
+      const amount = Math.min(Number(action.amount || 0), Number(position.currentValue || 0));
+      if (amount <= 0) {
+        continue;
+      }
+      const ratio = amount / Number(position.currentValue || 1);
+      const costReduced = round(Number(position.costAmount || 0) * ratio, 2);
+      position.costAmount = round(Number(position.costAmount || 0) - costReduced, 2);
+      position.currentValue = round(Number(position.currentValue || 0) - amount, 2);
+      position.units = round(Number(position.units || 0) * (1 - ratio), 6);
+      position.realizedPnl = round(Number(position.realizedPnl || 0) + amount - costReduced, 2);
+      position.lastReason = action.reason;
+      position.lastRiskControl = action.riskControl;
+      position.updatedAt = new Date().toISOString();
+      db.account.cash = round(Number(db.account.cash || 0) + amount, 2);
+      transactions.push(recordPortfolioTransaction(db, run, action, amount, "SELL", profileByCode.get(action.code)));
+    }
+  }
+
+  db.account.positions = db.account.positions.filter((position) => Number(position.currentValue || 0) > 0.5);
+  return transactions;
+}
+
+function recordPortfolioTransaction(db, run, action, amount, side, profile) {
+  const transaction = {
+    id: createId("txn"),
+    runId: run.id,
+    date: run.date,
+    createdAt: new Date().toISOString(),
+    side,
+    code: action.code,
+    name: action.name || profile?.name || "",
+    amount: round(amount, 2),
+    reason: action.reason,
+    dataBasis: action.dataBasis,
+    riskControl: action.riskControl,
+    source: profile?.sources?.[0] || ""
+  };
+  db.transactions.push(transaction);
+  return transaction;
+}
+
+async function pushPortfolioRunIfConfigured(db, run, config) {
+  const target = resolvePortfolioPushTarget(config, db);
+  if (!target?.receiveId) {
+    run.push = { ok: false, skipped: true, reason: "未配置飞书推送目标；在飞书里和机器人说一句话后可自动记录 chat_id。" };
+    writePortfolioDb(db);
+    return;
+  }
+
+  try {
+    await sendFeishuMessage(target.receiveId, run.card || "虚拟基金经理任务完成。", {
+      receiveIdType: target.receiveIdType || "chat_id",
+      kind: "portfolio"
+    });
+    run.push = {
+      ok: true,
+      receiveIdType: target.receiveIdType || "chat_id",
+      receiveId: maskSecret(target.receiveId),
+      pushedAt: new Date().toISOString()
+    };
+    updateStats({ counters: { portfolioPushes: 1 }, last: { lastPortfolioPushAt: run.push.pushedAt } });
+    writePortfolioDb(db);
+  } catch (error) {
+    run.push = { ok: false, error: error.message, failedAt: new Date().toISOString() };
+    writePortfolioDb(db);
+    recordError(error, { portfolioPushFailures: 1 });
+  }
+}
+
+function resolvePortfolioPushTarget(config, db) {
+  if (config.portfolioPushReceiveId) {
+    return {
+      receiveId: config.portfolioPushReceiveId,
+      receiveIdType: config.portfolioPushReceiveType || "chat_id"
+    };
+  }
+  if (config.portfolioAutoBindLastChat && db.autoPushTarget?.receiveId) {
+    return db.autoPushTarget;
+  }
+  return null;
+}
+
+function capturePortfolioPushTarget(payload) {
+  const message = payload?.event?.message;
+  const chatId = message?.chat_id || "";
+  if (!chatId) {
+    return;
+  }
+
+  const config = getEffectiveConfig();
+  const now = new Date().toISOString();
+  const db = readPortfolioDb();
+  db.pushTargets = Array.isArray(db.pushTargets) ? db.pushTargets : [];
+  const existing = db.pushTargets.find((target) => target.receiveId === chatId && target.receiveIdType === "chat_id");
+  const target = existing || {
+    receiveId: chatId,
+    receiveIdType: "chat_id",
+    label: message.chat_type || "feishu_chat",
+    firstSeenAt: now
+  };
+  target.lastSeenAt = now;
+  target.messageId = message.message_id || "";
+  if (!existing) {
+    db.pushTargets.push(target);
+  }
+  if (config.portfolioAutoBindLastChat && !config.portfolioPushReceiveId) {
+    db.autoPushTarget = {
+      receiveId: chatId,
+      receiveIdType: "chat_id",
+      label: target.label,
+      updatedAt: now
+    };
+  }
+  db.updatedAt = now;
+  writePortfolioDb(db);
+}
+
+function buildPortfolioDecisionCard({ decision, account, transactions, run }) {
+  const actionLines = decision.actions.length
+    ? decision.actions.map((action) => {
+        const name = [action.code, action.name].filter(Boolean).join(" ");
+        const amount = action.amount ? ` ${action.amount}元` : "";
+        return `${action.action} ${name}${amount}：${action.reason || "见投委会意见"}`;
+      })
+    : ["今日没有生成买卖动作。"];
+  const teamLines = decision.team.map((item) => `${item.agent} ${item.stance}：${item.reason}`);
+  const transactionLines = transactions.length
+    ? transactions.map((item) => `${item.side} ${item.code} ${item.name} ${item.amount}元`)
+    : ["无实际账本变动。"];
+
+  return [
+    `虚拟基金经理日报 ${run.date}`,
+    "",
+    `今日手法：${decision.summary}`,
+    decision.marketView ? `市场判断：${decision.marketView}` : "",
+    "",
+    "投委会意见：",
+    ...teamLines,
+    "",
+    "今日操作：",
+    ...actionLines,
+    "",
+    "账本变动：",
+    ...transactionLines,
+    "",
+    `当前资产：${account.totalAsset}元，现金 ${account.cash}元，仓位 ${account.positionWeightPct}%`,
+    decision.riskNotes.length ? ["", "风险控制：", ...decision.riskNotes].join("\n") : "",
+    decision.learningNotes.length ? ["", "回溯学习点：", ...decision.learningNotes].join("\n") : "",
+    "",
+    `数据来源：${(run.sources || []).slice(0, 6).join("；") || "公开市场快照与基金公开资料"}`
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildPortfolioValuationCard({ review, account, positionUpdates, run }) {
+  const updateLines = positionUpdates.length
+    ? positionUpdates.map((item) => `${item.code} ${item.name}：${item.beforeValue} -> ${item.afterValue}，今日 ${formatSignedNumber(item.dayPnl)}元`)
+    : ["当前没有持仓，净值复盘只更新现金账户。"];
+
+  return [
+    `虚拟基金经理晚间复盘 ${run.date}`,
+    "",
+    `复盘结论：${review.summary}`,
+    review.reason ? `原因：${review.reason}` : "",
+    "",
+    "持仓估值：",
+    ...updateLines,
+    "",
+    `总资产：${account.totalAsset}元`,
+    `今日盈亏：${formatSignedNumber(account.dayPnl)}元`,
+    `累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（${formatSignedNumber(account.cumulativePnlPct)}%）`,
+    `现金：${account.cash}元，仓位：${account.positionWeightPct}%`,
+    review.nextWatch.length ? ["", "明日观察：", ...review.nextWatch].join("\n") : "",
+    review.learningNotes.length ? ["", "回溯学习点：", ...review.learningNotes].join("\n") : "",
+    "",
+    `数据来源：${(run.sources || []).slice(0, 6).join("；") || "基金公开净值与持仓资料"}`
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function getPortfolioPublicState(db = readPortfolioDb()) {
+  const config = getEffectiveConfig();
+  ensurePortfolioAccount(db, config);
+  const target = resolvePortfolioPushTarget(config, db);
+  return {
+    dbPath: PORTFOLIO_DB_PATH,
+    enabled: Boolean(config.portfolioEnabled),
+    retentionDays: Number(config.portfolioRetentionDays || 90),
+    scheduler: {
+      decisionTime: config.portfolioDecisionTime,
+      reviewTime: config.portfolioReviewTime,
+      timezone: config.portfolioTimezone,
+      inFlight: portfolioRunInFlight
+    },
+    pushTarget: target
+      ? {
+          receiveIdType: target.receiveIdType || "chat_id",
+          receiveIdMasked: maskSecret(target.receiveId),
+          label: target.label || ""
+        }
+      : null,
+    knownPushTargets: (db.pushTargets || []).slice(-10).reverse().map((target) => ({
+      receiveIdType: target.receiveIdType,
+      receiveIdMasked: maskSecret(target.receiveId),
+      label: target.label,
+      firstSeenAt: target.firstSeenAt,
+      lastSeenAt: target.lastSeenAt
+    })),
+    account: summarizePortfolioAccount(db.account),
+    positions: db.account.positions.map(summarizePortfolioPosition),
+    recentRuns: (db.runs || []).slice(-20).reverse().map(summarizePortfolioRun),
+    recentTransactions: (db.transactions || []).slice(-30).reverse(),
+    recentEquity: (db.dailyEquity || []).slice(-30).reverse()
+  };
+}
+
+function summarizePortfolioRun(run) {
+  return {
+    id: run.id,
+    type: run.type,
+    title: run.title || "",
+    date: run.date,
+    status: run.status,
+    manual: run.manual,
+    startedAt: run.startedAt,
+    completedAt: run.completedAt,
+    durationMs: run.durationMs,
+    summary: run.type === "decision" ? run?.actions?.map((item) => `${item.action} ${item.code || ""} ${item.name || ""}`).join("；") : run?.card?.split("\n")?.[2] || "",
+    card: run.card || "",
+    sources: run.sources || [],
+    push: run.push || null,
+    error: run.error || ""
+  };
+}
+
+function resetPortfolioAccount(initialCapital) {
+  const config = getEffectiveConfig();
+  const db = readPortfolioDb();
+  db.account = createPortfolioAccount({
+    ...config,
+    portfolioInitialCapital: Number(initialCapital || config.portfolioInitialCapital || 100000)
+  });
+  db.transactions.push({
+    id: createId("txn"),
+    side: "RESET",
+    date: getZonedDateTime(config.portfolioTimezone).date,
+    createdAt: new Date().toISOString(),
+    amount: db.account.initialCapital,
+    reason: "管理后台重置虚拟组合。"
+  });
+  db.updatedAt = new Date().toISOString();
+  writePortfolioDb(db);
+  updateStats({ counters: { portfolioResets: 1 }, last: { lastPortfolioResetAt: db.updatedAt } });
+  return getPortfolioPublicState(db);
+}
+
+function prunePortfolioDatabase() {
+  const config = getEffectiveConfig();
+  const db = readPortfolioDb();
+  const removed = prunePortfolioDb(db, config.portfolioRetentionDays);
+  db.updatedAt = new Date().toISOString();
+  writePortfolioDb(db);
+  updateStats({
+    counters: { portfolioPruneRuns: 1, portfolioPrunedItems: removed },
+    last: { lastPortfolioPruneAt: db.updatedAt }
+  });
+  return getPortfolioPublicState(db);
+}
+
+function prunePortfolioDb(db, retentionDays) {
+  const days = Math.max(7, Number(retentionDays || 90));
+  const cutoff = Date.now() - days * 86400000;
+  let removed = 0;
+  for (const key of ["runs", "transactions", "dailyEquity"]) {
+    const before = Array.isArray(db[key]) ? db[key].length : 0;
+    db[key] = keepRecentPortfolioItems(db[key], cutoff, 10);
+    removed += before - db[key].length;
+  }
+  return removed;
+}
+
+function keepRecentPortfolioItems(items, cutoff, keepLatest) {
+  const input = Array.isArray(items) ? items : [];
+  const tail = new Set(input.slice(-keepLatest).map((item) => item.id || item.startedAt || item.createdAt));
+  return input.filter((item) => {
+    const key = item.id || item.startedAt || item.createdAt;
+    if (tail.has(key)) return true;
+    const time = Date.parse(item.completedAt || item.createdAt || item.startedAt || `${item.date || ""}T00:00:00Z`);
+    return !Number.isFinite(time) || time >= cutoff;
+  });
+}
+
+function readPortfolioDb() {
+  return normalizePortfolioDb(safeReadJson(PORTFOLIO_DB_PATH));
+}
+
+function writePortfolioDb(db) {
+  ensureDir(path.dirname(PORTFOLIO_DB_PATH));
+  fs.writeFileSync(PORTFOLIO_DB_PATH, `${JSON.stringify(db, null, 2)}\n`, "utf8");
+}
+
+function normalizePortfolioDb(value) {
+  const config = getEffectiveConfig();
+  const now = new Date().toISOString();
+  const db = {
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    account: createPortfolioAccount(config),
+    pushTargets: [],
+    runs: [],
+    transactions: [],
+    dailyEquity: [],
+    scheduler: {},
+    ...value
+  };
+  db.pushTargets = Array.isArray(db.pushTargets) ? db.pushTargets : [];
+  db.runs = Array.isArray(db.runs) ? db.runs : [];
+  db.transactions = Array.isArray(db.transactions) ? db.transactions : [];
+  db.dailyEquity = Array.isArray(db.dailyEquity) ? db.dailyEquity : [];
+  db.scheduler = db.scheduler && typeof db.scheduler === "object" ? db.scheduler : {};
+  ensurePortfolioAccount(db, config);
+  return db;
+}
+
+function ensurePortfolioAccount(db, config = getEffectiveConfig()) {
+  if (!db.account || typeof db.account !== "object") {
+    db.account = createPortfolioAccount(config);
+  }
+  db.account.initialCapital = Number(db.account.initialCapital || config.portfolioInitialCapital || 100000);
+  db.account.cash = round(Number(db.account.cash ?? db.account.initialCapital), 2);
+  db.account.positions = Array.isArray(db.account.positions) ? db.account.positions.map(normalizePortfolioPosition).filter(Boolean) : [];
+  recalculatePortfolioAccount(db.account);
+  return db.account;
+}
+
+function createPortfolioAccount(config) {
+  const initialCapital = round(Number(config.portfolioInitialCapital || 100000), 2);
+  return {
+    initialCapital,
+    cash: initialCapital,
+    positions: [],
+    investedValue: 0,
+    totalAsset: initialCapital,
+    positionWeightPct: 0,
+    dayPnl: 0,
+    cumulativePnl: 0,
+    cumulativePnlPct: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function normalizePortfolioPosition(position) {
+  if (!position?.code) return null;
+  return {
+    ...position,
+    code: String(position.code || ""),
+    name: String(position.name || ""),
+    units: round(Number(position.units || 0), 6),
+    costAmount: round(Number(position.costAmount || 0), 2),
+    currentValue: round(Number(position.currentValue || 0), 2),
+    realizedPnl: round(Number(position.realizedPnl || 0), 2),
+    lastNav: position.lastNav ? Number(position.lastNav) : null
+  };
+}
+
+function recalculatePortfolioAccount(account) {
+  account.cash = round(Number(account.cash || 0), 2);
+  account.investedValue = round(account.positions.reduce((sum, position) => sum + Number(position.currentValue || 0), 0), 2);
+  account.totalAsset = round(account.cash + account.investedValue, 2);
+  account.positionWeightPct = account.totalAsset > 0 ? round((account.investedValue / account.totalAsset) * 100, 2) : 0;
+  account.cumulativePnl = round(account.totalAsset - Number(account.initialCapital || 0), 2);
+  account.cumulativePnlPct = account.initialCapital > 0 ? round((account.cumulativePnl / account.initialCapital) * 100, 2) : 0;
+  account.positions = account.positions.map((position) => ({
+    ...position,
+    weightPct: account.totalAsset > 0 ? round((Number(position.currentValue || 0) / account.totalAsset) * 100, 2) : 0,
+    unrealizedPnl: round(Number(position.currentValue || 0) - Number(position.costAmount || 0), 2),
+    unrealizedPnlPct: position.costAmount > 0
+      ? round(((Number(position.currentValue || 0) - Number(position.costAmount || 0)) / Number(position.costAmount || 1)) * 100, 2)
+      : 0
+  }));
+  account.updatedAt = new Date().toISOString();
+}
+
+function summarizePortfolioAccount(account) {
+  return {
+    initialCapital: round(Number(account.initialCapital || 0), 2),
+    cash: round(Number(account.cash || 0), 2),
+    investedValue: round(Number(account.investedValue || 0), 2),
+    totalAsset: round(Number(account.totalAsset || 0), 2),
+    positionWeightPct: round(Number(account.positionWeightPct || 0), 2),
+    dayPnl: round(Number(account.dayPnl || 0), 2),
+    cumulativePnl: round(Number(account.cumulativePnl || 0), 2),
+    cumulativePnlPct: round(Number(account.cumulativePnlPct || 0), 2),
+    positions: account.positions.map(summarizePortfolioPosition)
+  };
+}
+
+function summarizePortfolioPosition(position) {
+  return {
+    code: position.code,
+    name: position.name,
+    currentValue: round(Number(position.currentValue || 0), 2),
+    costAmount: round(Number(position.costAmount || 0), 2),
+    units: round(Number(position.units || 0), 6),
+    weightPct: round(Number(position.weightPct || 0), 2),
+    lastNav: position.lastNav || null,
+    lastNavDate: position.lastNavDate || "",
+    unrealizedPnl: round(Number(position.unrealizedPnl || 0), 2),
+    unrealizedPnlPct: round(Number(position.unrealizedPnlPct || 0), 2),
+    lastReason: position.lastReason || "",
+    lastRiskControl: position.lastRiskControl || ""
+  };
+}
+
+function summarizeMarketSnapshot(snapshot) {
+  if (!snapshot) return null;
+  return {
+    fetchedAt: snapshot.fetchedAt,
+    note: snapshot.note,
+    themes: {
+      conceptBoards: (snapshot.themes?.conceptBoards || []).slice(0, 10),
+      industryBoards: (snapshot.themes?.industryBoards || []).slice(0, 10)
+    },
+    fundCandidates: {
+      stockFunds: (snapshot.fundCandidates?.stockFunds || []).slice(0, 8),
+      hybridFunds: (snapshot.fundCandidates?.hybridFunds || []).slice(0, 8),
+      indexFunds: (snapshot.fundCandidates?.indexFunds || []).slice(0, 8),
+      qdiiFunds: (snapshot.fundCandidates?.qdiiFunds || []).slice(0, 8)
+    },
+    errors: snapshot.errors || [],
+    sources: snapshot.sources || []
+  };
+}
+
+function collectPortfolioSources(...items) {
+  const sources = [];
+  for (const item of items.flat(Infinity)) {
+    if (!item) continue;
+    if (Array.isArray(item.sources)) sources.push(...item.sources);
+    if (Array.isArray(item.source)) sources.push(...item.source);
+    if (typeof item.source === "string") sources.push(item.source);
+  }
+  return [...new Set(sources.map(String).filter(Boolean))].slice(0, 30);
+}
+
+function getProfileNav(profile) {
+  return toNumber(profile?.unitNav) || toNumber(profile?.estimatedNav) || null;
+}
+
+function normalizeStringArray(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item || "").trim()).filter(Boolean);
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
+}
+
+function normalizePortfolioTaskType(value) {
+  const type = String(value || "decision").toLowerCase();
+  if (["decision", "valuation"].includes(type)) return type;
+  throw new Error("未知虚拟基金经理任务类型。");
+}
+
+function getZonedDateTime(timeZone = "Asia/Shanghai") {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  })
+    .formatToParts(new Date())
+    .reduce((acc, part) => {
+      acc[part.type] = part.value;
+      return acc;
+    }, {});
+  const hour = parts.hour === "24" ? "00" : parts.hour;
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    hhmm: `${hour}:${parts.minute}`,
+    timeZone
+  };
+}
+
+function formatSignedNumber(value) {
+  const number = round(Number(value || 0), 2);
+  return number > 0 ? `+${number}` : String(number);
+}
+
+function createId(prefix) {
+  return `${prefix}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
 }
 
 async function extractFundFactsWithModel({ images, userText, messageType }) {
@@ -1580,6 +2558,44 @@ async function replyToMessage(messageId, text, options = {}) {
   });
 }
 
+async function sendFeishuMessage(receiveId, text, options = {}) {
+  const config = getEffectiveConfig();
+  const token = await getTenantAccessToken(config);
+  const receiveIdType = options.receiveIdType || "chat_id";
+  const url = new URL("/open-apis/im/v1/messages", config.feishuBaseUrl);
+  url.searchParams.set("receive_id_type", receiveIdType);
+  const payload = {
+    receive_id: receiveId,
+    ...buildFeishuReplyPayload(text, options)
+  };
+
+  try {
+    await postJson(url, payload, { Authorization: `Bearer ${token}` });
+  } catch (error) {
+    if (payload.msg_type === "interactive") {
+      await postJson(
+        url,
+        {
+          receive_id: receiveId,
+          msg_type: "text",
+          content: JSON.stringify({ text: normalizeFeishuText(text) })
+        },
+        { Authorization: `Bearer ${token}` }
+      );
+    } else {
+      throw error;
+    }
+  }
+
+  updateStats({
+    counters: { proactiveRepliesSent: 1 },
+    last: {
+      lastProactiveReplyAt: new Date().toISOString(),
+      lastProactiveReplyType: options.kind || "reply"
+    }
+  });
+}
+
 function buildFeishuReplyPayload(text, options = {}) {
   const config = getEffectiveConfig();
   const kind = options.kind || "reply";
@@ -1646,6 +2662,7 @@ function getCardMeta(kind) {
   const meta = {
     progress: { template: "blue", title: "🔎 基金助手正在处理" },
     answer: { template: "turquoise", title: "📊 基金分析完成" },
+    portfolio: { template: "green", title: "🧭 虚拟基金经理" },
     error: { template: "red", title: "⚠️ 分析遇到问题" },
     noContent: { template: "yellow", title: "📷 请发送基金截图" },
     reply: { template: "wathet", title: "基金助手" }
@@ -1754,13 +2771,42 @@ function getEffectiveConfig() {
     modelWireApi: process.env.MODEL_WIRE_API || codexDefaults.modelWireApi || "responses",
     modelReasoningEffort: process.env.MODEL_REASONING_EFFORT || codexDefaults.modelReasoningEffort || "high",
     modelMaxOutputTokens: Number(process.env.MODEL_MAX_OUTPUT_TOKENS || 2800),
-    replyMaxChars: Number(process.env.FEISHU_REPLY_MAX_CHARS || 7000)
+    replyMaxChars: Number(process.env.FEISHU_REPLY_MAX_CHARS || 7000),
+    portfolioEnabled: parseBoolean(process.env.PORTFOLIO_ENABLED, false),
+    portfolioInitialCapital: Number(process.env.PORTFOLIO_INITIAL_CAPITAL || 100000),
+    portfolioDecisionTime: process.env.PORTFOLIO_DECISION_TIME || "14:20",
+    portfolioReviewTime: process.env.PORTFOLIO_REVIEW_TIME || "21:30",
+    portfolioTimezone: process.env.PORTFOLIO_TIMEZONE || "Asia/Shanghai",
+    portfolioRetentionDays: Number(process.env.PORTFOLIO_RETENTION_DAYS || 90),
+    portfolioPushReceiveId: process.env.PORTFOLIO_PUSH_RECEIVE_ID || "",
+    portfolioPushReceiveType: process.env.PORTFOLIO_PUSH_RECEIVE_TYPE || "chat_id",
+    portfolioAutoBindLastChat: parseBoolean(process.env.PORTFOLIO_AUTO_BIND_LAST_CHAT, true),
+    portfolioRiskProfile: process.env.PORTFOLIO_RISK_PROFILE || "balanced"
   };
 
-  return {
+  return normalizeEffectiveConfig({
     ...envConfig,
     ...safeReadJson(CONFIG_PATH)
-  };
+  });
+}
+
+function normalizeEffectiveConfig(config) {
+  const next = { ...config };
+  next.modelWireApi = normalizeWireApi(next.modelWireApi || "responses");
+  next.modelReasoningEffort = normalizeReasoningEffort(next.modelReasoningEffort) || "high";
+  next.modelMaxOutputTokens = Number(next.modelMaxOutputTokens || 2800);
+  next.replyMaxChars = Number(next.replyMaxChars || 7000);
+  next.portfolioEnabled = parseBoolean(next.portfolioEnabled, false);
+  next.portfolioInitialCapital = Math.max(1000, Number(next.portfolioInitialCapital || 100000));
+  next.portfolioDecisionTime = normalizeClockTime(next.portfolioDecisionTime, "14:20");
+  next.portfolioReviewTime = normalizeClockTime(next.portfolioReviewTime, "21:30");
+  next.portfolioTimezone = String(next.portfolioTimezone || "Asia/Shanghai").trim() || "Asia/Shanghai";
+  next.portfolioRetentionDays = Math.max(7, Math.min(3650, Number(next.portfolioRetentionDays || 90)));
+  next.portfolioPushReceiveId = String(next.portfolioPushReceiveId || "").trim();
+  next.portfolioPushReceiveType = String(next.portfolioPushReceiveType || "chat_id").trim() || "chat_id";
+  next.portfolioAutoBindLastChat = parseBoolean(next.portfolioAutoBindLastChat, true);
+  next.portfolioRiskProfile = String(next.portfolioRiskProfile || "balanced").trim() || "balanced";
+  return next;
 }
 
 function getPublicConfig(config = getEffectiveConfig()) {
@@ -1776,7 +2822,17 @@ function getPublicConfig(config = getEffectiveConfig()) {
       modelWireApi: normalizeWireApi(config.modelWireApi),
       modelReasoningEffort: config.modelReasoningEffort || "high",
       modelMaxOutputTokens: Number(config.modelMaxOutputTokens || 2800),
-      replyMaxChars: Number(config.replyMaxChars || 7000)
+      replyMaxChars: Number(config.replyMaxChars || 7000),
+      portfolioEnabled: String(Boolean(config.portfolioEnabled)),
+      portfolioInitialCapital: Number(config.portfolioInitialCapital || 100000),
+      portfolioDecisionTime: config.portfolioDecisionTime || "14:20",
+      portfolioReviewTime: config.portfolioReviewTime || "21:30",
+      portfolioTimezone: config.portfolioTimezone || "Asia/Shanghai",
+      portfolioRetentionDays: Number(config.portfolioRetentionDays || 90),
+      portfolioPushReceiveId: config.portfolioPushReceiveId || "",
+      portfolioPushReceiveType: config.portfolioPushReceiveType || "chat_id",
+      portfolioAutoBindLastChat: String(Boolean(config.portfolioAutoBindLastChat)),
+      portfolioRiskProfile: config.portfolioRiskProfile || "balanced"
     },
     secrets: {
       feishuAppSecret: Boolean(config.feishuAppSecret),
@@ -1803,9 +2859,16 @@ function saveConfigPatch(patch) {
     "modelBaseUrl",
     "modelName",
     "modelWireApi",
-    "modelReasoningEffort"
+    "modelReasoningEffort",
+    "portfolioDecisionTime",
+    "portfolioReviewTime",
+    "portfolioTimezone",
+    "portfolioPushReceiveId",
+    "portfolioPushReceiveType",
+    "portfolioRiskProfile"
   ];
-  const numericFields = ["modelMaxOutputTokens", "replyMaxChars"];
+  const numericFields = ["modelMaxOutputTokens", "replyMaxChars", "portfolioInitialCapital", "portfolioRetentionDays"];
+  const booleanFields = ["portfolioEnabled", "portfolioAutoBindLastChat"];
   const secretFields = ["feishuAppSecret", "feishuVerificationToken", "feishuEncryptKey", "modelApiKey"];
 
   for (const field of textFields) {
@@ -1832,7 +2895,14 @@ function saveConfigPatch(patch) {
     }
   }
 
+  for (const field of booleanFields) {
+    if (Object.hasOwn(patch, field)) {
+      next[field] = parseBoolean(patch[field], false);
+    }
+  }
+
   next.modelWireApi = normalizeWireApi(next.modelWireApi || "responses");
+  Object.assign(next, normalizeEffectiveConfig(next));
   ensureDir(path.dirname(CONFIG_PATH));
   fs.writeFileSync(CONFIG_PATH, `${JSON.stringify(next, null, 2)}\n`, "utf8");
   return getEffectiveConfig();
@@ -1887,10 +2957,24 @@ function getDefaultStats() {
       modelCalls: 0,
       modelFailures: 0,
       repliesSent: 0,
+      proactiveRepliesSent: 0,
       progressReplies: 0,
       answersSent: 0,
       errorReplies: 0,
       replyFailures: 0,
+      portfolioRuns: 0,
+      portfolioDecisionRuns: 0,
+      portfolioValuationRuns: 0,
+      portfolioManagerModelCalls: 0,
+      portfolioReviewModelCalls: 0,
+      portfolioTransactions: 0,
+      portfolioEquitySnapshots: 0,
+      portfolioPushes: 0,
+      portfolioPushFailures: 0,
+      portfolioPruneRuns: 0,
+      portfolioPrunedItems: 0,
+      portfolioResets: 0,
+      portfolioErrors: 0,
       errors: 0,
       modelTests: 0,
       feishuTests: 0
@@ -2622,6 +3706,25 @@ function normalizeReasoningEffort(value) {
   if (["xhigh", "extra_high", "extra"].includes(effort)) return "xhigh";
   if (["minimal", "low", "medium", "high"].includes(effort)) return effort;
   return "high";
+}
+
+function normalizeClockTime(value, fallback) {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return fallback;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function parseBoolean(value, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (value === undefined || value === null || value === "") return fallback;
+  const text = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on", "enabled", "启用"].includes(text)) return true;
+  if (["0", "false", "no", "off", "disabled", "停用"].includes(text)) return false;
+  return fallback;
 }
 
 function wasSeenRecently(eventId) {

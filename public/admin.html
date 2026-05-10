@@ -16,11 +16,12 @@
             <p>飞书基金助手</p>
           </div>
         </div>
-        <nav class="nav">
-          <a href="#config" class="active">配置</a>
-          <a href="#runtime">运行</a>
-          <a href="#tests">测试</a>
-          <a href="#skills">Skills</a>
+        <nav class="nav" aria-label="管理导航">
+          <button type="button" class="active" data-tab="config">配置</button>
+          <button type="button" data-tab="runtime">运行</button>
+          <button type="button" data-tab="portfolio">虚拟组合</button>
+          <button type="button" data-tab="tests">测试</button>
+          <button type="button" data-tab="skills">Skills</button>
         </nav>
       </aside>
 
@@ -40,154 +41,290 @@
           </div>
         </section>
 
-        <section id="config" class="panel">
-          <div class="panel-head">
-            <h2>运行配置</h2>
-            <div class="status-row">
-              <span id="modelStatus" class="badge">模型未检查</span>
-              <span id="feishuStatus" class="badge">飞书未检查</span>
-            </div>
-          </div>
-
-          <form id="configForm">
-            <div class="form-section">
-              <h3>模型</h3>
-              <div class="grid two">
-                <label>
-                  <span>Base URL</span>
-                  <input name="modelBaseUrl" type="url" placeholder="https://api.openai.com/v1" />
-                </label>
-                <label>
-                  <span>Model</span>
-                  <input name="modelName" type="text" placeholder="gpt-5.5" />
-                </label>
-                <label>
-                  <span>API Key</span>
-                  <input name="modelApiKey" type="password" autocomplete="new-password" data-secret="modelApiKey" />
-                  <small id="modelApiKeyHint"></small>
-                </label>
-                <label>
-                  <span>Wire API</span>
-                  <select name="modelWireApi">
-                    <option value="responses">Responses</option>
-                    <option value="chat_completions">Chat Completions</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Reasoning</span>
-                  <select name="modelReasoningEffort">
-                    <option value="minimal">minimal</option>
-                    <option value="low">low</option>
-                    <option value="medium">medium</option>
-                    <option value="high">high</option>
-                    <option value="xhigh">extra high</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Max Output Tokens</span>
-                  <input name="modelMaxOutputTokens" type="number" min="200" max="8000" step="100" />
-                </label>
+        <section class="tab-panel active" data-panel="config">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>运行配置</h2>
+              <div class="status-row">
+                <span id="modelStatus" class="badge">模型未检查</span>
+                <span id="feishuStatus" class="badge">飞书未检查</span>
               </div>
             </div>
 
-            <div class="form-section">
-              <h3>飞书</h3>
-              <div class="grid two">
-                <label>
-                  <span>Feishu Base URL</span>
-                  <input name="feishuBaseUrl" type="url" placeholder="https://open.feishu.cn" />
-                </label>
-                <label>
-                  <span>App ID</span>
-                  <input name="feishuAppId" type="text" placeholder="cli_xxx" />
-                </label>
-                <label>
-                  <span>App Secret</span>
-                  <input name="feishuAppSecret" type="password" autocomplete="new-password" data-secret="feishuAppSecret" />
-                  <small id="feishuAppSecretHint"></small>
-                </label>
-                <label>
-                  <span>Verification Token</span>
-                  <input name="feishuVerificationToken" type="password" autocomplete="new-password" data-secret="feishuVerificationToken" />
-                  <small id="feishuVerificationTokenHint"></small>
-                </label>
-                <label>
-                  <span>Encrypt Key</span>
-                  <input name="feishuEncryptKey" type="password" autocomplete="new-password" data-secret="feishuEncryptKey" />
-                  <small id="feishuEncryptKeyHint"></small>
-                </label>
-                <label>
-                  <span>Reply Max Chars</span>
-                  <input name="replyMaxChars" type="number" min="1000" max="20000" step="500" />
-                </label>
+            <form id="configForm">
+              <div class="form-section">
+                <h3>模型</h3>
+                <div class="grid two">
+                  <label>
+                    <span>Base URL</span>
+                    <input name="modelBaseUrl" type="url" placeholder="https://api.openai.com/v1" />
+                  </label>
+                  <label>
+                    <span>Model</span>
+                    <input name="modelName" type="text" placeholder="gpt-5.5" />
+                  </label>
+                  <label>
+                    <span>API Key</span>
+                    <input name="modelApiKey" type="password" autocomplete="new-password" data-secret="modelApiKey" />
+                    <small id="modelApiKeyHint"></small>
+                  </label>
+                  <label>
+                    <span>Wire API</span>
+                    <select name="modelWireApi">
+                      <option value="responses">Responses</option>
+                      <option value="chat_completions">Chat Completions</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Reasoning</span>
+                    <select name="modelReasoningEffort">
+                      <option value="minimal">minimal</option>
+                      <option value="low">low</option>
+                      <option value="medium">medium</option>
+                      <option value="high">high</option>
+                      <option value="xhigh">extra high</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Max Output Tokens</span>
+                    <input name="modelMaxOutputTokens" type="number" min="200" max="8000" step="100" />
+                  </label>
+                </div>
+              </div>
+
+              <div class="form-section">
+                <h3>飞书</h3>
+                <div class="grid two">
+                  <label>
+                    <span>Feishu Base URL</span>
+                    <input name="feishuBaseUrl" type="url" placeholder="https://open.feishu.cn" />
+                  </label>
+                  <label>
+                    <span>App ID</span>
+                    <input name="feishuAppId" type="text" placeholder="cli_xxx" />
+                  </label>
+                  <label>
+                    <span>App Secret</span>
+                    <input name="feishuAppSecret" type="password" autocomplete="new-password" data-secret="feishuAppSecret" />
+                    <small id="feishuAppSecretHint"></small>
+                  </label>
+                  <label>
+                    <span>Verification Token</span>
+                    <input name="feishuVerificationToken" type="password" autocomplete="new-password" data-secret="feishuVerificationToken" />
+                    <small id="feishuVerificationTokenHint"></small>
+                  </label>
+                  <label>
+                    <span>Encrypt Key</span>
+                    <input name="feishuEncryptKey" type="password" autocomplete="new-password" data-secret="feishuEncryptKey" />
+                    <small id="feishuEncryptKeyHint"></small>
+                  </label>
+                  <label>
+                    <span>Reply Max Chars</span>
+                    <input name="replyMaxChars" type="number" min="1000" max="20000" step="500" />
+                  </label>
+                </div>
+              </div>
+
+              <div class="form-section">
+                <h3>虚拟基金经理</h3>
+                <div class="grid two">
+                  <label>
+                    <span>启用每日自动运行</span>
+                    <select name="portfolioEnabled">
+                      <option value="false">停用</option>
+                      <option value="true">启用</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>初始本金</span>
+                    <input name="portfolioInitialCapital" type="number" min="1000" step="1000" />
+                  </label>
+                  <label>
+                    <span>决策时间</span>
+                    <input name="portfolioDecisionTime" type="time" />
+                  </label>
+                  <label>
+                    <span>复盘时间</span>
+                    <input name="portfolioReviewTime" type="time" />
+                  </label>
+                  <label>
+                    <span>时区</span>
+                    <input name="portfolioTimezone" type="text" placeholder="Asia/Shanghai" />
+                  </label>
+                  <label>
+                    <span>数据保留天数</span>
+                    <input name="portfolioRetentionDays" type="number" min="7" max="3650" step="1" />
+                  </label>
+                  <label>
+                    <span>主动推送 Receive ID</span>
+                    <input name="portfolioPushReceiveId" type="text" placeholder="可留空，和机器人聊天后自动绑定 chat_id" />
+                  </label>
+                  <label>
+                    <span>Receive ID Type</span>
+                    <select name="portfolioPushReceiveType">
+                      <option value="chat_id">chat_id</option>
+                      <option value="open_id">open_id</option>
+                      <option value="user_id">user_id</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>自动绑定最近聊天</span>
+                    <select name="portfolioAutoBindLastChat">
+                      <option value="true">启用</option>
+                      <option value="false">停用</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>组合风格</span>
+                    <select name="portfolioRiskProfile">
+                      <option value="balanced">均衡</option>
+                      <option value="aggressive">进攻</option>
+                      <option value="conservative">稳健</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div class="actions">
+                <button type="submit">保存配置</button>
+                <button id="reloadBtn" type="button" class="secondary">重新加载</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section class="tab-panel" data-panel="runtime">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>运行情况</h2>
+              <button id="refreshStatsBtn" type="button" class="secondary">刷新</button>
+            </div>
+            <div class="metric-grid">
+              <div class="metric"><span>对话数</span><strong id="statConversations">0</strong></div>
+              <div class="metric"><span>收到图片</span><strong id="statImages">0</strong></div>
+              <div class="metric"><span>回答次数</span><strong id="statAnswers">0</strong></div>
+              <div class="metric"><span>自然对话</span><strong id="statChat">0</strong></div>
+              <div class="metric"><span>单基分析</span><strong id="statScreening">0</strong></div>
+              <div class="metric"><span>推荐发现</span><strong id="statRecommendation">0</strong></div>
+              <div class="metric"><span>基金问答</span><strong id="statQa">0</strong></div>
+              <div class="metric"><span>意图路由</span><strong id="statRouter">0</strong></div>
+              <div class="metric"><span>进度消息</span><strong id="statProgress">0</strong></div>
+              <div class="metric"><span>模型调用</span><strong id="statModelCalls">0</strong></div>
+              <div class="metric"><span>分析师阶段</span><strong id="statAnalyst">0</strong></div>
+              <div class="metric"><span>投票阶段</span><strong id="statVote">0</strong></div>
+              <div class="metric"><span>主席验收</span><strong id="statManager">0</strong></div>
+              <div class="metric"><span>市场快照</span><strong id="statMarket">0</strong></div>
+              <div class="metric"><span>联网补全</span><strong id="statEnrich">0</strong></div>
+              <div class="metric"><span>持仓补全</span><strong id="statHoldings">0</strong></div>
+              <div class="metric"><span>组合任务</span><strong id="statPortfolioRuns">0</strong></div>
+              <div class="metric"><span>主动推送</span><strong id="statPortfolioPushes">0</strong></div>
+              <div class="metric"><span>错误数</span><strong id="statErrors">0</strong></div>
+              <div class="metric"><span>飞书事件</span><strong id="statEvents">0</strong></div>
+            </div>
+            <pre id="statsOutput" class="output compact"></pre>
+          </div>
+        </section>
+
+        <section class="tab-panel" data-panel="portfolio">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>虚拟组合</h2>
+              <div class="actions compact-actions">
+                <button id="refreshPortfolioBtn" type="button" class="secondary">刷新</button>
+                <button id="runDecisionBtn" type="button">生成今日操作</button>
+                <button id="runValuationBtn" type="button" class="secondary">更新晚间估值</button>
+                <button id="prunePortfolioBtn" type="button" class="secondary">清理过期数据</button>
               </div>
             </div>
-
-            <div class="actions">
-              <button type="submit">保存配置</button>
-              <button id="reloadBtn" type="button" class="secondary">重新加载</button>
+            <div class="metric-grid">
+              <div class="metric"><span>总资产</span><strong id="portfolioTotalAsset">0</strong></div>
+              <div class="metric"><span>现金</span><strong id="portfolioCash">0</strong></div>
+              <div class="metric"><span>仓位</span><strong id="portfolioPositionWeight">0%</strong></div>
+              <div class="metric"><span>累计盈亏</span><strong id="portfolioPnl">0</strong></div>
             </div>
-          </form>
-        </section>
-
-        <section id="runtime" class="panel">
-          <div class="panel-head">
-            <h2>运行情况</h2>
-            <button id="refreshStatsBtn" type="button" class="secondary">刷新</button>
-          </div>
-          <div class="metric-grid">
-            <div class="metric"><span>对话数</span><strong id="statConversations">0</strong></div>
-            <div class="metric"><span>收到图片</span><strong id="statImages">0</strong></div>
-            <div class="metric"><span>回答次数</span><strong id="statAnswers">0</strong></div>
-            <div class="metric"><span>自然对话</span><strong id="statChat">0</strong></div>
-            <div class="metric"><span>单基分析</span><strong id="statScreening">0</strong></div>
-            <div class="metric"><span>推荐发现</span><strong id="statRecommendation">0</strong></div>
-            <div class="metric"><span>基金问答</span><strong id="statQa">0</strong></div>
-            <div class="metric"><span>意图路由</span><strong id="statRouter">0</strong></div>
-            <div class="metric"><span>进度消息</span><strong id="statProgress">0</strong></div>
-            <div class="metric"><span>模型调用</span><strong id="statModelCalls">0</strong></div>
-            <div class="metric"><span>分析师阶段</span><strong id="statAnalyst">0</strong></div>
-            <div class="metric"><span>投票阶段</span><strong id="statVote">0</strong></div>
-            <div class="metric"><span>主席验收</span><strong id="statManager">0</strong></div>
-            <div class="metric"><span>市场快照</span><strong id="statMarket">0</strong></div>
-            <div class="metric"><span>联网补全</span><strong id="statEnrich">0</strong></div>
-            <div class="metric"><span>持仓补全</span><strong id="statHoldings">0</strong></div>
-            <div class="metric"><span>错误数</span><strong id="statErrors">0</strong></div>
-            <div class="metric"><span>飞书事件</span><strong id="statEvents">0</strong></div>
-          </div>
-          <pre id="statsOutput" class="output compact"></pre>
-        </section>
-
-        <section id="tests" class="panel">
-          <div class="panel-head">
-            <h2>连通性测试</h2>
-          </div>
-          <div class="test-grid">
-            <div class="test-block">
+            <div class="info-grid">
               <div>
-                <h3>模型测试</h3>
-                <p id="modelTestText">未运行</p>
+                <span>定时状态</span>
+                <strong id="portfolioSchedule">未加载</strong>
               </div>
-              <button id="testModelBtn" type="button">测试模型</button>
-            </div>
-            <div class="test-block">
               <div>
-                <h3>飞书测试</h3>
-                <p id="feishuTestText">未运行</p>
+                <span>推送目标</span>
+                <strong id="portfolioPushTarget">未绑定</strong>
               </div>
-              <button id="testFeishuBtn" type="button">测试飞书</button>
+              <div>
+                <span>数据保留</span>
+                <strong id="portfolioRetention">90 天</strong>
+              </div>
             </div>
           </div>
-          <pre id="testOutput" class="output"></pre>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>持仓</h2>
+              <button id="resetPortfolioBtn" type="button" class="secondary">重置组合</button>
+            </div>
+            <div id="positionList" class="table-list"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>决策与复盘</h2>
+            </div>
+            <div id="runList" class="run-list"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>流水与估值</h2>
+            </div>
+            <div class="split-grid">
+              <div>
+                <h3>交易流水</h3>
+                <div id="transactionList" class="table-list"></div>
+              </div>
+              <div>
+                <h3>估值记录</h3>
+                <div id="equityList" class="table-list"></div>
+              </div>
+            </div>
+            <pre id="portfolioOutput" class="output compact"></pre>
+          </div>
         </section>
 
-        <section id="skills" class="panel">
-          <div class="panel-head">
-            <h2>Skills</h2>
-            <span id="skillCount" class="badge">0</span>
+        <section class="tab-panel" data-panel="tests">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>连通性测试</h2>
+            </div>
+            <div class="test-grid">
+              <div class="test-block">
+                <div>
+                  <h3>模型测试</h3>
+                  <p id="modelTestText">未运行</p>
+                </div>
+                <button id="testModelBtn" type="button">测试模型</button>
+              </div>
+              <div class="test-block">
+                <div>
+                  <h3>飞书测试</h3>
+                  <p id="feishuTestText">未运行</p>
+                </div>
+                <button id="testFeishuBtn" type="button">测试飞书</button>
+              </div>
+            </div>
+            <pre id="testOutput" class="output"></pre>
           </div>
-          <div id="skillList" class="skill-list"></div>
-          <textarea id="skillDetail" class="skill-detail" readonly></textarea>
+        </section>
+
+        <section class="tab-panel" data-panel="skills">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Skills</h2>
+              <span id="skillCount" class="badge">0</span>
+            </div>
+            <div id="skillList" class="skill-list"></div>
+            <textarea id="skillDetail" class="skill-detail" readonly></textarea>
+          </div>
         </section>
       </main>
     </div>

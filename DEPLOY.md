@@ -106,13 +106,25 @@ echo YOUR_GITHUB_TOKEN | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password
 /app/data/stats.json
 ```
 
+虚拟基金经理账本在容器内：
+
+```text
+/app/data/portfolio-db.json
+```
+
 Compose 已挂载：
 
 ```text
 ./data:/app/data
 ```
 
-所以容器重建后配置和统计不会丢。不要把 `data/config.json` 或 `data/stats.json` 提交到 Git。
+所以容器重建后配置、统计、虚拟持仓、操作理由和历史复盘不会丢。不要把 `data/config.json`、`data/stats.json` 或 `data/portfolio-db.json` 提交到 Git。
+
+## 虚拟基金经理
+
+管理后台 `/admin` 的“虚拟组合”页可以开启每日自动运行、设置初始本金、决策时间、复盘时间、推送目标和数据保留天数。
+
+默认决策时间是北京时间 `14:20`，复盘时间是 `21:30`。如果 `PORTFOLIO_PUSH_RECEIVE_ID` 留空，先在飞书里给机器人发一条消息，系统会记录最近的 `chat_id` 并作为主动推送目标。
 
 ## Nginx 反向代理
 
