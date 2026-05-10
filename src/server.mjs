@@ -399,10 +399,13 @@ async function extractFundFactsWithModel({ images, userText, messageType }) {
     return { fundCodes: extractFundCodes(userText), visibleFacts: userText ? [userText] : [], missingFields: [] };
   }
 
+  const skillContext = buildSkillContextForIntent({ skillIds: ["fund-vision"] }, []);
   const systemText = [
     "你只负责从基金截图中提取可见事实，不做投资评价。",
     "请只返回 JSON，不要 Markdown，不要解释。",
-    "如果看不清，不要猜。基金代码必须是截图中可见或用户文字中明确出现的 6 位数字。"
+    "如果看不清，不要猜。基金代码必须是截图中可见或用户文字中明确出现的 6 位数字。",
+    "",
+    skillContext
   ].join("\n");
   const userPrompt = [
     `消息类型：${messageType || "unknown"}`,
@@ -440,19 +443,17 @@ async function extractFundFactsWithModel({ images, userText, messageType }) {
   }
 }
 
-function buildFundCommitteeSystemText() {
-  const skill = loadPrimarySkill();
+function buildFundCommitteeSystemText(skillIds = ["fund-analysis", "fund-data-enrichment"]) {
+  const skillContext = buildSkillContextForIntent({ skillIds }, []);
   return [
     "你是飞书机器人“基金助手”。你的任务是根据用户发送的基金截图或基金文字信息做教育性基金筛选分析。",
-    "必须严格遵循下面的 fund-screening skill：截图先保守提取可见事实；字段缺失或看不清要明确写 N/A 或“缺失”；不要编造收益、回撤、费率、排名、持仓或基金经理信息。",
+    "必须严格遵循当前阶段加载的 modular skills。只使用与当前任务相关的 skill，不要把所有基金流程强行套到用户请求上。",
     "不要对截图逐字念稿。要先吸收截图事实和联网补全资料，再给出投资筛选评价。",
     "如果联网补全资料与截图冲突，要明确分开“截图可见”和“联网补全”，不要硬合并。",
     "最终回复会以飞书卡片展示，可使用少量 Markdown 加粗和编号列表，但不要输出 Markdown 表格或代码块。",
-    "默认使用 fund committee mode，而不是 normal screening mode。把它写成一个紧凑的投研团队评审，不要只给一个孤立分数。",
-    "你不是在真实启动多个独立模型；请表述为“本次按 8 个投研角色视角评审”，不要声称独立智能体已经并行执行。",
     "回答中文，优先简洁、明确、可执行。不要保证收益，不要给出个性化承诺；但如果证据偏正面，要敢于给出买入/分批买入方案，不要机械地总是建议等待回撤或极低仓位。",
     "",
-    skill.content
+    skillContext
   ].join("\n");
 }
 
@@ -477,7 +478,12 @@ function buildFundCommitteeEvidencePrompt({ images = [], userText, messageType, 
 }
 
 async function buildAnalystReviewWithModel({ images, userText, messageType, extracted, enrichments }) {
-  const systemText = buildFundCommitteeSystemText();
+  const isComparison = detectComparisonNeed({ userText, extracted, enrichments });
+  const systemText = buildFundCommitteeSystemText(
+    isComparison
+      ? ["fund-analysis", "fund-comparison", "fund-data-enrichment"]
+      : ["fund-analysis", "fund-data-enrichment"]
+  );
   const userPrompt = [
     buildFundCommitteeEvidencePrompt({ images, userText, messageType, extracted, enrichments }),
     "",
@@ -485,9 +491,11 @@ async function buildAnalystReviewWithModel({ images, userText, messageType, extr
     "请只输出内部投研简报，不要给最终用户话术，不要输出 Markdown 表格。",
     "结构：",
     "1. Evidence intake：截图可见、联网补全、推断分别列出。",
-    "2. 5 个证据分析师：产品资料员、业绩指标员、持仓风格员、市场主题员、情绪新闻员。每个角色给出倾向：正 / 中 / 负，以及一句关键理由。",
+    isComparison
+      ? "2. 多基金对比分析：按产品、业绩、持仓、市场、风险 5 个角度比较候选基金，目标是选出更好的一只或组合，不要为每只基金生成完整单基报告。"
+      : "2. 5 个证据分析师：产品资料员、业绩指标员、持仓风格员、市场主题员、情绪新闻员。每个角色给出倾向：正 / 中 / 负，以及一句关键理由。",
     "3. 数据质量：哪些关键数据可靠，哪些缺失或可能滞后。",
-    "4. 初步评分区间：给一个区间和原因，不要给最终动作。"
+    isComparison ? "4. 初步排序：给出首选、备选、观察/剔除对象和原因，不要给最终用户话术。" : "4. 初步评分区间：给一个区间和原因，不要给最终动作。"
   ].join("\n");
 
   const maxTokens = Math.min(Number(getEffectiveConfig().modelMaxOutputTokens || 2800), 1800);
@@ -500,7 +508,8 @@ async function buildAnalystReviewWithModel({ images, userText, messageType, extr
 }
 
 async function buildCommitteeVoteWithModel({ userText, messageType, extracted, enrichments, analystReview }) {
-  const systemText = buildFundCommitteeSystemText();
+  const isComparison = detectComparisonNeed({ userText, extracted, enrichments });
+  const systemText = buildFundCommitteeSystemText(isComparison ? ["fund-comparison", "fund-analysis"] : ["fund-analysis"]);
   const userPrompt = [
     buildFundCommitteeEvidencePrompt({ images: [], userText, messageType, extracted, enrichments }),
     "",
@@ -510,11 +519,17 @@ async function buildCommitteeVoteWithModel({ userText, messageType, extracted, e
     "阶段：委员会投票中。",
     "请基于分析师简报进行紧凑投票，不要输出最终用户完整卡片，不要输出 Markdown 表格。",
     "结构：",
-    "1. 牛方研究员：正/中/负，最强买入理由。",
-    "2. 熊方研究员：正/中/负，最强反对理由。",
+    isComparison
+      ? "1. 选择票：首选、备选、剔除/观察分别是谁。"
+      : "1. 牛方研究员：正/中/负，最强买入理由。",
+    isComparison
+      ? "2. 分歧点：为什么不是每只都买。"
+      : "2. 熊方研究员：正/中/负，最强反对理由。",
     "3. 风险经理：激进、均衡、保守三档仓位约束。",
     "4. 委员会票数：正向 x、 neutral x、负向 x。",
-    "5. 建议动作草案：买入 / 分批买入 / 持有 / 换基 / 观察 / 回避。",
+    isComparison
+      ? "5. 建议动作草案：选哪只 / 组合买入 / 继续观察 / 全部回避。"
+      : "5. 建议动作草案：买入 / 分批买入 / 持有 / 换基 / 观察 / 回避。",
     "6. 10000 元草案：激进、均衡、保守各自金额。"
   ].join("\n");
 
@@ -528,10 +543,17 @@ async function buildCommitteeVoteWithModel({ userText, messageType, extracted, e
 }
 
 async function analyzeFundWithModel({ userText, messageType, extracted, enrichments, analystReview, committeeVote }) {
+  const isComparison = detectComparisonNeed({ userText, extracted, enrichments });
   const systemText = [
-    buildFundCommitteeSystemText(),
+    buildFundCommitteeSystemText(
+      isComparison
+        ? ["fund-synthesis", "fund-comparison", "fund-analysis"]
+        : ["fund-synthesis", "fund-analysis"]
+    ),
     "",
-    "现在进入主席验收阶段。你要把分析师简报和委员会投票整理成最终发给用户的飞书卡片文案。"
+    isComparison
+      ? "现在进入汇总阶段。你要回答用户“多个基金怎么选”，不要为每只基金输出完整单基长报告。"
+      : "现在进入汇总阶段。你要把分析师简报和委员会投票整理成最终发给用户的飞书卡片文案。"
   ].join("\n");
 
   const userPrompt = [
@@ -546,8 +568,12 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
     "阶段：主席验收中。",
     "",
     "请按以下结构输出，不要输出 Markdown 表格：",
-    "1. 开场结论：Verdict、Confidence、Score，并用一句话解释这个分数的含义，例如“61/100 = 可观察但还没到重仓”。",
-    "2. 投研团队 8 角色：产品资料员、业绩指标员、持仓风格员、市场主题员、情绪新闻员、牛方研究员、熊方研究员、风险经理。每个角色 1 行，给出正/中/负倾向和关键理由。",
+    isComparison
+      ? "1. 开场结论：首选哪只/哪几只、Confidence、选择理由；不需要给每只基金都打完整单基分。"
+      : "1. 开场结论：Verdict、Confidence、Score，并用一句话解释这个分数的含义，例如“61/100 = 可观察但还没到重仓”。",
+    isComparison
+      ? "2. 多基金选择：给出排名、首选、备选、为什么不选其他基金；不要给每只基金都套 8 角色长流程。"
+      : "2. 投研团队视角：产品、业绩、持仓、市场、风险等角色各 1 行，给出正/中/负倾向和关键理由。",
     "3. Manager Decision：最终动作必须是买入 / 分批买入 / 持有 / 换基 / 观察 / 回避之一，并说明最大买点和最大不买理由。",
     "4. 1万元执行方案：假设用户准备新增 10000 元，给出激进、均衡、保守三档的金额或比例；如果基金适合出击，激进档可以给到更高比例，但要写清止损/再评估触发条件。",
     "5. 主要风险与复查触发：最多 3 条。",
@@ -568,7 +594,7 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
 }
 
 async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
-  const skillContext = buildSkillContextForIntent(intent, ["fund-screening"]);
+  const skillContext = buildSkillContextForIntent(intent, ["fund-recommendation", "fund-synthesis"]);
   const systemText = [
     "你是飞书机器人“基金助手”的基金发现与配置工作流。",
     "当前任务不是分析用户已经给出的某一只基金，也不是截图 screening；当前任务是根据用户文字、公开市场快照和基金候选池，给出教育性的基金方向与候选清单。",
@@ -612,7 +638,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
 }
 
 async function answerFundQuestionWithModel({ userText, intent, marketSnapshot }) {
-  const skillContext = buildSkillContextForIntent(intent, ["fund-screening"]);
+  const skillContext = buildSkillContextForIntent(intent, []);
   const systemText = [
     "你是飞书机器人“基金助手”的基金问答工作流。",
     "当前任务是回答用户问题，不是单只基金 screening；除非用户给出明确基金代码或截图，否则不要强行输出 Verdict/Score/8 角色评审。",
@@ -1974,18 +2000,6 @@ function listSkills(includeContent) {
     });
 }
 
-function loadPrimarySkill() {
-  const skills = listSkills(true);
-  const preferred =
-    skills.find((skill) => skill.id === "fund-screening") ||
-    skills.find((skill) => skill.name.toLowerCase().includes("fund")) ||
-    skills[0];
-  if (!preferred) {
-    throw new Error("未找到任何 skill，请在 skills 目录添加 .md 文件。");
-  }
-  return preferred;
-}
-
 function parseSkillMeta(content, fileName) {
   const frontMatter = content.match(/^---\n([\s\S]*?)\n---/);
   const frontMatterValues = {};
@@ -2148,7 +2162,7 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
       mode: "screenshot_or_mixed",
       reason: "message_contains_image",
       fundCodes,
-      skillIds: ["fund-screening"],
+      skillIds: ["fund-vision", "fund-data-enrichment", "fund-analysis", "fund-comparison", "fund-synthesis"],
       messageType
     };
   }
@@ -2170,7 +2184,7 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
       mode: fundCodes.length > 1 ? "comparison_or_specific_fund" : "specific_fund_or_fund_name",
       reason: "text_contains_fund_code",
       fundCodes,
-      skillIds: ["fund-screening"],
+      skillIds: ["fund-data-enrichment", "fund-analysis", "fund-comparison", "fund-synthesis"],
       messageType
     };
   }
@@ -2216,7 +2230,7 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
       mode: "market_theme_discovery",
       reason: "fallback_text_requests_recommendations_without_specific_fund",
       fundCodes,
-      skillIds: ["fund-screening"],
+      skillIds: ["fund-recommendation", "fund-synthesis"],
       messageType
     };
   }
@@ -2227,7 +2241,7 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
       mode: asksCompare || fundCodes.length > 1 ? "comparison_or_specific_fund" : "specific_fund_or_fund_name",
       reason: "fallback_text_mentions_specific_fund_action",
       fundCodes,
-      skillIds: ["fund-screening"],
+      skillIds: ["fund-data-enrichment", "fund-analysis", "fund-synthesis"],
       messageType
     };
   }
@@ -2237,7 +2251,7 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
     mode: shouldFetchMarketSnapshotForQuestion(text) ? "market_question" : "general_fund_question",
     reason: "fallback_no_image_no_specific_fund_recommendation",
     fundCodes,
-    skillIds: looksLikeConversation(text) ? [] : ["fund-screening"],
+    skillIds: looksLikeConversation(text) ? [] : [],
     messageType
   };
 }
@@ -2267,7 +2281,7 @@ async function classifyTextIntentWithModel({ userText, messageType }) {
     JSON.stringify(skills, null, 2),
     "",
     "返回 JSON：",
-    '{"workflow":"conversation|fund_recommendation|fund_screening|fund_qa","mode":"short label","reason":"brief reason","skillIds":["fund-screening"],"confidence":0.0}'
+    '{"workflow":"conversation|fund_recommendation|fund_screening|fund_qa","mode":"short label","reason":"brief reason","skillIds":["fund-recommendation"],"confidence":0.0}'
   ].join("\n");
 
   const raw = await callModel({ systemText, userPrompt, images: [], maxTokens: 500 });
@@ -2282,9 +2296,12 @@ function normalizeIntentResult(intent, defaults = {}) {
   const validWorkflows = new Set(["conversation", "fund_recommendation", "fund_screening", "fund_qa"]);
   const workflow = validWorkflows.has(String(intent.workflow || "")) ? String(intent.workflow) : "fund_qa";
   const availableSkillIds = new Set(listSkills(false).map((skill) => skill.id));
-  const skillIds = Array.isArray(intent.skillIds)
+  let skillIds = Array.isArray(intent.skillIds)
     ? intent.skillIds.map(String).filter((id) => availableSkillIds.has(id))
     : [];
+  if (!skillIds.length) {
+    skillIds = defaultSkillIdsForWorkflow(workflow).filter((id) => availableSkillIds.has(id));
+  }
 
   return {
     workflow,
@@ -2296,6 +2313,13 @@ function normalizeIntentResult(intent, defaults = {}) {
     source: defaults.source || "router",
     messageType: defaults.messageType || ""
   };
+}
+
+function defaultSkillIdsForWorkflow(workflow) {
+  if (workflow === "fund_recommendation") return ["fund-recommendation", "fund-synthesis"];
+  if (workflow === "fund_screening") return ["fund-data-enrichment", "fund-analysis", "fund-synthesis"];
+  if (workflow === "fund_qa") return [];
+  return [];
 }
 
 function recordWorkflowIntent(intent) {
@@ -2317,6 +2341,18 @@ function recordWorkflowIntent(intent) {
 function shouldFetchMarketSnapshotForQuestion(text) {
   const normalized = normalizeIntentText(text);
   return hasAny(normalized, ["最近", "最新", "当前", "现在", "市场", "行情", "题材", "热点", "板块", "赛道", "机会"]);
+}
+
+function detectComparisonNeed({ userText = "", extracted = {}, enrichments = [] }) {
+  const text = normalizeIntentText(userText);
+  const explicitCompare = hasAny(text, ["对比", "比较", "哪个更好", "哪只更好", "选哪", "挑一个", "二选一", "三选一", "排名", "pk"]);
+  const codeCount = mergeFundCodes(
+    extractFundCodes(text),
+    extracted?.fundCodes || [],
+    Array.isArray(enrichments) ? enrichments.map((item) => item?.code) : []
+  ).length;
+  const extractedFundCount = Array.isArray(extracted?.funds) ? extracted.funds.length : 0;
+  return explicitCompare || codeCount > 1 || extractedFundCount > 1;
 }
 
 function looksLikeConversation(text) {
