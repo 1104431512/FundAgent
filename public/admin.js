@@ -28,8 +28,8 @@ document.querySelector("#testFeishuBtn").addEventListener("click", () => runTest
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const payload = Object.fromEntries(new FormData(form).entries());
-  payload.modelMaxOutputTokens = Number(payload.modelMaxOutputTokens || 1800);
-  payload.replyMaxChars = Number(payload.replyMaxChars || 6000);
+  payload.modelMaxOutputTokens = Number(payload.modelMaxOutputTokens || 2800);
+  payload.replyMaxChars = Number(payload.replyMaxChars || 7000);
 
   const result = await apiFetch("/api/config", {
     method: "POST",
@@ -117,6 +117,9 @@ async function loadStats() {
   setText("#statAnswers", counters.answersSent || 0);
   setText("#statProgress", counters.progressReplies || 0);
   setText("#statModelCalls", counters.modelCalls || 0);
+  setText("#statAnalyst", counters.analystReviewCalls || 0);
+  setText("#statVote", counters.committeeVoteCalls || 0);
+  setText("#statManager", counters.managerReviewCalls || 0);
   setText("#statEnrich", counters.fundEnrichmentSuccess || 0);
   setText("#statErrors", counters.errors || 0);
   setText("#statEvents", counters.messageEvents || 0);

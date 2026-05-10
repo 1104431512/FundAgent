@@ -242,16 +242,60 @@ async function handleMessageEvent(payload) {
 
     const enrichments = await enrichFunds(fundCodes);
 
-    const analysis = await analyzeFundWithModel({
+    await replyToMessage(
+      message.message_id,
+      "进度：分析师分析中。产品、业绩指标、持仓风格、市场主题、情绪新闻 5 个角度正在整理证据。",
+      { kind: "progress" }
+    ).catch((error) => {
+      console.error("[progress-reply-error]", error);
+      recordError(error, { replyFailures: 1 });
+    });
+
+    const analystReview = await buildAnalystReviewWithModel({
       images,
       userText,
       messageType: message.message_type,
       extracted,
       enrichments
     });
+
     await replyToMessage(
       message.message_id,
-      normalizeFeishuText([buildCompletionPrefix(images.length, userText), analysis].filter(Boolean).join("\n\n")),
+      "进度：委员会投票中。正在汇总牛方、熊方、风险经理的倾向，并判断是买入、分批买入、观察还是回避。",
+      { kind: "progress" }
+    ).catch((error) => {
+      console.error("[progress-reply-error]", error);
+      recordError(error, { replyFailures: 1 });
+    });
+
+    const committeeVote = await buildCommitteeVoteWithModel({
+      userText,
+      messageType: message.message_type,
+      extracted,
+      enrichments,
+      analystReview
+    });
+
+    await replyToMessage(
+      message.message_id,
+      "进度：主席验收中。正在把投票结果压缩成飞书卡片，并生成 1 万元执行方案。",
+      { kind: "progress" }
+    ).catch((error) => {
+      console.error("[progress-reply-error]", error);
+      recordError(error, { replyFailures: 1 });
+    });
+
+    const analysis = await analyzeFundWithModel({
+      userText,
+      messageType: message.message_type,
+      extracted,
+      enrichments,
+      analystReview,
+      committeeVote
+    });
+    await replyToMessage(
+      message.message_id,
+      [buildCompletionPrefix(images.length, userText), analysis].filter(Boolean).join("\n\n"),
       { kind: "answer" }
     );
   } catch (error) {
@@ -315,26 +359,30 @@ async function extractFundFactsWithModel({ images, userText, messageType }) {
   }
 }
 
-async function analyzeFundWithModel({ images, userText, messageType, extracted, enrichments }) {
+function buildFundCommitteeSystemText() {
   const skill = loadPrimarySkill();
-  const systemText = [
+  return [
     "你是飞书机器人“基金助手”。你的任务是根据用户发送的基金截图或基金文字信息做教育性基金筛选分析。",
     "必须严格遵循下面的 fund-screening skill：截图先保守提取可见事实；字段缺失或看不清要明确写 N/A 或“缺失”；不要编造收益、回撤、费率、排名、持仓或基金经理信息。",
     "不要对截图逐字念稿。要先吸收截图事实和联网补全资料，再给出投资筛选评价。",
     "如果联网补全资料与截图冲突，要明确分开“截图可见”和“联网补全”，不要硬合并。",
     "最终回复会以飞书卡片展示，可使用少量 Markdown 加粗和编号列表，但不要输出 Markdown 表格或代码块。",
-    "回答中文，优先简洁。默认使用 normal screening mode，除非输入明显高风险或数据严重不足。不要保证收益，不要给出个性化承诺。",
+    "默认使用 fund committee mode，而不是 normal screening mode。把它写成一个紧凑的投研团队评审，不要只给一个孤立分数。",
+    "你不是在真实启动多个独立模型；请表述为“本次按 8 个投研角色视角评审”，不要声称独立智能体已经并行执行。",
+    "回答中文，优先简洁、明确、可执行。不要保证收益，不要给出个性化承诺；但如果证据偏正面，要敢于给出买入/分批买入方案，不要机械地总是建议等待回撤或极低仓位。",
     "",
     skill.content
   ].join("\n");
+}
 
-  const userPrompt = [
+function buildFundCommitteeEvidencePrompt({ images = [], userText, messageType, extracted, enrichments }) {
+  return [
     "用户通过飞书发送了一条基金相关消息。",
     `消息类型：${messageType || "unknown"}`,
     userText ? `用户文字：${userText}` : "用户文字：无",
     images?.length
       ? `图片：已附上 ${images.length} 张。请逐张识别截图中的基金信息；如果多张图属于同一只基金，请合并分析；如果是多只基金，请分别给出简短结论并说明对比。`
-      : "图片：无，请只根据用户文字分析。",
+      : "图片：无，请只根据已提取事实和用户文字分析。",
     "",
     "截图事实提取结果：",
     JSON.stringify(extracted || {}, null, 2),
@@ -342,12 +390,99 @@ async function analyzeFundWithModel({ images, userText, messageType, extracted, 
     "联网补全资料：",
     JSON.stringify(enrichments || [], null, 2),
     "",
-    "如果联网补全资料中包含 riskMetrics，请优先使用其中的 1y/3y/5y 夏普率、年化波动、最大回撤、年化收益来评分；不要再要求用户手动补这些指标。只有 riskMetrics.ok=false 或点数不足时，才把这些列为缺失。",
+    "如果联网补全资料中包含 riskMetrics，请优先使用其中的 1y/3y/5y 夏普率、年化波动、最大回撤、年化收益来评分；不要再要求用户手动补这些指标。只有 riskMetrics.ok=false 或点数不足时，才把这些列为缺失。"
+  ].join("\n");
+}
+
+async function buildAnalystReviewWithModel({ images, userText, messageType, extracted, enrichments }) {
+  const systemText = buildFundCommitteeSystemText();
+  const userPrompt = [
+    buildFundCommitteeEvidencePrompt({ images, userText, messageType, extracted, enrichments }),
     "",
-    "请输出：Verdict、Confidence、可见事实/缺失字段、评分或无法评分原因、前三个优点、前三个主要风险、下一步需要补充的数据。"
+    "阶段：分析师分析中。",
+    "请只输出内部投研简报，不要给最终用户话术，不要输出 Markdown 表格。",
+    "结构：",
+    "1. Evidence intake：截图可见、联网补全、推断分别列出。",
+    "2. 5 个证据分析师：产品资料员、业绩指标员、持仓风格员、市场主题员、情绪新闻员。每个角色给出倾向：正 / 中 / 负，以及一句关键理由。",
+    "3. 数据质量：哪些关键数据可靠，哪些缺失或可能滞后。",
+    "4. 初步评分区间：给一个区间和原因，不要给最终动作。"
   ].join("\n");
 
-  return callModel({ systemText, userPrompt, images, maxTokens: getEffectiveConfig().modelMaxOutputTokens });
+  const maxTokens = Math.min(Number(getEffectiveConfig().modelMaxOutputTokens || 2800), 1800);
+  const review = await callModel({ systemText, userPrompt, images, maxTokens });
+  updateStats({
+    counters: { analystReviewCalls: 1 },
+    last: { lastAnalystReviewAt: new Date().toISOString() }
+  });
+  return review;
+}
+
+async function buildCommitteeVoteWithModel({ userText, messageType, extracted, enrichments, analystReview }) {
+  const systemText = buildFundCommitteeSystemText();
+  const userPrompt = [
+    buildFundCommitteeEvidencePrompt({ images: [], userText, messageType, extracted, enrichments }),
+    "",
+    "分析师简报：",
+    analystReview,
+    "",
+    "阶段：委员会投票中。",
+    "请基于分析师简报进行紧凑投票，不要输出最终用户完整卡片，不要输出 Markdown 表格。",
+    "结构：",
+    "1. 牛方研究员：正/中/负，最强买入理由。",
+    "2. 熊方研究员：正/中/负，最强反对理由。",
+    "3. 风险经理：激进、均衡、保守三档仓位约束。",
+    "4. 委员会票数：正向 x、 neutral x、负向 x。",
+    "5. 建议动作草案：买入 / 分批买入 / 持有 / 换基 / 观察 / 回避。",
+    "6. 10000 元草案：激进、均衡、保守各自金额。"
+  ].join("\n");
+
+  const maxTokens = Math.min(Number(getEffectiveConfig().modelMaxOutputTokens || 2800), 1400);
+  const vote = await callModel({ systemText, userPrompt, images: [], maxTokens });
+  updateStats({
+    counters: { committeeVoteCalls: 1 },
+    last: { lastCommitteeVoteAt: new Date().toISOString() }
+  });
+  return vote;
+}
+
+async function analyzeFundWithModel({ userText, messageType, extracted, enrichments, analystReview, committeeVote }) {
+  const systemText = [
+    buildFundCommitteeSystemText(),
+    "",
+    "现在进入主席验收阶段。你要把分析师简报和委员会投票整理成最终发给用户的飞书卡片文案。"
+  ].join("\n");
+
+  const userPrompt = [
+    buildFundCommitteeEvidencePrompt({ images: [], userText, messageType, extracted, enrichments }),
+    "",
+    "分析师简报：",
+    analystReview || "缺失",
+    "",
+    "委员会投票：",
+    committeeVote || "缺失",
+    "",
+    "阶段：主席验收中。",
+    "",
+    "请按以下结构输出，不要输出 Markdown 表格：",
+    "1. 开场结论：Verdict、Confidence、Score，并用一句话解释这个分数的含义，例如“61/100 = 可观察但还没到重仓”。",
+    "2. 投研团队 8 角色：产品资料员、业绩指标员、持仓风格员、市场主题员、情绪新闻员、牛方研究员、熊方研究员、风险经理。每个角色 1 行，给出正/中/负倾向和关键理由。",
+    "3. Manager Decision：最终动作必须是买入 / 分批买入 / 持有 / 换基 / 观察 / 回避之一，并说明最大买点和最大不买理由。",
+    "4. 1万元执行方案：假设用户准备新增 10000 元，给出激进、均衡、保守三档的金额或比例；如果基金适合出击，激进档可以给到更高比例，但要写清止损/再评估触发条件。",
+    "5. 主要风险与复查触发：最多 3 条。",
+    "6. 缺失数据：只列真正影响结论的字段；不要把已联网补全的夏普率、回撤、波动率重复列为缺失。"
+  ].join("\n");
+
+  const finalText = await callModel({
+    systemText,
+    userPrompt,
+    images: [],
+    maxTokens: getEffectiveConfig().modelMaxOutputTokens
+  });
+  updateStats({
+    counters: { managerReviewCalls: 1 },
+    last: { lastManagerReviewAt: new Date().toISOString() }
+  });
+  return finalText;
 }
 
 async function testModelConnection() {
@@ -406,7 +541,7 @@ async function callResponsesApi({ config, systemText, userPrompt, images, maxTok
     model: config.modelName,
     instructions: systemText,
     input: [{ role: "user", content }],
-    max_output_tokens: Number(maxTokens || config.modelMaxOutputTokens || 1800)
+    max_output_tokens: Number(maxTokens || config.modelMaxOutputTokens || 2800)
   };
 
   const reasoningEffort = normalizeReasoningEffort(config.modelReasoningEffort);
@@ -442,7 +577,7 @@ async function callChatCompletionsApi({ config, systemText, userPrompt, images, 
         { role: "system", content: systemText },
         { role: "user", content: userContent }
       ],
-      max_tokens: Number(maxTokens || config.modelMaxOutputTokens || 1800)
+      max_tokens: Number(maxTokens || config.modelMaxOutputTokens || 2800)
     },
     {
       Authorization: `Bearer ${config.modelApiKey}`
@@ -1065,8 +1200,8 @@ function getEffectiveConfig() {
     modelApiKey: process.env.MODEL_API_KEY || process.env.OPENAI_API_KEY || codexDefaults.modelApiKey || "",
     modelWireApi: process.env.MODEL_WIRE_API || codexDefaults.modelWireApi || "responses",
     modelReasoningEffort: process.env.MODEL_REASONING_EFFORT || codexDefaults.modelReasoningEffort || "high",
-    modelMaxOutputTokens: Number(process.env.MODEL_MAX_OUTPUT_TOKENS || 1800),
-    replyMaxChars: Number(process.env.FEISHU_REPLY_MAX_CHARS || 6000)
+    modelMaxOutputTokens: Number(process.env.MODEL_MAX_OUTPUT_TOKENS || 2800),
+    replyMaxChars: Number(process.env.FEISHU_REPLY_MAX_CHARS || 7000)
   };
 
   return {
@@ -1087,8 +1222,8 @@ function getPublicConfig(config = getEffectiveConfig()) {
       modelName: config.modelName || "gpt-5.5",
       modelWireApi: normalizeWireApi(config.modelWireApi),
       modelReasoningEffort: config.modelReasoningEffort || "high",
-      modelMaxOutputTokens: Number(config.modelMaxOutputTokens || 1800),
-      replyMaxChars: Number(config.replyMaxChars || 6000)
+      modelMaxOutputTokens: Number(config.modelMaxOutputTokens || 2800),
+      replyMaxChars: Number(config.replyMaxChars || 7000)
     },
     secrets: {
       feishuAppSecret: Boolean(config.feishuAppSecret),
@@ -1177,6 +1312,9 @@ function getDefaultStats() {
       fundEnrichmentFailures: 0,
       navHistoryFetches: 0,
       navHistoryPoints: 0,
+      analystReviewCalls: 0,
+      committeeVoteCalls: 0,
+      managerReviewCalls: 0,
       modelCalls: 0,
       modelFailures: 0,
       repliesSent: 0,
@@ -1567,7 +1705,7 @@ function extractResponsesText(json) {
 function normalizeFeishuText(text) {
   const config = getEffectiveConfig();
   const cleaned = stripMarkdownForFeishu(String(text || "")).trim();
-  const maxLength = Number(config.replyMaxChars || 6000);
+  const maxLength = Number(config.replyMaxChars || 7000);
   if (cleaned.length <= maxLength) {
     return cleaned;
   }
@@ -1576,7 +1714,7 @@ function normalizeFeishuText(text) {
 
 function normalizeFeishuCardMarkdown(text, kind) {
   const config = getEffectiveConfig();
-  const maxLength = Number(config.replyMaxChars || 6000);
+  const maxLength = Number(config.replyMaxChars || 7000);
   let cleaned = String(text || "")
     .replace(/\r\n/g, "\n")
     .replace(/```[a-zA-Z0-9_-]*\n?/g, "")
@@ -1651,9 +1789,9 @@ function normalizeWireApi(value) {
 }
 
 function normalizeReasoningEffort(value) {
-  const effort = String(value || "").toLowerCase();
+  const effort = String(value || "").toLowerCase().replace(/[\s-]+/g, "_");
   if (!effort || effort === "none") return "";
-  if (effort === "xhigh") return "high";
+  if (["xhigh", "extra_high", "extra"].includes(effort)) return "xhigh";
   if (["minimal", "low", "medium", "high"].includes(effort)) return effort;
   return "high";
 }
