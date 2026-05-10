@@ -115,11 +115,15 @@ async function loadStats() {
   setText("#statConversations", counters.conversations || 0);
   setText("#statImages", counters.imagesReceived || 0);
   setText("#statAnswers", counters.answersSent || 0);
+  setText("#statScreening", counters.screeningRequests || 0);
+  setText("#statRecommendation", counters.fundRecommendationRequests || 0);
+  setText("#statQa", counters.fundQaRequests || 0);
   setText("#statProgress", counters.progressReplies || 0);
   setText("#statModelCalls", counters.modelCalls || 0);
   setText("#statAnalyst", counters.analystReviewCalls || 0);
   setText("#statVote", counters.committeeVoteCalls || 0);
   setText("#statManager", counters.managerReviewCalls || 0);
+  setText("#statMarket", counters.marketSnapshotCalls || 0);
   setText("#statEnrich", counters.fundEnrichmentSuccess || 0);
   setText("#statErrors", counters.errors || 0);
   setText("#statEvents", counters.messageEvents || 0);

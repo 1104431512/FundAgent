@@ -187,7 +187,7 @@ async function handleMessageEvent(payload) {
   if (!imageKeys.length && !userText) {
     await replyToMessage(
       message.message_id,
-      "请发送基金截图，或直接发送基金名称、代码和关键指标，我会按 fund-screening 规则做简要评价。",
+      "请发送基金截图、基金代码/名称，或直接问“按最近题材推荐几个基金”。我会先判断工作流，再选择单基分析、基金推荐或基金问答。",
       { kind: "noContent" }
     );
     updateStats({ counters: { noContentMessages: 1 } });
@@ -207,6 +207,19 @@ async function handleMessageEvent(payload) {
   });
 
   try {
+    const intent = classifyMessageIntent({ imageKeys, userText, messageType: message.message_type });
+    recordWorkflowIntent(intent);
+
+    if (intent.workflow === "fund_recommendation") {
+      await handleFundRecommendationWorkflow({ message, userText, intent });
+      return;
+    }
+
+    if (intent.workflow === "fund_qa") {
+      await handleFundQaWorkflow({ message, userText, intent });
+      return;
+    }
+
     await replyToMessage(message.message_id, buildProgressMessage(imageKeys.length, userText), {
       kind: "progress"
     }).catch((error) => {
@@ -311,6 +324,58 @@ async function handleMessageEvent(payload) {
       { kind: "error" }
     );
   }
+}
+
+async function handleFundRecommendationWorkflow({ message, userText, intent }) {
+  await replyToMessage(
+    message.message_id,
+    "进度：已识别为“基金发现/推荐”请求，不进入单只基金截图 screening。",
+    { kind: "progress" }
+  ).catch((error) => {
+    console.error("[progress-reply-error]", error);
+    recordError(error, { replyFailures: 1 });
+  });
+
+  await replyToMessage(
+    message.message_id,
+    "进度：正在抓取市场题材、行业/概念热度和近期基金候选池。",
+    { kind: "progress" }
+  ).catch((error) => {
+    console.error("[progress-reply-error]", error);
+    recordError(error, { replyFailures: 1 });
+  });
+
+  const marketSnapshot = await fetchMarketSnapshot();
+
+  await replyToMessage(
+    message.message_id,
+    "进度：策略委员会筛选中。正在把市场热点、基金候选池和 1 万元配置方案合并成推荐清单。",
+    { kind: "progress" }
+  ).catch((error) => {
+    console.error("[progress-reply-error]", error);
+    recordError(error, { replyFailures: 1 });
+  });
+
+  const answer = await recommendFundsWithModel({ userText, intent, marketSnapshot });
+  await replyToMessage(message.message_id, answer, { kind: "answer" });
+}
+
+async function handleFundQaWorkflow({ message, userText, intent }) {
+  const needsMarketSnapshot = shouldFetchMarketSnapshotForQuestion(userText);
+  await replyToMessage(
+    message.message_id,
+    needsMarketSnapshot
+      ? "进度：已识别为基金/市场问答，正在补充市场快照后回答。"
+      : "进度：已识别为基金问答，将直接回答，不进入单只基金 screening。",
+    { kind: "progress" }
+  ).catch((error) => {
+    console.error("[progress-reply-error]", error);
+    recordError(error, { replyFailures: 1 });
+  });
+
+  const marketSnapshot = needsMarketSnapshot ? await fetchMarketSnapshot() : null;
+  const answer = await answerFundQuestionWithModel({ userText, intent, marketSnapshot });
+  await replyToMessage(message.message_id, answer, { kind: "answer" });
 }
 
 async function extractFundFactsWithModel({ images, userText, messageType }) {
@@ -485,6 +550,81 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
   return finalText;
 }
 
+async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
+  const systemText = [
+    "你是飞书机器人“基金助手”的基金发现与配置工作流。",
+    "当前任务不是分析用户已经给出的某一只基金，也不是截图 screening；当前任务是根据用户文字、公开市场快照和基金候选池，给出教育性的基金方向与候选清单。",
+    "必须优先使用传入的 marketSnapshot，不要声称自己额外联网。不要编造 marketSnapshot 里没有的基金代码、涨跌幅、排名或新闻。",
+    "如果数据不足以支持具体基金代码，就推荐基金方向/筛选条件，并把具体代码标为待复核。",
+    "回答要大胆但有边界：证据偏正面时可以给出买入或分批买入候选；不要机械地总是等待回撤。",
+    "必须说明数据滞后风险和复查条件。不要保证收益，不要给出个性化承诺。",
+    "输出适合飞书卡片阅读，不要 Markdown 表格，不要代码块。"
+  ].join("\n");
+
+  const userPrompt = [
+    `用户需求：${userText || "无"}`,
+    "",
+    "路由判断：",
+    JSON.stringify(intent || {}, null, 2),
+    "",
+    "公开市场/基金候选快照：",
+    JSON.stringify(marketSnapshot || {}, null, 2),
+    "",
+    "请输出：",
+    "1. 结论：今天这类请求应看哪 2-4 个主题/方向，按优先级排序。",
+    "2. 推荐清单：3-6 个候选基金或 ETF。每个候选包含代码、名称、类型/主题、为什么入选、适合激进/均衡/保守哪类、最大风险。只能使用快照中的候选代码；如果没有足够代码，就写“待复核方向”。",
+    "3. 1万元配置：激进、均衡、保守三档，给具体金额或比例。",
+    "4. 不买/少买条件：最多 3 条。",
+    "5. 数据来源与滞后：用一句话说明来自公开市场/基金排行快照，不是实时成交建议。"
+  ].join("\n");
+
+  const text = await callModel({
+    systemText,
+    userPrompt,
+    images: [],
+    maxTokens: getEffectiveConfig().modelMaxOutputTokens
+  });
+  updateStats({
+    counters: { fundRecommendationModelCalls: 1 },
+    last: { lastFundRecommendationAt: new Date().toISOString() }
+  });
+  return text;
+}
+
+async function answerFundQuestionWithModel({ userText, intent, marketSnapshot }) {
+  const systemText = [
+    "你是飞书机器人“基金助手”的基金问答工作流。",
+    "当前任务是回答用户问题，不是单只基金 screening；除非用户给出明确基金代码或截图，否则不要强行输出 Verdict/Score/8 角色评审。",
+    "如果传入 marketSnapshot，可用它回答近期市场/题材问题；如果没有实时数据，就明确说明限制。",
+    "回答中文、简洁、可执行。不要保证收益，不要给出个性化承诺。",
+    "输出适合飞书卡片阅读，不要 Markdown 表格，不要代码块。"
+  ].join("\n");
+
+  const userPrompt = [
+    `用户问题：${userText || "无"}`,
+    "",
+    "路由判断：",
+    JSON.stringify(intent || {}, null, 2),
+    "",
+    marketSnapshot ? "市场快照：" : "市场快照：未抓取，此问题按通用基金知识回答。",
+    marketSnapshot ? JSON.stringify(marketSnapshot, null, 2) : "",
+    "",
+    "请直接回答用户问题。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
+  ].join("\n");
+
+  const text = await callModel({
+    systemText,
+    userPrompt,
+    images: [],
+    maxTokens: Math.min(Number(getEffectiveConfig().modelMaxOutputTokens || 2800), 1800)
+  });
+  updateStats({
+    counters: { fundQaModelCalls: 1 },
+    last: { lastFundQaAt: new Date().toISOString() }
+  });
+  return text;
+}
+
 async function testModelConnection() {
   updateStats({ counters: { modelTests: 1 }, last: { lastModelTestAt: new Date().toISOString() } });
   const text = await callModel({
@@ -646,6 +786,169 @@ async function enrichFunds(fundCodes) {
     last: { lastFundEnrichmentAt: new Date().toISOString() }
   });
   return results;
+}
+
+async function fetchMarketSnapshot() {
+  const fetchedAt = new Date().toISOString();
+  const [conceptBoards, industryBoards, stockFunds, hybridFunds, indexFunds, qdiiFunds] = await Promise.all([
+    fetchEastmoneyBoards("concept").catch((error) => ({ ok: false, error: error.message, items: [] })),
+    fetchEastmoneyBoards("industry").catch((error) => ({ ok: false, error: error.message, items: [] })),
+    fetchFundRanking("gp", "股票型基金").catch((error) => ({ ok: false, error: error.message, items: [] })),
+    fetchFundRanking("hh", "混合型基金").catch((error) => ({ ok: false, error: error.message, items: [] })),
+    fetchFundRanking("zs", "指数型基金").catch((error) => ({ ok: false, error: error.message, items: [] })),
+    fetchFundRanking("qdii", "QDII基金").catch((error) => ({ ok: false, error: error.message, items: [] }))
+  ]);
+
+  const failures = [conceptBoards, industryBoards, stockFunds, hybridFunds, indexFunds, qdiiFunds].filter(
+    (item) => item && item.ok === false
+  ).length;
+  updateStats({
+    counters: {
+      marketSnapshotCalls: 1,
+      marketSnapshotFailures: failures ? 1 : 0
+    },
+    last: { lastMarketSnapshotAt: fetchedAt }
+  });
+
+  return {
+    ok: failures < 6,
+    fetchedAt,
+    note: "公开数据快照可能有延迟，基金排行更偏近期动量，不等于长期质量。",
+    themes: {
+      conceptBoards: conceptBoards.items || [],
+      industryBoards: industryBoards.items || []
+    },
+    fundCandidates: {
+      stockFunds: stockFunds.items || [],
+      hybridFunds: hybridFunds.items || [],
+      indexFunds: indexFunds.items || [],
+      qdiiFunds: qdiiFunds.items || []
+    },
+    errors: [conceptBoards, industryBoards, stockFunds, hybridFunds, indexFunds, qdiiFunds]
+      .filter((item) => item && item.ok === false)
+      .map((item) => item.error),
+    sources: [
+      "https://push2.eastmoney.com/api/qt/clist/get",
+      "https://fund.eastmoney.com/data/rankhandler.aspx"
+    ]
+  };
+}
+
+async function fetchEastmoneyBoards(kind) {
+  const isConcept = kind === "concept";
+  const url = new URL("https://push2.eastmoney.com/api/qt/clist/get");
+  const params = {
+    pn: "1",
+    pz: String(Number(process.env.MARKET_BOARD_LIMIT || 12)),
+    po: "1",
+    np: "1",
+    ut: "bd1d9ddb04089700cf9c27f6f7426281",
+    fltt: "2",
+    invt: "2",
+    fid: "f3",
+    fs: isConcept ? "m:90+t:3" : "m:90+t:2",
+    fields: "f12,f14,f2,f3,f62,f184,f66,f69,f72,f75,f78,f81,f84,f87,f204,f205,f124"
+  };
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+
+  const json = JSON.parse(await fetchText(url.href));
+  const diff = Array.isArray(json?.data?.diff) ? json.data.diff : [];
+  updateStats({ counters: { marketBoardFetches: 1 } });
+  return {
+    ok: true,
+    kind: isConcept ? "concept" : "industry",
+    items: diff.map((item) => ({
+      boardCode: item.f12 || "",
+      name: item.f14 || "",
+      latest: item.f2 ?? "",
+      changePct: toNumber(item.f3),
+      mainNetInflow: item.f62 ?? "",
+      mainNetInflowPct: toNumber(item.f184),
+      leadStock: item.f204 || "",
+      leadStockCode: item.f205 || "",
+      quoteTime: item.f124 ? new Date(Number(item.f124) * 1000).toISOString() : ""
+    }))
+  };
+}
+
+async function fetchFundRanking(fundType, label) {
+  const endDate = new Date();
+  const startDate = new Date(endDate);
+  startDate.setMonth(startDate.getMonth() - 1);
+
+  const url = new URL("https://fund.eastmoney.com/data/rankhandler.aspx");
+  const params = {
+    op: "ph",
+    dt: "kf",
+    ft: fundType,
+    rs: "",
+    gs: "0",
+    sc: "1yzf",
+    st: "desc",
+    sd: formatDate(startDate),
+    ed: formatDate(endDate),
+    qdii: "",
+    tabSubtype: ",,,,,",
+    pi: "1",
+    pn: String(Number(process.env.FUND_DISCOVERY_RANK_LIMIT || 10)),
+    dx: "1",
+    v: String(Date.now())
+  };
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+
+  const text = await fetchText(url.href);
+  updateStats({ counters: { fundRankingFetches: 1 } });
+  return {
+    ok: true,
+    fundType,
+    label,
+    rankingMetric: "近1月涨幅",
+    startDate: formatDate(startDate),
+    endDate: formatDate(endDate),
+    items: parseFundRankData(text, label)
+  };
+}
+
+function parseFundRankData(text, label) {
+  const match = String(text || "").match(/datas:\s*(\[[\s\S]*?\])\s*,\s*allRecords/);
+  if (!match) {
+    return [];
+  }
+
+  let rows = [];
+  try {
+    rows = JSON.parse(match[1]);
+  } catch {
+    return [];
+  }
+
+  return rows.map((row) => {
+    const columns = String(row).split(",");
+    return {
+      code: columns[0] || "",
+      name: columns[1] || "",
+      type: label,
+      navDate: columns[3] || "",
+      unitNav: toNumber(columns[4]),
+      dailyPct: toNumber(columns[6]),
+      oneWeekPct: toNumber(columns[7]),
+      oneMonthPct: toNumber(columns[8]),
+      threeMonthPct: toNumber(columns[9]),
+      sixMonthPct: toNumber(columns[10]),
+      oneYearPct: toNumber(columns[11]),
+      twoYearPct: toNumber(columns[12]),
+      threeYearPct: toNumber(columns[13]),
+      thisYearPct: toNumber(columns[14]),
+      inceptionDate: columns[16] || "",
+      sourceRatePct: columns[19] || "",
+      currentRatePct: columns[20] || "",
+      source: `https://fund.eastmoney.com/${columns[0] || ""}.html`
+    };
+  });
 }
 
 async function fetchFundProfile(code) {
@@ -1098,7 +1401,7 @@ function buildFeishuCard(text, kind) {
         elements: [
           {
             tag: "plain_text",
-            content: "基金助手会结合截图识别和公开数据补全，结论仅供研究参考，不构成收益承诺。"
+            content: "基金助手会按请求选择截图识别、公开数据补全或市场快照；结论仅供研究参考，不构成收益承诺。"
           }
         ]
       }
@@ -1304,17 +1607,27 @@ function getDefaultStats() {
       textMessages: 0,
       noContentMessages: 0,
       downloadedImages: 0,
+      routedMessages: 0,
+      screeningRequests: 0,
+      fundRecommendationRequests: 0,
+      fundQaRequests: 0,
       extractionCalls: 0,
       extractionFailures: 0,
       extractedFundCodes: 0,
       fundEnrichmentCalls: 0,
       fundEnrichmentSuccess: 0,
       fundEnrichmentFailures: 0,
+      marketSnapshotCalls: 0,
+      marketSnapshotFailures: 0,
+      marketBoardFetches: 0,
+      fundRankingFetches: 0,
       navHistoryFetches: 0,
       navHistoryPoints: 0,
       analystReviewCalls: 0,
       committeeVoteCalls: 0,
       managerReviewCalls: 0,
+      fundRecommendationModelCalls: 0,
+      fundQaModelCalls: 0,
       modelCalls: 0,
       modelFailures: 0,
       repliesSent: 0,
@@ -1626,6 +1939,104 @@ function collectText(value, pieces, key = "") {
   }
 }
 
+function classifyMessageIntent({ imageKeys = [], userText = "", messageType = "" }) {
+  const text = normalizeIntentText(userText);
+  const fundCodes = extractFundCodes(text);
+  const hasFundWord = hasAny(text, ["基金", "etf", "lof", "qdii", "指数", "主动", "混合", "股票型", "债基", "货币"]);
+
+  if (imageKeys.length) {
+    return {
+      workflow: "fund_screening",
+      mode: "screenshot_or_mixed",
+      reason: "message_contains_image",
+      fundCodes,
+      messageType
+    };
+  }
+
+  const asksRecommendation =
+    hasAny(text, ["推荐", "筛选", "找几个", "几个基金", "哪些基金", "买什么", "投什么", "配什么", "配置", "候选", "清单"]) ||
+    (hasAny(text, ["最近", "最新", "当前", "现在", "市场", "行情", "题材", "热点", "板块", "赛道", "机会"]) &&
+      hasAny(text, ["基金", "etf", "买", "投", "配置", "推荐"]));
+
+  const asksCompare = hasAny(text, ["对比", "比较", "哪个更好", "哪只更好", "二选一", "三选一", "pk"]);
+  const asksSpecificAction = hasAny(text, [
+    "这只基金",
+    "这个基金",
+    "该基金",
+    "基金代码",
+    "值得买吗",
+    "还能买吗",
+    "能买吗",
+    "要不要买",
+    "要不要卖",
+    "持有",
+    "卖出",
+    "买入",
+    "定投",
+    "仓位",
+    "评分",
+    "评价",
+    "分析一下"
+  ]);
+
+  if (!fundCodes.length && asksRecommendation) {
+    return {
+      workflow: "fund_recommendation",
+      mode: "market_theme_discovery",
+      reason: "text_requests_recommendations_without_specific_fund",
+      fundCodes,
+      messageType
+    };
+  }
+
+  if (fundCodes.length || (hasFundWord && (asksSpecificAction || asksCompare))) {
+    return {
+      workflow: "fund_screening",
+      mode: asksCompare || fundCodes.length > 1 ? "comparison_or_specific_fund" : "specific_fund_or_fund_name",
+      reason: fundCodes.length ? "text_contains_fund_code" : "text_mentions_specific_fund_action",
+      fundCodes,
+      messageType
+    };
+  }
+
+  return {
+    workflow: "fund_qa",
+    mode: shouldFetchMarketSnapshotForQuestion(text) ? "market_question" : "general_fund_question",
+    reason: "no_image_no_specific_fund_recommendation",
+    fundCodes,
+    messageType
+  };
+}
+
+function recordWorkflowIntent(intent) {
+  const counters = { routedMessages: 1 };
+  if (intent.workflow === "fund_screening") counters.screeningRequests = 1;
+  if (intent.workflow === "fund_recommendation") counters.fundRecommendationRequests = 1;
+  if (intent.workflow === "fund_qa") counters.fundQaRequests = 1;
+  updateStats({
+    counters,
+    last: {
+      lastWorkflow: intent.workflow,
+      lastWorkflowMode: intent.mode,
+      lastWorkflowReason: intent.reason
+    }
+  });
+}
+
+function shouldFetchMarketSnapshotForQuestion(text) {
+  const normalized = normalizeIntentText(text);
+  return hasAny(normalized, ["最近", "最新", "当前", "现在", "市场", "行情", "题材", "热点", "板块", "赛道", "机会"]);
+}
+
+function normalizeIntentText(value) {
+  return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function hasAny(text, needles) {
+  return needles.some((needle) => text.includes(needle.toLowerCase()));
+}
+
 function extractFundCodes(text) {
   const codes = String(text || "").match(/(?<!\d)(\d{6})(?!\d)/g) || [];
   return mergeFundCodes(codes);
@@ -1646,7 +2057,11 @@ function buildProgressMessage(imageCount, userText) {
   const parts = ["已收到，开始处理。"];
   if (imageCount) parts.push(`图片 ${imageCount} 张`);
   if (userText) parts.push("包含文字说明");
-  parts.push("我会先识别截图，再联网补全基金资料，最后按 fund-screening 给出评价。");
+  parts.push(
+    imageCount
+      ? "我会先识别截图，再联网补全基金资料，最后按投研委员会流程给出评价。"
+      : "我会先识别基金代码/名称，再联网补全基金资料，最后按投研委员会流程给出评价。"
+  );
   return parts.join("\n");
 }
 
