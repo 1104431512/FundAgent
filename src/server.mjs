@@ -33,6 +33,7 @@ let portfolioDbFlushTimer = null;
 let portfolioDbFlushInFlight = false;
 let portfolioDbFlushPending = false;
 let portfolioDbLastFlushError = "";
+const portfolioProgressFlushTimes = new Map();
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
@@ -162,10 +163,12 @@ async function handleApiRequest(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/portfolio") {
     const startedAt = Date.now();
-    const portfolio = getPortfolioPublicState();
+    const forceFull = url.searchParams.get("full") === "1";
+    const lightweight = !forceFull && (portfolioRunInFlight || url.searchParams.get("light") === "1" || url.searchParams.get("summary") === "1");
+    const portfolio = getPortfolioPublicState(undefined, { lightweight });
     const elapsedMs = Date.now() - startedAt;
     if (elapsedMs > 1000) {
-      console.warn(`[portfolio-api-slow] /api/portfolio ${elapsedMs}ms`);
+      console.warn(`[portfolio-api-slow] /api/portfolio${lightweight ? "?light=1" : ""} ${elapsedMs}ms`);
     }
     sendJson(res, 200, { ok: true, portfolio });
     return;
@@ -654,6 +657,7 @@ async function runPortfolioTask(type, options = {}) {
       portfolioRunInFlight = false;
       activePortfolioRunId = "";
     }
+    portfolioProgressFlushTimes.delete(run.id);
     cancelledPortfolioRunIds.delete(run.id);
   }
 }
@@ -685,7 +689,15 @@ function markPortfolioRunProgress(db, run, summary) {
   run.progressAt = now;
   db.updatedAt = now;
   console.log(`[portfolio-progress] ${run.id} ${run.type} ${summary}`);
-  writePortfolioDb(db);
+  const flushEveryMs = Math.max(0, Number(process.env.PORTFOLIO_PROGRESS_FLUSH_MS || 5000));
+  const nowMs = Date.parse(now);
+  const lastFlushAt = portfolioProgressFlushTimes.get(run.id) || 0;
+  if (flushEveryMs === 0 || !lastFlushAt || nowMs - lastFlushAt >= flushEveryMs) {
+    portfolioProgressFlushTimes.set(run.id, nowMs);
+    writePortfolioDb(db);
+  } else {
+    portfolioDbCache = db;
+  }
 }
 
 function yieldToEventLoop() {
@@ -2003,13 +2015,17 @@ function buildPortfolioStatusAnswer(userText, intent) {
   return lines.join("\n");
 }
 
-function getPortfolioPublicState(db = readPortfolioDb()) {
+function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
   const config = getEffectiveConfig();
+  const lightweight = Boolean(options.lightweight);
   ensurePortfolioAccount(db, config);
   const target = resolvePortfolioPushTarget(config, db);
+  const recentRunLimit = lightweight ? 6 : 20;
+  const recentItemLimit = lightweight ? 10 : 30;
   return {
     dbPath: PORTFOLIO_DB_PATH,
     enabled: Boolean(config.portfolioEnabled),
+    lightweight,
     retentionDays: Number(config.portfolioRetentionDays || 90),
     scheduler: {
       decisionTime: config.portfolioDecisionTime,
@@ -2028,7 +2044,7 @@ function getPortfolioPublicState(db = readPortfolioDb()) {
           label: target.label || ""
         }
       : null,
-    knownPushTargets: (db.pushTargets || []).slice(-10).reverse().map((target) => ({
+    knownPushTargets: (db.pushTargets || []).slice(lightweight ? -3 : -10).reverse().map((target) => ({
       receiveIdType: target.receiveIdType,
       receiveIdMasked: maskSecret(target.receiveId),
       label: target.label,
@@ -2038,11 +2054,28 @@ function getPortfolioPublicState(db = readPortfolioDb()) {
     account: summarizePortfolioAccount(db.account),
     positions: db.account.positions.map(summarizePortfolioPosition),
     activeOrders: (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status)).map(summarizePortfolioOrder),
-    recentRuns: (db.runs || []).slice(-20).reverse().map(summarizePortfolioRun),
-    recentOrders: (db.orders || []).slice(-30).reverse().map(summarizePortfolioOrder),
-    recentTransactions: (db.transactions || []).slice(-30).reverse(),
+    recentRuns: (db.runs || []).slice(-recentRunLimit).reverse().map(lightweight ? summarizePortfolioRunBrief : summarizePortfolioRun),
+    recentOrders: (db.orders || []).slice(-recentItemLimit).reverse().map(summarizePortfolioOrder),
+    recentTransactions: (db.transactions || []).slice(-recentItemLimit).reverse(),
     pendingSettlements: (db.settlements || []).filter((item) => item.status === "pending").slice(-20).reverse(),
-    recentEquity: (db.dailyEquity || []).slice(-30).reverse()
+    recentEquity: (db.dailyEquity || []).slice(-recentItemLimit).reverse()
+  };
+}
+
+function summarizePortfolioRunBrief(run) {
+  return {
+    id: run.id,
+    type: run.type,
+    title: run.title || "",
+    date: run.date,
+    status: run.status,
+    manual: run.manual,
+    startedAt: run.startedAt,
+    progressAt: run.progressAt || "",
+    completedAt: run.completedAt,
+    durationMs: run.durationMs,
+    summary: buildPortfolioRunSummary(run),
+    error: run.error || ""
   };
 }
 
@@ -2222,7 +2255,7 @@ function writePortfolioDb(db) {
       portfolioDbLastFlushError = error.message;
       console.error("[portfolio-db-write-error]", error);
     });
-  }, Number(process.env.PORTFOLIO_DB_FLUSH_DELAY_MS || 200));
+  }, Math.max(50, Number(process.env.PORTFOLIO_DB_FLUSH_DELAY_MS || 1000)));
   portfolioDbFlushTimer.unref?.();
 }
 

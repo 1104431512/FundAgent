@@ -9,6 +9,7 @@ const adminTokenInput = document.querySelector("#adminToken");
 
 let currentSkills = [];
 let portfolioPollTimer = null;
+let portfolioPollFailures = 0;
 
 const tokenFromUrl = new URLSearchParams(location.search).get("token");
 if (tokenFromUrl) {
@@ -171,7 +172,7 @@ async function loadStats() {
 }
 
 async function loadPortfolio() {
-  const result = await apiFetch("/api/portfolio");
+  const result = await apiFetch("/api/portfolio", { timeoutMs: 45000 });
   const portfolio = result.portfolio || {};
   const account = portfolio.account || {};
   setText("#portfolioTotalAsset", formatMoney(account.totalAsset));
@@ -435,13 +436,20 @@ function startPortfolioPolling() {
   }
   portfolioPollTimer = setInterval(async () => {
     try {
-      const result = await apiFetch("/api/portfolio");
+      const result = await apiFetch("/api/portfolio?light=1", { timeoutMs: 45000 });
       const portfolio = result.portfolio || {};
+      portfolioPollFailures = 0;
       renderPortfolioResult(portfolio);
       if (!portfolio.scheduler?.inFlight) {
         stopPortfolioPolling();
+        setTimeout(() => loadPortfolio().catch(showError), 0);
       }
     } catch (error) {
+      portfolioPollFailures += 1;
+      if (String(error.message || "").includes("/api/portfolio")) {
+        portfolioOutput.textContent = `${portfolioOutput.textContent}\n\n组合状态刷新超时，正在继续重试（${portfolioPollFailures}）。`;
+        return;
+      }
       stopPortfolioPolling();
       showError(error);
     }
@@ -453,6 +461,7 @@ function stopPortfolioPolling() {
     clearInterval(portfolioPollTimer);
     portfolioPollTimer = null;
   }
+  portfolioPollFailures = 0;
 }
 
 async function prunePortfolio() {
