@@ -1680,32 +1680,64 @@ async function getTenantAccessToken(config = getEffectiveConfig()) {
 }
 
 async function postJson(url, body, headers = {}) {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...headers
-    },
-    body: JSON.stringify(body)
-  });
+  const attempts = Number(process.env.HTTP_RETRY_ATTEMPTS || 3);
+  let lastError = null;
 
-  const text = await response.text();
-  let json = null;
-  try {
-    json = text ? JSON.parse(text) : {};
-  } catch {
-    json = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          ...headers
+        },
+        body: JSON.stringify(body)
+      });
+
+      const text = await response.text();
+      let json = null;
+      try {
+        json = text ? JSON.parse(text) : {};
+      } catch {
+        json = null;
+      }
+
+      if (!response.ok) {
+        const error = new Error(`HTTP ${response.status}: ${text.slice(0, 500)}`);
+        error.httpStatus = response.status;
+        throw error;
+      }
+
+      if (json && typeof json.code === "number" && json.code !== 0 && !json.output && !json.choices) {
+        throw new Error(json.msg || JSON.stringify(json));
+      }
+
+      return json ?? text;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts || !isRetryableHttpError(error)) {
+        throw error;
+      }
+      await sleep(Math.min(2000, 300 * 2 ** (attempt - 1)));
+    }
   }
 
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${text.slice(0, 500)}`);
-  }
+  throw lastError;
+}
 
-  if (json && typeof json.code === "number" && json.code !== 0 && !json.output && !json.choices) {
-    throw new Error(json.msg || JSON.stringify(json));
+function isRetryableHttpError(error) {
+  const code = error?.cause?.code || error?.code || "";
+  if (["EAI_AGAIN", "ETIMEDOUT", "ECONNRESET", "ECONNREFUSED", "ENOTFOUND", "UND_ERR_CONNECT_TIMEOUT"].includes(code)) {
+    return true;
   }
+  if (error?.name === "TypeError" && /fetch failed/i.test(error.message || "")) {
+    return true;
+  }
+  return Number(error?.httpStatus || 0) >= 500 || Number(error?.httpStatus || 0) === 429;
+}
 
-  return json ?? text;
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function getEffectiveConfig() {
@@ -2118,15 +2150,15 @@ function extractUserText(messageType, content) {
     return "";
   }
   if (messageType === "text" && typeof content.text === "string") {
-    return content.text.trim();
+    return cleanFeishuUserText(content.text, content);
   }
   if (typeof content.text === "string") {
-    return content.text.trim();
+    return cleanFeishuUserText(content.text, content);
   }
   if (content.title || content.content) {
     const pieces = [];
     collectText(content, pieces);
-    return pieces.join("\n").trim();
+    return cleanFeishuUserText(pieces.join("\n"), content);
   }
   return "";
 }
@@ -2149,6 +2181,28 @@ function collectText(value, pieces, key = "") {
       if (child !== value.text) collectText(child, pieces, childKey);
     }
   }
+}
+
+function cleanFeishuUserText(text, content = {}) {
+  let cleaned = String(text || "");
+  const mentions = Array.isArray(content?.mentions) ? content.mentions : [];
+
+  for (const mention of mentions) {
+    for (const value of [mention?.key, mention?.name].filter(Boolean)) {
+      cleaned = cleaned.replace(new RegExp(escapeRegExp(String(value)), "g"), " ");
+      cleaned = cleaned.replace(new RegExp(`@\\s*${escapeRegExp(String(value))}`, "g"), " ");
+    }
+  }
+
+  cleaned = cleaned
+    .replace(/<at\b[^>]*>[\s\S]*?<\/at>/gi, " ")
+    .replace(/@\s*基金助手/g, " ")
+    .replace(/@\s*FundAgent/gi, " ")
+    .replace(/@\s*Fund\s*Agent/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return cleaned;
 }
 
 async function classifyMessageIntent({ imageKeys = [], userText = "", messageType = "" }) {
