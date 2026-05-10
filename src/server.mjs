@@ -28,6 +28,11 @@ let portfolioSchedulerTimer = null;
 let portfolioRunInFlight = false;
 let activePortfolioRunId = "";
 const cancelledPortfolioRunIds = new Set();
+let portfolioDbCache = null;
+let portfolioDbFlushTimer = null;
+let portfolioDbFlushInFlight = false;
+let portfolioDbFlushPending = false;
+let portfolioDbLastFlushError = "";
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
@@ -99,6 +104,26 @@ server.listen(PORT, HOST, () => {
   startPortfolioScheduler();
 });
 
+let eventLoopLagExpectedAt = Date.now() + 5000;
+setInterval(() => {
+  const now = Date.now();
+  const lagMs = now - eventLoopLagExpectedAt;
+  if (lagMs > Number(process.env.EVENT_LOOP_LAG_WARN_MS || 3000)) {
+    console.warn(`[event-loop-lag] ${lagMs}ms`);
+  }
+  eventLoopLagExpectedAt = now + 5000;
+}, 5000).unref?.();
+
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.once(signal, () => {
+    try {
+      flushPortfolioDbSync();
+    } finally {
+      process.exit(0);
+    }
+  });
+}
+
 async function handleApiRequest(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/config") {
     sendJson(res, 200, getPublicConfig());
@@ -136,7 +161,13 @@ async function handleApiRequest(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/portfolio") {
-    sendJson(res, 200, { ok: true, portfolio: getPortfolioPublicState() });
+    const startedAt = Date.now();
+    const portfolio = getPortfolioPublicState();
+    const elapsedMs = Date.now() - startedAt;
+    if (elapsedMs > 1000) {
+      console.warn(`[portfolio-api-slow] /api/portfolio ${elapsedMs}ms`);
+    }
+    sendJson(res, 200, { ok: true, portfolio });
     return;
   }
 
@@ -695,7 +726,10 @@ async function executePortfolioDecision(db, run, config) {
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "正在校验交易规则并生成虚拟订单。");
   await yieldToEventLoop();
-  const execution = submitPortfolioOrders(db, decision.actions, actionProfiles, run, config);
+  const execution = await submitPortfolioOrders(db, decision.actions, actionProfiles, run, config);
+  assertPortfolioRunActive(run);
+  markPortfolioRunProgress(db, run, `已生成 ${execution.orders.length} 张虚拟订单，正在生成决策日报。`);
+  await yieldToEventLoop();
   const transactions = lifecycleBefore.transactions;
   recalculatePortfolioAccount(db.account);
 
@@ -720,6 +754,7 @@ async function executePortfolioDecision(db, run, config) {
     settlementEvents: lifecycleBefore.settlementEvents,
     run
   });
+  markPortfolioRunProgress(db, run, "决策日报已生成，正在保存任务结果。");
 
   updateStats({
     counters: {
@@ -1024,13 +1059,23 @@ function normalizePortfolioActions(value) {
     .slice(0, 10);
 }
 
-function submitPortfolioOrders(db, actions, profiles, run, config = getEffectiveConfig()) {
+async function submitPortfolioOrders(db, actions, profiles, run, config = getEffectiveConfig()) {
   const profileByCode = new Map((profiles || []).map((profile) => [profile.code, profile]));
   const orders = [];
   const notes = [];
   recalculatePortfolioAccount(db.account);
 
-  for (const action of actions) {
+  for (const [index, action] of actions.entries()) {
+    assertPortfolioRunActive(run);
+    if (index > 0) {
+      await yieldToEventLoop();
+    }
+    markPortfolioRunProgress(
+      db,
+      run,
+      `正在校验交易规则并生成虚拟订单（${index + 1}/${actions.length} ${action.action} ${action.code || action.name || ""}）。`
+    );
+    await yieldToEventLoop();
     if (action.action === "BUY") {
       const profile = profileByCode.get(action.code);
       const nav = getProfileNav(profile);
@@ -1972,7 +2017,9 @@ function getPortfolioPublicState(db = readPortfolioDb()) {
       timezone: config.portfolioTimezone,
       inFlight: portfolioRunInFlight,
       activeRunId: activePortfolioRunId || "",
-      activeRunStartedAt: (db.runs || []).find((run) => run.id === activePortfolioRunId)?.startedAt || ""
+      activeRunStartedAt: (db.runs || []).find((run) => run.id === activePortfolioRunId)?.startedAt || "",
+      dbFlushPending: portfolioDbFlushPending || Boolean(portfolioDbFlushTimer) || portfolioDbFlushInFlight,
+      dbFlushError: portfolioDbLastFlushError
     },
     pushTarget: target
       ? {
@@ -2149,7 +2196,14 @@ function keepRecentPortfolioItems(items, cutoff, keepLatest, keepActive = false)
 }
 
 function readPortfolioDb() {
+  if (portfolioDbCache) {
+    if (repairStalePortfolioRuns(portfolioDbCache)) {
+      writePortfolioDb(portfolioDbCache);
+    }
+    return portfolioDbCache;
+  }
   const db = normalizePortfolioDb(safeReadJson(PORTFOLIO_DB_PATH));
+  portfolioDbCache = db;
   if (db[PORTFOLIO_DB_REPAIRED]) {
     writePortfolioDb(db);
   }
@@ -2157,8 +2211,80 @@ function readPortfolioDb() {
 }
 
 function writePortfolioDb(db) {
+  portfolioDbCache = compactPortfolioDbForStorage(db);
+  portfolioDbFlushPending = true;
+  if (portfolioDbFlushTimer || portfolioDbFlushInFlight) {
+    return;
+  }
+  portfolioDbFlushTimer = setTimeout(() => {
+    portfolioDbFlushTimer = null;
+    flushPortfolioDbAsync().catch((error) => {
+      portfolioDbLastFlushError = error.message;
+      console.error("[portfolio-db-write-error]", error);
+    });
+  }, Number(process.env.PORTFOLIO_DB_FLUSH_DELAY_MS || 200));
+  portfolioDbFlushTimer.unref?.();
+}
+
+async function flushPortfolioDbAsync() {
+  if (portfolioDbFlushInFlight) {
+    portfolioDbFlushPending = true;
+    return;
+  }
+  portfolioDbFlushInFlight = true;
+  try {
+    while (portfolioDbFlushPending) {
+      portfolioDbFlushPending = false;
+      const db = portfolioDbCache || normalizePortfolioDb(safeReadJson(PORTFOLIO_DB_PATH));
+      const body = `${JSON.stringify(compactPortfolioDbForStorage(db))}\n`;
+      ensureDir(path.dirname(PORTFOLIO_DB_PATH));
+      await fs.promises.writeFile(PORTFOLIO_DB_PATH, body, "utf8");
+      portfolioDbLastFlushError = "";
+    }
+  } finally {
+    portfolioDbFlushInFlight = false;
+    if (portfolioDbFlushPending && !portfolioDbFlushTimer) {
+      writePortfolioDb(portfolioDbCache);
+    }
+  }
+}
+
+function flushPortfolioDbSync() {
+  if (!portfolioDbCache) return;
   ensureDir(path.dirname(PORTFOLIO_DB_PATH));
-  fs.writeFileSync(PORTFOLIO_DB_PATH, `${JSON.stringify(db, null, 2)}\n`, "utf8");
+  fs.writeFileSync(PORTFOLIO_DB_PATH, `${JSON.stringify(compactPortfolioDbForStorage(portfolioDbCache))}\n`, "utf8");
+  portfolioDbFlushPending = false;
+  portfolioDbLastFlushError = "";
+}
+
+function compactPortfolioDbForStorage(db) {
+  if (!db || typeof db !== "object") {
+    return db;
+  }
+  const maxRuns = Math.max(20, Number(process.env.PORTFOLIO_DB_MAX_RUNS || 120));
+  const maxList = Math.max(50, Number(process.env.PORTFOLIO_DB_MAX_LIST_ITEMS || 300));
+  if (Array.isArray(db.runs) && db.runs.length > maxRuns) {
+    db.runs = db.runs.slice(-maxRuns);
+  }
+  for (const key of ["orders", "transactions", "settlements", "dailyEquity"]) {
+    if (Array.isArray(db[key]) && db[key].length > maxList) {
+      db[key] = db[key].slice(-maxList);
+    }
+  }
+  for (const run of db.runs || []) {
+    if (typeof run.rawModelOutput === "string" && run.rawModelOutput.length > 4000) {
+      run.rawModelOutput = `${run.rawModelOutput.slice(0, 4000)}\n...(truncated)`;
+    }
+    if (typeof run.card === "string" && run.card.length > 12000) {
+      run.card = `${run.card.slice(0, 12000)}\n...(truncated)`;
+    }
+    if (Array.isArray(run.sources)) run.sources = run.sources.slice(0, 30);
+    if (Array.isArray(run.actions)) run.actions = run.actions.slice(0, 20);
+    if (Array.isArray(run.orders)) run.orders = run.orders.slice(0, 20);
+    if (Array.isArray(run.transactions)) run.transactions = run.transactions.slice(0, 20);
+    if (Array.isArray(run.executionNotes)) run.executionNotes = run.executionNotes.slice(0, 30);
+  }
+  return db;
 }
 
 function normalizePortfolioDb(value) {

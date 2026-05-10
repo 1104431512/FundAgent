@@ -183,7 +183,7 @@ async function loadPortfolio() {
     "#portfolioSchedule",
     `${portfolio.enabled ? "已启用" : "已停用"} · 决策 ${portfolio.scheduler?.decisionTime || "-"} · 复盘 ${
       portfolio.scheduler?.reviewTime || "-"
-    }`
+    }${portfolio.scheduler?.dbFlushPending ? " · 数据保存中" : ""}${portfolio.scheduler?.dbFlushError ? " · 数据保存异常" : ""}`
   );
   setText(
     "#portfolioPushTarget",
@@ -204,7 +204,30 @@ async function loadPortfolio() {
   } else {
     stopPortfolioPolling();
   }
-  portfolioOutput.textContent = JSON.stringify(portfolio, null, 2);
+  portfolioOutput.textContent = formatPortfolioOutput(portfolio);
+}
+
+function formatPortfolioOutput(portfolio) {
+  const account = portfolio.account || {};
+  const latestRun = (portfolio.recentRuns || [])[0];
+  const lines = [
+    `总资产：${formatMoney(account.totalAsset)}，现金：${formatMoney(account.cash)}，仓位：${account.positionWeightPct || 0}%`,
+    `待确认/应收：${formatMoney(Number(account.pendingBuyAmount || 0) + Number(account.receivableCash || 0))}，累计盈亏：${formatSigned(account.cumulativePnl)} (${formatSigned(account.cumulativePnlPct)}%)`
+  ];
+  if (latestRun) {
+    lines.push("");
+    lines.push(`最近任务：${latestRun.date || "-"} · ${latestRun.type || "-"} · ${latestRun.status || "-"}`);
+    lines.push(`进度：${latestRun.summary || "-"}`);
+    if (latestRun.startedAt) lines.push(`开始：${formatDateTime(latestRun.startedAt)}`);
+    if (latestRun.progressAt) lines.push(`更新：${formatDateTime(latestRun.progressAt)}`);
+    if (latestRun.completedAt) lines.push(`结束：${formatDateTime(latestRun.completedAt)}`);
+    if (latestRun.error) lines.push(`错误：${latestRun.error}`);
+  }
+  if (portfolio.scheduler?.dbFlushError) {
+    lines.push("");
+    lines.push(`数据保存异常：${portfolio.scheduler.dbFlushError}`);
+  }
+  return lines.join("\n");
 }
 
 function updatePortfolioTaskButtons(inFlight) {
@@ -459,6 +482,12 @@ function renderPortfolioResult(result) {
     setText("#portfolioPositionWeight", `${portfolio.account.positionWeightPct || 0}%`);
     setText("#portfolioPending", `${formatMoney(Number(portfolio.account.pendingBuyAmount || 0) + Number(portfolio.account.receivableCash || 0))}`);
     setText("#portfolioPnl", `${formatSigned(portfolio.account.cumulativePnl)} (${formatSigned(portfolio.account.cumulativePnlPct)}%)`);
+    setText(
+      "#portfolioSchedule",
+      `${portfolio.enabled ? "已启用" : "已停用"} · 决策 ${portfolio.scheduler?.decisionTime || "-"} · 复盘 ${
+        portfolio.scheduler?.reviewTime || "-"
+      }${portfolio.scheduler?.dbFlushPending ? " · 数据保存中" : ""}${portfolio.scheduler?.dbFlushError ? " · 数据保存异常" : ""}`
+    );
     renderOrders(portfolio.activeOrders || []);
     renderPositions(portfolio.positions || []);
     renderRuns(portfolio.recentRuns || []);
@@ -474,7 +503,7 @@ function renderPortfolioResult(result) {
   } else {
     setTimeout(() => loadPortfolio().catch(showError), 0);
   }
-  portfolioOutput.textContent = JSON.stringify(portfolio, null, 2);
+  portfolioOutput.textContent = formatPortfolioOutput(portfolio);
 }
 
 async function runTest(type) {
