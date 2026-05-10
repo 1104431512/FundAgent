@@ -1,12 +1,17 @@
 ---
 id: fund-portfolio-manager
 name: Virtual Fund Portfolio Manager
-description: Runs a stateful virtual fund manager that reviews daily market themes, manages a simulated account, records operations, saves evidence, and pushes Feishu daily decision or valuation reports.
+description: Legacy compatibility wrapper for the stateful virtual fund manager. Prefer fund-portfolio-research, fund-portfolio-decision, fund-portfolio-execution, and fund-portfolio-review for new workflows.
 ---
 
 # Virtual Fund Portfolio Manager
 
-Use this skill when the assistant runs a scheduled or manual virtual portfolio task rather than answering a one-off chat.
+Use this only as a compact fallback for the stateful virtual portfolio manager. Prefer the modular skills:
+
+- `fund-portfolio-research` for market/theme/fund/position evidence.
+- `fund-portfolio-decision` for target-weight proposals and committee rationale.
+- `fund-portfolio-execution` for order lifecycle, cutoff, confirmation, QDII lag, and settlement constraints.
+- `fund-portfolio-review` for valuation, order progress, P&L, and learning notes.
 
 ## Role Setup
 

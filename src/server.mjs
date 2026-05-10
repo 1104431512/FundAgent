@@ -706,7 +706,10 @@ async function executePortfolioValuation(db, run, config) {
 }
 
 async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, config }) {
-  const skillContext = buildSkillContextForIntent({ skillIds: ["fund-portfolio-manager"] }, []);
+  const skillContext = buildSkillContextForIntent(
+    { skillIds: ["fund-portfolio-research", "fund-portfolio-decision", "fund-portfolio-execution"] },
+    []
+  );
   const systemText = [
     "你是飞书机器人“基金助手”的虚拟基金经理。你每天管理一个教育性虚拟组合，不进行真实交易。",
     "你的目标不是永远保守，而是在证据足够时敢于出击；但每次动作都必须写清数据来源、风险控制和复盘条件。",
@@ -777,7 +780,10 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
 }
 
 async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, positionUpdates, profiles, config }) {
-  const skillContext = buildSkillContextForIntent({ skillIds: ["fund-portfolio-manager"] }, []);
+  const skillContext = buildSkillContextForIntent(
+    { skillIds: ["fund-portfolio-review", "fund-portfolio-execution"] },
+    []
+  );
   const systemText = [
     "你是飞书机器人“基金助手”的虚拟基金经理，正在做晚间估值复盘。",
     "请解释今日盈亏、仓位变化和明天观察重点。不要编造传入资料之外的数据。",
@@ -4162,7 +4168,7 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
       mode: "virtual_portfolio_status",
       reason: "hard_rule_virtual_manager_account_query",
       fundCodes,
-      skillIds: ["fund-portfolio-manager"],
+      skillIds: [],
       messageType
     };
   }
@@ -4271,7 +4277,7 @@ async function classifyTextIntentWithModel({ userText, messageType }) {
     JSON.stringify(skills, null, 2),
     "",
     "返回 JSON：",
-    '{"workflow":"conversation|portfolio_status|fund_recommendation|fund_screening|fund_qa","mode":"short label","reason":"brief reason","skillIds":["fund-portfolio-manager"],"confidence":0.0}'
+    '{"workflow":"conversation|portfolio_status|fund_recommendation|fund_screening|fund_qa","mode":"short label","reason":"brief reason","skillIds":["fund-recommendation"],"confidence":0.0}'
   ].join("\n");
 
   const raw = await callModel({ systemText, userPrompt, images: [], maxTokens: 500 });
@@ -4285,7 +4291,9 @@ async function classifyTextIntentWithModel({ userText, messageType }) {
 function normalizeIntentResult(intent, defaults = {}) {
   const validWorkflows = new Set(["conversation", "portfolio_status", "fund_recommendation", "fund_screening", "fund_qa"]);
   const workflow = validWorkflows.has(String(intent.workflow || "")) ? String(intent.workflow) : "fund_qa";
-  const availableSkillIds = new Set(listSkills(false).map((skill) => skill.id));
+  const availableSkillIds = new Set(allowedSkillIdsForWorkflow(workflow).filter((id) =>
+    listSkills(false).some((skill) => skill.id === id)
+  ));
   let skillIds = Array.isArray(intent.skillIds)
     ? intent.skillIds.map(String).filter((id) => availableSkillIds.has(id))
     : [];
@@ -4306,11 +4314,22 @@ function normalizeIntentResult(intent, defaults = {}) {
 }
 
 function defaultSkillIdsForWorkflow(workflow) {
-  if (workflow === "portfolio_status") return ["fund-portfolio-manager"];
+  if (workflow === "portfolio_status") return [];
   if (workflow === "fund_recommendation") return ["fund-recommendation", "fund-synthesis"];
   if (workflow === "fund_screening") return ["fund-data-enrichment", "fund-analysis", "fund-synthesis"];
   if (workflow === "fund_qa") return [];
   return [];
+}
+
+function allowedSkillIdsForWorkflow(workflow) {
+  const byWorkflow = {
+    conversation: [],
+    portfolio_status: [],
+    fund_recommendation: ["fund-recommendation", "fund-synthesis", "fund-data-enrichment"],
+    fund_screening: ["fund-vision", "fund-data-enrichment", "fund-analysis", "fund-comparison", "fund-synthesis", "fund-screening"],
+    fund_qa: ["fund-data-enrichment"]
+  };
+  return byWorkflow[workflow] || [];
 }
 
 function recordWorkflowIntent(intent) {
