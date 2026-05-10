@@ -174,6 +174,7 @@ async function loadPortfolio() {
   setText("#portfolioTotalAsset", formatMoney(account.totalAsset));
   setText("#portfolioCash", formatMoney(account.cash));
   setText("#portfolioPositionWeight", `${account.positionWeightPct || 0}%`);
+  setText("#portfolioPending", `${formatMoney(Number(account.pendingBuyAmount || 0) + Number(account.receivableCash || 0))}`);
   setText("#portfolioPnl", `${formatSigned(account.cumulativePnl)} (${formatSigned(account.cumulativePnlPct)}%)`);
   setText(
     "#portfolioSchedule",
@@ -188,11 +189,46 @@ async function loadPortfolio() {
       : "未绑定"
   );
   setText("#portfolioRetention", `${portfolio.retentionDays || 90} 天`);
+  renderOrders(portfolio.activeOrders || []);
   renderPositions(portfolio.positions || []);
   renderRuns(portfolio.recentRuns || []);
   renderTransactions(portfolio.recentTransactions || []);
   renderEquity(portfolio.recentEquity || []);
   portfolioOutput.textContent = JSON.stringify(portfolio, null, 2);
+}
+
+function renderOrders(orders) {
+  const list = document.querySelector("#orderList");
+  if (!orders.length) {
+    list.innerHTML = `<div class="empty">暂无待确认订单。申购/赎回不会下单即成交，会在这里显示估值日、确认日和到账日。</div>`;
+    return;
+  }
+  list.innerHTML = orders
+    .map(
+      (item) => `
+        <div class="data-row order-row">
+          <div>
+            <strong>${escapeHtml(item.side)} ${escapeHtml(item.code)} ${escapeHtml(item.name)}</strong>
+            <p>${escapeHtml(item.scheduleReason || "")}</p>
+            <small>${escapeHtml(item.limitCheck?.note || "")}</small>
+          </div>
+          <div>${formatMoney(item.amount)}</div>
+          <div>
+            <strong>${escapeHtml(item.status || "")}</strong>
+            <small>${escapeHtml(item.tradingProfile?.kind || "")}</small>
+          </div>
+          <div>
+            <strong>${escapeHtml(item.priceDate || "-")}</strong>
+            <small>估值日</small>
+          </div>
+          <div>
+            <strong>${escapeHtml(item.confirmDate || "-")}</strong>
+            <small>${item.settlementDate ? `到账 ${escapeHtml(item.settlementDate)}` : "确认日"}</small>
+          </div>
+        </div>
+      `
+    )
+    .join("");
 }
 
 function renderPositions(positions) {

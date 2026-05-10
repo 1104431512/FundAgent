@@ -561,6 +561,7 @@ async function runPortfolioTask(type, options = {}) {
 }
 
 async function executePortfolioDecision(db, run, config) {
+  const lifecycleBefore = await processPortfolioOrderLifecycle(db, run, config);
   const accountBefore = summarizePortfolioAccount(db.account);
   const marketSnapshot = await fetchMarketSnapshot();
   const heldCodes = db.account.positions.map((position) => position.code).filter(Boolean);
@@ -574,8 +575,8 @@ async function executePortfolioDecision(db, run, config) {
   const decision = normalizePortfolioDecision(raw);
   const profileCodes = decision.actions.map((action) => action.code).filter(Boolean);
   const actionProfiles = profileCodes.length ? await enrichFunds(profileCodes) : [];
-  const execution = applyPortfolioActions(db, decision.actions, actionProfiles, run);
-  const transactions = execution.transactions;
+  const execution = submitPortfolioOrders(db, decision.actions, actionProfiles, run, config);
+  const transactions = lifecycleBefore.transactions;
   recalculatePortfolioAccount(db.account);
 
   run.title = "每日操作决策";
@@ -584,23 +585,37 @@ async function executePortfolioDecision(db, run, config) {
   run.accountAfter = summarizePortfolioAccount(db.account);
   run.team = decision.team;
   run.actions = decision.actions;
+  run.orders = execution.orders;
   run.transactions = transactions;
-  run.executionNotes = execution.notes;
+  run.executionNotes = [...lifecycleBefore.notes, ...execution.notes];
+  run.settlementEvents = lifecycleBefore.settlementEvents;
   run.sources = collectPortfolioSources(marketSnapshot, heldProfiles, actionProfiles, decision);
   run.rawModelOutput = decision.rawModelOutput;
-  run.card = buildPortfolioDecisionCard({ decision, account: db.account, transactions, executionNotes: execution.notes, run });
+  run.card = buildPortfolioDecisionCard({
+    decision,
+    account: db.account,
+    orders: execution.orders,
+    transactions,
+    executionNotes: run.executionNotes,
+    settlementEvents: lifecycleBefore.settlementEvents,
+    run
+  });
 
   updateStats({
     counters: {
       portfolioTransactions: transactions.length,
-      portfolioSkippedTrades: execution.notes.length,
-      portfolioNavVerifiedTrades: transactions.filter((item) => item.nav).length
+      portfolioOrdersSubmitted: execution.orders.length,
+      portfolioOrderUpdates: lifecycleBefore.updatedOrders,
+      portfolioSkippedTrades: execution.notes.length + lifecycleBefore.notes.length,
+      portfolioNavVerifiedTrades: transactions.filter((item) => item.nav).length,
+      portfolioSettlementEvents: lifecycleBefore.settlementEvents.length
     },
     last: { lastPortfolioDecisionAt: new Date().toISOString() }
   });
 }
 
 async function executePortfolioValuation(db, run, config) {
+  const lifecycle = await processPortfolioOrderLifecycle(db, run, config);
   const accountBefore = summarizePortfolioAccount(db.account);
   const positionsBefore = new Map(db.account.positions.map((position) => [position.code, { ...position }]));
   const codes = db.account.positions.map((position) => position.code).filter(Boolean);
@@ -648,6 +663,8 @@ async function executePortfolioValuation(db, run, config) {
     createdAt: new Date().toISOString(),
     totalAsset: db.account.totalAsset,
     cash: db.account.cash,
+    pendingBuyAmount: db.account.pendingBuyAmount,
+    receivableCash: db.account.receivableCash,
     investedValue: db.account.investedValue,
     dayPnl,
     cumulativePnl: db.account.cumulativePnl,
@@ -668,12 +685,22 @@ async function executePortfolioValuation(db, run, config) {
   run.accountBefore = accountBefore;
   run.accountAfter = summarizePortfolioAccount(db.account);
   run.positionUpdates = positionUpdates;
+  run.transactions = lifecycle.transactions;
+  run.orderUpdates = lifecycle.orderUpdates;
+  run.settlementEvents = lifecycle.settlementEvents;
+  run.executionNotes = lifecycle.notes;
   run.sources = collectPortfolioSources(null, profiles, review);
   run.rawModelOutput = review.rawModelOutput;
-  run.card = buildPortfolioValuationCard({ review, account: db.account, positionUpdates, run });
+  run.card = buildPortfolioValuationCard({ review, account: db.account, positionUpdates, lifecycle, run });
 
   updateStats({
-    counters: { portfolioEquitySnapshots: 1 },
+    counters: {
+      portfolioEquitySnapshots: 1,
+      portfolioTransactions: lifecycle.transactions.length,
+      portfolioOrderUpdates: lifecycle.updatedOrders,
+      portfolioNavVerifiedTrades: lifecycle.transactions.filter((item) => item.nav).length,
+      portfolioSettlementEvents: lifecycle.settlementEvents.length
+    },
     last: { lastPortfolioValuationAt: new Date().toISOString() }
   });
 }
@@ -861,9 +888,9 @@ function normalizePortfolioActions(value) {
     .filter((item) => item.action === "HOLD" || item.action === "WATCH" || item.code);
 }
 
-function applyPortfolioActions(db, actions, profiles, run) {
+function submitPortfolioOrders(db, actions, profiles, run, config = getEffectiveConfig()) {
   const profileByCode = new Map((profiles || []).map((profile) => [profile.code, profile]));
-  const transactions = [];
+  const orders = [];
   const notes = [];
   recalculatePortfolioAccount(db.account);
 
@@ -872,7 +899,7 @@ function applyPortfolioActions(db, actions, profiles, run) {
       const profile = profileByCode.get(action.code);
       const nav = getProfileNav(profile);
       if (!action.code) {
-        notes.push({ action: "BUY", status: "skipped", reason: "缺少基金代码，无法执行买入。", originalAction: action });
+        notes.push({ action: "BUY", status: "skipped", reason: "缺少基金代码，无法提交申购申请。", originalAction: action });
         continue;
       }
       if (!nav) {
@@ -881,7 +908,7 @@ function applyPortfolioActions(db, actions, profiles, run) {
           code: action.code,
           name: action.name || profile?.name || "",
           status: "skipped",
-          reason: "未抓取到可验证单位净值，不写入虚拟持仓。",
+          reason: "未抓取到可验证单位净值，不提交申购申请。",
           originalAction: action
         });
         continue;
@@ -906,43 +933,18 @@ function applyPortfolioActions(db, actions, profiles, run) {
         });
         continue;
       }
-      let position = existingPosition;
-      if (!position) {
-        position = {
-          code: action.code,
-          name: action.name || profile?.name || "",
-          units: 0,
-          costAmount: 0,
-          currentValue: 0,
-          realizedPnl: 0,
-          createdAt: new Date().toISOString()
-        };
-        db.account.positions.push(position);
-      }
-      const boughtUnits = nav ? amount / nav : 0;
-      const previousUnits = Number(position.units || 0);
-      position.name = action.name || position.name || profile?.name || "";
-      position.units = round(Number(position.units || 0) + boughtUnits, 6);
-      position.costAmount = round(Number(position.costAmount || 0) + amount, 2);
-      position.currentValue = round(position.units * nav, 2);
-      position.averageCostNav = position.units > 0 ? round(position.costAmount / position.units, 4) : null;
-      position.lastNav = nav;
-      position.lastNavDate = profile?.snapshotDate || position.lastNavDate || "";
-      position.lastTradeNav = nav;
-      position.lastTradeUnits = round(boughtUnits, 6);
-      position.lastTradeAmount = amount;
-      position.lastReason = action.reason;
-      position.lastRiskControl = action.riskControl;
-      position.fundSnapshot = buildPortfolioFundSnapshot(profile, position);
-      position.dataSource = profile?.sources?.[0] || "";
-      position.updatedAt = new Date().toISOString();
+      const order = createPortfolioOrder({
+        side: "BUY",
+        action,
+        amount,
+        profile,
+        run,
+        config
+      });
       db.account.cash = round(Number(db.account.cash || 0) - amount, 2);
-      transactions.push(recordPortfolioTransaction(db, run, action, amount, "BUY", profile, {
-        nav,
-        units: boughtUnits,
-        beforeUnits: previousUnits,
-        afterUnits: position.units
-      }));
+      db.account.pendingBuyAmount = round(Number(db.account.pendingBuyAmount || 0) + amount, 2);
+      db.orders.push(order);
+      orders.push(order);
     }
 
     if (action.action === "SELL") {
@@ -966,7 +968,7 @@ function applyPortfolioActions(db, actions, profiles, run) {
           code: action.code,
           name: position.name || action.name,
           status: "skipped",
-          reason: "缺少当前净值，无法计算卖出份额，未执行。",
+          reason: "缺少当前净值，无法计算赎回份额，未提交赎回申请。",
           originalAction: action
         });
         continue;
@@ -991,34 +993,315 @@ function applyPortfolioActions(db, actions, profiles, run) {
         continue;
       }
       const ratio = amount / Number(position.currentValue || 1);
-      const soldUnits = round(Number(position.units || 0) * ratio, 6);
-      const costReduced = round(Number(position.costAmount || 0) * ratio, 2);
-      position.costAmount = round(Number(position.costAmount || 0) - costReduced, 2);
-      position.currentValue = round(Number(position.currentValue || 0) - amount, 2);
-      position.units = round(Number(position.units || 0) - soldUnits, 6);
-      position.averageCostNav = position.units > 0 ? round(position.costAmount / position.units, 4) : null;
-      position.realizedPnl = round(Number(position.realizedPnl || 0) + amount - costReduced, 2);
-      position.lastNav = nav;
-      position.lastNavDate = profile?.snapshotDate || position.lastNavDate || "";
-      position.lastTradeNav = nav;
-      position.lastTradeUnits = soldUnits;
-      position.lastTradeAmount = amount;
-      position.lastReason = action.reason;
-      position.lastRiskControl = action.riskControl;
-      position.fundSnapshot = buildPortfolioFundSnapshot(profile, position);
-      position.dataSource = profile?.sources?.[0] || position.dataSource || "";
+      const requestedUnits = round(Number(position.units || 0) * ratio, 6);
+      const order = createPortfolioOrder({
+        side: "SELL",
+        action,
+        amount,
+        units: requestedUnits,
+        profile,
+        position,
+        run,
+        config
+      });
+      position.pendingSellUnits = round(Number(position.pendingSellUnits || 0) + requestedUnits, 6);
+      position.pendingSellAmount = round(Number(position.pendingSellAmount || 0) + amount, 2);
       position.updatedAt = new Date().toISOString();
-      db.account.cash = round(Number(db.account.cash || 0) + amount, 2);
-      transactions.push(recordPortfolioTransaction(db, run, action, amount, "SELL", profile, {
-        nav,
-        units: soldUnits,
-        afterUnits: position.units
-      }));
+      db.orders.push(order);
+      orders.push(order);
     }
   }
 
   db.account.positions = db.account.positions.filter((position) => Number(position.currentValue || 0) > 0.5);
-  return { transactions, notes };
+  recalculatePortfolioAccount(db.account);
+  return { orders, notes };
+}
+
+function createPortfolioOrder({ side, action, amount, units = 0, profile, position = null, run, config }) {
+  const submittedAt = new Date();
+  const tradingProfile = inferFundTradingProfile(profile, action);
+  const submission = buildFundOrderSchedule(submittedAt, tradingProfile, config);
+  const limitCheck = buildFundLimitCheck(profile, amount, tradingProfile);
+  const code = action.code || profile?.code || position?.code || "";
+  const name = action.name || profile?.name || position?.name || "";
+  return {
+    id: createId("ord"),
+    runId: run.id,
+    side,
+    status: submission.status,
+    code,
+    name,
+    amount: round(amount, 2),
+    requestedUnits: units ? round(units, 6) : 0,
+    targetWeightPct: action.targetWeightPct || 0,
+    submittedAt: submittedAt.toISOString(),
+    submitDate: submission.submitDate,
+    acceptedDate: submission.acceptedDate,
+    priceDate: submission.priceDate,
+    confirmDate: side === "BUY" ? submission.buyConfirmDate : submission.sellConfirmDate,
+    settlementDate: side === "SELL" ? submission.sellSettlementDate : "",
+    cutoffTime: tradingProfile.cutoffTime,
+    beforeCutoff: submission.beforeCutoff,
+    scheduleReason: submission.reason,
+    tradingProfile,
+    limitCheck,
+    reason: action.reason,
+    dataBasis: action.dataBasis,
+    riskControl: action.riskControl,
+    fundSnapshot: buildPortfolioFundSnapshot(profile, position),
+    navSnapshot: null,
+    timeline: [
+      {
+        at: submittedAt.toISOString(),
+        status: submission.status,
+        note: submission.reason
+      }
+    ],
+    source: profile?.sources?.[0] || ""
+  };
+}
+
+async function processPortfolioOrderLifecycle(db, run, config = getEffectiveConfig()) {
+  ensurePortfolioAccount(db, config);
+  db.orders = Array.isArray(db.orders) ? db.orders : [];
+  db.settlements = Array.isArray(db.settlements) ? db.settlements : [];
+
+  const now = getZonedDateTime(config.portfolioTimezone);
+  const result = {
+    transactions: [],
+    orderUpdates: [],
+    settlementEvents: [],
+    notes: [],
+    updatedOrders: 0
+  };
+
+  for (const settlement of db.settlements) {
+    if (settlement.status !== "pending") continue;
+    if (settlement.dueDate && settlement.dueDate <= now.date) {
+      settlement.status = "settled";
+      settlement.settledAt = new Date().toISOString();
+      db.account.cash = round(Number(db.account.cash || 0) + Number(settlement.amount || 0), 2);
+      db.account.receivableCash = round(Math.max(0, Number(db.account.receivableCash || 0) - Number(settlement.amount || 0)), 2);
+      result.settlementEvents.push(settlement);
+      result.updatedOrders += 1;
+    }
+  }
+
+  const activeOrders = db.orders.filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status));
+  if (!activeOrders.length) {
+    recalculatePortfolioAccount(db.account);
+    return result;
+  }
+
+  const profileCodes = mergeFundCodes(activeOrders.map((order) => order.code));
+  const profiles = profileCodes.length ? await enrichFunds(profileCodes) : [];
+  const profileByCode = new Map(profiles.map((profile) => [profile.code, profile]));
+
+  for (const order of activeOrders) {
+    const beforeStatus = order.status;
+    const profile = profileByCode.get(order.code);
+
+    if (order.status === "queued" && order.acceptedDate <= now.date) {
+      order.status = "submitted";
+      addOrderTimeline(order, "submitted", `已到达估值交易日 ${order.acceptedDate}，等待净值。`);
+    }
+
+    if (!order.navSnapshot && order.priceDate <= now.date) {
+      const navSnapshot = await resolveOrderNavSnapshot(order, profile).catch((error) => {
+        result.notes.push({
+          action: order.side,
+          code: order.code,
+          name: order.name,
+          status: "pending",
+          reason: `净值抓取失败：${error.message}`
+        });
+        return null;
+      });
+      if (navSnapshot?.nav) {
+        order.navSnapshot = navSnapshot;
+        order.status = "priced";
+        order.fundSnapshot = buildPortfolioFundSnapshot(profile) || order.fundSnapshot;
+        addOrderTimeline(order, "priced", `已取得 ${navSnapshot.date} 单位净值 ${navSnapshot.nav}，等待 ${order.confirmDate} 确认。`);
+      } else if (order.acceptedDate < now.date) {
+        addOrderTimeline(order, order.status, `仍未取得估值日 ${order.priceDate} 的可验证净值，暂不确认。`);
+      }
+    }
+
+    if (order.navSnapshot?.nav && order.confirmDate <= now.date && order.status !== "confirmed") {
+      const transaction =
+        order.side === "BUY"
+          ? confirmPortfolioBuyOrder(db, order, profile, run)
+          : confirmPortfolioSellOrder(db, order, profile, run);
+      if (transaction) {
+        result.transactions.push(transaction);
+        result.updatedOrders += 1;
+      }
+    }
+
+    if (beforeStatus !== order.status) {
+      result.orderUpdates.push({
+        id: order.id,
+        code: order.code,
+        name: order.name,
+        side: order.side,
+        beforeStatus,
+        afterStatus: order.status,
+        priceDate: order.priceDate,
+        confirmDate: order.confirmDate
+      });
+      result.updatedOrders += 1;
+    }
+  }
+
+  recalculatePortfolioAccount(db.account);
+  return result;
+}
+
+async function resolveOrderNavSnapshot(order, profile) {
+  const profileNav = getProfileNav(profile);
+  if (profileNav && profile?.snapshotDate === order.priceDate) {
+    return {
+      date: profile.snapshotDate,
+      nav: round(profileNav, 4),
+      source: profile.sources?.[0] || "",
+      quality: "exact_profile_nav"
+    };
+  }
+
+  const point = await fetchFundNavPointForDate(order.code, order.priceDate);
+  if (point?.unitNav) {
+    return {
+      date: point.date,
+      nav: round(point.unitNav, 4),
+      cumulativeNav: point.cumulativeNav,
+      source: `https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${order.code}`,
+      quality: point.date === order.priceDate ? "exact_nav_history" : "nearest_nav_history"
+    };
+  }
+
+  return null;
+}
+
+function confirmPortfolioBuyOrder(db, order, profile, run) {
+  const nav = Number(order.navSnapshot?.nav || 0);
+  if (!nav) return null;
+
+  let position = db.account.positions.find((item) => item.code === order.code);
+  if (!position) {
+    position = {
+      code: order.code,
+      name: order.name || profile?.name || "",
+      units: 0,
+      costAmount: 0,
+      currentValue: 0,
+      realizedPnl: 0,
+      createdAt: new Date().toISOString()
+    };
+    db.account.positions.push(position);
+  }
+
+  const previousUnits = Number(position.units || 0);
+  const boughtUnits = Number(order.amount || 0) / nav;
+  position.name = order.name || position.name || profile?.name || "";
+  position.units = round(previousUnits + boughtUnits, 6);
+  position.costAmount = round(Number(position.costAmount || 0) + Number(order.amount || 0), 2);
+  position.currentValue = round(position.units * nav, 2);
+  position.averageCostNav = position.units > 0 ? round(position.costAmount / position.units, 4) : null;
+  position.lastNav = nav;
+  position.lastNavDate = order.navSnapshot.date;
+  position.lastTradeNav = nav;
+  position.lastTradeUnits = round(boughtUnits, 6);
+  position.lastTradeAmount = order.amount;
+  position.lastReason = order.reason;
+  position.lastRiskControl = order.riskControl;
+  position.fundSnapshot = buildPortfolioFundSnapshot(profile, position) || order.fundSnapshot;
+  position.dataSource = profile?.sources?.[0] || order.source || "";
+  position.updatedAt = new Date().toISOString();
+
+  db.account.pendingBuyAmount = round(Math.max(0, Number(db.account.pendingBuyAmount || 0) - Number(order.amount || 0)), 2);
+  order.status = "confirmed";
+  order.confirmedAt = new Date().toISOString();
+  addOrderTimeline(order, "confirmed", `申购确认：${order.amount}元 / ${nav} = ${round(boughtUnits, 6)}份。`);
+
+  return recordPortfolioTransaction(db, run, order, order.amount, "BUY", profile, {
+    nav,
+    navDate: order.navSnapshot.date,
+    units: boughtUnits,
+    beforeUnits: previousUnits,
+    afterUnits: position.units,
+    order
+  });
+}
+
+function confirmPortfolioSellOrder(db, order, profile, run) {
+  const nav = Number(order.navSnapshot?.nav || 0);
+  const position = db.account.positions.find((item) => item.code === order.code);
+  if (!nav || !position) return null;
+
+  const requestedUnits = Math.min(Number(order.requestedUnits || 0), Number(position.units || 0));
+  if (requestedUnits <= 0) return null;
+
+  const previousUnits = Number(position.units || 0);
+  const amount = round(requestedUnits * nav, 2);
+  const ratio = requestedUnits / Number(position.units || 1);
+  const costReduced = round(Number(position.costAmount || 0) * ratio, 2);
+  position.costAmount = round(Number(position.costAmount || 0) - costReduced, 2);
+  position.currentValue = round(Math.max(0, Number(position.currentValue || 0) - amount), 2);
+  position.units = round(Number(position.units || 0) - requestedUnits, 6);
+  position.averageCostNav = position.units > 0 ? round(position.costAmount / position.units, 4) : null;
+  position.realizedPnl = round(Number(position.realizedPnl || 0) + amount - costReduced, 2);
+  position.pendingSellUnits = round(Math.max(0, Number(position.pendingSellUnits || 0) - requestedUnits), 6);
+  position.pendingSellAmount = round(Math.max(0, Number(position.pendingSellAmount || 0) - Number(order.amount || 0)), 2);
+  position.lastNav = nav;
+  position.lastNavDate = order.navSnapshot.date;
+  position.lastTradeNav = nav;
+  position.lastTradeUnits = requestedUnits;
+  position.lastTradeAmount = amount;
+  position.lastReason = order.reason;
+  position.lastRiskControl = order.riskControl;
+  position.fundSnapshot = buildPortfolioFundSnapshot(profile, position) || order.fundSnapshot;
+  position.dataSource = profile?.sources?.[0] || order.source || "";
+  position.updatedAt = new Date().toISOString();
+
+  db.account.receivableCash = round(Number(db.account.receivableCash || 0) + amount, 2);
+  const settlement = {
+    id: createId("set"),
+    orderId: order.id,
+    runId: run.id,
+    code: order.code,
+    name: order.name,
+    amount,
+    dueDate: order.settlementDate,
+    status: "pending",
+    createdAt: new Date().toISOString()
+  };
+  db.settlements.push(settlement);
+  order.status = "confirmed";
+  order.confirmedAt = new Date().toISOString();
+  order.actualAmount = amount;
+  addOrderTimeline(order, "confirmed", `赎回确认：${requestedUnits}份 * ${nav} = ${amount}元，预计 ${order.settlementDate} 到账。`);
+
+  return recordPortfolioTransaction(db, run, order, amount, "SELL", profile, {
+    nav,
+    navDate: order.navSnapshot.date,
+    units: requestedUnits,
+    beforeUnits: previousUnits,
+    afterUnits: position.units,
+    order
+  });
+}
+
+function addOrderTimeline(order, status, note) {
+  order.timeline = Array.isArray(order.timeline) ? order.timeline : [];
+  const latest = order.timeline[order.timeline.length - 1];
+  if (latest?.status === status && latest?.note === note) {
+    return;
+  }
+  order.timeline.push({
+    at: new Date().toISOString(),
+    status,
+    note
+  });
 }
 
 function recordPortfolioTransaction(db, run, action, amount, side, profile, execution = {}) {
@@ -1032,7 +1315,7 @@ function recordPortfolioTransaction(db, run, action, amount, side, profile, exec
     name: action.name || profile?.name || "",
     amount: round(amount, 2),
     nav: execution.nav ? round(Number(execution.nav), 4) : null,
-    navDate: profile?.snapshotDate || "",
+    navDate: execution.navDate || profile?.snapshotDate || "",
     units: execution.units ? round(Number(execution.units), 6) : 0,
     beforeUnits: execution.beforeUnits === undefined ? null : round(Number(execution.beforeUnits || 0), 6),
     afterUnits: execution.afterUnits === undefined ? null : round(Number(execution.afterUnits || 0), 6),
@@ -1040,7 +1323,9 @@ function recordPortfolioTransaction(db, run, action, amount, side, profile, exec
     dataBasis: action.dataBasis,
     riskControl: action.riskControl,
     fundSnapshot: buildPortfolioFundSnapshot(profile),
-    source: profile?.sources?.[0] || ""
+    orderId: execution.order?.id || "",
+    orderStatus: execution.order?.status || "",
+    source: profile?.sources?.[0] || action.source || ""
   };
   db.transactions.push(transaction);
   return transaction;
@@ -1131,6 +1416,112 @@ function pickRiskPeriod(period) {
   };
 }
 
+function inferFundTradingProfile(profile = {}, action = {}) {
+  const text = `${profile.name || ""} ${action.name || ""} ${profile.code || action.code || ""}`.toLowerCase();
+  const holdings = profile.holdings || {};
+  const qdii = /qdii|全球|海外|美国|纳斯达克|标普|日经|越南|印度|德国|法国|香港|港股/.test(text);
+  const money = /货币|现金|添利宝|余额/.test(text);
+  const bond = /债券|债基|短债|中短债|纯债|可转债/.test(text) || Boolean(holdings.bondTopHoldings?.length);
+  const etf = /etf/.test(text) && !/联接/.test(text);
+  const crossBorderEtf = etf && /港股|香港|纳斯达克|标普|日经|海外|qdii/.test(text);
+  const kind = qdii ? "qdii_or_overseas" : money ? "money_market" : bond ? "bond" : etf ? "exchange_etf_or_feeder" : "domestic_open_end";
+
+  return {
+    kind,
+    cutoffTime: "15:00",
+    calendar: qdii || crossBorderEtf ? "cn_trading_day_plus_overseas_delay" : "cn_trading_day_weekend_only",
+    buyConfirmLag: qdii ? 2 : 1,
+    sellConfirmLag: qdii ? 2 : 1,
+    sellCashLag: qdii ? 5 : money ? 1 : bond ? 2 : 3,
+    navDelayDays: qdii ? 1 : 0,
+    canIntradayTrade: crossBorderEtf,
+    timezoneSensitive: qdii || crossBorderEtf,
+    notes: [
+      "模拟规则按公开基金常见申购/赎回流程处理：交易日 15:00 截止，非交易日或 15:00 后顺延。",
+      qdii || crossBorderEtf ? "海外/QDII 类产品存在净值披露和确认时差，本系统会延后确认。" : "",
+      etf ? "ETF/联接/场内场外规则可能不同，当前按基金申赎账本模拟，不模拟真实场内撮合。" : "",
+      "节假日历、基金暂停申购、限购额度以基金公告为准；未抓到公告时只做风险标记。"
+    ].filter(Boolean)
+  };
+}
+
+function buildFundOrderSchedule(date, tradingProfile, config = getEffectiveConfig()) {
+  const zoned = getZonedDateTime(config.portfolioTimezone);
+  const submitDate = zoned.date;
+  const hhmm = zoned.hhmm;
+  const beforeCutoff = hhmm < tradingProfile.cutoffTime;
+  let acceptedDate = submitDate;
+  let reason = "交易日 15:00 前提交，按当日估值日排队。";
+
+  if (!isPortfolioTradingDay(acceptedDate)) {
+    acceptedDate = nextPortfolioTradingDay(acceptedDate);
+    reason = `非交易日提交，顺延至 ${acceptedDate} 作为估值日。`;
+  } else if (!beforeCutoff) {
+    acceptedDate = nextPortfolioTradingDay(acceptedDate);
+    reason = `15:00 后提交，顺延至 ${acceptedDate} 作为估值日。`;
+  }
+
+  const buyConfirmDate = addPortfolioTradingDays(acceptedDate, tradingProfile.buyConfirmLag);
+  const sellConfirmDate = addPortfolioTradingDays(acceptedDate, tradingProfile.sellConfirmLag);
+  const sellSettlementDate = addPortfolioTradingDays(sellConfirmDate, tradingProfile.sellCashLag);
+  return {
+    submitDate,
+    acceptedDate,
+    priceDate: acceptedDate,
+    buyConfirmDate,
+    sellConfirmDate,
+    sellSettlementDate,
+    beforeCutoff,
+    status: acceptedDate === submitDate && beforeCutoff ? "submitted" : "queued",
+    reason
+  };
+}
+
+function buildFundLimitCheck(profile, amount, tradingProfile) {
+  const minPurchase = toNumber(profile?.fees?.minPurchase);
+  const softCap = Number(process.env.PORTFOLIO_SINGLE_ORDER_SOFT_CAP || 20000);
+  return {
+    status: "unknown",
+    minPurchase,
+    amount: round(Number(amount || 0), 2),
+    softCap,
+    passedSoftCap: Number(amount || 0) <= softCap,
+    note:
+      Number(amount || 0) > softCap
+        ? `单笔超过本系统软上限 ${softCap} 元，需要复查基金公告中的限购/暂停申购。`
+        : "未接入基金公司实时公告限购数据，按软上限和净值可验证性先做模拟。"
+  };
+}
+
+function isPortfolioTradingDay(date) {
+  const day = new Date(`${date}T00:00:00+08:00`).getDay();
+  return day !== 0 && day !== 6;
+}
+
+function nextPortfolioTradingDay(date) {
+  let current = addDays(date, 1);
+  while (!isPortfolioTradingDay(current)) {
+    current = addDays(current, 1);
+  }
+  return current;
+}
+
+function addPortfolioTradingDays(date, days) {
+  let current = date;
+  let remaining = Math.max(0, Number(days || 0));
+  while (remaining > 0) {
+    current = nextPortfolioTradingDay(current);
+    remaining -= 1;
+  }
+  return current;
+}
+
+function addDays(date, days) {
+  const value = new Date(`${date}T00:00:00+08:00`);
+  value.setDate(value.getDate() + Number(days || 0));
+  return formatDate(value);
+}
+
 async function pushPortfolioRunIfConfigured(db, run, config) {
   const target = resolvePortfolioPushTarget(config, db);
   if (!target?.receiveId) {
@@ -1207,7 +1598,7 @@ function capturePortfolioPushTarget(payload) {
   writePortfolioDb(db);
 }
 
-function buildPortfolioDecisionCard({ decision, account, transactions, executionNotes = [], run }) {
+function buildPortfolioDecisionCard({ decision, account, orders = [], transactions, executionNotes = [], settlementEvents = [], run }) {
   const actionLines = decision.actions.length
     ? decision.actions.map((action) => {
         const name = [action.code, action.name].filter(Boolean).join(" ");
@@ -1225,6 +1616,15 @@ function buildPortfolioDecisionCard({ decision, account, transactions, execution
         return `${item.side} ${item.code} ${item.name} ${item.amount}元${nav}${units}${trend}`;
       })
     : ["无实际账本变动。"];
+  const orderLines = orders.length
+    ? orders.map((order) => {
+        const dateLine = `估值日 ${order.priceDate}，确认日 ${order.confirmDate}${order.settlementDate ? `，到账日 ${order.settlementDate}` : ""}`;
+        return `${order.side} ${order.code} ${order.name} ${order.amount}元：${order.status}，${dateLine}；${order.scheduleReason}`;
+      })
+    : ["本次没有提交新的申购/赎回申请。"];
+  const settlementLines = settlementEvents.length
+    ? settlementEvents.map((item) => `${item.code} ${item.name} ${item.amount}元已到账。`)
+    : [];
   const noteLines = executionNotes.length
     ? executionNotes.map((item) => `${item.action || "SKIP"} ${item.code || ""} ${item.name || ""}：${item.reason}`)
     : [];
@@ -1241,13 +1641,19 @@ function buildPortfolioDecisionCard({ decision, account, transactions, execution
     "今日操作：",
     ...actionLines,
     "",
-    "账本变动：",
+    "申购/赎回申请：",
+    ...orderLines,
+    settlementLines.length ? "" : "",
+    settlementLines.length ? "到账更新：" : "",
+    ...settlementLines,
+    "",
+    "已确认成交：",
     ...transactionLines,
     noteLines.length ? "" : "",
     noteLines.length ? "未执行说明：" : "",
     ...noteLines,
     "",
-    `当前资产：${account.totalAsset}元，现金 ${account.cash}元，仓位 ${account.positionWeightPct}%`,
+    `当前资产：${account.totalAsset}元，可用现金 ${account.cash}元，待确认申购 ${account.pendingBuyAmount || 0}元，应收赎回 ${account.receivableCash || 0}元，仓位 ${account.positionWeightPct}%`,
     decision.riskNotes.length ? ["", "风险控制：", ...decision.riskNotes].join("\n") : "",
     decision.learningNotes.length ? ["", "回溯学习点：", ...decision.learningNotes].join("\n") : "",
     "",
@@ -1257,7 +1663,7 @@ function buildPortfolioDecisionCard({ decision, account, transactions, execution
     .join("\n");
 }
 
-function buildPortfolioValuationCard({ review, account, positionUpdates, run }) {
+function buildPortfolioValuationCard({ review, account, positionUpdates, lifecycle = {}, run }) {
   const updateLines = positionUpdates.length
     ? positionUpdates.map((item) => {
         const nav = item.latestNav ? `，净值 ${item.latestNav}${item.navDate ? `（${item.navDate}）` : ""}` : "";
@@ -1274,11 +1680,20 @@ function buildPortfolioValuationCard({ review, account, positionUpdates, run }) 
     "",
     "持仓估值：",
     ...updateLines,
+    lifecycle.orderUpdates?.length ? "" : "",
+    lifecycle.orderUpdates?.length ? "订单进度：" : "",
+    ...(lifecycle.orderUpdates || []).map((item) => `${item.side} ${item.code} ${item.name}：${item.beforeStatus} -> ${item.afterStatus}，估值日 ${item.priceDate}，确认日 ${item.confirmDate}`),
+    lifecycle.transactions?.length ? "" : "",
+    lifecycle.transactions?.length ? "确认成交：" : "",
+    ...(lifecycle.transactions || []).map((item) => `${item.side} ${item.code} ${item.name} ${item.amount}元，净值 ${item.nav}，份额 ${item.units}`),
+    lifecycle.settlementEvents?.length ? "" : "",
+    lifecycle.settlementEvents?.length ? "到账更新：" : "",
+    ...(lifecycle.settlementEvents || []).map((item) => `${item.code} ${item.name} ${item.amount}元已到账。`),
     "",
     `总资产：${account.totalAsset}元`,
     `今日盈亏：${formatSignedNumber(account.dayPnl)}元`,
     `累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（${formatSignedNumber(account.cumulativePnlPct)}%）`,
-    `现金：${account.cash}元，仓位：${account.positionWeightPct}%`,
+    `可用现金：${account.cash}元，待确认申购：${account.pendingBuyAmount || 0}元，应收赎回：${account.receivableCash || 0}元，仓位：${account.positionWeightPct}%`,
     review.nextWatch.length ? ["", "明日观察：", ...review.nextWatch].join("\n") : "",
     review.learningNotes.length ? ["", "回溯学习点：", ...review.learningNotes].join("\n") : "",
     "",
@@ -1309,7 +1724,10 @@ function buildPortfolioStatusAnswer(userText, intent) {
   const lines = ["虚拟基金经理账本"];
   lines.push("");
   lines.push(`总资产：${account.totalAsset}元`);
-  lines.push(`现金：${account.cash}元`);
+  lines.push(`可用现金：${account.cash}元`);
+  if (account.pendingBuyAmount || account.receivableCash) {
+    lines.push(`待确认申购：${account.pendingBuyAmount || 0}元，应收赎回：${account.receivableCash || 0}元`);
+  }
   lines.push(`当前仓位：${account.positionWeightPct}%`);
   lines.push(`累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（${formatSignedNumber(account.cumulativePnlPct)}%）`);
 
@@ -1357,9 +1775,21 @@ function buildPortfolioStatusAnswer(userText, intent) {
         lines.push(`${tradeDetail}：${item.reason || "见当日投委会记录"}`);
       }
     } else if (recentDecision?.date === today) {
-      lines.push("今天已生成投委会决策，但没有落到账本买卖。");
+      lines.push("今天已生成投委会决策，但买入/卖出需要经过申购/赎回申请、估值日净值、确认日，不会下单即成交。");
     } else {
       lines.push("今天还没有生成新的买入/卖出流水。可以在后台“虚拟组合”页点击“生成今日操作”，或等定时任务自动运行。");
+    }
+
+    const activeOrders = (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status));
+    if (activeOrders.length) {
+      lines.push("");
+      lines.push("待处理订单：");
+      for (const order of activeOrders.slice(0, 8)) {
+        lines.push(
+          `${order.side} ${order.code} ${order.name} ${order.amount}元：${order.status}，估值日 ${order.priceDate}，确认日 ${order.confirmDate}` +
+            `${order.settlementDate ? `，到账日 ${order.settlementDate}` : ""}`
+        );
+      }
     }
 
     if (recentDecision) {
@@ -1422,8 +1852,11 @@ function getPortfolioPublicState(db = readPortfolioDb()) {
     })),
     account: summarizePortfolioAccount(db.account),
     positions: db.account.positions.map(summarizePortfolioPosition),
+    activeOrders: (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status)).map(summarizePortfolioOrder),
     recentRuns: (db.runs || []).slice(-20).reverse().map(summarizePortfolioRun),
+    recentOrders: (db.orders || []).slice(-30).reverse().map(summarizePortfolioOrder),
     recentTransactions: (db.transactions || []).slice(-30).reverse(),
+    pendingSettlements: (db.settlements || []).filter((item) => item.status === "pending").slice(-20).reverse(),
     recentEquity: (db.dailyEquity || []).slice(-30).reverse()
   };
 }
@@ -1447,6 +1880,32 @@ function summarizePortfolioRun(run) {
   };
 }
 
+function summarizePortfolioOrder(order) {
+  return {
+    id: order.id,
+    side: order.side,
+    status: order.status,
+    code: order.code,
+    name: order.name,
+    amount: order.amount,
+    requestedUnits: order.requestedUnits || 0,
+    submittedAt: order.submittedAt,
+    submitDate: order.submitDate,
+    acceptedDate: order.acceptedDate,
+    priceDate: order.priceDate,
+    confirmDate: order.confirmDate,
+    settlementDate: order.settlementDate || "",
+    cutoffTime: order.cutoffTime,
+    beforeCutoff: order.beforeCutoff,
+    scheduleReason: order.scheduleReason,
+    tradingProfile: order.tradingProfile,
+    limitCheck: order.limitCheck,
+    navSnapshot: order.navSnapshot,
+    reason: order.reason,
+    timeline: order.timeline || []
+  };
+}
+
 function resetPortfolioAccount(initialCapital) {
   const config = getEffectiveConfig();
   const db = readPortfolioDb();
@@ -1454,6 +1913,8 @@ function resetPortfolioAccount(initialCapital) {
     ...config,
     portfolioInitialCapital: Number(initialCapital || config.portfolioInitialCapital || 100000)
   });
+  db.orders = [];
+  db.settlements = [];
   db.transactions.push({
     id: createId("txn"),
     side: "RESET",
@@ -1485,20 +1946,21 @@ function prunePortfolioDb(db, retentionDays) {
   const days = Math.max(7, Number(retentionDays || 90));
   const cutoff = Date.now() - days * 86400000;
   let removed = 0;
-  for (const key of ["runs", "transactions", "dailyEquity"]) {
+  for (const key of ["runs", "orders", "transactions", "settlements", "dailyEquity"]) {
     const before = Array.isArray(db[key]) ? db[key].length : 0;
-    db[key] = keepRecentPortfolioItems(db[key], cutoff, 10);
+    db[key] = keepRecentPortfolioItems(db[key], cutoff, 10, key === "orders" || key === "settlements");
     removed += before - db[key].length;
   }
   return removed;
 }
 
-function keepRecentPortfolioItems(items, cutoff, keepLatest) {
+function keepRecentPortfolioItems(items, cutoff, keepLatest, keepActive = false) {
   const input = Array.isArray(items) ? items : [];
   const tail = new Set(input.slice(-keepLatest).map((item) => item.id || item.startedAt || item.createdAt));
   return input.filter((item) => {
     const key = item.id || item.startedAt || item.createdAt;
     if (tail.has(key)) return true;
+    if (keepActive && !["confirmed", "cancelled", "rejected", "settled"].includes(item.status)) return true;
     const time = Date.parse(item.completedAt || item.createdAt || item.startedAt || `${item.date || ""}T00:00:00Z`);
     return !Number.isFinite(time) || time >= cutoff;
   });
@@ -1523,14 +1985,18 @@ function normalizePortfolioDb(value) {
     account: createPortfolioAccount(config),
     pushTargets: [],
     runs: [],
+    orders: [],
     transactions: [],
+    settlements: [],
     dailyEquity: [],
     scheduler: {},
     ...value
   };
   db.pushTargets = Array.isArray(db.pushTargets) ? db.pushTargets : [];
   db.runs = Array.isArray(db.runs) ? db.runs : [];
+  db.orders = Array.isArray(db.orders) ? db.orders : [];
   db.transactions = Array.isArray(db.transactions) ? db.transactions : [];
+  db.settlements = Array.isArray(db.settlements) ? db.settlements : [];
   db.dailyEquity = Array.isArray(db.dailyEquity) ? db.dailyEquity : [];
   db.scheduler = db.scheduler && typeof db.scheduler === "object" ? db.scheduler : {};
   ensurePortfolioAccount(db, config);
@@ -1543,6 +2009,8 @@ function ensurePortfolioAccount(db, config = getEffectiveConfig()) {
   }
   db.account.initialCapital = Number(db.account.initialCapital || config.portfolioInitialCapital || 100000);
   db.account.cash = round(Number(db.account.cash ?? db.account.initialCapital), 2);
+  db.account.pendingBuyAmount = round(Number(db.account.pendingBuyAmount || 0), 2);
+  db.account.receivableCash = round(Number(db.account.receivableCash || 0), 2);
   db.account.positions = Array.isArray(db.account.positions) ? db.account.positions.map(normalizePortfolioPosition).filter(Boolean) : [];
   recalculatePortfolioAccount(db.account);
   return db.account;
@@ -1553,6 +2021,8 @@ function createPortfolioAccount(config) {
   return {
     initialCapital,
     cash: initialCapital,
+    pendingBuyAmount: 0,
+    receivableCash: 0,
     positions: [],
     investedValue: 0,
     totalAsset: initialCapital,
@@ -1575,6 +2045,8 @@ function normalizePortfolioPosition(position) {
     costAmount: round(Number(position.costAmount || 0), 2),
     currentValue: round(Number(position.currentValue || 0), 2),
     realizedPnl: round(Number(position.realizedPnl || 0), 2),
+    pendingSellUnits: round(Number(position.pendingSellUnits || 0), 6),
+    pendingSellAmount: round(Number(position.pendingSellAmount || 0), 2),
     averageCostNav: position.averageCostNav ? round(Number(position.averageCostNav), 4) : null,
     fundSnapshot: position.fundSnapshot || null,
     lastNav: position.lastNav ? Number(position.lastNav) : null
@@ -1583,9 +2055,13 @@ function normalizePortfolioPosition(position) {
 
 function recalculatePortfolioAccount(account) {
   account.cash = round(Number(account.cash || 0), 2);
+  account.pendingBuyAmount = round(Number(account.pendingBuyAmount || 0), 2);
+  account.receivableCash = round(Number(account.receivableCash || 0), 2);
   account.investedValue = round(account.positions.reduce((sum, position) => sum + Number(position.currentValue || 0), 0), 2);
-  account.totalAsset = round(account.cash + account.investedValue, 2);
+  account.totalAsset = round(account.cash + account.investedValue + account.pendingBuyAmount + account.receivableCash, 2);
+  account.availableCash = account.cash;
   account.positionWeightPct = account.totalAsset > 0 ? round((account.investedValue / account.totalAsset) * 100, 2) : 0;
+  account.pendingWeightPct = account.totalAsset > 0 ? round(((account.pendingBuyAmount + account.receivableCash) / account.totalAsset) * 100, 2) : 0;
   account.cumulativePnl = round(account.totalAsset - Number(account.initialCapital || 0), 2);
   account.cumulativePnlPct = account.initialCapital > 0 ? round((account.cumulativePnl / account.initialCapital) * 100, 2) : 0;
   account.positions = account.positions.map((position) => ({
@@ -1603,9 +2079,13 @@ function summarizePortfolioAccount(account) {
   return {
     initialCapital: round(Number(account.initialCapital || 0), 2),
     cash: round(Number(account.cash || 0), 2),
+    availableCash: round(Number(account.availableCash || account.cash || 0), 2),
+    pendingBuyAmount: round(Number(account.pendingBuyAmount || 0), 2),
+    receivableCash: round(Number(account.receivableCash || 0), 2),
     investedValue: round(Number(account.investedValue || 0), 2),
     totalAsset: round(Number(account.totalAsset || 0), 2),
     positionWeightPct: round(Number(account.positionWeightPct || 0), 2),
+    pendingWeightPct: round(Number(account.pendingWeightPct || 0), 2),
     dayPnl: round(Number(account.dayPnl || 0), 2),
     cumulativePnl: round(Number(account.cumulativePnl || 0), 2),
     cumulativePnlPct: round(Number(account.cumulativePnlPct || 0), 2),
@@ -1626,6 +2106,8 @@ function summarizePortfolioPosition(position) {
     averageCostNav: position.averageCostNav || null,
     lastTradeNav: position.lastTradeNav || null,
     lastTradeUnits: position.lastTradeUnits || null,
+    pendingSellUnits: position.pendingSellUnits || 0,
+    pendingSellAmount: position.pendingSellAmount || 0,
     fundSnapshot: position.fundSnapshot || null,
     dataSource: position.dataSource || "",
     unrealizedPnl: round(Number(position.unrealizedPnl || 0), 2),
@@ -2524,6 +3006,16 @@ async function fetchFundNavHistoryPage(code, page, startDate, endDate) {
   };
 }
 
+async function fetchFundNavPointForDate(code, date) {
+  const target = new Date(`${date}T00:00:00`);
+  const startDate = new Date(target);
+  const endDate = new Date(target);
+  const page = await fetchFundNavHistoryPage(code, 1, startDate, endDate);
+  const exact = page.points.find((point) => point.date === date);
+  if (exact) return exact;
+  return page.points[0] || null;
+}
+
 function parseFundNavRows(text) {
   const rows = [];
   const rowRegex = /<tr>([\s\S]*?)<\/tr>/g;
@@ -3311,8 +3803,11 @@ function getDefaultStats() {
       portfolioManagerModelCalls: 0,
       portfolioReviewModelCalls: 0,
       portfolioTransactions: 0,
+      portfolioOrdersSubmitted: 0,
+      portfolioOrderUpdates: 0,
       portfolioNavVerifiedTrades: 0,
       portfolioSkippedTrades: 0,
+      portfolioSettlementEvents: 0,
       portfolioEquitySnapshots: 0,
       portfolioPushes: 0,
       portfolioPushFailures: 0,
