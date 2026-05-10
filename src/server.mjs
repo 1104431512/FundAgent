@@ -246,6 +246,11 @@ async function handleMessageEvent(payload) {
       return;
     }
 
+    if (intent.workflow === "portfolio_status") {
+      await handlePortfolioStatusWorkflow({ message, userText, intent });
+      return;
+    }
+
     if (intent.workflow === "fund_recommendation") {
       await handleFundRecommendationWorkflow({ message, userText, intent });
       return;
@@ -371,6 +376,20 @@ async function handleMessageEvent(payload) {
 async function handleConversationWorkflow({ message, userText, intent }) {
   const answer = await answerConversationWithModel({ userText, intent });
   await replyToMessage(message.message_id, answer, { kind: "answer" });
+}
+
+async function handlePortfolioStatusWorkflow({ message, userText, intent }) {
+  await replyToMessage(
+    message.message_id,
+    "进度：已识别为虚拟基金经理账本查询，正在读取当前仓位、持仓和最近操作记录。",
+    { kind: "progress" }
+  ).catch((error) => {
+    console.error("[progress-reply-error]", error);
+    recordError(error, { replyFailures: 1 });
+  });
+
+  const answer = buildPortfolioStatusAnswer(userText, intent);
+  await replyToMessage(message.message_id, answer, { kind: "portfolio" });
 }
 
 async function handleFundRecommendationWorkflow({ message, userText, intent }) {
@@ -1055,6 +1074,92 @@ function buildPortfolioValuationCard({ review, account, positionUpdates, run }) 
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function buildPortfolioStatusAnswer(userText, intent) {
+  const db = readPortfolioDb();
+  const config = getEffectiveConfig();
+  ensurePortfolioAccount(db, config);
+  const account = summarizePortfolioAccount(db.account);
+  const recentDecision = [...(db.runs || [])]
+    .reverse()
+    .find((run) => run.type === "decision" && run.status === "completed");
+  const recentValuation = [...(db.runs || [])]
+    .reverse()
+    .find((run) => run.type === "valuation" && run.status === "completed");
+  const today = getZonedDateTime(config.portfolioTimezone).date;
+  const todayRuns = [...(db.runs || [])].filter((run) => run.date === today && run.status === "completed");
+  const todayTransactions = [...(db.transactions || [])].filter((item) => item.date === today && ["BUY", "SELL"].includes(item.side));
+  const positions = account.positions || [];
+  const wantsOperation = isPortfolioOperationQuestion(userText);
+  const wantsPosition = isPortfolioPositionQuestion(userText);
+
+  const lines = ["虚拟基金经理账本"];
+  lines.push("");
+  lines.push(`总资产：${account.totalAsset}元`);
+  lines.push(`现金：${account.cash}元`);
+  lines.push(`当前仓位：${account.positionWeightPct}%`);
+  lines.push(`累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（${formatSignedNumber(account.cumulativePnlPct)}%）`);
+
+  if (wantsPosition || !wantsOperation) {
+    lines.push("");
+    lines.push("当前持仓：");
+    if (positions.length) {
+      for (const position of positions) {
+        lines.push(
+          `${position.code} ${position.name || ""}：${position.currentValue}元，占比 ${position.weightPct}%` +
+            `，浮动盈亏 ${formatSignedNumber(position.unrealizedPnl)}元（${formatSignedNumber(position.unrealizedPnlPct)}%）`
+        );
+        if (position.lastReason) {
+          lines.push(`理由：${position.lastReason}`);
+        }
+      }
+    } else {
+      lines.push("暂无基金持仓，当前为 100% 现金。");
+    }
+  }
+
+  if (wantsOperation || todayRuns.length || todayTransactions.length) {
+    lines.push("");
+    lines.push(`今日操作 ${today}：`);
+    if (todayTransactions.length) {
+      for (const item of todayTransactions) {
+        lines.push(`${item.side} ${item.code || ""} ${item.name || ""} ${item.amount}元：${item.reason || "见当日投委会记录"}`);
+      }
+    } else if (recentDecision?.date === today) {
+      lines.push("今天已生成投委会决策，但没有落到账本买卖。");
+    } else {
+      lines.push("今天还没有生成新的买入/卖出流水。可以在后台“虚拟组合”页点击“生成今日操作”，或等定时任务自动运行。");
+    }
+
+    if (recentDecision) {
+      lines.push("");
+      lines.push(`最近一次决策：${recentDecision.date}`);
+      if (recentDecision.card) {
+        lines.push(...recentDecision.card.split("\n").slice(2, 12));
+      } else if (recentDecision.actions?.length) {
+        for (const action of recentDecision.actions) {
+          lines.push(`${action.action} ${action.code || ""} ${action.name || ""} ${action.amount || 0}元：${action.reason || ""}`);
+        }
+      }
+    }
+  }
+
+  if (recentValuation) {
+    lines.push("");
+    lines.push(`最近复盘：${recentValuation.date}`);
+    if (recentValuation.accountAfter) {
+      lines.push(
+        `复盘后资产 ${recentValuation.accountAfter.totalAsset}元，仓位 ${recentValuation.accountAfter.positionWeightPct}%` +
+          `，累计盈亏 ${formatSignedNumber(recentValuation.accountAfter.cumulativePnl)}元。`
+      );
+    }
+  }
+
+  lines.push("");
+  lines.push(`数据来源：服务器虚拟组合账本 ${path.basename(PORTFOLIO_DB_PATH)}。`);
+  lines.push(`路由：${intent.reason || "portfolio_status"}。`);
+  return lines.join("\n");
 }
 
 function getPortfolioPublicState(db = readPortfolioDb()) {
@@ -2932,6 +3037,7 @@ function getDefaultStats() {
       screeningRequests: 0,
       fundRecommendationRequests: 0,
       fundQaRequests: 0,
+      portfolioStatusRequests: 0,
       intentRouterCalls: 0,
       intentRouterFailures: 0,
       extractionCalls: 0,
@@ -3316,6 +3422,17 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
     };
   }
 
+  if (looksLikePortfolioStatusQuestion(text)) {
+    return {
+      workflow: "portfolio_status",
+      mode: "virtual_portfolio_status",
+      reason: "hard_rule_virtual_manager_account_query",
+      fundCodes,
+      skillIds: ["fund-portfolio-manager"],
+      messageType
+    };
+  }
+
   if (fundCodes.length) {
     return {
       workflow: "fund_screening",
@@ -3406,6 +3523,7 @@ async function classifyTextIntentWithModel({ userText, messageType }) {
     "不要因为机器人名称叫基金助手，就把自我介绍、寒暄、能力询问、普通聊天强行归类到基金工作流。",
     "可选 workflow：",
     "- conversation：自我介绍、能做什么、寒暄、帮助、普通非基金对话。",
+    "- portfolio_status：用户询问机器人/虚拟基金经理自己的仓位、持仓、今日操作、买卖、现金、盈亏、账户或虚拟组合。",
     "- fund_recommendation：用户让你推荐几个基金、按最近题材/市场/热点找基金、给配置清单。",
     "- fund_screening：用户提供具体基金名称/代码、问某只基金能买吗/要不要卖/评分/对比。",
     "- fund_qa：基金知识、市场题材解释、投资方法问题，但没有要求给候选基金清单。",
@@ -3419,7 +3537,7 @@ async function classifyTextIntentWithModel({ userText, messageType }) {
     JSON.stringify(skills, null, 2),
     "",
     "返回 JSON：",
-    '{"workflow":"conversation|fund_recommendation|fund_screening|fund_qa","mode":"short label","reason":"brief reason","skillIds":["fund-recommendation"],"confidence":0.0}'
+    '{"workflow":"conversation|portfolio_status|fund_recommendation|fund_screening|fund_qa","mode":"short label","reason":"brief reason","skillIds":["fund-portfolio-manager"],"confidence":0.0}'
   ].join("\n");
 
   const raw = await callModel({ systemText, userPrompt, images: [], maxTokens: 500 });
@@ -3431,7 +3549,7 @@ async function classifyTextIntentWithModel({ userText, messageType }) {
 }
 
 function normalizeIntentResult(intent, defaults = {}) {
-  const validWorkflows = new Set(["conversation", "fund_recommendation", "fund_screening", "fund_qa"]);
+  const validWorkflows = new Set(["conversation", "portfolio_status", "fund_recommendation", "fund_screening", "fund_qa"]);
   const workflow = validWorkflows.has(String(intent.workflow || "")) ? String(intent.workflow) : "fund_qa";
   const availableSkillIds = new Set(listSkills(false).map((skill) => skill.id));
   let skillIds = Array.isArray(intent.skillIds)
@@ -3454,6 +3572,7 @@ function normalizeIntentResult(intent, defaults = {}) {
 }
 
 function defaultSkillIdsForWorkflow(workflow) {
+  if (workflow === "portfolio_status") return ["fund-portfolio-manager"];
   if (workflow === "fund_recommendation") return ["fund-recommendation", "fund-synthesis"];
   if (workflow === "fund_screening") return ["fund-data-enrichment", "fund-analysis", "fund-synthesis"];
   if (workflow === "fund_qa") return [];
@@ -3466,6 +3585,7 @@ function recordWorkflowIntent(intent) {
   if (intent.workflow === "fund_screening") counters.screeningRequests = 1;
   if (intent.workflow === "fund_recommendation") counters.fundRecommendationRequests = 1;
   if (intent.workflow === "fund_qa") counters.fundQaRequests = 1;
+  if (intent.workflow === "portfolio_status") counters.portfolioStatusRequests = 1;
   updateStats({
     counters,
     last: {
@@ -3510,6 +3630,79 @@ function looksLikeConversation(text) {
     "谢谢",
     "thanks"
   ]);
+}
+
+function looksLikePortfolioStatusQuestion(text) {
+  const normalized = normalizeIntentText(text);
+  if (!normalized) return false;
+
+  const explicitPortfolioTerms = [
+    "虚拟组合",
+    "虚拟基金经理",
+    "你的组合",
+    "你的账户",
+    "你的账本",
+    "你的仓位",
+    "你现在的仓位",
+    "你现在仓位",
+    "你的持仓",
+    "你现在持仓",
+    "当前仓位",
+    "现在仓位",
+    "目前仓位",
+    "仓位多少",
+    "仓位是",
+    "当前持仓",
+    "现在持仓",
+    "持仓情况",
+    "持仓状态",
+    "今天操作",
+    "今日操作",
+    "你今天的操作",
+    "你今天怎么操作",
+    "你今天是怎么操作",
+    "今天你怎么操作",
+    "今天你买",
+    "今天你卖",
+    "你买了什么",
+    "你卖了什么",
+    "你现在买了",
+    "你现在卖了"
+  ];
+  if (hasAny(normalized, explicitPortfolioTerms)) return true;
+
+  const refersToAssistant =
+    /(^|[，。！？\s])你/.test(normalized) ||
+    hasAny(normalized, ["助手", "经理", "基金经理", "机器人"]);
+  const asksAccountState = hasAny(normalized, [
+    "仓位",
+    "持仓",
+    "总资产",
+    "现金",
+    "盈亏",
+    "收益",
+    "亏损",
+    "账户",
+    "账本",
+    "本金",
+    "操作",
+    "买入",
+    "卖出",
+    "交易",
+    "复盘"
+  ]);
+
+  return refersToAssistant && asksAccountState;
+}
+
+function isPortfolioOperationQuestion(text) {
+  const normalized = normalizeIntentText(text);
+  return hasAny(normalized, ["操作", "买入", "卖出", "买了", "卖了", "交易", "今天", "今日", "复盘"]);
+}
+
+function isPortfolioPositionQuestion(text) {
+  const normalized = normalizeIntentText(text);
+  return hasAny(normalized, ["仓位", "持仓", "总资产", "现金", "盈亏", "收益", "亏损", "账户", "组合", "本金"]);
 }
 
 function normalizeIntentText(value) {

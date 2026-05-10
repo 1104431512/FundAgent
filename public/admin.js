@@ -149,6 +149,7 @@ async function loadStats() {
   setText("#statMarket", counters.marketSnapshotCalls || 0);
   setText("#statEnrich", counters.fundEnrichmentSuccess || 0);
   setText("#statHoldings", counters.fundHoldingsFetches || 0);
+  setText("#statPortfolioStatus", counters.portfolioStatusRequests || 0);
   setText("#statPortfolioRuns", counters.portfolioRuns || 0);
   setText("#statPortfolioPushes", counters.portfolioPushes || 0);
   setText("#statErrors", counters.errors || 0);
