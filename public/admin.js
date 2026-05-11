@@ -154,6 +154,8 @@ async function loadStats() {
   setText("#statVote", counters.committeeVoteCalls || 0);
   setText("#statManager", counters.managerReviewCalls || 0);
   setText("#statMarket", counters.marketSnapshotCalls || 0);
+  setText("#statPreciousMetalQuotes", counters.preciousMetalQuoteFetches || 0);
+  setText("#statPreciousMetalFunds", counters.preciousMetalFundSearches || 0);
   setText("#statEnrich", counters.fundEnrichmentSuccess || 0);
   setText("#statHoldings", counters.fundHoldingsFetches || 0);
   setText("#statPortfolioStatus", counters.portfolioStatusRequests || 0);

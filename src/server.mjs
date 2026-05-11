@@ -106,7 +106,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`Feishu Fund Assistant listening on http://${HOST}:${PORT}`);
+  console.log(`Feishu Fund Manager listening on http://${HOST}:${PORT}`);
   console.log(`Admin UI: http://127.0.0.1:${PORT}/admin`);
   startPortfolioScheduler();
 });
@@ -1024,7 +1024,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     []
   );
   const systemText = [
-    "你是飞书机器人“基金助手”的虚拟基金经理。你每天管理一个教育性虚拟组合，不进行真实交易。",
+    "你是飞书机器人“基金经理”的虚拟基金经理。你每天管理一个教育性虚拟组合，不进行真实交易。",
     "你的目标不是永远保守，而是在证据足够时敢于出击；但每次动作都必须写清数据来源、风险控制和复盘条件。",
     "你有一个投委会：市场分析师、题材分析师、基金研究员、组合经理、风控经理、主席。每个角色必须贡献可保存的观点。",
     "只能基于传入的公开市场快照、基金候选池和当前持仓做判断；不要编造快照中不存在的基金代码、涨跌幅或排名。",
@@ -1101,7 +1101,7 @@ async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, p
     []
   );
   const systemText = [
-    "你是飞书机器人“基金助手”的虚拟基金经理，正在做晚间估值复盘。",
+    "你是飞书机器人“基金经理”的虚拟基金经理，正在做晚间估值复盘。",
     "请解释今日盈亏、仓位变化和明天观察重点。不要编造传入资料之外的数据。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
     "",
@@ -1146,7 +1146,7 @@ async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profi
     []
   );
   const systemText = [
-    "你是飞书机器人“基金助手”的虚拟基金经理，正在做盘前观察。",
+    "你是飞书机器人“基金经理”的虚拟基金经理，正在做盘前观察。",
     "盘前观察只给观察清单和下午决策偏向，不生成 BUY/SELL 订单。",
     "请基于传入的市场快照、持仓资料、订单生命周期和经理画像输出 JSON，不要编造资料之外的数据。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
@@ -1188,7 +1188,7 @@ async function buildPortfolioWeeklyWithModel({ account, weeklyContext, profiles,
     []
   );
   const systemText = [
-    "你是飞书机器人“基金助手”的虚拟基金经理，正在做周计划与总结。",
+    "你是飞书机器人“基金经理”的虚拟基金经理，正在做周计划与总结。",
     "周总结只复盘和规划，不生成 BUY/SELL 订单；下周具体交易由每日决策任务决定。",
     "请基于传入的账本、持仓资料和经理画像输出 JSON，不要编造资料之外的数据。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
@@ -2984,6 +2984,9 @@ function summarizeMarketSnapshot(snapshot) {
   return {
     fetchedAt: snapshot.fetchedAt,
     note: snapshot.note,
+    marketIndicators: {
+      preciousMetals: (snapshot.marketIndicators?.preciousMetals || []).slice(0, 10)
+    },
     themes: {
       conceptBoards: (snapshot.themes?.conceptBoards || []).slice(0, 10),
       industryBoards: (snapshot.themes?.industryBoards || []).slice(0, 10)
@@ -2992,7 +2995,8 @@ function summarizeMarketSnapshot(snapshot) {
       stockFunds: (snapshot.fundCandidates?.stockFunds || []).slice(0, 8),
       hybridFunds: (snapshot.fundCandidates?.hybridFunds || []).slice(0, 8),
       indexFunds: (snapshot.fundCandidates?.indexFunds || []).slice(0, 8),
-      qdiiFunds: (snapshot.fundCandidates?.qdiiFunds || []).slice(0, 8)
+      qdiiFunds: (snapshot.fundCandidates?.qdiiFunds || []).slice(0, 8),
+      preciousMetalFunds: (snapshot.fundCandidates?.preciousMetalFunds || []).slice(0, 10)
     },
     errors: snapshot.errors || [],
     sources: snapshot.sources || []
@@ -3110,7 +3114,7 @@ async function extractFundFactsWithModel({ images, userText, messageType }) {
 function buildFundCommitteeSystemText(skillIds = ["fund-analysis", "fund-data-enrichment"]) {
   const skillContext = buildSkillContextForIntent({ skillIds }, []);
   return [
-    "你是飞书机器人“基金助手”。你的任务是根据用户发送的基金截图或基金文字信息做教育性基金筛选分析。",
+    "你是飞书机器人“基金经理”。你的任务是根据用户发送的基金截图或基金文字信息做教育性基金筛选分析。",
     "必须严格遵循当前阶段加载的 modular skills。只使用与当前任务相关的 skill，不要把所有基金流程强行套到用户请求上。",
     "不要对截图逐字念稿。要先吸收截图事实和联网补全资料，再给出投资筛选评价。",
     "如果联网补全资料与截图冲突，要明确分开“截图可见”和“联网补全”，不要硬合并。",
@@ -3260,9 +3264,10 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
 async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
   const skillContext = buildSkillContextForIntent(intent, ["fund-recommendation", "fund-synthesis"]);
   const systemText = [
-    "你是飞书机器人“基金助手”的基金发现与配置工作流。",
+    "你是飞书机器人“基金经理”的基金发现与配置工作流。",
     "当前任务不是分析用户已经给出的某一只基金，也不是截图 screening；当前任务是根据用户文字、公开市场快照和基金候选池，给出教育性的基金方向与候选清单。",
-    "必须优先使用传入的 marketSnapshot，不要声称自己额外联网。不要编造 marketSnapshot 里没有的基金代码、涨跌幅、排名或新闻。",
+    "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
+    "不要编造 marketSnapshot 里没有的基金代码、涨跌幅、排名、金价或新闻。",
     "如果数据不足以支持具体基金代码，就推荐基金方向/筛选条件，并把具体代码标为待复核。",
     "回答要大胆但有边界：证据偏正面时可以给出买入或分批买入候选；不要机械地总是等待回撤。",
     "必须说明数据滞后风险和复查条件。不要保证收益，不要给出个性化承诺。",
@@ -3304,9 +3309,10 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
 async function answerFundQuestionWithModel({ userText, intent, marketSnapshot }) {
   const skillContext = buildSkillContextForIntent(intent, []);
   const systemText = [
-    "你是飞书机器人“基金助手”的基金问答工作流。",
+    "你是飞书机器人“基金经理”的基金问答工作流。",
     "当前任务是回答用户问题，不是单只基金 screening；除非用户给出明确基金代码或截图，否则不要强行输出 Verdict/Score/8 角色评审。",
-    "如果传入 marketSnapshot，可用它回答近期市场/题材问题；如果没有实时数据，就明确说明限制。",
+    "如果传入 marketSnapshot，可用它回答近期市场/题材问题；涉及黄金、白银或贵金属时，优先引用 marketIndicators.preciousMetals 和相关基金候选。",
+    "如果没有抓到对应行情数据，要说明是公开数据源暂时不可用或滞后，不要简单说自己没有实时数据能力。",
     "回答中文、简洁、可执行。不要保证收益，不要给出个性化承诺。",
     "输出适合飞书卡片阅读，不要 Markdown 表格，不要代码块。",
     "",
@@ -3345,7 +3351,7 @@ async function answerConversationWithModel({ userText, intent }) {
     description: skill.description
   }));
   const systemText = [
-    "你是飞书机器人“基金助手”，也是一个可以自然对话的 GPT 助手。",
+    "你是飞书机器人“基金经理”，也是一个可以自然对话的 GPT 助手。",
     "当前工作流是 conversation：不要调用基金筛选、基金推荐或单基评分模板，除非用户明确要求。",
     "如果用户问你是谁、能做什么、怎么使用，就做简洁自我介绍，并说明你会先理解意图再选择工作流。",
     "语气自然、专业、简短，适合飞书卡片阅读。不要输出 Markdown 表格或代码块。"
@@ -3564,16 +3570,37 @@ async function enrichFunds(fundCodes) {
 
 async function fetchMarketSnapshot() {
   const fetchedAt = new Date().toISOString();
-  const [conceptBoards, industryBoards, stockFunds, hybridFunds, indexFunds, qdiiFunds] = await Promise.all([
+  const [
+    conceptBoards,
+    industryBoards,
+    stockFunds,
+    hybridFunds,
+    indexFunds,
+    qdiiFunds,
+    preciousMetals,
+    preciousMetalFunds
+  ] = await Promise.all([
     fetchEastmoneyBoards("concept").catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchEastmoneyBoards("industry").catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchFundRanking("gp", "股票型基金").catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchFundRanking("hh", "混合型基金").catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchFundRanking("zs", "指数型基金").catch((error) => ({ ok: false, error: error.message, items: [] })),
-    fetchFundRanking("qdii", "QDII基金").catch((error) => ({ ok: false, error: error.message, items: [] }))
+    fetchFundRanking("qdii", "QDII基金").catch((error) => ({ ok: false, error: error.message, items: [] })),
+    fetchPreciousMetalQuotes().catch((error) => ({ ok: false, error: error.message, items: [] })),
+    fetchPreciousMetalFundCandidates().catch((error) => ({ ok: false, error: error.message, items: [] }))
   ]);
 
-  const failures = [conceptBoards, industryBoards, stockFunds, hybridFunds, indexFunds, qdiiFunds].filter(
+  const snapshotParts = [
+    conceptBoards,
+    industryBoards,
+    stockFunds,
+    hybridFunds,
+    indexFunds,
+    qdiiFunds,
+    preciousMetals,
+    preciousMetalFunds
+  ];
+  const failures = snapshotParts.filter(
     (item) => item && item.ok === false
   ).length;
   updateStats({
@@ -3585,9 +3612,12 @@ async function fetchMarketSnapshot() {
   });
 
   return {
-    ok: failures < 6,
+    ok: failures < snapshotParts.length,
     fetchedAt,
-    note: "公开数据快照可能有延迟，基金排行更偏近期动量，不等于长期质量。",
+    note: "公开数据快照可能有延迟；贵金属行情为公开报价，基金排行更偏近期动量，不等于长期质量。",
+    marketIndicators: {
+      preciousMetals: preciousMetals.items || []
+    },
     themes: {
       conceptBoards: conceptBoards.items || [],
       industryBoards: industryBoards.items || []
@@ -3596,15 +3626,131 @@ async function fetchMarketSnapshot() {
       stockFunds: stockFunds.items || [],
       hybridFunds: hybridFunds.items || [],
       indexFunds: indexFunds.items || [],
-      qdiiFunds: qdiiFunds.items || []
+      qdiiFunds: qdiiFunds.items || [],
+      preciousMetalFunds: preciousMetalFunds.items || []
     },
-    errors: [conceptBoards, industryBoards, stockFunds, hybridFunds, indexFunds, qdiiFunds]
+    errors: snapshotParts
       .filter((item) => item && item.ok === false)
       .map((item) => item.error),
     sources: [
       "https://push2.eastmoney.com/api/qt/clist/get",
-      "https://fund.eastmoney.com/data/rankhandler.aspx"
+      "https://push2.eastmoney.com/api/qt/ulist.np/get",
+      "https://fund.eastmoney.com/data/rankhandler.aspx",
+      "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx"
     ]
+  };
+}
+
+async function fetchPreciousMetalQuotes() {
+  const defaultSecids = [
+    "101.GC00Y",
+    "113.aum",
+    "101.SI00Y",
+    "113.agm",
+    "100.UDI"
+  ];
+  const secids = String(process.env.PRECIOUS_METAL_SECIDS || defaultSecids.join(","))
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 20);
+  if (!secids.length) {
+    return { ok: true, label: "贵金属与美元指数", items: [] };
+  }
+  const url = new URL("https://push2.eastmoney.com/api/qt/ulist.np/get");
+  const params = {
+    fltt: "2",
+    secids: secids.join(","),
+    fields: "f12,f13,f14,f2,f3,f4,f15,f16,f17,f18,f22,f24,f25,f124,f152"
+  };
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+
+  const json = JSON.parse(await fetchText(url.href, "https://gold.eastmoney.com/"));
+  const diff = Array.isArray(json?.data?.diff) ? json.data.diff : [];
+  updateStats({ counters: { preciousMetalQuoteFetches: 1 } });
+  return {
+    ok: true,
+    label: "贵金属与美元指数",
+    items: diff.map((item) => {
+      const secid = item.f13 && item.f12 ? `${item.f13}.${item.f12}` : "";
+      return {
+        code: item.f12 || "",
+        secid,
+        name: item.f14 || "",
+        latest: toNumber(item.f2),
+        change: toNumber(item.f4),
+        changePct: toNumber(item.f3),
+        open: toNumber(item.f17),
+        high: toNumber(item.f15),
+        low: toNumber(item.f16),
+        previousClose: toNumber(item.f18),
+        amplitudePct: toNumber(item.f22),
+        fiveDayPct: toNumber(item.f24),
+        quoteTime: formatEpochSeconds(item.f124),
+        source: secid ? `https://quote.eastmoney.com/unify/r/${secid}` : "https://push2.eastmoney.com/api/qt/ulist.np/get"
+      };
+    }).filter((item) => item.code && item.name)
+  };
+}
+
+async function fetchPreciousMetalFundCandidates() {
+  const keywords = String(process.env.PRECIOUS_METAL_FUND_KEYWORDS || "黄金,贵金属,白银")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  if (!keywords.length) {
+    return { ok: true, label: "黄金/贵金属相关基金搜索候选", items: [] };
+  }
+  const limit = Math.max(1, Number(process.env.PRECIOUS_METAL_FUND_LIMIT || 12));
+  const groups = await Promise.all(keywords.map((keyword) => fetchFundSearchCandidates(keyword)));
+  const byCode = new Map();
+  for (const group of groups) {
+    for (const item of group.items || []) {
+      const existing = byCode.get(item.code);
+      if (existing) {
+        existing.keywords = [...new Set([...(existing.keywords || []), ...(item.keywords || [])])];
+      } else {
+        byCode.set(item.code, item);
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    label: "黄金/贵金属相关基金搜索候选",
+    items: [...byCode.values()].slice(0, limit)
+  };
+}
+
+async function fetchFundSearchCandidates(keyword) {
+  const url = new URL("https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx");
+  url.searchParams.set("m", "1");
+  url.searchParams.set("key", keyword);
+  const json = JSON.parse(await fetchText(url.href));
+  const rows = Array.isArray(json?.Datas) ? json.Datas : [];
+  updateStats({ counters: { preciousMetalFundSearches: 1 } });
+  return {
+    ok: true,
+    keyword,
+    items: rows.map((row) => {
+      const base = row.FundBaseInfo || {};
+      const code = row.CODE || base.FCODE || row._id || "";
+      return {
+        code,
+        name: row.NAME || base.SHORTNAME || "",
+        type: base.FTYPE || row.CATEGORYDESC || "",
+        navDate: base.FSRQ || "",
+        unitNav: toNumber(base.DWJZ),
+        company: base.JJGS || "",
+        manager: base.JJJL || "",
+        minPurchase: toNumber(base.MINSG),
+        keywords: [keyword],
+        source: code ? `https://fund.eastmoney.com/${code}.html` : "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx"
+      };
+    }).filter((item) => item.code && item.name)
   };
 }
 
@@ -3642,7 +3788,7 @@ async function fetchEastmoneyBoards(kind) {
       mainNetInflowPct: toNumber(item.f184),
       leadStock: item.f204 || "",
       leadStockCode: item.f205 || "",
-      quoteTime: item.f124 ? new Date(Number(item.f124) * 1000).toISOString() : ""
+      quoteTime: formatEpochSeconds(item.f124)
     }))
   };
 }
@@ -4243,6 +4389,11 @@ function formatDate(value) {
   return `${year}-${month}-${day}`;
 }
 
+function formatEpochSeconds(value) {
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds > 0 ? new Date(seconds * 1000).toISOString() : "";
+}
+
 async function replyToMessage(messageId, text, options = {}) {
   const config = getEffectiveConfig();
   const token = await getTenantAccessToken(config);
@@ -4359,7 +4510,7 @@ function buildFeishuCard(text, kind) {
         elements: [
           {
             tag: "plain_text",
-            content: "基金助手会按请求选择截图识别、公开数据补全或市场快照；结论仅供研究参考，不构成收益承诺。"
+            content: "基金经理会按请求选择截图识别、公开数据补全或市场快照；结论仅供研究参考，不构成收益承诺。"
           }
         ]
       }
@@ -4384,12 +4535,12 @@ function buildFeishuCard(text, kind) {
 
 function getCardMeta(kind) {
   const meta = {
-    progress: { template: "blue", title: "🔎 基金助手正在处理" },
+    progress: { template: "blue", title: "🔎 基金经理正在处理" },
     answer: { template: "turquoise", title: "📊 基金分析完成" },
     portfolio: { template: "green", title: "🧭 虚拟基金经理" },
     error: { template: "red", title: "⚠️ 分析遇到问题" },
     noContent: { template: "yellow", title: "📷 请发送基金截图" },
-    reply: { template: "wathet", title: "基金助手" }
+    reply: { template: "wathet", title: "基金经理" }
   };
   return meta[kind] || meta.reply;
 }
@@ -4841,6 +4992,8 @@ function getDefaultStats() {
       marketSnapshotCalls: 0,
       marketSnapshotFailures: 0,
       marketBoardFetches: 0,
+      preciousMetalQuoteFetches: 0,
+      preciousMetalFundSearches: 0,
       fundRankingFetches: 0,
       navHistoryFetches: 0,
       navHistoryPoints: 0,
@@ -5186,7 +5339,7 @@ function cleanFeishuUserText(text, content = {}) {
 
   cleaned = cleaned
     .replace(/<at\b[^>]*>[\s\S]*?<\/at>/gi, " ")
-    .replace(/@\s*基金助手/g, " ")
+    .replace(/@\s*(基金助手|基金经理)/g, " ")
     .replace(/@\s*FundAgent/gi, " ")
     .replace(/@\s*Fund\s*Agent/gi, " ")
     .replace(/\s+/g, " ")
@@ -5318,9 +5471,9 @@ async function classifyTextIntentWithModel({ userText, messageType }) {
     description: skill.description
   }));
   const systemText = [
-    "你是基金助手的意图路由器。只返回 JSON，不要解释。",
+    "你是基金经理的意图路由器。只返回 JSON，不要解释。",
     "你的任务是先理解用户想做什么，再选择工作流和需要加载的 skill。",
-    "不要因为机器人名称叫基金助手，就把自我介绍、寒暄、能力询问、普通聊天强行归类到基金工作流。",
+    "不要因为机器人名称叫基金经理，就把自我介绍、寒暄、能力询问、普通聊天强行归类到基金工作流。",
     "可选 workflow：",
     "- conversation：自我介绍、能做什么、寒暄、帮助、普通非基金对话。",
     "- portfolio_status：用户询问机器人/虚拟基金经理自己的仓位、持仓、今日操作、买卖、现金、盈亏、账户或虚拟组合。",
@@ -5411,7 +5564,28 @@ function recordWorkflowIntent(intent) {
 
 function shouldFetchMarketSnapshotForQuestion(text) {
   const normalized = normalizeIntentText(text);
-  return hasAny(normalized, ["最近", "最新", "当前", "现在", "市场", "行情", "题材", "热点", "板块", "赛道", "机会"]);
+  return hasAny(normalized, [
+    "最近",
+    "最新",
+    "当前",
+    "现在",
+    "市场",
+    "行情",
+    "题材",
+    "热点",
+    "板块",
+    "赛道",
+    "机会",
+    "黄金",
+    "金价",
+    "贵金属",
+    "白银",
+    "沪金",
+    "沪银",
+    "comex",
+    "美元指数",
+    "避险"
+  ]);
 }
 
 function detectComparisonNeed({ userText = "", extracted = {}, enrichments = [] }) {
