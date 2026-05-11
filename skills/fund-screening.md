@@ -17,6 +17,7 @@ Use this only as a fallback for one specific fund. Prefer the modular skills:
 - `fund-analysis` for integrating specialist notes into one verdict.
 - `fund-comparison` for choosing among multiple funds.
 - `fund-recommendation` for discovering candidates from market themes.
+- `fund-actionability-evaluation` for deciding whether the answer is directly usable as buy/hold/wait/avoid guidance.
 - `fund-answer-quality` for rejecting generic or unsupported final answers.
 - `fund-synthesis` for final Feishu card wording.
 

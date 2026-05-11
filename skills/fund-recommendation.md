@@ -14,7 +14,7 @@ Recommend candidates from market context and fund pools. Do not treat this as an
 3. Select themes first, then products.
 4. Include at least one risk-balanced alternative when recommending high-volatility themes.
 5. Give a 10000 CNY plan when buying/allocation is implied.
-6. Apply `fund-market-timing` for theme direction and `fund-answer-quality` before final output.
+6. Apply `fund-market-timing`, `fund-actionability-evaluation`, and `fund-answer-quality` before final output.
 
 ## Candidate Rules
 
@@ -25,6 +25,7 @@ Recommend candidates from market context and fund pools. Do not treat this as an
 - Do not default to A-class shares. If candidate data includes shareClass or fee model, choose A/C/D/I etc. by expected holding period, subscription fee, sales service fee, redemption fee, purchase threshold, and channel availability.
 - If recommending an A-class share, say why it is preferable to C-class or other available classes; if fees are incomplete, mark the share class as pending fee verification.
 - For gold/silver/precious-metal requests, use `marketIndicators.preciousMetals` and `fundCandidates.preciousMetalFunds` first. Do not answer with generic macro factors while ignoring snapshot quotes.
+- If deep-dive fund profiles are provided, prefer candidates with better trend profile, fee fit, liquidity/scale, and clearer tracking exposure over candidates that only rank high.
 
 ## Output
 
@@ -34,5 +35,7 @@ Give:
 2. 3-6 candidate funds or ETFs, including share class and fee-model caveat.
 3. Which profile fits each: aggressive / balanced / conservative.
 4. 10000 CNY allocation.
-5. Do-not-buy or reduce-size conditions.
-6. Data staleness note.
+5. One self-evaluation verdict: suitable / tactical only / wait / avoid.
+6. Do-not-buy or reduce-size conditions only when they change the action.
+
+The answer should feel like a manager's short list, not a search results page.

@@ -3136,6 +3136,11 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
   return lines.join("\n");
 }
 
+function buildMarketDeepDiveSummary(deepDive) {
+  if (!deepDive) return "未执行候选基金下钻。";
+  return JSON.stringify(deepDive, null, 2);
+}
+
 function collectPortfolioSources(...items) {
   const sources = [];
   for (const item of items.flat(Infinity)) {
@@ -3254,6 +3259,7 @@ function getFundAnalysisSkillIds(extra = []) {
     "fund-manager-quality",
     "fund-analysis",
     ...extra,
+    "fund-actionability-evaluation",
     "fund-answer-quality"
   ];
 }
@@ -3264,6 +3270,7 @@ function getFundRecommendationSkillIds(extra = []) {
     "fund-market-timing",
     "fund-fee-share-class",
     ...extra,
+    "fund-actionability-evaluation",
     "fund-answer-quality",
     "fund-synthesis"
   ];
@@ -3274,6 +3281,7 @@ function getFundQaSkillIds(extra = []) {
     "fund-market-timing",
     "fund-trend-analysis",
     ...extra,
+    "fund-actionability-evaluation",
     "fund-answer-quality",
     "fund-synthesis"
   ];
@@ -3311,7 +3319,8 @@ function buildFundCommitteeEvidencePrompt({ images = [], userText, messageType, 
     "",
     "如果联网补全资料中包含 riskMetrics，请优先使用其中的 1y/3y/5y 夏普率、年化波动、最大回撤、年化收益来评分；不要再要求用户手动补这些指标。只有 riskMetrics.ok=false 或点数不足时，才把这些列为缺失。",
     "如果联网补全资料中包含 holdings，请优先使用 equityTopHoldings / bondTopHoldings 做持仓风格分析。港股通、QDII、债基和指数基金可能分别出现在股票投资明细、债券投资明细或资产配置字段中；不要在已有 holdings 时说缺少十大持仓。",
-    "分析时必须拆开走势/买点、风险/回撤、持仓/风格、份额/费率、经理质量这五块；最终汇总必须经过 fund-answer-quality，避免只给“可以配置但别追高”这类泛泛结论。"
+    "如果资料中包含 trendProfile 或 actionability，请优先使用它们判断入场时机、适合对象和仓位上限。",
+    "分析时必须拆开走势/买点、风险/回撤、持仓/风格、份额/费率、经理质量这五块；最终汇总必须经过 fund-actionability-evaluation 和 fund-answer-quality，避免只给“可以配置但别追高”这类泛泛结论。"
   ].join("\n");
 }
 
@@ -3414,8 +3423,9 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
       : "2. 投研团队视角：产品、业绩、持仓、市场、风险等角色各 1 行，给出正/中/负倾向和关键理由。",
     "3. Manager Decision：最终动作必须是买入 / 分批买入 / 持有 / 换基 / 观察 / 回避之一，并说明最大买点和最大不买理由。",
     "4. 1万元执行方案：假设用户准备新增 10000 元，给出激进、均衡、保守三档的金额或比例；如果基金适合出击，激进档可以给到更高比例，但要写清止损/再评估触发条件。",
-    "5. 主要风险与复查触发：最多 3 条。",
-    "6. 缺失数据：只列真正影响结论的字段；不要把已联网补全的夏普率、回撤、波动率重复列为缺失。"
+    "5. 自评估结果：是否适合当前用户真实需求，适合谁，不适合谁，confidence。",
+    "6. 决策边界：最多 2 条，只列会改变买入/持有/回避动作的条件，不要写通用风险清单。",
+    "7. 缺失数据：只列真正影响结论的字段；不要把已联网补全的夏普率、回撤、波动率重复列为缺失。"
   ].join("\n");
 
   const finalText = await callModel({
@@ -3434,16 +3444,19 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
 async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
   const skillContext = buildSkillContextForIntent(intent, getFundRecommendationSkillIds());
   const marketEvidence = buildMarketEvidenceSummary(userText, marketSnapshot);
+  const marketDeepDive = await fetchMarketDeepDive(userText, marketSnapshot, { forRecommendation: true });
+  const marketDeepDiveSummary = buildMarketDeepDiveSummary(marketDeepDive);
   const systemText = [
     "你是飞书机器人“基金经理”的基金发现与配置工作流。",
     "当前任务不是分析用户已经给出的某一只基金，也不是截图 screening；当前任务是根据用户文字、公开市场快照和基金候选池，给出教育性的基金方向与候选清单。",
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
+    "如果提供了 marketDeepDive，必须使用其中的 trendProfile、risk、fees、holdings 和 actionability 来筛掉不适合的候选；不要只复述市场快照。",
     "不要编造 marketSnapshot 里没有的基金代码、涨跌幅、排名、金价或新闻。",
     "推荐基金时不要默认偏向 A 类；同一基金存在 A/C/D/I 等份额时，按用户持有期和费用模型说明为什么选这个份额，并提示可替代份额。",
-    "必须通过 fund-answer-quality 质量门槛：先给直接结论，再引用快照证据，再给执行方案和复查触发。",
+    "必须通过 fund-actionability-evaluation 和 fund-answer-quality 质量门槛：先给直接结论，再给适合/不适合的自评估，再给执行方案。",
     "如果数据不足以支持具体基金代码，就推荐基金方向/筛选条件，并把具体代码标为待复核。",
     "回答要大胆但有边界：证据偏正面时可以给出买入或分批买入候选；不要机械地总是等待回撤。",
-    "必须说明数据滞后风险和复查条件。不要保证收益，不要给出个性化承诺。",
+    "不要把风险写成免责声明清单。只保留会改变买入/等待/回避动作的决策边界。",
     "输出适合飞书卡片阅读，不要 Markdown 表格，不要代码块。",
     "",
     skillContext
@@ -3461,12 +3474,15 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "已提炼的市场证据摘要：",
     marketEvidence,
     "",
+    "候选基金下钻摘要：",
+    marketDeepDiveSummary,
+    "",
     "请输出：",
-    "1. 结论：今天这类请求应看哪 2-4 个主题/方向，按优先级排序。",
-    "2. 推荐清单：3-6 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、类型/主题、为什么入选、适合激进/均衡/保守哪类、最大风险。只能使用快照中的候选代码；如果没有足够代码，就写“待复核方向”。",
-    "3. 1万元配置：激进、均衡、保守三档，给具体金额或比例。",
-    "4. 不买/少买条件：最多 3 条。",
-    "5. 数据来源与滞后：用一句话说明来自公开市场/基金排行快照，不是实时成交建议。"
+    "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
+    "2. 自评估：这类需求是否适合现在做，confidence，适合激进/均衡/保守哪类。",
+    "3. 推荐清单：优先 3-5 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、趋势/自评估动作、为什么入选。只能使用快照或下钻中的候选代码；如果没有足够代码，就写“待复核方向”。",
+    "4. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
+    "5. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的条件。"
   ].join("\n");
 
   const text = await callModel({
@@ -3485,12 +3501,16 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
 async function answerFundQuestionWithModel({ userText, intent, marketSnapshot }) {
   const skillContext = buildSkillContextForIntent(intent, getFundQaSkillIds());
   const marketEvidence = buildMarketEvidenceSummary(userText, marketSnapshot);
+  const marketDeepDive = await fetchMarketDeepDive(userText, marketSnapshot, { forRecommendation: false });
+  const marketDeepDiveSummary = buildMarketDeepDiveSummary(marketDeepDive);
   const systemText = [
     "你是飞书机器人“基金经理”的基金问答工作流。",
     "当前任务是回答用户问题，不是单只基金 screening；除非用户给出明确基金代码或截图，否则不要强行输出 Verdict/Score/8 角色评审。",
     "如果传入 marketSnapshot，可用它回答近期市场/题材问题；涉及黄金、白银或贵金属时，优先引用 marketIndicators.preciousMetals 和相关基金候选。",
+    "如果提供了 marketDeepDive，必须使用下钻候选的 trendProfile、risk、fees、holdings 和 actionability 来形成买/等/回避判断。",
     "如果没有抓到对应行情数据，要说明是公开数据源暂时不可用或滞后，不要简单说自己没有实时数据能力。",
-    "必须通过 fund-answer-quality 质量门槛：前两行直接回答；有快照就引用具体字段；给明确行动和复查触发。不要输出泛泛宏观清单。",
+    "必须通过 fund-actionability-evaluation 和 fund-answer-quality 质量门槛：前两行直接回答；有快照/下钻就引用具体字段；给明确行动、适合对象和仓位建议。",
+    "不要把风险写成免责声明清单。只保留会改变买入/等待/回避动作的决策边界。",
     "回答中文、简洁、可执行。不要保证收益，不要给出个性化承诺。",
     "输出适合飞书卡片阅读，不要 Markdown 表格，不要代码块。",
     "",
@@ -3509,7 +3529,10 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "已提炼的市场证据摘要：",
     marketEvidence,
     "",
-    "请直接回答用户问题。若用户问“值得买吗”，必须给 buy/staged/wait/avoid 之一。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
+    "候选基金下钻摘要：",
+    marketDeepDiveSummary,
+    "",
+    "请直接回答用户问题。若用户问“值得买吗”，必须给 buy/staged/wait/avoid 之一，并给新资金和已有持仓分别怎么做。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
   ].join("\n");
 
   const text = await callModel({
@@ -3912,7 +3935,7 @@ async function fetchFundSearchCandidates(keyword) {
   url.searchParams.set("key", keyword);
   const json = JSON.parse(await fetchText(url.href));
   const rows = Array.isArray(json?.Datas) ? json.Datas : [];
-  updateStats({ counters: { preciousMetalFundSearches: 1 } });
+  updateStats({ counters: { fundSearches: 1, preciousMetalFundSearches: isPreciousMetalQuestion(keyword) ? 1 : 0 } });
   return {
     ok: true,
     keyword,
@@ -3940,6 +3963,404 @@ async function fetchFundSearchCandidates(keyword) {
         source: code ? `https://fund.eastmoney.com/${code}.html` : "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx"
       };
     }).filter((item) => item.code && item.name)
+  };
+}
+
+function inferFocusedFundSearchKeywords(userText) {
+  const text = normalizeIntentText(userText);
+  const groups = [
+    { needles: ["黄金", "金价", "贵金属"], keywords: ["黄金", "贵金属"] },
+    { needles: ["白银", "沪银"], keywords: ["白银", "贵金属"] },
+    { needles: ["半导体", "芯片"], keywords: ["半导体", "芯片"] },
+    { needles: ["人工智能", "ai", "算力"], keywords: ["人工智能", "算力"] },
+    { needles: ["机器人"], keywords: ["机器人"] },
+    { needles: ["新能源", "光伏", "锂电", "电池"], keywords: ["新能源", "光伏", "锂电池"] },
+    { needles: ["医药", "医疗", "创新药"], keywords: ["医药", "医疗", "创新药"] },
+    { needles: ["港股", "恒生", "香港"], keywords: ["港股", "恒生"] },
+    { needles: ["红利", "高股息"], keywords: ["红利", "高股息"] },
+    { needles: ["纳斯达克", "标普", "美股"], keywords: ["纳斯达克", "标普500"] },
+    { needles: ["越南"], keywords: ["越南"] },
+    { needles: ["印度"], keywords: ["印度"] },
+    { needles: ["债券", "债基", "纯债", "短债"], keywords: ["纯债", "短债"] }
+  ];
+
+  const keywords = [];
+  for (const group of groups) {
+    if (hasAny(text, group.needles)) {
+      keywords.push(...group.keywords);
+    }
+  }
+
+  return [...new Set(keywords)].slice(0, 4);
+}
+
+async function fetchFocusedFundCandidates(userText) {
+  const keywords = inferFocusedFundSearchKeywords(userText);
+  if (!keywords.length) return [];
+  const groups = await Promise.all(keywords.map((keyword) =>
+    fetchFundSearchCandidates(keyword).catch((error) => ({ ok: false, keyword, error: error.message, items: [] }))
+  ));
+  const byCode = new Map();
+  for (const group of groups) {
+    for (const item of group.items || []) {
+      const existing = byCode.get(item.code);
+      if (existing) {
+        existing.keywords = [...new Set([...(existing.keywords || []), ...(item.keywords || []), group.keyword].filter(Boolean))];
+      } else {
+        byCode.set(item.code, { ...item, keywords: [...new Set([...(item.keywords || []), group.keyword].filter(Boolean))] });
+      }
+    }
+  }
+  return [...byCode.values()];
+}
+
+function mergeCandidateFunds(...groups) {
+  const byCode = new Map();
+  for (const item of groups.flat()) {
+    if (!item?.code) continue;
+    const existing = byCode.get(item.code);
+    if (existing) {
+      existing.keywords = [...new Set([...(existing.keywords || []), ...(item.keywords || [])])];
+    } else {
+      byCode.set(item.code, { ...item });
+    }
+  }
+  return [...byCode.values()];
+}
+
+function scoreDeepDiveCandidate(item) {
+  const text = `${item.name || ""} ${item.type || ""}`;
+  let score = 0;
+  if (/ETF|联接|指数/.test(text)) score += 6;
+  if (/C$|C类/.test(text)) score += 2;
+  if (/A$|A类/.test(text)) score += 1;
+  for (const value of [item.oneMonthPct, item.threeMonthPct, item.sixMonthPct, item.oneYearPct, item.dailyPct]) {
+    const numeric = toNumber(value);
+    if (Number.isFinite(numeric)) score += Math.max(-8, Math.min(12, numeric / 2));
+  }
+  if (item.unitNav) score += 1;
+  if (item.manager) score += 1;
+  return score;
+}
+
+async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
+  if (!marketSnapshot) return null;
+  const focusedCandidates = await fetchFocusedFundCandidates(userText);
+  const precious = isPreciousMetalQuestion(userText);
+  const snapshotCandidates = precious
+    ? (marketSnapshot.fundCandidates?.preciousMetalFunds || [])
+    : options.forRecommendation
+      ? [
+          ...(marketSnapshot.fundCandidates?.stockFunds || []),
+          ...(marketSnapshot.fundCandidates?.hybridFunds || []),
+          ...(marketSnapshot.fundCandidates?.indexFunds || []),
+          ...(marketSnapshot.fundCandidates?.qdiiFunds || [])
+        ]
+      : [];
+  const merged = mergeCandidateFunds(focusedCandidates, snapshotCandidates)
+    .sort((a, b) => scoreDeepDiveCandidate(b) - scoreDeepDiveCandidate(a));
+  const defaultLimit = precious ? 4 : 3;
+  const limit = Math.max(0, Number(process.env.MARKET_DEEP_DIVE_FUND_LIMIT ?? defaultLimit));
+  const selected = merged.slice(0, limit);
+  if (!selected.length) {
+    return {
+      ok: false,
+      focus: precious ? "precious_metals" : "market_theme",
+      note: "未找到可下钻的候选基金，最终回答只能基于市场快照。"
+    };
+  }
+
+  const candidates = await Promise.all(selected.map(async (candidate) => {
+    try {
+      return await fetchFundResearchDigest(candidate.code, candidate);
+    } catch (error) {
+      recordError(error, { marketDeepDiveFailures: 1 });
+      return {
+        ok: false,
+        code: candidate.code,
+        name: candidate.name,
+        keywords: candidate.keywords || [],
+        error: error.message,
+        seed: candidate
+      };
+    }
+  }));
+
+  updateStats({
+    counters: { marketDeepDiveCalls: 1, marketDeepDiveCandidates: candidates.length },
+    last: { lastMarketDeepDiveAt: new Date().toISOString() }
+  });
+
+  return {
+    ok: true,
+    focus: precious ? "precious_metals" : focusedCandidates.length ? "focused_theme_search" : "market_recommendation",
+    searchKeywords: inferFocusedFundSearchKeywords(userText),
+    selectedCodes: selected.map((item) => item.code),
+    candidates
+  };
+}
+
+async function fetchFundResearchDigest(code, seed = {}) {
+  const [valuation, profileText, navHistory, holdings, feePageText] = await Promise.all([
+    fetchFundValuation(code).catch((error) => ({ ok: false, error: error.message })),
+    fetchFundPingzhongData(code).catch(() => ""),
+    fetchFundRecentNavHistory(code).catch((error) => ({ ok: false, error: error.message, points: [] })),
+    fetchFundHoldings(code).catch((error) => ({ ok: false, error: error.message, equityTopHoldings: [], bondTopHoldings: [] })),
+    fetchFundFeePage(code).catch(() => "")
+  ]);
+  const profile = profileText ? parseFundPingzhongData(profileText) : {};
+  const name = profile.name || valuation.name || seed.name || "";
+  const feeProfile = buildFundFeeProfile({
+    code,
+    name,
+    sourceRate: profile.sourceRate || seed.sourceRatePct || "",
+    rate: profile.rate || seed.currentRatePct || "",
+    minPurchase: profile.minPurchase || seed.minPurchase || ""
+  }, feePageText);
+  const trendProfile = navHistory.ok ? computeTrendProfile(navHistory.points) : { ok: false, note: navHistory.error || "近一年净值下钻失败。" };
+  const latest = navHistory.points?.[navHistory.points.length - 1] || null;
+  const oneYearRisk = navHistory.ok && latest
+    ? computePeriodRiskMetrics(navHistory.points, latest, 1, Number(process.env.RISK_FREE_RATE_PCT || 2))
+    : { ok: false, note: "近一年风险指标不足。" };
+  const holdingsSummary = buildHoldingsDigest(holdings, profile.topStocks);
+  const digest = {
+    ok: true,
+    code,
+    name,
+    seed: {
+      type: seed.type || "",
+      keywords: seed.keywords || [],
+      oneMonthPct: seed.oneMonthPct ?? "",
+      threeMonthPct: seed.threeMonthPct ?? "",
+      sixMonthPct: seed.sixMonthPct ?? "",
+      oneYearPct: seed.oneYearPct ?? ""
+    },
+    nav: {
+      unitNav: valuation.dwjz || seed.unitNav || "",
+      estimatedNav: valuation.gsz || "",
+      estimatedChangePct: valuation.gszzl || "",
+      navDate: valuation.jzrq || seed.navDate || "",
+      estimateTime: valuation.gztime || ""
+    },
+    returns: {
+      oneMonthPct: profile.syl_1y || seed.oneMonthPct || "",
+      threeMonthPct: profile.syl_3y || seed.threeMonthPct || "",
+      sixMonthPct: profile.syl_6y || seed.sixMonthPct || "",
+      oneYearPct: profile.syl_1n || seed.oneYearPct || ""
+    },
+    trendProfile,
+    risk: { oneYear: pickRiskPeriod(oneYearRisk) },
+    fees: {
+      shareClass: feeProfile.shareClass,
+      shareClassFeeModel: feeProfile.shareClassFeeModel,
+      currentRatePct: feeProfile.currentRatePct,
+      salesServiceFeePct: feeProfile.salesServiceFeePct,
+      minPurchase: feeProfile.minPurchase
+    },
+    scale: profile.scale,
+    managers: (profile.managers || []).slice(0, 2),
+    holdings: holdingsSummary,
+    sources: [
+      `https://fund.eastmoney.com/${code}.html`,
+      `https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${code}`,
+      `https://fundf10.eastmoney.com/jjfl_${code}.html`
+    ]
+  };
+  digest.actionability = buildFundActionabilitySignals(digest);
+  return digest;
+}
+
+async function fetchFundRecentNavHistory(code) {
+  const endDate = new Date();
+  const startDate = new Date(endDate);
+  startDate.setMonth(startDate.getMonth() - Number(process.env.FUND_DEEP_DIVE_NAV_MONTHS || 18));
+  const firstPage = await fetchFundNavHistoryPage(code, 1, startDate, endDate);
+  const points = [...firstPage.points];
+  const totalPages = Math.min(firstPage.pages || 1, Number(process.env.FUND_DEEP_DIVE_NAV_MAX_PAGES || 10));
+
+  for (let page = 2; page <= totalPages; page += 1) {
+    const pageData = await fetchFundNavHistoryPage(code, page, startDate, endDate);
+    points.push(...pageData.points);
+  }
+
+  const deduped = [...new Map(points.map((point) => [point.date, point])).values()].sort((a, b) =>
+    a.date.localeCompare(b.date)
+  );
+  updateStats({
+    counters: { deepDiveNavHistoryFetches: 1, deepDiveNavHistoryPoints: deduped.length },
+    last: { lastDeepDiveNavHistoryFetchAt: new Date().toISOString() }
+  });
+
+  return {
+    ok: deduped.length >= 20,
+    code,
+    startDate: formatDate(startDate),
+    endDate: formatDate(endDate),
+    points: deduped
+  };
+}
+
+function buildHoldingsDigest(holdings = {}, fallbackTopStocks = []) {
+  const equity = (holdings.equityTopHoldings || []).slice(0, 5).map((item) =>
+    [item.code, item.name, item.netValuePct ? `${item.netValuePct}%` : ""].filter(Boolean).join(" ")
+  );
+  const bond = (holdings.bondTopHoldings || []).slice(0, 5).map((item) =>
+    [item.code, item.name, item.netValuePct ? `${item.netValuePct}%` : ""].filter(Boolean).join(" ")
+  );
+  return {
+    ok: Boolean(holdings.ok || equity.length || bond.length || fallbackTopStocks.length),
+    equityDisclosureDate: holdings.equityDisclosureDate || "",
+    bondDisclosureDate: holdings.bondDisclosureDate || "",
+    equityTopHoldings: equity.length ? equity : fallbackTopStocks.slice(0, 5),
+    bondTopHoldings: bond,
+    note: holdings.ok ? "已下钻持仓摘要。" : "持仓下钻不足，使用可见候选信息。"
+  };
+}
+
+function computeTrendProfile(points = []) {
+  const ordered = [...points]
+    .filter((point) => Number.isFinite(point.cumulativeNav) && point.cumulativeNav > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (ordered.length < 20) {
+    return { ok: false, points: ordered.length, note: "净值点不足，趋势判断置信度低。" };
+  }
+
+  const latest = ordered[ordered.length - 1];
+  const returnOver = (tradingDays) => {
+    if (ordered.length <= tradingDays) return null;
+    const start = ordered[ordered.length - tradingDays - 1];
+    return round((latest.cumulativeNav / start.cumulativeNav - 1) * 100, 2);
+  };
+  const recent = ordered.slice(-Math.min(ordered.length, 250));
+  const recentHigh = Math.max(...recent.map((point) => point.cumulativeNav));
+  const recentLow = Math.min(...recent.map((point) => point.cumulativeNav));
+  const drawdownFromHighPct = recentHigh > 0 ? round((latest.cumulativeNav / recentHigh - 1) * 100, 2) : null;
+  const reboundFromLowPct = recentLow > 0 ? round((latest.cumulativeNav / recentLow - 1) * 100, 2) : null;
+  const r20 = returnOver(20);
+  const r60 = returnOver(60);
+  const r120 = returnOver(120);
+  const r250 = returnOver(250);
+  const extended = (Number.isFinite(r20) && r20 > 8) || (Number.isFinite(r60) && r60 > 18 && drawdownFromHighPct > -3);
+  const breakdown = (Number.isFinite(r60) && r60 < -8) && (Number.isFinite(r120) && r120 < -10);
+  const uptrend = (Number.isFinite(r20) && r20 > 0) && (Number.isFinite(r60) && r60 > 0) && (!Number.isFinite(r120) || r120 > 0);
+  const rebound = (Number.isFinite(r20) && r20 > 0) && (Number.isFinite(r60) && r60 > 0) && Number.isFinite(drawdownFromHighPct) && drawdownFromHighPct < -5;
+  const weakening = (Number.isFinite(r20) && r20 < 0) && (Number.isFinite(r60) && r60 < 0);
+  const trendLabel = breakdown
+    ? "breakdown"
+    : extended
+      ? "extended_uptrend"
+      : rebound
+        ? "rebound_repair"
+        : uptrend
+          ? "uptrend"
+          : weakening
+            ? "weakening"
+            : "range_or_mixed";
+  const entryBias = breakdown
+    ? "avoid_now"
+    : extended
+      ? "wait_pullback"
+      : rebound || uptrend
+        ? "staged_buy"
+        : weakening
+          ? "hold_observe"
+          : "hold_observe";
+
+  return {
+    ok: true,
+    latestDate: latest.date,
+    latestCumulativeNav: round(latest.cumulativeNav, 4),
+    return20dPct: r20,
+    return60dPct: r60,
+    return120dPct: r120,
+    return250dPct: r250,
+    drawdownFromRecentHighPct: drawdownFromHighPct,
+    reboundFromRecentLowPct,
+    trendLabel,
+    entryBias,
+    invalidationHint: entryBias === "staged_buy"
+      ? "若60日收益转负或跌破近60日低点，暂停加仓。"
+      : entryBias === "wait_pullback"
+        ? "等待20日涨幅降温或从高点回撤后再评估。"
+        : "等待趋势重新转强后再评估。"
+  };
+}
+
+function buildFundActionabilitySignals(digest) {
+  const trend = digest.trendProfile || {};
+  const risk = digest.risk?.oneYear || {};
+  const feeType = digest.fees?.shareClassFeeModel?.type || "unknown";
+  let score = 50;
+
+  if (trend.entryBias === "staged_buy") score += 14;
+  if (trend.entryBias === "buyable_now") score += 18;
+  if (trend.entryBias === "wait_pullback") score -= 6;
+  if (trend.entryBias === "avoid_now") score -= 18;
+  if (trend.entryBias === "hold_observe") score -= 2;
+
+  if (Number.isFinite(risk.sharpe)) {
+    if (risk.sharpe >= 1) score += 10;
+    else if (risk.sharpe >= 0.5) score += 6;
+    else if (risk.sharpe < 0) score -= 8;
+  }
+  if (Number.isFinite(risk.annualizedReturnPct)) {
+    if (risk.annualizedReturnPct >= 10) score += 6;
+    else if (risk.annualizedReturnPct < 0) score -= 6;
+  }
+  if (Number.isFinite(risk.maxDrawdownPct)) {
+    if (risk.maxDrawdownPct <= -35) score -= 12;
+    else if (risk.maxDrawdownPct <= -25) score -= 7;
+    else if (risk.maxDrawdownPct >= -15) score += 5;
+  }
+  if (feeType === "unknown") score -= 4;
+  if (["special_or_platform_class"].includes(feeType)) score -= 4;
+  if (digest.holdings?.ok) score += 3;
+
+  const boundedScore = Math.max(0, Math.min(100, Math.round(score)));
+  const action = boundedScore >= 78
+    ? "buy"
+    : boundedScore >= 62
+      ? "staged_buy"
+      : boundedScore >= 48
+        ? "wait"
+        : "avoid";
+  const fitLabel = boundedScore >= 78
+    ? "fit"
+    : boundedScore >= 62
+      ? "tactical_only"
+      : boundedScore >= 48
+        ? "weak_fit"
+        : "not_suitable";
+  const highDrawdown = Number.isFinite(risk.maxDrawdownPct) && risk.maxDrawdownPct <= -25;
+  const allocationBand = action === "buy"
+    ? (highDrawdown ? "5%-10%" : "10%-20%")
+    : action === "staged_buy"
+      ? (highDrawdown ? "3%-8%" : "5%-15%")
+      : action === "wait"
+        ? "0%-3% watch/test only"
+        : "0%";
+  const evidenceCount = [trend.ok, risk.ok, digest.holdings?.ok, feeType !== "unknown"].filter(Boolean).length;
+  const confidence = evidenceCount >= 4 ? "high" : evidenceCount >= 2 ? "medium" : "low";
+  const decisiveEvidence = [
+    trend.ok ? `trend=${trend.trendLabel}, entryBias=${trend.entryBias}, 20d=${trend.return20dPct}%, 60d=${trend.return60dPct}%` : "",
+    risk.ok ? `1yReturn=${risk.totalReturnPct}%, maxDrawdown=${risk.maxDrawdownPct}%, sharpe=${risk.sharpe}` : "",
+    digest.fees?.shareClassFeeModel?.label || "",
+    digest.holdings?.equityTopHoldings?.length ? `topHolding=${digest.holdings.equityTopHoldings[0]}` : ""
+  ].filter(Boolean).slice(0, 4);
+  const decisionBlocker = [
+    trend.invalidationHint || "",
+    feeType === "unknown" ? "费率/份额类别未确认前不做重仓。" : "",
+    highDrawdown ? "近一年回撤偏深，只能按卫星仓或战术仓处理。" : ""
+  ].filter(Boolean).slice(0, 2);
+
+  return {
+    score: boundedScore,
+    fitLabel,
+    action,
+    allocationBand,
+    confidence,
+    decisiveEvidence,
+    decisionBlocker
   };
 }
 
@@ -4089,6 +4510,19 @@ async function fetchFundProfile(code) {
   const riskMetrics = navHistory.ok
     ? computeRiskMetrics(navHistory.points)
     : { ok: false, error: navHistory.error, note: "历史净值抓取失败，无法计算夏普率/波动/回撤。" };
+  const trendProfile = navHistory.ok
+    ? computeTrendProfile(navHistory.points)
+    : { ok: false, note: navHistory.error || "历史净值抓取失败，无法判断走势。" };
+  const holdingsSummary = buildHoldingsDigest(holdings, profile.topStocks);
+  const actionability = buildFundActionabilitySignals({
+    trendProfile,
+    risk: { oneYear: pickRiskPeriod(riskMetrics.periods?.["1y"] || {}) },
+    fees: {
+      shareClass: feeProfile.shareClass,
+      shareClassFeeModel: feeProfile.shareClassFeeModel
+    },
+    holdings: holdingsSummary
+  });
   return {
     ok: true,
     code,
@@ -4108,6 +4542,8 @@ async function fetchFundProfile(code) {
       oneYearPct: profile.syl_1n || ""
     },
     riskMetrics,
+    trendProfile,
+    actionability,
     scale: profile.scale,
     assetAllocation: profile.assetAllocation,
     performanceEvaluation: profile.performanceEvaluation,

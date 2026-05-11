@@ -6,7 +6,7 @@ description: Analyze market snapshot, sector/theme heat, precious metals, USD in
 
 # Fund Market Timing And Theme Analysis
 
-This skill owns market context. It is especially important for questions like "gold recently worth buying?".
+This skill owns market context. It is especially important for questions like "gold recently worth buying?". It should produce a tradeable bias, not a macro checklist.
 
 ## Duties
 
@@ -15,6 +15,7 @@ This skill owns market context. It is especially important for questions like "g
 - Compare direction, latest change, 5-day change, and quote time when present.
 - Separate gold price exposure from gold equity/mining stock exposure.
 - Decide whether the theme is supportive, overheated, mixed, or unsupported by the snapshot.
+- If deep-dive fund profiles are provided, connect market direction to actual vehicles and entry timing.
 
 ## Evidence Rules
 
@@ -22,6 +23,7 @@ This skill owns market context. It is especially important for questions like "g
 - If related fund candidates exist, mention representative candidate codes/names and state that candidates still need fund-level checking.
 - Do not fall back to generic macro talk unless snapshot data is missing.
 - Do not claim "no real-time gold data" when `marketIndicators.preciousMetals` is present.
+- Do not list every possible macro variable. Mention only variables that change the buy/wait/avoid action.
 
 ## Output Contract
 
@@ -33,3 +35,5 @@ Return concise internal notes:
 - relatedCandidates
 - dataFreshness
 - actionBias
+- preferredVehicle
+- decisionBoundary

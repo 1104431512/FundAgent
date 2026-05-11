@@ -16,6 +16,7 @@ This is an orchestration skill, not a one-person-does-everything skill.
 - `fund-holdings-style`: holdings, sector/theme exposure, style fit.
 - `fund-fee-share-class`: share class and fee/holding-period fit.
 - `fund-manager-quality`: manager, tenure, scale, and process quality.
+- `fund-actionability-evaluation`: whether the answer is actually usable as a buy/hold/wait/avoid guide.
 - `fund-answer-quality`: final answer must be specific, evidence-backed, and actionable.
 
 ## Evaluation Axes
@@ -27,6 +28,7 @@ This is an orchestration skill, not a one-person-does-everything skill.
 - Share-class cost: use the fee/share-class specialist; do not mix A/C/D/I share classes.
 - Manager and operation: use the manager-quality specialist.
 - Execution: final action, position role, staged plan, review trigger.
+- Actionability: whether the evidence is enough to make a decision, and if yes, what position size fits.
 
 ## Decision Style
 
@@ -43,6 +45,8 @@ If specialists disagree, say where the disagreement is. Do not smooth it into va
 The final action must be one of: buy, staged buy, hold, switch, watch, avoid.
 
 Always include the strongest buy reason and strongest not-buy reason.
+
+Risk belongs inside the decision, not before it. List only the blockers that would change the action; omit generic risks.
 
 ## Score Meaning
 

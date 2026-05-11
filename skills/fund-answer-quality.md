@@ -6,7 +6,7 @@ description: Quality gate for fund answers. Use in final synthesis, recommendati
 
 # Fund Answer Quality Control
 
-This skill is the final bouncer at the door. It rejects polite nonsense.
+This skill is the final bouncer at the door. It rejects polite nonsense and risk-first answers.
 
 ## Non-Negotiables
 
@@ -15,7 +15,8 @@ This skill is the final bouncer at the door. It rejects polite nonsense.
 - If market/fund snapshot data is provided, cite concrete fields from it.
 - Give a practical action: buy now, staged buy, hold, wait, avoid, or ask for specific fund code.
 - State confidence and the reason for confidence.
-- Include a review trigger: what would change the answer.
+- Include only decision-relevant blockers or review triggers.
+- Make the first screen usable as a buying/holding guide.
 
 ## Reject These Patterns
 
@@ -25,6 +26,8 @@ This skill is the final bouncer at the door. It rejects polite nonsense.
 - Recommending a fund code not present in the provided candidates.
 - Mixing A/C/D/I share classes without fee caveats.
 - Long caveat sections that bury the actual answer.
+- Lists of generic possible risks that would apply to every investment.
+- Answers that read like search-result summaries instead of a manager decision.
 
 ## Required Shape For Market Q&A
 
@@ -33,8 +36,19 @@ For questions like "黄金最近值得买吗":
 1. Direct answer: yes / staged / wait / avoid.
 2. Snapshot evidence: quote 2-4 concrete market fields if present.
 3. Vehicle choice: gold ETF/fund vs gold stock/mining exposure.
-4. Action plan: new money, existing holder, review trigger.
-5. Data caveat: only if needed, and specifically say which data is missing.
+4. Action plan: new money, existing holder, allocation band or first-order amount.
+5. Decision boundary: only the 1-2 conditions that would change the action.
+
+## Risk Handling
+
+Risk is not a disclaimer section. Convert it into:
+
+- position size,
+- waiting condition,
+- rejection reason,
+- review trigger.
+
+If a risk does not change one of those, omit it.
 
 ## Output Tone
 

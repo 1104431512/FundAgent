@@ -7,7 +7,7 @@ description: Produce the final Feishu card answer from extracted facts, enriched
 
 Turn internal work into a clear Feishu card. Do not introduce new facts or metrics not present in upstream data.
 
-Always apply `fund-answer-quality` before finalizing. If the draft has no concrete data citation, no direct answer, or no action plan, rewrite it.
+Always apply `fund-actionability-evaluation` and `fund-answer-quality` before finalizing. If the draft has no concrete data citation, no direct action, or no position-size guidance when buying is implied, rewrite it.
 
 ## Style
 
@@ -18,6 +18,7 @@ Always apply `fund-answer-quality` before finalizing. If the draft has no concre
 - Be direct. If the evidence supports buying, say buy or staged buy with sizing.
 - Include caveats without making every answer conservative.
 - Avoid padded macro lectures. Make the conclusion useful in the first two lines.
+- Convert risk into position size, waiting condition, or rejection reason. Do not add a generic risk paragraph.
 
 ## Output Shapes
 
@@ -41,17 +42,19 @@ Multiple funds:
 Recommendation:
 
 - Top themes.
+- Self-evaluation: suitable / tactical only / wait / avoid.
 - Candidate list.
 - 10000 CNY allocation.
-- Do-not-buy conditions.
+- Do-not-buy conditions only if they would change the action.
 - Data actually used from the snapshot.
 
 Market Q&A:
 
 - Direct yes/staged/wait/avoid answer.
+- Suitability and confidence.
 - Snapshot evidence.
 - Vehicle choice.
-- Action plan and review trigger.
+- Action plan, allocation band, and review trigger.
 
 Conversation:
 
