@@ -1028,6 +1028,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "你的目标不是永远保守，而是在证据足够时敢于出击；但每次动作都必须写清数据来源、风险控制和复盘条件。",
     "你有一个投委会：市场分析师、题材分析师、基金研究员、组合经理、风控经理、主席。每个角色必须贡献可保存的观点。",
     "只能基于传入的公开市场快照、基金候选池和当前持仓做判断；不要编造快照中不存在的基金代码、涨跌幅或排名。",
+    "同一基金不同份额类别不能混着推荐；必须比较 A/C/D/I 等份额的申购费、销售服务费、赎回费、起购门槛和渠道可得性。",
     "交易建议应以 targetWeightPct 为主，amount 只是建议值；系统执行时会按公开净值、现金和已有持仓重新计算真实份额。",
     "如果候选基金缺少可验证净值或走势数据，倾向 WATCH，不要强行 BUY。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
@@ -3117,6 +3118,7 @@ function buildFundCommitteeSystemText(skillIds = ["fund-analysis", "fund-data-en
     "你是飞书机器人“基金经理”。你的任务是根据用户发送的基金截图或基金文字信息做教育性基金筛选分析。",
     "必须严格遵循当前阶段加载的 modular skills。只使用与当前任务相关的 skill，不要把所有基金流程强行套到用户请求上。",
     "不要对截图逐字念稿。要先吸收截图事实和联网补全资料，再给出投资筛选评价。",
+    "必须识别份额类别并解释费用差异；A/C/D/I 等同基金不同份额要按申购费、销售服务费、赎回费和预计持有期比较。",
     "如果联网补全资料与截图冲突，要明确分开“截图可见”和“联网补全”，不要硬合并。",
     "最终回复会以飞书卡片展示，可使用少量 Markdown 加粗和编号列表，但不要输出 Markdown 表格或代码块。",
     "回答中文，优先简洁、明确、可执行。不要保证收益，不要给出个性化承诺；但如果证据偏正面，要敢于给出买入/分批买入方案，不要机械地总是建议等待回撤或极低仓位。",
@@ -3268,6 +3270,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "当前任务不是分析用户已经给出的某一只基金，也不是截图 screening；当前任务是根据用户文字、公开市场快照和基金候选池，给出教育性的基金方向与候选清单。",
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
     "不要编造 marketSnapshot 里没有的基金代码、涨跌幅、排名、金价或新闻。",
+    "推荐基金时不要默认偏向 A 类；同一基金存在 A/C/D/I 等份额时，按用户持有期和费用模型说明为什么选这个份额，并提示可替代份额。",
     "如果数据不足以支持具体基金代码，就推荐基金方向/筛选条件，并把具体代码标为待复核。",
     "回答要大胆但有边界：证据偏正面时可以给出买入或分批买入候选；不要机械地总是等待回撤。",
     "必须说明数据滞后风险和复查条件。不要保证收益，不要给出个性化承诺。",
@@ -3287,7 +3290,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "",
     "请输出：",
     "1. 结论：今天这类请求应看哪 2-4 个主题/方向，按优先级排序。",
-    "2. 推荐清单：3-6 个候选基金或 ETF。每个候选包含代码、名称、类型/主题、为什么入选、适合激进/均衡/保守哪类、最大风险。只能使用快照中的候选代码；如果没有足够代码，就写“待复核方向”。",
+    "2. 推荐清单：3-6 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、类型/主题、为什么入选、适合激进/均衡/保守哪类、最大风险。只能使用快照中的候选代码；如果没有足够代码，就写“待复核方向”。",
     "3. 1万元配置：激进、均衡、保守三档，给具体金额或比例。",
     "4. 不买/少买条件：最多 3 条。",
     "5. 数据来源与滞后：用一句话说明来自公开市场/基金排行快照，不是实时成交建议。"
@@ -3738,9 +3741,17 @@ async function fetchFundSearchCandidates(keyword) {
     items: rows.map((row) => {
       const base = row.FundBaseInfo || {};
       const code = row.CODE || base.FCODE || row._id || "";
+      const name = row.NAME || base.SHORTNAME || "";
+      const shareClass = inferFundShareClass(name);
       return {
         code,
-        name: row.NAME || base.SHORTNAME || "",
+        name,
+        shareClass,
+        shareClassFeeModel: inferShareClassFeeModel(shareClass, {
+          sourceRatePct: "",
+          currentRatePct: "",
+          salesServiceFeePct: ""
+        }),
         type: base.FTYPE || row.CATEGORYDESC || "",
         navDate: base.FSRQ || "",
         unitNav: toNumber(base.DWJZ),
@@ -3848,9 +3859,17 @@ function parseFundRankData(text, label) {
 
   return rows.map((row) => {
     const columns = String(row).split(",");
+    const name = columns[1] || "";
+    const shareClass = inferFundShareClass(name);
     return {
       code: columns[0] || "",
-      name: columns[1] || "",
+      name,
+      shareClass,
+      shareClassFeeModel: inferShareClassFeeModel(shareClass, {
+        sourceRatePct: columns[19] || "",
+        currentRatePct: columns[20] || "",
+        salesServiceFeePct: ""
+      }),
       type: label,
       navDate: columns[3] || "",
       unitNav: toNumber(columns[4]),
@@ -3872,31 +3891,38 @@ function parseFundRankData(text, label) {
 }
 
 async function fetchFundProfile(code) {
-  const [valuation, profileText, navHistory, holdings] = await Promise.all([
+  const [valuation, profileText, navHistory, holdings, feePageText] = await Promise.all([
     fetchFundValuation(code).catch((error) => ({ ok: false, error: error.message })),
     fetchFundPingzhongData(code).catch(() => ""),
     fetchFundNavHistory(code).catch((error) => ({ ok: false, error: error.message, points: [] })),
-    fetchFundHoldings(code).catch((error) => ({ ok: false, error: error.message, equityTopHoldings: [], bondTopHoldings: [] }))
+    fetchFundHoldings(code).catch((error) => ({ ok: false, error: error.message, equityTopHoldings: [], bondTopHoldings: [] })),
+    fetchFundFeePage(code).catch(() => "")
   ]);
 
   const profile = parseFundPingzhongData(profileText);
+  const name = profile.name || valuation.name || "";
+  const feeProfile = buildFundFeeProfile({
+    code,
+    name,
+    sourceRate: profile.sourceRate,
+    rate: profile.rate,
+    minPurchase: profile.minPurchase
+  }, feePageText);
   const riskMetrics = navHistory.ok
     ? computeRiskMetrics(navHistory.points)
     : { ok: false, error: navHistory.error, note: "历史净值抓取失败，无法计算夏普率/波动/回撤。" };
   return {
     ok: true,
     code,
-    name: profile.name || valuation.name || "",
+    name,
+    shareClass: feeProfile.shareClass,
+    shareClassFeeModel: feeProfile.shareClassFeeModel,
     snapshotDate: valuation.jzrq || "",
     unitNav: valuation.dwjz || "",
     estimatedNav: valuation.gsz || "",
     estimatedChangePct: valuation.gszzl || "",
     estimateTime: valuation.gztime || "",
-    fees: {
-      sourceRatePct: profile.sourceRate || "",
-      currentRatePct: profile.rate || "",
-      minPurchase: profile.minPurchase || ""
-    },
+    fees: feeProfile,
     returns: {
       oneMonthPct: profile.syl_1y || "",
       threeMonthPct: profile.syl_3y || "",
@@ -3916,6 +3942,7 @@ async function fetchFundProfile(code) {
       `https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${code}`,
       `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${code}`,
       `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=zqcc&code=${code}`,
+      `https://fundf10.eastmoney.com/jjfl_${code}.html`,
       `https://fund.eastmoney.com/${code}.html`
     ]
   };
@@ -3932,6 +3959,149 @@ async function fetchFundValuation(code) {
 
 async function fetchFundPingzhongData(code) {
   return fetchText(`https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`);
+}
+
+async function fetchFundFeePage(code) {
+  const text = await fetchText(`https://fundf10.eastmoney.com/jjfl_${code}.html`);
+  updateStats({ counters: { fundFeePageFetches: 1 } });
+  return text;
+}
+
+function buildFundFeeProfile({ code, name, sourceRate, rate, minPurchase }, feePageText) {
+  const shareClass = inferFundShareClass(name);
+  const text = normalizeFeePageText(feePageText);
+  const managementFeePct = extractFeeLabelValue(text, "管理费率");
+  const custodyFeePct = extractFeeLabelValue(text, "托管费率");
+  const salesServiceFeePct = extractFeeLabelValue(text, "销售服务费率");
+  const currentRatePct = normalizeFeeValue(rate);
+  const sourceRatePct = normalizeFeeValue(sourceRate);
+  const normalizedSalesServiceFeePct = normalizeFeeValue(salesServiceFeePct);
+  const subscriptionRules = summarizeFeeSection(text, "申购费率", ["赎回费率", "友情提示： 赎回"]);
+  const redemptionRules = summarizeFeeSection(text, "赎回费率", ["注：", "基金申购费用计算公式"]);
+  const frontLoadRateForEstimate = toNumber(currentRatePct) ?? toNumber(sourceRatePct);
+  const salesServiceRateForEstimate = toNumber(normalizedSalesServiceFeePct);
+
+  return {
+    shareClass,
+    shareClassFeeModel: inferShareClassFeeModel(shareClass, {
+      sourceRatePct,
+      currentRatePct,
+      salesServiceFeePct: normalizedSalesServiceFeePct
+    }),
+    sourceRatePct,
+    currentRatePct,
+    minPurchase: normalizeMissingValue(minPurchase),
+    managementFeePct: normalizeFeeValue(managementFeePct),
+    custodyFeePct: normalizeFeeValue(custodyFeePct),
+    salesServiceFeePct: normalizedSalesServiceFeePct,
+    estimatedSubscriptionFeePer10000: Number.isFinite(frontLoadRateForEstimate)
+      ? round(10000 - 10000 / (1 + frontLoadRateForEstimate / 100), 2)
+      : null,
+    estimatedSalesServiceFeePer10000PerYear: Number.isFinite(salesServiceRateForEstimate)
+      ? round(10000 * salesServiceRateForEstimate / 100, 2)
+      : null,
+    netValueAlreadyDeductsOperatingFees: Boolean(text),
+    feeRules: {
+      subscription: subscriptionRules,
+      redemption: redemptionRules
+    },
+    source: feePageText && code ? `https://fundf10.eastmoney.com/jjfl_${code}.html` : ""
+  };
+}
+
+function inferFundShareClass(name) {
+  const compact = String(name || "").replace(/\s+/g, "").replace(/[（）()]/g, "");
+  const match = compact.match(/([A-Z])类?(?:人民币|美元)?$/i);
+  if (!match) {
+    return "";
+  }
+
+  const suffix = compact.match(/[A-Za-z]+$/)?.[0] || "";
+  if (suffix.length > 1) {
+    const prefix = suffix.slice(0, -1).toUpperCase();
+    const knownProductSuffixes = ["QDII", "ETF", "LOF", "FOF", "REIT"];
+    if (!knownProductSuffixes.some((item) => prefix.endsWith(item))) {
+      return "";
+    }
+  }
+
+  return match[1].toUpperCase();
+}
+
+function inferShareClassFeeModel(shareClass, fees = {}) {
+  const sourceRate = toNumber(fees.sourceRatePct);
+  const currentRate = toNumber(fees.currentRatePct);
+  const salesService = toNumber(fees.salesServiceFeePct);
+  const className = String(shareClass || "").toUpperCase();
+
+  if (Number.isFinite(salesService) && salesService > 0) {
+    return {
+      type: "sales_service_fee",
+      label: `${className || "未知"}类：偏持续销售服务费模型`,
+      selectionRule: "更适合短期或不想付前端申购费的候选，但持有越久销售服务费越需要折算比较。"
+    };
+  }
+
+  if (["C", "E"].includes(className)) {
+    return {
+      type: "likely_sales_service_fee",
+      label: `${className}类：通常需重点核对销售服务费`,
+      selectionRule: "不能只因无前端申购费就优先推荐，必须和A类按预计持有期比较。"
+    };
+  }
+
+  if (["D", "I", "Y"].includes(className)) {
+    return {
+      type: "special_or_platform_class",
+      label: `${className}类：特殊/机构/平台份额`,
+      selectionRule: "推荐前要确认销售渠道、起购门槛和是否面向普通投资者开放。"
+    };
+  }
+
+  if (Number.isFinite(currentRate) || Number.isFinite(sourceRate) || ["A", "B"].includes(className)) {
+    return {
+      type: "front_load_or_subscription_fee",
+      label: `${className || "未知"}类：偏前端申购费模型`,
+      selectionRule: "长期持有时可能比持续销售服务费份额更合适，但短持要同时看赎回费和平台折扣。"
+    };
+  }
+
+  return {
+    type: "unknown",
+    label: "份额类别未识别",
+    selectionRule: "推荐前应核对同基金不同份额的申购费、销售服务费、赎回费和可购买渠道。"
+  };
+}
+
+function normalizeFeePageText(html) {
+  return stripHtml(String(html || ""))
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractFeeLabelValue(text, label) {
+  const match = String(text || "").match(new RegExp(`${escapeRegExp(label)}\\s*([0-9.]+%|---|--)`));
+  return match ? match[1] : "";
+}
+
+function normalizeFeeValue(value) {
+  const text = normalizeMissingValue(value);
+  return text === "---" ? "" : text;
+}
+
+function summarizeFeeSection(text, startLabel, endLabels = []) {
+  const value = String(text || "");
+  const start = value.indexOf(startLabel);
+  if (start < 0) return "";
+  let end = value.length;
+  for (const label of endLabels) {
+    const index = value.indexOf(label, start + startLabel.length);
+    if (index > start && index < end) {
+      end = index;
+    }
+  }
+  return value.slice(start, end).replace(/\s+/g, " ").trim().slice(0, 280);
 }
 
 async function fetchFundHoldings(code) {
@@ -4987,6 +5157,7 @@ function getDefaultStats() {
       fundEnrichmentCalls: 0,
       fundEnrichmentSuccess: 0,
       fundEnrichmentFailures: 0,
+      fundFeePageFetches: 0,
       fundHoldingsFetches: 0,
       fundHoldingsFailures: 0,
       marketSnapshotCalls: 0,

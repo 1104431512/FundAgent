@@ -10,6 +10,7 @@ Analyze one specific fund. Do not turn single-fund analysis into broad market re
 ## Evaluation Axes
 
 - Product fit: fund type, share class, benchmark, size, fees, subscription/redemption constraints.
+- Share-class cost: identify A/B/C/D/I etc. and explain front-end subscription fee, sales service fee, redemption fee, minimum purchase, and holding-period fit.
 - Performance: 1m/3m/6m/1y/3y/5y returns, rank, annualized return, volatility, max drawdown, Sharpe/Sortino.
 - Holdings/style: top holdings, industry/country/currency exposure, concentration, style drift, turnover if available.
 - Manager and operation: manager tenure, fund company, fund size, liquidity and liquidation risk.

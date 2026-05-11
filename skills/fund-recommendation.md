@@ -21,13 +21,15 @@ Recommend candidates from market context and fund pools. Do not treat this as an
 - Avoid recommending only recent top performers; mention crowding and drawdown risk.
 - For sector/theme/QDII products, label them as satellite or tactical unless the user asks for concentration.
 - For broad index or balanced funds, they can be core candidates if evidence supports it.
+- Do not default to A-class shares. If candidate data includes shareClass or fee model, choose A/C/D/I etc. by expected holding period, subscription fee, sales service fee, redemption fee, purchase threshold, and channel availability.
+- If recommending an A-class share, say why it is preferable to C-class or other available classes; if fees are incomplete, mark the share class as pending fee verification.
 
 ## Output
 
 Give:
 
 1. Top 2-4 themes/directions.
-2. 3-6 candidate funds or ETFs.
+2. 3-6 candidate funds or ETFs, including share class and fee-model caveat.
 3. Which profile fits each: aggressive / balanced / conservative.
 4. 10000 CNY allocation.
 5. Do-not-buy or reduce-size conditions.
