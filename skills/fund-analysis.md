@@ -1,20 +1,32 @@
 ---
 name: fund-analysis
-description: Analyze one specific fund's quality, risk, timing, portfolio role, and execution plan using visible facts plus enriched fund data. Use for single fund evaluation, "can I buy this fund", "should I hold/sell", or fund screenshots with one primary target.
+description: Orchestrate one specific fund's overall verdict from specialized analyst skills. Use after data enrichment, trend, risk, holdings/style, fee/share-class, and manager-quality analysis have contributed evidence.
 ---
 
 # Fund Analysis
 
 Analyze one specific fund. Do not turn single-fund analysis into broad market recommendation unless the user asks.
 
+This is an orchestration skill, not a one-person-does-everything skill.
+
+## Specialist Dependencies
+
+- `fund-trend-analysis`: NAV trend, momentum, drawdown repair, timing.
+- `fund-risk-analysis`: drawdown, volatility, Sharpe, position sizing risk.
+- `fund-holdings-style`: holdings, sector/theme exposure, style fit.
+- `fund-fee-share-class`: share class and fee/holding-period fit.
+- `fund-manager-quality`: manager, tenure, scale, and process quality.
+- `fund-answer-quality`: final answer must be specific, evidence-backed, and actionable.
+
 ## Evaluation Axes
 
-- Product fit: fund type, share class, benchmark, size, fees, subscription/redemption constraints.
-- Share-class cost: identify A/B/C/D/I etc. and explain front-end subscription fee, sales service fee, redemption fee, minimum purchase, and holding-period fit.
-- Performance: 1m/3m/6m/1y/3y/5y returns, rank, annualized return, volatility, max drawdown, Sharpe/Sortino.
-- Holdings/style: top holdings, industry/country/currency exposure, concentration, style drift, turnover if available.
-- Manager and operation: manager tenure, fund company, fund size, liquidity and liquidation risk.
-- Timing: recent theme strength, valuation/crowding risk, premium-discount/spread for ETFs, QDII lag.
+- Product fit: fund type, benchmark, size, subscription/redemption constraints.
+- Trend and timing: use the trend specialist; do not make timing claims without trend evidence.
+- Risk-return: use the risk specialist; separate return from holding discomfort.
+- Holdings/style: use the holdings/style specialist; explain what exposure the user is actually buying.
+- Share-class cost: use the fee/share-class specialist; do not mix A/C/D/I share classes.
+- Manager and operation: use the manager-quality specialist.
+- Execution: final action, position role, staged plan, review trigger.
 
 ## Decision Style
 
@@ -25,6 +37,12 @@ Separate:
 - Fund quality: whether the product is worth owning.
 - Entry timing: whether now is a good entry.
 - Position role: core, satellite, tactical trade, watchlist, or avoid.
+
+If specialists disagree, say where the disagreement is. Do not smooth it into vague neutral wording.
+
+The final action must be one of: buy, staged buy, hold, switch, watch, avoid.
+
+Always include the strongest buy reason and strongest not-buy reason.
 
 ## Score Meaning
 

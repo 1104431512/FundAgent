@@ -9,9 +9,15 @@ Use this only as a fallback for one specific fund. Prefer the modular skills:
 
 - `fund-vision` for screenshot/text fact extraction.
 - `fund-data-enrichment` for public data and holdings enrichment.
-- `fund-analysis` for one fund's quality, risk, timing, and role.
+- `fund-trend-analysis` for NAV trend, drawdown repair, and entry timing.
+- `fund-risk-analysis` for risk budget, volatility, drawdown, and position sizing.
+- `fund-holdings-style` for top holdings, sector/theme exposure, and style fit.
+- `fund-fee-share-class` for share class and fee/holding-period fit.
+- `fund-manager-quality` for manager/process/scale evidence.
+- `fund-analysis` for integrating specialist notes into one verdict.
 - `fund-comparison` for choosing among multiple funds.
 - `fund-recommendation` for discovering candidates from market themes.
+- `fund-answer-quality` for rejecting generic or unsupported final answers.
 - `fund-synthesis` for final Feishu card wording.
 
 ## Minimal Scorecard

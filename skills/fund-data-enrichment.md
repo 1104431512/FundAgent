@@ -15,6 +15,7 @@ Use public data to supplement, not replace, user-provided screenshots. If public
 4. Fee page: management fee, custody fee, sales service fee, subscription fee, redemption fee, and minimum purchase.
 5. Asset allocation and managers: fund size, stock/bond/cash ratio, manager tenure, manager fund size, performance evaluation.
 6. Market snapshot: industry/concept heat and recent fund ranking only for discovery/recommendation workflows.
+7. Precious metals snapshot: COMEX/SHFE gold and silver, USD index, and related fund search candidates when the question involves gold, silver, or precious metals.
 
 ## Data Quality Rules
 

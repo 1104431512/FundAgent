@@ -14,6 +14,7 @@ Recommend candidates from market context and fund pools. Do not treat this as an
 3. Select themes first, then products.
 4. Include at least one risk-balanced alternative when recommending high-volatility themes.
 5. Give a 10000 CNY plan when buying/allocation is implied.
+6. Apply `fund-market-timing` for theme direction and `fund-answer-quality` before final output.
 
 ## Candidate Rules
 
@@ -23,6 +24,7 @@ Recommend candidates from market context and fund pools. Do not treat this as an
 - For broad index or balanced funds, they can be core candidates if evidence supports it.
 - Do not default to A-class shares. If candidate data includes shareClass or fee model, choose A/C/D/I etc. by expected holding period, subscription fee, sales service fee, redemption fee, purchase threshold, and channel availability.
 - If recommending an A-class share, say why it is preferable to C-class or other available classes; if fees are incomplete, mark the share class as pending fee verification.
+- For gold/silver/precious-metal requests, use `marketIndicators.preciousMetals` and `fundCandidates.preciousMetalFunds` first. Do not answer with generic macro factors while ignoring snapshot quotes.
 
 ## Output
 

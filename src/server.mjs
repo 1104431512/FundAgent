@@ -3004,6 +3004,138 @@ function summarizeMarketSnapshot(snapshot) {
   };
 }
 
+function isPreciousMetalQuestion(text) {
+  return hasAny(normalizeIntentText(text), ["黄金", "金价", "贵金属", "白银", "沪金", "沪银", "comex", "美元指数", "避险"]);
+}
+
+function formatEvidenceField(label, value, suffix = "") {
+  if (value === null || value === undefined || value === "") return "";
+  const numeric = Number(value);
+  const formatted = Number.isFinite(numeric) ? round(numeric, 2) : String(value);
+  return `${label}=${formatted}${suffix}`;
+}
+
+function formatFeeModelLabel(feeModel) {
+  if (!feeModel) return "feeModel=unknown";
+  if (typeof feeModel === "string") return `feeModel=${feeModel}`;
+  return `feeModel=${feeModel.label || feeModel.type || "unknown"}`;
+}
+
+function buildMarketEvidenceSummary(userText, marketSnapshot) {
+  if (!marketSnapshot) {
+    return "未抓取市场快照：只能按通用基金知识回答，不能声称已看到近期行情。";
+  }
+
+  const lines = [
+    `snapshot.fetchedAt=${marketSnapshot.fetchedAt || "unknown"}`,
+    marketSnapshot.note ? `snapshot.note=${marketSnapshot.note}` : ""
+  ].filter(Boolean);
+
+  if (isPreciousMetalQuestion(userText)) {
+    const metals = marketSnapshot.marketIndicators?.preciousMetals || [];
+    const funds = marketSnapshot.fundCandidates?.preciousMetalFunds || [];
+    lines.push("questionFocus=precious_metals");
+
+    if (metals.length) {
+      lines.push("preciousMetals:");
+      lines.push(...metals.slice(0, 8).map((item) => {
+        const fields = [
+          item.name || item.code || "unknown",
+          item.code ? `code=${item.code}` : "",
+          item.secid ? `secid=${item.secid}` : "",
+          formatEvidenceField("latest", item.latest),
+          formatEvidenceField("changePct", item.changePct, "%"),
+          formatEvidenceField("fiveDayPct", item.fiveDayPct, "%"),
+          item.quoteTime ? `quoteTime=${item.quoteTime}` : ""
+        ].filter(Boolean);
+        return `- ${fields.join(", ")}`;
+      }));
+      lines.push("qualityInstruction=precious metal quote data exists; do not say there is no gold/precious-metal market data.");
+    } else {
+      lines.push("preciousMetals=empty");
+    }
+
+    if (funds.length) {
+      lines.push("preciousMetalFundCandidates:");
+      lines.push(...funds.slice(0, 8).map((item) => {
+        const fields = [
+          `${item.code || "unknown"} ${item.name || ""}`.trim(),
+          item.shareClass ? `shareClass=${item.shareClass}` : "",
+          formatFeeModelLabel(item.shareClassFeeModel),
+          item.type ? `type=${item.type}` : "",
+          formatEvidenceField("unitNav", item.unitNav),
+          item.navDate ? `navDate=${item.navDate}` : "",
+          Array.isArray(item.keywords) && item.keywords.length ? `keywords=${item.keywords.join("/")}` : ""
+        ].filter(Boolean);
+        return `- ${fields.join(", ")}`;
+      }));
+    } else {
+      lines.push("preciousMetalFundCandidates=empty");
+    }
+
+    if (marketSnapshot.errors?.length) {
+      lines.push(`snapshot.errors=${marketSnapshot.errors.slice(0, 5).join(" | ")}`);
+    }
+    return lines.join("\n");
+  }
+
+  const concepts = marketSnapshot.themes?.conceptBoards || [];
+  const industries = marketSnapshot.themes?.industryBoards || [];
+  const fundCandidates = [
+    ...(marketSnapshot.fundCandidates?.stockFunds || []),
+    ...(marketSnapshot.fundCandidates?.hybridFunds || []),
+    ...(marketSnapshot.fundCandidates?.indexFunds || []),
+    ...(marketSnapshot.fundCandidates?.qdiiFunds || [])
+  ];
+
+  if (concepts.length) {
+    lines.push("topConceptBoards:");
+    lines.push(...concepts.slice(0, 5).map((item) => {
+      const fields = [
+        item.name || item.boardCode || "unknown",
+        formatEvidenceField("changePct", item.changePct, "%"),
+        item.leadStock ? `leadStock=${item.leadStock}` : "",
+        item.quoteTime ? `quoteTime=${item.quoteTime}` : ""
+      ].filter(Boolean);
+      return `- ${fields.join(", ")}`;
+    }));
+  }
+
+  if (industries.length) {
+    lines.push("topIndustryBoards:");
+    lines.push(...industries.slice(0, 5).map((item) => {
+      const fields = [
+        item.name || item.boardCode || "unknown",
+        formatEvidenceField("changePct", item.changePct, "%"),
+        item.leadStock ? `leadStock=${item.leadStock}` : "",
+        item.quoteTime ? `quoteTime=${item.quoteTime}` : ""
+      ].filter(Boolean);
+      return `- ${fields.join(", ")}`;
+    }));
+  }
+
+  if (fundCandidates.length) {
+    lines.push("fundCandidates:");
+    lines.push(...fundCandidates.slice(0, 8).map((item) => {
+      const fields = [
+        `${item.code || "unknown"} ${item.name || ""}`.trim(),
+        item.shareClass ? `shareClass=${item.shareClass}` : "",
+        formatFeeModelLabel(item.shareClassFeeModel),
+        item.type ? `type=${item.type}` : "",
+        formatEvidenceField("oneMonthPct", item.oneMonthPct, "%"),
+        formatEvidenceField("dailyPct", item.dailyPct, "%")
+      ].filter(Boolean);
+      return `- ${fields.join(", ")}`;
+    }));
+  }
+
+  if (marketSnapshot.errors?.length) {
+    lines.push(`snapshot.errors=${marketSnapshot.errors.slice(0, 5).join(" | ")}`);
+  }
+
+  return lines.join("\n");
+}
+
 function collectPortfolioSources(...items) {
   const sources = [];
   for (const item of items.flat(Infinity)) {
@@ -3112,7 +3244,42 @@ async function extractFundFactsWithModel({ images, userText, messageType }) {
   }
 }
 
-function buildFundCommitteeSystemText(skillIds = ["fund-analysis", "fund-data-enrichment"]) {
+function getFundAnalysisSkillIds(extra = []) {
+  return [
+    "fund-data-enrichment",
+    "fund-trend-analysis",
+    "fund-risk-analysis",
+    "fund-holdings-style",
+    "fund-fee-share-class",
+    "fund-manager-quality",
+    "fund-analysis",
+    ...extra,
+    "fund-answer-quality"
+  ];
+}
+
+function getFundRecommendationSkillIds(extra = []) {
+  return [
+    "fund-recommendation",
+    "fund-market-timing",
+    "fund-fee-share-class",
+    ...extra,
+    "fund-answer-quality",
+    "fund-synthesis"
+  ];
+}
+
+function getFundQaSkillIds(extra = []) {
+  return [
+    "fund-market-timing",
+    "fund-trend-analysis",
+    ...extra,
+    "fund-answer-quality",
+    "fund-synthesis"
+  ];
+}
+
+function buildFundCommitteeSystemText(skillIds = getFundAnalysisSkillIds()) {
   const skillContext = buildSkillContextForIntent({ skillIds }, []);
   return [
     "你是飞书机器人“基金经理”。你的任务是根据用户发送的基金截图或基金文字信息做教育性基金筛选分析。",
@@ -3143,7 +3310,8 @@ function buildFundCommitteeEvidencePrompt({ images = [], userText, messageType, 
     JSON.stringify(enrichments || [], null, 2),
     "",
     "如果联网补全资料中包含 riskMetrics，请优先使用其中的 1y/3y/5y 夏普率、年化波动、最大回撤、年化收益来评分；不要再要求用户手动补这些指标。只有 riskMetrics.ok=false 或点数不足时，才把这些列为缺失。",
-    "如果联网补全资料中包含 holdings，请优先使用 equityTopHoldings / bondTopHoldings 做持仓风格分析。港股通、QDII、债基和指数基金可能分别出现在股票投资明细、债券投资明细或资产配置字段中；不要在已有 holdings 时说缺少十大持仓。"
+    "如果联网补全资料中包含 holdings，请优先使用 equityTopHoldings / bondTopHoldings 做持仓风格分析。港股通、QDII、债基和指数基金可能分别出现在股票投资明细、债券投资明细或资产配置字段中；不要在已有 holdings 时说缺少十大持仓。",
+    "分析时必须拆开走势/买点、风险/回撤、持仓/风格、份额/费率、经理质量这五块；最终汇总必须经过 fund-answer-quality，避免只给“可以配置但别追高”这类泛泛结论。"
   ].join("\n");
 }
 
@@ -3151,8 +3319,8 @@ async function buildAnalystReviewWithModel({ images, userText, messageType, extr
   const isComparison = detectComparisonNeed({ userText, extracted, enrichments });
   const systemText = buildFundCommitteeSystemText(
     isComparison
-      ? ["fund-analysis", "fund-comparison", "fund-data-enrichment"]
-      : ["fund-analysis", "fund-data-enrichment"]
+      ? getFundAnalysisSkillIds(["fund-comparison"])
+      : getFundAnalysisSkillIds()
   );
   const userPrompt = [
     buildFundCommitteeEvidencePrompt({ images, userText, messageType, extracted, enrichments }),
@@ -3179,7 +3347,7 @@ async function buildAnalystReviewWithModel({ images, userText, messageType, extr
 
 async function buildCommitteeVoteWithModel({ userText, messageType, extracted, enrichments, analystReview }) {
   const isComparison = detectComparisonNeed({ userText, extracted, enrichments });
-  const systemText = buildFundCommitteeSystemText(isComparison ? ["fund-comparison", "fund-analysis"] : ["fund-analysis"]);
+  const systemText = buildFundCommitteeSystemText(isComparison ? getFundAnalysisSkillIds(["fund-comparison"]) : getFundAnalysisSkillIds());
   const userPrompt = [
     buildFundCommitteeEvidencePrompt({ images: [], userText, messageType, extracted, enrichments }),
     "",
@@ -3217,8 +3385,8 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
   const systemText = [
     buildFundCommitteeSystemText(
       isComparison
-        ? ["fund-synthesis", "fund-comparison", "fund-analysis"]
-        : ["fund-synthesis", "fund-analysis"]
+        ? getFundAnalysisSkillIds(["fund-comparison", "fund-synthesis"])
+        : getFundAnalysisSkillIds(["fund-synthesis"])
     ),
     "",
     isComparison
@@ -3264,13 +3432,15 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
 }
 
 async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
-  const skillContext = buildSkillContextForIntent(intent, ["fund-recommendation", "fund-synthesis"]);
+  const skillContext = buildSkillContextForIntent(intent, getFundRecommendationSkillIds());
+  const marketEvidence = buildMarketEvidenceSummary(userText, marketSnapshot);
   const systemText = [
     "你是飞书机器人“基金经理”的基金发现与配置工作流。",
     "当前任务不是分析用户已经给出的某一只基金，也不是截图 screening；当前任务是根据用户文字、公开市场快照和基金候选池，给出教育性的基金方向与候选清单。",
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
     "不要编造 marketSnapshot 里没有的基金代码、涨跌幅、排名、金价或新闻。",
     "推荐基金时不要默认偏向 A 类；同一基金存在 A/C/D/I 等份额时，按用户持有期和费用模型说明为什么选这个份额，并提示可替代份额。",
+    "必须通过 fund-answer-quality 质量门槛：先给直接结论，再引用快照证据，再给执行方案和复查触发。",
     "如果数据不足以支持具体基金代码，就推荐基金方向/筛选条件，并把具体代码标为待复核。",
     "回答要大胆但有边界：证据偏正面时可以给出买入或分批买入候选；不要机械地总是等待回撤。",
     "必须说明数据滞后风险和复查条件。不要保证收益，不要给出个性化承诺。",
@@ -3287,6 +3457,9 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "",
     "公开市场/基金候选快照：",
     JSON.stringify(marketSnapshot || {}, null, 2),
+    "",
+    "已提炼的市场证据摘要：",
+    marketEvidence,
     "",
     "请输出：",
     "1. 结论：今天这类请求应看哪 2-4 个主题/方向，按优先级排序。",
@@ -3310,12 +3483,14 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
 }
 
 async function answerFundQuestionWithModel({ userText, intent, marketSnapshot }) {
-  const skillContext = buildSkillContextForIntent(intent, []);
+  const skillContext = buildSkillContextForIntent(intent, getFundQaSkillIds());
+  const marketEvidence = buildMarketEvidenceSummary(userText, marketSnapshot);
   const systemText = [
     "你是飞书机器人“基金经理”的基金问答工作流。",
     "当前任务是回答用户问题，不是单只基金 screening；除非用户给出明确基金代码或截图，否则不要强行输出 Verdict/Score/8 角色评审。",
     "如果传入 marketSnapshot，可用它回答近期市场/题材问题；涉及黄金、白银或贵金属时，优先引用 marketIndicators.preciousMetals 和相关基金候选。",
     "如果没有抓到对应行情数据，要说明是公开数据源暂时不可用或滞后，不要简单说自己没有实时数据能力。",
+    "必须通过 fund-answer-quality 质量门槛：前两行直接回答；有快照就引用具体字段；给明确行动和复查触发。不要输出泛泛宏观清单。",
     "回答中文、简洁、可执行。不要保证收益，不要给出个性化承诺。",
     "输出适合飞书卡片阅读，不要 Markdown 表格，不要代码块。",
     "",
@@ -3331,7 +3506,10 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     marketSnapshot ? "市场快照：" : "市场快照：未抓取，此问题按通用基金知识回答。",
     marketSnapshot ? JSON.stringify(marketSnapshot, null, 2) : "",
     "",
-    "请直接回答用户问题。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
+    "已提炼的市场证据摘要：",
+    marketEvidence,
+    "",
+    "请直接回答用户问题。若用户问“值得买吗”，必须给 buy/staged/wait/avoid 之一。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
   ].join("\n");
 
   const text = await callModel({
@@ -5530,7 +5708,7 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
       mode: "screenshot_or_mixed",
       reason: "message_contains_image",
       fundCodes,
-      skillIds: ["fund-vision", "fund-data-enrichment", "fund-analysis", "fund-comparison", "fund-synthesis"],
+      skillIds: ["fund-vision", ...getFundAnalysisSkillIds(["fund-comparison", "fund-synthesis"])],
       messageType
     };
   }
@@ -5563,7 +5741,7 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
       mode: fundCodes.length > 1 ? "comparison_or_specific_fund" : "specific_fund_or_fund_name",
       reason: "text_contains_fund_code",
       fundCodes,
-      skillIds: ["fund-data-enrichment", "fund-analysis", "fund-comparison", "fund-synthesis"],
+      skillIds: getFundAnalysisSkillIds(["fund-comparison", "fund-synthesis"]),
       messageType
     };
   }
@@ -5609,7 +5787,7 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
       mode: "market_theme_discovery",
       reason: "fallback_text_requests_recommendations_without_specific_fund",
       fundCodes,
-      skillIds: ["fund-recommendation", "fund-synthesis"],
+      skillIds: getFundRecommendationSkillIds(),
       messageType
     };
   }
@@ -5620,7 +5798,7 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
       mode: asksCompare || fundCodes.length > 1 ? "comparison_or_specific_fund" : "specific_fund_or_fund_name",
       reason: "fallback_text_mentions_specific_fund_action",
       fundCodes,
-      skillIds: ["fund-data-enrichment", "fund-analysis", "fund-synthesis"],
+      skillIds: getFundAnalysisSkillIds(asksCompare ? ["fund-comparison", "fund-synthesis"] : ["fund-synthesis"]),
       messageType
     };
   }
@@ -5630,7 +5808,7 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
     mode: shouldFetchMarketSnapshotForQuestion(text) ? "market_question" : "general_fund_question",
     reason: "fallback_no_image_no_specific_fund_recommendation",
     fundCodes,
-    skillIds: looksLikeConversation(text) ? [] : [],
+    skillIds: looksLikeConversation(text) ? [] : getFundQaSkillIds(),
     messageType
   };
 }
@@ -5699,9 +5877,9 @@ function normalizeIntentResult(intent, defaults = {}) {
 
 function defaultSkillIdsForWorkflow(workflow) {
   if (workflow === "portfolio_status") return [];
-  if (workflow === "fund_recommendation") return ["fund-recommendation", "fund-synthesis"];
-  if (workflow === "fund_screening") return ["fund-data-enrichment", "fund-analysis", "fund-synthesis"];
-  if (workflow === "fund_qa") return [];
+  if (workflow === "fund_recommendation") return getFundRecommendationSkillIds();
+  if (workflow === "fund_screening") return getFundAnalysisSkillIds(["fund-synthesis"]);
+  if (workflow === "fund_qa") return getFundQaSkillIds();
   return [];
 }
 
@@ -5709,9 +5887,13 @@ function allowedSkillIdsForWorkflow(workflow) {
   const byWorkflow = {
     conversation: [],
     portfolio_status: [],
-    fund_recommendation: ["fund-recommendation", "fund-synthesis", "fund-data-enrichment"],
-    fund_screening: ["fund-vision", "fund-data-enrichment", "fund-analysis", "fund-comparison", "fund-synthesis", "fund-screening"],
-    fund_qa: ["fund-data-enrichment"]
+    fund_recommendation: [...getFundRecommendationSkillIds(), "fund-data-enrichment"],
+    fund_screening: [
+      "fund-vision",
+      ...getFundAnalysisSkillIds(["fund-comparison", "fund-synthesis"]),
+      "fund-screening"
+    ],
+    fund_qa: ["fund-data-enrichment", ...getFundQaSkillIds()]
   };
   return byWorkflow[workflow] || [];
 }
