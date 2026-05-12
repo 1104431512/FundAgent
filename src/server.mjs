@@ -1908,17 +1908,12 @@ function buildPortfolioFundSnapshot(profile, position = null) {
   const oneYear = periods["1y"] || {};
   const threeYear = periods["3y"] || {};
   const fiveYear = periods["5y"] || {};
+  const trendProfile = profile.trendProfile || null;
+  const actionability = profile.actionability || null;
   const topHoldings = (profile.holdings?.equityTopHoldings || profile.topStocks || []).slice(0, 5).map((item) => {
     if (typeof item === "string") return item;
     return [item.code, item.name, item.netValuePct ? `${item.netValuePct}%` : ""].filter(Boolean).join(" ");
   });
-
-  const trendParts = [
-    oneYear.ok ? `1年${formatSignedNumber(oneYear.totalReturnPct)}%` : "",
-    threeYear.ok ? `3年${formatSignedNumber(threeYear.totalReturnPct)}%` : "",
-    oneYear.ok ? `回撤${oneYear.maxDrawdownPct}%` : "",
-    oneYear.ok && oneYear.sharpe !== null ? `夏普${oneYear.sharpe}` : ""
-  ].filter(Boolean);
 
   return {
     code: profile.code || position?.code || "",
@@ -1935,11 +1930,71 @@ function buildPortfolioFundSnapshot(profile, position = null) {
       threeYear: pickRiskPeriod(threeYear),
       fiveYear: pickRiskPeriod(fiveYear)
     },
+    trendProfile,
+    actionability,
     scale: profile.scale || null,
     topHoldings,
-    trendSummary: trendParts.join("，") || "走势数据不足",
+    trendSummary: buildPortfolioTrendSummary({ trendProfile, actionability, oneYear, threeYear }),
     sources: profile.sources || []
   };
+}
+
+function buildPortfolioTrendSummary({ trendProfile, actionability, oneYear = {}, threeYear = {} }) {
+  if (trendProfile?.ok) {
+    const parts = [
+      trendProfile.return20dPct !== null && trendProfile.return20dPct !== undefined ? `20日${formatSignedNumber(trendProfile.return20dPct)}%` : "",
+      trendProfile.return60dPct !== null && trendProfile.return60dPct !== undefined ? `60日${formatSignedNumber(trendProfile.return60dPct)}%` : "",
+      trendProfile.return120dPct !== null && trendProfile.return120dPct !== undefined ? `120日${formatSignedNumber(trendProfile.return120dPct)}%` : "",
+      trendProfile.drawdownFromRecentHighPct !== null && trendProfile.drawdownFromRecentHighPct !== undefined ? `距高点${formatSignedNumber(trendProfile.drawdownFromRecentHighPct)}%` : "",
+      `趋势${formatTrendLabel(trendProfile.trendLabel)}`,
+      `入场${formatEntryBias(trendProfile.entryBias)}`,
+      actionability?.action ? `自评${formatActionabilityAction(actionability.action)}${actionability.allocationBand ? ` ${actionability.allocationBand}` : ""}` : ""
+    ].filter(Boolean);
+    return parts.join("，");
+  }
+
+  const trendParts = [
+    oneYear.ok ? `1年${formatSignedNumber(oneYear.totalReturnPct)}%` : "",
+    threeYear.ok ? `3年${formatSignedNumber(threeYear.totalReturnPct)}%` : "",
+    oneYear.ok ? `回撤${oneYear.maxDrawdownPct}%` : "",
+    oneYear.ok && oneYear.sharpe !== null ? `夏普${oneYear.sharpe}` : ""
+  ].filter(Boolean);
+  return trendParts.join("，") || "走势数据不足";
+}
+
+function formatTrendLabel(value) {
+  const labels = {
+    breakdown: "破位",
+    extended_uptrend: "偏热",
+    rebound_repair: "修复",
+    uptrend: "上行",
+    weakening: "转弱",
+    range_or_mixed: "震荡"
+  };
+  return labels[value] || value || "未知";
+}
+
+function formatEntryBias(value) {
+  const labels = {
+    buyable_now: "可买",
+    staged_buy: "分批",
+    wait_pullback: "等回撤",
+    hold_observe: "持有观察",
+    avoid_now: "回避"
+  };
+  return labels[value] || value || "观察";
+}
+
+function formatActionabilityAction(value) {
+  const labels = {
+    buy: "买入",
+    staged_buy: "分批",
+    hold: "持有",
+    wait: "等待",
+    avoid: "回避",
+    need_specific_fund: "需具体基金"
+  };
+  return labels[value] || value || "观察";
 }
 
 function pickRiskPeriod(period) {

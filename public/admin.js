@@ -304,7 +304,7 @@ function renderPositions(positions) {
         const snapshot = item.fundSnapshot || {};
         const nav = snapshot.nav || item.lastNav || "";
         const navDate = snapshot.navDate || item.lastNavDate || "";
-        const trend = snapshot.trendSummary || "走势数据不足";
+        const trend = getFundSnapshotTrendText(snapshot);
         const source = item.dataSource || snapshot.sources?.[0] || "";
         return `
         <div class="data-row">
@@ -394,11 +394,64 @@ function renderTransactions(transactions) {
           <small>${escapeHtml(item.date || "")} · 净值 ${item.nav ? formatNumber(item.nav, 4) : "-"} · 份额 ${
             item.units ? formatNumber(item.units, 6) : "-"
           }</small>
-          <small>${escapeHtml(item.fundSnapshot?.trendSummary || "")}</small>
+          <small>${escapeHtml(getFundSnapshotTrendText(item.fundSnapshot || {}))}</small>
         </div>
       `
     )
     .join("");
+}
+
+function getFundSnapshotTrendText(snapshot = {}) {
+  if (snapshot.trendSummary && snapshot.trendSummary !== "走势数据不足") {
+    return snapshot.trendSummary;
+  }
+  const trend = snapshot.trendProfile || {};
+  const actionability = snapshot.actionability || {};
+  if (trend.ok) {
+    const parts = [
+      trend.return20dPct !== null && trend.return20dPct !== undefined ? `20日${formatSigned(trend.return20dPct)}%` : "",
+      trend.return60dPct !== null && trend.return60dPct !== undefined ? `60日${formatSigned(trend.return60dPct)}%` : "",
+      trend.return120dPct !== null && trend.return120dPct !== undefined ? `120日${formatSigned(trend.return120dPct)}%` : "",
+      trend.drawdownFromRecentHighPct !== null && trend.drawdownFromRecentHighPct !== undefined ? `距高点${formatSigned(trend.drawdownFromRecentHighPct)}%` : "",
+      trend.trendLabel ? `趋势${formatTrendLabel(trend.trendLabel)}` : "",
+      trend.entryBias ? `入场${formatEntryBias(trend.entryBias)}` : "",
+      actionability.action ? `自评${formatActionabilityAction(actionability.action)}${actionability.allocationBand ? ` ${actionability.allocationBand}` : ""}` : ""
+    ].filter(Boolean);
+    return parts.join("，");
+  }
+  return snapshot.trendSummary || "走势数据不足";
+}
+
+function formatTrendLabel(value) {
+  return {
+    breakdown: "破位",
+    extended_uptrend: "偏热",
+    rebound_repair: "修复",
+    uptrend: "上行",
+    weakening: "转弱",
+    range_or_mixed: "震荡"
+  }[value] || value || "未知";
+}
+
+function formatEntryBias(value) {
+  return {
+    buyable_now: "可买",
+    staged_buy: "分批",
+    wait_pullback: "等回撤",
+    hold_observe: "持有观察",
+    avoid_now: "回避"
+  }[value] || value || "观察";
+}
+
+function formatActionabilityAction(value) {
+  return {
+    buy: "买入",
+    staged_buy: "分批",
+    hold: "持有",
+    wait: "等待",
+    avoid: "回避",
+    need_specific_fund: "需具体基金"
+  }[value] || value || "观察";
 }
 
 function renderEquity(equity) {
