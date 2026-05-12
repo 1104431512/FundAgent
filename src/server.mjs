@@ -5214,7 +5214,7 @@ function renderTrendSeriesPng({ series = [], width = 720, height = 260 } = {}) {
     .filter((item) => Number.isFinite(item.nav) && item.nav > 0);
   if (points.length < 2) return null;
 
-  const canvas = createRgbaCanvas(width, height, [255, 255, 255, 255]);
+  const canvas = createRgbaCanvas(width, height, [255, 255, 255, 255], getChartPixelRatio());
   const padX = 34;
   const padTop = 22;
   const padBottom = 30;
@@ -5255,7 +5255,7 @@ function renderFundReportSummaryPng({ profile, width = 760, height = 360 } = {})
   const points = normalizeChartSeries(trend.series || []);
   if (points.length < 2) return null;
 
-  const canvas = createRgbaCanvas(width, height, [255, 255, 255, 255]);
+  const canvas = createRgbaCanvas(width, height, [255, 255, 255, 255], getChartPixelRatio());
   const code = String(profile?.code || "").slice(0, 12) || "FUND";
   const first = points[0];
   const last = points[points.length - 1];
@@ -5287,9 +5287,9 @@ function renderFundReportSummaryPng({ profile, width = 760, height = 360 } = {})
   });
 
   drawReturnBarsPanel(canvas, {
-    x: 590,
+    x: 574,
     y: 96,
-    width: 190,
+    width: 222,
     height: 250,
     trend
   });
@@ -5364,23 +5364,19 @@ function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
     return;
   }
   const maxAbs = Math.max(5, ...items.map((item) => Math.abs(item.value)));
-  const center = x + Math.round(width / 2);
-  drawLine(canvas, center, y + 26, center, y + height - 20, [203, 213, 225, 255], 1);
-  drawText(canvas, center - 8, y + height - 16, "0", [100, 116, 139, 255], 2);
-  drawText(canvas, x + 8, y + height - 16, formatChartPct(-maxAbs), [100, 116, 139, 255], 2);
-  drawText(canvas, x + width - 58, y + height - 16, formatChartPct(maxAbs), [100, 116, 139, 255], 2);
+  const barStart = x + 58;
+  const barMaxWidth = Math.max(36, width - 152);
+  drawLine(canvas, barStart, y + 26, barStart, y + height - 20, [203, 213, 225, 255], 1);
+  drawText(canvas, barStart - 6, y + height - 16, "0", [100, 116, 139, 255], 2);
+  drawText(canvas, x + width - 86, y + height - 16, formatChartPct(maxAbs), [100, 116, 139, 255], 2);
   const rowGap = Math.floor((height - 44) / items.length);
   items.forEach((item, index) => {
     const rowY = y + 32 + index * rowGap;
-    const barWidth = Math.round((Math.abs(item.value) / maxAbs) * (width / 2 - 36));
+    const barWidth = Math.round((Math.abs(item.value) / maxAbs) * barMaxWidth);
     const color = item.value >= 0 ? [22, 130, 93, 255] : [194, 65, 12, 255];
     drawText(canvas, x + 10, rowY - 7, item.label, [71, 85, 105, 255], 2);
-    if (item.value >= 0) {
-      fillRect(canvas, center, rowY - 7, barWidth, 14, color);
-    } else {
-      fillRect(canvas, center - barWidth, rowY - 7, barWidth, 14, color);
-    }
-    drawText(canvas, x + 82, rowY - 7, formatChartPct(item.value), color, 2);
+    fillRect(canvas, barStart, rowY - 7, barWidth, 14, color);
+    drawText(canvas, x + width - 86, rowY - 7, formatChartPct(item.value), color, 2);
   });
 }
 
@@ -5399,7 +5395,7 @@ function drawYAxisTickLabels(canvas, x, y, height, values, formatter, axisLabel)
   values.forEach((value, index) => {
     const ty = values.length === 1 ? y + height : y + (index / (values.length - 1)) * height;
     drawLine(canvas, x - 4, ty, x, ty, [148, 163, 184, 255], 1);
-    drawText(canvas, Math.max(4, x - 68), ty - 6, formatter(value), color, 2);
+    drawText(canvas, Math.max(4, x - 82), ty - 6, formatter(value), color, 2);
   });
 }
 
@@ -5435,26 +5431,45 @@ function formatChartPct(value) {
   return `${number > 0 ? "+" : ""}${number}%`;
 }
 
-function createRgbaCanvas(width, height, color) {
-  const pixels = Buffer.alloc(width * height * 4);
-  for (let i = 0; i < width * height; i += 1) {
+function getChartPixelRatio() {
+  const ratio = Number(process.env.FEISHU_REPORT_CHART_PIXEL_RATIO || 2);
+  if (!Number.isFinite(ratio)) return 2;
+  return Math.max(1, Math.min(3, Math.round(ratio)));
+}
+
+function createRgbaCanvas(width, height, color, pixelRatio = 1) {
+  const ratio = Math.max(1, Math.min(3, Math.round(Number(pixelRatio || 1))));
+  const physicalWidth = Math.max(1, Math.round(width * ratio));
+  const physicalHeight = Math.max(1, Math.round(height * ratio));
+  const pixels = Buffer.alloc(physicalWidth * physicalHeight * 4);
+  for (let i = 0; i < physicalWidth * physicalHeight; i += 1) {
     pixels[i * 4] = color[0];
     pixels[i * 4 + 1] = color[1];
     pixels[i * 4 + 2] = color[2];
     pixels[i * 4 + 3] = color[3];
   }
-  return { width, height, pixels };
+  return { width, height, physicalWidth, physicalHeight, pixelRatio: ratio, pixels };
 }
 
 function setPixel(canvas, x, y, color) {
-  const px = Math.round(x);
-  const py = Math.round(y);
-  if (px < 0 || py < 0 || px >= canvas.width || py >= canvas.height) return;
-  const offset = (py * canvas.width + px) * 4;
-  canvas.pixels[offset] = color[0];
-  canvas.pixels[offset + 1] = color[1];
-  canvas.pixels[offset + 2] = color[2];
-  canvas.pixels[offset + 3] = color[3];
+  const logicalX = Math.round(x);
+  const logicalY = Math.round(y);
+  if (logicalX < 0 || logicalY < 0 || logicalX >= canvas.width || logicalY >= canvas.height) return;
+  const ratio = canvas.pixelRatio || 1;
+  const px = Math.round(logicalX * ratio);
+  const py = Math.round(logicalY * ratio);
+  for (let yy = 0; yy < ratio; yy += 1) {
+    for (let xx = 0; xx < ratio; xx += 1) {
+      const targetX = px + xx;
+      const targetY = py + yy;
+      if (targetX < 0 || targetY < 0 || targetX >= canvas.physicalWidth || targetY >= canvas.physicalHeight) continue;
+      const offset = (targetY * canvas.physicalWidth + targetX) * 4;
+      canvas.pixels[offset] = color[0];
+      canvas.pixels[offset + 1] = color[1];
+      canvas.pixels[offset + 2] = color[2];
+      canvas.pixels[offset + 3] = color[3];
+    }
+  }
 }
 
 function drawCircle(canvas, cx, cy, radius, color) {
@@ -5524,64 +5539,66 @@ function drawText(canvas, x, y, text, color = [15, 23, 42, 255], scale = 2) {
 }
 
 const TINY_FONT = {
-  "0": ["111", "101", "101", "101", "111"],
-  "1": ["010", "110", "010", "010", "111"],
-  "2": ["111", "001", "111", "100", "111"],
-  "3": ["111", "001", "111", "001", "111"],
-  "4": ["101", "101", "111", "001", "001"],
-  "5": ["111", "100", "111", "001", "111"],
-  "6": ["111", "100", "111", "101", "111"],
-  "7": ["111", "001", "010", "010", "010"],
-  "8": ["111", "101", "111", "101", "111"],
-  "9": ["111", "101", "111", "001", "111"],
-  "A": ["010", "101", "111", "101", "101"],
-  "B": ["110", "101", "110", "101", "110"],
-  "C": ["111", "100", "100", "100", "111"],
-  "D": ["110", "101", "101", "101", "110"],
-  "E": ["111", "100", "110", "100", "111"],
-  "F": ["111", "100", "110", "100", "100"],
-  "G": ["111", "100", "101", "101", "111"],
-  "H": ["101", "101", "111", "101", "101"],
-  "I": ["111", "010", "010", "010", "111"],
-  "J": ["001", "001", "001", "101", "111"],
-  "K": ["101", "101", "110", "101", "101"],
-  "L": ["100", "100", "100", "100", "111"],
-  "M": ["101", "111", "111", "101", "101"],
-  "N": ["101", "111", "111", "111", "101"],
-  "O": ["111", "101", "101", "101", "111"],
-  "P": ["111", "101", "111", "100", "100"],
-  "Q": ["111", "101", "101", "111", "001"],
-  "R": ["110", "101", "110", "101", "101"],
-  "S": ["111", "100", "111", "001", "111"],
-  "T": ["111", "010", "010", "010", "010"],
-  "U": ["101", "101", "101", "101", "111"],
-  "V": ["101", "101", "101", "101", "010"],
-  "W": ["101", "101", "111", "111", "101"],
-  "X": ["101", "101", "010", "101", "101"],
-  "Y": ["101", "101", "010", "010", "010"],
-  "Z": ["111", "001", "010", "100", "111"],
-  "+": ["000", "010", "111", "010", "000"],
-  "-": ["000", "000", "111", "000", "000"],
-  ".": ["000", "000", "000", "000", "010"],
-  "%": ["101", "001", "010", "100", "101"],
-  "/": ["001", "001", "010", "100", "100"],
-  ":": ["000", "010", "000", "010", "000"],
-  "?": ["111", "001", "010", "000", "010"]
+  "0": ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
+  "1": ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
+  "2": ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
+  "3": ["11110", "00001", "00001", "01110", "00001", "00001", "11110"],
+  "4": ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
+  "5": ["11111", "10000", "10000", "11110", "00001", "00001", "11110"],
+  "6": ["00110", "01000", "10000", "11110", "10001", "10001", "01110"],
+  "7": ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
+  "8": ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
+  "9": ["01110", "10001", "10001", "01111", "00001", "00010", "11100"],
+  "A": ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
+  "B": ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
+  "C": ["01111", "10000", "10000", "10000", "10000", "10000", "01111"],
+  "D": ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
+  "E": ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+  "F": ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
+  "G": ["01111", "10000", "10000", "10011", "10001", "10001", "01111"],
+  "H": ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
+  "I": ["11111", "00100", "00100", "00100", "00100", "00100", "11111"],
+  "J": ["00111", "00010", "00010", "00010", "00010", "10010", "01100"],
+  "K": ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
+  "L": ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
+  "M": ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
+  "N": ["10001", "11001", "10101", "10011", "10001", "10001", "10001"],
+  "O": ["01110", "10001", "10001", "10001", "10001", "10001", "01110"],
+  "P": ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
+  "Q": ["01110", "10001", "10001", "10001", "10101", "10010", "01101"],
+  "R": ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
+  "S": ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
+  "T": ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+  "U": ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
+  "V": ["10001", "10001", "10001", "10001", "10001", "01010", "00100"],
+  "W": ["10001", "10001", "10001", "10101", "10101", "10101", "01010"],
+  "X": ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
+  "Y": ["10001", "10001", "01010", "00100", "00100", "00100", "00100"],
+  "Z": ["11111", "00001", "00010", "00100", "01000", "10000", "11111"],
+  "+": ["00000", "00100", "00100", "11111", "00100", "00100", "00000"],
+  "-": ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
+  ".": ["00000", "00000", "00000", "00000", "00000", "01100", "01100"],
+  "%": ["11001", "11010", "00010", "00100", "01000", "01011", "10011"],
+  "/": ["00001", "00010", "00010", "00100", "01000", "01000", "10000"],
+  ":": ["00000", "01100", "01100", "00000", "01100", "01100", "00000"],
+  "?": ["01110", "10001", "00001", "00010", "00100", "00000", "00100"]
 };
 
 function encodePngRgba(canvas) {
-  const raw = Buffer.alloc((canvas.width * 4 + 1) * canvas.height);
-  for (let y = 0; y < canvas.height; y += 1) {
-    const rowOffset = y * (canvas.width * 4 + 1);
+  const width = canvas.physicalWidth || canvas.width;
+  const height = canvas.physicalHeight || canvas.height;
+  const raw = Buffer.alloc((width * 4 + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    const rowOffset = y * (width * 4 + 1);
     raw[rowOffset] = 0;
-    canvas.pixels.copy(raw, rowOffset + 1, y * canvas.width * 4, (y + 1) * canvas.width * 4);
+    canvas.pixels.copy(raw, rowOffset + 1, y * width * 4, (y + 1) * width * 4);
   }
 
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     pngChunk("IHDR", Buffer.concat([
-      uint32be(canvas.width),
-      uint32be(canvas.height),
+      uint32be(width),
+      uint32be(height),
       Buffer.from([8, 6, 0, 0, 0])
     ])),
     pngChunk("IDAT", zlib.deflateSync(raw)),
