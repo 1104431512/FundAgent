@@ -4275,7 +4275,7 @@ function computeTrendProfile(points = []) {
     return120dPct: r120,
     return250dPct: r250,
     drawdownFromRecentHighPct: drawdownFromHighPct,
-    reboundFromRecentLowPct,
+    reboundFromRecentLowPct: reboundFromLowPct,
     trendLabel,
     entryBias,
     invalidationHint: entryBias === "staged_buy"
