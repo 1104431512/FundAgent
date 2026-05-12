@@ -3151,6 +3151,8 @@ function summarizeMarketSnapshot(snapshot) {
       conceptBoards: (snapshot.themes?.conceptBoards || []).slice(0, 10),
       industryBoards: (snapshot.themes?.industryBoards || []).slice(0, 10)
     },
+    themeRadar: (snapshot.themeRadar || []).slice(0, 8),
+    fastNews: (snapshot.fastNews || []).slice(0, 8),
     fundCandidates: {
       stockFunds: (snapshot.fundCandidates?.stockFunds || []).slice(0, 8),
       hybridFunds: (snapshot.fundCandidates?.hybridFunds || []).slice(0, 8),
@@ -3300,6 +3302,24 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
     `snapshot.fetchedAt=${marketSnapshot.fetchedAt || "unknown"}`,
     marketSnapshot.note ? `snapshot.note=${marketSnapshot.note}` : ""
   ].filter(Boolean);
+  const themeRadar = selectRelevantThemeRadar(userText, marketSnapshot).slice(0, 5);
+  if (themeRadar.length) {
+    lines.push("themeRadar:");
+    lines.push(...themeRadar.map((theme) => {
+      const fields = [
+        theme.name || theme.id || "unknown",
+        theme.stage ? `stage=${theme.stage}` : "",
+        formatEvidenceField("forwardScore", theme.forwardScore),
+        formatEvidenceField("crowdingScore", theme.crowdingScore),
+        theme.actionBias ? `actionBias=${theme.actionBias}` : "",
+        theme.primaryCatalyst ? `primaryCatalyst=${theme.primaryCatalyst}` : "",
+        theme.evidence?.boards?.length ? `boards=${theme.evidence.boards.slice(0, 2).map((item) => `${item.name}:${formatSignedNumber(item.changePct)}%`).join("/")}` : "",
+        theme.evidence?.news?.length ? `news=${theme.evidence.news.slice(0, 2).map((item) => item.title).join(" / ")}` : ""
+      ].filter(Boolean);
+      return `- ${fields.join(", ")}`;
+    }));
+    lines.push("qualityInstruction=themeRadar exists; first judge theme stage and forward payoff before recommending funds.");
+  }
 
   if (isPreciousMetalQuestion(userText)) {
     const metals = marketSnapshot.marketIndicators?.preciousMetals || [];
@@ -3536,6 +3556,10 @@ function getFundAnalysisSkillIds(extra = []) {
 
 function getFundRecommendationSkillIds(extra = []) {
   return [
+    "fund-theme-radar",
+    "theme-stage-analysis",
+    "theme-to-fund-mapping",
+    "forward-looking-actionability",
     "fund-recommendation",
     "fund-market-timing",
     "fund-fee-share-class",
@@ -3548,6 +3572,9 @@ function getFundRecommendationSkillIds(extra = []) {
 
 function getFundQaSkillIds(extra = []) {
   return [
+    "fund-theme-radar",
+    "theme-stage-analysis",
+    "forward-looking-actionability",
     "fund-market-timing",
     "fund-trend-analysis",
     ...extra,
@@ -3731,6 +3758,8 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
   const systemText = [
     "你是飞书机器人“基金经理”的基金发现与配置工作流。",
     "当前任务不是分析用户已经给出的某一只基金，也不是截图 screening；当前任务是根据用户文字、公开市场快照和基金候选池，给出教育性的基金方向与候选清单。",
+    "推荐顺序必须是：先判断题材/事件/催化阶段，再判断基金承载工具；基金净值走势只能作为确认信号，不能作为第一推荐理由。",
+    "如果 marketSnapshot.themeRadar 或 marketDeepDive.themeRadar 存在，必须先使用其中的 stage、forwardScore、crowdingScore、actionBias 判断题材赔率，再筛选基金。",
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
     "如果提供了 marketDeepDive，必须使用其中的 trendProfile、risk、fees、holdings 和 actionability 来筛掉不适合的候选；不要只复述市场快照。",
     "不要编造 marketSnapshot 里没有的基金代码、涨跌幅、排名、金价或新闻。",
@@ -3762,11 +3791,12 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "",
     "请输出：",
     "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
-    "2. 自评估：这类需求是否适合现在做，confidence，适合激进/均衡/保守哪类。",
-    "3. 推荐清单：优先 3-5 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、趋势/自评估动作、为什么入选。只能使用快照或下钻中的候选代码；如果没有足够代码，就写“待复核方向”。",
+    "2. 题材雷达：先列 1-3 个相关题材的 stage、forwardScore、crowdingScore、为什么现在值得/不值得看。",
+    "3. 自评估：这类需求是否适合现在做，confidence，适合激进/均衡/保守哪类。",
+    "4. 推荐清单：优先 3-5 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、趋势/自评估动作、为什么入选。只能使用快照或下钻中的候选代码；如果没有足够代码，就写“待复核方向”。",
     "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
-    "4. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
-    "5. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的条件。"
+    "5. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
+    "6. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的题材或价格条件。"
   ].join("\n");
 
   const draft = await callModel({
@@ -3804,7 +3834,9 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
   const systemText = [
     "你是飞书机器人“基金经理”的基金问答工作流。",
     "当前任务是回答用户问题，不是单只基金 screening；除非用户给出明确基金代码或截图，否则不要强行输出 Verdict/Score/8 角色评审。",
+    "遇到“某主题最近值不值得买”时，必须先判断题材/新闻/市场阶段，再判断基金或 ETF 工具；基金净值走势只是确认信号。",
     "如果传入 marketSnapshot，可用它回答近期市场/题材问题；涉及黄金、白银或贵金属时，优先引用 marketIndicators.preciousMetals 和相关基金候选。",
+    "如果 marketSnapshot.themeRadar 或 marketDeepDive.themeRadar 存在，优先引用 stage、forwardScore、crowdingScore、actionBias，避免只按历史涨幅回答。",
     "如果提供了 marketDeepDive，必须使用下钻候选的 trendProfile、risk、fees、holdings 和 actionability 来形成买/等/回避判断。",
     "如果没有抓到对应行情数据，要说明是公开数据源暂时不可用或滞后，不要简单说自己没有实时数据能力。",
     "必须通过 fund-actionability-evaluation 和 fund-answer-quality 质量门槛：前两行直接回答；有快照/下钻就引用具体字段；给明确行动、适合对象和仓位建议。",
@@ -3950,7 +3982,7 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   );
   const hasAction = /(买入|分批|持有|等待|观望|回避|卖出|换基|暂停|加仓|减仓|买|卖|buy|staged|wait|avoid|hold|sell)/i.test(firstScreen);
   const hasSizing = /(\d+(?:\.\d+)?\s*%|\d+(?:\.\d+)?\s*(?:元|万)|仓位|比例|成|批|底仓|第一笔|上限|下限)/.test(body);
-  const hasEvidence = /(\d{6}|20日|60日|120日|250日|净值|夏普|回撤|波动|费率|持仓|金价|美元指数|COMEX|黄金ETF|QDII|trend|drawdown|sharpe|nav|\d+(?:\.\d+)?%\s*(?:收益|回撤|波动|费率|涨幅|跌幅|涨|跌|return|drawdown|change))/i.test(body);
+  const hasEvidence = /(\d{6}|题材|阶段|催化|拥挤|确认|扩散|萌芽|净值|夏普|回撤|波动|费率|持仓|金价|美元指数|COMEX|黄金ETF|QDII|theme|stage|forwardScore|crowdingScore|trend|drawdown|sharpe|nav|\d+(?:\.\d+)?%\s*(?:收益|回撤|波动|费率|涨幅|跌幅|涨|跌|return|drawdown|change))/i.test(body);
   const evidenceAvailable = hasQualityEvidence(evidence);
   const clicheCount = [
     /可以配置.{0,16}(但|不过).{0,12}(不|别)追高/,
@@ -3994,7 +4026,7 @@ function isActionSeekingFundQuestion(text) {
 
 function hasQualityEvidence(evidence) {
   const compact = compactQualityEvidence(evidence);
-  return /(trendProfile|marketSnapshot|marketDeepDive|enrichments|riskMetrics|fundCandidates|preciousMetals|candidates|return20dPct|drawdown)/i.test(compact);
+  return /(themeRadar|forwardScore|crowdingScore|trendProfile|marketSnapshot|marketDeepDive|enrichments|riskMetrics|fundCandidates|preciousMetals|candidates|return20dPct|drawdown)/i.test(compact);
 }
 
 function compactQualityEvidence(evidence) {
@@ -4291,7 +4323,8 @@ async function fetchMarketSnapshot() {
     indexFunds,
     qdiiFunds,
     preciousMetals,
-    preciousMetalFunds
+    preciousMetalFunds,
+    fastNews
   ] = await Promise.all([
     fetchEastmoneyBoards("concept").catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchEastmoneyBoards("industry").catch((error) => ({ ok: false, error: error.message, items: [] })),
@@ -4300,7 +4333,8 @@ async function fetchMarketSnapshot() {
     fetchFundRanking("zs", "指数型基金").catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchFundRanking("qdii", "QDII基金").catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchPreciousMetalQuotes().catch((error) => ({ ok: false, error: error.message, items: [] })),
-    fetchPreciousMetalFundCandidates().catch((error) => ({ ok: false, error: error.message, items: [] }))
+    fetchPreciousMetalFundCandidates().catch((error) => ({ ok: false, error: error.message, items: [] })),
+    fetchEastmoneyFastNews().catch((error) => ({ ok: false, error: error.message, items: [] }))
   ]);
 
   const snapshotParts = [
@@ -4311,8 +4345,23 @@ async function fetchMarketSnapshot() {
     indexFunds,
     qdiiFunds,
     preciousMetals,
-    preciousMetalFunds
+    preciousMetalFunds,
+    fastNews
   ];
+  const fundCandidates = {
+    stockFunds: stockFunds.items || [],
+    hybridFunds: hybridFunds.items || [],
+    indexFunds: indexFunds.items || [],
+    qdiiFunds: qdiiFunds.items || [],
+    preciousMetalFunds: preciousMetalFunds.items || []
+  };
+  const themeRadar = buildThemeRadar({
+    conceptBoards: conceptBoards.items || [],
+    industryBoards: industryBoards.items || [],
+    preciousMetals: preciousMetals.items || [],
+    fastNews: fastNews.items || [],
+    fundCandidates
+  });
   const failures = snapshotParts.filter(
     (item) => item && item.ok === false
   ).length;
@@ -4335,13 +4384,9 @@ async function fetchMarketSnapshot() {
       conceptBoards: conceptBoards.items || [],
       industryBoards: industryBoards.items || []
     },
-    fundCandidates: {
-      stockFunds: stockFunds.items || [],
-      hybridFunds: hybridFunds.items || [],
-      indexFunds: indexFunds.items || [],
-      qdiiFunds: qdiiFunds.items || [],
-      preciousMetalFunds: preciousMetalFunds.items || []
-    },
+    themeRadar,
+    fastNews: fastNews.items || [],
+    fundCandidates,
     errors: snapshotParts
       .filter((item) => item && item.ok === false)
       .map((item) => item.error),
@@ -4349,9 +4394,243 @@ async function fetchMarketSnapshot() {
       "https://push2.eastmoney.com/api/qt/clist/get",
       "https://push2.eastmoney.com/api/qt/ulist.np/get",
       "https://fund.eastmoney.com/data/rankhandler.aspx",
-      "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx"
+      "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx",
+      "https://np-listapi.eastmoney.com/comm/web/getFastNews"
     ]
   };
+}
+
+async function fetchEastmoneyFastNews() {
+  const url = new URL("https://np-listapi.eastmoney.com/comm/web/getFastNews");
+  url.searchParams.set("client", "web");
+  url.searchParams.set("biz", "web_724");
+  url.searchParams.set("fastColumn", "102");
+  url.searchParams.set("pageSize", String(Number(process.env.MARKET_FAST_NEWS_LIMIT || 30)));
+  url.searchParams.set("req_trace", String(Date.now()));
+  const json = JSON.parse(await fetchText(url.href, "https://finance.eastmoney.com/"));
+  const rows = Array.isArray(json?.data) ? json.data : [];
+  updateStats({ counters: { marketFastNewsFetches: 1 } });
+  return {
+    ok: json?.code === "1" || json?.code === 1 || json?.message === "success",
+    label: "东方财富7x24快讯",
+    items: rows.map((item) => ({
+      title: item.title || "",
+      showTime: item.showTime || "",
+      mediaName: item.mediaName || "",
+      url: item.url || "",
+      code: item.code || ""
+    })).filter((item) => item.title).slice(0, Number(process.env.MARKET_FAST_NEWS_LIMIT || 30))
+  };
+}
+
+const THEME_RADAR_RULES = [
+  {
+    id: "semiconductor",
+    name: "半导体/芯片",
+    keywords: ["半导体", "芯片", "科创芯片", "集成电路", "晶圆", "封测", "光刻", "存储", "美光", "国产替代"],
+    fundKeywords: ["半导体", "芯片", "科创芯片", "集成电路", "电子"]
+  },
+  {
+    id: "ai_compute",
+    name: "AI/算力",
+    keywords: ["人工智能", "AI", "算力", "数据中心", "CPO", "光模块", "机器人", "大模型", "服务器"],
+    fundKeywords: ["人工智能", "AI", "算力", "云计算", "通信", "机器人", "信息技术"]
+  },
+  {
+    id: "precious_metals",
+    name: "黄金/贵金属",
+    keywords: ["黄金", "贵金属", "白银", "金价", "美联储", "降息", "美元", "美债", "COMEX"],
+    fundKeywords: ["黄金", "贵金属", "白银", "有色"]
+  },
+  {
+    id: "new_energy",
+    name: "新能源/电池",
+    keywords: ["新能源", "光伏", "锂电", "电池", "储能", "风电", "充电桩"],
+    fundKeywords: ["新能源", "光伏", "电池", "锂电", "储能"]
+  },
+  {
+    id: "medicine",
+    name: "医药/创新药",
+    keywords: ["医药", "医疗", "创新药", "CXO", "生物医药", "医保", "药品"],
+    fundKeywords: ["医药", "医疗", "创新药", "生物医药"]
+  },
+  {
+    id: "dividend",
+    name: "红利/高股息",
+    keywords: ["红利", "高股息", "央企", "中特估", "分红", "银行", "煤炭", "公用事业"],
+    fundKeywords: ["红利", "高股息", "央企", "价值", "银行", "煤炭"]
+  },
+  {
+    id: "hongkong",
+    name: "港股/恒生",
+    keywords: ["港股", "恒生", "香港", "互联网", "南向", "港股通"],
+    fundKeywords: ["港股", "恒生", "香港", "中概", "互联网"]
+  },
+  {
+    id: "bond_rate",
+    name: "债券/利率",
+    keywords: ["债券", "债基", "纯债", "短债", "利率", "降准", "MLF", "国债"],
+    fundKeywords: ["债券", "纯债", "短债", "中短债", "利率债"]
+  },
+  {
+    id: "rare_earth",
+    name: "稀土/有色",
+    keywords: ["稀土", "有色", "小金属", "铜", "铝", "资源", "金属"],
+    fundKeywords: ["稀土", "有色", "资源", "金属"]
+  },
+  {
+    id: "overseas_us",
+    name: "美股/海外科技",
+    keywords: ["纳斯达克", "标普", "美股", "英伟达", "特斯拉", "苹果", "微软"],
+    fundKeywords: ["纳斯达克", "标普", "美股", "QDII", "海外"]
+  }
+];
+
+function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMetals = [], fastNews = [], fundCandidates = {} } = {}) {
+  const allFunds = [
+    ...(fundCandidates.stockFunds || []),
+    ...(fundCandidates.hybridFunds || []),
+    ...(fundCandidates.indexFunds || []),
+    ...(fundCandidates.qdiiFunds || []),
+    ...(fundCandidates.preciousMetalFunds || [])
+  ];
+  const themes = THEME_RADAR_RULES.map((rule) => {
+    const boards = [...conceptBoards, ...industryBoards]
+      .filter((board) => textMatchesKeywords(`${board.name || ""} ${board.leadStock || ""}`, rule.keywords))
+      .slice(0, 5)
+      .map((board) => ({
+        name: board.name || board.boardCode || "",
+        boardCode: board.boardCode || "",
+        changePct: board.changePct,
+        mainNetInflowPct: board.mainNetInflowPct,
+        leadStock: board.leadStock || "",
+        quoteTime: board.quoteTime || ""
+      }));
+    const news = fastNews
+      .filter((item) => textMatchesKeywords(`${item.title || ""} ${item.mediaName || ""}`, rule.keywords))
+      .slice(0, 5)
+      .map((item) => ({
+        title: item.title || "",
+        showTime: item.showTime || "",
+        mediaName: item.mediaName || "",
+        url: item.url || ""
+      }));
+    const funds = allFunds
+      .filter((fund) => textMatchesKeywords(`${fund.name || ""} ${fund.type || ""} ${(fund.keywords || []).join(" ")}`, rule.fundKeywords || rule.keywords))
+      .slice(0, 6)
+      .map((fund) => ({
+        code: fund.code || "",
+        name: fund.name || "",
+        type: fund.type || "",
+        oneMonthPct: fund.oneMonthPct,
+        oneYearPct: fund.oneYearPct,
+        dailyPct: fund.dailyPct,
+        shareClass: fund.shareClass || ""
+      }));
+    const metals = rule.id === "precious_metals"
+      ? preciousMetals.slice(0, 6).map((item) => ({
+          name: item.name || item.code || "",
+          latest: item.latest,
+          changePct: item.changePct,
+          fiveDayPct: item.fiveDayPct,
+          quoteTime: item.quoteTime || ""
+        }))
+      : [];
+
+    const catalystScore = clampScore(news.length * 12 + metals.filter((item) => Number.isFinite(item.changePct)).length * 4);
+    const boardScore = clampScore(
+      boards.reduce((sum, item) => sum + Math.max(0, Number(item.changePct || 0)) * 4 + Math.max(0, Number(item.mainNetInflowPct || 0)) / 8, 0)
+    );
+    const vehicleScore = clampScore(funds.length * 5);
+    const maxBoardChange = Math.max(0, ...boards.map((item) => Number(item.changePct || 0)));
+    const maxFundOneMonth = Math.max(0, ...funds.map((item) => Number(item.oneMonthPct || 0)));
+    const metalFiveDay = Math.max(0, ...metals.map((item) => Number(item.fiveDayPct || 0)));
+    const crowdingScore = clampScore(Math.max(0, maxBoardChange - 3) * 9 + Math.max(0, maxFundOneMonth - 15) * 1.2 + Math.max(0, metalFiveDay - 4) * 5);
+    const forwardScore = clampScore(catalystScore * 0.45 + boardScore * 0.4 + vehicleScore * 0.25 - crowdingScore * 0.28);
+    const stage = inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore });
+    const actionBias = inferThemeActionBias({ stage, forwardScore, crowdingScore });
+
+    return {
+      id: rule.id,
+      name: rule.name,
+      keywords: rule.keywords,
+      fundKeywords: rule.fundKeywords || rule.keywords,
+      stage,
+      forwardScore: round(forwardScore, 1),
+      catalystScore: round(catalystScore, 1),
+      marketConfirmationScore: round(boardScore, 1),
+      vehicleScore: round(vehicleScore, 1),
+      crowdingScore: round(crowdingScore, 1),
+      actionBias,
+      primaryCatalyst: news[0]?.title || boards[0]?.name || metals[0]?.name || "",
+      evidence: { news, boards, metals, funds }
+    };
+  }).filter((theme) =>
+    theme.forwardScore >= 8
+    || theme.catalystScore >= 12
+    || theme.marketConfirmationScore >= 12
+    || theme.vehicleScore >= 10
+  );
+
+  return themes.sort((a, b) => b.forwardScore - a.forwardScore).slice(0, 12);
+}
+
+function inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore }) {
+  if (crowdingScore >= 55) return "crowded";
+  if (catalystScore >= 18 && boardScore < 14) return "germination";
+  if (boardScore >= 35 && vehicleScore >= 10) return "diffusion";
+  if (boardScore >= 14 || (catalystScore >= 12 && vehicleScore >= 8)) return "confirmation";
+  if (catalystScore >= 8) return "germination";
+  return "watch";
+}
+
+function inferThemeActionBias({ stage, forwardScore, crowdingScore }) {
+  if (stage === "crowded" || crowdingScore >= 55) return "wait_or_small_starter";
+  if (forwardScore >= 55 && ["germination", "confirmation"].includes(stage)) return "early_staged_buy";
+  if (forwardScore >= 42) return "staged_buy";
+  if (forwardScore >= 25) return "watch_confirm";
+  return "avoid_chasing";
+}
+
+function selectRelevantThemeRadar(userText, marketSnapshot) {
+  const radar = Array.isArray(marketSnapshot?.themeRadar) ? marketSnapshot.themeRadar : [];
+  if (!radar.length) return [];
+  const text = normalizeIntentText(userText);
+  const matched = radar
+    .map((theme) => ({
+      ...theme,
+      relevance: textMatchesKeywords(text, [...(theme.keywords || []), ...(theme.fundKeywords || []), theme.name || ""]) ? 20 : 0
+    }))
+    .filter((theme) => theme.relevance > 0);
+  return (matched.length ? matched : radar)
+    .sort((a, b) => (b.relevance || 0) + Number(b.forwardScore || 0) - ((a.relevance || 0) + Number(a.forwardScore || 0)))
+    .slice(0, 6);
+}
+
+function matchCandidateThemes(candidate, themes = []) {
+  const text = `${candidate?.name || ""} ${candidate?.type || ""} ${(candidate?.keywords || []).join(" ")}`;
+  return (themes || [])
+    .filter((theme) => textMatchesKeywords(text, theme.fundKeywords || theme.keywords || []))
+    .map((theme) => ({
+      id: theme.id,
+      name: theme.name,
+      stage: theme.stage,
+      forwardScore: theme.forwardScore,
+      crowdingScore: theme.crowdingScore,
+      actionBias: theme.actionBias
+    }))
+    .slice(0, 3);
+}
+
+function textMatchesKeywords(text, keywords = []) {
+  const value = normalizeIntentText(text);
+  return (keywords || []).some((keyword) => keyword && value.includes(String(keyword).toLowerCase()));
+}
+
+function clampScore(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, Math.min(100, numeric));
 }
 
 async function fetchPreciousMetalQuotes() {
@@ -4537,12 +4816,17 @@ function mergeCandidateFunds(...groups) {
   return [...byCode.values()];
 }
 
-function scoreDeepDiveCandidate(item) {
+function scoreDeepDiveCandidate(item, themeRadar = []) {
   const text = `${item.name || ""} ${item.type || ""}`;
   let score = 0;
   if (/ETF|联接|指数/.test(text)) score += 6;
   if (/C$|C类/.test(text)) score += 2;
   if (/A$|A类/.test(text)) score += 1;
+  const matchedThemes = item.matchedThemes?.length ? item.matchedThemes : matchCandidateThemes(item, themeRadar);
+  for (const theme of matchedThemes.slice(0, 2)) {
+    score += 8 + Math.min(16, Number(theme.forwardScore || 0) / 5);
+    if (theme.stage === "crowded") score -= 4;
+  }
   for (const value of [item.oneMonthPct, item.threeMonthPct, item.sixMonthPct, item.oneYearPct, item.dailyPct]) {
     const numeric = toNumber(value);
     if (Number.isFinite(numeric)) score += Math.max(-8, Math.min(12, numeric / 2));
@@ -4661,6 +4945,7 @@ function normalizeCandidateFundName(name) {
 async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
   if (!marketSnapshot) return null;
   const focusedCandidates = await fetchFocusedFundCandidates(userText);
+  const relevantThemeRadar = selectRelevantThemeRadar(userText, marketSnapshot);
   const precious = isPreciousMetalQuestion(userText);
   const snapshotCandidates = precious
     ? (marketSnapshot.fundCandidates?.preciousMetalFunds || [])
@@ -4673,7 +4958,8 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
         ]
       : [];
   const merged = mergeCandidateFunds(focusedCandidates, snapshotCandidates)
-    .sort((a, b) => scoreDeepDiveCandidate(b) - scoreDeepDiveCandidate(a));
+    .map((item) => ({ ...item, matchedThemes: matchCandidateThemes(item, relevantThemeRadar) }))
+    .sort((a, b) => scoreDeepDiveCandidate(b, relevantThemeRadar) - scoreDeepDiveCandidate(a, relevantThemeRadar));
   const defaultLimit = precious ? 4 : 3;
   const limit = Math.max(0, Number(process.env.MARKET_DEEP_DIVE_FUND_LIMIT ?? defaultLimit));
   const selected = selectDiversifiedDeepDiveCandidates(merged, limit, {
@@ -4711,6 +4997,7 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
   return {
     ok: true,
     focus: precious ? "precious_metals" : focusedCandidates.length ? "focused_theme_search" : "market_recommendation",
+    themeRadar: relevantThemeRadar,
     searchKeywords: inferFocusedFundSearchKeywords(userText),
     selectedCodes: selected.map((item) => item.code),
     candidates
@@ -4753,6 +5040,7 @@ async function fetchFundResearchDigest(code, seed = {}) {
       oneYearPct: seed.oneYearPct ?? "",
       productKey: seed.productKey || "",
       exposureKey: seed.exposureKey || "",
+      matchedThemes: (seed.matchedThemes || []).slice(0, 3),
       alternativeShareClasses: (seed.alternativeShareClasses || []).slice(0, 6),
       sameExposureAlternatives: (seed.sameExposureAlternatives || []).slice(0, 6)
     },
