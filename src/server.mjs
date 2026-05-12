@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+import zlib from "node:zlib";
 
 const ROOT = process.cwd();
 loadDotEnv(path.join(ROOT, ".env"));
@@ -2158,14 +2159,21 @@ async function pushPortfolioRunIfConfigured(db, run, config) {
   }
 
   try {
+    const trendImages = await buildPortfolioTrendCardImages(run, config).catch((error) => {
+      console.warn("[portfolio-trend-image-error]", run.id, error.message);
+      recordError(error, { portfolioTrendImageFailures: 1 });
+      return [];
+    });
     await sendFeishuMessage(target.receiveId, run.card || "虚拟基金经理任务完成。", {
       receiveIdType: target.receiveIdType || "chat_id",
-      kind: "portfolio"
+      kind: "portfolio",
+      images: trendImages
     });
     run.push = {
       ok: true,
       receiveIdType: target.receiveIdType || "chat_id",
       receiveId: maskSecret(target.receiveId),
+      trendImages: trendImages.length,
       pushedAt: new Date().toISOString()
     };
     updateStats({ counters: { portfolioPushes: 1 }, last: { lastPortfolioPushAt: run.push.pushedAt } });
@@ -3140,6 +3148,57 @@ function summarizeMarketSnapshot(snapshot) {
   };
 }
 
+async function buildPortfolioTrendCardImages(run, config) {
+  if (String(process.env.FEISHU_PORTFOLIO_TREND_IMAGES ?? "true") === "false") {
+    return [];
+  }
+  const snapshots = collectTrendSnapshotsForRun(run).slice(0, Number(process.env.FEISHU_PORTFOLIO_TREND_IMAGE_LIMIT || 3));
+  const images = [];
+  for (const item of snapshots) {
+    const png = renderTrendSeriesPng({
+      title: `${item.code} ${item.name}`.trim(),
+      series: item.snapshot.trendProfile?.series || [],
+      width: 720,
+      height: 260
+    });
+    if (!png) continue;
+    const imageKey = await uploadFeishuImage(png, `trend-${item.code || "fund"}.png`, config);
+    images.push({
+      imageKey,
+      alt: `${item.code} ${item.name} 走势曲线`.trim() || "基金走势曲线"
+    });
+  }
+  if (images.length) {
+    updateStats({ counters: { portfolioTrendImagesUploaded: images.length } });
+  }
+  return images;
+}
+
+function collectTrendSnapshotsForRun(run) {
+  const byCode = new Map();
+  const add = (code, name, snapshot) => {
+    if (!snapshot?.trendProfile?.series?.length) return;
+    const key = code || snapshot.code || name;
+    if (!key || byCode.has(key)) return;
+    byCode.set(key, {
+      code: code || snapshot.code || "",
+      name: name || snapshot.name || "",
+      snapshot
+    });
+  };
+
+  for (const tx of run.transactions || []) {
+    add(tx.code, tx.name, tx.fundSnapshot);
+  }
+  for (const position of run.accountAfter?.positions || []) {
+    add(position.code, position.name, position.fundSnapshot);
+  }
+  for (const order of run.orders || []) {
+    add(order.code, order.name, order.fundSnapshot);
+  }
+  return [...byCode.values()];
+}
+
 function isPreciousMetalQuestion(text) {
   return hasAny(normalizeIntentText(text), ["黄金", "金价", "贵金属", "白银", "沪金", "沪银", "comex", "美元指数", "避险"]);
 }
@@ -3888,6 +3947,37 @@ async function downloadMessageImage(messageId, imageKey) {
   return { mimeType, buffer };
 }
 
+async function uploadFeishuImage(buffer, fileName, config = getEffectiveConfig()) {
+  const token = await getTenantAccessToken(config);
+  const url = new URL("/open-apis/im/v1/images", config.feishuBaseUrl);
+  const form = new FormData();
+  form.set("image_type", "message");
+  form.set("image", new Blob([buffer], { type: "image/png" }), fileName || "trend.png");
+
+  const response = await fetchWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: form
+    },
+    HTTP_TIMEOUT_MS
+  );
+  const text = await response.text();
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    json = null;
+  }
+  if (!response.ok || json?.code !== 0 || !json?.data?.image_key) {
+    throw new Error(`飞书图片上传失败：HTTP ${response.status} ${text.slice(0, 500)}`);
+  }
+  return json.data.image_key;
+}
+
 async function enrichFunds(fundCodes) {
   const uniqueCodes = mergeFundCodes(fundCodes);
   if (!uniqueCodes.length) {
@@ -4444,6 +4534,154 @@ function buildTrendSeries(points = [], limit = 120) {
     nav: round(point.cumulativeNav, 4),
     dailyReturnPct: point.dailyReturnPct === null || point.dailyReturnPct === undefined ? null : round(point.dailyReturnPct, 2)
   }));
+}
+
+function renderTrendSeriesPng({ series = [], width = 720, height = 260 } = {}) {
+  const points = series
+    .map((item) => ({ date: item.date || "", nav: Number(item.nav) }))
+    .filter((item) => Number.isFinite(item.nav) && item.nav > 0);
+  if (points.length < 2) return null;
+
+  const canvas = createRgbaCanvas(width, height, [255, 255, 255, 255]);
+  const padX = 34;
+  const padTop = 22;
+  const padBottom = 30;
+  const values = points.map((item) => item.nav);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const first = points[0];
+  const last = points[points.length - 1];
+  const changePct = first.nav > 0 ? (last.nav / first.nav - 1) * 100 : 0;
+  const lineColor = changePct >= 0 ? [22, 130, 93, 255] : [194, 65, 12, 255];
+  const gridColor = [229, 235, 243, 255];
+  const axisColor = [148, 163, 184, 255];
+  const pointsPx = points.map((item, index) => {
+    const x = padX + (index / Math.max(1, points.length - 1)) * (width - padX * 2);
+    const y = padTop + (1 - (item.nav - min) / range) * (height - padTop - padBottom);
+    return { x, y };
+  });
+
+  for (let i = 0; i <= 4; i += 1) {
+    const y = padTop + (i / 4) * (height - padTop - padBottom);
+    drawLine(canvas, padX, y, width - padX, y, gridColor, 1);
+  }
+  drawLine(canvas, padX, padTop, padX, height - padBottom, axisColor, 1);
+  drawLine(canvas, padX, height - padBottom, width - padX, height - padBottom, axisColor, 1);
+
+  for (let i = 1; i < pointsPx.length; i += 1) {
+    drawLine(canvas, pointsPx[i - 1].x, pointsPx[i - 1].y, pointsPx[i].x, pointsPx[i].y, lineColor, 4);
+  }
+  drawCircle(canvas, pointsPx[0].x, pointsPx[0].y, 4, [100, 116, 139, 255]);
+  drawCircle(canvas, pointsPx[pointsPx.length - 1].x, pointsPx[pointsPx.length - 1].y, 5, lineColor);
+
+  return encodePngRgba(canvas);
+}
+
+function createRgbaCanvas(width, height, color) {
+  const pixels = Buffer.alloc(width * height * 4);
+  for (let i = 0; i < width * height; i += 1) {
+    pixels[i * 4] = color[0];
+    pixels[i * 4 + 1] = color[1];
+    pixels[i * 4 + 2] = color[2];
+    pixels[i * 4 + 3] = color[3];
+  }
+  return { width, height, pixels };
+}
+
+function setPixel(canvas, x, y, color) {
+  const px = Math.round(x);
+  const py = Math.round(y);
+  if (px < 0 || py < 0 || px >= canvas.width || py >= canvas.height) return;
+  const offset = (py * canvas.width + px) * 4;
+  canvas.pixels[offset] = color[0];
+  canvas.pixels[offset + 1] = color[1];
+  canvas.pixels[offset + 2] = color[2];
+  canvas.pixels[offset + 3] = color[3];
+}
+
+function drawCircle(canvas, cx, cy, radius, color) {
+  const r = Math.max(1, Math.round(radius));
+  for (let y = -r; y <= r; y += 1) {
+    for (let x = -r; x <= r; x += 1) {
+      if (x * x + y * y <= r * r) {
+        setPixel(canvas, cx + x, cy + y, color);
+      }
+    }
+  }
+}
+
+function drawLine(canvas, x1, y1, x2, y2, color, width = 1) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const steps = Math.max(Math.abs(dx), Math.abs(dy), 1);
+  const radius = Math.max(0, Math.floor(width / 2));
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    const x = x1 + dx * t;
+    const y = y1 + dy * t;
+    if (radius <= 0) {
+      setPixel(canvas, x, y, color);
+    } else {
+      drawCircle(canvas, x, y, radius, color);
+    }
+  }
+}
+
+function encodePngRgba(canvas) {
+  const raw = Buffer.alloc((canvas.width * 4 + 1) * canvas.height);
+  for (let y = 0; y < canvas.height; y += 1) {
+    const rowOffset = y * (canvas.width * 4 + 1);
+    raw[rowOffset] = 0;
+    canvas.pixels.copy(raw, rowOffset + 1, y * canvas.width * 4, (y + 1) * canvas.width * 4);
+  }
+
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", Buffer.concat([
+      uint32be(canvas.width),
+      uint32be(canvas.height),
+      Buffer.from([8, 6, 0, 0, 0])
+    ])),
+    pngChunk("IDAT", zlib.deflateSync(raw)),
+    pngChunk("IEND", Buffer.alloc(0))
+  ]);
+}
+
+function pngChunk(type, data) {
+  const typeBuffer = Buffer.from(type, "ascii");
+  const crcInput = Buffer.concat([typeBuffer, data]);
+  return Buffer.concat([
+    uint32be(data.length),
+    typeBuffer,
+    data,
+    uint32be(crc32(crcInput))
+  ]);
+}
+
+function uint32be(value) {
+  const buffer = Buffer.alloc(4);
+  buffer.writeUInt32BE(value >>> 0, 0);
+  return buffer;
+}
+
+let crcTable = null;
+function crc32(buffer) {
+  if (!crcTable) {
+    crcTable = new Uint32Array(256);
+    for (let n = 0; n < 256; n += 1) {
+      let c = n;
+      for (let k = 0; k < 8; k += 1) {
+        c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      }
+      crcTable[n] = c >>> 0;
+    }
+  }
+  let c = 0xffffffff;
+  for (const byte of buffer) {
+    c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8);
+  }
+  return (c ^ 0xffffffff) >>> 0;
 }
 
 function buildFundActionabilitySignals(digest) {
@@ -5429,11 +5667,11 @@ function buildFeishuReplyPayload(text, options = {}) {
 
   return {
     msg_type: "interactive",
-    content: JSON.stringify(buildFeishuCard(text, kind))
+    content: JSON.stringify(buildFeishuCard(text, kind, options))
   };
 }
 
-function buildFeishuCard(text, kind) {
+function buildFeishuCard(text, kind, options = {}) {
   const meta = getCardMeta(kind);
   const content = normalizeFeishuCardMarkdown(text, kind);
   const elements = [
@@ -5445,6 +5683,32 @@ function buildFeishuCard(text, kind) {
       }
     }
   ];
+
+  const cardImages = Array.isArray(options.images) ? options.images : [];
+  for (const image of cardImages) {
+    if (!image?.imageKey) continue;
+    elements.push(
+      { tag: "hr" },
+      {
+        tag: "note",
+        elements: [
+          {
+            tag: "plain_text",
+            content: image.alt || "走势曲线"
+          }
+        ]
+      },
+      {
+        tag: "img",
+        img_key: image.imageKey,
+        alt: {
+          tag: "plain_text",
+          content: image.alt || "走势曲线"
+        },
+        mode: "fit_horizontal"
+      }
+    );
+  }
 
   if (kind === "answer") {
     elements.push(
