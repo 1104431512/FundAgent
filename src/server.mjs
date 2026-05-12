@@ -874,20 +874,37 @@ async function executePortfolioValuation(db, run, config) {
 
   markPortfolioRunProgress(db, run, `估值资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度复盘。`);
   await yieldToEventLoop();
-  const raw = await buildPortfolioValuationWithModel({
-    accountBefore,
-    accountAfter: summarizePortfolioAccount(db.account),
-    positionUpdates,
-    profiles,
-    config,
-    profileContext
-  });
+  const accountAfter = summarizePortfolioAccount(db.account);
+  let raw = "";
+  try {
+    raw = await buildPortfolioValuationWithModel({
+      accountBefore,
+      accountAfter,
+      positionUpdates,
+      profiles,
+      config,
+      profileContext
+    });
+  } catch (error) {
+    if (!isEmptyModelResponse(error)) {
+      throw error;
+    }
+    console.warn("[portfolio-valuation-model-empty]", run.id, error.message);
+    updateStats({ counters: { portfolioValuationModelEmptyFallbacks: 1 } });
+    raw = buildFallbackPortfolioValuationRaw({
+      accountBefore,
+      accountAfter,
+      positionUpdates,
+      lifecycle,
+      profiles
+    });
+  }
   assertPortfolioRunActive(run);
   const review = normalizePortfolioReview(raw);
 
   run.title = "晚间估值复盘";
   run.accountBefore = accountBefore;
-  run.accountAfter = summarizePortfolioAccount(db.account);
+  run.accountAfter = accountAfter;
   run.positionUpdates = positionUpdates;
   run.transactions = lifecycle.transactions;
   run.orderUpdates = lifecycle.orderUpdates;
@@ -1101,6 +1118,7 @@ async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, p
     { skillIds: ["fund-portfolio-profile", "fund-portfolio-review", "fund-portfolio-execution"] },
     []
   );
+  const compactProfiles = (profiles || []).map(compactPortfolioReviewProfile);
   const systemText = [
     "你是飞书机器人“基金经理”的虚拟基金经理，正在做晚间估值复盘。",
     "请解释今日盈亏、仓位变化和明天观察重点。不要编造传入资料之外的数据。",
@@ -1121,8 +1139,8 @@ async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, p
     "持仓估值变化：",
     JSON.stringify(positionUpdates, null, 2),
     "",
-    "持仓联网资料：",
-    JSON.stringify(profiles || [], null, 2),
+    "持仓联网资料摘要：",
+    JSON.stringify(compactProfiles, null, 2),
     "",
     "输出 JSON 结构：",
     '{"summary":"今日盈亏复盘","reason":"为什么变动","nextWatch":["明天观察点"],"learningNotes":["可回溯学习点"],"sources":["数据源"]}'
@@ -1132,13 +1150,72 @@ async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, p
     systemText,
     userPrompt,
     images: [],
-    maxTokens: Math.min(Number(config.modelMaxOutputTokens || 2800), 1800)
+    maxTokens: Math.max(Number(config.modelMaxOutputTokens || 2800), 3600)
   });
   updateStats({
     counters: { portfolioReviewModelCalls: 1 },
     last: { lastPortfolioReviewModelAt: new Date().toISOString() }
   });
   return text;
+}
+
+function compactPortfolioReviewProfile(profile = {}) {
+  const oneYear = profile.riskMetrics?.periods?.["1y"] || {};
+  const topHoldings = (profile.holdings?.equityTopHoldings || profile.topStocks || []).slice(0, 5).map((item) => {
+    if (typeof item === "string") return item;
+    return [item.code, item.name, item.netValuePct ? `${item.netValuePct}%` : ""].filter(Boolean).join(" ");
+  });
+  return {
+    code: profile.code || "",
+    name: profile.name || "",
+    navDate: profile.snapshotDate || "",
+    unitNav: profile.unitNav || "",
+    estimatedNav: profile.estimatedNav || "",
+    estimatedChangePct: profile.estimatedChangePct || "",
+    trendProfile: profile.trendProfile || null,
+    actionability: profile.actionability || null,
+    oneYearRisk: oneYear.ok ? pickRiskPeriod(oneYear) : null,
+    returns: profile.returns || {},
+    shareClass: profile.shareClass || "",
+    feeModel: profile.shareClassFeeModel || null,
+    scale: profile.scale || null,
+    topHoldings,
+    sources: (profile.sources || []).slice(0, 4)
+  };
+}
+
+function buildFallbackPortfolioValuationRaw({ accountBefore, accountAfter, positionUpdates, lifecycle = {}, profiles = [] }) {
+  const changes = [...positionUpdates].sort((a, b) => Math.abs(Number(b.dayPnl || 0)) - Math.abs(Number(a.dayPnl || 0)));
+  const biggest = changes[0];
+  const dayPnl = round(Number(accountAfter?.dayPnl || 0), 2);
+  const summary = dayPnl > 0
+    ? `今日组合估值上升 ${formatSignedNumber(dayPnl)} 元。`
+    : dayPnl < 0
+      ? `今日组合估值回落 ${formatSignedNumber(dayPnl)} 元。`
+      : "今日组合估值基本持平。";
+  const reasonParts = [
+    biggest ? `主要变动来自 ${biggest.code} ${biggest.name || ""}，单项 ${formatSignedNumber(biggest.dayPnl)} 元。` : "当前没有明显持仓估值变动。",
+    `总资产 ${accountAfter?.totalAsset ?? 0} 元，仓位 ${accountAfter?.positionWeightPct ?? 0}%。`,
+    lifecycle.orderUpdates?.length ? `有 ${lifecycle.orderUpdates.length} 笔订单状态更新。` : "",
+    lifecycle.transactions?.length ? `有 ${lifecycle.transactions.length} 笔确认成交。` : ""
+  ].filter(Boolean);
+  const nextWatch = changes.slice(0, 3).map((item) =>
+    `${item.code} ${item.name || ""}：关注净值 ${item.latestNav || "缺失"} 后续是否延续，当前单日影响 ${formatSignedNumber(item.dayPnl)} 元。`
+  );
+  if (!nextWatch.length) nextWatch.push("明日继续观察持仓净值更新和未完成订单确认状态。");
+  const learningNotes = [
+    accountAfter?.positionWeightPct > 80 ? "仓位偏高，下一轮决策应优先评估加仓必要性。" : "",
+    accountAfter?.cash > 0 ? "保留现金可提高下一轮调仓机动性。" : "",
+    "本次为模型空返回后的规则兜底复盘，应在下一轮正常模型复盘中复核。"
+  ].filter(Boolean);
+
+  return JSON.stringify({
+    summary,
+    reason: reasonParts.join(" "),
+    nextWatch,
+    learningNotes,
+    sources: collectPortfolioSources(null, profiles).slice(0, 8)
+  });
 }
 
 async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profiles, activeOrders, lifecycle, config, profileContext }) {
@@ -3661,11 +3738,11 @@ async function callResponsesApi({ config, systemText, userPrompt, images, maxTok
         { timeoutMs: resolveModelTimeoutMs(config, timeoutMs) }
       );
       if (!streamedText) {
-        throw new Error("模型返回为空。");
+        throw createEmptyModelResponseError("stream");
       }
       return streamedText;
     } catch (error) {
-      if (!isResponsesStreamFallbackError(error)) {
+      if (!isResponsesStreamFallbackError(error) && !isEmptyModelResponse(error)) {
         throw error;
       }
     }
@@ -3677,7 +3754,7 @@ async function callResponsesApi({ config, systemText, userPrompt, images, maxTok
 
   const text = extractResponsesText(json);
   if (!text) {
-    throw new Error("模型返回为空。");
+    throw createEmptyModelResponseError("responses");
   }
   return text;
 }
@@ -3709,9 +3786,20 @@ async function callChatCompletionsApi({ config, systemText, userPrompt, images, 
 
   const text = json?.choices?.[0]?.message?.content?.trim();
   if (!text) {
-    throw new Error("模型返回为空。");
+    throw createEmptyModelResponseError("chat_completions");
   }
   return text;
+}
+
+function createEmptyModelResponseError(source = "model") {
+  const error = new Error("模型返回为空。");
+  error.code = "MODEL_EMPTY_RESPONSE";
+  error.source = source;
+  return error;
+}
+
+function isEmptyModelResponse(error) {
+  return error?.code === "MODEL_EMPTY_RESPONSE" || String(error?.message || "").includes("模型返回为空");
 }
 
 async function downloadMessageImage(messageId, imageKey) {
