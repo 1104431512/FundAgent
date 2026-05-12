@@ -901,8 +901,10 @@ async function executePortfolioValuation(db, run, config) {
   }
   assertPortfolioRunActive(run);
   const review = normalizePortfolioReview(raw);
+  markPortfolioRunProgress(db, run, "估值复盘已生成，正在保存任务结果。");
 
   run.title = "晚间估值复盘";
+  run.summary = review.summary;
   run.accountBefore = accountBefore;
   run.accountAfter = accountAfter;
   run.positionUpdates = positionUpdates;
@@ -956,6 +958,7 @@ async function executePortfolioPremarket(db, run, config) {
   });
   assertPortfolioRunActive(run);
   const observation = normalizePortfolioPremarket(raw);
+  markPortfolioRunProgress(db, run, "盘前观察已生成，正在保存任务结果。");
 
   run.title = "盘前观察";
   run.summary = observation.summary;
@@ -1012,6 +1015,7 @@ async function executePortfolioWeekly(db, run, config) {
   });
   assertPortfolioRunActive(run);
   const weekly = normalizePortfolioWeekly(raw);
+  markPortfolioRunProgress(db, run, "周总结已生成，正在保存任务结果。");
 
   run.title = "周计划与总结";
   run.summary = weekly.summary;
