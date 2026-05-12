@@ -305,6 +305,7 @@ function renderPositions(positions) {
         const nav = snapshot.nav || item.lastNav || "";
         const navDate = snapshot.navDate || item.lastNavDate || "";
         const trend = getFundSnapshotTrendText(snapshot);
+        const trendChart = renderTrendChart(snapshot);
         const source = item.dataSource || snapshot.sources?.[0] || "";
         return `
         <div class="data-row">
@@ -312,6 +313,7 @@ function renderPositions(positions) {
             <strong>${escapeHtml(item.code)} ${escapeHtml(item.name)}</strong>
             <p>${escapeHtml(item.lastReason || "暂无最近操作理由")}</p>
             <p>${escapeHtml(trend)}</p>
+            ${trendChart}
             ${source ? `<small>${escapeHtml(source)}</small>` : ""}
           </div>
           <div>${formatMoney(item.currentValue)}</div>
@@ -395,6 +397,7 @@ function renderTransactions(transactions) {
             item.units ? formatNumber(item.units, 6) : "-"
           }</small>
           <small>${escapeHtml(getFundSnapshotTrendText(item.fundSnapshot || {}))}</small>
+          ${renderTrendChart(item.fundSnapshot || {})}
         </div>
       `
     )
@@ -420,6 +423,47 @@ function getFundSnapshotTrendText(snapshot = {}) {
     return parts.join("，");
   }
   return snapshot.trendSummary || "走势数据不足";
+}
+
+function renderTrendChart(snapshot = {}) {
+  const series = Array.isArray(snapshot.trendProfile?.series) ? snapshot.trendProfile.series : [];
+  const points = series
+    .map((item) => ({
+      date: item.date || "",
+      nav: Number(item.nav)
+    }))
+    .filter((item) => Number.isFinite(item.nav));
+  if (points.length < 2) return "";
+
+  const width = 260;
+  const height = 58;
+  const pad = 5;
+  const min = Math.min(...points.map((item) => item.nav));
+  const max = Math.max(...points.map((item) => item.nav));
+  const range = max - min || 1;
+  const coordinates = points.map((item, index) => {
+    const x = pad + (index / Math.max(1, points.length - 1)) * (width - pad * 2);
+    const y = height - pad - ((item.nav - min) / range) * (height - pad * 2);
+    return `${roundForSvg(x)},${roundForSvg(y)}`;
+  });
+  const first = points[0];
+  const last = points[points.length - 1];
+  const changePct = first.nav > 0 ? ((last.nav / first.nav - 1) * 100) : 0;
+  const strokeClass = changePct >= 0 ? "up" : "down";
+  const label = `${first.date || "-"} 到 ${last.date || "-"}：${formatSigned(changePct)}%`;
+
+  return `
+    <div class="trend-chart-wrap">
+      <svg class="trend-chart ${strokeClass}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(label)}" preserveAspectRatio="none">
+        <polyline points="${coordinates.join(" ")}"></polyline>
+      </svg>
+      <small>${escapeHtml(label)}</small>
+    </div>
+  `;
+}
+
+function roundForSvg(value) {
+  return Math.round(Number(value || 0) * 10) / 10;
 }
 
 function formatTrendLabel(value) {

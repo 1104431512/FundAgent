@@ -4417,6 +4417,7 @@ function computeTrendProfile(points = []) {
     ok: true,
     latestDate: latest.date,
     latestCumulativeNav: round(latest.cumulativeNav, 4),
+    series: buildTrendSeries(ordered, 120),
     return20dPct: r20,
     return60dPct: r60,
     return120dPct: r120,
@@ -4431,6 +4432,18 @@ function computeTrendProfile(points = []) {
         ? "等待20日涨幅降温或从高点回撤后再评估。"
         : "等待趋势重新转强后再评估。"
   };
+}
+
+function buildTrendSeries(points = [], limit = 120) {
+  const ordered = [...points]
+    .filter((point) => Number.isFinite(point.cumulativeNav) && point.cumulativeNav > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const slice = ordered.slice(-Math.max(2, Number(limit || 120)));
+  return slice.map((point) => ({
+    date: point.date,
+    nav: round(point.cumulativeNav, 4),
+    dailyReturnPct: point.dailyReturnPct === null || point.dailyReturnPct === undefined ? null : round(point.dailyReturnPct, 2)
+  }));
 }
 
 function buildFundActionabilitySignals(digest) {
