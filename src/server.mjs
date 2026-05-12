@@ -3181,8 +3181,8 @@ async function buildFundReportCardImages(profiles, config) {
           })
         : renderFundReportSummaryPng({
             profile: item.snapshot,
-            width: 760,
-            height: 360
+            width: 820,
+            height: 420
           });
       if (!png) continue;
       const imageKey = await uploadFeishuImage(png, `fund-report-${chartMode}-${item.code || "fund"}.png`, config);
@@ -3735,6 +3735,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "如果提供了 marketDeepDive，必须使用其中的 trendProfile、risk、fees、holdings 和 actionability 来筛掉不适合的候选；不要只复述市场快照。",
     "不要编造 marketSnapshot 里没有的基金代码、涨跌幅、排名、金价或新闻。",
     "推荐基金时不要默认偏向 A 类；同一基金存在 A/C/D/I 等份额时，按用户持有期和费用模型说明为什么选这个份额，并提示可替代份额。",
+    "如果候选下钻里出现 seed.alternativeShareClasses 或 seed.sameExposureAlternatives，不要把它们当成独立推荐名额；主推荐只列一个代表，替代份额/同指数替代品放在该条下面说明。",
     "必须通过 fund-actionability-evaluation 和 fund-answer-quality 质量门槛：先给直接结论，再给适合/不适合的自评估，再给执行方案。",
     "如果数据不足以支持具体基金代码，就推荐基金方向/筛选条件，并把具体代码标为待复核。",
     "回答要大胆但有边界：证据偏正面时可以给出买入或分批买入候选；不要机械地总是等待回撤。",
@@ -3763,6 +3764,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
     "2. 自评估：这类需求是否适合现在做，confidence，适合激进/均衡/保守哪类。",
     "3. 推荐清单：优先 3-5 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、趋势/自评估动作、为什么入选。只能使用快照或下钻中的候选代码；如果没有足够代码，就写“待复核方向”。",
+    "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
     "4. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
     "5. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的条件。"
   ].join("\n");
@@ -4550,6 +4552,112 @@ function scoreDeepDiveCandidate(item) {
   return score;
 }
 
+function selectDiversifiedDeepDiveCandidates(candidates, limit, options = {}) {
+  const max = Math.max(0, Number(limit || 0));
+  if (!max) return [];
+  const selected = [];
+  const byProduct = new Map();
+  const byExposure = new Map();
+  const diversifyExposure = options.diversifyExposure !== false;
+
+  for (const candidate of candidates || []) {
+    if (!candidate?.code) continue;
+    const productKey = getCandidateProductKey(candidate);
+    const exposureKey = getCandidateExposureKey(candidate);
+
+    if (productKey && byProduct.has(productKey)) {
+      appendCandidateAlternative(byProduct.get(productKey), candidate, "alternativeShareClasses");
+      continue;
+    }
+
+    if (diversifyExposure && exposureKey && byExposure.has(exposureKey)) {
+      appendCandidateAlternative(byExposure.get(exposureKey), candidate, "sameExposureAlternatives");
+      continue;
+    }
+
+    if (selected.length >= max) {
+      continue;
+    }
+
+    const item = {
+      ...candidate,
+      productKey,
+      exposureKey,
+      alternativeShareClasses: [],
+      sameExposureAlternatives: []
+    };
+    selected.push(item);
+    if (productKey) byProduct.set(productKey, item);
+    if (exposureKey) byExposure.set(exposureKey, item);
+  }
+
+  return selected;
+}
+
+function appendCandidateAlternative(base, candidate, field) {
+  if (!base || !candidate?.code || base.code === candidate.code) return;
+  const existing = Array.isArray(base[field]) ? base[field] : [];
+  if (existing.some((item) => item.code === candidate.code)) return;
+  base[field] = [
+    ...existing,
+    {
+      code: candidate.code,
+      name: candidate.name || "",
+      shareClass: candidate.shareClass || "",
+      shareClassFeeModel: candidate.shareClassFeeModel || null,
+      type: candidate.type || "",
+      company: candidate.company || "",
+      oneMonthPct: candidate.oneMonthPct ?? "",
+      oneYearPct: candidate.oneYearPct ?? "",
+      unitNav: candidate.unitNav ?? "",
+      source: candidate.source || ""
+    }
+  ].slice(0, 6);
+}
+
+function getCandidateProductKey(candidate) {
+  const name = normalizeCandidateFundName(candidate?.name);
+  return name ? name.toLowerCase() : "";
+}
+
+function getCandidateExposureKey(candidate) {
+  const name = normalizeCandidateFundName(candidate?.name)
+    .replace(/发起式/g, "")
+    .replace(/发起/g, "")
+    .replace(/增强/g, "")
+    .replace(/指数证券投资基金/g, "指数")
+    .replace(/交易型开放式/g, "")
+    .replace(/证券投资基金/g, "")
+    .replace(/基金中基金/g, "FOF")
+    .replace(/基金$/g, "");
+  if (!name) return "";
+  if (!/(ETF|联接|指数|QDII|LOF|FOF|上证|中证|沪深|创业板|科创|恒生|纳斯达克|标普|黄金|白银)/i.test(name)) {
+    return "";
+  }
+
+  const markers = ["上证", "中证", "沪深", "创业板", "科创", "恒生", "纳斯达克", "标普", "黄金", "白银"];
+  const markerIndex = markers
+    .map((marker) => name.indexOf(marker))
+    .filter((index) => index >= 0)
+    .sort((a, b) => a - b)[0];
+  const exposure = markerIndex >= 0 ? name.slice(markerIndex) : name;
+  return exposure
+    .replace(/ETF联接/g, "ETF")
+    .replace(/联接/g, "")
+    .replace(/连接/g, "")
+    .replace(/[-_·.]/g, "")
+    .toLowerCase();
+}
+
+function normalizeCandidateFundName(name) {
+  return String(name || "")
+    .replace(/\s+/g, "")
+    .replace(/[（）()]/g, "")
+    .replace(/(?:人民币|美元|港币)?[ABCDEIY]类?$/i, "")
+    .replace(/[·._-]/g, "")
+    .trim();
+}
+
 async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
   if (!marketSnapshot) return null;
   const focusedCandidates = await fetchFocusedFundCandidates(userText);
@@ -4568,7 +4676,9 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
     .sort((a, b) => scoreDeepDiveCandidate(b) - scoreDeepDiveCandidate(a));
   const defaultLimit = precious ? 4 : 3;
   const limit = Math.max(0, Number(process.env.MARKET_DEEP_DIVE_FUND_LIMIT ?? defaultLimit));
-  const selected = merged.slice(0, limit);
+  const selected = selectDiversifiedDeepDiveCandidates(merged, limit, {
+    diversifyExposure: options.forRecommendation || precious
+  });
   if (!selected.length) {
     return {
       ok: false,
@@ -4640,7 +4750,11 @@ async function fetchFundResearchDigest(code, seed = {}) {
       oneMonthPct: seed.oneMonthPct ?? "",
       threeMonthPct: seed.threeMonthPct ?? "",
       sixMonthPct: seed.sixMonthPct ?? "",
-      oneYearPct: seed.oneYearPct ?? ""
+      oneYearPct: seed.oneYearPct ?? "",
+      productKey: seed.productKey || "",
+      exposureKey: seed.exposureKey || "",
+      alternativeShareClasses: (seed.alternativeShareClasses || []).slice(0, 6),
+      sameExposureAlternatives: (seed.sameExposureAlternatives || []).slice(0, 6)
     },
     nav: {
       unitNav: valuation.dwjz || seed.unitNav || "",
@@ -4864,31 +4978,31 @@ function renderFundReportSummaryPng({ profile, width = 760, height = 360 } = {})
 
   drawText(canvas, 28, 18, `${code} FUND REPORT`, ink, 3);
   drawText(canvas, 28, 44, `${first.date || "START"} / ${last.date || "LAST"}`, muted, 2);
-  drawText(canvas, 552, 24, `RANGE ${formatChartPct(changePct)}`, lineColor, 3);
+  drawText(canvas, width - 244, 24, `RANGE ${formatChartPct(changePct)}`, lineColor, 3);
 
   drawLineChartPanel(canvas, {
-    x: 28,
-    y: 72,
-    width: 472,
-    height: 162,
+    x: 78,
+    y: 88,
+    width: 470,
+    height: 170,
     points,
     color: lineColor,
     label: "NAV TREND"
   });
 
   drawDrawdownPanel(canvas, {
-    x: 28,
-    y: 262,
-    width: 472,
-    height: 64,
+    x: 78,
+    y: 322,
+    width: 470,
+    height: 56,
     points
   });
 
   drawReturnBarsPanel(canvas, {
-    x: 540,
-    y: 82,
-    width: 182,
-    height: 228,
+    x: 590,
+    y: 96,
+    width: 190,
+    height: 250,
     trend
   });
 
@@ -4910,6 +5024,8 @@ function drawLineChartPanel(canvas, { x, y, width, height, points, color, label 
   const range = max - min || 1;
   drawText(canvas, x, y - 22, label, [51, 65, 85, 255], 2);
   drawChartFrame(canvas, x, y, width, height);
+  drawYAxisTickLabels(canvas, x, y, height, [max, min + range / 2, min], formatChartNumber, "NAV");
+  drawXAxisDateLabels(canvas, x, y + height + 8, width, points);
 
   const px = points.map((item, index) => ({
     x: x + 10 + (index / Math.max(1, points.length - 1)) * (width - 20),
@@ -4920,8 +5036,6 @@ function drawLineChartPanel(canvas, { x, y, width, height, points, color, label 
   }
   drawCircle(canvas, px[0].x, px[0].y, 4, [100, 116, 139, 255]);
   drawCircle(canvas, px[px.length - 1].x, px[px.length - 1].y, 5, color);
-  drawText(canvas, x + 8, y + 10, `HIGH ${formatChartNumber(max)}`, [100, 116, 139, 255], 2);
-  drawText(canvas, x + 8, y + height - 22, `LOW ${formatChartNumber(min)}`, [100, 116, 139, 255], 2);
 }
 
 function drawDrawdownPanel(canvas, { x, y, width, height, points }) {
@@ -4934,6 +5048,8 @@ function drawDrawdownPanel(canvas, { x, y, width, height, points }) {
   const range = Math.abs(min) || 1;
   drawText(canvas, x, y - 22, "DRAWDOWN FROM HIGH", [51, 65, 85, 255], 2);
   drawChartFrame(canvas, x, y, width, height);
+  drawYAxisTickLabels(canvas, x, y, height, [0, min], formatChartPct, "DD");
+  drawXAxisDateLabels(canvas, x, y + height + 8, width, points);
   const zeroY = y + 10;
   drawLine(canvas, x + 8, zeroY, x + width - 8, zeroY, [203, 213, 225, 255], 1);
   const px = drawdowns.map((value, index) => ({
@@ -4962,6 +5078,9 @@ function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
   const maxAbs = Math.max(5, ...items.map((item) => Math.abs(item.value)));
   const center = x + Math.round(width / 2);
   drawLine(canvas, center, y + 26, center, y + height - 20, [203, 213, 225, 255], 1);
+  drawText(canvas, center - 8, y + height - 16, "0", [100, 116, 139, 255], 2);
+  drawText(canvas, x + 8, y + height - 16, formatChartPct(-maxAbs), [100, 116, 139, 255], 2);
+  drawText(canvas, x + width - 58, y + height - 16, formatChartPct(maxAbs), [100, 116, 139, 255], 2);
   const rowGap = Math.floor((height - 44) / items.length);
   items.forEach((item, index) => {
     const rowY = y + 32 + index * rowGap;
@@ -4984,6 +5103,37 @@ function drawChartFrame(canvas, x, y, width, height) {
     drawLine(canvas, x, gy, x + width, gy, grid, 1);
   }
   drawRect(canvas, x, y, width, height, [203, 213, 225, 255], 1);
+}
+
+function drawYAxisTickLabels(canvas, x, y, height, values, formatter, axisLabel) {
+  const color = [100, 116, 139, 255];
+  drawText(canvas, Math.max(4, x - 58), y - 18, axisLabel, color, 2);
+  values.forEach((value, index) => {
+    const ty = values.length === 1 ? y + height : y + (index / (values.length - 1)) * height;
+    drawLine(canvas, x - 4, ty, x, ty, [148, 163, 184, 255], 1);
+    drawText(canvas, Math.max(4, x - 68), ty - 6, formatter(value), color, 2);
+  });
+}
+
+function drawXAxisDateLabels(canvas, x, y, width, points) {
+  const color = [100, 116, 139, 255];
+  const first = points[0]?.date || "";
+  const middle = points[Math.floor(points.length / 2)]?.date || "";
+  const last = points[points.length - 1]?.date || "";
+  const labels = [
+    { text: shortChartDate(first), x },
+    { text: shortChartDate(middle), x: x + width / 2 - 34 },
+    { text: shortChartDate(last), x: x + width - 68 }
+  ];
+  for (const item of labels) {
+    drawText(canvas, item.x, y, item.text, color, 2);
+  }
+}
+
+function shortChartDate(value) {
+  const text = String(value || "");
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[2]}/${match[3]}` : text.slice(-5) || "NA";
 }
 
 function formatChartNumber(value) {
