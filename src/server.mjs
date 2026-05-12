@@ -3167,21 +3167,28 @@ async function buildFundReportCardImages(profiles, config) {
   if (String(process.env.FEISHU_REPORT_TREND_IMAGES ?? "true") === "false") {
     return [];
   }
-  const limit = Math.max(0, Number(process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT || 3));
+  const limit = Math.max(0, Number(process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT || 3) || 3);
+  const chartMode = String(process.env.FEISHU_REPORT_CHART_MODE || "summary").toLowerCase();
   const snapshots = collectTrendSnapshotsFromProfiles(profiles).slice(0, limit);
   const images = [];
   for (const item of snapshots) {
     try {
-      const png = renderTrendSeriesPng({
-        series: item.snapshot.trendProfile?.series || [],
-        width: 720,
-        height: 260
-      });
+      const png = chartMode === "trend"
+        ? renderTrendSeriesPng({
+            series: item.snapshot.trendProfile?.series || [],
+            width: 720,
+            height: 260
+          })
+        : renderFundReportSummaryPng({
+            profile: item.snapshot,
+            width: 760,
+            height: 360
+          });
       if (!png) continue;
-      const imageKey = await uploadFeishuImage(png, `fund-report-trend-${item.code || "fund"}.png`, config);
+      const imageKey = await uploadFeishuImage(png, `fund-report-${chartMode}-${item.code || "fund"}.png`, config);
       images.push({
         imageKey,
-        alt: `${item.code} ${item.name} 走势图`.trim() || "基金走势图"
+        alt: `${item.code} ${item.name} 走势 / 回撤 / 阶段收益图`.trim() || "基金报告图"
       });
     } catch (error) {
       console.error("[fund-report-trend-image-error]", item.code || item.name || "unknown", error);
@@ -3697,11 +3704,23 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
     images: [],
     maxTokens: getEffectiveConfig().modelMaxOutputTokens
   });
+  const guardedText = await enforceFundAnswerQuality({
+    text: finalText,
+    workflow: isComparison ? "fund_comparison" : "fund_screening",
+    userText,
+    intent: { workflow: isComparison ? "fund_comparison" : "fund_screening" },
+    evidence: {
+      extracted,
+      enrichments,
+      analystReview,
+      committeeVote
+    }
+  });
   updateStats({
     counters: { managerReviewCalls: 1 },
     last: { lastManagerReviewAt: new Date().toISOString() }
   });
-  return finalText;
+  return guardedText;
 }
 
 async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
@@ -3748,11 +3767,22 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "5. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的条件。"
   ].join("\n");
 
-  const text = await callModel({
+  const draft = await callModel({
     systemText,
     userPrompt,
     images: [],
     maxTokens: getEffectiveConfig().modelMaxOutputTokens
+  });
+  const text = await enforceFundAnswerQuality({
+    text: draft,
+    workflow: "fund_recommendation",
+    userText,
+    intent,
+    evidence: {
+      marketEvidence,
+      marketSnapshot: summarizeMarketSnapshot(marketSnapshot),
+      marketDeepDive
+    }
   });
   updateStats({
     counters: { fundRecommendationModelCalls: 1 },
@@ -3801,11 +3831,22 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "请直接回答用户问题。若用户问“值得买吗”，必须给 buy/staged/wait/avoid 之一，并给新资金和已有持仓分别怎么做。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
   ].join("\n");
 
-  const text = await callModel({
+  const draft = await callModel({
     systemText,
     userPrompt,
     images: [],
     maxTokens: Math.min(Number(getEffectiveConfig().modelMaxOutputTokens || 2800), 1800)
+  });
+  const text = await enforceFundAnswerQuality({
+    text: draft,
+    workflow: "fund_qa",
+    userText,
+    intent,
+    evidence: {
+      marketEvidence,
+      marketSnapshot: summarizeMarketSnapshot(marketSnapshot),
+      marketDeepDive
+    }
   });
   updateStats({
     counters: { fundQaModelCalls: 1 },
@@ -3815,6 +3856,161 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     text,
     chartProfiles: marketDeepDive?.candidates || []
   };
+}
+
+async function enforceFundAnswerQuality({ text, workflow, userText, intent, evidence }) {
+  if (String(process.env.FUND_ANSWER_QUALITY_GATE ?? "true") === "false") {
+    return text;
+  }
+
+  const evaluation = evaluateFundAnswerQuality({ text, workflow, userText, evidence });
+  if (evaluation.ok) {
+    updateStats({ counters: { fundAnswerQualityPasses: 1 } });
+    return text;
+  }
+
+  updateStats({
+    counters: { fundAnswerQualityFailures: 1 },
+    last: {
+      lastFundAnswerQualityFailureAt: new Date().toISOString(),
+      lastFundAnswerQualityIssues: evaluation.issues.join(",")
+    }
+  });
+
+  if (String(process.env.FUND_ANSWER_QUALITY_REWRITE ?? "true") === "false") {
+    return text;
+  }
+
+  try {
+    const skillContext = buildSkillContextForIntent(
+      { skillIds: ["fund-answer-quality", "fund-synthesis"] },
+      ["fund-answer-quality", "fund-synthesis"]
+    );
+    const systemText = [
+      "You are the quality-control editor for a Feishu fund manager bot.",
+      "Rewrite only the final user-facing answer. Do not expose hidden reasoning or internal chain-of-thought.",
+      "The rewrite must answer the user's question in the first two lines, give a concrete action, cite available evidence, and convert risk into sizing, waiting conditions, or review triggers.",
+      "Do not invent fund codes or market figures not present in the evidence.",
+      "Use Chinese. Keep it concise and suitable for a Feishu card. Do not use Markdown tables or code blocks.",
+      "",
+      skillContext
+    ].join("\n");
+    const userPrompt = [
+      `workflow=${workflow || "fund"}`,
+      `userQuestion=${userText || ""}`,
+      "",
+      "routerIntent:",
+      JSON.stringify(intent || {}, null, 2),
+      "",
+      "qualityIssues:",
+      evaluation.issues.join(", "),
+      "",
+      "availableEvidence:",
+      compactQualityEvidence(evidence),
+      "",
+      "draftAnswer:",
+      String(text || "").slice(0, 8000),
+      "",
+      "Rewrite the answer now. Keep concrete numbers, fund codes, action, sizing, confidence, and decision boundaries when evidence supports them."
+    ].join("\n");
+    const rewritten = await callModel({
+      systemText,
+      userPrompt,
+      images: [],
+      maxTokens: Math.min(Number(getEffectiveConfig().modelMaxOutputTokens || 2800), 1800)
+    });
+    const secondPass = evaluateFundAnswerQuality({ text: rewritten, workflow, userText, evidence });
+    updateStats({
+      counters: {
+        fundAnswerQualityRewrites: 1,
+        fundAnswerQualityRewritePasses: secondPass.ok ? 1 : 0
+      },
+      last: {
+        lastFundAnswerQualityRewriteAt: new Date().toISOString(),
+        lastFundAnswerQualityRewriteIssues: secondPass.issues.join(",")
+      }
+    });
+    return rewritten || text;
+  } catch (error) {
+    console.error("[fund-answer-quality-rewrite-error]", error);
+    recordError(error, { fundAnswerQualityRewriteFailures: 1 });
+    return text;
+  }
+}
+
+function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
+  const body = String(text || "").replace(/\s+/g, " ").trim();
+  const firstScreen = body.slice(0, 650);
+  const issues = [];
+  const actionSeeking = workflow !== "conversation" && (
+    ["fund_screening", "fund_comparison", "fund_recommendation"].includes(workflow)
+    || isActionSeekingFundQuestion(userText)
+  );
+  const hasAction = /(买入|分批|持有|等待|观望|回避|卖出|换基|暂停|加仓|减仓|买|卖|buy|staged|wait|avoid|hold|sell)/i.test(firstScreen);
+  const hasSizing = /(\d+(?:\.\d+)?\s*%|\d+(?:\.\d+)?\s*(?:元|万)|仓位|比例|成|批|底仓|第一笔|上限|下限)/.test(body);
+  const hasEvidence = /(\d{6}|20日|60日|120日|250日|净值|夏普|回撤|波动|费率|持仓|金价|美元指数|COMEX|黄金ETF|QDII|trend|drawdown|sharpe|nav|\d+(?:\.\d+)?%\s*(?:收益|回撤|波动|费率|涨幅|跌幅|涨|跌|return|drawdown|change))/i.test(body);
+  const evidenceAvailable = hasQualityEvidence(evidence);
+  const clicheCount = [
+    /可以配置.{0,16}(但|不过).{0,12}(不|别)追高/,
+    /不建议一把梭/,
+    /取决于.{0,16}风险承受/,
+    /长期.{0,8}小比例.{0,8}配置/,
+    /需要结合自身情况/
+  ].filter((pattern) => pattern.test(body)).length;
+  const riskCount = (body.match(/风险/g) || []).length;
+
+  if (actionSeeking && !hasAction) issues.push("missing_direct_action");
+  if (actionSeeking && !hasSizing) issues.push("missing_sizing_or_execution");
+  if (evidenceAvailable && !hasEvidence) issues.push("missing_concrete_evidence");
+  if (clicheCount >= 1 && (!hasSizing || !hasEvidence)) issues.push("generic_cliche_answer");
+  if (riskCount >= 6 && !/(边界|触发|仓位|等待|暂停|回避|上限|下限)/.test(body)) {
+    issues.push("risk_dump_without_decision_boundary");
+  }
+
+  return { ok: issues.length === 0, issues };
+}
+
+function isActionSeekingFundQuestion(text) {
+  const normalized = normalizeIntentText(text);
+  return hasAny(normalized, [
+    "值得买",
+    "能买吗",
+    "能不能买",
+    "买不买",
+    "买入",
+    "加仓",
+    "减仓",
+    "卖出",
+    "持有",
+    "配置",
+    "推荐",
+    "选哪个",
+    "怎么投",
+    "怎么买"
+  ]) || (normalized.includes("黄金") && hasAny(normalized, ["最近", "现在", "买", "配置", "机会", "行情", "还能"]));
+}
+
+function hasQualityEvidence(evidence) {
+  const compact = compactQualityEvidence(evidence);
+  return /(trendProfile|marketSnapshot|marketDeepDive|enrichments|riskMetrics|fundCandidates|preciousMetals|candidates|return20dPct|drawdown)/i.test(compact);
+}
+
+function compactQualityEvidence(evidence) {
+  try {
+    return JSON.stringify(evidence || {}, (key, value) => {
+      if (key === "series" && Array.isArray(value)) {
+        const first = value[0] || null;
+        const last = value[value.length - 1] || null;
+        return { points: value.length, first, last };
+      }
+      if (Array.isArray(value) && value.length > 12) {
+        return value.slice(0, 12);
+      }
+      return value;
+    }, 2).slice(0, 9000);
+  } catch {
+    return String(evidence || "").slice(0, 9000);
+  }
 }
 
 async function answerConversationWithModel({ userText, intent }) {
@@ -4652,6 +4848,155 @@ function renderTrendSeriesPng({ series = [], width = 720, height = 260 } = {}) {
   return encodePngRgba(canvas);
 }
 
+function renderFundReportSummaryPng({ profile, width = 760, height = 360 } = {}) {
+  const trend = profile?.trendProfile || {};
+  const points = normalizeChartSeries(trend.series || []);
+  if (points.length < 2) return null;
+
+  const canvas = createRgbaCanvas(width, height, [255, 255, 255, 255]);
+  const code = String(profile?.code || "").slice(0, 12) || "FUND";
+  const first = points[0];
+  const last = points[points.length - 1];
+  const changePct = first.nav > 0 ? (last.nav / first.nav - 1) * 100 : 0;
+  const lineColor = changePct >= 0 ? [22, 130, 93, 255] : [194, 65, 12, 255];
+  const muted = [100, 116, 139, 255];
+  const ink = [15, 23, 42, 255];
+
+  drawText(canvas, 28, 18, `${code} FUND REPORT`, ink, 3);
+  drawText(canvas, 28, 44, `${first.date || "START"} / ${last.date || "LAST"}`, muted, 2);
+  drawText(canvas, 552, 24, `RANGE ${formatChartPct(changePct)}`, lineColor, 3);
+
+  drawLineChartPanel(canvas, {
+    x: 28,
+    y: 72,
+    width: 472,
+    height: 162,
+    points,
+    color: lineColor,
+    label: "NAV TREND"
+  });
+
+  drawDrawdownPanel(canvas, {
+    x: 28,
+    y: 262,
+    width: 472,
+    height: 64,
+    points
+  });
+
+  drawReturnBarsPanel(canvas, {
+    x: 540,
+    y: 82,
+    width: 182,
+    height: 228,
+    trend
+  });
+
+  drawRect(canvas, 16, 12, width - 32, height - 24, [226, 232, 240, 255], 1);
+  return encodePngRgba(canvas);
+}
+
+function normalizeChartSeries(series = []) {
+  return series
+    .map((item) => ({ date: item.date || "", nav: Number(item.nav) }))
+    .filter((item) => Number.isFinite(item.nav) && item.nav > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function drawLineChartPanel(canvas, { x, y, width, height, points, color, label }) {
+  const values = points.map((item) => item.nav);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  drawText(canvas, x, y - 22, label, [51, 65, 85, 255], 2);
+  drawChartFrame(canvas, x, y, width, height);
+
+  const px = points.map((item, index) => ({
+    x: x + 10 + (index / Math.max(1, points.length - 1)) * (width - 20),
+    y: y + 10 + (1 - (item.nav - min) / range) * (height - 20)
+  }));
+  for (let i = 1; i < px.length; i += 1) {
+    drawLine(canvas, px[i - 1].x, px[i - 1].y, px[i].x, px[i].y, color, 4);
+  }
+  drawCircle(canvas, px[0].x, px[0].y, 4, [100, 116, 139, 255]);
+  drawCircle(canvas, px[px.length - 1].x, px[px.length - 1].y, 5, color);
+  drawText(canvas, x + 8, y + 10, `HIGH ${formatChartNumber(max)}`, [100, 116, 139, 255], 2);
+  drawText(canvas, x + 8, y + height - 22, `LOW ${formatChartNumber(min)}`, [100, 116, 139, 255], 2);
+}
+
+function drawDrawdownPanel(canvas, { x, y, width, height, points }) {
+  let peak = points[0].nav;
+  const drawdowns = points.map((item) => {
+    peak = Math.max(peak, item.nav);
+    return peak > 0 ? (item.nav / peak - 1) * 100 : 0;
+  });
+  const min = Math.min(...drawdowns, -1);
+  const range = Math.abs(min) || 1;
+  drawText(canvas, x, y - 22, "DRAWDOWN FROM HIGH", [51, 65, 85, 255], 2);
+  drawChartFrame(canvas, x, y, width, height);
+  const zeroY = y + 10;
+  drawLine(canvas, x + 8, zeroY, x + width - 8, zeroY, [203, 213, 225, 255], 1);
+  const px = drawdowns.map((value, index) => ({
+    x: x + 10 + (index / Math.max(1, drawdowns.length - 1)) * (width - 20),
+    y: y + 10 + (Math.abs(value) / range) * (height - 20)
+  }));
+  for (let i = 1; i < px.length; i += 1) {
+    drawLine(canvas, px[i - 1].x, px[i - 1].y, px[i].x, px[i].y, [217, 119, 6, 255], 3);
+  }
+  drawText(canvas, x + width - 104, y + height - 18, `MAX ${formatChartPct(min)}`, [217, 119, 6, 255], 2);
+}
+
+function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
+  drawText(canvas, x, y - 28, "STAGE RETURN", [51, 65, 85, 255], 2);
+  drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
+  const items = [
+    ["20D", trend.return20dPct],
+    ["60D", trend.return60dPct],
+    ["120D", trend.return120dPct],
+    ["250D", trend.return250dPct]
+  ].map(([label, value]) => ({ label, value: Number(value) })).filter((item) => Number.isFinite(item.value));
+  if (!items.length) {
+    drawText(canvas, x + 18, y + 92, "NO DATA", [100, 116, 139, 255], 3);
+    return;
+  }
+  const maxAbs = Math.max(5, ...items.map((item) => Math.abs(item.value)));
+  const center = x + Math.round(width / 2);
+  drawLine(canvas, center, y + 26, center, y + height - 20, [203, 213, 225, 255], 1);
+  const rowGap = Math.floor((height - 44) / items.length);
+  items.forEach((item, index) => {
+    const rowY = y + 32 + index * rowGap;
+    const barWidth = Math.round((Math.abs(item.value) / maxAbs) * (width / 2 - 36));
+    const color = item.value >= 0 ? [22, 130, 93, 255] : [194, 65, 12, 255];
+    drawText(canvas, x + 10, rowY - 7, item.label, [71, 85, 105, 255], 2);
+    if (item.value >= 0) {
+      fillRect(canvas, center, rowY - 7, barWidth, 14, color);
+    } else {
+      fillRect(canvas, center - barWidth, rowY - 7, barWidth, 14, color);
+    }
+    drawText(canvas, x + 82, rowY - 7, formatChartPct(item.value), color, 2);
+  });
+}
+
+function drawChartFrame(canvas, x, y, width, height) {
+  const grid = [229, 235, 243, 255];
+  for (let i = 1; i <= 3; i += 1) {
+    const gy = y + (i / 4) * height;
+    drawLine(canvas, x, gy, x + width, gy, grid, 1);
+  }
+  drawRect(canvas, x, y, width, height, [203, 213, 225, 255], 1);
+}
+
+function formatChartNumber(value) {
+  if (!Number.isFinite(value)) return "NA";
+  return String(round(value, value >= 10 ? 2 : 4));
+}
+
+function formatChartPct(value) {
+  if (!Number.isFinite(value)) return "NA";
+  const number = round(value, 1);
+  return `${number > 0 ? "+" : ""}${number}%`;
+}
+
 function createRgbaCanvas(width, height, color) {
   const pixels = Buffer.alloc(width * height * 4);
   for (let i = 0; i < width * height; i += 1) {
@@ -4701,6 +5046,90 @@ function drawLine(canvas, x1, y1, x2, y2, color, width = 1) {
     }
   }
 }
+
+function fillRect(canvas, x, y, width, height, color) {
+  const startX = Math.round(x);
+  const startY = Math.round(y);
+  const endX = Math.round(x + width);
+  const endY = Math.round(y + height);
+  for (let py = startY; py < endY; py += 1) {
+    for (let px = startX; px < endX; px += 1) {
+      setPixel(canvas, px, py, color);
+    }
+  }
+}
+
+function drawRect(canvas, x, y, width, height, color, strokeWidth = 1) {
+  drawLine(canvas, x, y, x + width, y, color, strokeWidth);
+  drawLine(canvas, x + width, y, x + width, y + height, color, strokeWidth);
+  drawLine(canvas, x + width, y + height, x, y + height, color, strokeWidth);
+  drawLine(canvas, x, y + height, x, y, color, strokeWidth);
+}
+
+function drawText(canvas, x, y, text, color = [15, 23, 42, 255], scale = 2) {
+  let cursor = Math.round(x);
+  const top = Math.round(y);
+  for (const rawChar of String(text || "").toUpperCase()) {
+    const glyph = TINY_FONT[rawChar] || TINY_FONT["?"];
+    if (rawChar === " ") {
+      cursor += 4 * scale;
+      continue;
+    }
+    for (let row = 0; row < glyph.length; row += 1) {
+      for (let col = 0; col < glyph[row].length; col += 1) {
+        if (glyph[row][col] !== "1") continue;
+        fillRect(canvas, cursor + col * scale, top + row * scale, scale, scale, color);
+      }
+    }
+    cursor += (glyph[0].length + 1) * scale;
+  }
+}
+
+const TINY_FONT = {
+  "0": ["111", "101", "101", "101", "111"],
+  "1": ["010", "110", "010", "010", "111"],
+  "2": ["111", "001", "111", "100", "111"],
+  "3": ["111", "001", "111", "001", "111"],
+  "4": ["101", "101", "111", "001", "001"],
+  "5": ["111", "100", "111", "001", "111"],
+  "6": ["111", "100", "111", "101", "111"],
+  "7": ["111", "001", "010", "010", "010"],
+  "8": ["111", "101", "111", "101", "111"],
+  "9": ["111", "101", "111", "001", "111"],
+  "A": ["010", "101", "111", "101", "101"],
+  "B": ["110", "101", "110", "101", "110"],
+  "C": ["111", "100", "100", "100", "111"],
+  "D": ["110", "101", "101", "101", "110"],
+  "E": ["111", "100", "110", "100", "111"],
+  "F": ["111", "100", "110", "100", "100"],
+  "G": ["111", "100", "101", "101", "111"],
+  "H": ["101", "101", "111", "101", "101"],
+  "I": ["111", "010", "010", "010", "111"],
+  "J": ["001", "001", "001", "101", "111"],
+  "K": ["101", "101", "110", "101", "101"],
+  "L": ["100", "100", "100", "100", "111"],
+  "M": ["101", "111", "111", "101", "101"],
+  "N": ["101", "111", "111", "111", "101"],
+  "O": ["111", "101", "101", "101", "111"],
+  "P": ["111", "101", "111", "100", "100"],
+  "Q": ["111", "101", "101", "111", "001"],
+  "R": ["110", "101", "110", "101", "101"],
+  "S": ["111", "100", "111", "001", "111"],
+  "T": ["111", "010", "010", "010", "010"],
+  "U": ["101", "101", "101", "101", "111"],
+  "V": ["101", "101", "101", "101", "010"],
+  "W": ["101", "101", "111", "111", "101"],
+  "X": ["101", "101", "010", "101", "101"],
+  "Y": ["101", "101", "010", "010", "010"],
+  "Z": ["111", "001", "010", "100", "111"],
+  "+": ["000", "010", "111", "010", "000"],
+  "-": ["000", "000", "111", "000", "000"],
+  ".": ["000", "000", "000", "000", "010"],
+  "%": ["101", "001", "010", "100", "101"],
+  "/": ["001", "001", "010", "100", "100"],
+  ":": ["000", "010", "000", "010", "000"],
+  "?": ["111", "001", "010", "000", "010"]
+};
 
 function encodePngRgba(canvas) {
   const raw = Buffer.alloc((canvas.width * 4 + 1) * canvas.height);
