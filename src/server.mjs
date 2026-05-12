@@ -361,6 +361,11 @@ async function handleMessageEvent(payload) {
     });
 
     const enrichments = await enrichFunds(fundCodes);
+    const reportImagesPromise = buildFundReportCardImages(enrichments, getEffectiveConfig()).catch((error) => {
+      console.error("[fund-report-trend-image-error]", error);
+      recordError(error, { fundReportTrendImageFailures: 1 });
+      return [];
+    });
 
     await replyToMessage(
       message.message_id,
@@ -416,7 +421,7 @@ async function handleMessageEvent(payload) {
     await replyToMessage(
       message.message_id,
       [buildCompletionPrefix(images.length, userText), analysis].filter(Boolean).join("\n\n"),
-      { kind: "answer" }
+      { kind: "answer", images: await reportImagesPromise }
     );
   } catch (error) {
     console.error("[analysis-error]", error);
@@ -482,8 +487,13 @@ async function handleFundRecommendationWorkflow({ message, userText, intent }) {
     recordError(error, { replyFailures: 1 });
   });
 
-  const answer = await recommendFundsWithModel({ userText, intent, marketSnapshot });
-  await replyToMessage(message.message_id, answer, { kind: "answer" });
+  const result = await recommendFundsWithModel({ userText, intent, marketSnapshot });
+  const reportImages = await buildFundReportCardImages(result.chartProfiles, getEffectiveConfig()).catch((error) => {
+    console.error("[fund-report-trend-image-error]", error);
+    recordError(error, { fundReportTrendImageFailures: 1 });
+    return [];
+  });
+  await replyToMessage(message.message_id, result.text, { kind: "answer", images: reportImages });
 }
 
 async function handleFundQaWorkflow({ message, userText, intent }) {
@@ -500,8 +510,13 @@ async function handleFundQaWorkflow({ message, userText, intent }) {
   });
 
   const marketSnapshot = needsMarketSnapshot ? await fetchMarketSnapshot() : null;
-  const answer = await answerFundQuestionWithModel({ userText, intent, marketSnapshot });
-  await replyToMessage(message.message_id, answer, { kind: "answer" });
+  const result = await answerFundQuestionWithModel({ userText, intent, marketSnapshot });
+  const reportImages = await buildFundReportCardImages(result.chartProfiles, getEffectiveConfig()).catch((error) => {
+    console.error("[fund-report-trend-image-error]", error);
+    recordError(error, { fundReportTrendImageFailures: 1 });
+    return [];
+  });
+  await replyToMessage(message.message_id, result.text, { kind: "answer", images: reportImages });
 }
 
 function startPortfolioScheduler() {
@@ -3148,6 +3163,59 @@ function summarizeMarketSnapshot(snapshot) {
   };
 }
 
+async function buildFundReportCardImages(profiles, config) {
+  if (String(process.env.FEISHU_REPORT_TREND_IMAGES ?? "true") === "false") {
+    return [];
+  }
+  const limit = Math.max(0, Number(process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT || 3));
+  const snapshots = collectTrendSnapshotsFromProfiles(profiles).slice(0, limit);
+  const images = [];
+  for (const item of snapshots) {
+    try {
+      const png = renderTrendSeriesPng({
+        series: item.snapshot.trendProfile?.series || [],
+        width: 720,
+        height: 260
+      });
+      if (!png) continue;
+      const imageKey = await uploadFeishuImage(png, `fund-report-trend-${item.code || "fund"}.png`, config);
+      images.push({
+        imageKey,
+        alt: `${item.code} ${item.name} 走势图`.trim() || "基金走势图"
+      });
+    } catch (error) {
+      console.error("[fund-report-trend-image-error]", item.code || item.name || "unknown", error);
+      recordError(error, { fundReportTrendImageFailures: 1 });
+    }
+  }
+  if (images.length) {
+    updateStats({ counters: { fundReportTrendImagesUploaded: images.length } });
+  }
+  return images;
+}
+
+function collectTrendSnapshotsFromProfiles(profiles) {
+  const byCode = new Map();
+  const list = Array.isArray(profiles) ? profiles : [profiles].filter(Boolean);
+  const add = (profile) => {
+    if (!profile?.trendProfile?.series?.length) return;
+    const code = profile.code || profile.seed?.code || "";
+    const name = profile.name || profile.seed?.name || "";
+    const key = code || name;
+    if (!key || byCode.has(key)) return;
+    byCode.set(key, { code, name, snapshot: profile });
+  };
+
+  for (const item of list) {
+    if (Array.isArray(item?.candidates)) {
+      for (const candidate of item.candidates) add(candidate);
+    } else {
+      add(item);
+    }
+  }
+  return [...byCode.values()];
+}
+
 async function buildPortfolioTrendCardImages(run, config) {
   if (String(process.env.FEISHU_PORTFOLIO_TREND_IMAGES ?? "true") === "false") {
     return [];
@@ -3690,7 +3758,10 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     counters: { fundRecommendationModelCalls: 1 },
     last: { lastFundRecommendationAt: new Date().toISOString() }
   });
-  return text;
+  return {
+    text,
+    chartProfiles: marketDeepDive?.candidates || []
+  };
 }
 
 async function answerFundQuestionWithModel({ userText, intent, marketSnapshot }) {
@@ -3740,7 +3811,10 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     counters: { fundQaModelCalls: 1 },
     last: { lastFundQaAt: new Date().toISOString() }
   });
-  return text;
+  return {
+    text,
+    chartProfiles: marketDeepDive?.candidates || []
+  };
 }
 
 async function answerConversationWithModel({ userText, intent }) {
