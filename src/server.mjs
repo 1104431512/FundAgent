@@ -3225,6 +3225,34 @@ function collectTrendSnapshotsFromProfiles(profiles) {
   return [...byCode.values()];
 }
 
+function selectFundReportProfilesForAnswer(profiles, answerText) {
+  const list = Array.isArray(profiles) ? profiles.filter(Boolean) : [profiles].filter(Boolean);
+  if (!list.length) return [];
+
+  const text = String(answerText || "");
+  const explicitCodes = new Set(extractFundCodes(text));
+  const ranked = [];
+  for (const profile of list) {
+    const code = profile?.code || profile?.seed?.code || "";
+    const name = profile?.name || profile?.seed?.name || "";
+    const codeIndex = code && explicitCodes.has(code) ? text.indexOf(code) : -1;
+    const nameIndex = name ? text.indexOf(name) : -1;
+    const index = [codeIndex, nameIndex].filter((value) => value >= 0).sort((a, b) => a - b)[0];
+    if (index === undefined) continue;
+    ranked.push({ profile, key: code || name, index });
+  }
+
+  const seen = new Set();
+  return ranked
+    .sort((a, b) => a.index - b.index)
+    .filter((item) => {
+      if (!item.key || seen.has(item.key)) return false;
+      seen.add(item.key);
+      return true;
+    })
+    .map((item) => item.profile);
+}
+
 async function buildPortfolioTrendCardImages(run, config) {
   if (String(process.env.FEISHU_PORTFOLIO_TREND_IMAGES ?? "true") === "false") {
     return [];
@@ -3822,7 +3850,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
   });
   return {
     text,
-    chartProfiles: marketDeepDive?.candidates || []
+    chartProfiles: selectFundReportProfilesForAnswer(marketDeepDive?.candidates || [], text)
   };
 }
 
@@ -3888,7 +3916,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
   });
   return {
     text,
-    chartProfiles: marketDeepDive?.candidates || []
+    chartProfiles: selectFundReportProfilesForAnswer(marketDeepDive?.candidates || [], text)
   };
 }
 
