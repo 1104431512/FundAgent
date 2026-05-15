@@ -20,6 +20,9 @@ Convert research evidence into a portfolio action proposal. This skill proposes 
 ## Decision Rules
 
 - Be decisive when evidence is strong, but distinguish conviction from execution certainty.
+- Do not let fresh news alone drive a BUY. A buy candidate must pass a rotation-and-position check: theme stage, `rotationScore`, `lowPositionScore`, `crowdingScore`, fund trend position, and drawdown/rebound context.
+- Prefer early rotation, low-position repair, or orderly confirmation over crowded momentum. If evidence says `high_chase_risk`, use WATCH/HOLD, smaller starter size, or wait for pullback.
+- If buying a recently hot theme, state exactly why it is not just chasing and what would invalidate the entry.
 - Prefer `targetWeightPct` over round-number amounts. The server will calculate actual order amount from cash, current holdings, and target weight.
 - Use `WATCH` rather than `BUY` when NAV, trend, holdings, or purchase-rule data is too weak.
 - If recommending BUY/SELL, provide a reason, data basis, target weight, and review trigger.
@@ -34,7 +37,7 @@ Return compact JSON-compatible content:
 - summary
 - marketView
 - team: role, stance, reason, dataBasis
-- actions: action, code, name, targetWeightPct, amount, reason, dataBasis, riskControl
+- actions: action, code, name, targetWeightPct, amount, reason, dataBasis, rotationCheck, positionCheck, chaseRisk, riskControl
 - riskNotes
 - learningNotes
 - sources

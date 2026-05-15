@@ -12,9 +12,10 @@ This skill moves fund recommendations upstream: judge the theme first, then pick
 
 - Read `marketSnapshot.themeRadar`, `marketSnapshot.fastNews`, sector boards, industry boards, precious-metal quotes, and fund candidate pools.
 - Separate actual catalysts from lagging fund NAV performance.
-- Prefer themes with fresh catalysts, early market confirmation, and available fund vehicles.
+- Prefer themes with fresh catalysts, early market confirmation, available fund vehicles, and a reasonable position that has not already priced in the news.
 - Do not recommend a fund only because its recent NAV or ranking is high.
 - If the theme is crowded, turn the answer into staged sizing, wait conditions, or a watchlist rather than a blind buy.
+- Explicitly compare rotation opportunity against chase risk: low-position sectors with improving catalysts can outrank hot themes that already have high short-term returns.
 
 ## Theme Evidence
 
@@ -35,6 +36,9 @@ Return concise internal notes:
 - stage
 - forwardScore
 - crowdingScore
+- rotationScore
+- lowPositionScore
+- positionSignal
 - preferredVehicleType
 - fundMappingHint
 - actionBias

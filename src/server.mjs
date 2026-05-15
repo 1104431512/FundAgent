@@ -24,6 +24,7 @@ const PUBLIC_DATA_TIMEOUT_MS = Number(process.env.PUBLIC_DATA_TIMEOUT_MS || 2000
 const DEFAULT_PORTFOLIO_MANAGER_PROFILE = [
   "定位：教育性虚拟基金经理，不进行真实交易；先保护本金，再在证据明确时参与基金主题轮动。",
   "买入纪律：优先选择净值、持仓、风险指标和数据来源可验证的基金；避免仅凭热点重仓追涨。",
+  "轮动纪律：新闻只作为催化，买入前必须同时检查板块轮动、低位修复、拥挤度和回撤空间；高位热门主题优先等待回撤或小额试探。",
   "卖出纪律：当主题证据减弱、目标仓位下降、回撤超出风格承受范围，或复盘发现原假设失效时减仓。",
   "沟通纪律：只展示专业阶段、结论、证据和约束，不展示模型隐藏思考链。"
 ].join("\n");
@@ -1065,6 +1066,8 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "你的目标不是永远保守，而是在证据足够时敢于出击；但每次动作都必须写清数据来源、风险控制和复盘条件。",
     "你有一个投委会：市场分析师、题材分析师、基金研究员、组合经理、风控经理、主席。每个角色必须贡献可保存的观点。",
     "只能基于传入的公开市场快照、基金候选池和当前持仓做判断；不要编造快照中不存在的基金代码、涨跌幅或排名。",
+    "新闻只能作为催化证据，不能单独触发 BUY。每次买入前必须通过“轮动/低位/拥挤度”检查：优先低位轮动、回撤修复和早期确认，回避仅因新闻热度和短期涨幅追高。",
+    "如果 themeRadar.positionSignal 是 high_chase_risk，或 crowdingScore 高但 lowPositionScore/rotationScore 不支持，只能 WATCH、HOLD 或小额试探，不能重仓追涨。",
     "同一基金不同份额类别不能混着推荐；必须比较 A/C/D/I 等份额的申购费、销售服务费、赎回费、起购门槛和渠道可得性。",
     "交易建议应以 targetWeightPct 为主，amount 只是建议值；系统执行时会按公开净值、现金和已有持仓重新计算真实份额。",
     "如果候选基金缺少可验证净值或走势数据，倾向 WATCH，不要强行 BUY。",
@@ -1108,6 +1111,9 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
             targetWeightPct: 0,
             reason: "为什么今天这么做",
             dataBasis: ["使用了哪些数据"],
+            rotationCheck: "板块轮动、低位、拥挤度和新闻催化是否共同支持，不支持就写不买/少买原因",
+            positionCheck: "基金/主题当前位置：低位轮动、回撤修复、正常确认、过热追涨之一",
+            chaseRisk: "追涨和大回调风险如何处理",
             riskControl: "止损、复查或减仓触发条件"
           }
         ],
@@ -1429,6 +1435,9 @@ function normalizePortfolioActions(value) {
         targetWeightPct: round(Number(item?.targetWeightPct || 0), 2) || 0,
         reason: String(item?.reason || "").trim(),
         dataBasis: normalizeStringArray(item?.dataBasis).slice(0, 8),
+        rotationCheck: String(item?.rotationCheck || "").trim(),
+        positionCheck: String(item?.positionCheck || "").trim(),
+        chaseRisk: String(item?.chaseRisk || "").trim(),
         riskControl: String(item?.riskControl || "").trim()
       };
     })
@@ -2254,7 +2263,10 @@ function buildPortfolioDecisionCard({ decision, account, orders = [], transactio
         const name = [action.code, action.name].filter(Boolean).join(" ");
         const amount = action.amount ? ` 建议${action.amount}元` : "";
         const target = action.targetWeightPct ? ` 目标${action.targetWeightPct}%` : "";
-        return `${action.action} ${name}${amount}${target}：${action.reason || "见投委会意见"}`;
+        const checks = [action.rotationCheck, action.positionCheck, action.chaseRisk]
+          .filter(Boolean)
+          .join("；");
+        return `${action.action} ${name}${amount}${target}：${action.reason || "见投委会意见"}${checks ? `（${checks}）` : ""}`;
       })
     : ["今日没有生成买卖动作。"];
   const teamLines = decision.team.map((item) => `${item.agent} ${item.stance}：${item.reason}`);
@@ -3339,6 +3351,9 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
         theme.stage ? `stage=${theme.stage}` : "",
         formatEvidenceField("forwardScore", theme.forwardScore),
         formatEvidenceField("crowdingScore", theme.crowdingScore),
+        formatEvidenceField("rotationScore", theme.rotationScore),
+        formatEvidenceField("lowPositionScore", theme.lowPositionScore),
+        theme.positionSignal ? `positionSignal=${theme.positionSignal}` : "",
         theme.actionBias ? `actionBias=${theme.actionBias}` : "",
         theme.primaryCatalyst ? `primaryCatalyst=${theme.primaryCatalyst}` : "",
         theme.evidence?.boards?.length ? `boards=${theme.evidence.boards.slice(0, 2).map((item) => `${item.name}:${formatSignedNumber(item.changePct)}%`).join("/")}` : "",
@@ -3346,7 +3361,7 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
       ].filter(Boolean);
       return `- ${fields.join(", ")}`;
     }));
-    lines.push("qualityInstruction=themeRadar exists; first judge theme stage and forward payoff before recommending funds.");
+    lines.push("qualityInstruction=themeRadar exists; first judge theme stage, rotationScore, lowPositionScore, crowdingScore, and forward payoff before recommending funds. Do not chase high_chase_risk themes just because news is hot.");
   }
 
   if (isPreciousMetalQuestion(userText)) {
@@ -4571,12 +4586,28 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
     );
     const vehicleScore = clampScore(funds.length * 5);
     const maxBoardChange = Math.max(0, ...boards.map((item) => Number(item.changePct || 0)));
-    const maxFundOneMonth = Math.max(0, ...funds.map((item) => Number(item.oneMonthPct || 0)));
+    const fundOneMonthReturns = funds.map((item) => Number(item.oneMonthPct)).filter(Number.isFinite);
+    const maxFundOneMonth = Math.max(0, ...fundOneMonthReturns);
+    const avgFundOneMonth = averageNumeric(fundOneMonthReturns);
     const metalFiveDay = Math.max(0, ...metals.map((item) => Number(item.fiveDayPct || 0)));
     const crowdingScore = clampScore(Math.max(0, maxBoardChange - 3) * 9 + Math.max(0, maxFundOneMonth - 15) * 1.2 + Math.max(0, metalFiveDay - 4) * 5);
-    const forwardScore = clampScore(catalystScore * 0.45 + boardScore * 0.4 + vehicleScore * 0.25 - crowdingScore * 0.28);
-    const stage = inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore });
-    const actionBias = inferThemeActionBias({ stage, forwardScore, crowdingScore });
+    const lowPositionScore = clampScore(
+      Math.max(0, 18 - maxFundOneMonth) * 2.4
+      + Math.max(0, 8 - Math.max(0, avgFundOneMonth)) * 1.4
+      + Math.max(0, 4 - maxBoardChange) * 4
+      + Math.max(0, 5 - metalFiveDay) * 2
+    );
+    const rotationScore = clampScore(
+      catalystScore * 0.35
+      + vehicleScore * 0.25
+      + lowPositionScore * 0.45
+      + Math.max(0, 28 - boardScore) * 0.25
+      - crowdingScore * 0.25
+    );
+    const forwardScore = clampScore(catalystScore * 0.4 + boardScore * 0.34 + vehicleScore * 0.2 + rotationScore * 0.18 - crowdingScore * 0.34);
+    const stage = inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore, rotationScore, lowPositionScore });
+    const actionBias = inferThemeActionBias({ stage, forwardScore, crowdingScore, rotationScore, lowPositionScore });
+    const positionSignal = inferThemePositionSignal({ crowdingScore, rotationScore, lowPositionScore, maxFundOneMonth, maxBoardChange });
 
     return {
       id: rule.id,
@@ -4589,6 +4620,9 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       marketConfirmationScore: round(boardScore, 1),
       vehicleScore: round(vehicleScore, 1),
       crowdingScore: round(crowdingScore, 1),
+      rotationScore: round(rotationScore, 1),
+      lowPositionScore: round(lowPositionScore, 1),
+      positionSignal,
       actionBias,
       primaryCatalyst: news[0]?.title || boards[0]?.name || metals[0]?.name || "",
       evidence: { news, boards, metals, funds }
@@ -4603,8 +4637,9 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
   return themes.sort((a, b) => b.forwardScore - a.forwardScore).slice(0, 12);
 }
 
-function inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore }) {
+function inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore, rotationScore = 0, lowPositionScore = 0 }) {
   if (crowdingScore >= 55) return "crowded";
+  if (rotationScore >= 50 && lowPositionScore >= 45 && catalystScore >= 8) return "low_position_rotation";
   if (catalystScore >= 18 && boardScore < 14) return "germination";
   if (boardScore >= 35 && vehicleScore >= 10) return "diffusion";
   if (boardScore >= 14 || (catalystScore >= 12 && vehicleScore >= 8)) return "confirmation";
@@ -4612,12 +4647,20 @@ function inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScor
   return "watch";
 }
 
-function inferThemeActionBias({ stage, forwardScore, crowdingScore }) {
+function inferThemeActionBias({ stage, forwardScore, crowdingScore, rotationScore = 0, lowPositionScore = 0 }) {
   if (stage === "crowded" || crowdingScore >= 55) return "wait_or_small_starter";
-  if (forwardScore >= 55 && ["germination", "confirmation"].includes(stage)) return "early_staged_buy";
+  if (rotationScore >= 45 && lowPositionScore >= 45 && forwardScore >= 32) return "rotation_starter";
+  if (forwardScore >= 55 && ["germination", "confirmation", "low_position_rotation"].includes(stage)) return "early_staged_buy";
   if (forwardScore >= 42) return "staged_buy";
   if (forwardScore >= 25) return "watch_confirm";
   return "avoid_chasing";
+}
+
+function inferThemePositionSignal({ crowdingScore, rotationScore, lowPositionScore, maxFundOneMonth, maxBoardChange }) {
+  if (crowdingScore >= 55 || maxFundOneMonth >= 25 || maxBoardChange >= 8) return "high_chase_risk";
+  if (rotationScore >= 45 && lowPositionScore >= 45) return "low_position_rotation";
+  if (lowPositionScore >= 35 && crowdingScore < 35) return "acceptable_position";
+  return "neutral_or_wait";
 }
 
 function selectRelevantThemeRadar(userText, marketSnapshot) {
@@ -4659,6 +4702,12 @@ function clampScore(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 0;
   return Math.max(0, Math.min(100, numeric));
+}
+
+function averageNumeric(values = []) {
+  const numbers = values.map(Number).filter(Number.isFinite);
+  if (!numbers.length) return 0;
+  return numbers.reduce((sum, value) => sum + value, 0) / numbers.length;
 }
 
 async function fetchPreciousMetalQuotes() {
