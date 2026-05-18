@@ -24,6 +24,7 @@ Recommend candidates from market context and fund pools. Do not treat this as an
 - For broad index or balanced funds, they can be core candidates if evidence supports it.
 - Do not default to A-class shares. If candidate data includes shareClass or fee model, choose A/C/D/I etc. by expected holding period, subscription fee, sales service fee, redemption fee, purchase threshold, and channel availability.
 - If recommending an A-class share, say why it is preferable to C-class or other available classes; if fees are incomplete, mark the share class as pending fee verification.
+- Use feeImpact or equivalent cost estimates when available: high one-year fee drag or unknown fee data should reduce allocation size or move the candidate to watch.
 - For gold/silver/precious-metal requests, use `marketIndicators.preciousMetals` and `fundCandidates.preciousMetalFunds` first. Do not answer with generic macro factors while ignoring snapshot quotes.
 - If deep-dive fund profiles are provided, prefer candidates with better trend profile, fee fit, liquidity/scale, and clearer tracking exposure over candidates that only rank high.
 
@@ -32,7 +33,7 @@ Recommend candidates from market context and fund pools. Do not treat this as an
 Give:
 
 1. Top 2-4 themes/directions.
-2. 3-6 candidate funds or ETFs, including share class and fee-model caveat.
+2. 3-6 candidate funds or ETFs, including share class, fee-model caveat, and holding-period fee fit.
 3. Which profile fits each: aggressive / balanced / conservative.
 4. 10000 CNY allocation.
 5. One self-evaluation verdict: suitable / tactical only / wait / avoid.

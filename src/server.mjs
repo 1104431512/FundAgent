@@ -1068,7 +1068,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "只能基于传入的公开市场快照、基金候选池和当前持仓做判断；不要编造快照中不存在的基金代码、涨跌幅或排名。",
     "新闻只能作为催化证据，不能单独触发 BUY。每次买入前必须通过“轮动/低位/拥挤度”检查：优先低位轮动、回撤修复和早期确认，回避仅因新闻热度和短期涨幅追高。",
     "如果 themeRadar.positionSignal 是 high_chase_risk，或 crowdingScore 高但 lowPositionScore/rotationScore 不支持，只能 WATCH、HOLD 或小额试探，不能重仓追涨。",
-    "同一基金不同份额类别不能混着推荐；必须比较 A/C/D/I 等份额的申购费、销售服务费、赎回费、起购门槛和渠道可得性。",
+    "同一基金不同份额类别不能混着推荐；必须比较 A/C/D/I 等份额的申购费、销售服务费、赎回费、起购门槛和渠道可得性，并说明费用拖累是否适合本次持有期。",
     "交易建议应以 targetWeightPct 为主，amount 只是建议值；系统执行时会按公开净值、现金和已有持仓重新计算真实份额。",
     "如果候选基金缺少可验证净值或走势数据，倾向 WATCH，不要强行 BUY。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
@@ -1114,6 +1114,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
             rotationCheck: "板块轮动、低位、拥挤度和新闻催化是否共同支持，不支持就写不买/少买原因",
             positionCheck: "基金/主题当前位置：低位轮动、回撤修复、正常确认、过热追涨之一",
             chaseRisk: "追涨和大回调风险如何处理",
+            feeCheck: "A/C/D/I 等份额类别、申购费、销售服务费和预计持有期是否匹配",
             riskControl: "止损、复查或减仓触发条件"
           }
         ],
@@ -1204,6 +1205,8 @@ function compactPortfolioReviewProfile(profile = {}) {
     returns: profile.returns || {},
     shareClass: profile.shareClass || "",
     feeModel: profile.shareClassFeeModel || null,
+    feeImpact: profile.fees?.feeImpact || null,
+    feeDecisionRule: profile.fees?.feeDecisionRule || "",
     scale: profile.scale || null,
     topHoldings,
     sources: (profile.sources || []).slice(0, 4)
@@ -1438,6 +1441,7 @@ function normalizePortfolioActions(value) {
         rotationCheck: String(item?.rotationCheck || "").trim(),
         positionCheck: String(item?.positionCheck || "").trim(),
         chaseRisk: String(item?.chaseRisk || "").trim(),
+        feeCheck: String(item?.feeCheck || "").trim(),
         riskControl: String(item?.riskControl || "").trim()
       };
     })
@@ -1957,6 +1961,15 @@ function buildPortfolioFundSnapshot(profile, position = null) {
     },
     trendProfile,
     actionability,
+    fees: profile.fees ? {
+      shareClass: profile.fees.shareClass || profile.shareClass || "",
+      shareClassFeeModel: profile.fees.shareClassFeeModel || profile.shareClassFeeModel || null,
+      currentRatePct: profile.fees.currentRatePct || "",
+      salesServiceFeePct: profile.fees.salesServiceFeePct || "",
+      feeImpact: profile.fees.feeImpact || null,
+      feeDecisionRule: profile.fees.feeDecisionRule || "",
+      missingFeeData: profile.fees.missingFeeData || []
+    } : null,
     scale: profile.scale || null,
     topHoldings,
     trendSummary: buildPortfolioTrendSummary({ trendProfile, actionability, oneYear, threeYear }),
@@ -2263,7 +2276,7 @@ function buildPortfolioDecisionCard({ decision, account, orders = [], transactio
         const name = [action.code, action.name].filter(Boolean).join(" ");
         const amount = action.amount ? ` 建议${action.amount}元` : "";
         const target = action.targetWeightPct ? ` 目标${action.targetWeightPct}%` : "";
-        const checks = [action.rotationCheck, action.positionCheck, action.chaseRisk]
+        const checks = [action.rotationCheck, action.positionCheck, action.chaseRisk, action.feeCheck]
           .filter(Boolean)
           .join("；");
         return `${action.action} ${name}${amount}${target}：${action.reason || "见投委会意见"}${checks ? `（${checks}）` : ""}`;
@@ -5141,7 +5154,14 @@ async function fetchFundResearchDigest(code, seed = {}) {
       shareClassFeeModel: feeProfile.shareClassFeeModel,
       currentRatePct: feeProfile.currentRatePct,
       salesServiceFeePct: feeProfile.salesServiceFeePct,
-      minPurchase: feeProfile.minPurchase
+      minPurchase: feeProfile.minPurchase,
+      estimatedSubscriptionFeePer10000: feeProfile.estimatedSubscriptionFeePer10000,
+      estimatedSalesServiceFeePer10000PerYear: feeProfile.estimatedSalesServiceFeePer10000PerYear,
+      feeImpact: feeProfile.feeImpact,
+      holdingPeriodFit: feeProfile.holdingPeriodFit,
+      feeDecisionRule: feeProfile.feeDecisionRule,
+      missingFeeData: feeProfile.missingFeeData,
+      feeRules: feeProfile.feeRules
     },
     scale: profile.scale,
     managers: (profile.managers || []).slice(0, 2),
@@ -5722,7 +5742,15 @@ function crc32(buffer) {
 function buildFundActionabilitySignals(digest) {
   const trend = digest.trendProfile || {};
   const risk = digest.risk?.oneYear || {};
-  const feeType = digest.fees?.shareClassFeeModel?.type || "unknown";
+  const fees = digest.fees || {};
+  const feeType = fees.shareClassFeeModel?.type || "unknown";
+  const feeImpact = fees.feeImpact || null;
+  const oneYearFeeCost = toNumber(feeImpact?.oneYearCostPer10000);
+  const missingFeeData = Array.isArray(fees.missingFeeData)
+    ? fees.missingFeeData
+    : Array.isArray(feeImpact?.missingFeeData)
+      ? feeImpact.missingFeeData
+      : [];
   let score = 50;
 
   if (trend.entryBias === "staged_buy") score += 14;
@@ -5747,6 +5775,12 @@ function buildFundActionabilitySignals(digest) {
   }
   if (feeType === "unknown") score -= 4;
   if (["special_or_platform_class"].includes(feeType)) score -= 4;
+  if (Number.isFinite(oneYearFeeCost)) {
+    if (oneYearFeeCost >= 120) score -= 7;
+    else if (oneYearFeeCost >= 60) score -= 3;
+  }
+  if (feeImpact?.holdingPeriodFit === "short_term_only_high_long_holding_drag") score -= 4;
+  if (missingFeeData.length) score -= Math.min(6, missingFeeData.length * 2);
   if (digest.holdings?.ok) score += 3;
 
   const boundedScore = Math.max(0, Math.min(100, Math.round(score)));
@@ -5772,17 +5806,21 @@ function buildFundActionabilitySignals(digest) {
       : action === "wait"
         ? "0%-3% watch/test only"
         : "0%";
-  const evidenceCount = [trend.ok, risk.ok, digest.holdings?.ok, feeType !== "unknown"].filter(Boolean).length;
+  const feeEvidenceOk = feeType !== "unknown" && !missingFeeData.length;
+  const evidenceCount = [trend.ok, risk.ok, digest.holdings?.ok, feeEvidenceOk].filter(Boolean).length;
   const confidence = evidenceCount >= 4 ? "high" : evidenceCount >= 2 ? "medium" : "low";
   const decisiveEvidence = [
     trend.ok ? `trend=${trend.trendLabel}, entryBias=${trend.entryBias}, 20d=${trend.return20dPct}%, 60d=${trend.return60dPct}%` : "",
     risk.ok ? `1yReturn=${risk.totalReturnPct}%, maxDrawdown=${risk.maxDrawdownPct}%, sharpe=${risk.sharpe}` : "",
-    digest.fees?.shareClassFeeModel?.label || "",
+    fees.shareClassFeeModel?.label || "",
+    formatFeeImpactForEvidence(fees),
     digest.holdings?.equityTopHoldings?.length ? `topHolding=${digest.holdings.equityTopHoldings[0]}` : ""
   ].filter(Boolean).slice(0, 4);
   const decisionBlocker = [
     trend.invalidationHint || "",
     feeType === "unknown" ? "费率/份额类别未确认前不做重仓。" : "",
+    missingFeeData.length ? `费用数据缺口：${missingFeeData.slice(0, 3).join("/")}` : "",
+    feeImpact?.feeDragLevel === "high" ? "持有期费用拖累偏高，买入强度需下调或改选低费率份额。" : "",
     highDrawdown ? "近一年回撤偏深，只能按卫星仓或战术仓处理。" : ""
   ].filter(Boolean).slice(0, 2);
 
@@ -5950,10 +5988,7 @@ async function fetchFundProfile(code) {
   const actionability = buildFundActionabilitySignals({
     trendProfile,
     risk: { oneYear: pickRiskPeriod(riskMetrics.periods?.["1y"] || {}) },
-    fees: {
-      shareClass: feeProfile.shareClass,
-      shareClassFeeModel: feeProfile.shareClassFeeModel
-    },
+    fees: feeProfile,
     holdings: holdingsSummary
   });
   return {
@@ -6027,6 +6062,15 @@ function buildFundFeeProfile({ code, name, sourceRate, rate, minPurchase }, feeP
   const redemptionRules = summarizeFeeSection(text, "赎回费率", ["注：", "基金申购费用计算公式"]);
   const frontLoadRateForEstimate = toNumber(currentRatePct) ?? toNumber(sourceRatePct);
   const salesServiceRateForEstimate = toNumber(normalizedSalesServiceFeePct);
+  const feeImpact = buildFeeImpactEstimate({
+    shareClass,
+    sourceRatePct,
+    currentRatePct,
+    salesServiceFeePct: normalizedSalesServiceFeePct,
+    hasFeePage: Boolean(text),
+    subscriptionRules,
+    redemptionRules
+  });
 
   return {
     shareClass,
@@ -6047,6 +6091,10 @@ function buildFundFeeProfile({ code, name, sourceRate, rate, minPurchase }, feeP
     estimatedSalesServiceFeePer10000PerYear: Number.isFinite(salesServiceRateForEstimate)
       ? round(10000 * salesServiceRateForEstimate / 100, 2)
       : null,
+    feeImpact,
+    holdingPeriodFit: feeImpact.holdingPeriodFit,
+    feeDecisionRule: feeImpact.feeDecisionRule,
+    missingFeeData: feeImpact.missingFeeData,
     netValueAlreadyDeductsOperatingFees: Boolean(text),
     feeRules: {
       subscription: subscriptionRules,
@@ -6054,6 +6102,155 @@ function buildFundFeeProfile({ code, name, sourceRate, rate, minPurchase }, feeP
     },
     source: feePageText && code ? `https://fundf10.eastmoney.com/jjfl_${code}.html` : ""
   };
+}
+
+function formatFeeImpactForEvidence(fees = {}) {
+  const impact = fees.feeImpact || null;
+  if (!impact) return "";
+  const parts = [
+    fees.shareClass ? `shareClass=${fees.shareClass}` : "",
+    impact.holdingPeriodFit ? `holdingFit=${impact.holdingPeriodFit}` : "",
+    Number.isFinite(toNumber(impact.oneYearCostPer10000)) ? `1yFeePer10000=${impact.oneYearCostPer10000}` : "",
+    impact.feeDragLevel ? `feeDrag=${impact.feeDragLevel}` : ""
+  ].filter(Boolean);
+  return parts.join(", ");
+}
+
+function buildFeeImpactEstimate({
+  shareClass,
+  sourceRatePct,
+  currentRatePct,
+  salesServiceFeePct,
+  hasFeePage = false,
+  subscriptionRules = "",
+  redemptionRules = ""
+} = {}) {
+  const className = String(shareClass || "").toUpperCase();
+  const currentRate = toNumber(currentRatePct);
+  const sourceRate = toNumber(sourceRatePct);
+  const salesService = toNumber(salesServiceFeePct);
+  const frontLoadRate = Number.isFinite(currentRate) ? currentRate : sourceRate;
+  const frontLoadCostPer10000 = Number.isFinite(frontLoadRate)
+    ? round(10000 - 10000 / (1 + frontLoadRate / 100), 2)
+    : null;
+  const salesServiceCostPer10000PerYear = Number.isFinite(salesService)
+    ? round(10000 * salesService / 100, 2)
+    : null;
+  const criticalFeeMissing = (["C", "E"].includes(className) && !Number.isFinite(salesService))
+    || (["A", "B"].includes(className) && !Number.isFinite(frontLoadRate));
+  const horizons = [30, 90, 180, 365, 730].map((days) => {
+    const frontCost = Number.isFinite(frontLoadCostPer10000) ? frontLoadCostPer10000 : 0;
+    const serviceCost = Number.isFinite(salesServiceCostPer10000PerYear)
+      ? salesServiceCostPer10000PerYear * days / 365
+      : 0;
+    return {
+      days,
+      costPer10000: !criticalFeeMissing && (Number.isFinite(frontLoadCostPer10000) || Number.isFinite(salesServiceCostPer10000PerYear))
+        ? round(frontCost + serviceCost, 2)
+        : null
+    };
+  });
+  const oneYearCostPer10000 = horizons.find((item) => item.days === 365)?.costPer10000 ?? null;
+  const twoYearCostPer10000 = horizons.find((item) => item.days === 730)?.costPer10000 ?? null;
+  const salesServiceBreakEvenDays = Number.isFinite(frontLoadCostPer10000)
+    && Number.isFinite(salesServiceCostPer10000PerYear)
+    && salesServiceCostPer10000PerYear > 0
+    ? Math.round(frontLoadCostPer10000 / salesServiceCostPer10000PerYear * 365)
+    : null;
+  const missingFeeData = [];
+  if (!className) missingFeeData.push("share_class");
+  if (!hasFeePage) missingFeeData.push("fee_page");
+  if (!Number.isFinite(frontLoadRate) && !Number.isFinite(salesService)) missingFeeData.push("subscription_or_sales_service_fee");
+  if (["C", "E"].includes(className) && !Number.isFinite(salesService)) missingFeeData.push("sales_service_fee");
+  if (["A", "B"].includes(className) && !Number.isFinite(frontLoadRate)) missingFeeData.push("subscription_fee");
+  if (!subscriptionRules) missingFeeData.push("subscription_rules");
+  if (!redemptionRules) missingFeeData.push("redemption_rules");
+
+  return {
+    costBase: "per_10000_cny",
+    frontLoadRatePct: Number.isFinite(frontLoadRate) ? frontLoadRate : null,
+    frontLoadCostPer10000,
+    salesServiceFeePct: Number.isFinite(salesService) ? salesService : null,
+    salesServiceCostPer10000PerYear,
+    horizons,
+    oneYearCostPer10000,
+    twoYearCostPer10000,
+    salesServiceBreakEvenDays,
+    holdingPeriodFit: inferFeeHoldingPeriodFit({
+      className,
+      frontLoadCostPer10000,
+      salesServiceCostPer10000PerYear,
+      oneYearCostPer10000,
+      missingFeeData
+    }),
+    feeDragLevel: inferFeeDragLevel(oneYearCostPer10000),
+    feeDecisionRule: buildFeeDecisionRule({
+      className,
+      frontLoadCostPer10000,
+      salesServiceCostPer10000PerYear,
+      oneYearCostPer10000,
+      twoYearCostPer10000,
+      salesServiceBreakEvenDays,
+      missingFeeData
+    }),
+    missingFeeData
+  };
+}
+
+function inferFeeHoldingPeriodFit({
+  className,
+  frontLoadCostPer10000,
+  salesServiceCostPer10000PerYear,
+  oneYearCostPer10000,
+  missingFeeData = []
+}) {
+  if (missingFeeData.includes("subscription_or_sales_service_fee")) return "needs_fee_verification";
+  if (missingFeeData.includes("sales_service_fee") || missingFeeData.includes("subscription_fee")) return "needs_fee_verification";
+  if (["D", "I", "Y"].includes(className)) return "channel_or_institution_only_check";
+  if (["C", "E"].includes(className) || Number.isFinite(salesServiceCostPer10000PerYear) && salesServiceCostPer10000PerYear > 0) {
+    if (Number.isFinite(oneYearCostPer10000) && oneYearCostPer10000 >= 100) return "short_term_only_high_long_holding_drag";
+    return "short_or_tactical_holding_fit";
+  }
+  if (Number.isFinite(frontLoadCostPer10000) && frontLoadCostPer10000 >= 80) return "medium_long_holding_preferred";
+  if (Number.isFinite(frontLoadCostPer10000)) return "holding_period_flexible";
+  return "needs_fee_verification";
+}
+
+function inferFeeDragLevel(oneYearCostPer10000) {
+  if (!Number.isFinite(oneYearCostPer10000)) return "unknown";
+  if (oneYearCostPer10000 >= 120) return "high";
+  if (oneYearCostPer10000 >= 60) return "medium";
+  return "low";
+}
+
+function buildFeeDecisionRule({
+  className,
+  frontLoadCostPer10000,
+  salesServiceCostPer10000PerYear,
+  oneYearCostPer10000,
+  twoYearCostPer10000,
+  salesServiceBreakEvenDays,
+  missingFeeData = []
+}) {
+  if (missingFeeData.includes("subscription_or_sales_service_fee")) {
+    return "费率数据不足；买入前必须核对同基金不同份额的申购费、销售服务费和赎回规则。";
+  }
+  if (missingFeeData.includes("sales_service_fee") || missingFeeData.includes("subscription_fee")) {
+    return "关键费率字段缺失；买入前必须复核该份额是否存在持续销售服务费或前端申购费。";
+  }
+  const costText = Number.isFinite(oneYearCostPer10000)
+    ? `按每1万元估算，持有1年费用拖累约${oneYearCostPer10000}元${Number.isFinite(twoYearCostPer10000) ? `，2年约${twoYearCostPer10000}元` : ""}。`
+    : "";
+  if (salesServiceBreakEvenDays) {
+    return `${costText} 申购费与销售服务费粗略平衡点约${salesServiceBreakEvenDays}天，短于该周期偏向低前端费用，长于该周期要警惕持续费率拖累。`;
+  }
+  if (["C", "E"].includes(className) || Number.isFinite(salesServiceCostPer10000PerYear) && salesServiceCostPer10000PerYear > 0) {
+    return `${costText} 该份额更适合短期/战术持有，若计划长期持有应复核A类或低费率替代。`;
+  }
+  if (Number.isFinite(frontLoadCostPer10000)) {
+    return `${costText} 该份额偏前端申购费模型，短线交易需用收益空间覆盖申购与赎回摩擦。`;
+  }
+  return "份额类别和费用模型仍需复核，不应作为重仓买入依据。";
 }
 
 function inferFundShareClass(name) {

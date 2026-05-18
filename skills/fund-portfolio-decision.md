@@ -23,6 +23,8 @@ Convert research evidence into a portfolio action proposal. This skill proposes 
 - Do not let fresh news alone drive a BUY. A buy candidate must pass a rotation-and-position check: theme stage, `rotationScore`, `lowPositionScore`, `crowdingScore`, fund trend position, and drawdown/rebound context.
 - Prefer early rotation, low-position repair, or orderly confirmation over crowded momentum. If evidence says `high_chase_risk`, use WATCH/HOLD, smaller starter size, or wait for pullback.
 - If buying a recently hot theme, state exactly why it is not just chasing and what would invalidate the entry.
+- A BUY must pass fee discipline as well as market discipline: same-fund A/C/D/I share classes, estimated fee drag, redemption friction, and planned holding period must not undermine the expected edge.
+- If fee data is missing or one-year fee drag is high, lower the target weight, choose WATCH, or require a better low-fee share class before buying.
 - Prefer `targetWeightPct` over round-number amounts. The server will calculate actual order amount from cash, current holdings, and target weight.
 - Use `WATCH` rather than `BUY` when NAV, trend, holdings, or purchase-rule data is too weak.
 - If recommending BUY/SELL, provide a reason, data basis, target weight, and review trigger.
@@ -37,7 +39,7 @@ Return compact JSON-compatible content:
 - summary
 - marketView
 - team: role, stance, reason, dataBasis
-- actions: action, code, name, targetWeightPct, amount, reason, dataBasis, rotationCheck, positionCheck, chaseRisk, riskControl
+- actions: action, code, name, targetWeightPct, amount, reason, dataBasis, rotationCheck, positionCheck, chaseRisk, feeCheck, riskControl
 - riskNotes
 - learningNotes
 - sources

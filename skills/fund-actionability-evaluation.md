@@ -21,8 +21,14 @@ Use evidence in this order:
 1. Current market/theme state and direction.
 2. Fund or vehicle trend profile.
 3. Fund quality: holdings, manager, scale, tracking object, liquidity.
-4. Fee/share-class fit for the holding period.
+4. Fee/share-class fit for the holding period, including estimated fee drag per 10000 CNY.
 5. User's actual question and implied urgency.
+
+Fee discipline:
+
+- Penalize high fee drag or incomplete fee data before upgrading a candidate to buy/staged buy.
+- If a C/E-style share is only attractive for short tactical holding, do not present it as a long-term core position unless the fee comparison still supports it.
+- If an A/B-style share has meaningful front-end friction, require enough expected edge or a longer holding period to justify entry.
 
 ## Anti-Patterns
 
@@ -42,4 +48,5 @@ Return concise internal notes:
 - confidence: high / medium / low
 - decisiveEvidence: the 2-3 facts that actually drive the action
 - decisionBlocker: the 1-2 facts that would invalidate the action
+- feeCheck: share class, estimated fee drag, and holding-period fit
 - answerAudit: whether the final answer directly answers the user's real need
