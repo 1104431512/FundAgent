@@ -9,6 +9,8 @@ Turn internal work into a clear Feishu card. Do not introduce new facts or metri
 
 Always apply `fund-actionability-evaluation` and `fund-answer-quality` before finalizing. If the draft has no concrete data citation, no direct action, or no position-size guidance when buying is implied, rewrite it.
 
+Final answers must read like a Chinese fund manager speaking to a customer. Do not expose internal labels such as `trendProfile`, `actionability`, `entryBias`, `fitLabel`, `extended_uptrend`, `tactical_only`, `staged_buy`, or `wait_pullback`; translate them into natural Chinese action language.
+
 ## Style
 
 - Chinese, concise, natural, and useful on mobile.

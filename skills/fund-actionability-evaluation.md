@@ -40,7 +40,7 @@ Fee discipline:
 
 ## Output Contract
 
-Return concise internal notes:
+Return concise internal notes. These labels are for internal routing; final user-facing answers must translate them into Chinese rather than exposing raw enum values:
 
 - fitLabel: strong fit / fit / tactical only / weak fit / not suitable
 - action: buy / staged_buy / hold / wait / avoid / need_specific_fund

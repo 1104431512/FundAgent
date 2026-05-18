@@ -8,12 +8,36 @@ const forbiddenPatterns = [
   {
     pattern: /reboundFromRecentLowPct,\s*\n/,
     message: "computeTrendProfile must map reboundFromRecentLowPct from reboundFromLowPct; shorthand causes ReferenceError."
+  },
+  {
+    pattern: /const hasAction = \/[^\n]*(?:buy|staged|wait|avoid|hold|sell)/i,
+    message: "fund answer quality gate must not count raw English action enums as user-facing actions."
   }
 ];
 
-const failures = forbiddenPatterns
+const requiredPatterns = [
+  {
+    pattern: /internal_signal_leak/,
+    message: "fund answer quality gate must reject internal enum/field leaks."
+  },
+  {
+    pattern: /normalizeUserFacingFundAnswer/,
+    message: "fund answers need a final localization pass for internal labels."
+  },
+  {
+    pattern: /extended_uptrend[\s\S]{0,120}短期涨幅偏热/,
+    message: "internal trend labels must have Chinese user-facing translations."
+  }
+];
+
+const failures = [
+  ...forbiddenPatterns
   .filter((item) => item.pattern.test(server))
-  .map((item) => item.message);
+  .map((item) => item.message),
+  ...requiredPatterns
+    .filter((item) => !item.pattern.test(server))
+    .map((item) => item.message)
+];
 
 if (failures.length) {
   console.error(failures.join("\n"));

@@ -25,6 +25,8 @@ This skill is the final bouncer at the door. It rejects polite nonsense and risk
 - Saying no data is available when snapshot data is present.
 - Recommending a fund code not present in the provided candidates.
 - Mixing A/C/D/I share classes without fee caveats.
+- Leaking internal field names or enum labels such as `trendProfile`, `actionability`, `entryBias`, `fitLabel`, `extended_uptrend`, `tactical_only`, `staged_buy`, or `wait_pullback`.
+- Chinese-English mixed implementation notes that a normal fund customer cannot read fluently.
 - Long caveat sections that bury the actual answer.
 - Lists of generic possible risks that would apply to every investment.
 - Answers that read like search-result summaries instead of a manager decision.
@@ -53,3 +55,12 @@ If a risk does not change one of those, omit it.
 ## Output Tone
 
 Be concise, specific, and useful. No padded lectures.
+
+Translate internal labels before final output:
+
+- `extended_uptrend` -> 短期涨幅偏热
+- `tactical_only` -> 只适合战术小仓位
+- `staged_buy` -> 分批买入
+- `wait_pullback` -> 等待回撤
+- `entryBias` -> 入场判断
+- `actionability` -> 可操作性评估

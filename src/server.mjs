@@ -28,6 +28,62 @@ const DEFAULT_PORTFOLIO_MANAGER_PROFILE = [
   "卖出纪律：当主题证据减弱、目标仓位下降、回撤超出风格承受范围，或复盘发现原假设失效时减仓。",
   "沟通纪律：只展示专业阶段、结论、证据和约束，不展示模型隐藏思考链。"
 ].join("\n");
+const USER_FACING_FUND_LABELS = [
+  ["extended_uptrend", "短期涨幅偏热"],
+  ["rebound_repair", "回撤后修复"],
+  ["range_or_mixed", "震荡或信号混杂"],
+  ["breakdown", "趋势破位"],
+  ["weakening", "趋势转弱"],
+  ["uptrend", "趋势上行"],
+  ["germination", "题材萌芽"],
+  ["confirmation", "题材确认"],
+  ["diffusion", "题材扩散"],
+  ["crowded", "交易拥挤"],
+  ["buyable_now", "当前可考虑买入"],
+  ["staged_buy", "分批买入"],
+  ["wait_pullback", "等待回撤"],
+  ["hold_observe", "持有观察"],
+  ["avoid_now", "暂时回避"],
+  ["buy", "买入"],
+  ["sell", "卖出"],
+  ["hold", "持有"],
+  ["wait", "等待"],
+  ["avoid", "回避"],
+  ["watch", "观察"],
+  ["tactical_only", "只适合战术小仓位"],
+  ["tactical only", "只适合战术小仓位"],
+  ["weak_fit", "适配度偏弱"],
+  ["not_suitable", "不适合当前买入"],
+  ["need_specific_fund", "需要具体基金代码"],
+  ["high_chase_risk", "追高风险偏高"],
+  ["low_position_rotation", "低位轮动"],
+  ["acceptable_position", "位置尚可"],
+  ["neutral_or_wait", "中性偏等待"],
+  ["early_staged_buy", "早期分批买入"],
+  ["watch_confirm", "观察确认"],
+  ["avoid_chasing", "避免追涨"],
+  ["wait_or_small_starter", "等待或小额试探"],
+  ["rotation_starter", "低位轮动试探"]
+];
+const USER_FACING_FUND_FIELD_LABELS = [
+  ["trendProfile", "走势画像"],
+  ["actionability", "可操作性评估"],
+  ["action", "动作"],
+  ["stage", "阶段"],
+  ["entryBias", "入场判断"],
+  ["fitLabel", "适配度"],
+  ["trendLabel", "趋势状态"],
+  ["forwardScore", "前瞻评分"],
+  ["crowdingScore", "拥挤度"],
+  ["rotationScore", "轮动评分"],
+  ["lowPositionScore", "低位评分"],
+  ["positionSignal", "位置判断"],
+  ["actionBias", "操作倾向"],
+  ["drawdownFromRecentHighPct", "距近期高点回撤"],
+  ["return20dPct", "近20日收益"],
+  ["return60dPct", "近60日收益"],
+  ["return120dPct", "近120日收益"]
+];
 const PORTFOLIO_DB_REPAIRED = Symbol("portfolioDbRepaired");
 
 let tenantAccessTokenCache = null;
@@ -2035,6 +2091,17 @@ function formatActionabilityAction(value) {
   return labels[value] || value || "观察";
 }
 
+function formatFitLabel(value) {
+  const labels = {
+    fit: "适合",
+    tactical_only: "只适合战术小仓位",
+    weak_fit: "适配度偏弱",
+    not_suitable: "不适合当前买入",
+    strong_fit: "高度适配"
+  };
+  return labels[value] || value || "观察";
+}
+
 function pickRiskPeriod(period) {
   if (!period?.ok) {
     return { ok: false, note: period?.note || "数据不足" };
@@ -3650,6 +3717,7 @@ function buildFundCommitteeSystemText(skillIds = getFundAnalysisSkillIds()) {
     "如果联网补全资料与截图冲突，要明确分开“截图可见”和“联网补全”，不要硬合并。",
     "最终回复会以飞书卡片展示，可使用少量 Markdown 加粗和编号列表，但不要输出 Markdown 表格或代码块。",
     "回答中文，优先简洁、明确、可执行。不要保证收益，不要给出个性化承诺；但如果证据偏正面，要敢于给出买入/分批买入方案，不要机械地总是建议等待回撤或极低仓位。",
+    "面向用户时禁止输出内部字段名或英文枚举，例如 trendProfile、actionability、entryBias、fitLabel、extended_uptrend、tactical_only、staged_buy、wait_pullback；必须转成自然中文。",
     "",
     skillContext
   ].join("\n");
@@ -3818,6 +3886,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "如果 marketSnapshot.themeRadar 或 marketDeepDive.themeRadar 存在，必须先使用其中的 stage、forwardScore、crowdingScore、actionBias 判断题材赔率，再筛选基金。",
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
     "如果提供了 marketDeepDive，必须使用其中的 trendProfile、risk、fees、holdings 和 actionability 来筛掉不适合的候选；不要只复述市场快照。",
+    "marketDeepDive 中的 trendProfile、actionability、entryBias、fitLabel 等是内部字段；最终回答必须翻译成中文用户话术，不要原样输出字段名或 extended_uptrend/staged_buy/wait_pullback 这类枚举。",
     "不要编造 marketSnapshot 里没有的基金代码、涨跌幅、排名、金价或新闻。",
     "推荐基金时不要默认偏向 A 类；同一基金存在 A/C/D/I 等份额时，按用户持有期和费用模型说明为什么选这个份额，并提示可替代份额。",
     "如果候选下钻里出现 seed.alternativeShareClasses 或 seed.sameExposureAlternatives，不要把它们当成独立推荐名额；主推荐只列一个代表，替代份额/同指数替代品放在该条下面说明。",
@@ -3847,7 +3916,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "",
     "请输出：",
     "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
-    "2. 题材雷达：先列 1-3 个相关题材的 stage、forwardScore、crowdingScore、为什么现在值得/不值得看。",
+    "2. 题材雷达：先列 1-3 个相关题材的中文阶段、前瞻评分、拥挤度、为什么现在值得/不值得看；不要输出 stage/forwardScore/crowdingScore 这些字段名。",
     "3. 自评估：这类需求是否适合现在做，confidence，适合激进/均衡/保守哪类。",
     "4. 推荐清单：优先 3-5 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、趋势/自评估动作、为什么入选。只能使用快照或下钻中的候选代码；如果没有足够代码，就写“待复核方向”。",
     "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
@@ -3894,6 +3963,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "如果传入 marketSnapshot，可用它回答近期市场/题材问题；涉及黄金、白银或贵金属时，优先引用 marketIndicators.preciousMetals 和相关基金候选。",
     "如果 marketSnapshot.themeRadar 或 marketDeepDive.themeRadar 存在，优先引用 stage、forwardScore、crowdingScore、actionBias，避免只按历史涨幅回答。",
     "如果提供了 marketDeepDive，必须使用下钻候选的 trendProfile、risk、fees、holdings 和 actionability 来形成买/等/回避判断。",
+    "marketDeepDive 中的 trendProfile、actionability、entryBias、fitLabel 等是内部字段；最终回答必须翻译成中文用户话术，不要原样输出字段名或 extended_uptrend/staged_buy/wait_pullback 这类枚举。",
     "如果没有抓到对应行情数据，要说明是公开数据源暂时不可用或滞后，不要简单说自己没有实时数据能力。",
     "必须通过 fund-actionability-evaluation 和 fund-answer-quality 质量门槛：前两行直接回答；有快照/下钻就引用具体字段；给明确行动、适合对象和仓位建议。",
     "不要把风险写成免责声明清单。只保留会改变买入/等待/回避动作的决策边界。",
@@ -3949,14 +4019,15 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
 }
 
 async function enforceFundAnswerQuality({ text, workflow, userText, intent, evidence }) {
+  const localizedText = normalizeUserFacingFundAnswer(text);
   if (String(process.env.FUND_ANSWER_QUALITY_GATE ?? "true") === "false") {
-    return text;
+    return localizedText;
   }
 
   const evaluation = evaluateFundAnswerQuality({ text, workflow, userText, evidence });
   if (evaluation.ok) {
     updateStats({ counters: { fundAnswerQualityPasses: 1 } });
-    return text;
+    return localizedText;
   }
 
   updateStats({
@@ -3968,7 +4039,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
   });
 
   if (String(process.env.FUND_ANSWER_QUALITY_REWRITE ?? "true") === "false") {
-    return text;
+    return localizedText;
   }
 
   try {
@@ -3977,11 +4048,13 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       ["fund-answer-quality", "fund-synthesis"]
     );
     const systemText = [
-      "You are the quality-control editor for a Feishu fund manager bot.",
-      "Rewrite only the final user-facing answer. Do not expose hidden reasoning or internal chain-of-thought.",
-      "The rewrite must answer the user's question in the first two lines, give a concrete action, cite available evidence, and convert risk into sizing, waiting conditions, or review triggers.",
-      "Do not invent fund codes or market figures not present in the evidence.",
-      "Use Chinese. Keep it concise and suitable for a Feishu card. Do not use Markdown tables or code blocks.",
+      "你是飞书机器人“基金经理”的最终质检编辑。",
+      "只重写最终给用户看的回答，不要暴露隐藏推理或内部思考链。",
+      "前两行必须直接回答用户问题，给出明确动作，引用已有证据，并把风险转成仓位、等待条件或复查触发。",
+      "不要编造证据里没有的基金代码、市场数字或行情。",
+      "必须使用自然中文。禁止输出内部字段名或英文枚举，例如 trendProfile、actionability、entryBias、fitLabel、extended_uptrend、tactical_only、staged_buy、wait_pullback。",
+      "遇到内部标签时要翻译成客户能读懂的话：extended_uptrend=短期涨幅偏热，tactical_only=只适合战术小仓位，staged_buy=分批买入，wait_pullback=等待回撤。",
+      "保持适合飞书卡片阅读，不要 Markdown 表格或代码块。",
       "",
       skillContext
     ].join("\n");
@@ -4001,7 +4074,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "draftAnswer:",
       String(text || "").slice(0, 8000),
       "",
-      "Rewrite the answer now. Keep concrete numbers, fund codes, action, sizing, confidence, and decision boundaries when evidence supports them."
+      "现在重写回答。保留证据支持的具体数字、基金代码、动作、仓位、信心和决策边界，但必须把内部字段转成自然中文。"
     ].join("\n");
     const rewritten = await callModel({
       systemText,
@@ -4009,7 +4082,8 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       images: [],
       maxTokens: Math.min(Number(getEffectiveConfig().modelMaxOutputTokens || 2800), 1800)
     });
-    const secondPass = evaluateFundAnswerQuality({ text: rewritten, workflow, userText, evidence });
+    const cleanedRewrite = normalizeUserFacingFundAnswer(rewritten || localizedText);
+    const secondPass = evaluateFundAnswerQuality({ text: cleanedRewrite, workflow, userText, evidence });
     updateStats({
       counters: {
         fundAnswerQualityRewrites: 1,
@@ -4020,11 +4094,11 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
         lastFundAnswerQualityRewriteIssues: secondPass.issues.join(",")
       }
     });
-    return rewritten || text;
+    return cleanedRewrite || localizedText;
   } catch (error) {
     console.error("[fund-answer-quality-rewrite-error]", error);
     recordError(error, { fundAnswerQualityRewriteFailures: 1 });
-    return text;
+    return localizedText;
   }
 }
 
@@ -4036,9 +4110,9 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
     ["fund_screening", "fund_comparison", "fund_recommendation"].includes(workflow)
     || isActionSeekingFundQuestion(userText)
   );
-  const hasAction = /(买入|分批|持有|等待|观望|回避|卖出|换基|暂停|加仓|减仓|买|卖|buy|staged|wait|avoid|hold|sell)/i.test(firstScreen);
+  const hasAction = /(买入|分批|持有|等待|观望|回避|卖出|换基|暂停|加仓|减仓|止盈|止损|少买|不买|买|卖)/.test(firstScreen);
   const hasSizing = /(\d+(?:\.\d+)?\s*%|\d+(?:\.\d+)?\s*(?:元|万)|仓位|比例|成|批|底仓|第一笔|上限|下限)/.test(body);
-  const hasEvidence = /(\d{6}|题材|阶段|催化|拥挤|确认|扩散|萌芽|净值|夏普|回撤|波动|费率|持仓|金价|美元指数|COMEX|黄金ETF|QDII|theme|stage|forwardScore|crowdingScore|trend|drawdown|sharpe|nav|\d+(?:\.\d+)?%\s*(?:收益|回撤|波动|费率|涨幅|跌幅|涨|跌|return|drawdown|change))/i.test(body);
+  const hasEvidence = /(\d{6}|题材|阶段|催化|拥挤|确认|扩散|萌芽|净值|夏普|回撤|波动|费率|持仓|金价|美元指数|COMEX|黄金ETF|QDII|ETF|NAV|\d+(?:\.\d+)?%\s*(?:收益|回撤|波动|费率|涨幅|跌幅|涨|跌))/i.test(body);
   const evidenceAvailable = hasQualityEvidence(evidence);
   const clicheCount = [
     /可以配置.{0,16}(但|不过).{0,12}(不|别)追高/,
@@ -4049,6 +4123,7 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   ].filter((pattern) => pattern.test(body)).length;
   const riskCount = (body.match(/风险/g) || []).length;
 
+  if (hasInternalFundSignalLeak(body)) issues.push("internal_signal_leak");
   if (actionSeeking && !hasAction) issues.push("missing_direct_action");
   if (actionSeeking && !hasSizing) issues.push("missing_sizing_or_execution");
   if (evidenceAvailable && !hasEvidence) issues.push("missing_concrete_evidence");
@@ -4058,6 +4133,25 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   }
 
   return { ok: issues.length === 0, issues };
+}
+
+function hasInternalFundSignalLeak(text) {
+  const body = String(text || "");
+  const tokenPattern = /\b(?:extended_uptrend|rebound_repair|range_or_mixed|germination|confirmation|diffusion|crowded|buyable_now|staged_buy|wait_pullback|hold_observe|avoid_now|tactical_only|weak_fit|not_suitable|need_specific_fund|high_chase_risk|low_position_rotation|acceptable_position|neutral_or_wait|early_staged_buy|watch_confirm|avoid_chasing|wait_or_small_starter|rotation_starter|trendProfile|actionability|entryBias|fitLabel|trendLabel|forwardScore|crowdingScore|rotationScore|lowPositionScore|positionSignal|actionBias|drawdownFromRecentHighPct|return20dPct|return60dPct|return120dPct)\b/i;
+  return tokenPattern.test(body)
+    || /\b(?:tactical\s+only|staged\s+buy|wait\s+pullback)\b/i.test(body)
+    || /\b(?:stage|trend|action|fit)\s*[=:：]\s*[a-z_ -]{3,}/i.test(body);
+}
+
+function normalizeUserFacingFundAnswer(text) {
+  let output = String(text || "");
+  for (const [raw, label] of [...USER_FACING_FUND_FIELD_LABELS, ...USER_FACING_FUND_LABELS]) {
+    output = output.replace(new RegExp(`\\b${escapeRegExp(raw)}\\b`, "gi"), label);
+  }
+  return output
+    .replace(/\bNAV\b/g, "净值")
+    .replace(/(趋势|动作|入场判断|适配度)[:：]\s*/g, "$1：")
+    .trim();
 }
 
 function isActionSeekingFundQuestion(text) {
@@ -5284,7 +5378,9 @@ function computeTrendProfile(points = []) {
     drawdownFromRecentHighPct: drawdownFromHighPct,
     reboundFromRecentLowPct: reboundFromLowPct,
     trendLabel,
+    trendLabelText: formatTrendLabel(trendLabel),
     entryBias,
+    entryBiasText: formatEntryBias(entryBias),
     invalidationHint: entryBias === "staged_buy"
       ? "若60日收益转负或跌破近60日低点，暂停加仓。"
       : entryBias === "wait_pullback"
@@ -5827,7 +5923,9 @@ function buildFundActionabilitySignals(digest) {
   return {
     score: boundedScore,
     fitLabel,
+    fitLabelText: formatFitLabel(fitLabel),
     action,
+    actionText: formatActionabilityAction(action),
     allocationBand,
     confidence,
     decisiveEvidence,
