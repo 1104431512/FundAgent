@@ -20,6 +20,8 @@ Recommend candidates from market context and fund pools. Do not treat this as an
 
 - Use codes/names only from available candidate data unless explicitly marked "direction only, code pending verification".
 - Avoid recommending only recent top performers; mention crowding and drawdown risk.
+- When the user asks for pullback-complete or ready-to-launch funds, prioritize candidates with a clear pullback/setup signal over funds with the highest recent return.
+- Do not package an extended uptrend or wait-for-pullback candidate as a ready-to-launch opportunity; put it on watch or reject it for that request.
 - For sector/theme/QDII products, label them as satellite or tactical unless the user asks for concentration.
 - For broad index or balanced funds, they can be core candidates if evidence supports it.
 - Do not default to A-class shares. If candidate data includes shareClass or fee model, choose A/C/D/I etc. by expected holding period, subscription fee, sales service fee, redemption fee, purchase threshold, and channel availability.
@@ -33,7 +35,7 @@ Recommend candidates from market context and fund pools. Do not treat this as an
 Give:
 
 1. Top 2-4 themes/directions.
-2. 3-6 candidate funds or ETFs, including share class, fee-model caveat, and holding-period fee fit.
+2. 3-6 candidate funds or ETFs, including share class, fee-model caveat, holding-period fee fit, and whether the trend is pullback complete / launch setup / already extended.
 3. Which profile fits each: aggressive / balanced / conservative.
 4. 10000 CNY allocation.
 5. One self-evaluation verdict: suitable / tactical only / wait / avoid.

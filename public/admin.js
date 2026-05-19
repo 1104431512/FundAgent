@@ -470,6 +470,8 @@ function formatTrendLabel(value) {
   return {
     breakdown: "破位",
     extended_uptrend: "偏热",
+    pullback_complete: "回调完成",
+    launch_setup: "启动前夜",
     rebound_repair: "修复",
     uptrend: "上行",
     weakening: "转弱",

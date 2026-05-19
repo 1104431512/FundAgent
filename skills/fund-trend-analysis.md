@@ -12,7 +12,7 @@ This skill focuses on price/NAV behavior and timing. It must turn trend data int
 
 - Read `trendProfile`, NAV date, unit NAV, estimated NAV/change, ranking returns, and computed `riskMetrics.periods`.
 - Separate 20/60-day short trend, 120/250-day medium trend, and drawdown-from-high.
-- Judge whether the move is trend continuation, rebound after drawdown, range-bound noise, exhaustion, or breakdown.
+- Judge whether the move is pullback-complete launch setup, trend continuation, rebound after drawdown, range-bound noise, exhaustion, or breakdown.
 - Compare the fund's trend with its theme/market snapshot when available.
 - Convert the trend into an entry action and first-order plan.
 
@@ -29,6 +29,7 @@ Classify timing as one of:
 ## Entry Logic
 
 - If 20/60/120-day returns are positive but price is not extremely extended, prefer `staged_buy` or `buyable_now`.
+- If the user asks for "回调完成/准备启动", require a moderate prior pullback, repair from the recent low, and non-overheated 20/60-day returns before calling it buyable.
 - If the fund is near a recent high after a very fast 20/60-day jump, prefer `wait_pullback` with a concrete waiting condition.
 - If short trend is negative but 120/250-day trend is still intact, call it `hold_observe`, not automatic avoid.
 - If 60/120-day trend is negative and drawdown is deepening, call it `avoid_now`.
@@ -46,6 +47,7 @@ Classify timing as one of:
 Return concise internal notes:
 
 - trendLabel
+- pullbackSetup: signal, score, and evidence when available
 - timingLabel
 - evidence
 - entryPlan

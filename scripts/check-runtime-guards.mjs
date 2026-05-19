@@ -27,6 +27,14 @@ const requiredPatterns = [
   {
     pattern: /extended_uptrend[\s\S]{0,120}短期涨幅偏热/,
     message: "internal trend labels must have Chinese user-facing translations."
+  },
+  {
+    pattern: /scoreCandidateReturnSetup/,
+    message: "market deep-dive candidate sorting must use setup-aware return scoring instead of raw recent-return chasing."
+  },
+  {
+    pattern: /pullbackSetup/,
+    message: "trend profiles must expose a pullback/setup signal for ready-to-launch requests."
   }
 ];
 

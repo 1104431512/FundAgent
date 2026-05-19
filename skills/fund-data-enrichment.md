@@ -23,6 +23,7 @@ Use public data to supplement, not replace, user-provided screenshots. If public
 - Holdings are usually quarterly and may be stale; always state the disclosure date when available.
 - QDII overseas NAV and holdings can lag due to overseas market holidays and time zones.
 - Recent ranking is momentum evidence, not proof of long-term quality.
+- For pullback/setup requests, recent ranking is only a source of candidates; final selection must depend on pullback/setup evidence from NAV history, not the ranking position itself.
 - Do not treat A/B/C/D/I classes as interchangeable. Explain the selected share class and compare subscription fee, sales service fee, redemption fee, holding horizon, and channel availability when alternatives exist.
 - A-class style front-end subscription fees and C-class style ongoing sales service fees affect different holding periods differently; do not assume one is always cheaper.
 - When feeImpact exists, pass it through to recommendation and portfolio decisions; do not collapse it into a generic "fees differ" caveat.

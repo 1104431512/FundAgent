@@ -30,6 +30,8 @@ const DEFAULT_PORTFOLIO_MANAGER_PROFILE = [
 ].join("\n");
 const USER_FACING_FUND_LABELS = [
   ["extended_uptrend", "短期涨幅偏热"],
+  ["pullback_complete", "回调完成待启动"],
+  ["launch_setup", "启动前夜"],
   ["rebound_repair", "回撤后修复"],
   ["range_or_mixed", "震荡或信号混杂"],
   ["breakdown", "趋势破位"],
@@ -79,6 +81,7 @@ const USER_FACING_FUND_FIELD_LABELS = [
   ["lowPositionScore", "低位评分"],
   ["positionSignal", "位置判断"],
   ["actionBias", "操作倾向"],
+  ["pullbackSetup", "回调启动信号"],
   ["drawdownFromRecentHighPct", "距近期高点回撤"],
   ["return20dPct", "近20日收益"],
   ["return60dPct", "近60日收益"],
@@ -2060,6 +2063,8 @@ function formatTrendLabel(value) {
   const labels = {
     breakdown: "破位",
     extended_uptrend: "偏热",
+    pullback_complete: "回调完成",
+    launch_setup: "启动前夜",
     rebound_repair: "修复",
     uptrend: "上行",
     weakening: "转弱",
@@ -3887,6 +3892,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
     "如果提供了 marketDeepDive，必须使用其中的 trendProfile、risk、fees、holdings 和 actionability 来筛掉不适合的候选；不要只复述市场快照。",
     "marketDeepDive 中的 trendProfile、actionability、entryBias、fitLabel 等是内部字段；最终回答必须翻译成中文用户话术，不要原样输出字段名或 extended_uptrend/staged_buy/wait_pullback 这类枚举。",
+    "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先选择 pullbackSetup.signal 为 pullback_complete 或 launch_setup 的候选；短期涨幅偏热、20日/60日大涨且 entryBias 为 wait_pullback 的候选只能列入观察，不得作为主推荐。",
     "不要编造 marketSnapshot 里没有的基金代码、涨跌幅、排名、金价或新闻。",
     "推荐基金时不要默认偏向 A 类；同一基金存在 A/C/D/I 等份额时，按用户持有期和费用模型说明为什么选这个份额，并提示可替代份额。",
     "如果候选下钻里出现 seed.alternativeShareClasses 或 seed.sameExposureAlternatives，不要把它们当成独立推荐名额；主推荐只列一个代表，替代份额/同指数替代品放在该条下面说明。",
@@ -3918,7 +3924,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
     "2. 题材雷达：先列 1-3 个相关题材的中文阶段、前瞻评分、拥挤度、为什么现在值得/不值得看；不要输出 stage/forwardScore/crowdingScore 这些字段名。",
     "3. 自评估：这类需求是否适合现在做，confidence，适合激进/均衡/保守哪类。",
-    "4. 推荐清单：优先 3-5 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、趋势/自评估动作、为什么入选。只能使用快照或下钻中的候选代码；如果没有足够代码，就写“待复核方向”。",
+    "4. 推荐清单：优先 3-5 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号、趋势/自评估动作、为什么入选。只能使用快照或下钻中的候选代码；如果没有足够代码，就写“待复核方向”。",
     "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
     "5. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
     "6. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的题材或价格条件。"
@@ -3964,6 +3970,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "如果 marketSnapshot.themeRadar 或 marketDeepDive.themeRadar 存在，优先引用 stage、forwardScore、crowdingScore、actionBias，避免只按历史涨幅回答。",
     "如果提供了 marketDeepDive，必须使用下钻候选的 trendProfile、risk、fees、holdings 和 actionability 来形成买/等/回避判断。",
     "marketDeepDive 中的 trendProfile、actionability、entryBias、fitLabel 等是内部字段；最终回答必须翻译成中文用户话术，不要原样输出字段名或 extended_uptrend/staged_buy/wait_pullback 这类枚举。",
+    "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先判断 pullbackSetup.signal；短期涨幅偏热、20日/60日大涨且等待回撤的候选不能被包装成启动机会。",
     "如果没有抓到对应行情数据，要说明是公开数据源暂时不可用或滞后，不要简单说自己没有实时数据能力。",
     "必须通过 fund-actionability-evaluation 和 fund-answer-quality 质量门槛：前两行直接回答；有快照/下钻就引用具体字段；给明确行动、适合对象和仓位建议。",
     "不要把风险写成免责声明清单。只保留会改变买入/等待/回避动作的决策边界。",
@@ -4137,7 +4144,7 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
 
 function hasInternalFundSignalLeak(text) {
   const body = String(text || "");
-  const tokenPattern = /\b(?:extended_uptrend|rebound_repair|range_or_mixed|germination|confirmation|diffusion|crowded|buyable_now|staged_buy|wait_pullback|hold_observe|avoid_now|tactical_only|weak_fit|not_suitable|need_specific_fund|high_chase_risk|low_position_rotation|acceptable_position|neutral_or_wait|early_staged_buy|watch_confirm|avoid_chasing|wait_or_small_starter|rotation_starter|trendProfile|actionability|entryBias|fitLabel|trendLabel|forwardScore|crowdingScore|rotationScore|lowPositionScore|positionSignal|actionBias|drawdownFromRecentHighPct|return20dPct|return60dPct|return120dPct)\b/i;
+  const tokenPattern = /\b(?:extended_uptrend|pullback_complete|launch_setup|rebound_repair|range_or_mixed|germination|confirmation|diffusion|crowded|buyable_now|staged_buy|wait_pullback|hold_observe|avoid_now|tactical_only|weak_fit|not_suitable|need_specific_fund|high_chase_risk|low_position_rotation|acceptable_position|neutral_or_wait|early_staged_buy|watch_confirm|avoid_chasing|wait_or_small_starter|rotation_starter|trendProfile|actionability|entryBias|fitLabel|trendLabel|forwardScore|crowdingScore|rotationScore|lowPositionScore|positionSignal|actionBias|pullbackSetup|drawdownFromRecentHighPct|return20dPct|return60dPct|return120dPct)\b/i;
   return tokenPattern.test(body)
     || /\b(?:tactical\s+only|staged\s+buy|wait\s+pullback)\b/i.test(body)
     || /\b(?:stage|trend|action|fit)\s*[=:：]\s*[a-z_ -]{3,}/i.test(body);
@@ -5010,13 +5017,53 @@ function scoreDeepDiveCandidate(item, themeRadar = []) {
   for (const theme of matchedThemes.slice(0, 2)) {
     score += 8 + Math.min(16, Number(theme.forwardScore || 0) / 5);
     if (theme.stage === "crowded") score -= 4;
+    if (theme.positionSignal === "high_chase_risk") score -= 6;
+    if (["low_position_rotation", "acceptable_position"].includes(theme.positionSignal)) score += 5;
   }
-  for (const value of [item.oneMonthPct, item.threeMonthPct, item.sixMonthPct, item.oneYearPct, item.dailyPct]) {
-    const numeric = toNumber(value);
-    if (Number.isFinite(numeric)) score += Math.max(-8, Math.min(12, numeric / 2));
-  }
+  score += scoreCandidateReturnSetup(item);
   if (item.unitNav) score += 1;
   if (item.manager) score += 1;
+  return score;
+}
+
+function scoreCandidateReturnSetup(item) {
+  const oneMonth = toNumber(item?.oneMonthPct);
+  const threeMonth = toNumber(item?.threeMonthPct);
+  const sixMonth = toNumber(item?.sixMonthPct);
+  const oneYear = toNumber(item?.oneYearPct);
+  const daily = toNumber(item?.dailyPct);
+  let score = 0;
+
+  if (Number.isFinite(oneMonth)) {
+    if (oneMonth >= 1 && oneMonth <= 8) score += 10;
+    else if (oneMonth >= -5 && oneMonth < 1) score += 6;
+    else if (oneMonth > 8 && oneMonth <= 12) score += 2;
+    else if (oneMonth > 12) score -= Math.min(16, (oneMonth - 12) * 0.9);
+    else if (oneMonth < -12) score -= 6;
+  }
+
+  if (Number.isFinite(threeMonth)) {
+    if (threeMonth >= -6 && threeMonth <= 12) score += 6;
+    else if (threeMonth > 12 && threeMonth <= 22) score += 1;
+    else if (threeMonth > 22) score -= Math.min(14, (threeMonth - 22) * 0.55);
+    else if (threeMonth < -18) score -= 5;
+  }
+
+  if (Number.isFinite(sixMonth)) {
+    if (sixMonth >= -10 && sixMonth <= 18) score += 3;
+    else if (sixMonth > 35) score -= 6;
+  }
+
+  if (Number.isFinite(oneYear)) {
+    if (oneYear >= -18 && oneYear <= 35) score += 2;
+    else if (oneYear > 60) score -= 5;
+  }
+
+  if (Number.isFinite(daily)) {
+    if (daily > 5) score -= 5;
+    else if (daily >= -1 && daily <= 2) score += 1;
+  }
+
   return score;
 }
 
@@ -5131,6 +5178,7 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
   const focusedCandidates = await fetchFocusedFundCandidates(userText);
   const relevantThemeRadar = selectRelevantThemeRadar(userText, marketSnapshot);
   const precious = isPreciousMetalQuestion(userText);
+  const preferPullbackSetup = isPullbackSetupRequest(userText);
   const snapshotCandidates = precious
     ? (marketSnapshot.fundCandidates?.preciousMetalFunds || [])
     : options.forRecommendation
@@ -5144,7 +5192,7 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
   const merged = mergeCandidateFunds(focusedCandidates, snapshotCandidates)
     .map((item) => ({ ...item, matchedThemes: matchCandidateThemes(item, relevantThemeRadar) }))
     .sort((a, b) => scoreDeepDiveCandidate(b, relevantThemeRadar) - scoreDeepDiveCandidate(a, relevantThemeRadar));
-  const defaultLimit = precious ? 4 : 3;
+  const defaultLimit = preferPullbackSetup ? 6 : precious ? 4 : 3;
   const limit = Math.max(0, Number(process.env.MARKET_DEEP_DIVE_FUND_LIMIT ?? defaultLimit));
   const selected = selectDiversifiedDeepDiveCandidates(merged, limit, {
     diversifyExposure: options.forRecommendation || precious
@@ -5172,9 +5220,12 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
       };
     }
   }));
+  const orderedCandidates = preferPullbackSetup
+    ? [...candidates].sort((a, b) => scoreResearchDigestForPullbackSetup(b) - scoreResearchDigestForPullbackSetup(a))
+    : candidates;
 
   updateStats({
-    counters: { marketDeepDiveCalls: 1, marketDeepDiveCandidates: candidates.length },
+    counters: { marketDeepDiveCalls: 1, marketDeepDiveCandidates: orderedCandidates.length },
     last: { lastMarketDeepDiveAt: new Date().toISOString() }
   });
 
@@ -5183,9 +5234,47 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
     focus: precious ? "precious_metals" : focusedCandidates.length ? "focused_theme_search" : "market_recommendation",
     themeRadar: relevantThemeRadar,
     searchKeywords: inferFocusedFundSearchKeywords(userText),
+    selectionDiscipline: preferPullbackSetup ? "prefer_pullback_complete_launch_setup_not_chase" : "balanced_theme_relevance",
     selectedCodes: selected.map((item) => item.code),
-    candidates
+    candidates: orderedCandidates
   };
+}
+
+function isPullbackSetupRequest(text) {
+  const normalized = normalizeIntentText(text);
+  return hasAny(normalized, [
+    "回调完成",
+    "回调结束",
+    "调整完成",
+    "调整结束",
+    "准备启动",
+    "准备要启动",
+    "即将启动",
+    "启动前",
+    "启动前夜",
+    "低位启动",
+    "蓄势",
+    "别追涨",
+    "不要追涨",
+    "不追涨",
+    "追涨"
+  ]);
+}
+
+function scoreResearchDigestForPullbackSetup(digest = {}) {
+  if (!digest?.ok) return -100;
+  const trend = digest.trendProfile || {};
+  const actionability = digest.actionability || {};
+  let score = Number(actionability.score || 0) * 0.35;
+  const setupScore = Number(trend.pullbackSetup?.score || 0);
+  if (Number.isFinite(setupScore)) score += setupScore * 0.75;
+  if (trend.pullbackSetup?.signal === "pullback_complete") score += 28;
+  if (trend.pullbackSetup?.signal === "launch_setup") score += 16;
+  if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback") score -= 34;
+  if (Number(trend.return20dPct) > 10) score -= 18;
+  if (Number(trend.return60dPct) > 24) score -= 16;
+  if (Number(trend.drawdownFromRecentHighPct) > -2 && Number(trend.return20dPct) > 6) score -= 14;
+  return score;
 }
 
 async function fetchFundResearchDigest(code, seed = {}) {
@@ -5332,15 +5421,31 @@ function computeTrendProfile(points = []) {
     return round((latest.cumulativeNav / start.cumulativeNav - 1) * 100, 2);
   };
   const recent = ordered.slice(-Math.min(ordered.length, 250));
+  const setupWindow = ordered.slice(-Math.min(ordered.length, 120));
   const recentHigh = Math.max(...recent.map((point) => point.cumulativeNav));
   const recentLow = Math.min(...recent.map((point) => point.cumulativeNav));
+  const setupHigh = Math.max(...setupWindow.map((point) => point.cumulativeNav));
+  const setupLow = Math.min(...setupWindow.map((point) => point.cumulativeNav));
   const drawdownFromHighPct = recentHigh > 0 ? round((latest.cumulativeNav / recentHigh - 1) * 100, 2) : null;
   const reboundFromLowPct = recentLow > 0 ? round((latest.cumulativeNav / recentLow - 1) * 100, 2) : null;
+  const drawdownFrom120HighPct = setupHigh > 0 ? round((latest.cumulativeNav / setupHigh - 1) * 100, 2) : null;
+  const reboundFrom120LowPct = setupLow > 0 ? round((latest.cumulativeNav / setupLow - 1) * 100, 2) : null;
+  const pullbackDepth120Pct = setupHigh > 0 && setupLow > 0 ? round((setupLow / setupHigh - 1) * 100, 2) : null;
   const r20 = returnOver(20);
   const r60 = returnOver(60);
   const r120 = returnOver(120);
   const r250 = returnOver(250);
   const extended = (Number.isFinite(r20) && r20 > 8) || (Number.isFinite(r60) && r60 > 18 && drawdownFromHighPct > -3);
+  const pullbackSetup = inferPullbackSetupSignal({
+    return20dPct: r20,
+    return60dPct: r60,
+    return120dPct: r120,
+    drawdownFromHighPct,
+    drawdownFrom120HighPct,
+    reboundFrom120LowPct,
+    pullbackDepth120Pct,
+    extended
+  });
   const breakdown = (Number.isFinite(r60) && r60 < -8) && (Number.isFinite(r120) && r120 < -10);
   const uptrend = (Number.isFinite(r20) && r20 > 0) && (Number.isFinite(r60) && r60 > 0) && (!Number.isFinite(r120) || r120 > 0);
   const rebound = (Number.isFinite(r20) && r20 > 0) && (Number.isFinite(r60) && r60 > 0) && Number.isFinite(drawdownFromHighPct) && drawdownFromHighPct < -5;
@@ -5349,18 +5454,24 @@ function computeTrendProfile(points = []) {
     ? "breakdown"
     : extended
       ? "extended_uptrend"
-      : rebound
-        ? "rebound_repair"
-        : uptrend
-          ? "uptrend"
-          : weakening
-            ? "weakening"
-            : "range_or_mixed";
+      : pullbackSetup.signal === "pullback_complete"
+        ? "pullback_complete"
+        : pullbackSetup.signal === "launch_setup"
+          ? "launch_setup"
+          : rebound
+            ? "rebound_repair"
+            : uptrend
+              ? "uptrend"
+              : weakening
+                ? "weakening"
+                : "range_or_mixed";
   const entryBias = breakdown
     ? "avoid_now"
     : extended
       ? "wait_pullback"
-      : rebound || uptrend
+      : pullbackSetup.signal === "pullback_complete" && pullbackSetup.score >= 72
+        ? "buyable_now"
+        : ["pullback_complete", "launch_setup"].includes(pullbackSetup.signal) || rebound || uptrend
         ? "staged_buy"
         : weakening
           ? "hold_observe"
@@ -5377,6 +5488,10 @@ function computeTrendProfile(points = []) {
     return250dPct: r250,
     drawdownFromRecentHighPct: drawdownFromHighPct,
     reboundFromRecentLowPct: reboundFromLowPct,
+    drawdownFrom120HighPct,
+    reboundFrom120LowPct,
+    pullbackDepth120Pct,
+    pullbackSetup,
     trendLabel,
     trendLabelText: formatTrendLabel(trendLabel),
     entryBias,
@@ -5386,6 +5501,88 @@ function computeTrendProfile(points = []) {
       : entryBias === "wait_pullback"
         ? "等待20日涨幅降温或从高点回撤后再评估。"
         : "等待趋势重新转强后再评估。"
+  };
+}
+
+function inferPullbackSetupSignal({
+  return20dPct,
+  return60dPct,
+  return120dPct,
+  drawdownFromHighPct,
+  drawdownFrom120HighPct,
+  reboundFrom120LowPct,
+  pullbackDepth120Pct,
+  extended = false
+} = {}) {
+  const r20 = Number(return20dPct);
+  const r60 = Number(return60dPct);
+  const r120 = Number(return120dPct);
+  const drawdown = Number.isFinite(Number(drawdownFrom120HighPct)) ? Number(drawdownFrom120HighPct) : Number(drawdownFromHighPct);
+  const rebound = Number(reboundFrom120LowPct);
+  const pullbackDepth = Number.isFinite(Number(pullbackDepth120Pct)) ? Math.abs(Math.min(0, Number(pullbackDepth120Pct))) : 0;
+  let score = 0;
+  const evidence = [];
+
+  if (Number.isFinite(drawdown) && drawdown <= -3 && drawdown >= -15) {
+    score += 24;
+    evidence.push(`距120日高点回撤${drawdown}%`);
+  } else if (Number.isFinite(drawdown) && drawdown > -3) {
+    score -= 12;
+  } else if (Number.isFinite(drawdown) && drawdown < -22) {
+    score -= 10;
+  }
+
+  if (pullbackDepth >= 5 && pullbackDepth <= 25) {
+    score += 14;
+    evidence.push(`120日内曾回调约${round(pullbackDepth, 2)}%`);
+  }
+
+  if (Number.isFinite(r20)) {
+    if (r20 > 0 && r20 <= 8) {
+      score += 22;
+      evidence.push(`近20日温和转强${r20}%`);
+    } else if (r20 > 8) {
+      score -= Math.min(24, (r20 - 8) * 2.2);
+    } else if (r20 <= 0) {
+      score -= 8;
+    }
+  }
+
+  if (Number.isFinite(r60)) {
+    if (r60 >= -8 && r60 <= 15) score += 12;
+    else if (r60 > 18) score -= Math.min(22, (r60 - 18) * 1.1);
+    else if (r60 < -15) score -= 8;
+  }
+
+  if (Number.isFinite(rebound)) {
+    if (rebound >= 3 && rebound <= 18) {
+      score += 14;
+      evidence.push(`已从120日低点修复${rebound}%`);
+    } else if (rebound > 28) {
+      score -= 10;
+    }
+  }
+
+  if (Number.isFinite(r120) && r120 >= -12) score += 6;
+  if (extended) score -= 30;
+
+  const boundedScore = Math.max(0, Math.min(100, Math.round(score)));
+  const signal = boundedScore >= 58
+    ? "pullback_complete"
+    : boundedScore >= 42
+      ? "launch_setup"
+      : "none";
+
+  return {
+    signal,
+    signalText: signal === "pullback_complete"
+      ? "回调完成待启动"
+      : signal === "launch_setup"
+        ? "启动前夜观察"
+        : "未形成回调启动信号",
+    score: boundedScore,
+    evidence,
+    rule: "优先回调幅度适中、从低点修复、20日温和转强且60日不过热的基金；短期暴涨视为追涨风险。"
   };
 }
 
@@ -5854,6 +6051,11 @@ function buildFundActionabilitySignals(digest) {
   if (trend.entryBias === "wait_pullback") score -= 6;
   if (trend.entryBias === "avoid_now") score -= 18;
   if (trend.entryBias === "hold_observe") score -= 2;
+  if (trend.pullbackSetup?.signal === "pullback_complete") score += 18;
+  if (trend.pullbackSetup?.signal === "launch_setup") score += 10;
+  if (trend.trendLabel === "extended_uptrend") score -= 12;
+  if (Number(trend.return20dPct) > 12) score -= 8;
+  if (Number(trend.return60dPct) > 24) score -= 8;
 
   if (Number.isFinite(risk.sharpe)) {
     if (risk.sharpe >= 1) score += 10;
@@ -5906,7 +6108,8 @@ function buildFundActionabilitySignals(digest) {
   const evidenceCount = [trend.ok, risk.ok, digest.holdings?.ok, feeEvidenceOk].filter(Boolean).length;
   const confidence = evidenceCount >= 4 ? "high" : evidenceCount >= 2 ? "medium" : "low";
   const decisiveEvidence = [
-    trend.ok ? `trend=${trend.trendLabel}, entryBias=${trend.entryBias}, 20d=${trend.return20dPct}%, 60d=${trend.return60dPct}%` : "",
+    trend.ok ? `走势=${trend.trendLabelText || formatTrendLabel(trend.trendLabel)}，入场=${trend.entryBiasText || formatEntryBias(trend.entryBias)}，20日=${trend.return20dPct}%，60日=${trend.return60dPct}%` : "",
+    trend.pullbackSetup?.signal && trend.pullbackSetup.signal !== "none" ? `回调启动信号=${trend.pullbackSetup.signalText}，评分=${trend.pullbackSetup.score}` : "",
     risk.ok ? `1yReturn=${risk.totalReturnPct}%, maxDrawdown=${risk.maxDrawdownPct}%, sharpe=${risk.sharpe}` : "",
     fees.shareClassFeeModel?.label || "",
     formatFeeImpactForEvidence(fees),
@@ -5914,6 +6117,7 @@ function buildFundActionabilitySignals(digest) {
   ].filter(Boolean).slice(0, 4);
   const decisionBlocker = [
     trend.invalidationHint || "",
+    trend.trendLabel === "extended_uptrend" ? "短期涨幅偏热，不符合回调完成后启动的买点。" : "",
     feeType === "unknown" ? "费率/份额类别未确认前不做重仓。" : "",
     missingFeeData.length ? `费用数据缺口：${missingFeeData.slice(0, 3).join("/")}` : "",
     feeImpact?.feeDragLevel === "high" ? "持有期费用拖累偏高，买入强度需下调或改选低费率份额。" : "",
