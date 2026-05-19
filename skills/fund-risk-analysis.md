@@ -13,6 +13,7 @@ This skill owns risk, not return-chasing.
 - Use `riskMetrics.periods` for max drawdown, annualized volatility, Sharpe, and return stability.
 - Distinguish confirmed risk data from stale or insufficient data.
 - Evaluate liquidity, fund size, QDII/HK/overseas NAV lag, bond/commodity/sector concentration, and pending fee/limit uncertainty.
+- For money-market funds, use `moneyMarket.latestSevenDayAnnualizedPct`, `latestMillionIncome`, recent averages, liquidity, and stability. Do not judge them with equity-style momentum or drawdown language.
 - Convert risk into position-size guidance.
 
 ## Risk Labels

@@ -35,6 +35,14 @@ const requiredPatterns = [
   {
     pattern: /pullbackSetup/,
     message: "trend profiles must expose a pullback/setup signal for ready-to-launch requests."
+  },
+  {
+    pattern: /resolveFundMentionsFromText/,
+    message: "text-only fund screening must resolve fund names into codes before enrichment."
+  },
+  {
+    pattern: /Data_sevenDaysYearIncome/,
+    message: "money-market funds must parse seven-day annualized yield from public data."
   }
 ];
 

@@ -24,6 +24,7 @@ This is an orchestration skill, not a one-person-does-everything skill.
 - Product fit: fund type, benchmark, size, subscription/redemption constraints.
 - Trend and timing: use the trend specialist; do not make timing claims without trend evidence.
 - Risk-return: use the risk specialist; separate return from holding discomfort.
+- Money-market funds: treat them as cash management products; use 7-day annualized yield, million-income, liquidity, and stability rather than equity-style entry timing.
 - Holdings/style: use the holdings/style specialist; explain what exposure the user is actually buying.
 - Share-class cost: use the fee/share-class specialist; do not mix A/C/D/I share classes.
 - Manager and operation: use the manager-quality specialist.

@@ -3620,7 +3620,16 @@ function createId(prefix) {
 
 async function extractFundFactsWithModel({ images, userText, messageType }) {
   if (!images?.length) {
-    return { fundCodes: extractFundCodes(userText), visibleFacts: userText ? [userText] : [], missingFields: [] };
+    const fundCodes = extractFundCodes(userText);
+    const resolvedFunds = fundCodes.length ? [] : await resolveFundMentionsFromText(userText);
+    const resolvedCodes = resolvedFunds.map((item) => item.code);
+    return {
+      fundCodes: mergeFundCodes(fundCodes, resolvedCodes),
+      fundNames: resolvedFunds.map((item) => item.name).filter(Boolean),
+      visibleFacts: userText ? [userText] : [],
+      missingFields: [],
+      textResolvedFunds: resolvedFunds
+    };
   }
 
   const skillContext = buildSkillContextForIntent({ skillIds: ["fund-vision"] }, []);
@@ -3665,6 +3674,88 @@ async function extractFundFactsWithModel({ images, userText, messageType }) {
       extractionError: error.message
     };
   }
+}
+
+async function resolveFundMentionsFromText(userText, limit = 4) {
+  const text = String(userText || "").trim();
+  if (!text || isGenericFundReference(text)) return [];
+
+  const result = await fetchFundSearchCandidates(text).catch((error) => {
+    recordError(error, { textFundResolutionFailures: 1 });
+    return { ok: false, items: [] };
+  });
+  const items = Array.isArray(result.items) ? result.items : [];
+  if (!items.length) return [];
+
+  const directMatches = items.filter((item) => fundNameAppearsInText(text, item));
+  if (!directMatches.length) return [];
+
+  const productKeys = new Set(directMatches.map(getCandidateProductKey).filter(Boolean));
+  const selected = [];
+  for (const item of items) {
+    if (!item?.code) continue;
+    const sameProduct = productKeys.has(getCandidateProductKey(item));
+    const direct = directMatches.some((match) => match.code === item.code);
+    if (!direct && !sameProduct) continue;
+    if (selected.some((existing) => existing.code === item.code)) continue;
+    selected.push({
+      code: item.code,
+      name: item.name || "",
+      shareClass: item.shareClass || "",
+      type: item.type || "",
+      source: item.source || ""
+    });
+    if (selected.length >= limit) break;
+  }
+
+  updateStats({
+    counters: {
+      textFundNameResolutions: selected.length ? 1 : 0,
+      textFundNameResolvedCodes: selected.length
+    },
+    last: selected.length ? { lastTextFundNameResolutionAt: new Date().toISOString() } : {}
+  });
+  return selected;
+}
+
+function isGenericFundReference(text) {
+  const normalized = normalizeIntentText(text)
+    .replace(/[，。！？、,.!?]/g, "")
+    .replace(/\s+/g, "");
+  const genericWords = [
+    "基金",
+    "这个基金",
+    "这只基金",
+    "最近基金",
+    "帮我看看基金",
+    "基金能买吗",
+    "基金值得买吗",
+    "推荐基金"
+  ];
+  if (genericWords.includes(normalized)) return true;
+  return normalized.length < 5;
+}
+
+function fundNameAppearsInText(text, item = {}) {
+  const normalizedText = normalizeFundMentionText(text);
+  const name = normalizeFundMentionText(item.name || "");
+  if (name.length >= 4 && normalizedText.includes(name)) return true;
+
+  const productName = normalizeCandidateFundName(item.name || "");
+  const compactProduct = normalizeFundMentionText(productName);
+  if (compactProduct.length >= 4 && normalizedText.includes(compactProduct)) return true;
+
+  const withoutFundSuffix = compactProduct.replace(/基金$/i, "");
+  return withoutFundSuffix.length >= 4 && normalizedText.includes(withoutFundSuffix);
+}
+
+function normalizeFundMentionText(value) {
+  return String(value || "")
+    .replace(/\s+/g, "")
+    .replace(/[（）()【】\[\]·._\-—]/g, "")
+    .replace(/问题|请问|帮我|看看|分析一下|分析|怎么样|能买吗|还能买吗|值得买吗|适合买吗|要不要买|要不要卖|哪个好|哪只好|对比|比较|最近|现在|当前/g, "")
+    .toLowerCase()
+    .trim();
 }
 
 function getFundAnalysisSkillIds(extra = []) {
@@ -3745,6 +3836,7 @@ function buildFundCommitteeEvidencePrompt({ images = [], userText, messageType, 
     "",
     "如果联网补全资料中包含 riskMetrics，请优先使用其中的 1y/3y/5y 夏普率、年化波动、最大回撤、年化收益来评分；不要再要求用户手动补这些指标。只有 riskMetrics.ok=false 或点数不足时，才把这些列为缺失。",
     "如果联网补全资料中包含 holdings，请优先使用 equityTopHoldings / bondTopHoldings 做持仓风格分析。港股通、QDII、债基和指数基金可能分别出现在股票投资明细、债券投资明细或资产配置字段中；不要在已有 holdings 时说缺少十大持仓。",
+    "如果联网补全资料中包含 moneyMarket，请按现金管理产品分析，优先看7日年化、万份收益、流动性和收益稳定性，不要套用权益基金追涨/回撤框架。",
     "如果资料中包含 trendProfile 或 actionability，请优先使用它们判断入场时机、适合对象和仓位上限。",
     "分析时必须拆开走势/买点、风险/回撤、持仓/风格、份额/费率、经理质量这五块；最终汇总必须经过 fund-actionability-evaluation 和 fund-answer-quality，避免只给“可以配置但别追高”这类泛泛结论。"
   ].join("\n");
@@ -5346,6 +5438,7 @@ async function fetchFundResearchDigest(code, seed = {}) {
       missingFeeData: feeProfile.missingFeeData,
       feeRules: feeProfile.feeRules
     },
+    moneyMarket: profile.moneyMarket || null,
     scale: profile.scale,
     managers: (profile.managers || []).slice(0, 2),
     holdings: holdingsSummary,
@@ -6036,6 +6129,7 @@ function buildFundActionabilitySignals(digest) {
   const trend = digest.trendProfile || {};
   const risk = digest.risk?.oneYear || {};
   const fees = digest.fees || {};
+  const isMoneyMarket = Boolean(digest.moneyMarket?.ok) || /货币/.test(`${digest.name || ""} ${digest.seed?.type || ""}`);
   const feeType = fees.shareClassFeeModel?.type || "unknown";
   const feeImpact = fees.feeImpact || null;
   const oneYearFeeCost = toNumber(feeImpact?.oneYearCostPer10000);
@@ -6056,6 +6150,9 @@ function buildFundActionabilitySignals(digest) {
   if (trend.trendLabel === "extended_uptrend") score -= 12;
   if (Number(trend.return20dPct) > 12) score -= 8;
   if (Number(trend.return60dPct) > 24) score -= 8;
+  if (isMoneyMarket) {
+    score += digest.moneyMarket?.ok ? 16 : 0;
+  }
 
   if (Number.isFinite(risk.sharpe)) {
     if (risk.sharpe >= 1) score += 10;
@@ -6097,13 +6194,15 @@ function buildFundActionabilitySignals(digest) {
         ? "weak_fit"
         : "not_suitable";
   const highDrawdown = Number.isFinite(risk.maxDrawdownPct) && risk.maxDrawdownPct <= -25;
-  const allocationBand = action === "buy"
-    ? (highDrawdown ? "5%-10%" : "10%-20%")
-    : action === "staged_buy"
-      ? (highDrawdown ? "3%-8%" : "5%-15%")
-      : action === "wait"
-        ? "0%-3% watch/test only"
-        : "0%";
+  const allocationBand = isMoneyMarket
+    ? (action === "avoid" ? "0%" : "现金管理仓，按闲置资金和流动性需求配置")
+    : action === "buy"
+      ? (highDrawdown ? "5%-10%" : "10%-20%")
+      : action === "staged_buy"
+        ? (highDrawdown ? "3%-8%" : "5%-15%")
+        : action === "wait"
+          ? "0%-3% watch/test only"
+          : "0%";
   const feeEvidenceOk = feeType !== "unknown" && !missingFeeData.length;
   const evidenceCount = [trend.ok, risk.ok, digest.holdings?.ok, feeEvidenceOk].filter(Boolean).length;
   const confidence = evidenceCount >= 4 ? "high" : evidenceCount >= 2 ? "medium" : "low";
@@ -6111,12 +6210,14 @@ function buildFundActionabilitySignals(digest) {
     trend.ok ? `走势=${trend.trendLabelText || formatTrendLabel(trend.trendLabel)}，入场=${trend.entryBiasText || formatEntryBias(trend.entryBias)}，20日=${trend.return20dPct}%，60日=${trend.return60dPct}%` : "",
     trend.pullbackSetup?.signal && trend.pullbackSetup.signal !== "none" ? `回调启动信号=${trend.pullbackSetup.signalText}，评分=${trend.pullbackSetup.score}` : "",
     risk.ok ? `1yReturn=${risk.totalReturnPct}%, maxDrawdown=${risk.maxDrawdownPct}%, sharpe=${risk.sharpe}` : "",
+    formatMoneyMarketEvidence(digest.moneyMarket),
     fees.shareClassFeeModel?.label || "",
     formatFeeImpactForEvidence(fees),
     digest.holdings?.equityTopHoldings?.length ? `topHolding=${digest.holdings.equityTopHoldings[0]}` : ""
   ].filter(Boolean).slice(0, 4);
   const decisionBlocker = [
     trend.invalidationHint || "",
+    isMoneyMarket ? "货币基金主要用于现金管理，不适合作为权益进攻仓或追求高弹性的配置。" : "",
     trend.trendLabel === "extended_uptrend" ? "短期涨幅偏热，不符合回调完成后启动的买点。" : "",
     feeType === "unknown" ? "费率/份额类别未确认前不做重仓。" : "",
     missingFeeData.length ? `费用数据缺口：${missingFeeData.slice(0, 3).join("/")}` : "",
@@ -6311,6 +6412,7 @@ async function fetchFundProfile(code) {
       sixMonthPct: profile.syl_6y || "",
       oneYearPct: profile.syl_1n || ""
     },
+    moneyMarket: profile.moneyMarket || null,
     riskMetrics,
     trendProfile,
     actionability,
@@ -6416,6 +6518,16 @@ function formatFeeImpactForEvidence(fees = {}) {
     impact.feeDragLevel ? `feeDrag=${impact.feeDragLevel}` : ""
   ].filter(Boolean);
   return parts.join(", ");
+}
+
+function formatMoneyMarketEvidence(moneyMarket) {
+  if (!moneyMarket?.ok) return "";
+  const fields = [
+    moneyMarket.latestDate ? `货币数据日期=${moneyMarket.latestDate}` : "",
+    Number.isFinite(toNumber(moneyMarket.latestSevenDayAnnualizedPct)) ? `7日年化=${moneyMarket.latestSevenDayAnnualizedPct}%` : "",
+    Number.isFinite(toNumber(moneyMarket.latestMillionIncome)) ? `万份收益=${moneyMarket.latestMillionIncome}` : ""
+  ].filter(Boolean);
+  return fields.join(", ");
 }
 
 function buildFeeImpactEstimate({
@@ -6891,6 +7003,8 @@ function parseFundPingzhongData(text) {
   const assetAllocation = parseJsAssignment(text, "Data_assetAllocation");
   const performanceEvaluation = parseJsAssignment(text, "Data_performanceEvaluation");
   const managers = parseJsAssignment(text, "Data_currentFundManager");
+  const millionCopiesIncome = parseJsAssignment(text, "Data_millionCopiesIncome");
+  const sevenDaysYearIncome = parseJsAssignment(text, "Data_sevenDaysYearIncome");
   return {
     name: extractJsString(text, "fS_name"),
     code: extractJsString(text, "fS_code"),
@@ -6904,9 +7018,50 @@ function parseFundPingzhongData(text) {
     scale: summarizeScale(scale),
     assetAllocation: summarizeAssetAllocation(assetAllocation),
     performanceEvaluation: summarizePerformanceEvaluation(performanceEvaluation),
+    moneyMarket: summarizeMoneyMarketData({ millionCopiesIncome, sevenDaysYearIncome }),
     managers: summarizeManagers(managers),
     topStocks: extractTopStockCodes(text)
   };
+}
+
+function summarizeMoneyMarketData({ millionCopiesIncome, sevenDaysYearIncome } = {}) {
+  const million = normalizeMoneyMarketSeries(millionCopiesIncome);
+  const sevenDay = normalizeMoneyMarketSeries(sevenDaysYearIncome);
+  const latestMillion = million[million.length - 1] || null;
+  const latestSevenDay = sevenDay[sevenDay.length - 1] || null;
+  const latestDate = latestSevenDay?.date || latestMillion?.date || "";
+  return {
+    ok: Boolean(latestMillion || latestSevenDay),
+    latestDate,
+    latestMillionIncome: latestMillion?.value ?? null,
+    latestSevenDayAnnualizedPct: latestSevenDay?.value ?? null,
+    avg7dMillionIncome: averageRecentMoneyValue(million, 7),
+    avg30dSevenDayAnnualizedPct: averageRecentMoneyValue(sevenDay, 30),
+    seriesPoints: {
+      millionIncome: million.length,
+      sevenDayAnnualized: sevenDay.length
+    },
+    note: latestMillion || latestSevenDay ? "货币基金收益指标来自公开万份收益和7日年化序列。" : ""
+  };
+}
+
+function normalizeMoneyMarketSeries(series) {
+  if (!Array.isArray(series)) return [];
+  return series
+    .map((point) => {
+      const timestamp = Array.isArray(point) ? Number(point[0]) : Number(point?.[0] ?? point?.date);
+      const value = Array.isArray(point) ? toNumber(point[1]) : toNumber(point?.value);
+      return {
+        date: Number.isFinite(timestamp) ? formatEpochMsDate(timestamp) : "",
+        value
+      };
+    })
+    .filter((point) => point.date && Number.isFinite(point.value));
+}
+
+function averageRecentMoneyValue(series = [], days = 7) {
+  const values = series.slice(-Math.max(1, Number(days || 7))).map((item) => item.value).filter(Number.isFinite);
+  return values.length ? round(values.reduce((sum, value) => sum + value, 0) / values.length, 4) : null;
 }
 
 function parseFundArchiveRows(text) {
@@ -7108,6 +7263,11 @@ function formatDate(value) {
 function formatEpochSeconds(value) {
   const seconds = Number(value);
   return Number.isFinite(seconds) && seconds > 0 ? new Date(seconds * 1000).toISOString() : "";
+}
+
+function formatEpochMsDate(value) {
+  const ms = Number(value);
+  return Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString().slice(0, 10) : "";
 }
 
 async function replyToMessage(messageId, text, options = {}) {
