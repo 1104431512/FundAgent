@@ -77,6 +77,14 @@ const requiredPatterns = [
     message: "candidate recall must merge return evidence from multiple discovery sources, not just keywords."
   },
   {
+    pattern: /missing_pullback_timing_evidence/,
+    message: "pullback/setup recommendations must include numeric timing and low-position evidence."
+  },
+  {
+    pattern: /missing_pullback_three_tier_execution/,
+    message: "pullback/setup recommendations must include aggressive/balanced/conservative execution tiers."
+  },
+  {
     pattern: /resolveFundMentionsFromText/,
     message: "text-only fund screening must resolve fund names into codes before enrichment."
   },

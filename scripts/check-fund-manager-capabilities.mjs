@@ -180,11 +180,18 @@ const setupDigest = {
     pullbackSetup: { signal: "pullback_complete", score: 76 },
     trendLabel: "pullback_complete",
     entryBias: "buyable_now",
+    return5dPct: 1.4,
+    return10dPct: 2.8,
     return20dPct: 4.5,
     return60dPct: 6.2,
+    lowPositionPct120: 38.5,
     drawdownFromRecentHighPct: -7.4
   },
-  actionability: { score: 74 }
+  actionability: { score: 74 },
+  fees: {
+    shareClass: "C",
+    shareClassFeeModel: { label: "C类：通常无申购费，销售服务费按年计提" }
+  }
 };
 const hotDigest = {
   ok: true,
@@ -337,6 +344,34 @@ assert(
   "quality gate must reject watch/reject candidates promoted into the recommendation list"
 );
 
+const thinPullbackQuality = manager.evaluateFundAnswerQuality({
+  text: [
+    "推荐清单：",
+    "1. 000001 低位修复基金A：回调完成，可以分批买入。",
+    "1万元执行：先买1000元。"
+  ].join("\n"),
+  workflow: "fund_recommendation",
+  userText: setupQuery,
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      candidates: [
+        { ...setupDigest, code: "000001", name: "低位修复基金A" },
+        { ...hotDigest, code: "000003", name: "追涨观察基金A" }
+      ]
+    }
+  }
+});
+assert(
+  thinPullbackQuality.issues.includes("missing_pullback_timing_evidence"),
+  "pullback recommendations must include numeric low-position/early-turn evidence"
+);
+assert(
+  thinPullbackQuality.issues.includes("missing_pullback_three_tier_execution"),
+  "pullback recommendations must include aggressive/balanced/conservative execution tiers"
+);
+
 const noQualifiedQuality = manager.evaluateFundAnswerQuality({
   text: [
     "推荐清单：",
@@ -374,6 +409,11 @@ const deterministicMainFallback = manager.buildPullbackQualityFallbackAnswer({
 });
 assert(deterministicMainFallback.includes("000001"), "deterministic fallback must keep qualified main candidates");
 assert(!deterministicMainFallback.split("推荐清单：")[1].split("1万元执行")[0].includes("000003"), "deterministic fallback must not promote watch candidates into recommendations");
+assert(deterministicMainFallback.includes("近5日+1.4%"), "deterministic fallback must show early 5-day turn evidence");
+assert(deterministicMainFallback.includes("近10日+2.8%"), "deterministic fallback must show early 10-day turn evidence");
+assert(deterministicMainFallback.includes("120日位置38.5%"), "deterministic fallback must show low-position evidence");
+assert(deterministicMainFallback.includes("C类"), "deterministic fallback must show share class evidence");
+assert(deterministicMainFallback.includes("激进2000元以内") && deterministicMainFallback.includes("均衡1000元以内") && deterministicMainFallback.includes("保守先0元观察"), "deterministic fallback must keep three-tier execution");
 
 const deterministicNoMainFallback = manager.buildPullbackQualityFallbackAnswer({
   userText: setupQuery,

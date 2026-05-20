@@ -4326,6 +4326,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "禁止机械写“信心：高。”、“把握度：高。”、“Confidence: high”。要改成自然句，例如“我对这条判断把握度较高，主要因为证据比较一致。”",
       "禁止输出 Verdict、Confidence、Score、buy、staged、wait、avoid、hold、switch 等英文动作/栏目词；全部改成结论、把握度、评分、买入、分批买入、等待、回避、持有、换基。",
       "若质检问题包含 watch_candidate_promoted_to_recommendation、recommendation_not_from_pullback_main_candidates 或 recommends_without_qualified_pullback_candidate，必须按证据里的 mainCandidateCodes 重写主推荐；watchOrRejectCodes 只能写进观察/排除原因。",
+      "若质检问题包含 missing_pullback_timing_evidence，主推荐每条必须写出5日/10日早期转强、120日区间低位或距高点回撤等数字证据；若包含 missing_pullback_three_tier_execution，必须给激进/均衡/保守三档金额。",
       "若证据没有 mainCandidateCodes，必须直接说明暂未筛到合格的回调完成/低位启动主推荐，不能硬凑基金代码。",
       "保持适合飞书卡片阅读，不要 Markdown 表格或代码块。",
       "",
@@ -4418,7 +4419,7 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   if (actionSeeking && !hasAction) issues.push("missing_direct_action");
   if (actionSeeking && !hasSizing) issues.push("missing_sizing_or_execution");
   if (evidenceAvailable && !hasEvidence) issues.push("missing_concrete_evidence");
-  if (isPullbackSetupRequest(userText) && !/(回调|低位|启动|修复|追涨|偏热|高点|低点|20日|60日)/.test(body)) {
+  if (isPullbackSetupRequest(userText) && !/(回调|低位|启动|修复|追涨|偏热|高点|低点|5日|10日|20日|60日|120日)/.test(body)) {
     issues.push("missing_pullback_setup_assessment");
   }
   if (clicheCount >= 1 && (!hasSizing || !hasEvidence)) issues.push("generic_cliche_answer");
@@ -4463,6 +4464,12 @@ function evaluatePullbackAnswerDiscipline({ text, userText, evidence }) {
     if (!recommendedCodes.length && !hasNoQualifiedPullbackMessage(body)) {
       issues.push("missing_pullback_main_candidate_code");
     }
+    if (mainRecommended.length && hasPullbackTimingEvidenceAvailable(ranked) && !hasPullbackTimingEvidenceInAnswer(recommendationSection || body)) {
+      issues.push("missing_pullback_timing_evidence");
+    }
+    if (mainRecommended.length && !hasThreeTierPullbackExecution(body)) {
+      issues.push("missing_pullback_three_tier_execution");
+    }
   } else {
     if (!hasNoQualifiedPullbackMessage(body)) {
       issues.push("missing_no_qualified_pullback_message");
@@ -4482,7 +4489,9 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
     "recommendation_not_from_pullback_main_candidates",
     "missing_pullback_main_candidate_code",
     "missing_no_qualified_pullback_message",
-    "recommends_without_qualified_pullback_candidate"
+    "recommends_without_qualified_pullback_candidate",
+    "missing_pullback_timing_evidence",
+    "missing_pullback_three_tier_execution"
   ]);
   if (!(issues || []).some((issue) => severeIssues.has(issue))) return "";
   const deepDive = evidence?.marketDeepDive || null;
@@ -4538,13 +4547,28 @@ function formatPullbackFallbackCandidate(candidate = {}) {
   const actionability = candidate.actionability || {};
   const parts = [
     `${candidate.code || "待复核"} ${candidate.name || candidate.seed?.name || ""}`.trim(),
+    formatPullbackFallbackShareAndFee(candidate),
     trend.pullbackSetup?.signalText || "回调启动信号待复核",
+    `近5日${formatFallbackPct(trend.return5dPct)}`,
+    `近10日${formatFallbackPct(trend.return10dPct)}`,
+    `120日位置${formatFallbackPlainPct(trend.lowPositionPct120)}`,
     `近20日${formatFallbackPct(trend.return20dPct)}`,
     `近60日${formatFallbackPct(trend.return60dPct)}`,
     `距高点${formatFallbackPct(trend.drawdownFromRecentHighPct)}`,
     actionability.allocationBand ? `仓位上限${actionability.allocationBand}` : "小仓位分批"
   ].filter(Boolean);
   return `${parts.join("；")}。`;
+}
+
+function formatPullbackFallbackShareAndFee(candidate = {}) {
+  const fees = candidate.fees || {};
+  const shareClass = fees.shareClass || candidate.shareClass || candidate.seed?.shareClass || inferFundShareClass(candidate.name || candidate.seed?.name || "");
+  const feeLabel = fees.shareClassFeeModel?.label || candidate.shareClassFeeModel?.label || candidate.seed?.shareClassFeeModel?.label || "";
+  const parts = [
+    shareClass ? `${shareClass}类` : "",
+    feeLabel
+  ].filter(Boolean);
+  return parts.join("，");
 }
 
 function formatPullbackFallbackWatchCandidate(candidate = {}) {
@@ -4559,6 +4583,37 @@ function formatFallbackPct(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return "缺失";
   return `${numeric > 0 ? "+" : ""}${round(numeric, 2)}%`;
+}
+
+function formatFallbackPlainPct(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "缺失";
+  return `${round(numeric, 1)}%`;
+}
+
+function hasPullbackTimingEvidenceAvailable(ranked = []) {
+  return (ranked || []).some((item) => {
+    if (item.bucket !== "main_candidate") return false;
+    const trend = item.candidate?.trendProfile || {};
+    return Number.isFinite(Number(trend.return5dPct))
+      || Number.isFinite(Number(trend.return10dPct))
+      || Number.isFinite(Number(trend.lowPositionPct120))
+      || Number.isFinite(Number(trend.drawdownFromRecentHighPct));
+  });
+}
+
+function hasPullbackTimingEvidenceInAnswer(text) {
+  const body = String(text || "");
+  const numericTiming = /(?:近?\s*(?:5|10|20|60|120)\s*日|120日(?:区间)?位置|区间低位|低位|距高点|回撤).{0,18}[+-]?\d+(?:\.\d+)?%|[+-]?\d+(?:\.\d+)?%.{0,18}(?:近?\s*(?:5|10|20|60|120)\s*日|120日(?:区间)?位置|区间低位|低位|距高点|回撤)/;
+  return numericTiming.test(body);
+}
+
+function hasThreeTierPullbackExecution(text) {
+  const body = String(text || "");
+  return /激进/.test(body)
+    && /均衡/.test(body)
+    && /保守/.test(body)
+    && /(1万|一万|10000|万元|\d+(?:\.\d+)?\s*(?:元|%))/.test(body);
 }
 
 function hasNoQualifiedPullbackMessage(text) {
