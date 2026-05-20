@@ -5565,12 +5565,63 @@ function mergeCandidateFunds(...groups) {
     if (!item?.code) continue;
     const existing = byCode.get(item.code);
     if (existing) {
-      existing.keywords = [...new Set([...(existing.keywords || []), ...(item.keywords || [])])];
+      byCode.set(item.code, mergeCandidateFundRecord(existing, item));
     } else {
       byCode.set(item.code, { ...item });
     }
   }
   return [...byCode.values()];
+}
+
+function mergeCandidateFundRecord(existing = {}, incoming = {}) {
+  const merged = { ...existing };
+  for (const key of [
+    "name",
+    "shareClass",
+    "type",
+    "navDate",
+    "unitNav",
+    "company",
+    "manager",
+    "minPurchase",
+    "dailyPct",
+    "oneWeekPct",
+    "oneMonthPct",
+    "threeMonthPct",
+    "sixMonthPct",
+    "oneYearPct",
+    "twoYearPct",
+    "threeYearPct",
+    "thisYearPct",
+    "sourceRatePct",
+    "currentRatePct",
+    "source"
+  ]) {
+    if (isMissingCandidateValue(merged[key]) && !isMissingCandidateValue(incoming[key])) {
+      merged[key] = incoming[key];
+    }
+  }
+  if (isMissingCandidateValue(merged.shareClassFeeModel) && !isMissingCandidateValue(incoming.shareClassFeeModel)) {
+    merged.shareClassFeeModel = incoming.shareClassFeeModel;
+  }
+  merged.keywords = [...new Set([...(existing.keywords || []), ...(incoming.keywords || [])].filter(Boolean))];
+  merged.discoverySources = [...new Set([
+    ...(existing.discoverySources || []),
+    existing.setupDiscoverySource,
+    ...(incoming.discoverySources || []),
+    incoming.setupDiscoverySource
+  ].filter(Boolean))];
+  if (merged.discoverySources.length) {
+    merged.setupDiscoverySource = merged.discoverySources.join("/");
+  }
+  return merged;
+}
+
+function isMissingCandidateValue(value) {
+  if (value === null || value === undefined || value === "") return true;
+  if (typeof value === "number" && Number.isNaN(value)) return true;
+  if (typeof value === "object" && !Array.isArray(value)) return !Object.keys(value).length;
+  return false;
 }
 
 function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
@@ -5585,6 +5636,8 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
 
   score += scoreCandidateReturnSetup(item) * 1.8;
   if (/ETF|联接|指数/.test(text)) score += 8;
+  if (/C$|C类/.test(text) || item.shareClass === "C") score += 3;
+  if (/A$|A类/.test(text) || item.shareClass === "A") score += 1;
   if (/股票|混合|指数|ETF|QDII|LOF/i.test(text)) score += 4;
   if (/货币|短债|纯债|债券/.test(text) && !hasAny(normalizeIntentText(userText), ["债", "固收", "现金"])) score -= 24;
   if (/近1周低位转强候选/.test(text)) score += 10;
@@ -9905,6 +9958,7 @@ export {
   getFundRecommendationSkillIds,
   isGenericPullbackSetupRequest,
   isPullbackSetupRequest,
+  mergeCandidateFunds,
   normalizeUserFacingFundAnswer,
   renderFundReportSummaryPng,
   selectFundReportProfilesForAnswer,

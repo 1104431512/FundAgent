@@ -73,6 +73,10 @@ const requiredPatterns = [
     message: "pullback/setup discovery must preserve mild one-week low-position reversal candidates."
   },
   {
+    pattern: /mergeCandidateFundRecord/,
+    message: "candidate recall must merge return evidence from multiple discovery sources, not just keywords."
+  },
+  {
     pattern: /resolveFundMentionsFromText/,
     message: "text-only fund screening must resolve fund names into codes before enrichment."
   },

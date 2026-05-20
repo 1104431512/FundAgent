@@ -159,6 +159,20 @@ assert.deepEqual(
   ["000010"],
   "weekly reversal scanner must keep mild one-week turns and reject chases or still-falling funds"
 );
+const mergedWeeklyEvidence = manager.mergeCandidateFunds([
+  { code: "000010", name: "中证A500ETF联接C", keywords: ["中证A500"], setupDiscoverySource: "keyword_search" }
+], [
+  { ...weeklyTurnSeed, keywords: ["近1周低位转强候选"], setupDiscoverySource: "weekly_reversal_scan" }
+])[0];
+assert.equal(mergedWeeklyEvidence.oneWeekPct, 2.4, "candidate merge must preserve ranking return evidence when keyword search sees the fund first");
+assert(mergedWeeklyEvidence.keywords.includes("近1周低位转强候选"), "candidate merge must preserve setup discovery tags");
+assert(mergedWeeklyEvidence.setupDiscoverySource.includes("keyword_search"), "candidate merge must preserve original discovery source");
+assert(mergedWeeklyEvidence.setupDiscoverySource.includes("weekly_reversal_scan"), "candidate merge must preserve later ranking discovery source");
+assert(
+  manager.scorePullbackSetupSeedCandidate({ ...weeklyTurnSeed, name: "中证A500ETF联接C", shareClass: "C" }, [], setupQuery) >
+    manager.scorePullbackSetupSeedCandidate({ ...weeklyTurnSeed, name: "中证A500ETF联接A", shareClass: "A" }, [], setupQuery),
+  "tactical pullback setup scoring should prefer C share class over A when return evidence is otherwise equal"
+);
 
 const setupDigest = {
   ok: true,
