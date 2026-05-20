@@ -4307,6 +4307,8 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "必须使用自然中文。禁止输出内部字段名或英文枚举，例如 trendProfile、actionability、entryBias、fitLabel、extended_uptrend、tactical_only、staged_buy、wait_pullback。",
       "遇到内部标签时要翻译成客户能读懂的话：extended_uptrend=短期涨幅偏热，tactical_only=只适合战术小仓位，staged_buy=分批买入，wait_pullback=等待回撤。",
       "禁止机械写“信心：高。”、“信心：中。”、“Confidence: high”。要改成自然句，例如“我对这条判断把握度较高，主要因为证据比较一致。”",
+      "若质检问题包含 watch_candidate_promoted_to_recommendation、recommendation_not_from_pullback_main_candidates 或 recommends_without_qualified_pullback_candidate，必须按证据里的 mainCandidateCodes 重写主推荐；watchOrRejectCodes 只能写进观察/排除原因。",
+      "若证据没有 mainCandidateCodes，必须直接说明暂未筛到合格的回调完成/低位启动主推荐，不能硬凑基金代码。",
       "保持适合飞书卡片阅读，不要 Markdown 表格或代码块。",
       "",
       skillContext
@@ -4379,6 +4381,7 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
 
   if (hasInternalFundSignalLeak(body)) issues.push("internal_signal_leak");
   if (stiffConfidenceLabel) issues.push("stiff_confidence_label");
+  issues.push(...evaluatePullbackAnswerDiscipline({ text, userText, evidence }));
   if (actionSeeking && !hasAction) issues.push("missing_direct_action");
   if (actionSeeking && !hasSizing) issues.push("missing_sizing_or_execution");
   if (evidenceAvailable && !hasEvidence) issues.push("missing_concrete_evidence");
@@ -4391,6 +4394,56 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   }
 
   return { ok: issues.length === 0, issues };
+}
+
+function evaluatePullbackAnswerDiscipline({ text, userText, evidence }) {
+  if (!isPullbackSetupRequest(userText)) return [];
+  const deepDive = evidence?.marketDeepDive || null;
+  if (deepDive?.selectionDiscipline !== "prefer_pullback_complete_launch_setup_not_chase") return [];
+
+  const ranked = (deepDive.candidates || []).map((candidate) => ({
+    candidate,
+    bucket: classifyPullbackSetupCandidateForSummary(candidate)
+  }));
+  const mainCodes = new Set(ranked
+    .filter((item) => item.bucket === "main_candidate")
+    .map((item) => item.candidate?.code)
+    .filter(Boolean));
+  const watchCodes = new Set(ranked
+    .filter((item) => item.bucket !== "main_candidate")
+    .map((item) => item.candidate?.code)
+    .filter(Boolean));
+  const body = String(text || "");
+  const recommendationSection = extractAnswerRecommendationSection(body);
+  const recommendedCodes = extractFundCodes(recommendationSection);
+  const issues = [];
+
+  if (mainCodes.size) {
+    const promotedWatchCodes = recommendedCodes.filter((code) => watchCodes.has(code) && !mainCodes.has(code));
+    const mainRecommended = recommendedCodes.filter((code) => mainCodes.has(code));
+    if (promotedWatchCodes.length) {
+      issues.push("watch_candidate_promoted_to_recommendation");
+    }
+    if (recommendedCodes.length && !mainRecommended.length) {
+      issues.push("recommendation_not_from_pullback_main_candidates");
+    }
+    if (!recommendedCodes.length && !hasNoQualifiedPullbackMessage(body)) {
+      issues.push("missing_pullback_main_candidate_code");
+    }
+  } else {
+    if (!hasNoQualifiedPullbackMessage(body)) {
+      issues.push("missing_no_qualified_pullback_message");
+    }
+    if (recommendedCodes.length) {
+      issues.push("recommends_without_qualified_pullback_candidate");
+    }
+  }
+
+  return issues;
+}
+
+function hasNoQualifiedPullbackMessage(text) {
+  return /(暂未|没有|未筛到|没筛到|不足以|不建议|先观察|等待|观望|不做主推荐|没有合格|无合格)/.test(String(text || ""));
 }
 
 function hasInternalFundSignalLeak(text) {

@@ -215,6 +215,51 @@ assert(deepDiveSummary.includes("pullbackSetupRanking"), "deep dive summary must
 assert(deepDiveSummary.includes("mainCandidateCodes=000001"), "deep dive summary must identify main pullback/setup candidates");
 assert(deepDiveSummary.includes("watchOrRejectCodes=000003"), "deep dive summary must keep hot candidates out of main recommendations");
 
+const promotedWatchQuality = manager.evaluateFundAnswerQuality({
+  text: [
+    "推荐清单：",
+    "1. 000003 追涨观察基金A：建议分批买入10%，看起来启动很强。",
+    "1万元执行：先买1000元。"
+  ].join("\n"),
+  workflow: "fund_recommendation",
+  userText: setupQuery,
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      candidates: [
+        { ...setupDigest, code: "000001", name: "低位修复基金A" },
+        { ...hotDigest, code: "000003", name: "追涨观察基金A" }
+      ]
+    }
+  }
+});
+assert(
+  promotedWatchQuality.issues.includes("watch_candidate_promoted_to_recommendation"),
+  "quality gate must reject watch/reject candidates promoted into the recommendation list"
+);
+
+const noQualifiedQuality = manager.evaluateFundAnswerQuality({
+  text: [
+    "推荐清单：",
+    "1. 000003 追涨观察基金A：建议买入1000元。",
+    "1万元执行：激进1000元，均衡500元。"
+  ].join("\n"),
+  workflow: "fund_recommendation",
+  userText: setupQuery,
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      candidates: [{ ...hotDigest, code: "000003", name: "追涨观察基金A" }]
+    }
+  }
+});
+assert(
+  noQualifiedQuality.issues.includes("recommends_without_qualified_pullback_candidate"),
+  "quality gate must reject hard-coded recommendations when no qualified pullback candidate exists"
+);
+
 async function assertIntent({ userText, expectedWorkflow, expectedReason, expectedMode = null, requiredSkills = [] }) {
   const routed = await manager.classifyMessageIntent({
     userText,
