@@ -53,8 +53,16 @@ const requiredPatterns = [
     message: "fund report charts must include a Chinese setup/risk metrics panel, not only a line chart."
   },
   {
-    pattern: /DEFAULT_MODEL_MAX_OUTPUT_TOKENS\s*=\s*4800/,
-    message: "fund manager default output token budget must remain elevated."
+    pattern: /DEFAULT_MODEL_MAX_OUTPUT_TOKENS\s*=\s*6400/,
+    message: "fund manager default output token budget must remain elevated for richer answers."
+  },
+  {
+    pattern: /return5dPct[\s\S]{0,120}return10dPct/,
+    message: "pullback/setup discovery must expose early 5/10-day turn signals."
+  },
+  {
+    pattern: /lowPositionPct120/,
+    message: "pullback/setup discovery must judge whether the fund is actually in a low 120-day position."
   },
   {
     pattern: /resolveFundMentionsFromText/,

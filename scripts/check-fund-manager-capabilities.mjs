@@ -153,6 +153,23 @@ assert(
     manager.scoreResearchDigestForPullbackSetup(hotDigest),
   "deep-dive scoring must rank pullback-complete candidates above extended uptrends"
 );
+const earlyTurnTrend = manager.computeTrendProfile(buildEarlyTurnNavPoints());
+assert.equal(earlyTurnTrend.ok, true, "early-turn synthetic series should produce a trend profile");
+assert(
+  ["pullback_complete", "launch_setup"].includes(earlyTurnTrend.pullbackSetup.signal),
+  "5/10-day early turn from a low 120-day position must count as a pullback/setup signal"
+);
+assert.notEqual(earlyTurnTrend.entryBias, "wait_pullback", "early low-position turn should not be treated as a wait-for-pullback chase");
+assert(Number(earlyTurnTrend.lowPositionPct120) <= 55, "early low-position turn should expose 120-day low-position evidence");
+assert(
+  (earlyTurnTrend.pullbackSetup.evidence || []).some((item) => item.includes("5日/10日刚转强")),
+  "pullback setup evidence must include early 5/10-day turn information"
+);
+assert(
+  manager.scoreResearchDigestForPullbackSetup({ ok: true, trendProfile: earlyTurnTrend, actionability: { score: 66 } }) >
+    manager.scoreResearchDigestForPullbackSetup(hotDigest),
+  "deep-dive scoring must rank early low-position turns above recent-surge candidates"
+);
 
 const stiffAnswer = "信心：高。\n建议分批买入，先用10%仓位，依据是近20日收益4.5%、距高点回撤7%。";
 const quality = manager.evaluateFundAnswerQuality({
@@ -208,10 +225,10 @@ assert.equal(png.slice(0, 8).toString("hex"), "89504e470d0a1a0a", "summary chart
 assert.equal(png.readUInt32BE(16), 900, "summary chart width must match requested width");
 assert.equal(png.readUInt32BE(20), 520, "summary chart height must match requested height");
 assert(png.length > 5000, "summary chart should contain more than a sparse legacy line");
-for (const label of ["基金报告", "净值走势", "最大回撤", "阶段收益", "启动/风险", "启动", "信号", "入场", "动作", "费用"]) {
+for (const label of ["基金报告", "净值走势", "最大回撤", "阶段收益", "启动/风险", "启动", "信号", "低位", "5日", "10日", "入场", "动作", "费用"]) {
   assert(serverSource.includes(label), `summary chart must use Chinese label: ${label}`);
 }
-for (const staleLabel of ["FUND SETUP", "NAV TREND", "DRAWDOWN FROM HIGH", "STAGE RETURN", "SETUP / RISK", "PULLBK", "LAUNCH", "FEEY"]) {
+for (const staleLabel of ["FUND SETUP", "NAV TREND", "DRAWDOWN FROM HIGH", "STAGE RETURN", "SETUP / RISK", "PULLBK", "LAUNCH", "FEEY", "20D", "60D", "120D", "250D"]) {
   assert(!serverSource.includes(staleLabel), `summary chart should not expose stale English label: ${staleLabel}`);
 }
 
@@ -358,10 +375,13 @@ function buildChartProfile() {
     trendProfile: {
       series,
       return20dPct: 4.5,
+      return10dPct: 2.1,
+      return5dPct: 1.2,
       return60dPct: 6.2,
       return120dPct: -2.4,
       return250dPct: 8.7,
       drawdownFromRecentHighPct: -7.4,
+      lowPositionPct120: 38.5,
       pullbackSetup: { signal: "pullback_complete", score: 76 },
       entryBias: "buyable_now"
     },
@@ -380,4 +400,30 @@ function buildChartProfile() {
       action: "buy"
     }
   };
+}
+
+function buildEarlyTurnNavPoints() {
+  const start = new Date("2025-11-01T00:00:00Z");
+  return Array.from({ length: 140 }, (_, index) => {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + index);
+    const nav = index < 20
+      ? interpolate(1.06, 1.1, index, 19)
+      : index < 90
+        ? interpolate(1.1, 0.94, index - 20, 69)
+        : index < 120
+          ? interpolate(0.94, 0.958, index - 90, 29)
+          : index < 130
+            ? interpolate(0.958, 0.962, index - 120, 9)
+            : interpolate(0.962, 0.974, index - 130, 9);
+    return {
+      date: date.toISOString().slice(0, 10),
+      cumulativeNav: Number(nav.toFixed(4))
+    };
+  });
+}
+
+function interpolate(start, end, index, span) {
+  if (!span) return end;
+  return start + (end - start) * (index / span);
 }
