@@ -2082,9 +2082,15 @@ function isLowBaseLaunchWatchSeed(candidate = {}) {
   const text = [
     candidate.name || "",
     candidate.type || "",
+    candidate.candidateRole || "",
+    candidate.reason || "",
+    candidate.positionPlan || "",
     candidate.setupDiscoverySource || "",
+    candidate.source || "",
     ...(candidate.discoverySources || []),
-    ...(candidate.keywords || [])
+    ...(candidate.keywords || []),
+    ...(candidate.setupEvidence || []),
+    ...(candidate.dataBasis || [])
   ].join(" ");
   return /低位启动前夜候选|low_base_turn_scan/.test(text);
 }
@@ -4565,6 +4571,7 @@ function buildPortfolioWatchlistStatusLines(watchlist = [], options = {}) {
   const lines = [
     `合计 ${normalized.length} 只：${groups.map((group) => `${group.label}${group.items.length}只`).join("，")}。`
   ];
+  lines.push(...buildPortfolioWatchlistLaunchEveLines(normalized));
   lines.push(...buildPortfolioWatchlistActionQueueLines(normalized));
 
   for (const group of groups) {
@@ -4575,6 +4582,23 @@ function buildPortfolioWatchlistStatusLines(watchlist = [], options = {}) {
     if (group.items.length > limitPerStatus) {
       lines.push(`还有 ${group.items.length - limitPerStatus} 只同状态候选，可在管理页自选基金池查看。`);
     }
+  }
+  return lines;
+}
+
+function buildPortfolioWatchlistLaunchEveLines(watchlist = []) {
+  const focusItems = normalizePortfolioWatchlist(watchlist)
+    .filter((item) => isLowBaseLaunchWatchSeed(item))
+    .filter((item) => !["blocked", "removed", "in_position"].includes(item.status))
+    .map((item) => ({ ...item, ...evaluatePortfolioWatchReadiness(item) }))
+    .sort(comparePortfolioWatchReadiness)
+    .slice(0, 3);
+  if (!focusItems.length) return [];
+  const lines = ["启动前夜重点复核："];
+  for (const item of focusItems) {
+    const gap = item.gaps?.[0] || buildPortfolioWatchReadinessGaps(item)[0] || "等待净值下钻确认";
+    const trigger = item.buyTriggers?.[0] || "下一次净值更新后复核是否低位转强";
+    lines.push(`- ${item.code} ${item.name || ""}（准备度${item.score}，${item.label}）：${gap}；触发=${trigger}；纪律=等净值下钻确认后再进入买点评估，不自动买入。`);
   }
   return lines;
 }
@@ -13150,6 +13174,7 @@ export {
   buildPortfolioWatchReadinessGaps,
   buildPortfolioWatchlistRecheckUpdates,
   buildPortfolioWatchlistStatusLines,
+  buildPortfolioWatchlistLaunchEveLines,
   buildPortfolioWatchlistUpdatesFromAnswerProfiles,
   buildPullbackQualityFallbackAnswer,
   classifyMessageIntent,

@@ -576,6 +576,18 @@ const requiredPatterns = [
     message: "portfolio status replies must summarize ready and waiting candidates as a buy-preparation queue."
   },
   {
+    pattern: /buildPortfolioWatchlistLaunchEveLines/,
+    message: "portfolio status replies must surface launch-eve watchlist candidates before the general buy-preparation queue."
+  },
+  {
+    pattern: /启动前夜重点复核/,
+    message: "manager-facing watchlist replies must label launch-eve candidates as review focus."
+  },
+  {
+    pattern: /不自动买入/,
+    message: "launch-eve watchlist focus must not sound like an automatic buy instruction."
+  },
+  {
     pattern: /buildPortfolioWatchReadinessGaps/,
     message: "portfolio watchlist must expose the remaining buy-readiness gaps for ready/waiting candidates."
   },

@@ -289,10 +289,14 @@ const watchlistStatusLines = manager.buildPortfolioWatchlistStatusLines([
     name: "等待回调基金C",
     status: "waiting_pullback",
     priority: 3,
-    reason: "近20日涨幅略快，等待回踩。",
+    candidateRole: "低位启动前夜观察备选",
+    reason: "召回定位：低位启动前夜候选。近20日涨幅略快，等待回踩。",
+    setupEvidence: ["召回定位：低位启动前夜候选"],
     buyTriggers: ["回踩不破前低"],
     riskNotes: ["若继续放量冲高则不追"],
     feeNotes: ["C类适合短期观察"],
+    positionPlan: "先放入启动前夜观察池；只等净值下钻确认后再小额分批。",
+    dataBasis: ["召回来源：low_base_turn_scan"],
     lastSnapshot: {
       trendProfile: {
         ok: true,
@@ -316,6 +320,9 @@ const watchlistStatusLines = manager.buildPortfolioWatchlistStatusLines([
   }
 ]).join("\n");
 assert(watchlistStatusLines.includes("合计 3 只"), "portfolio status answer must summarize watchlist counts");
+assert(watchlistStatusLines.includes("启动前夜重点复核："), "portfolio status answer must surface launch-eve watchlist candidates before the general queue");
+assert(watchlistStatusLines.includes("000002 等待回调基金C（准备度"), "launch-eve focus must include the low-base candidate with readiness score");
+assert(watchlistStatusLines.includes("等净值下钻确认后再进入买点评估，不自动买入"), "launch-eve focus must say it is a review target, not an automatic buy");
 assert(watchlistStatusLines.includes("购买准备队列："), "portfolio status answer must surface an actionable buy-preparation queue");
 assert(watchlistStatusLines.includes("000001 低位修复基金C（接近可买，准备度"), "buy-preparation queue must highlight ready watchlist candidates with readiness score");
 assert(watchlistStatusLines.includes("000002 等待回调基金C（等待回调，准备度"), "buy-preparation queue must highlight backup candidates waiting for pullback with readiness score");
