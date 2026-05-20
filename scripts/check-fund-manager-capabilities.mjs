@@ -559,6 +559,19 @@ const reviewedDecision = manager.ensurePortfolioReadyWatchlistReviewed({ actions
   { code: "000010", name: "中证A500ETF联接C", status: "ready", priority: 1, reason: "低位回调" }
 ], { profiles: [verifiedSeedProfile] });
 assert(reviewedDecision.actions.some((item) => item.code === "000010"), "portfolio decision must not silently omit ready watchlist candidates");
+const heldPosition = { code: "000011", name: "热门强势主题基金A", currentValue: 6000, weightPct: 6, unrealizedPnlPct: 12.4 };
+const heldReviewQueue = manager.buildPortfolioHeldPositionReviewQueue([heldPosition], [hotVerifiedSeedProfile]);
+assert.equal(heldReviewQueue[0].code, "000011", "portfolio decision prompt must expose held positions for mandatory review");
+assert(heldReviewQueue[0].riskReview.some((item) => item.includes("偏热") || item.includes("止盈")), "held position review queue must expose hot-position risk review");
+const heldFallbackActions = manager.buildPortfolioHeldPositionReviewActions([heldPosition], [], { profiles: [hotVerifiedSeedProfile] });
+assert.equal(heldFallbackActions[0].action, "HOLD", "held position fallback must review omitted holdings without forcing an automatic sell");
+assert(heldFallbackActions[0].dataBasis.includes("来源：held_position_review_fallback"), "held position fallback must leave a traceable source");
+assert(/止盈|降仓|减仓/.test(heldFallbackActions[0].riskControl), "held position fallback must carry a concrete reduce/profit-control trigger");
+const reviewedHeldDecision = manager.ensurePortfolioHeldPositionsReviewed({ actions: [], watchlistUpdates: [], learningNotes: [], sources: [] }, [
+  heldPosition
+], { profiles: [hotVerifiedSeedProfile] });
+assert(reviewedHeldDecision.actions.some((item) => item.code === "000011"), "portfolio decision must not silently omit existing holdings");
+assert(reviewedHeldDecision.sources.includes("held_position_review_fallback"), "held position fallback must be traceable in decision sources");
 assert.equal(
   manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, verifiedSeedProfile).ok,
   true,

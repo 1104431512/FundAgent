@@ -268,6 +268,18 @@ const requiredPatterns = [
     message: "daily portfolio decisions must add a fallback review action when ready watchlist candidates are omitted."
   },
   {
+    pattern: /buildPortfolioHeldPositionReviewQueue/,
+    message: "daily portfolio decisions must expose existing holdings as a mandatory review queue."
+  },
+  {
+    pattern: /ensurePortfolioHeldPositionsReviewed/,
+    message: "daily portfolio decisions must add a fallback review action when existing holdings are omitted."
+  },
+  {
+    pattern: /held_position_review_fallback/,
+    message: "held-position fallback actions must be traceable and not look like model-written trades."
+  },
+  {
     pattern: /ready_watchlist_review_fallback/,
     message: "ready watchlist fallback actions must be traceable and not look like model-written buys."
   },

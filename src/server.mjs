@@ -918,10 +918,14 @@ async function executePortfolioDecision(db, run, config) {
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "模型已返回，正在解析投委会决策。");
   await yieldToEventLoop();
-  const decision = ensurePortfolioReadyWatchlistReviewed(
-    normalizePortfolioDecision(raw),
-    watchlist,
-    { profiles: watchlistProfiles }
+  const decision = ensurePortfolioHeldPositionsReviewed(
+    ensurePortfolioReadyWatchlistReviewed(
+      normalizePortfolioDecision(raw),
+      watchlist,
+      { profiles: watchlistProfiles }
+    ),
+    db.account.positions,
+    { profiles: heldProfiles }
   );
   markPortfolioRunProgress(db, run, `已解析 ${decision.actions.length} 条动作，正在补全拟交易基金净值。`);
   await yieldToEventLoop();
@@ -1284,6 +1288,10 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "当前持仓联网资料：",
     JSON.stringify(heldProfiles || [], null, 2),
+    "",
+    "当前持仓复核队列（系统复核后）：",
+    JSON.stringify(buildPortfolioHeldPositionReviewQueue(account.positions || [], heldProfiles), null, 2),
+    "要求：持仓复核队列中的每只基金必须在 actions 中逐只给 HOLD/SELL/WATCH 理由；如果继续持有，要写清减仓或止损触发条件，不能忽略。",
     "",
     "当前自选基金池：",
     JSON.stringify(summarizePortfolioWatchlistForModel(watchlist), null, 2),
@@ -2116,6 +2124,59 @@ function buildPortfolioDecisionReadinessQueue(watchlist = [], profiles = []) {
     });
 }
 
+function buildPortfolioHeldPositionReviewQueue(positions = [], profiles = []) {
+  const profileByCode = new Map((profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
+  return (positions || [])
+    .filter((position) => position?.code && Number(position.currentValue || 0) > 0)
+    .slice(0, 12)
+    .map((position) => {
+      const profile = profileByCode.get(position.code) || position.fundSnapshot || null;
+      const riskReview = buildPortfolioHeldPositionRiskReview(position, profile);
+      return {
+        code: position.code,
+        name: position.name || profile?.name || "",
+        currentValue: round(Number(position.currentValue || 0), 2),
+        weightPct: round(Number(position.weightPct || 0), 2),
+        unrealizedPnlPct: round(Number(position.unrealizedPnlPct || 0), 2),
+        trendEvidence: profile ? formatPortfolioSeedVerifiedTrendEvidence(profile) : position.fundSnapshot?.trendSummary || "",
+        riskReview,
+        firstRisk: riskReview[0] || "",
+        reduceTrigger: inferPortfolioHeldPositionReduceTrigger(riskReview),
+        feeEvidence: profile ? formatPortfolioFeeVerificationEvidence(profile) : "",
+        reviewSource: "held_position_review_queue"
+      };
+    });
+}
+
+function buildPortfolioHeldPositionRiskReview(position = {}, profile = null) {
+  const trend = profile?.trendProfile || position.fundSnapshot?.trendProfile || {};
+  const actionability = profile?.actionability || position.fundSnapshot?.actionability || {};
+  const review = [];
+  if (!profile || !trend.ok) {
+    review.push("缺少当前净值/走势复核，不能默认放任持仓。");
+    return review;
+  }
+  if (trend.trendLabel === "breakdown") review.push("趋势破位，需评估减仓或止损。");
+  if (trend.trendLabel === "weakening") review.push("趋势转弱，需降低仓位或收紧复查。");
+  if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback") review.push("短期偏热或等待回撤，需防止利润回吐。");
+  const return20d = finiteMetricNumber(trend.return20dPct);
+  const drawdown = finiteMetricNumber(trend.drawdownFromRecentHighPct);
+  if (Number.isFinite(return20d) && return20d > 12) review.push(`近20日${formatFallbackPct(return20d)}，需要止盈/减仓边界。`);
+  if (Number.isFinite(drawdown) && drawdown <= -10) review.push(`距高点${formatFallbackPct(drawdown)}，回撤扩大需复核止损。`);
+  if (actionability.action === "avoid") review.push("可操作性已转为回避，不能继续无条件持有。");
+  if (actionability.action === "wait") review.push("可操作性偏等待，暂不加仓并设置复查。");
+  if (!review.length) review.push("持仓走势未触发减仓警报，继续按纪律持有。");
+  return review;
+}
+
+function inferPortfolioHeldPositionReduceTrigger(riskReview = []) {
+  const text = (riskReview || []).join("；");
+  if (/破位|止损|回避/.test(text)) return "若下一次复核仍破位或可操作性回避，优先减仓。";
+  if (/转弱|回撤扩大/.test(text)) return "若20日/60日继续转弱或距高点回撤扩大，减仓观察。";
+  if (/偏热|等待回撤|止盈/.test(text)) return "若短期继续冲高后量能转弱，分批止盈或降仓。";
+  return "维持持仓，但下一次每日决策仍需逐只复核。";
+}
+
 function buildPortfolioReadyWatchlistReviewActions(watchlist = [], existingActions = [], options = {}) {
   const profiles = Array.isArray(options) ? options : options.profiles || [];
   const profileByCode = new Map((profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
@@ -2143,6 +2204,34 @@ function buildPortfolioReadyWatchlistReviewActions(watchlist = [], existingActio
     });
 }
 
+function buildPortfolioHeldPositionReviewActions(positions = [], existingActions = [], options = {}) {
+  const profiles = Array.isArray(options) ? options : options.profiles || [];
+  const profileByCode = new Map((profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
+  const existingCodes = new Set((existingActions || []).map((action) => action.code).filter(Boolean));
+  return (positions || [])
+    .filter((position) => position?.code && Number(position.currentValue || 0) > 0 && !existingCodes.has(position.code))
+    .slice(0, 8)
+    .map((position) => {
+      const profile = profileByCode.get(position.code) || position.fundSnapshot || null;
+      const trendEvidence = profile ? formatPortfolioSeedVerifiedTrendEvidence(profile) : position.fundSnapshot?.trendSummary || "";
+      const riskReview = buildPortfolioHeldPositionRiskReview(position, profile);
+      return {
+        action: "HOLD",
+        code: position.code,
+        name: position.name || profile?.name || "",
+        amount: 0,
+        targetWeightPct: round(Number(position.weightPct || 0), 2),
+        reason: "系统补充持仓复查动作：已有持仓未被模型逐项评估，本轮先按纪律持有，不允许静默遗漏。",
+        dataBasis: ["来源：held_position_review_fallback", trendEvidence, ...riskReview.slice(0, 2)].filter(Boolean),
+        rotationCheck: riskReview[0] || "持仓轮动状态待复核。",
+        positionCheck: trendEvidence || "等待净值复核。",
+        chaseRisk: riskReview.find((item) => /偏热|回撤|破位|转弱|回避/.test(item)) || "未触发主要持仓风险警报。",
+        feeCheck: profile ? formatPortfolioFeeVerificationEvidence(profile) : "份额和费用待复核。",
+        riskControl: inferPortfolioHeldPositionReduceTrigger(riskReview)
+      };
+    });
+}
+
 function ensurePortfolioReadyWatchlistReviewed(decision, watchlist = [], options = {}) {
   const normalized = {
     ...decision,
@@ -2163,6 +2252,29 @@ function ensurePortfolioReadyWatchlistReviewed(decision, watchlist = [], options
       [`系统补充了 ${fallbackActions.length} 条接近可买自选候选复查动作，防止每日决策遗漏购买准备队列。`]
     ),
     sources: mergeStringLists(normalized.sources, ["ready_watchlist_review_fallback"])
+  };
+}
+
+function ensurePortfolioHeldPositionsReviewed(decision, positions = [], options = {}) {
+  const normalized = {
+    ...decision,
+    actions: normalizePortfolioActions(decision?.actions),
+    watchlistUpdates: normalizePortfolioWatchlistUpdates(decision?.watchlistUpdates),
+    team: Array.isArray(decision?.team) ? decision.team : [],
+    riskNotes: Array.isArray(decision?.riskNotes) ? decision.riskNotes : [],
+    learningNotes: Array.isArray(decision?.learningNotes) ? decision.learningNotes : [],
+    sources: Array.isArray(decision?.sources) ? decision.sources : []
+  };
+  const fallbackActions = buildPortfolioHeldPositionReviewActions(positions, normalized.actions, options);
+  if (!fallbackActions.length) return normalized;
+  return {
+    ...normalized,
+    actions: [...normalized.actions, ...fallbackActions],
+    learningNotes: mergeStringLists(
+      normalized.learningNotes,
+      [`系统补充了 ${fallbackActions.length} 条已有持仓复查动作，防止每日决策忽略仓位风险。`]
+    ),
+    sources: mergeStringLists(normalized.sources, ["held_position_review_fallback"])
   };
 }
 
@@ -12115,6 +12227,8 @@ export {
   appendFundReportChartReadingGuide,
   buildSkillContextForIntent,
   buildMarketDeepDiveSummary,
+  buildPortfolioHeldPositionReviewActions,
+  buildPortfolioHeldPositionReviewQueue,
   buildPortfolioDecisionReadinessQueue,
   buildPortfolioReadyWatchlistReviewActions,
   buildPortfolioWatchReadinessGaps,
@@ -12134,6 +12248,7 @@ export {
   getFundQaSkillIds,
   getFundRecommendationSkillIds,
   guardPortfolioWatchlistReadyUpdate,
+  ensurePortfolioHeldPositionsReviewed,
   ensurePortfolioReadyWatchlistReviewed,
   inferPullbackSetupSearchKeywords,
   isGenericPullbackSetupRequest,
