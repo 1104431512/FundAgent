@@ -3242,15 +3242,44 @@ function summarizePortfolioWatchlistForModel(watchlist = []) {
     });
 }
 
-function getFundWorkflowWatchlistContext(userText = "", options = {}) {
+async function getFundWorkflowWatchlistContext(userText = "", options = {}) {
   if (String(process.env.FUND_WORKFLOW_WATCHLIST_CONTEXT ?? "true") === "false") {
     return { candidates: [], summary: "经理自选候选池：未启用。" };
   }
   try {
     const db = options.db || readPortfolioDb();
-    const candidates = selectFundWorkflowWatchlistCandidates(getActivePortfolioWatchlist(db), userText, {
-      limit: options.limit ?? 6
+    const limit = options.limit ?? 6;
+    let activeWatchlist = getActivePortfolioWatchlist(db);
+    let candidates = selectFundWorkflowWatchlistCandidates(activeWatchlist, userText, {
+      limit,
+      now: options.now
     });
+    const staleRefreshCandidates = selectFundWorkflowStaleWatchlistRefreshCandidates(activeWatchlist, userText, {
+      limit: Math.max(0, Number(limit || 0) - candidates.length),
+      now: options.now
+    });
+    if (staleRefreshCandidates.length) {
+      const profiles = await enrichFunds(staleRefreshCandidates.map((item) => item.code));
+      const refreshUpdates = buildPortfolioWatchlistRecheckUpdates(staleRefreshCandidates, { profiles })
+        .map((update) => ({
+          ...update,
+          source: "fund_workflow_watchlist_refresh",
+          dataBasis: mergeStringLists(update.dataBasis, ["来源：fund_workflow_watchlist_refresh"])
+        }));
+      if (refreshUpdates.length) {
+        applyPortfolioWatchlistUpdates(db, refreshUpdates, {
+          profiles,
+          source: "fund_workflow_watchlist_refresh"
+        });
+        if (options.persist !== false) writePortfolioDb(db);
+        activeWatchlist = getActivePortfolioWatchlist(db);
+        candidates = selectFundWorkflowWatchlistCandidates(activeWatchlist, userText, {
+          limit,
+          now: options.now
+        });
+      }
+      updateStats({ counters: { fundWorkflowWatchlistRefreshes: staleRefreshCandidates.length } });
+    }
     return {
       candidates,
       summary: buildFundWorkflowWatchlistSummary(candidates)
@@ -3288,6 +3317,25 @@ function selectFundWorkflowWatchlistCandidates(watchlist = [], userText = "", op
       };
     })
     .sort((a, b) => Number(b.workflowWatchlistScore || 0) - Number(a.workflowWatchlistScore || 0)
+      || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
+    .slice(0, limit);
+}
+
+function selectFundWorkflowStaleWatchlistRefreshCandidates(watchlist = [], userText = "", options = {}) {
+  const limit = Math.max(0, Number(options.limit ?? 3) || 0);
+  if (!limit) return [];
+  const wantsPullbackSetup = isPullbackSetupRequest(userText);
+  return normalizePortfolioWatchlist(watchlist)
+    .filter((item) => ["ready", "waiting_pullback"].includes(item.status))
+    .filter((item) => !isFundWorkflowWatchlistFreshEnough(item, options))
+    .filter((item) => !wantsPullbackSetup || isLowBaseLaunchWatchSeed(item) || /回调完成|启动前夜|低位|刚转强/.test([
+      item.reason,
+      item.candidateRole,
+      item.positionPlan,
+      ...(item.setupEvidence || []),
+      ...(item.readinessGaps || [])
+    ].join(" ")))
+    .sort((a, b) => Number(a.priority || 3) - Number(b.priority || 3)
       || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
     .slice(0, limit);
 }
@@ -6847,7 +6895,7 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
 async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
   const skillContext = buildSkillContextForIntent(intent, getFundRecommendationSkillIds(), { userText });
   const marketEvidence = buildMarketEvidenceSummary(userText, marketSnapshot);
-  const portfolioWatchlistContext = getFundWorkflowWatchlistContext(userText);
+  const portfolioWatchlistContext = await getFundWorkflowWatchlistContext(userText);
   const marketDeepDive = mergeFundWorkflowWatchlistIntoDeepDive(
     await fetchMarketDeepDive(userText, marketSnapshot, { forRecommendation: true }),
     portfolioWatchlistContext.candidates,
@@ -6942,7 +6990,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
 async function answerFundQuestionWithModel({ userText, intent, marketSnapshot }) {
   const skillContext = buildSkillContextForIntent(intent, getFundQaSkillIds(), { userText });
   const marketEvidence = buildMarketEvidenceSummary(userText, marketSnapshot);
-  const portfolioWatchlistContext = getFundWorkflowWatchlistContext(userText);
+  const portfolioWatchlistContext = await getFundWorkflowWatchlistContext(userText);
   const marketDeepDive = mergeFundWorkflowWatchlistIntoDeepDive(
     await fetchMarketDeepDive(userText, marketSnapshot, { forRecommendation: false }),
     portfolioWatchlistContext.candidates,
@@ -13413,6 +13461,7 @@ export {
   selectPullbackBackfillCandidates,
   selectFundReportProfilesForAnswer,
   selectFundScreeningWatchlistProfiles,
+  selectFundWorkflowStaleWatchlistRefreshCandidates,
   selectLowBaseTurnRankCandidates,
   selectPortfolioWatchlistSeedCandidates,
   selectFundWorkflowWatchlistCandidates,

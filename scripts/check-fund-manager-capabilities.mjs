@@ -337,7 +337,7 @@ assert(watchlistStatusLines.includes("费用/份额：C类更适合短中期观�
 assert(watchlistStatusLines.includes("最新走势：20日+4.8%"), "portfolio status answer must include latest trend evidence");
 assert(watchlistStatusLines.includes("缺口=低位/启动/刚转强/不过热/费用条件已满足"), "buy-preparation queue must tell managers when ready candidates have no remaining setup, early-turn, and fee gap");
 assert(watchlistStatusLines.includes("买入缺口：还差回调完成或启动前夜信号"), "watchlist detail must expose what waiting candidates still lack before buying");
-const workflowWatchlistCandidates = manager.selectFundWorkflowWatchlistCandidates([
+const workflowWatchlistInput = [
   {
     ...normalizedWatchDb.watchlist[0],
     updatedAt: "2026-05-20T00:00:00.000Z",
@@ -395,9 +395,12 @@ const workflowWatchlistCandidates = manager.selectFundWorkflowWatchlistCandidate
     lastSnapshot: { snapshotDate: "2000-01-01", navDate: "2000-01-01", trendProfile: { ok: true, pullbackSetup: { signal: "pullback_complete" } } }
   },
   { code: "000003", name: "追涨拦截基金A", status: "blocked", reason: "短期偏热" }
-], setupQuery, { limit: 4, now: "2026-05-20T00:00:00.000Z" });
+];
+const workflowWatchlistCandidates = manager.selectFundWorkflowWatchlistCandidates(workflowWatchlistInput, setupQuery, { limit: 4, now: "2026-05-20T00:00:00.000Z" });
 assert.deepEqual(workflowWatchlistCandidates.map((item) => item.code), ["000001", "000002"], "fund workflows must reuse ready and launch-eve watchlist candidates while excluding blocked items");
 assert(!workflowWatchlistCandidates.some((item) => item.code === "000004"), "fund workflows must not reuse stale ready watchlist snapshots as recommendation evidence");
+const staleWorkflowRefreshCandidates = manager.selectFundWorkflowStaleWatchlistRefreshCandidates(workflowWatchlistInput, setupQuery, { limit: 2, now: "2026-05-20T00:00:00.000Z" });
+assert.deepEqual(staleWorkflowRefreshCandidates.map((item) => item.code), ["000004"], "fund workflows should refresh stale setup watchlist candidates before excluding them");
 const workflowWatchlistSummary = manager.buildFundWorkflowWatchlistSummary(workflowWatchlistCandidates);
 assert(workflowWatchlistSummary.includes("经理自选候选池（优先复核，不自动买入）"), "fund workflow prompt must expose manager-maintained candidates");
 assert(workflowWatchlistSummary.includes("000002 等待回调基金C"), "fund workflow prompt must include launch-eve watchlist candidates");

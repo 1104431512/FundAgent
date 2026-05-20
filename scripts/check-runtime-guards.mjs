@@ -344,6 +344,18 @@ const requiredPatterns = [
     message: "fund workflow watchlist reuse must apply the same snapshot freshness guard as portfolio decisions."
   },
   {
+    pattern: /selectFundWorkflowStaleWatchlistRefreshCandidates/,
+    message: "fund recommendation and QA workflows should attempt to refresh stale self-selected candidates before excluding them."
+  },
+  {
+    pattern: /getFundWorkflowWatchlistContext[\s\S]{0,1200}enrichFunds/,
+    message: "fund workflow watchlist context must refresh stale watchlist candidates through enrichment."
+  },
+  {
+    pattern: /fund_workflow_watchlist_refresh/,
+    message: "fund workflow watchlist refreshes must be traceable in the candidate ledger."
+  },
+  {
     pattern: /经理自选候选池（优先复核，不自动买入）/,
     message: "fund workflow prompts must expose self-selected candidates without implying automatic buys."
   },
