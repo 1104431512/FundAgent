@@ -1049,6 +1049,13 @@ const highPositionPullbackDigest = {
     shareClassFeeModel: { label: "C类：通常无申购费，销售服务费按年计提" }
   }
 };
+const highYtdPullbackDigest = {
+  ...setupDigest,
+  seed: {
+    thisYearPct: 52.4,
+    keywords: ["近1周低位转强候选"]
+  }
+};
 const missingLowPositionDigest = {
   ok: true,
   trendProfile: {
@@ -1099,6 +1106,11 @@ assert(
     manager.scoreResearchDigestForPullbackSetup(noEarlyTurnPullbackDigest),
   "deep-dive scoring must prefer pullbacks with 5/10-day early-turn evidence over low but not-yet-launching funds"
 );
+assert(
+  manager.scoreResearchDigestForPullbackSetup(setupDigest) >
+    manager.scoreResearchDigestForPullbackSetup(highYtdPullbackDigest),
+  "deep-dive scoring must downgrade year-to-date high pullbacks that only look low in short windows"
+);
 const highPositionSummary = manager.buildMarketDeepDiveSummary({
   ok: true,
   focus: "pullback_setup_discovery",
@@ -1107,13 +1119,17 @@ const highPositionSummary = manager.buildMarketDeepDiveSummary({
     { ...setupDigest, code: "000001", name: "低位修复基金A" },
     { ...highPositionPullbackDigest, code: "000004", name: "位置偏高修复基金C" },
     { ...missingLowPositionDigest, code: "000005", name: "低位缺失修复基金C" },
-    { ...noEarlyTurnPullbackDigest, code: "000006", name: "未启动修复基金C" }
+    { ...noEarlyTurnPullbackDigest, code: "000006", name: "未启动修复基金C" },
+    { ...highYtdPullbackDigest, code: "000007", name: "年内高位修复基金C" }
   ]
 });
 assert(highPositionSummary.includes("mainCandidateCodes=000001"), "genuinely low-position setup should remain a main candidate");
 assert(/watchOrRejectCodes=.*000004/.test(highPositionSummary), "pullback-looking but high-position fund must be demoted to watch/reject");
 assert(/watchOrRejectCodes=.*000005/.test(highPositionSummary), "pullback-looking fund with missing low-position evidence must be visible only as watch/reject");
 assert(/watchOrRejectCodes=.*000006/.test(highPositionSummary), "pullback-looking fund without 5/10-day early turn must be visible only as watch/reject");
+assert(/watchOrRejectCodes=.*000007/.test(highPositionSummary), "year-to-date high pullback-looking fund must be demoted to watch/reject");
+assert(highPositionSummary.includes("今年以来=52.4%"), "deep-dive summary must expose year-to-date position evidence for pullback candidates");
+assert(highPositionSummary.includes("今年以来+52.4%偏高"), "deep-dive summary must explain when a candidate is not truly low because year-to-date return is high");
 const rotationSupportedDigest = {
   ...setupDigest,
   code: "000021",

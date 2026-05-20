@@ -6419,6 +6419,7 @@ function classifyPullbackSetupCandidateForSummary(candidate = {}) {
   const trend = candidate.trendProfile || {};
   const signal = trend.pullbackSetup?.signal || "";
   if (hasHighChaseTheme(candidate)) return "watch_or_reject";
+  if (hasPullbackYearToDateChaseRisk(candidate)) return "watch_or_reject";
   if (["pullback_complete", "launch_setup"].includes(signal)
     && isEarlyTurnSetupTrend(trend)
     && trend.trendLabel !== "extended_uptrend"
@@ -6449,6 +6450,7 @@ function finiteMetricNumber(value) {
 function formatPullbackSetupCandidateLine(candidate = {}, ranked = {}) {
   const trend = candidate.trendProfile || {};
   const actionability = candidate.actionability || {};
+  const seedThisYear = getCandidateSeedThisYearPct(candidate);
   const fields = [
     `${candidate.code || "unknown"} ${candidate.name || candidate.seed?.name || ""}`.trim(),
     `bucket=${ranked.bucket || classifyPullbackSetupCandidateForSummary(candidate)}`,
@@ -6459,6 +6461,7 @@ function formatPullbackSetupCandidateLine(candidate = {}, ranked = {}) {
     Number.isFinite(Number(trend.return10dPct)) ? `10日=${trend.return10dPct}%` : "",
     Number.isFinite(Number(trend.return20dPct)) ? `20日=${trend.return20dPct}%` : "",
     Number.isFinite(Number(trend.return60dPct)) ? `60日=${trend.return60dPct}%` : "",
+    Number.isFinite(seedThisYear) ? `今年以来=${seedThisYear}%` : "",
     Number.isFinite(Number(trend.drawdownFromRecentHighPct)) ? `距高点=${trend.drawdownFromRecentHighPct}%` : "",
     Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置=${trend.lowPositionPct120}%` : "",
     formatCandidateThemeEvidence(candidate),
@@ -6503,6 +6506,10 @@ function buildPullbackSetupCandidateGaps(candidate = {}) {
     gaps.push(`近60日${formatFallbackPct(return60d)}偏热`);
   } else if (!Number.isFinite(return60d)) {
     gaps.push("缺少近60日不过热验证");
+  }
+  const seedThisYear = getCandidateSeedThisYearPct(candidate);
+  if (Number.isFinite(seedThisYear) && seedThisYear > 30) {
+    gaps.push(`今年以来${formatFallbackPct(seedThisYear)}偏高`);
   }
   if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback") {
     gaps.push("仍是等待回撤而非低位启动");
@@ -6549,6 +6556,15 @@ function hasHighChaseTheme(candidate = {}) {
     || theme.stage === "crowded"
     || Number(theme.crowdingScore) >= 55
   );
+}
+
+function getCandidateSeedThisYearPct(candidate = {}) {
+  return finiteMetricNumber(candidate.seed?.thisYearPct ?? candidate.thisYearPct);
+}
+
+function hasPullbackYearToDateChaseRisk(candidate = {}) {
+  const thisYear = getCandidateSeedThisYearPct(candidate);
+  return Number.isFinite(thisYear) && thisYear > 30;
 }
 
 function scorePullbackThemeRotation(candidate = {}) {
@@ -9267,6 +9283,7 @@ function scoreResearchDigestForPullbackSetup(digest = {}) {
   if (!digest?.ok) return -100;
   const trend = digest.trendProfile || {};
   const actionability = digest.actionability || {};
+  const seedThisYear = getCandidateSeedThisYearPct(digest);
   let score = Number(actionability.score || 0) * 0.35;
   const setupScore = Number(trend.pullbackSetup?.score || 0);
   const lowPosition = finiteMetricNumber(trend.lowPositionPct120);
@@ -9285,6 +9302,11 @@ function scoreResearchDigestForPullbackSetup(digest = {}) {
   if (Number(trend.return20dPct) > 10) score -= 18;
   if (Number(trend.return60dPct) > 24) score -= 16;
   if (Number(trend.drawdownFromRecentHighPct) > -2 && Number(trend.return20dPct) > 6) score -= 14;
+  if (Number.isFinite(seedThisYear)) {
+    if (seedThisYear >= -35 && seedThisYear <= 12) score += 6;
+    if (seedThisYear <= 5 && Number(trend.return20dPct) > 0 && Number(trend.return20dPct) <= 8) score += 6;
+    if (seedThisYear > 30) score -= Math.min(30, (seedThisYear - 30) * 0.9 + 10);
+  }
   score += scorePullbackThemeRotation(digest);
   return score;
 }

@@ -800,6 +800,14 @@ const requiredPatterns = [
     message: "pullback/setup scoring must penalize year-to-date high candidates that only look mild in short windows."
   },
   {
+    pattern: /hasPullbackYearToDateChaseRisk[\s\S]{0,360}classifyPullbackSetupCandidateForSummary|classifyPullbackSetupCandidateForSummary[\s\S]{0,360}hasPullbackYearToDateChaseRisk/,
+    message: "pullback/setup main-candidate classification must reject year-to-date high pseudo-low candidates."
+  },
+  {
+    pattern: /今年以来=\$\{seedThisYear\}%[\s\S]{0,2600}今年以来\$\{formatFallbackPct\(seedThisYear\)\}偏高/,
+    message: "pullback/setup summaries must expose and explain year-to-date high-position evidence."
+  },
+  {
     pattern: /低位启动前夜候选/,
     message: "pullback/setup discovery must tag low-base launch-eve candidates for ranking and watchlist persistence."
   },
