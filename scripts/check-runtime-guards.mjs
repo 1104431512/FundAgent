@@ -128,8 +128,20 @@ const requiredPatterns = [
     message: "pullback/setup backfill must exclude already tested products while continuing the search."
   },
   {
-    pattern: /FEISHU_REPORT_TREND_IMAGE_LIMIT\s*\|\|\s*5/,
-    message: "fund report image defaults should show more than three recommended funds when available."
+    pattern: /FEISHU_REPORT_TREND_IMAGE_LIMIT\s*\|\|\s*8/,
+    message: "fund report image defaults should show buy and backup candidates when available."
+  },
+  {
+    pattern: /extractAnswerChartEvidenceSections/,
+    message: "fund report images must select from both recommendation and qualified backup/watch sections."
+  },
+  {
+    pattern: /scoreBackupChartContext/,
+    message: "fund report image selection must score qualified backup/watch candidates instead of only main buys."
+  },
+  {
+    pattern: /备选观察图/,
+    message: "fund report images must label backup/watch charts so users understand why they are shown."
   },
   {
     pattern: /normalizePortfolioWatchlist/,
@@ -194,6 +206,26 @@ const requiredPatterns = [
   {
     pattern: /自选基金池/,
     message: "manager-facing and admin-facing portfolio UI must expose the self-selected fund pool in Chinese."
+  },
+  {
+    pattern: /buildPortfolioWatchlistStatusLines/,
+    message: "portfolio status replies must group the self-selected fund pool by readiness status."
+  },
+  {
+    pattern: /备选理由：/,
+    message: "portfolio status replies must include detailed watchlist backup reasons."
+  },
+  {
+    pattern: /风险边界：/,
+    message: "portfolio status replies must include watchlist risk boundaries."
+  },
+  {
+    pattern: /费用\/份额：/,
+    message: "portfolio status replies must include watchlist fee/share-class evidence."
+  },
+  {
+    pattern: /最新走势：/,
+    message: "portfolio status replies must include watchlist trend evidence."
   },
   {
     pattern: /buildSkillFocusDirective/,

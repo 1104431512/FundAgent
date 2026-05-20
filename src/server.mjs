@@ -3284,6 +3284,67 @@ function formatPortfolioWatchLine(item = {}) {
   return `${head}（${status}，优先级${item.priority || 3}）${reason}${trigger}${risk}${fee}`;
 }
 
+function buildPortfolioWatchlistStatusLines(watchlist = [], options = {}) {
+  const normalized = normalizePortfolioWatchlist(watchlist).filter((item) => item.status !== "removed");
+  if (!normalized.length) return ["暂无自选基金。"];
+  const limitPerStatus = Math.max(1, Number(options.limitPerStatus || 4));
+  const statusOrder = ["ready", "waiting_pullback", "watch", "blocked", "in_position"];
+  const groups = statusOrder
+    .map((status) => ({
+      status,
+      label: formatPortfolioWatchStatus(status),
+      items: normalized.filter((item) => item.status === status)
+    }))
+    .filter((group) => group.items.length);
+  const lines = [
+    `合计 ${normalized.length} 只：${groups.map((group) => `${group.label}${group.items.length}只`).join("，")}。`
+  ];
+
+  for (const group of groups) {
+    lines.push(`【${group.label}】${group.items.length}只`);
+    for (const rawItem of group.items.slice(0, limitPerStatus)) {
+      lines.push(formatPortfolioWatchDetailLine(summarizePortfolioWatchItem(rawItem)));
+    }
+    if (group.items.length > limitPerStatus) {
+      lines.push(`还有 ${group.items.length - limitPerStatus} 只同状态候选，可在管理页自选基金池查看。`);
+    }
+  }
+  return lines;
+}
+
+function formatPortfolioWatchDetailLine(item = {}) {
+  const head = `${item.code || ""} ${item.name || ""}`.trim();
+  const meta = [
+    item.shareClass ? `${item.shareClass}类` : "",
+    item.type || "",
+    item.candidateRole || "",
+    `优先级${item.priority || 3}`
+  ].filter(Boolean).join("，");
+  const trendEvidence = formatPortfolioWatchSnapshotEvidence(item.lastSnapshot || {});
+  const parts = [
+    `${head}${meta ? `（${meta}）` : ""}`,
+    item.reason ? `备选理由：${item.reason}` : "",
+    item.setupEvidence?.length ? `证据：${item.setupEvidence.slice(0, 3).join("；")}` : "",
+    item.buyTriggers?.length ? `触发：${item.buyTriggers.slice(0, 2).join("；")}` : "",
+    item.riskNotes?.length ? `风险边界：${item.riskNotes.slice(0, 2).join("；")}` : "",
+    item.feeNotes?.length ? `费用/份额：${item.feeNotes.slice(0, 2).join("；")}` : "",
+    item.positionPlan ? `仓位计划：${item.positionPlan}` : "",
+    trendEvidence ? `最新走势：${trendEvidence}` : "",
+    item.reviewDate ? `复查：${item.reviewDate}` : ""
+  ].filter(Boolean);
+  return `- ${parts.join("；")}`;
+}
+
+function formatPortfolioWatchSnapshotEvidence(snapshot = {}) {
+  const trend = snapshot.trendProfile || {};
+  return [
+    snapshot.trendSummary && snapshot.trendSummary !== "走势数据不足" ? snapshot.trendSummary : "",
+    snapshot.nav ? `净值${snapshot.nav}${snapshot.navDate ? `（${snapshot.navDate}）` : ""}` : "",
+    Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置${round(Number(trend.lowPositionPct120), 1)}%` : "",
+    Number.isFinite(Number(trend.drawdownFromRecentHighPct)) ? `距高点${formatSignedNumber(trend.drawdownFromRecentHighPct)}%` : ""
+  ].filter(Boolean).join("，");
+}
+
 function buildPortfolioManagerProfileContext(config, db = null) {
   const schedule = [
     `盘前观察：${config.portfolioPremarketTime || "09:00"}`,
@@ -3454,13 +3515,7 @@ function buildPortfolioStatusAnswer(userText, intent) {
     lines.push("");
     lines.push("自选基金池：");
     if (watchlist.length) {
-      for (const item of watchlist.slice(0, 10)) {
-        lines.push(formatPortfolioWatchLine(summarizePortfolioWatchItem(item)));
-        if (item.setupEvidence?.length) lines.push(`备选证据：${item.setupEvidence.slice(0, 3).join("；")}`);
-        if (item.positionPlan) lines.push(`仓位计划：${item.positionPlan}`);
-        const snapshot = item.lastSnapshot || {};
-        if (snapshot.trendSummary) lines.push(`最新走势：${snapshot.trendSummary}`);
-      }
+      lines.push(...buildPortfolioWatchlistStatusLines(watchlist, { limitPerStatus: wantsWatchlist ? 5 : 3 }));
     } else {
       lines.push("暂无自选基金。下一次盘前观察、今日操作或周总结会开始沉淀候选池。");
     }
@@ -4060,7 +4115,7 @@ async function buildFundReportCardImages(profiles, config) {
   if (String(process.env.FEISHU_REPORT_TREND_IMAGES ?? "true") === "false") {
     return [];
   }
-  const limit = Math.max(0, Number(process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT || 5) || 5);
+  const limit = Math.max(0, Number(process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT || 8) || 8);
   const chartMode = String(process.env.FEISHU_REPORT_CHART_MODE || "summary").toLowerCase();
   const snapshots = collectTrendSnapshotsFromProfiles(profiles).slice(0, limit);
   const images = [];
@@ -4081,7 +4136,7 @@ async function buildFundReportCardImages(profiles, config) {
       const imageKey = await uploadFeishuImage(png, `fund-report-${chartMode}-${item.code || "fund"}.png`, config);
       images.push({
         imageKey,
-        alt: `${item.code} ${item.name} 走势 / 回撤 / 阶段收益 / 买点费用风险图`.trim() || "基金报告图"
+        alt: `${item.snapshot.reportChartRole ? `${item.snapshot.reportChartRole}：` : ""}${item.code} ${item.name} 走势 / 回撤 / 阶段收益 / 买点费用风险图`.trim() || "基金报告图"
       });
     } catch (error) {
       console.error("[fund-report-trend-image-error]", item.code || item.name || "unknown", error);
@@ -4121,8 +4176,8 @@ function selectFundReportProfilesForAnswer(profiles, answerText) {
   if (!list.length) return [];
 
   const text = String(answerText || "");
-  const selectionText = extractAnswerRecommendationSection(text);
-  const sectionCodes = new Set(extractFundCodes(selectionText));
+  const selectionSections = extractAnswerChartEvidenceSections(text);
+  const sectionCodes = new Set(selectionSections.flatMap((section) => extractFundCodes(section.text)));
   const explicitCodes = sectionCodes.size ? sectionCodes : new Set(extractFundCodes(text));
   const ranked = [];
   for (const profile of list) {
@@ -4130,17 +4185,35 @@ function selectFundReportProfilesForAnswer(profiles, answerText) {
     const name = profile?.name || profile?.seed?.name || "";
     if (explicitCodes.size && code && !explicitCodes.has(code)) continue;
 
-    const codeIndex = code && explicitCodes.has(code) ? selectionText.indexOf(code) : -1;
-    const nameIndex = !explicitCodes.size && name ? selectionText.indexOf(name) : -1;
-    const index = [codeIndex, nameIndex].filter((value) => value >= 0).sort((a, b) => a - b)[0];
-    if (index === undefined) continue;
-    const context = selectionText.slice(Math.max(0, index - 56), index + 96);
-    if (isChartExcludedByAnswerContext(context)) continue;
+    let best = null;
+    for (const section of selectionSections) {
+      const codeIndex = code && explicitCodes.has(code) ? section.text.indexOf(code) : -1;
+      const nameIndex = !explicitCodes.size && name ? section.text.indexOf(name) : -1;
+      const index = [codeIndex, nameIndex].filter((value) => value >= 0).sort((a, b) => a - b)[0];
+      if (index === undefined) continue;
+      const context = extractFundChartContext(section.text, code, name, index);
+      if (isChartExcludedByAnswerContext(context)) continue;
+      const score = section.priority
+        + index
+        - scorePositiveChartContext(context)
+        - scoreBackupChartContext(context)
+        + scoreNegativeChartContext(context);
+      if (!best || score < best.score) {
+        best = {
+          index,
+          context,
+          score
+        };
+      }
+    }
+    if (!best) continue;
     ranked.push({
-      profile,
+      profile: withFundReportChartMeta(profile, {
+        role: classifyAnswerChartRole(best.context)
+      }),
       key: code || name,
-      index,
-      score: index - scorePositiveChartContext(context) + scoreNegativeChartContext(context)
+      index: best.index,
+      score: best.score
     });
   }
 
@@ -4153,6 +4226,49 @@ function selectFundReportProfilesForAnswer(profiles, answerText) {
       return true;
     })
     .map((item) => item.profile);
+}
+
+function withFundReportChartMeta(profile, meta = {}) {
+  if (!profile || typeof profile !== "object") return profile;
+  return {
+    ...profile,
+    reportChartRole: meta.role || profile.reportChartRole || ""
+  };
+}
+
+function extractAnswerChartEvidenceSections(text) {
+  const body = String(text || "");
+  if (!body.trim()) return [];
+  const sections = [];
+  const pushSection = (sectionText, priority) => {
+    const normalized = String(sectionText || "").trim();
+    if (!normalized || sections.some((section) => section.text === normalized)) return;
+    sections.push({ text: normalized, priority });
+  };
+
+  pushSection(extractAnswerRecommendationSection(body), 0);
+
+  const backupMarkers = [
+    "备选观察",
+    "备选",
+    "观察名单",
+    "观察池",
+    "候选池",
+    "自选基金池",
+    "等待回调",
+    "等待回撤",
+    "接近可买",
+    "可关注"
+  ];
+  for (const marker of backupMarkers) {
+    const index = body.indexOf(marker);
+    if (index >= 0) {
+      pushSection(sliceAnswerChartSectionFromMarker(body, index), 20000 + index);
+    }
+  }
+
+  if (!sections.length) pushSection(body, 40000);
+  return sections.sort((a, b) => a.priority - b.priority);
 }
 
 function extractAnswerRecommendationSection(text) {
@@ -4181,24 +4297,92 @@ function extractAnswerRecommendationSection(text) {
   return body.slice(start, ends[0] || body.length);
 }
 
+function sliceAnswerChartSectionFromMarker(body, start) {
+  const endMarkers = [
+    "1万元执行",
+    "一万元执行",
+    "执行方案",
+    "决策边界",
+    "为什么不选",
+    "回避",
+    "剔除",
+    "排除",
+    "缺失数据",
+    "免责声明"
+  ];
+  const ends = endMarkers
+    .map((marker) => body.indexOf(marker, start + 1))
+    .filter((index) => index > start)
+    .sort((a, b) => a - b);
+  return body.slice(start, ends[0] || body.length);
+}
+
+function extractFundChartContext(text, code, name, index = -1) {
+  const body = String(text || "");
+  const targets = [code, name].map((value) => String(value || "").trim()).filter(Boolean);
+  if (targets.length) {
+    const lines = body.split(/\r?\n/);
+    const lineIndex = lines.findIndex((line) => targets.some((target) => line.includes(target)));
+    if (lineIndex >= 0) {
+      return lines.slice(Math.max(0, lineIndex - 1), Math.min(lines.length, lineIndex + 2)).join("\n");
+    }
+  }
+  if (index < 0) return "";
+  return body.slice(Math.max(0, index - 96), index + 160);
+}
+
 function isChartExcludedByAnswerContext(context) {
-  return scoreNegativeChartContext(context) >= 12 && scorePositiveChartContext(context) < 8;
+  const supportScore = scorePositiveChartContext(context) + scoreBackupChartContext(context);
+  if (hasHardRejectedChartContext(context) && !hasClearPositiveChartContext(context)) return true;
+  if (hasHardRejectedChartContext(context) && supportScore < 12) return true;
+  return scoreNegativeChartContext(context) >= 12 && supportScore < 8;
 }
 
 function scorePositiveChartContext(context) {
   const text = String(context || "");
   let score = 0;
-  if (/(主推荐|首选|推荐清单|推荐候选|入选|可以买|买入|分批|配置|候选|优先)/.test(text)) score += 8;
+  if (hasMainRecommendationChartContext(text) || /(入选|可以买|买入|分批|配置|候选|优先)/.test(text)) score += 8;
   if (/(回调完成|低位|启动|修复|可买|分批买)/.test(text)) score += 4;
+  return score;
+}
+
+function scoreBackupChartContext(context) {
+  const text = String(context || "");
+  let score = 0;
+  if (/(备选|观察名单|观察池|候选池|自选基金池|等待回调|等待回撤|可关注|接近可买)/.test(text)) score += 8;
+  if (/(触发|满足条件|回踩确认|放量站回|复查|启动前夜|低位修复)/.test(text)) score += 4;
   return score;
 }
 
 function scoreNegativeChartContext(context) {
   const text = String(context || "");
   let score = 0;
-  if (/(观察名单|观察池|只观察|列入观察|等待|等回撤|回避|剔除|不推荐|不作为主推荐|不是主推|暂不|少买|不买)/.test(text)) score += 12;
-  if (/(追涨|偏热|过热|不符合|风险偏高)/.test(text)) score += 6;
+  if (/(只观察|回避|剔除|排除|不推荐|不作为主推荐|不是主推|暂不|少买|不买)/.test(text)) score += 12;
+  if (/(追涨|偏热|过热|不符合|风险偏高)/.test(text)) score += 8;
+  if (/(等待|等回撤)/.test(text)) score += 3;
   return score;
+}
+
+function hasHardRejectedChartContext(context) {
+  return /(只观察|回避|剔除|排除|不推荐|不作为主推荐|不是主推|追涨|偏热|过热|不符合|风险偏高|暂不|少买|不买)/.test(String(context || ""));
+}
+
+function hasMainRecommendationChartContext(context) {
+  return /(?:^|[\n；;。:：])\s*主推荐|首选|推荐清单|推荐候选/.test(String(context || ""));
+}
+
+function hasClearPositiveChartContext(context) {
+  const text = String(context || "");
+  return hasMainRecommendationChartContext(text)
+    || /(可以买|买入|分批|配置|可买|分批买)/.test(text);
+}
+
+function classifyAnswerChartRole(context) {
+  const text = String(context || "");
+  if (scoreBackupChartContext(text) >= 8 && !hasMainRecommendationChartContext(text)) {
+    return "备选观察图";
+  }
+  return "买入参考图";
 }
 
 async function buildPortfolioTrendCardImages(run, config) {
@@ -5043,7 +5227,8 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "4. 推荐清单：优先 3-5 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号、5日/10日早期转强、120日区间低位、趋势/自评估动作、为什么入选。只能使用快照或下钻中的候选代码；如果没有足够代码，就写“待复核方向”。",
     "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
     "5. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
-    "6. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的题材或价格条件。"
+    "6. 备选观察：如果有未到买点但值得等的候选，列 2-4 个备选，说明还差什么触发；偏热、追涨或回避对象单独写排除原因，不要混进备选。",
+    "7. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的题材或价格条件。"
   ].join("\n");
 
   const draft = await callModel({
@@ -5112,7 +5297,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "候选基金下钻摘要：",
     marketDeepDiveSummary,
     "",
-    "请直接回答用户问题。若用户问“值得买吗”，必须给中文动作“买入 / 分批买入 / 等待 / 回避”之一，并给新资金和已有持仓分别怎么做。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
+    "请直接回答用户问题。若用户问“值得买吗”，必须给中文动作“买入 / 分批买入 / 等待 / 回避”之一，并给新资金和已有持仓分别怎么做。如回答里给出具体基金候选，主买入和备选观察都要写代码、中文走势证据和触发条件；偏热回避对象不要和备选混写。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
   ].join("\n");
 
   const draft = await callModel({
@@ -11257,6 +11442,7 @@ export {
   allowedSkillIdsForWorkflow,
   buildSkillContextForIntent,
   buildMarketDeepDiveSummary,
+  buildPortfolioWatchlistStatusLines,
   buildPullbackQualityFallbackAnswer,
   classifyMessageIntent,
   computeTrendProfile,

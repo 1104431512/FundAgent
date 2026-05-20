@@ -203,6 +203,47 @@ assert(watchSummary.reason.includes("回调完成"), "watchlist candidates must 
 assert(watchSummary.buyTriggers.length > 0, "watchlist candidates must keep buy triggers");
 assert(watchSummary.riskNotes.length > 0, "watchlist candidates must keep risk notes");
 assert(watchSummary.feeNotes.length > 0, "watchlist candidates must keep fee/share-class notes");
+const watchlistStatusLines = manager.buildPortfolioWatchlistStatusLines([
+  {
+    ...normalizedWatchDb.watchlist[0],
+    lastSnapshot: {
+      nav: 1.2345,
+      navDate: "2026-05-19",
+      trendSummary: "20日+4.8%，60日+7.6%，趋势回调完成，入场可买",
+      trendProfile: {
+        lowPositionPct120: 42.4,
+        drawdownFromRecentHighPct: -7.1
+      }
+    }
+  },
+  {
+    code: "000002",
+    name: "等待回调基金C",
+    status: "waiting_pullback",
+    priority: 3,
+    reason: "近20日涨幅略快，等待回踩。",
+    buyTriggers: ["回踩不破前低"],
+    riskNotes: ["若继续放量冲高则不追"],
+    feeNotes: ["C类适合短期观察"]
+  },
+  {
+    code: "000003",
+    name: "追涨拦截基金A",
+    status: "blocked",
+    priority: 5,
+    reason: "短期偏热，不符合低位启动。",
+    riskNotes: ["20日涨幅过高"]
+  }
+]).join("\n");
+assert(watchlistStatusLines.includes("合计 3 只"), "portfolio status answer must summarize watchlist counts");
+assert(watchlistStatusLines.includes("【接近可买】"), "portfolio status answer must group ready watchlist candidates");
+assert(watchlistStatusLines.includes("【等待回调】"), "portfolio status answer must group waiting watchlist candidates");
+assert(watchlistStatusLines.includes("【暂不买入】"), "portfolio status answer must group blocked watchlist candidates");
+assert(watchlistStatusLines.includes("备选理由：回调完成后低位修复"), "portfolio status answer must include detailed watchlist reasons");
+assert(watchlistStatusLines.includes("触发：放量站回20日均线"), "portfolio status answer must include buy triggers");
+assert(watchlistStatusLines.includes("风险边界：若近20日涨幅超过10%则暂停追入"), "portfolio status answer must include risk boundaries");
+assert(watchlistStatusLines.includes("费用/份额：C类更适合短中期观察"), "portfolio status answer must include fee/share-class notes");
+assert(watchlistStatusLines.includes("最新走势：20日+4.8%"), "portfolio status answer must include latest trend evidence");
 assert.equal(
   manager.normalizePortfolioWatchlistUpdates([{ operation: "REMOVE", code: "000001", reason: "主题过热" }])[0].operation,
   "REMOVE",
@@ -672,21 +713,30 @@ const tinyFontSource = serverSource.slice(serverSource.indexOf("const TINY_FONT"
 assert(!/[\u4e00-\u9fff]/.test(tinyFontSource), "tiny chart font must not keep Chinese bitmap glyphs that render like QR codes");
 assert(!/drawYAxisTickLabels\([^;\n]*["'][\u4e00-\u9fff]/.test(serverSource), "summary chart must not use Chinese axis labels in bitmap text");
 
-const selectedChartCodes = manager.selectFundReportProfilesForAnswer([
+const selectedChartProfiles = manager.selectFundReportProfilesForAnswer([
   { code: "000001", name: "低位修复基金A", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.01 }] } },
   { code: "000002", name: "启动前夜基金C", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.02 }] } },
-  { code: "000003", name: "追涨观察基金A", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.03 }] } }
+  { code: "000003", name: "追涨观察基金A", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.03 }] } },
+  { code: "000004", name: "备选回踩基金C", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.015 }] } }
 ], [
   "推荐清单：",
   "1. 000001 低位修复基金A：回调完成，可分批。",
   "2. 000002 启动前夜基金C：低位修复，适合小仓位。",
+  "备选观察：",
+  "000004 备选回踩基金C：等待回调，回踩确认后可关注，满足触发再评估。",
   "观察名单：",
   "000003 追涨观察基金A：短期偏热，只观察，不作为主推荐。"
-].join("\n")).map((profile) => profile.code);
+].join("\n"));
+const selectedChartCodes = selectedChartProfiles.map((profile) => profile.code);
 assert.deepEqual(
   selectedChartCodes,
-  ["000001", "000002"],
-  "report images must align with the recommendation list and exclude watch/reject candidates"
+  ["000001", "000002", "000004"],
+  "report images must cover buy candidates and qualified backup candidates while excluding watch/reject candidates"
+);
+assert.equal(
+  selectedChartProfiles.find((profile) => profile.code === "000004")?.reportChartRole,
+  "备选观察图",
+  "backup report images must be labeled as backup/watch evidence instead of buy-only charts"
 );
 
 const deepDiveSummary = manager.buildMarketDeepDiveSummary({
