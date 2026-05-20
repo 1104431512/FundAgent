@@ -5555,6 +5555,7 @@ function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
 }
 
 async function fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar = []) {
+  const focusedKeywords = inferFocusedFundSearchKeywords(userText);
   const keywordGroups = await Promise.all(inferPullbackSetupSearchKeywords(userText, themeRadar).map((keyword) =>
     fetchFundSearchCandidates(keyword).catch((error) => ({ ok: false, keyword, error: error.message, items: [] }))
   ));
@@ -5577,9 +5578,51 @@ async function fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar
     setupDiscoverySource: "market_snapshot"
   }));
 
-  return mergeCandidateFunds(keywordItems, rankingGroups, snapshotItems)
+  const rankingItems = filterFocusedPullbackRankingCandidates(rankingGroups, focusedKeywords);
+  const scopedSnapshotItems = filterFocusedPullbackRankingCandidates(snapshotItems, focusedKeywords);
+
+  return mergeCandidateFunds(keywordItems, rankingItems, scopedSnapshotItems)
     .sort((a, b) => scorePullbackSetupSeedCandidate(b, themeRadar, userText) - scorePullbackSetupSeedCandidate(a, themeRadar, userText))
     .slice(0, Number(process.env.PULLBACK_SETUP_SEED_LIMIT || 80));
+}
+
+function filterFocusedPullbackRankingCandidates(items = [], focusedKeywords = []) {
+  const aliases = buildFocusedKeywordAliases(focusedKeywords);
+  if (!aliases.length) return items || [];
+  return (items || []).filter((item) => candidateMatchesFocusedKeywordAliases(item, aliases));
+}
+
+function buildFocusedKeywordAliases(keywords = []) {
+  const aliasGroups = [
+    [["黄金", "贵金属"], ["黄金", "贵金属", "白银", "有色金属"]],
+    [["白银"], ["白银", "贵金属"]],
+    [["半导体", "芯片"], ["半导体", "芯片", "集成电路", "科创芯片"]],
+    [["人工智能", "ai", "算力"], ["人工智能", "ai", "算力", "云计算"]],
+    [["机器人"], ["机器人", "智能制造", "高端制造"]],
+    [["新能源", "光伏", "锂电池"], ["新能源", "光伏", "锂电", "电池"]],
+    [["医药", "医疗", "创新药"], ["医药", "医疗", "创新药", "生物医药"]],
+    [["港股", "恒生"], ["港股", "恒生", "香港"]],
+    [["红利", "高股息"], ["红利", "高股息"]],
+    [["纳斯达克", "标普500"], ["纳斯达克", "标普", "美股"]],
+    [["越南"], ["越南"]],
+    [["印度"], ["印度"]],
+    [["纯债", "短债"], ["纯债", "短债", "债券"]]
+  ];
+  const normalized = (keywords || []).map((keyword) => normalizeIntentText(keyword)).filter(Boolean);
+  const aliases = new Set(normalized);
+  for (const keyword of normalized) {
+    for (const [needles, values] of aliasGroups) {
+      if (needles.some((needle) => keyword.includes(normalizeIntentText(needle)))) {
+        for (const value of values) aliases.add(normalizeIntentText(value));
+      }
+    }
+  }
+  return [...aliases].filter(Boolean);
+}
+
+function candidateMatchesFocusedKeywordAliases(item = {}, aliases = []) {
+  const text = normalizeIntentText(`${item.name || ""} ${item.type || ""} ${item.company || ""} ${(item.keywords || []).join(" ")}`);
+  return aliases.some((alias) => text.includes(alias));
 }
 
 async function fetchPullbackSetupRankingCandidates() {
@@ -5953,9 +5996,10 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
   const relevantThemeRadar = selectRelevantThemeRadar(userText, marketSnapshot);
   const precious = isPreciousMetalQuestion(userText);
   const preferPullbackSetup = isPullbackSetupRequest(userText);
+  const focusedKeywords = inferFocusedFundSearchKeywords(userText);
   const [focusedCandidates, pullbackSetupCandidates] = await Promise.all([
     fetchFocusedFundCandidates(userText),
-    preferPullbackSetup && !precious
+    preferPullbackSetup
       ? fetchPullbackSetupCandidates(userText, marketSnapshot, relevantThemeRadar).catch((error) => {
           recordError(error, { pullbackSetupDiscoveryFailures: 1 });
           return [];
@@ -5972,10 +6016,13 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
           ...(marketSnapshot.fundCandidates?.qdiiFunds || [])
         ]
       : [];
-  const merged = mergeCandidateFunds(focusedCandidates, pullbackSetupCandidates, snapshotCandidates)
+  const scopedSnapshotCandidates = preferPullbackSetup && focusedKeywords.length
+    ? filterFocusedPullbackRankingCandidates(snapshotCandidates, focusedKeywords)
+    : snapshotCandidates;
+  const merged = mergeCandidateFunds(focusedCandidates, pullbackSetupCandidates, scopedSnapshotCandidates)
     .map((item) => ({ ...item, matchedThemes: matchCandidateThemes(item, relevantThemeRadar) }))
     .sort((a, b) => {
-      if (preferPullbackSetup && !precious) {
+      if (preferPullbackSetup) {
         return scorePullbackSetupSeedCandidate(b, relevantThemeRadar, userText) - scorePullbackSetupSeedCandidate(a, relevantThemeRadar, userText);
       }
       return scoreDeepDiveCandidate(b, relevantThemeRadar) - scoreDeepDiveCandidate(a, relevantThemeRadar);
@@ -6019,13 +6066,13 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
 
   return {
     ok: true,
-    focus: precious
-      ? "precious_metals"
-      : preferPullbackSetup
-        ? "pullback_setup_discovery"
+    focus: preferPullbackSetup
+      ? "pullback_setup_discovery"
+      : precious
+        ? "precious_metals"
         : focusedCandidates.length ? "focused_theme_search" : "market_recommendation",
     themeRadar: relevantThemeRadar,
-    searchKeywords: preferPullbackSetup && !precious
+    searchKeywords: preferPullbackSetup
       ? inferPullbackSetupSearchKeywords(userText, relevantThemeRadar)
       : inferFocusedFundSearchKeywords(userText),
     selectionDiscipline: preferPullbackSetup ? "prefer_pullback_complete_launch_setup_not_chase" : "balanced_theme_relevance",
@@ -10051,6 +10098,7 @@ export {
   computeTrendProfile,
   defaultSkillIdsForWorkflow,
   evaluateFundAnswerQuality,
+  filterFocusedPullbackRankingCandidates,
   getFundAnalysisSkillIds,
   getFundQaSkillIds,
   getFundRecommendationSkillIds,

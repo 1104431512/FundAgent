@@ -73,6 +73,10 @@ const requiredPatterns = [
     message: "pullback/setup discovery must preserve mild one-week low-position reversal candidates."
   },
   {
+    pattern: /filterFocusedPullbackRankingCandidates/,
+    message: "focused pullback/setup requests must filter broad ranking scans to the requested theme."
+  },
+  {
     pattern: /mergeCandidateFundRecord/,
     message: "candidate recall must merge return evidence from multiple discovery sources, not just keywords."
   },

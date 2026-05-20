@@ -36,6 +36,24 @@ assertSkillCoverage(intent.skillIds, [
 ], "pullback setup recommendation");
 
 await assertIntent({
+  userText: "黄金里面找一个回调完成、低位、准备启动的基金",
+  expectedWorkflow: "fund_recommendation",
+  expectedReason: "hard_rule_pullback_setup_request",
+  expectedMode: "pullback_setup_discovery",
+  requiredSkills: ["fund-theme-radar", "theme-stage-analysis", "fund-market-timing", "fund-fee-share-class", "fund-answer-quality"]
+});
+assert(!serverSource.includes("preferPullbackSetup && !precious"), "precious-metal pullback setup requests must not bypass setup discovery");
+assert.deepEqual(
+  manager.filterFocusedPullbackRankingCandidates([
+    { code: "000010", name: "博时黄金ETF联接C", type: "指数型基金", keywords: ["近1周低位转强候选"] },
+    { code: "000011", name: "半导体ETF联接C", type: "指数型基金", keywords: ["近1周低位转强候选"] },
+    { code: "000012", name: "贵金属主题基金A", type: "股票型基金", keywords: [] }
+  ], ["黄金", "贵金属"]).map((item) => item.code),
+  ["000010", "000012"],
+  "focused pullback ranking scan must keep precious-metal candidates and drop unrelated themes"
+);
+
+await assertIntent({
   userText: "按最近题材推荐几个基金",
   expectedWorkflow: "fund_recommendation",
   expectedReason: "hard_rule_text_requests_recommendations_without_specific_fund",
