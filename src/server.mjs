@@ -3268,6 +3268,7 @@ function selectFundWorkflowWatchlistCandidates(watchlist = [], userText = "", op
   const wantsPullbackSetup = isPullbackSetupRequest(userText);
   return normalizePortfolioWatchlist(watchlist)
     .filter((item) => ["ready", "waiting_pullback", "watch"].includes(item.status))
+    .filter((item) => isFundWorkflowWatchlistFreshEnough(item, options))
     .map((item) => {
       const readiness = evaluatePortfolioWatchReadiness(item);
       const setupFocus = isLowBaseLaunchWatchSeed(item) || /回调完成|启动前夜|低位|刚转强/.test([
@@ -3289,6 +3290,16 @@ function selectFundWorkflowWatchlistCandidates(watchlist = [], userText = "", op
     .sort((a, b) => Number(b.workflowWatchlistScore || 0) - Number(a.workflowWatchlistScore || 0)
       || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
     .slice(0, limit);
+}
+
+function isFundWorkflowWatchlistFreshEnough(item = {}, options = {}) {
+  const status = normalizePortfolioWatchStatus(item.status || "watch");
+  if (!["ready", "waiting_pullback"].includes(status)) return true;
+  const freshness = evaluatePortfolioWatchlistFreshness(item, item.lastSnapshot, {
+    now: options.now,
+    ignoreReviewAge: false
+  });
+  return freshness.ok;
 }
 
 function buildFundWorkflowWatchlistSummary(candidates = []) {

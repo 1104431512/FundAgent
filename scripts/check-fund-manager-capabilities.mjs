@@ -340,7 +340,10 @@ assert(watchlistStatusLines.includes("买入缺口：还差回调完成或启动
 const workflowWatchlistCandidates = manager.selectFundWorkflowWatchlistCandidates([
   {
     ...normalizedWatchDb.watchlist[0],
+    updatedAt: "2026-05-20T00:00:00.000Z",
     lastSnapshot: {
+      snapshotDate: "2026-05-19",
+      navDate: "2026-05-19",
       trendProfile: {
         ok: true,
         pullbackSetup: { signal: "pullback_complete", score: 78 },
@@ -360,6 +363,7 @@ const workflowWatchlistCandidates = manager.selectFundWorkflowWatchlistCandidate
     name: "等待回调基金C",
     status: "waiting_pullback",
     priority: 3,
+    updatedAt: "2026-05-20T00:00:00.000Z",
     candidateRole: "低位启动前夜观察备选",
     reason: "召回定位：低位启动前夜候选。",
     setupEvidence: ["召回定位：低位启动前夜候选"],
@@ -367,6 +371,8 @@ const workflowWatchlistCandidates = manager.selectFundWorkflowWatchlistCandidate
     positionPlan: "先放入启动前夜观察池。",
     dataBasis: ["召回来源：low_base_turn_scan"],
     lastSnapshot: {
+      snapshotDate: "2026-05-19",
+      navDate: "2026-05-19",
       trendProfile: {
         ok: true,
         pullbackSetup: { signal: "none" },
@@ -379,9 +385,19 @@ const workflowWatchlistCandidates = manager.selectFundWorkflowWatchlistCandidate
       }
     }
   },
+  {
+    code: "000004",
+    name: "旧快照接近可买基金C",
+    status: "ready",
+    priority: 1,
+    updatedAt: "2000-01-01T00:00:00.000Z",
+    reason: "旧的低位启动候选。",
+    lastSnapshot: { snapshotDate: "2000-01-01", navDate: "2000-01-01", trendProfile: { ok: true, pullbackSetup: { signal: "pullback_complete" } } }
+  },
   { code: "000003", name: "追涨拦截基金A", status: "blocked", reason: "短期偏热" }
-], setupQuery, { limit: 3 });
+], setupQuery, { limit: 4, now: "2026-05-20T00:00:00.000Z" });
 assert.deepEqual(workflowWatchlistCandidates.map((item) => item.code), ["000001", "000002"], "fund workflows must reuse ready and launch-eve watchlist candidates while excluding blocked items");
+assert(!workflowWatchlistCandidates.some((item) => item.code === "000004"), "fund workflows must not reuse stale ready watchlist snapshots as recommendation evidence");
 const workflowWatchlistSummary = manager.buildFundWorkflowWatchlistSummary(workflowWatchlistCandidates);
 assert(workflowWatchlistSummary.includes("经理自选候选池（优先复核，不自动买入）"), "fund workflow prompt must expose manager-maintained candidates");
 assert(workflowWatchlistSummary.includes("000002 等待回调基金C"), "fund workflow prompt must include launch-eve watchlist candidates");

@@ -336,6 +336,14 @@ const requiredPatterns = [
     message: "fund workflow watchlist candidates must be visible to deep-dive quality gates."
   },
   {
+    pattern: /isFundWorkflowWatchlistFreshEnough/,
+    message: "fund recommendation and QA workflows must not reuse stale ready/waiting watchlist snapshots."
+  },
+  {
+    pattern: /isFundWorkflowWatchlistFreshEnough[\s\S]{0,500}evaluatePortfolioWatchlistFreshness/,
+    message: "fund workflow watchlist reuse must apply the same snapshot freshness guard as portfolio decisions."
+  },
+  {
     pattern: /经理自选候选池（优先复核，不自动买入）/,
     message: "fund workflow prompts must expose self-selected candidates without implying automatic buys."
   },
