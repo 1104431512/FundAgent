@@ -49,8 +49,8 @@ const requiredPatterns = [
     message: "fund answer quality gate must reject stiff confidence labels such as 信心：高。"
   },
   {
-    pattern: /SETUP \/ RISK/,
-    message: "fund report charts must include a setup/risk metrics panel, not only a line chart."
+    pattern: /启动\/风险/,
+    message: "fund report charts must include a Chinese setup/risk metrics panel, not only a line chart."
   },
   {
     pattern: /DEFAULT_MODEL_MAX_OUTPUT_TOKENS\s*=\s*4800/,

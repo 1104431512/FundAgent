@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -6,6 +7,7 @@ process.env.FUNDAGENT_SKIP_SERVER_START = "1";
 process.env.FEISHU_REPORT_CHART_PIXEL_RATIO = "1";
 
 const serverPath = pathToFileURL(path.join(process.cwd(), "src", "server.mjs")).href;
+const serverSource = fs.readFileSync(path.join(process.cwd(), "src", "server.mjs"), "utf8");
 const manager = await import(serverPath);
 
 const setupQuery = "我想要找一个回调完成，到了低位，准备要启动的基金";
@@ -183,6 +185,12 @@ assert.equal(png.slice(0, 8).toString("hex"), "89504e470d0a1a0a", "summary chart
 assert.equal(png.readUInt32BE(16), 900, "summary chart width must match requested width");
 assert.equal(png.readUInt32BE(20), 520, "summary chart height must match requested height");
 assert(png.length > 5000, "summary chart should contain more than a sparse legacy line");
+for (const label of ["基金报告", "净值走势", "最大回撤", "阶段收益", "启动/风险", "启动", "信号", "入场", "动作", "费用"]) {
+  assert(serverSource.includes(label), `summary chart must use Chinese label: ${label}`);
+}
+for (const staleLabel of ["FUND SETUP", "NAV TREND", "DRAWDOWN FROM HIGH", "STAGE RETURN", "SETUP / RISK", "PULLBK", "LAUNCH", "FEEY"]) {
+  assert(!serverSource.includes(staleLabel), `summary chart should not expose stale English label: ${staleLabel}`);
+}
 
 const selectedChartCodes = manager.selectFundReportProfilesForAnswer([
   { code: "000001", name: "低位修复基金A", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.01 }] } },

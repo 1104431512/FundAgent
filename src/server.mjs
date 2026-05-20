@@ -6214,9 +6214,9 @@ function renderFundReportSummaryPng({ profile, width = 900, height = 520 } = {})
   const muted = [100, 116, 139, 255];
   const ink = [15, 23, 42, 255];
 
-  drawText(canvas, 28, 18, `${code} FUND SETUP`, ink, 3);
-  drawText(canvas, 28, 46, `${first.date || "START"} / ${last.date || "LAST"}  NAV ${formatChartNumber(last.nav)}`, muted, 2);
-  drawText(canvas, width - 278, 24, `RANGE ${formatChartPct(changePct)}`, lineColor, 3);
+  drawText(canvas, 28, 18, `${code} 基金报告`, ink, 3);
+  drawText(canvas, 28, 46, `${first.date || "START"} / ${last.date || "LAST"}  净值 ${formatChartNumber(last.nav)}`, muted, 2);
+  drawText(canvas, width - 238, 24, `区间 ${formatChartPct(changePct)}`, lineColor, 3);
 
   drawLineChartPanel(canvas, {
     x: 88,
@@ -6225,7 +6225,7 @@ function renderFundReportSummaryPng({ profile, width = 900, height = 520 } = {})
     height: 210,
     points,
     color: lineColor,
-    label: "NAV TREND"
+    label: "净值走势"
   });
 
   drawDrawdownPanel(canvas, {
@@ -6271,7 +6271,7 @@ function drawLineChartPanel(canvas, { x, y, width, height, points, color, label 
   const range = max - min || 1;
   drawText(canvas, x, y - 22, label, [51, 65, 85, 255], 2);
   drawChartFrame(canvas, x, y, width, height);
-  drawYAxisTickLabels(canvas, x, y, height, [max, min + range / 2, min], formatChartNumber, "NAV");
+  drawYAxisTickLabels(canvas, x, y, height, [max, min + range / 2, min], formatChartNumber, "净值");
   drawXAxisDateLabels(canvas, x, y + height + 8, width, points);
 
   const px = points.map((item, index) => ({
@@ -6293,9 +6293,9 @@ function drawDrawdownPanel(canvas, { x, y, width, height, points }) {
   });
   const min = Math.min(...drawdowns, -1);
   const range = Math.abs(min) || 1;
-  drawText(canvas, x, y - 22, "DRAWDOWN FROM HIGH", [51, 65, 85, 255], 2);
+  drawText(canvas, x, y - 22, "最大回撤", [51, 65, 85, 255], 2);
   drawChartFrame(canvas, x, y, width, height);
-  drawYAxisTickLabels(canvas, x, y, height, [0, min], formatChartPct, "DD");
+  drawYAxisTickLabels(canvas, x, y, height, [0, min], formatChartPct, "回撤");
   drawXAxisDateLabels(canvas, x, y + height + 8, width, points);
   const zeroY = y + 10;
   drawLine(canvas, x + 8, zeroY, x + width - 8, zeroY, [203, 213, 225, 255], 1);
@@ -6310,7 +6310,7 @@ function drawDrawdownPanel(canvas, { x, y, width, height, points }) {
 }
 
 function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
-  drawText(canvas, x, y - 28, "STAGE RETURN", [51, 65, 85, 255], 2);
+  drawText(canvas, x, y - 28, "阶段收益", [51, 65, 85, 255], 2);
   drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
   const items = [
     ["20D", trend.return20dPct],
@@ -6319,7 +6319,7 @@ function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
     ["250D", trend.return250dPct]
   ].map(([label, value]) => ({ label, value: Number(value) })).filter((item) => Number.isFinite(item.value));
   if (!items.length) {
-    drawText(canvas, x + 18, y + 92, "NO DATA", [100, 116, 139, 255], 3);
+    drawText(canvas, x + 18, y + 92, "无数据", [100, 116, 139, 255], 3);
     return;
   }
   const maxAbs = Math.max(5, ...items.map((item) => Math.abs(item.value)));
@@ -6340,20 +6340,20 @@ function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
 }
 
 function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, trend = {} }) {
-  drawText(canvas, x, y - 28, "SETUP / RISK", [51, 65, 85, 255], 2);
+  drawText(canvas, x, y - 28, "启动/风险", [51, 65, 85, 255], 2);
   drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
   const risk = profile?.risk?.oneYear || profile?.riskMetrics?.periods?.["1y"] || {};
   const actionability = profile?.actionability || {};
   const feeImpact = profile?.fees?.feeImpact || profile?.feeImpact || {};
   const rows = [
-    ["SETUP", trend.pullbackSetup?.score],
-    ["SIG", formatChartSetupSignal(trend.pullbackSetup?.signal)],
-    ["ENTRY", formatChartEntryBias(trend.entryBias)],
-    ["ACT", formatChartAction(actionability.action)],
-    ["DD", trend.drawdownFromRecentHighPct],
-    ["1YDD", risk.maxDrawdownPct],
-    ["SHARP", risk.sharpe],
-    ["FEEY", feeImpact.oneYearCostPer10000]
+    ["启动", trend.pullbackSetup?.score],
+    ["信号", formatChartSetupSignal(trend.pullbackSetup?.signal)],
+    ["入场", formatChartEntryBias(trend.entryBias)],
+    ["动作", formatChartAction(actionability.action)],
+    ["回撤", trend.drawdownFromRecentHighPct],
+    ["年撤", risk.maxDrawdownPct],
+    ["夏普", risk.sharpe],
+    ["费用", feeImpact.oneYearCostPer10000]
   ];
   const tileW = Math.floor((width - 30) / 2);
   const tileH = 20;
@@ -6364,7 +6364,7 @@ function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, tre
     const tileY = y + 12 + row * (tileH + 4);
     const value = formatChartMetricValue(label, rawValue);
     const positive = Number(rawValue) > 0;
-    const color = ["DD", "1YDD", "FEEY"].includes(label)
+    const color = ["回撤", "年撤", "费用"].includes(label)
       ? [194, 65, 12, 255]
       : positive
         ? [22, 130, 93, 255]
@@ -6372,7 +6372,7 @@ function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, tre
     fillRect(canvas, tileX, tileY, tileW, tileH, [248, 250, 252, 255]);
     drawRect(canvas, tileX, tileY, tileW, tileH, [226, 232, 240, 255], 1);
     drawText(canvas, tileX + 4, tileY + 4, label, [100, 116, 139, 255], 1);
-    drawText(canvas, tileX + 40, tileY + 5, value, color, 1);
+    drawText(canvas, tileX + 38, tileY + 5, value, color, 1);
   });
 }
 
@@ -6429,44 +6429,44 @@ function formatChartPct(value) {
 
 function formatChartMetricValue(label, value) {
   if (value === null || value === undefined || value === "") return "NA";
-  if (label === "SIG" || label === "ENTRY" || label === "ACT") return String(value || "NA").slice(0, 6).toUpperCase();
+  if (label === "信号" || label === "入场" || label === "动作") return String(value || "NA").slice(0, 6).toUpperCase();
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return String(value || "NA").slice(0, 6).toUpperCase();
-  if (["DD", "1YDD"].includes(label)) return formatChartPct(numeric);
-  if (label === "FEEY") return `${round(numeric, 0)}`;
-  if (label === "SHARP") return String(round(numeric, 2));
+  if (["回撤", "年撤"].includes(label)) return formatChartPct(numeric);
+  if (label === "费用") return `${round(numeric, 0)}`;
+  if (label === "夏普") return String(round(numeric, 2));
   return String(round(numeric, 0));
 }
 
 function formatChartSetupSignal(value) {
   const labels = {
-    pullback_complete: "PULLBK",
-    launch_setup: "LAUNCH",
-    none: "NONE"
+    pullback_complete: "回调",
+    launch_setup: "启动",
+    none: "无"
   };
-  return labels[value] || "NA";
+  return labels[value] || "缺失";
 }
 
 function formatChartEntryBias(value) {
   const labels = {
-    buyable_now: "BUY",
-    staged_buy: "STAGE",
-    wait_pullback: "WAIT",
-    hold_observe: "WATCH",
-    avoid_now: "AVOID"
+    buyable_now: "可买",
+    staged_buy: "分批",
+    wait_pullback: "等待",
+    hold_observe: "观察",
+    avoid_now: "回避"
   };
-  return labels[value] || "WATCH";
+  return labels[value] || "观察";
 }
 
 function formatChartAction(value) {
   const labels = {
-    buy: "BUY",
-    staged_buy: "STAGE",
-    wait: "WAIT",
-    avoid: "AVOID",
-    hold: "HOLD"
+    buy: "买入",
+    staged_buy: "分批",
+    wait: "等待",
+    avoid: "回避",
+    hold: "持有"
   };
-  return labels[value] || "NA";
+  return labels[value] || "缺失";
 }
 
 function getChartPixelRatio() {
@@ -6619,7 +6619,56 @@ const TINY_FONT = {
   "%": ["11001", "11010", "00010", "00100", "01000", "01011", "10011"],
   "/": ["00001", "00010", "00010", "00100", "01000", "01000", "10000"],
   ":": ["00000", "01100", "01100", "00000", "01100", "01100", "00000"],
-  "?": ["01110", "10001", "00001", "00010", "00100", "00000", "00100"]
+  "?": ["01110", "10001", "00001", "00010", "00100", "00000", "00100"],
+  "基": ["1111111", "0011100", "1111111", "0101010", "1111111", "0011100", "1111111"],
+  "金": ["0011100", "0101010", "1000001", "1111111", "0011100", "0101010", "1111111"],
+  "报": ["0101110", "1101010", "0101110", "0111010", "1101010", "0101001", "0101010"],
+  "告": ["0010000", "1111111", "0010000", "0111110", "1000001", "1000001", "0111110"],
+  "净": ["1001110", "0010010", "1011111", "0001010", "1111010", "0001010", "0011010"],
+  "值": ["0101111", "0100100", "0111110", "1101010", "0101110", "0101010", "0101111"],
+  "区": ["1111111", "1000101", "1001010", "1010100", "1001010", "1000101", "1111111"],
+  "间": ["1111111", "1000001", "1011101", "1010101", "1011101", "1000001", "1011111"],
+  "走": ["0010000", "1111111", "0010000", "0111110", "0010000", "0100000", "1111111"],
+  "势": ["0101010", "1111111", "0101010", "0111110", "0010000", "0101110", "1000010"],
+  "最": ["1111111", "1000001", "1111111", "1000001", "1111111", "0101010", "1111111"],
+  "大": ["0010000", "0010000", "0010000", "1111111", "0101000", "1000100", "0000011"],
+  "回": ["1111111", "1000001", "1011101", "1010101", "1011101", "1000001", "1111111"],
+  "撤": ["0101010", "1101111", "0101010", "0111110", "1101010", "0101010", "0110101"],
+  "阶": ["1101110", "0100100", "0101111", "1100100", "0101110", "0100100", "0100100"],
+  "段": ["1111010", "0101010", "1111010", "0101110", "1111010", "0101001", "0100110"],
+  "收": ["1001010", "1001010", "1111111", "1001010", "1010100", "1100010", "1000001"],
+  "益": ["0011100", "1111111", "0101010", "1111111", "1000001", "1010101", "1111111"],
+  "无": ["1111111", "0010000", "1111111", "0010000", "0101000", "1000100", "0000011"],
+  "数": ["1010101", "0111110", "1010101", "0111010", "1010100", "0101010", "1010001"],
+  "据": ["0101111", "1100100", "0101110", "0110100", "1101110", "0101010", "0101110"],
+  "启": ["1111110", "1000000", "1111110", "1000000", "1111110", "1000010", "1111110"],
+  "动": ["1110110", "0010010", "1111111", "0010010", "1110010", "0010010", "0101100"],
+  "风": ["1111110", "1000010", "1010100", "1001000", "1010100", "1000010", "1000111"],
+  "险": ["1101110", "0101010", "0101010", "1101110", "0101010", "0100010", "0111110"],
+  "信": ["0101111", "0100000", "0111110", "1100000", "0101110", "0101010", "0101110"],
+  "号": ["1111111", "1000001", "1111111", "0010000", "1111110", "0000010", "0111100"],
+  "入": ["0010000", "0010000", "0101000", "0101000", "1000100", "1000100", "0000011"],
+  "场": ["0101111", "1110010", "0101110", "0100010", "1111110", "0001010", "0110010"],
+  "作": ["0101111", "0100100", "1101110", "0100100", "0101110", "0100100", "0100100"],
+  "年": ["0010000", "1111111", "0100000", "1111110", "0100000", "1111111", "0100000"],
+  "夏": ["1111111", "0010000", "1111111", "1000001", "1111111", "0101010", "1010001"],
+  "普": ["0101010", "1111111", "0101010", "1111111", "1000001", "1111111", "1000001"],
+  "费": ["1111111", "0010000", "1111111", "1000001", "1111111", "0010100", "1100011"],
+  "用": ["1111111", "1000001", "1111111", "1000001", "1111111", "1000001", "1000011"],
+  "调": ["1011111", "0010101", "1011111", "0010101", "1011111", "0010101", "0011111"],
+  "可": ["1111111", "0000001", "0111101", "0100101", "0111101", "0000001", "0000110"],
+  "买": ["1111111", "0000010", "1111110", "0010000", "0101010", "1000100", "0000011"],
+  "分": ["0101010", "0101010", "1000001", "0010000", "0101110", "1000010", "0001100"],
+  "批": ["0101010", "1101010", "0101111", "0111010", "1101010", "0101010", "0101111"],
+  "等": ["0101010", "1111111", "0101010", "1111111", "0010000", "1111111", "0000010"],
+  "待": ["0101010", "0101111", "1101010", "0101111", "0101010", "0101010", "0100110"],
+  "观": ["1010101", "1011111", "1010001", "1111111", "1010101", "0010101", "0100011"],
+  "察": ["0011100", "1111111", "1000001", "0101010", "1111111", "0011100", "1111111"],
+  "避": ["1011110", "0010010", "1011110", "0010010", "1011110", "0101000", "1111111"],
+  "持": ["0101010", "1101111", "0101010", "0111111", "1101010", "0101010", "0100110"],
+  "有": ["0010000", "1111111", "0100000", "1111110", "1000010", "1111110", "1000010"],
+  "缺": ["1110100", "1010100", "1111111", "1010100", "1110100", "1001010", "1010001"],
+  "失": ["0010000", "1111111", "0010000", "1111111", "0101000", "1000100", "0000011"]
 };
 
 function encodePngRgba(canvas) {
