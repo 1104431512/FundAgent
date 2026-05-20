@@ -176,11 +176,11 @@ const requiredPatterns = [
     message: "pullback/setup backfill must exclude already tested products while continuing the search."
   },
   {
-    pattern: /FEISHU_REPORT_TREND_IMAGE_LIMIT\s*\|\|\s*8/,
-    message: "fund report image defaults should show buy and backup candidates when available."
+    pattern: /FEISHU_REPORT_TREND_IMAGE_LIMIT\s*\|\|\s*10/,
+    message: "fund report image defaults should show a broad buy and backup chart set when available."
   },
   {
-    pattern: /DEFAULT_FUND_REPORT_IMAGE_MIN\s*=\s*5/,
+    pattern: /DEFAULT_FUND_REPORT_IMAGE_MIN\s*=\s*6/,
     message: "fund report image defaults should target a richer chart set than two or three images."
   },
   {
@@ -206,6 +206,10 @@ const requiredPatterns = [
   {
     pattern: /appendFundReportChartReadingGuide/,
     message: "fund answers with attached report images must include a text guide that ties each chart to buy or backup reasoning."
+  },
+  {
+    pattern: /用来确认是否适合分批买入[\s\S]{0,120}用来观察是否能从备选转入买点/,
+    message: "fund chart reading guides must explain how each chart supports buy or backup decisions."
   },
   {
     pattern: /配图阅读/,

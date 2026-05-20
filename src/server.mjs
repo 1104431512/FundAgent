@@ -28,7 +28,7 @@ const MIN_FUND_COMMITTEE_OUTPUT_TOKENS = 6400;
 const MIN_FUND_QA_OUTPUT_TOKENS = 8000;
 const MIN_FUND_RECOMMENDATION_OUTPUT_TOKENS = 9600;
 const MIN_FUND_REWRITE_OUTPUT_TOKENS = 6400;
-const DEFAULT_FUND_REPORT_IMAGE_MIN = 5;
+const DEFAULT_FUND_REPORT_IMAGE_MIN = 6;
 const PUBLIC_DATA_TIMEOUT_MS = Number(process.env.PUBLIC_DATA_TIMEOUT_MS || 20000);
 const DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS = [
   "沪深300",
@@ -4785,7 +4785,7 @@ async function buildFundReportCardImages(profiles, config) {
 }
 
 function getFundReportChartLimit() {
-  return Math.max(0, Number(process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT || 8) || 8);
+  return Math.max(0, Number(process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT || 10) || 10);
 }
 
 function getFundReportChartMinCount() {
@@ -4935,14 +4935,17 @@ function appendFundReportChartReadingGuide(text, chartProfiles = []) {
   const lines = snapshots.map((item, index) => {
     const profile = item.snapshot || {};
     const role = profile.reportChartRole || inferSupplementalFundReportChartRole(profile);
-    return `${index + 1}. ${[item.code, item.name].filter(Boolean).join(" ")}（${role}）：${formatFundReportChartGuideEvidence(profile)}`;
+    return `${index + 1}. ${[item.code, item.name].filter(Boolean).join(" ")}（${role}）：${formatFundReportChartGuideEvidence(profile, role)}`;
   });
   return [body, "", "配图阅读：", ...lines].join("\n");
 }
 
-function formatFundReportChartGuideEvidence(profile = {}) {
+function formatFundReportChartGuideEvidence(profile = {}, role = "") {
   const trend = profile.trendProfile || {};
   const fees = profile.fees || {};
+  const actionLead = String(role || "").includes("买入")
+    ? "用来确认是否适合分批买入"
+    : "用来观察是否能从备选转入买点";
   const fields = [
     trend.pullbackSetup?.signalText || formatTrendLabel(trend.trendLabel),
     formatEntryBias(trend.entryBias),
@@ -4953,7 +4956,9 @@ function formatFundReportChartGuideEvidence(profile = {}) {
     fees.shareClassFeeModel?.label || profile.shareClassFeeModel?.label || ""
   ].filter(Boolean);
   const compact = fields.join("，");
-  return compact ? `图上看 ${compact.slice(0, 150)}。` : "图上看净值趋势、回撤位置、阶段收益和费用栏，作为买入或备选的证据。";
+  return compact
+    ? `${actionLead}：图上看 ${compact.slice(0, 150)}。`
+    : `${actionLead}：图上看净值趋势、回撤位置、阶段收益和费用栏，作为买入或备选的证据。`;
 }
 
 function withFundReportChartMeta(profile, meta = {}) {
@@ -5931,7 +5936,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "必须通过 fund-actionability-evaluation 和 fund-answer-quality 质量门槛：先给直接结论，再给适合/不适合的自评估，再给执行方案。",
     "如果数据不足以支持具体基金代码，就推荐基金方向/筛选条件，并把具体代码标为待复核。",
     "回答要大胆但有边界：证据偏正面时可以给出买入或分批买入候选；不要机械地总是等待回撤。",
-    "如果下钻候选足够，回答要服务 5 张左右报告配图：主买入参考 2-3 张、备选观察 2-4 张；每只都用代码说明图上看的走势、回撤、低位、费用或风险证据。",
+    "如果下钻候选足够，回答要服务 6 张左右报告配图：主买入参考 2-3 张、备选观察 3-5 张；每只都用代码说明图上看的走势、回撤、低位、费用或风险证据。",
     "回答要像专业经理在和客户沟通：用自然中文解释把握度，不要写“信心：高。”、“Confidence: high”这类字段式短句。",
     "不要把风险写成免责声明清单。只保留会改变买入/等待/回避动作的决策边界。",
     "输出适合飞书卡片阅读，不要 Markdown 表格，不要代码块。",
@@ -5958,10 +5963,10 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
     "2. 题材雷达：先列 1-3 个相关题材的中文阶段、前瞻评分、拥挤度、为什么现在值得/不值得看；不要输出 stage/forwardScore/crowdingScore 这些字段名。",
     "3. 自评估：这类需求是否适合现在做、把握度如何、适合激进/均衡/保守哪类。",
-    "4. 推荐清单：优先 3-5 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号、5日/10日早期转强、120日区间低位、趋势/自评估动作、为什么入选，以及“配图看什么”。只能使用快照或下钻中的候选代码；如果没有足够代码，就写“待复核方向”。",
+    "4. 推荐清单：优先 3-4 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号、5日/10日早期转强、120日区间低位、趋势/自评估动作、为什么入选，以及“配图看什么”。只能使用快照或下钻中的候选代码；如果没有足够代码，就写“待复核方向”。",
     "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
     "5. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
-    "6. 备选观察：如果有未到买点但值得等的候选，列 2-4 个备选，说明还差什么触发，以及对应配图看什么；偏热、追涨或回避对象单独写排除原因，不要混进备选。",
+    "6. 备选观察：如果有未到买点但值得等的候选，列 3-5 个备选，说明还差什么触发，以及对应配图看什么；偏热、追涨或回避对象单独写排除原因，不要混进备选。",
     "7. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的题材或价格条件。"
   ].join("\n");
 
@@ -6012,7 +6017,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先判断 pullbackSetup.signal、5日/10日早期转强和120日区间低位；短期涨幅偏热、20日/60日大涨且等待回撤的候选不能被包装成启动机会。",
     "如果没有抓到对应行情数据，要说明是公开数据源暂时不可用或滞后，不要简单说自己没有实时数据能力。",
     "必须通过 fund-actionability-evaluation 和 fund-answer-quality 质量门槛：前两行直接回答；有快照/下钻就引用具体字段；给明确行动、适合对象和仓位建议。",
-    "当问题涉及买入、配置、推荐或备选时，如果下钻候选足够，回答要服务 5 张左右报告配图：主买入参考和备选观察都要写代码，并说明图上看的走势、低位、回撤、费用或风险证据。",
+    "当问题涉及买入、配置、推荐或备选时，如果下钻候选足够，回答要服务 6 张左右报告配图：主买入参考和备选观察都要写代码，并说明图上看的走势、低位、回撤、费用或风险证据。",
     "回答要像专业经理在和客户沟通：用自然中文解释把握度，不要写“信心：高。”、“Confidence: high”这类字段式短句。",
     "不要把风险写成免责声明清单。只保留会改变买入/等待/回避动作的决策边界。",
     "回答中文、简洁、可执行。不要保证收益，不要给出个性化承诺。",
@@ -6120,7 +6125,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "若质检问题包含 watch_candidate_given_buy_execution，观察/排除候选不能在1万元执行里获得任何买入金额；只能写0元观察或等待条件。",
       "若质检问题包含 missing_pullback_timing_evidence，主推荐每条必须写出5日/10日早期转强、120日区间低位或距高点回撤等数字证据；若包含 missing_pullback_three_tier_execution，必须给激进/均衡/保守三档金额。",
       "若质检问题包含 missing_pullback_share_class_fee，主推荐每条必须写份额类别和费用模型，例如 C类无前端申购费但有销售服务费，或 A类有申购费但长期持有持续费率较低。",
-      "若质检问题包含 insufficient_chart_linked_candidates，必须补足 5 张左右可配图候选：主买入参考和备选观察分开写，每只都写代码、买入/备选角色、图上看的走势/回撤/低位/费用证据。",
+      "若质检问题包含 insufficient_chart_linked_candidates，必须补足 6 张左右可配图候选：主买入参考和备选观察分开写，每只都写代码、买入/备选角色、图上看的走势/回撤/低位/费用证据。",
       "若证据没有 mainCandidateCodes，必须直接说明暂未筛到合格的回调完成/低位启动主推荐，不能硬凑基金代码。",
       "保持适合飞书卡片阅读，不要 Markdown 表格或代码块。",
       "",
@@ -7893,7 +7898,7 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
       }
       return scoreDeepDiveCandidate(b, relevantThemeRadar) - scoreDeepDiveCandidate(a, relevantThemeRadar);
     });
-  const defaultLimit = preferPullbackSetup ? 16 : precious ? 6 : 4;
+  const defaultLimit = preferPullbackSetup ? 18 : precious ? 8 : options.forRecommendation ? 8 : 6;
   const limit = Math.max(0, Number(process.env.MARKET_DEEP_DIVE_FUND_LIMIT ?? defaultLimit));
   const selected = selectDiversifiedDeepDiveCandidates(merged, limit, {
     diversifyExposure: options.forRecommendation || precious
