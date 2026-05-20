@@ -1,0 +1,148 @@
+import assert from "node:assert/strict";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+
+process.env.FUNDAGENT_SKIP_SERVER_START = "1";
+process.env.FEISHU_REPORT_CHART_PIXEL_RATIO = "1";
+
+const serverPath = pathToFileURL(path.join(process.cwd(), "src", "server.mjs")).href;
+const manager = await import(serverPath);
+
+const setupQuery = "我想要找一个回调完成，到了低位，准备要启动的基金";
+const intent = await manager.classifyMessageIntent({
+  userText: setupQuery,
+  messageType: "text",
+  imageKeys: []
+});
+
+assert.equal(intent.workflow, "fund_recommendation", "pullback setup query must route to recommendation workflow");
+assert.equal(intent.mode, "pullback_setup_discovery", "pullback setup query must use dedicated discovery mode");
+assert.equal(intent.reason, "hard_rule_pullback_setup_request", "pullback setup routing must not depend on model router");
+assert.equal(manager.isPullbackSetupRequest(setupQuery), true, "setup query must be recognized as pullback/setup request");
+assert.equal(manager.isGenericPullbackSetupRequest(setupQuery), true, "generic setup query must expand beyond a single named theme");
+
+const lowSetupSeed = {
+  name: "中证500ETF联接C",
+  type: "指数型基金",
+  oneMonthPct: 4.2,
+  threeMonthPct: -6.5,
+  sixMonthPct: -11.8,
+  oneYearPct: -8.4,
+  dailyPct: 0.8
+};
+const chaseSeed = {
+  name: "热门黄金主题基金A",
+  type: "股票型基金",
+  oneMonthPct: 33.4,
+  threeMonthPct: 36.6,
+  sixMonthPct: 58.1,
+  oneYearPct: 92.5,
+  dailyPct: 4.9
+};
+assert(
+  manager.scorePullbackSetupSeedCandidate(lowSetupSeed, [], setupQuery) >
+    manager.scorePullbackSetupSeedCandidate(chaseSeed, [], setupQuery),
+  "pullback setup seed scoring must prefer low-position repair over recent surge/chase candidates"
+);
+
+const setupDigest = {
+  ok: true,
+  trendProfile: {
+    pullbackSetup: { signal: "pullback_complete", score: 76 },
+    trendLabel: "pullback_complete",
+    entryBias: "buyable_now",
+    return20dPct: 4.5,
+    return60dPct: 6.2,
+    drawdownFromRecentHighPct: -7.4
+  },
+  actionability: { score: 74 }
+};
+const hotDigest = {
+  ok: true,
+  trendProfile: {
+    pullbackSetup: { signal: "none", score: 18 },
+    trendLabel: "extended_uptrend",
+    entryBias: "wait_pullback",
+    return20dPct: 33.41,
+    return60dPct: 36.64,
+    drawdownFromRecentHighPct: -0.8
+  },
+  actionability: { score: 68 }
+};
+assert(
+  manager.scoreResearchDigestForPullbackSetup(setupDigest) >
+    manager.scoreResearchDigestForPullbackSetup(hotDigest),
+  "deep-dive scoring must rank pullback-complete candidates above extended uptrends"
+);
+
+const stiffAnswer = "信心：高。\n建议分批买入，先用10%仓位，依据是近20日收益4.5%、距高点回撤7%。";
+const quality = manager.evaluateFundAnswerQuality({
+  text: stiffAnswer,
+  workflow: "fund_recommendation",
+  userText: setupQuery,
+  evidence: { marketDeepDive: { candidates: [setupDigest] } }
+});
+assert(quality.issues.includes("stiff_confidence_label"), "quality gate must reject stiff confidence labels");
+assert(
+  manager.normalizeUserFacingFundAnswer(stiffAnswer).includes("我对这条判断把握度较高"),
+  "localization pass must rewrite stiff confidence labels into natural Chinese"
+);
+
+const leakQuality = manager.evaluateFundAnswerQuality({
+  text: "趋势/动作：extended_uptrend，actionability 为 tactical only / staged_buy，但 entryBias 是 wait_pullback。",
+  workflow: "fund_recommendation",
+  userText: setupQuery,
+  evidence: { marketDeepDive: { candidates: [hotDigest] } }
+});
+assert(leakQuality.issues.includes("internal_signal_leak"), "quality gate must reject internal enum leaks");
+
+const png = manager.renderFundReportSummaryPng({
+  profile: buildChartProfile(),
+  width: 900,
+  height: 520
+});
+assert(Buffer.isBuffer(png), "summary chart renderer must return a PNG buffer");
+assert.equal(png.slice(0, 8).toString("hex"), "89504e470d0a1a0a", "summary chart must be a PNG");
+assert.equal(png.readUInt32BE(16), 900, "summary chart width must match requested width");
+assert.equal(png.readUInt32BE(20), 520, "summary chart height must match requested height");
+assert(png.length > 5000, "summary chart should contain more than a sparse legacy line");
+
+function buildChartProfile() {
+  const start = new Date("2026-01-01T00:00:00Z");
+  const series = Array.from({ length: 120 }, (_, index) => {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + index);
+    const drawdownLeg = index < 60 ? 1 - index * 0.0016 : 0.904 + (index - 60) * 0.0021;
+    return {
+      date: date.toISOString().slice(0, 10),
+      nav: Number(drawdownLeg.toFixed(4))
+    };
+  });
+  return {
+    code: "000000",
+    trendProfile: {
+      series,
+      return20dPct: 4.5,
+      return60dPct: 6.2,
+      return120dPct: -2.4,
+      return250dPct: 8.7,
+      drawdownFromRecentHighPct: -7.4,
+      pullbackSetup: { signal: "pullback_complete", score: 76 },
+      entryBias: "buyable_now"
+    },
+    risk: {
+      oneYear: {
+        maxDrawdownPct: -18.6,
+        sharpe: 0.82
+      }
+    },
+    fees: {
+      feeImpact: {
+        oneYearCostPer10000: 42
+      }
+    },
+    actionability: {
+      action: "buy"
+    }
+  };
+}

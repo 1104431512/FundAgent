@@ -37,6 +37,26 @@ const requiredPatterns = [
     message: "trend profiles must expose a pullback/setup signal for ready-to-launch requests."
   },
   {
+    pattern: /pullback_setup_discovery/,
+    message: "generic pullback/setup requests must use a dedicated discovery route instead of generic QA."
+  },
+  {
+    pattern: /fetchPullbackSetupCandidates/,
+    message: "pullback/setup discovery must widen the candidate pool before deep-dive ranking."
+  },
+  {
+    pattern: /stiff_confidence_label/,
+    message: "fund answer quality gate must reject stiff confidence labels such as 信心：高。"
+  },
+  {
+    pattern: /SETUP \/ RISK/,
+    message: "fund report charts must include a setup/risk metrics panel, not only a line chart."
+  },
+  {
+    pattern: /DEFAULT_MODEL_MAX_OUTPUT_TOKENS\s*=\s*4800/,
+    message: "fund manager default output token budget must remain elevated."
+  },
+  {
     pattern: /resolveFundMentionsFromText/,
     message: "text-only fund screening must resolve fund names into codes before enrichment."
   },

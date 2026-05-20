@@ -185,30 +185,34 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`Feishu Fund Manager listening on http://${HOST}:${PORT}`);
-  console.log(`Admin UI: http://127.0.0.1:${PORT}/admin`);
-  startPortfolioScheduler();
-});
+if (process.env.FUNDAGENT_SKIP_SERVER_START !== "1") {
+  server.listen(PORT, HOST, () => {
+    console.log(`Feishu Fund Manager listening on http://${HOST}:${PORT}`);
+    console.log(`Admin UI: http://127.0.0.1:${PORT}/admin`);
+    startPortfolioScheduler();
+  });
+}
 
 let eventLoopLagExpectedAt = Date.now() + 5000;
-setInterval(() => {
-  const now = Date.now();
-  const lagMs = now - eventLoopLagExpectedAt;
-  if (lagMs > Number(process.env.EVENT_LOOP_LAG_WARN_MS || 3000)) {
-    console.warn(`[event-loop-lag] ${lagMs}ms`);
-  }
-  eventLoopLagExpectedAt = now + 5000;
-}, 5000).unref?.();
-
-for (const signal of ["SIGINT", "SIGTERM"]) {
-  process.once(signal, () => {
-    try {
-      flushPortfolioDbSync();
-    } finally {
-      process.exit(0);
+if (process.env.FUNDAGENT_SKIP_SERVER_START !== "1") {
+  setInterval(() => {
+    const now = Date.now();
+    const lagMs = now - eventLoopLagExpectedAt;
+    if (lagMs > Number(process.env.EVENT_LOOP_LAG_WARN_MS || 3000)) {
+      console.warn(`[event-loop-lag] ${lagMs}ms`);
     }
-  });
+    eventLoopLagExpectedAt = now + 5000;
+  }, 5000).unref?.();
+
+  for (const signal of ["SIGINT", "SIGTERM"]) {
+    process.once(signal, () => {
+      try {
+        flushPortfolioDbSync();
+      } finally {
+        process.exit(0);
+      }
+    });
+  }
 }
 
 async function handleApiRequest(req, res, url) {
@@ -9318,3 +9322,14 @@ function timingSafeEqualString(a, b) {
   }
   return crypto.timingSafeEqual(left, right);
 }
+
+export {
+  classifyMessageIntent,
+  evaluateFundAnswerQuality,
+  isGenericPullbackSetupRequest,
+  isPullbackSetupRequest,
+  normalizeUserFacingFundAnswer,
+  renderFundReportSummaryPng,
+  scorePullbackSetupSeedCandidate,
+  scoreResearchDigestForPullbackSetup
+};
