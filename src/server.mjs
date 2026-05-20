@@ -132,6 +132,7 @@ const USER_FACING_FUND_FIELD_LABELS = [
   ["actionBias", "操作倾向"],
   ["pullbackSetup", "回调启动信号"],
   ["lowPositionPct120", "120日区间位置"],
+  ["lowPositionPct250", "250日区间位置"],
   ["return5dPct", "近5日收益"],
   ["return10dPct", "近10日收益"],
   ["drawdownFromRecentHighPct", "距近期高点回撤"],
@@ -5943,6 +5944,7 @@ function formatFundReportChartGuideEvidence(profile = {}, role = "") {
     Number.isFinite(Number(trend.return10dPct)) ? `近10日${formatFallbackPct(trend.return10dPct)}` : "",
     Number.isFinite(Number(trend.return20dPct)) ? `近20日${formatFallbackPct(trend.return20dPct)}` : "",
     Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置${round(Number(trend.lowPositionPct120), 1)}%` : "",
+    Number.isFinite(Number(trend.lowPositionPct250)) ? `250日位置${round(Number(trend.lowPositionPct250), 1)}%` : "",
     fees.shareClassFeeModel?.label || profile.shareClassFeeModel?.label || ""
   ].filter(Boolean);
   const compact = fields.join("，");
@@ -6401,7 +6403,7 @@ function buildMarketDeepDiveSummary(deepDive) {
       }))
       .sort((a, b) => b.setupRankScore - a.setupRankScore);
     const mainCandidates = ranked.filter((item) => item.bucket === "main_candidate").slice(0, 5);
-    const watchCandidates = ranked.filter((item) => item.bucket !== "main_candidate").slice(0, 5);
+    const watchCandidates = ranked.filter((item) => item.bucket !== "main_candidate").slice(0, 8);
     lines.push("pullbackSetupRanking:");
     lines.push(...ranked.slice(0, 8).map((item) => formatPullbackSetupCandidateLine(item.candidate, item)));
     lines.push(`mainCandidateCodes=${mainCandidates.map((item) => item.candidate.code).filter(Boolean).join("/") || "none"}`);
@@ -6424,6 +6426,7 @@ function classifyPullbackSetupCandidateForSummary(candidate = {}) {
   const signal = trend.pullbackSetup?.signal || "";
   if (hasHighChaseTheme(candidate)) return "watch_or_reject";
   if (hasPullbackYearToDateChaseRisk(candidate)) return "watch_or_reject";
+  if (hasPullbackLongPositionChaseRisk(candidate)) return "watch_or_reject";
   if (!isPullbackTrendFreshEnough(candidate)) return "watch_or_reject";
   if (["pullback_complete", "launch_setup"].includes(signal)
     && isEarlyTurnSetupTrend(trend)
@@ -6471,6 +6474,7 @@ function formatPullbackSetupCandidateLine(candidate = {}, ranked = {}) {
     Number.isFinite(seedThisYear) ? `今年以来=${seedThisYear}%` : "",
     Number.isFinite(Number(trend.drawdownFromRecentHighPct)) ? `距高点=${trend.drawdownFromRecentHighPct}%` : "",
     Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置=${trend.lowPositionPct120}%` : "",
+    Number.isFinite(Number(trend.lowPositionPct250)) ? `250日位置=${trend.lowPositionPct250}%` : "",
     formatCandidateThemeEvidence(candidate),
     trend.trendLabelText ? `趋势=${trend.trendLabelText}` : "",
     trend.entryBiasText ? `入场=${trend.entryBiasText}` : "",
@@ -6517,6 +6521,10 @@ function buildPullbackSetupCandidateGaps(candidate = {}) {
   const seedThisYear = getCandidateSeedThisYearPct(candidate);
   if (Number.isFinite(seedThisYear) && seedThisYear > 30) {
     gaps.push(`今年以来${formatFallbackPct(seedThisYear)}偏高`);
+  }
+  if (hasPullbackLongPositionChaseRisk(candidate)) {
+    const longPosition = finiteMetricNumber(trend.lowPositionPct250);
+    gaps.push(Number.isFinite(longPosition) ? `250日位置${formatFallbackPlainPct(longPosition)}偏高` : "250日长周期位置偏高");
   }
   gaps.push(...evaluatePullbackTrendFreshness(candidate).issues);
   if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback") {
@@ -6573,6 +6581,17 @@ function getCandidateSeedThisYearPct(candidate = {}) {
 function hasPullbackYearToDateChaseRisk(candidate = {}) {
   const thisYear = getCandidateSeedThisYearPct(candidate);
   return Number.isFinite(thisYear) && thisYear > 30;
+}
+
+function hasPullbackLongPositionChaseRisk(candidate = {}) {
+  const trend = candidate.trendProfile || {};
+  const longPosition = finiteMetricNumber(trend.lowPositionPct250);
+  if (!Number.isFinite(longPosition) || longPosition < 80) return false;
+  const drawdown = finiteMetricNumber(trend.drawdownFromRecentHighPct);
+  const return120 = finiteMetricNumber(trend.return120dPct);
+  return !Number.isFinite(drawdown)
+    || drawdown > -8
+    || (Number.isFinite(return120) && return120 > 20);
 }
 
 function getPullbackTrendEvidenceDate(candidate = {}) {
@@ -7571,6 +7590,7 @@ function formatPullbackFallbackCandidate(candidate = {}) {
     `近5日${formatFallbackPct(trend.return5dPct)}`,
     `近10日${formatFallbackPct(trend.return10dPct)}`,
     `120日位置${formatFallbackPlainPct(trend.lowPositionPct120)}`,
+    `250日位置${formatFallbackPlainPct(trend.lowPositionPct250)}`,
     `近20日${formatFallbackPct(trend.return20dPct)}`,
     `近60日${formatFallbackPct(trend.return60dPct)}`,
     `距高点${formatFallbackPct(trend.drawdownFromRecentHighPct)}`,
@@ -7618,13 +7638,14 @@ function hasPullbackTimingEvidenceAvailable(ranked = []) {
     return Number.isFinite(Number(trend.return5dPct))
       || Number.isFinite(Number(trend.return10dPct))
       || Number.isFinite(Number(trend.lowPositionPct120))
+      || Number.isFinite(Number(trend.lowPositionPct250))
       || Number.isFinite(Number(trend.drawdownFromRecentHighPct));
   });
 }
 
 function hasPullbackTimingEvidenceInAnswer(text) {
   const body = String(text || "");
-  const numericTiming = /(?:近?\s*(?:5|10|20|60|120)\s*日|120日(?:区间)?位置|区间低位|低位|距高点|回撤).{0,18}[+-]?\d+(?:\.\d+)?%|[+-]?\d+(?:\.\d+)?%.{0,18}(?:近?\s*(?:5|10|20|60|120)\s*日|120日(?:区间)?位置|区间低位|低位|距高点|回撤)/;
+  const numericTiming = /(?:近?\s*(?:5|10|20|60|120|250)\s*日|(?:120|250)日(?:区间)?位置|区间低位|低位|距高点|回撤).{0,18}[+-]?\d+(?:\.\d+)?%|[+-]?\d+(?:\.\d+)?%.{0,18}(?:近?\s*(?:5|10|20|60|120|250)\s*日|(?:120|250)日(?:区间)?位置|区间低位|低位|距高点|回撤)/;
   return numericTiming.test(body);
 }
 
@@ -7725,7 +7746,7 @@ function hasNoQualifiedPullbackMessage(text) {
 
 function hasInternalFundSignalLeak(text) {
   const body = String(text || "");
-  const tokenPattern = /\b(?:extended_uptrend|pullback_complete|launch_setup|rebound_repair|range_or_mixed|germination|confirmation|diffusion|crowded|buyable_now|staged_buy|wait_pullback|hold_observe|avoid_now|tactical_only|weak_fit|not_suitable|need_specific_fund|high_chase_risk|low_position_rotation|acceptable_position|neutral_or_wait|early_staged_buy|watch_confirm|avoid_chasing|wait_or_small_starter|rotation_starter|trendProfile|actionability|entryBias|fitLabel|trendLabel|forwardScore|crowdingScore|rotationScore|lowPositionScore|positionSignal|actionBias|pullbackSetup|drawdownFromRecentHighPct|drawdownFrom120HighPct|lowPositionPct120|return5dPct|return10dPct|return20dPct|return60dPct|return120dPct)\b/i;
+  const tokenPattern = /\b(?:extended_uptrend|pullback_complete|launch_setup|rebound_repair|range_or_mixed|germination|confirmation|diffusion|crowded|buyable_now|staged_buy|wait_pullback|hold_observe|avoid_now|tactical_only|weak_fit|not_suitable|need_specific_fund|high_chase_risk|low_position_rotation|acceptable_position|neutral_or_wait|early_staged_buy|watch_confirm|avoid_chasing|wait_or_small_starter|rotation_starter|trendProfile|actionability|entryBias|fitLabel|trendLabel|forwardScore|crowdingScore|rotationScore|lowPositionScore|positionSignal|actionBias|pullbackSetup|drawdownFromRecentHighPct|drawdownFrom120HighPct|lowPositionPct120|lowPositionPct250|return5dPct|return10dPct|return20dPct|return60dPct|return120dPct)\b/i;
   return tokenPattern.test(body)
     || /\b(?:tactical\s+only|staged\s+buy|wait\s+pullback)\b/i.test(body)
     || /\b(?:stage|trend|action|fit)\s*[=:：]\s*[a-z_ -]{3,}/i.test(body);
@@ -9416,6 +9437,10 @@ function scoreResearchDigestForPullbackSetup(digest = {}) {
   if (Number.isFinite(lowPosition) && lowPosition >= 12 && lowPosition <= 55) score += 10;
   if (Number.isFinite(lowPosition) && lowPosition > 60 && lowPosition <= 85) score -= 10;
   if (Number.isFinite(lowPosition) && lowPosition > 85) score -= 12;
+  const longPosition = finiteMetricNumber(trend.lowPositionPct250);
+  if (Number.isFinite(longPosition) && longPosition >= 0 && longPosition <= 65) score += 6;
+  if (Number.isFinite(longPosition) && longPosition > 75 && longPosition <= 85) score -= 8;
+  if (Number.isFinite(longPosition) && longPosition > 85) score -= 18;
   if (!hasPullbackLowPositionEvidence(trend)) score -= 18;
   if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback") score -= 34;
   if (Number(trend.return5dPct) > 5 || Number(trend.return10dPct) > 9) score -= 12;
@@ -9428,6 +9453,7 @@ function scoreResearchDigestForPullbackSetup(digest = {}) {
     if (seedThisYear <= 5 && Number(trend.return20dPct) > 0 && Number(trend.return20dPct) <= 8) score += 6;
     if (seedThisYear > 30) score -= Math.min(30, (seedThisYear - 30) * 0.9 + 10);
   }
+  if (hasPullbackLongPositionChaseRisk(digest)) score -= 18;
   score += scorePullbackThemeRotation(digest);
   return score;
 }
@@ -9702,6 +9728,7 @@ function inferPullbackSetupSignal({
   reboundFrom120LowPct,
   pullbackDepth120Pct,
   lowPositionPct120,
+  lowPositionPct250,
   extended = false
 } = {}) {
   const r5 = Number(return5dPct);
@@ -9713,6 +9740,7 @@ function inferPullbackSetupSignal({
   const rebound = Number(reboundFrom120LowPct);
   const pullbackDepth = Number.isFinite(Number(pullbackDepth120Pct)) ? Math.abs(Math.min(0, Number(pullbackDepth120Pct))) : 0;
   const lowPosition = Number(lowPositionPct120);
+  const longPosition = Number(lowPositionPct250);
   const earlyTurn = Number.isFinite(r5)
     && Number.isFinite(r10)
     && r5 > 0
@@ -9745,6 +9773,15 @@ function inferPullbackSetupSignal({
       score += 6;
     } else if (lowPosition > 85) {
       score -= 10;
+    }
+  }
+
+  if (Number.isFinite(longPosition)) {
+    if (longPosition >= 0 && longPosition <= 65) {
+      score += 8;
+      evidence.push(`250日位置仍不高${round(longPosition, 1)}%`);
+    } else if (longPosition > 80) {
+      score -= 16;
     }
   }
 
@@ -9784,6 +9821,9 @@ function inferPullbackSetupSignal({
 
   if (Number.isFinite(r120) && r120 >= -12) score += 6;
   if (extended) score -= 30;
+  if (Number.isFinite(longPosition) && longPosition > 80 && (!Number.isFinite(drawdownFromHighPct) || Number(drawdownFromHighPct) > -8)) {
+    score -= 16;
+  }
 
   const boundedScore = Math.max(0, Math.min(100, Math.round(score)));
   const signal = boundedScore >= 58
@@ -10027,6 +10067,7 @@ function drawDecisionEvidenceStrip(canvas, { x, y, width, profile = {}, trend = 
     ["ENTRY", formatChartEntryBias(trend.entryBias), chartDecisionColor(trend.entryBias)],
     ["SIG", formatChartSetupSignal(trend.pullbackSetup?.signal), chartSignalColor(trend.pullbackSetup?.signal)],
     ["LOW", formatChartMetricValue("LOW", trend.lowPositionPct120), chartLowPositionColor(trend.lowPositionPct120)],
+    ["YLOW", formatChartMetricValue("YLOW", trend.lowPositionPct250), chartLowPositionColor(trend.lowPositionPct250)],
     ["ACT", formatChartAction(actionability.action), chartActionColor(actionability.action)]
   ];
   const gap = 10;
@@ -10133,6 +10174,7 @@ function formatChartMetricValue(label, value) {
   if (!Number.isFinite(numeric)) return String(value || "NA").slice(0, 6).toUpperCase();
   if (label === "LOW") return `${round(numeric, 1)}%`;
   if (["DD", "YDD", "DROP", "MAX", "YRET", "5d", "10d", "5", "10", "20", "60", "120"].includes(label)) return formatChartPct(numeric);
+  if (label === "YLOW") return `${round(numeric, 1)}%`;
   if (label === "FEE") return `${round(numeric, 0)}`;
   if (label === "SHRP") return String(round(numeric, 2));
   return String(round(numeric, 0));
@@ -10157,7 +10199,7 @@ function formatChartScale(value) {
 }
 
 function chartMetricColor(label, value) {
-  if (label === "LOW") return chartLowPositionColor(value);
+  if (label === "LOW" || label === "YLOW") return chartLowPositionColor(value);
   if (label === "ENT" || label === "ENTRY") return chartDecisionColor(value);
   if (label === "ACT") return chartActionColor(value);
   if (label === "SIG") return chartSignalColor(value);
@@ -10585,7 +10627,7 @@ function buildFundActionabilitySignals(digest) {
   const evidenceCount = [trend.ok, risk.ok, digest.holdings?.ok, feeEvidenceOk].filter(Boolean).length;
   const confidence = evidenceCount >= 4 ? "high" : evidenceCount >= 2 ? "medium" : "low";
   const decisiveEvidence = [
-    trend.ok ? `走势=${trend.trendLabelText || formatTrendLabel(trend.trendLabel)}，入场=${trend.entryBiasText || formatEntryBias(trend.entryBias)}，5日=${trend.return5dPct}%，10日=${trend.return10dPct}%，20日=${trend.return20dPct}%，60日=${trend.return60dPct}%，120日位置=${trend.lowPositionPct120}%` : "",
+    trend.ok ? formatTrendActionabilityEvidence(trend) : "",
     trend.pullbackSetup?.signal && trend.pullbackSetup.signal !== "none" ? `回调启动信号=${trend.pullbackSetup.signalText}，评分=${trend.pullbackSetup.score}` : "",
     risk.ok ? `1yReturn=${risk.totalReturnPct}%, maxDrawdown=${risk.maxDrawdownPct}%, sharpe=${risk.sharpe}` : "",
     formatMoneyMarketEvidence(digest.moneyMarket),
@@ -10614,6 +10656,19 @@ function buildFundActionabilitySignals(digest) {
     decisiveEvidence,
     decisionBlocker
   };
+}
+
+function formatTrendActionabilityEvidence(trend = {}) {
+  return [
+    `走势=${trend.trendLabelText || formatTrendLabel(trend.trendLabel)}`,
+    `入场=${trend.entryBiasText || formatEntryBias(trend.entryBias)}`,
+    Number.isFinite(Number(trend.return5dPct)) ? `5日=${trend.return5dPct}%` : "",
+    Number.isFinite(Number(trend.return10dPct)) ? `10日=${trend.return10dPct}%` : "",
+    Number.isFinite(Number(trend.return20dPct)) ? `20日=${trend.return20dPct}%` : "",
+    Number.isFinite(Number(trend.return60dPct)) ? `60日=${trend.return60dPct}%` : "",
+    Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置=${trend.lowPositionPct120}%` : "",
+    Number.isFinite(Number(trend.lowPositionPct250)) ? `250日位置=${trend.lowPositionPct250}%` : ""
+  ].filter(Boolean).join("，");
 }
 
 async function fetchEastmoneyBoards(kind) {

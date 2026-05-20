@@ -84,6 +84,10 @@ const requiredPatterns = [
     message: "fund report charts must include a readable buy-point and fee evidence panel."
   },
   {
+    pattern: /YLOW/,
+    message: "fund report charts must show longer-window low-position evidence in a compact readable label."
+  },
+  {
     pattern: /function renderFundReportSummaryPng\(\{\s*profile,\s*width\s*=\s*1280,\s*height\s*=\s*760\s*\}\s*=\s*\{\}\)/,
     message: "fund report chart defaults must remain large enough for dense evidence cards."
   },
@@ -792,11 +796,19 @@ const requiredPatterns = [
     message: "pullback/setup discovery must judge whether the fund is actually in a low 120-day position."
   },
   {
+    pattern: /lowPositionPct250/,
+    message: "pullback/setup discovery must expose longer-window position evidence so 120-day pseudo-lows are not mistaken for true low positions."
+  },
+  {
     pattern: /hasPullbackLowPositionEvidence/,
     message: "pullback/setup main candidates must require actual low-position evidence, not only a repaired trend label."
   },
   {
-    pattern: /classifyPullbackSetupCandidateForSummary[\s\S]{0,500}isEarlyTurnSetupTrend/,
+    pattern: /hasPullbackLongPositionChaseRisk[\s\S]{0,420}classifyPullbackSetupCandidateForSummary|classifyPullbackSetupCandidateForSummary[\s\S]{0,420}hasPullbackLongPositionChaseRisk/,
+    message: "pullback/setup main-candidate classification must reject candidates that are high in the 250-day window."
+  },
+  {
+    pattern: /classifyPullbackSetupCandidateForSummary[\s\S]{0,800}isEarlyTurnSetupTrend/,
     message: "pullback/setup main candidates must require 5/10-day early-turn evidence, not only low-position repair."
   },
   {
@@ -832,7 +844,7 @@ const requiredPatterns = [
     message: "pullback/setup main-candidate classification must reject year-to-date high pseudo-low candidates."
   },
   {
-    pattern: /isPullbackTrendFreshEnough[\s\S]{0,360}classifyPullbackSetupCandidateForSummary|classifyPullbackSetupCandidateForSummary[\s\S]{0,360}isPullbackTrendFreshEnough/,
+    pattern: /isPullbackTrendFreshEnough[\s\S]{0,700}classifyPullbackSetupCandidateForSummary|classifyPullbackSetupCandidateForSummary[\s\S]{0,700}isPullbackTrendFreshEnough/,
     message: "pullback/setup main-candidate classification must reject stale NAV/trend evidence."
   },
   {
@@ -850,6 +862,10 @@ const requiredPatterns = [
   {
     pattern: /今年以来=\$\{seedThisYear\}%[\s\S]{0,2600}今年以来\$\{formatFallbackPct\(seedThisYear\)\}偏高/,
     message: "pullback/setup summaries must expose and explain year-to-date high-position evidence."
+  },
+  {
+    pattern: /250日位置=\$\{trend\.lowPositionPct250\}%[\s\S]{0,2600}250日位置\$\{formatFallbackPlainPct\(longPosition\)\}偏高/,
+    message: "pullback/setup summaries must expose and explain 250-day high-position pseudo-low evidence."
   },
   {
     pattern: /低位启动前夜候选/,
@@ -870,6 +886,10 @@ const requiredPatterns = [
   {
     pattern: /scorePullbackThemeRotation/,
     message: "pullback/setup deep-dive ranking must incorporate sector rotation, low-position, and crowding evidence."
+  },
+  {
+    pattern: /scoreResearchDigestForPullbackSetup[\s\S]{0,900}lowPositionPct250/,
+    message: "pullback/setup deep-dive ranking must score longer-window low-position evidence, not only 120-day position."
   },
   {
     pattern: /hasHighChaseTheme/,

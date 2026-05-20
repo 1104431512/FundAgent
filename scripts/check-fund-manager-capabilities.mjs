@@ -991,6 +991,7 @@ const setupDigest = {
     return20dPct: 4.5,
     return60dPct: 6.2,
     lowPositionPct120: 38.5,
+    lowPositionPct250: 42.5,
     drawdownFromRecentHighPct: -7.4
   },
   actionability: { score: 74 },
@@ -1010,6 +1011,7 @@ const setupDigestSecond = {
     return20dPct: 3.8,
     return60dPct: 4.9,
     lowPositionPct120: 34.2,
+    lowPositionPct250: 46.8,
     drawdownFromRecentHighPct: -6.2
   },
   actionability: { score: 69 },
@@ -1041,6 +1043,7 @@ const highPositionPullbackDigest = {
     return20dPct: 5.8,
     return60dPct: 9.4,
     lowPositionPct120: 74.5,
+    lowPositionPct250: 76.2,
     drawdownFromRecentHighPct: -3.4
   },
   actionability: { score: 76 },
@@ -1054,6 +1057,16 @@ const highYtdPullbackDigest = {
   seed: {
     thisYearPct: 52.4,
     keywords: ["近1周低位转强候选"]
+  }
+};
+const longHighPullbackDigest = {
+  ...setupDigest,
+  trendProfile: {
+    ...setupDigest.trendProfile,
+    lowPositionPct120: 36.4,
+    lowPositionPct250: 91.6,
+    return120dPct: 24.8,
+    drawdownFromRecentHighPct: -4.2
   }
 };
 const stalePullbackDigest = {
@@ -1120,6 +1133,11 @@ assert(
 );
 assert(
   manager.scoreResearchDigestForPullbackSetup(setupDigest) >
+    manager.scoreResearchDigestForPullbackSetup(longHighPullbackDigest),
+  "deep-dive scoring must downgrade funds that look low in 120-day windows but are high in 250-day position"
+);
+assert(
+  manager.scoreResearchDigestForPullbackSetup(setupDigest) >
     manager.scoreResearchDigestForPullbackSetup(stalePullbackDigest),
   "deep-dive scoring must downgrade stale NAV/trend evidence before treating a setup as actionable"
 );
@@ -1133,7 +1151,8 @@ const highPositionSummary = manager.buildMarketDeepDiveSummary({
     { ...missingLowPositionDigest, code: "000005", name: "低位缺失修复基金C" },
     { ...noEarlyTurnPullbackDigest, code: "000006", name: "未启动修复基金C" },
     { ...highYtdPullbackDigest, code: "000007", name: "年内高位修复基金C" },
-    { ...stalePullbackDigest, code: "000008", name: "旧净值修复基金C" }
+    { ...stalePullbackDigest, code: "000008", name: "旧净值修复基金C" },
+    { ...longHighPullbackDigest, code: "000009", name: "年线高位修复基金C" }
   ]
 });
 assert(highPositionSummary.includes("mainCandidateCodes=000001"), "genuinely low-position setup should remain a main candidate");
@@ -1142,10 +1161,13 @@ assert(/watchOrRejectCodes=.*000005/.test(highPositionSummary), "pullback-lookin
 assert(/watchOrRejectCodes=.*000006/.test(highPositionSummary), "pullback-looking fund without 5/10-day early turn must be visible only as watch/reject");
 assert(/watchOrRejectCodes=.*000007/.test(highPositionSummary), "year-to-date high pullback-looking fund must be demoted to watch/reject");
 assert(/watchOrRejectCodes=.*000008/.test(highPositionSummary), "stale pullback-looking fund must be demoted to watch/reject");
+assert(/watchOrRejectCodes=.*000009/.test(highPositionSummary), "250-day high pullback-looking fund must be demoted to watch/reject");
 assert(highPositionSummary.includes("今年以来=52.4%"), "deep-dive summary must expose year-to-date position evidence for pullback candidates");
 assert(highPositionSummary.includes("今年以来+52.4%偏高"), "deep-dive summary must explain when a candidate is not truly low because year-to-date return is high");
 assert(highPositionSummary.includes("净值日期=2000-01-01"), "deep-dive summary must expose stale NAV/trend evidence dates");
 assert(highPositionSummary.includes("净值走势已过期"), "deep-dive summary must explain stale trend evidence before buying");
+assert(highPositionSummary.includes("250日位置=91.6%"), "deep-dive summary must expose 250-day position evidence for pseudo-low pullbacks");
+assert(highPositionSummary.includes("250日位置91.6%偏高"), "deep-dive summary must explain when a 120-day pullback is not truly low in the longer window");
 const rotationSupportedDigest = {
   ...setupDigest,
   code: "000021",
@@ -1207,6 +1229,7 @@ assert(
 );
 assert.notEqual(earlyTurnTrend.entryBias, "wait_pullback", "early low-position turn should not be treated as a wait-for-pullback chase");
 assert(Number(earlyTurnTrend.lowPositionPct120) <= 55, "early low-position turn should expose 120-day low-position evidence");
+assert(Number.isFinite(Number(earlyTurnTrend.lowPositionPct250)), "trend profiles must expose 250-day position evidence for long-window pseudo-low checks");
 assert(
   (earlyTurnTrend.pullbackSetup.evidence || []).some((item) => item.includes("5日/10日刚转强")),
   "pullback setup evidence must include early 5/10-day turn information"
@@ -1291,7 +1314,7 @@ assert(serverSource.includes("sanitizeChartText"), "summary chart renderer must 
 assert(serverSource.includes("drawTextFit"), "summary chart renderer must fit large metric labels instead of shrinking them into QR-like bitmap text");
 assert(serverSource.includes("REPORT_CHART_MIN_TEXT_SCALE = 3"), "summary chart must keep thumbnail-safe minimum text scale");
 assert(serverSource.includes("showAxisLabels: false"), "summary chart must hide dense axis tick text in Feishu thumbnails");
-for (const label of ["FUND", "NAV", "RANGE", "RET", "BUY/FEE", "ENTRY", "SIG", "LOW", "ACT", "CLASS", "FEE", "SHRP", "YRET", "SIZE"]) {
+for (const label of ["FUND", "NAV", "RANGE", "RET", "BUY/FEE", "ENTRY", "SIG", "LOW", "YLOW", "ACT", "CLASS", "FEE", "SHRP", "YRET", "SIZE"]) {
   assert(serverSource.includes(label), `summary chart must use readable compact label: ${label}`);
 }
 for (const staleLabel of ["FUND SETUP", "NAV TREND", "DRAWDOWN FROM HIGH", "STAGE RETURN", "SETUP / RISK", "PULLBK", "FEEY", "20D", "60D", "120D", "250D"]) {
@@ -1776,6 +1799,7 @@ function buildChartProfile() {
       return250dPct: 8.7,
       drawdownFromRecentHighPct: -7.4,
       lowPositionPct120: 38.5,
+      lowPositionPct250: 44.2,
       pullbackSetup: { signal: "pullback_complete", score: 76 },
       entryBias: "buyable_now"
     },
