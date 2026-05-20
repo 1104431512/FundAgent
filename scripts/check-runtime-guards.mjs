@@ -120,6 +120,14 @@ const requiredPatterns = [
     message: "portfolio decision/premarket/weekly model outputs must be able to update the self-selected fund pool."
   },
   {
+    pattern: /fetchPortfolioWatchlistSeedCandidates/,
+    message: "portfolio manager must deterministically recall low-position pullback candidates into its watchlist instead of waiting only for model-written updates."
+  },
+  {
+    pattern: /deterministic_pullback_recall/,
+    message: "portfolio watchlist candidates must preserve traceable deterministic recall evidence."
+  },
+  {
     pattern: /renderWatchlist/,
     message: "admin portfolio page must render the manager's self-selected fund pool."
   },

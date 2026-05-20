@@ -854,6 +854,16 @@ async function executePortfolioDecision(db, run, config) {
   const watchlist = getActivePortfolioWatchlist(db);
   const watchlistCodes = mergeFundCodes(watchlist.map((item) => item.code));
   const watchlistProfiles = watchlistCodes.length ? await enrichFunds(watchlistCodes) : [];
+  markPortfolioRunProgress(db, run, "正在扫描低位回调候选，补充经理自选基金池。");
+  await yieldToEventLoop();
+  const watchlistSeedCandidates = await fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist).catch((error) => {
+    console.warn("[portfolio-watchlist-seed-error]", error.message);
+    recordError(error, { portfolioWatchlistSeedFailures: 1 });
+    return [];
+  });
+  const seedProfiles = watchlistSeedCandidates.length
+    ? await enrichFunds(watchlistSeedCandidates.map((item) => item.code))
+    : [];
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, `资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度生成今日操作。`);
   await yieldToEventLoop();
@@ -863,6 +873,8 @@ async function executePortfolioDecision(db, run, config) {
     heldProfiles,
     watchlist,
     watchlistProfiles,
+    watchlistSeedCandidates,
+    seedProfiles,
     config,
     profileContext
   });
@@ -876,8 +888,12 @@ async function executePortfolioDecision(db, run, config) {
   const actionProfiles = profileCodes.length ? await enrichFunds(profileCodes) : [];
   const watchlistUpdates = applyPortfolioWatchlistUpdates(
     db,
-    [...decision.watchlistUpdates, ...buildPortfolioWatchlistUpdatesFromActions(decision.actions)],
-    { run, profiles: [...heldProfiles, ...watchlistProfiles, ...actionProfiles], source: "decision" }
+    [
+      ...buildPortfolioWatchlistUpdatesFromSeedCandidates(watchlistSeedCandidates),
+      ...decision.watchlistUpdates,
+      ...buildPortfolioWatchlistUpdatesFromActions(decision.actions)
+    ],
+    { run, profiles: [...heldProfiles, ...watchlistProfiles, ...seedProfiles, ...actionProfiles], source: "decision" }
   );
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "正在校验交易规则并生成虚拟订单。");
@@ -900,7 +916,7 @@ async function executePortfolioDecision(db, run, config) {
   run.transactions = transactions;
   run.executionNotes = [...lifecycleBefore.notes, ...execution.notes];
   run.settlementEvents = lifecycleBefore.settlementEvents;
-  run.sources = collectPortfolioSources(marketSnapshot, heldProfiles, watchlistProfiles, actionProfiles, decision);
+  run.sources = collectPortfolioSources(marketSnapshot, heldProfiles, watchlistProfiles, seedProfiles, actionProfiles, decision);
   run.rawModelOutput = decision.rawModelOutput;
   run.card = buildPortfolioDecisionCard({
     decision,
@@ -1066,6 +1082,14 @@ async function executePortfolioPremarket(db, run, config) {
   const watchlist = getActivePortfolioWatchlist(db);
   const watchlistCodes = mergeFundCodes(watchlist.map((item) => item.code));
   const watchlistProfiles = watchlistCodes.length ? await enrichFunds(watchlistCodes) : [];
+  const watchlistSeedCandidates = await fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist).catch((error) => {
+    console.warn("[portfolio-watchlist-seed-error]", error.message);
+    recordError(error, { portfolioWatchlistSeedFailures: 1 });
+    return [];
+  });
+  const seedProfiles = watchlistSeedCandidates.length
+    ? await enrichFunds(watchlistSeedCandidates.map((item) => item.code))
+    : [];
   const activeOrders = (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status));
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, `盘前资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度生成观察清单。`);
@@ -1076,6 +1100,8 @@ async function executePortfolioPremarket(db, run, config) {
     profiles,
     watchlist,
     watchlistProfiles,
+    watchlistSeedCandidates,
+    seedProfiles,
     activeOrders,
     lifecycle,
     config,
@@ -1083,9 +1109,12 @@ async function executePortfolioPremarket(db, run, config) {
   });
   assertPortfolioRunActive(run);
   const observation = normalizePortfolioPremarket(raw);
-  const watchlistUpdates = applyPortfolioWatchlistUpdates(db, observation.watchlistUpdates, {
+  const watchlistUpdates = applyPortfolioWatchlistUpdates(db, [
+    ...buildPortfolioWatchlistUpdatesFromSeedCandidates(watchlistSeedCandidates),
+    ...observation.watchlistUpdates
+  ], {
     run,
-    profiles: [...profiles, ...watchlistProfiles],
+    profiles: [...profiles, ...watchlistProfiles, ...seedProfiles],
     source: "premarket"
   });
   markPortfolioRunProgress(db, run, "盘前观察已生成，正在保存任务结果。");
@@ -1099,7 +1128,7 @@ async function executePortfolioPremarket(db, run, config) {
   run.transactions = lifecycle.transactions;
   run.settlementEvents = lifecycle.settlementEvents;
   run.executionNotes = lifecycle.notes;
-  run.sources = collectPortfolioSources(marketSnapshot, profiles, watchlistProfiles, observation);
+  run.sources = collectPortfolioSources(marketSnapshot, profiles, watchlistProfiles, seedProfiles, observation);
   run.rawModelOutput = observation.rawModelOutput;
   run.card = buildPortfolioPremarketCard({
     observation,
@@ -1179,7 +1208,7 @@ async function executePortfolioWeekly(db, run, config) {
   });
 }
 
-async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, watchlist = [], watchlistProfiles = [], config, profileContext }) {
+async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, watchlist = [], watchlistProfiles = [], watchlistSeedCandidates = [], seedProfiles = [], config, profileContext }) {
   const skillContext = buildSkillContextForIntent(
     { workflow: "portfolio_status", skillIds: ["fund-portfolio-profile", "fund-portfolio-research", "fund-portfolio-decision", "fund-portfolio-execution"] },
     []
@@ -1219,6 +1248,12 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "自选基金池联网资料：",
     JSON.stringify((watchlistProfiles || []).map(compactPortfolioReviewProfile), null, 2),
+    "",
+    "系统确定性召回的低位/回调候选：",
+    JSON.stringify((watchlistSeedCandidates || []).map(compactPortfolioSeedCandidateForModel), null, 2),
+    "",
+    "低位/回调候选联网资料：",
+    JSON.stringify((seedProfiles || []).map(compactPortfolioReviewProfile), null, 2),
     "",
     "输出 JSON 结构：",
     JSON.stringify(
@@ -1398,7 +1433,7 @@ function buildFallbackPortfolioValuationRaw({ accountBefore, accountAfter, posit
   });
 }
 
-async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profiles, watchlist = [], watchlistProfiles = [], activeOrders, lifecycle, config, profileContext }) {
+async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profiles, watchlist = [], watchlistProfiles = [], watchlistSeedCandidates = [], seedProfiles = [], activeOrders, lifecycle, config, profileContext }) {
   const skillContext = buildSkillContextForIntent(
     { workflow: "portfolio_status", skillIds: ["fund-portfolio-profile", "fund-portfolio-premarket", "fund-portfolio-research", "fund-portfolio-execution"] },
     []
@@ -1430,6 +1465,12 @@ async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profi
     "",
     "自选基金池联网资料：",
     JSON.stringify((watchlistProfiles || []).map(compactPortfolioReviewProfile), null, 2),
+    "",
+    "系统确定性召回的低位/回调候选：",
+    JSON.stringify((watchlistSeedCandidates || []).map(compactPortfolioSeedCandidateForModel), null, 2),
+    "",
+    "低位/回调候选联网资料：",
+    JSON.stringify((seedProfiles || []).map(compactPortfolioReviewProfile), null, 2),
     "",
     "活动订单与生命周期更新：",
     JSON.stringify({ activeOrders, lifecycle }, null, 2),
@@ -1768,6 +1809,185 @@ function buildPortfolioWatchlistUpdatesFromActions(actions = []) {
         source: "portfolio_action"
       };
     });
+}
+
+async function fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist = []) {
+  if (String(process.env.PORTFOLIO_WATCHLIST_SEED_ENABLED ?? "true") === "false") {
+    return [];
+  }
+  const activeWatchlist = getActivePortfolioWatchlist({ watchlist });
+  const targetSize = Math.max(0, finiteNumberOr(process.env.PORTFOLIO_WATCHLIST_TARGET_SIZE, 10));
+  const deficit = targetSize - activeWatchlist.filter((item) => !["blocked", "removed"].includes(item.status)).length;
+  if (deficit <= 0) return [];
+
+  const userText = "回调完成 低位 准备启动 基金";
+  const themeRadar = Array.isArray(marketSnapshot?.themeRadar) ? marketSnapshot.themeRadar : [];
+  const candidates = await fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar);
+  return selectPortfolioWatchlistSeedCandidates(candidates, activeWatchlist, themeRadar, {
+    limit: Math.min(deficit, finiteNumberOr(process.env.PORTFOLIO_WATCHLIST_SEED_LIMIT, 6))
+  });
+}
+
+function selectPortfolioWatchlistSeedCandidates(candidates = [], watchlist = [], themeRadar = [], options = {}) {
+  const activeCodes = new Set(normalizePortfolioWatchlist(watchlist)
+    .filter((item) => item.status !== "removed")
+    .map((item) => item.code));
+  const minScore = finiteNumberOr(options.minScore ?? process.env.PORTFOLIO_WATCHLIST_SEED_MIN_SCORE, 52);
+  const limit = Math.max(0, finiteNumberOr(options.limit ?? process.env.PORTFOLIO_WATCHLIST_SEED_LIMIT, 6));
+  if (!limit) return [];
+
+  const scored = (candidates || [])
+    .filter((candidate) => candidate?.code && !activeCodes.has(candidate.code))
+    .map((candidate) => {
+      const matchedThemes = candidate.matchedThemes?.length ? candidate.matchedThemes : matchCandidateThemes(candidate, themeRadar);
+      const enriched = { ...candidate, matchedThemes };
+      return {
+        ...enriched,
+        portfolioWatchlistSeedScore: round(scorePullbackSetupSeedCandidate(enriched, themeRadar, "回调完成 低位 准备启动 基金"), 1)
+      };
+    })
+    .filter((candidate) =>
+      Number(candidate.portfolioWatchlistSeedScore || 0) >= minScore
+      && !isPortfolioWatchlistChaseSeed(candidate)
+    )
+    .sort((a, b) => Number(b.portfolioWatchlistSeedScore || 0) - Number(a.portfolioWatchlistSeedScore || 0));
+
+  return selectDiversifiedDeepDiveCandidates(scored, limit, { diversifyExposure: true });
+}
+
+function finiteNumberOr(value, fallback) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function isPortfolioWatchlistChaseSeed(candidate = {}) {
+  const oneWeek = toNumber(candidate.oneWeekPct);
+  const oneMonth = toNumber(candidate.oneMonthPct);
+  const threeMonth = toNumber(candidate.threeMonthPct);
+  const sixMonth = toNumber(candidate.sixMonthPct);
+  if (Number.isFinite(oneWeek) && oneWeek > 7) return true;
+  if (Number.isFinite(oneMonth) && oneMonth > 12) return true;
+  if (Number.isFinite(threeMonth) && threeMonth > 25) return true;
+  if (Number.isFinite(sixMonth) && sixMonth > 45) return true;
+  return (candidate.matchedThemes || []).some((theme) =>
+    theme.positionSignal === "high_chase_risk" || theme.stage === "crowded"
+  );
+}
+
+function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = []) {
+  return (candidates || []).map((candidate) => {
+    const shareClass = candidate.shareClass || inferFundShareClass(candidate.name || "");
+    const feeModel = candidate.shareClassFeeModel || inferShareClassFeeModel(shareClass, {
+      sourceRatePct: candidate.sourceRatePct || "",
+      currentRatePct: candidate.currentRatePct || "",
+      salesServiceFeePct: ""
+    });
+    const seedScore = Number(candidate.portfolioWatchlistSeedScore || scorePullbackSetupSeedCandidate(candidate, candidate.matchedThemes || [], "回调完成 低位 准备启动 基金"));
+    const status = inferPortfolioWatchStatusFromSeedCandidate(candidate, seedScore);
+    const themeEvidence = formatPortfolioSeedThemeEvidence(candidate);
+    const returnEvidence = formatPortfolioSeedReturnEvidence(candidate);
+    return {
+      operation: "UPSERT",
+      code: candidate.code,
+      name: candidate.name || "",
+      shareClass,
+      type: candidate.type || "",
+      status,
+      priority: scorePortfolioWatchSeedPriority(seedScore, status),
+      candidateRole: status === "ready" ? "低位启动备选" : "回调观察备选",
+      reason: [
+        `系统低位回调召回评分 ${round(seedScore, 1)}。`,
+        returnEvidence || "短期收益结构待复核。",
+        themeEvidence || "题材轮动信号待复核。"
+      ].filter(Boolean).join(" "),
+      setupEvidence: [
+        returnEvidence,
+        themeEvidence,
+        ...(candidate.keywords || []).slice(0, 3).map((keyword) => `召回标签：${keyword}`)
+      ].filter(Boolean),
+      buyTriggers: [
+        "后续5日/10日继续温和转强，且近20日涨幅不超过10%。",
+        "主题不进入拥挤状态，120日低位或距高点回撤证据得到净值下钻确认。",
+        "费用和份额类别适合计划持有期后，再小仓位分批。"
+      ],
+      riskNotes: [
+        "候选来自公开排行和搜索召回，尚需净值、回撤、持仓和费率二次核验。",
+        "如果近1周或近1月涨幅突然扩大，降级为等待回调，避免追涨。"
+      ],
+      feeNotes: [feeModel?.label || "份额类别和费率待基金详情页复核。"].filter(Boolean),
+      positionPlan: status === "ready"
+        ? "触发后先作为卫星仓小额分批，不直接重仓。"
+        : "先放入观察池，等待回调完成和走势确认。",
+      reviewDate: "下一次盘前观察或每日决策复核",
+      dataBasis: [
+        candidate.setupDiscoverySource ? `召回来源：${candidate.setupDiscoverySource}` : "",
+        candidate.source || "",
+        returnEvidence
+      ].filter(Boolean),
+      source: "deterministic_pullback_recall"
+    };
+  });
+}
+
+function inferPortfolioWatchStatusFromSeedCandidate(candidate = {}, seedScore = 0) {
+  const oneWeek = toNumber(candidate.oneWeekPct);
+  const oneMonth = toNumber(candidate.oneMonthPct);
+  if (Number(seedScore) >= 64
+    && Number.isFinite(oneWeek)
+    && oneWeek >= 0.3
+    && oneWeek <= 5
+    && (!Number.isFinite(oneMonth) || (oneMonth >= -2 && oneMonth <= 8))) {
+    return "ready";
+  }
+  return "waiting_pullback";
+}
+
+function scorePortfolioWatchSeedPriority(seedScore, status) {
+  if (status === "ready" && seedScore >= 72) return 1;
+  if (seedScore >= 64) return 2;
+  if (seedScore >= 56) return 3;
+  return 4;
+}
+
+function formatPortfolioSeedReturnEvidence(candidate = {}) {
+  return [
+    Number.isFinite(toNumber(candidate.oneWeekPct)) ? `近1周${formatFallbackPct(candidate.oneWeekPct)}` : "",
+    Number.isFinite(toNumber(candidate.oneMonthPct)) ? `近1月${formatFallbackPct(candidate.oneMonthPct)}` : "",
+    Number.isFinite(toNumber(candidate.threeMonthPct)) ? `近3月${formatFallbackPct(candidate.threeMonthPct)}` : "",
+    Number.isFinite(toNumber(candidate.sixMonthPct)) ? `近6月${formatFallbackPct(candidate.sixMonthPct)}` : ""
+  ].filter(Boolean).join("，");
+}
+
+function formatPortfolioSeedThemeEvidence(candidate = {}) {
+  const theme = (candidate.matchedThemes || [])[0];
+  if (!theme) return "";
+  return [
+    `题材${theme.name || ""}`,
+    theme.positionSignal === "low_position_rotation" ? "低位轮动" : "",
+    theme.positionSignal === "acceptable_position" ? "位置尚可" : "",
+    Number.isFinite(Number(theme.rotationScore)) ? `轮动${round(Number(theme.rotationScore), 1)}` : "",
+    Number.isFinite(Number(theme.lowPositionScore)) ? `低位${round(Number(theme.lowPositionScore), 1)}` : "",
+    Number.isFinite(Number(theme.crowdingScore)) ? `拥挤${round(Number(theme.crowdingScore), 1)}` : ""
+  ].filter(Boolean).join("，");
+}
+
+function compactPortfolioSeedCandidateForModel(candidate = {}) {
+  return {
+    code: candidate.code || "",
+    name: candidate.name || "",
+    shareClass: candidate.shareClass || "",
+    type: candidate.type || "",
+    score: candidate.portfolioWatchlistSeedScore ?? null,
+    oneWeekPct: candidate.oneWeekPct ?? "",
+    oneMonthPct: candidate.oneMonthPct ?? "",
+    threeMonthPct: candidate.threeMonthPct ?? "",
+    sixMonthPct: candidate.sixMonthPct ?? "",
+    oneYearPct: candidate.oneYearPct ?? "",
+    keywords: (candidate.keywords || []).slice(0, 8),
+    matchedThemes: candidate.matchedThemes || [],
+    setupDiscoverySource: candidate.setupDiscoverySource || "",
+    source: candidate.source || ""
+  };
 }
 
 function inferPortfolioWatchStatusFromAction(action = {}) {
@@ -10910,7 +11130,9 @@ export {
   normalizePortfolioWatchlist,
   normalizePortfolioWatchlistUpdates,
   renderFundReportSummaryPng,
+  buildPortfolioWatchlistUpdatesFromSeedCandidates,
   selectFundReportProfilesForAnswer,
+  selectPortfolioWatchlistSeedCandidates,
   selectWeeklyReversalRankCandidates,
   summarizePortfolioWatchItem,
   scorePullbackSetupSeedCandidate,

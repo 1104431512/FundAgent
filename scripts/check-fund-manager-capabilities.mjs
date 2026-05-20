@@ -313,6 +313,25 @@ assert(
     manager.scorePullbackSetupSeedCandidate({ ...weeklyTurnSeed, name: "中证A500ETF联接A", shareClass: "A" }, [], setupQuery),
   "tactical pullback setup scoring should prefer C share class over A when return evidence is otherwise equal"
 );
+const portfolioWatchlistSeeds = manager.selectPortfolioWatchlistSeedCandidates([
+  weeklyChaseSeed,
+  weeklyTurnSeed,
+  { code: "000013", name: "已有候选基金C", type: "指数型基金", oneWeekPct: 2.1, oneMonthPct: 3.2, threeMonthPct: -4.5, sixMonthPct: -8.4 }
+], [
+  { code: "000013", name: "已有候选基金C", status: "watch" }
+], [], { limit: 3, minScore: 52 });
+assert.deepEqual(
+  portfolioWatchlistSeeds.map((item) => item.code),
+  ["000010"],
+  "portfolio watchlist seed selection must add low-position weekly turns while rejecting chases and existing watchlist items"
+);
+const portfolioSeedUpdates = manager.buildPortfolioWatchlistUpdatesFromSeedCandidates(portfolioWatchlistSeeds);
+assert.equal(portfolioSeedUpdates[0].source, "deterministic_pullback_recall", "portfolio watchlist seeds must be traceable to deterministic pullback recall");
+assert(portfolioSeedUpdates[0].reason.includes("系统低位回调召回评分"), "portfolio watchlist seed must keep a detailed backup reason");
+assert(portfolioSeedUpdates[0].setupEvidence.length > 0, "portfolio watchlist seed must include setup evidence");
+assert(portfolioSeedUpdates[0].buyTriggers.length > 0, "portfolio watchlist seed must include buy triggers");
+assert(portfolioSeedUpdates[0].riskNotes.length > 0, "portfolio watchlist seed must include risk notes");
+assert(portfolioSeedUpdates[0].feeNotes.length > 0, "portfolio watchlist seed must include fee/share-class notes");
 
 const setupDigest = {
   ok: true,
