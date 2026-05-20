@@ -466,6 +466,25 @@ const guardedUnverifiedWatchUpdate = manager.guardPortfolioWatchlistReadyUpdate(
 }, null);
 assert.equal(guardedUnverifiedWatchUpdate.status, "waiting_pullback", "watchlist write path must downgrade ready updates without NAV verification");
 assert(guardedUnverifiedWatchUpdate.reason.includes("系统净值验证降级"), "guarded unverified watch update must explain the automatic downgrade");
+const answerWatchlistUpdates = manager.buildPortfolioWatchlistUpdatesFromAnswerProfiles([
+  { ...verifiedSeedProfile, reportChartRole: "买入参考图" },
+  { ...hotVerifiedSeedProfile, reportChartRole: "买入参考图" },
+  {
+    ...verifiedSeedProfile,
+    code: "000012",
+    name: "备选观察基金C",
+    reportChartRole: "备选观察图"
+  }
+], { userText: setupQuery, source: "fund_recommendation_answer" });
+assert.deepEqual(
+  answerWatchlistUpdates.map((item) => [item.code, item.status]),
+  [["000010", "ready"], ["000011", "blocked"], ["000012", "waiting_pullback"]],
+  "answer chart candidates must be persisted as ready, blocked, or backup watchlist candidates according to verified trend evidence"
+);
+assert(answerWatchlistUpdates[0].reason.includes("用户问答沉淀"), "answer-derived watchlist candidates must keep the user-answer origin in the backup reason");
+assert(answerWatchlistUpdates[0].setupEvidence.some((item) => item.includes("回答角色：买入参考")), "answer-derived watchlist candidates must keep answer role evidence");
+assert(answerWatchlistUpdates[2].candidateRole.includes("备选观察"), "backup answer candidates must remain backup/watch candidates instead of ready buys");
+assert(answerWatchlistUpdates[1].riskNotes.some((item) => item.includes("暂不买入")), "hot answer candidates must be blocked with an explicit no-buy risk note");
 
 const setupDigest = {
   ok: true,

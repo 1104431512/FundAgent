@@ -583,6 +583,12 @@ async function handleFundRecommendationWorkflow({ message, userText, intent }) {
   });
 
   const result = await recommendFundsWithModel({ userText, intent, marketSnapshot });
+  persistAnswerWatchlistCandidates({
+    userText,
+    answerText: result.text,
+    chartProfiles: result.chartProfiles,
+    source: "fund_recommendation_answer"
+  });
   const reportImages = await buildFundReportCardImages(result.chartProfiles, getEffectiveConfig()).catch((error) => {
     console.error("[fund-report-trend-image-error]", error);
     recordError(error, { fundReportTrendImageFailures: 1 });
@@ -606,6 +612,12 @@ async function handleFundQaWorkflow({ message, userText, intent }) {
 
   const marketSnapshot = needsMarketSnapshot ? await fetchMarketSnapshot() : null;
   const result = await answerFundQuestionWithModel({ userText, intent, marketSnapshot });
+  persistAnswerWatchlistCandidates({
+    userText,
+    answerText: result.text,
+    chartProfiles: result.chartProfiles,
+    source: "fund_qa_answer"
+  });
   const reportImages = await buildFundReportCardImages(result.chartProfiles, getEffectiveConfig()).catch((error) => {
     console.error("[fund-report-trend-image-error]", error);
     recordError(error, { fundReportTrendImageFailures: 1 });
@@ -1950,6 +1962,156 @@ function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = [], optio
       source: "deterministic_pullback_recall"
     };
   });
+}
+
+function buildPortfolioWatchlistUpdatesFromAnswerProfiles(profiles = [], options = {}) {
+  const input = Array.isArray(profiles) ? profiles : [profiles].filter(Boolean);
+  const userText = String(options.userText || "").trim();
+  const source = String(options.source || "fund_answer_watchlist").trim() || "fund_answer_watchlist";
+  const seen = new Set();
+  return input
+    .map((profile) => {
+      const code = String(profile?.code || profile?.seed?.code || "").match(/^\d{6}$/)?.[0] || "";
+      if (!code || seen.has(code)) return null;
+      seen.add(code);
+      const role = profile.reportChartRole === "备选观察图" ? "backup" : "buy_reference";
+      const status = inferPortfolioWatchStatusFromAnswerProfile(profile, role);
+      const trendEvidence = formatPortfolioSeedVerifiedTrendEvidence(profile);
+      const shareClass = profile?.fees?.shareClass || profile?.shareClass || profile?.seed?.shareClass || inferFundShareClass(profile?.name || profile?.seed?.name || "");
+      const feeModel = profile?.fees?.shareClassFeeModel || profile?.shareClassFeeModel || profile?.seed?.shareClassFeeModel || inferShareClassFeeModel(shareClass, profile?.fees || {});
+      const oneYearFeeCost = toNumber(profile?.fees?.feeImpact?.oneYearCostPer10000);
+      const answerRole = role === "backup" ? "备选观察" : "买入参考";
+      const statusReason = formatAnswerWatchlistStatusReason(status, role);
+      return {
+        operation: "UPSERT",
+        code,
+        name: profile.name || profile.seed?.name || "",
+        shareClass,
+        type: profile.type || profile.seed?.type || "",
+        status,
+        priority: scoreAnswerWatchPriority(status, role),
+        candidateRole: role === "backup" ? "用户问答备选观察候选" : "用户问答主推荐候选",
+        reason: [
+          `用户问答沉淀：本次回答将其列为${answerRole}。`,
+          statusReason,
+          trendEvidence,
+          userText ? `用户原始需求：${userText.slice(0, 80)}` : ""
+        ].filter(Boolean).join(" "),
+        setupEvidence: [
+          `回答角色：${answerRole}`,
+          trendEvidence,
+          profile.actionability?.action ? `自评动作：${formatActionabilityAction(profile.actionability.action)}${profile.actionability.allocationBand ? ` ${profile.actionability.allocationBand}` : ""}` : "",
+          Number.isFinite(Number(profile.trendProfile?.lowPositionPct120)) ? `120日位置${round(Number(profile.trendProfile.lowPositionPct120), 1)}%` : ""
+        ].filter(Boolean),
+        buyTriggers: buildAnswerWatchBuyTriggers(status, role),
+        riskNotes: buildAnswerWatchRiskNotes(status, profile),
+        feeNotes: [
+          feeModel?.label || "份额类别和费率待基金详情页复核。",
+          Number.isFinite(oneYearFeeCost) ? `估算持有1年每万元费用约 ${round(oneYearFeeCost, 0)} 元。` : ""
+        ].filter(Boolean),
+        positionPlan: formatAnswerWatchPositionPlan(status, role),
+        reviewDate: "下一次盘前观察或用户复问时复查",
+        dataBasis: [
+          `来源：${source}`,
+          "来自本次回答的主推荐/备选配图候选",
+          profile.sources?.[0] ? `资料源：${profile.sources[0]}` : ""
+        ].filter(Boolean),
+        source
+      };
+    })
+    .filter(Boolean);
+}
+
+function inferPortfolioWatchStatusFromAnswerProfile(profile = {}, role = "buy_reference") {
+  const seedScore = Math.max(60, Number(scoreResearchDigestForPullbackSetup(profile)) || 0);
+  const seedStatus = inferPortfolioWatchStatusFromSeedCandidate(profile, seedScore, profile);
+  if (seedStatus === "blocked") return "blocked";
+  if (profile?.actionability?.action === "avoid" || profile?.trendProfile?.entryBias === "avoid_now") return "blocked";
+  if (role === "backup") return seedStatus === "blocked" ? "blocked" : "waiting_pullback";
+  if (seedStatus === "ready") return "ready";
+  if (profile?.trendProfile?.entryBias === "wait_pullback" || profile?.actionability?.action === "wait") return "waiting_pullback";
+  return "watch";
+}
+
+function formatAnswerWatchlistStatusReason(status, role) {
+  if (status === "ready") return "净值和走势证据已满足低位回调/启动候选条件，可作为接近可买自选复核。";
+  if (status === "blocked") return "系统复核识别到偏热、追涨或回避风险，写入暂不买入而不是可买。";
+  if (status === "waiting_pullback") {
+    return role === "backup"
+      ? "回答中属于备选观察，必须等待触发条件满足后再升级。"
+      : "暂未完全证明低位启动，先等待回调/确认。";
+  }
+  return "作为普通观察候选保留，等待更多数据确认。";
+}
+
+function buildAnswerWatchBuyTriggers(status, role) {
+  if (status === "blocked") {
+    return ["重新回到低位、回撤消化且5日/10日温和转强后，才允许重新评估。"];
+  }
+  if (status === "ready") {
+    return [
+      "下一次净值更新后仍保持回调完成或启动前夜，且近20日涨幅不超过10%。",
+      "主题没有进入拥挤/追涨状态，费用和份额类别适合计划持有期。"
+    ];
+  }
+  return [
+    role === "backup" ? "备选候选需等回踩确认或5日/10日重新转强。" : "等待低位和回调完成证据更完整。",
+    "若近20日或近60日涨幅快速扩大，继续降级观察，避免追涨。"
+  ];
+}
+
+function buildAnswerWatchRiskNotes(status, profile = {}) {
+  const trend = profile.trendProfile || {};
+  return [
+    status === "blocked" ? "已被系统写入暂不买入，不能在执行方案中给买入金额。" : "",
+    Number.isFinite(Number(trend.return20dPct)) ? `近20日${formatFallbackPct(trend.return20dPct)}，需防止短线过热。` : "",
+    Number.isFinite(Number(trend.drawdownFromRecentHighPct)) ? `距近期高点${formatFallbackPct(trend.drawdownFromRecentHighPct)}，回撤深度需复查。` : "",
+    "自选池只记录候选，不等同于自动下单。"
+  ].filter(Boolean);
+}
+
+function formatAnswerWatchPositionPlan(status, role) {
+  if (status === "ready") return "触发后只做卫星仓小额分批，先验证不追涨。";
+  if (status === "blocked") return "暂不买入；只有重新形成低位启动证据后才复查。";
+  if (role === "backup") return "先作为备选观察，不给买入金额，等待触发条件。";
+  return "先观察，等回调完成和低位证据确认后再进入分批评估。";
+}
+
+function scoreAnswerWatchPriority(status, role) {
+  if (status === "ready") return 1;
+  if (status === "waiting_pullback" && role === "backup") return 3;
+  if (status === "waiting_pullback") return 2;
+  if (status === "blocked") return 5;
+  return 4;
+}
+
+function persistAnswerWatchlistCandidates({ userText = "", answerText = "", chartProfiles = [], source = "fund_answer_watchlist" } = {}) {
+  if (String(process.env.PORTFOLIO_ANSWER_WATCHLIST_ENABLED ?? "true") === "false") return [];
+  const updates = buildPortfolioWatchlistUpdatesFromAnswerProfiles(chartProfiles, { userText, answerText, source });
+  if (!updates.length) return [];
+  try {
+    const db = readPortfolioDb();
+    ensurePortfolioAccount(db, getEffectiveConfig());
+    const applied = applyPortfolioWatchlistUpdates(db, updates, {
+      profiles: Array.isArray(chartProfiles) ? chartProfiles : [chartProfiles].filter(Boolean),
+      source
+    });
+    if (applied.length) {
+      writePortfolioDb(db);
+      updateStats({
+        counters: {
+          answerWatchlistUpdates: 1,
+          answerWatchlistCandidates: applied.length
+        },
+        last: { lastAnswerWatchlistUpdateAt: new Date().toISOString() }
+      });
+    }
+    return applied;
+  } catch (error) {
+    console.warn("[answer-watchlist-update-error]", error.message);
+    recordError(error, { answerWatchlistUpdateFailures: 1 });
+    return [];
+  }
 }
 
 function inferPortfolioWatchStatusFromSeedCandidate(candidate = {}, seedScore = 0, profile = null) {
@@ -11451,6 +11613,7 @@ export {
   buildSkillContextForIntent,
   buildMarketDeepDiveSummary,
   buildPortfolioWatchlistStatusLines,
+  buildPortfolioWatchlistUpdatesFromAnswerProfiles,
   buildPullbackQualityFallbackAnswer,
   classifyMessageIntent,
   computeTrendProfile,

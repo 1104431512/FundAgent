@@ -188,6 +188,26 @@ const requiredPatterns = [
     message: "portfolio decision/premarket/weekly model outputs must be able to update the self-selected fund pool."
   },
   {
+    pattern: /persistAnswerWatchlistCandidates/,
+    message: "fund recommendation and QA answers must persist eligible chart candidates into the manager watchlist."
+  },
+  {
+    pattern: /buildPortfolioWatchlistUpdatesFromAnswerProfiles/,
+    message: "answer-derived buy and backup chart candidates must be converted into detailed watchlist updates."
+  },
+  {
+    pattern: /source:\s*"fund_recommendation_answer"/,
+    message: "fund recommendation answers must mark self-selected candidates with a traceable recommendation-answer source."
+  },
+  {
+    pattern: /source:\s*"fund_qa_answer"/,
+    message: "fund QA answers with concrete candidates must mark watchlist entries with a traceable QA-answer source."
+  },
+  {
+    pattern: /用户问答沉淀/,
+    message: "answer-derived watchlist entries must explain why the manager kept the candidate."
+  },
+  {
     pattern: /fetchPortfolioWatchlistSeedCandidates/,
     message: "portfolio manager must deterministically recall low-position pullback candidates into its watchlist instead of waiting only for model-written updates."
   },
