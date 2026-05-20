@@ -299,6 +299,7 @@ assert.deepEqual(
 );
 assert(serverSource.includes('metric: "zzf"'), "pullback setup recall must directly scan one-week ranking data");
 assert(serverSource.includes("PULLBACK_SETUP_WEEKLY_RANK_LIMIT || 160"), "one-week ranking scan must use a wider pool to catch mild early turns after hot weekly leaders");
+assert(serverSource.includes("PULLBACK_SETUP_BACKFILL_ROUNDS || 3"), "pullback setup deep-dive must keep searching beyond a single backfill batch");
 const mergedWeeklyEvidence = manager.mergeCandidateFunds([
   { code: "000010", name: "中证A500ETF联接C", keywords: ["中证A500"], setupDiscoverySource: "keyword_search" }
 ], [
@@ -703,6 +704,25 @@ assert(deepDiveSummary.includes("pullbackSetupRanking"), "deep dive summary must
 assert(deepDiveSummary.includes("backfillCodes=000004/000005"), "deep dive summary must expose secondary backfill searches when the first pullback batch has no main candidate");
 assert(deepDiveSummary.includes("mainCandidateCodes=000001"), "deep dive summary must identify main pullback/setup candidates");
 assert(deepDiveSummary.includes("watchOrRejectCodes=000003"), "deep dive summary must keep hot candidates out of main recommendations");
+const firstBackfillBatch = manager.selectPullbackBackfillCandidates([
+  { code: "000100", name: "中证500ETF联接A" },
+  { code: "000101", name: "中证500ETF联接C" },
+  { code: "000102", name: "中证1000ETF联接C" },
+  { code: "000103", name: "创业板ETF联接C" }
+], [
+  { code: "000100", name: "中证500ETF联接A" }
+], 1);
+assert.deepEqual(firstBackfillBatch.map((item) => item.code), ["000102"], "pullback backfill must skip already selected product/share-class variants");
+const secondBackfillBatch = manager.selectPullbackBackfillCandidates([
+  { code: "000100", name: "中证500ETF联接A" },
+  { code: "000101", name: "中证500ETF联接C" },
+  { code: "000102", name: "中证1000ETF联接C" },
+  { code: "000103", name: "创业板ETF联接C" }
+], [
+  { code: "000100", name: "中证500ETF联接A" },
+  ...firstBackfillBatch
+], 1);
+assert.deepEqual(secondBackfillBatch.map((item) => item.code), ["000103"], "pullback backfill must support another round instead of stopping after one miss");
 
 const promotedWatchQuality = manager.evaluateFundAnswerQuality({
   text: [

@@ -6940,22 +6940,17 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
   let selectedForDive = selected;
   const candidates = await fetchMarketResearchDigests(selected);
   const backfillLimit = Math.max(0, Number(process.env.PULLBACK_SETUP_BACKFILL_DIVE_LIMIT || 8));
+  const backfillRounds = Math.max(1, Number(process.env.PULLBACK_SETUP_BACKFILL_ROUNDS || 3));
   let backfillSelected = [];
-  if (preferPullbackSetup && backfillLimit && !hasQualifiedPullbackMainCandidate(candidates)) {
-    const selectedCodes = new Set(selected.map((item) => item.code).filter(Boolean));
-    const selectedProductKeys = new Set(selected.map(getCandidateProductKey).filter(Boolean));
-    const backfillPool = merged.filter((item) => {
-      if (!item?.code || selectedCodes.has(item.code)) return false;
-      const productKey = getCandidateProductKey(item);
-      return !productKey || !selectedProductKeys.has(productKey);
-    });
-    backfillSelected = selectDiversifiedDeepDiveCandidates(backfillPool, backfillLimit, {
-      diversifyExposure: false
-    });
-    if (backfillSelected.length) {
-      selectedForDive = [...selected, ...backfillSelected];
-      candidates.push(...await fetchMarketResearchDigests(backfillSelected));
-    }
+  for (let roundIndex = 0; preferPullbackSetup
+    && backfillLimit
+    && roundIndex < backfillRounds
+    && !hasQualifiedPullbackMainCandidate(candidates); roundIndex += 1) {
+    const nextBackfill = selectPullbackBackfillCandidates(merged, selectedForDive, backfillLimit);
+    if (!nextBackfill.length) break;
+    backfillSelected = [...backfillSelected, ...nextBackfill];
+    selectedForDive = [...selectedForDive, ...nextBackfill];
+    candidates.push(...await fetchMarketResearchDigests(nextBackfill));
   }
   const orderedCandidates = preferPullbackSetup
     ? [...candidates].sort((a, b) => scoreResearchDigestForPullbackSetup(b) - scoreResearchDigestForPullbackSetup(a))
@@ -6982,6 +6977,19 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
     backfillCodes: backfillSelected.map((item) => item.code),
     candidates: orderedCandidates
   };
+}
+
+function selectPullbackBackfillCandidates(merged = [], selectedForDive = [], limit = 0) {
+  const selectedCodes = new Set((selectedForDive || []).map((item) => item.code).filter(Boolean));
+  const selectedProductKeys = new Set((selectedForDive || []).map(getCandidateProductKey).filter(Boolean));
+  const backfillPool = (merged || []).filter((item) => {
+    if (!item?.code || selectedCodes.has(item.code)) return false;
+    const productKey = getCandidateProductKey(item);
+    return !productKey || !selectedProductKeys.has(productKey);
+  });
+  return selectDiversifiedDeepDiveCandidates(backfillPool, limit, {
+    diversifyExposure: false
+  });
 }
 
 async function fetchMarketResearchDigests(candidates = []) {
@@ -11269,6 +11277,7 @@ export {
   normalizePortfolioWatchlistUpdates,
   renderFundReportSummaryPng,
   buildPortfolioWatchlistUpdatesFromSeedCandidates,
+  selectPullbackBackfillCandidates,
   selectFundReportProfilesForAnswer,
   selectPortfolioWatchlistSeedCandidates,
   selectWeeklyReversalRankCandidates,

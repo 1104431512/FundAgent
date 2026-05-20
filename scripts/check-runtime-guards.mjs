@@ -120,6 +120,14 @@ const requiredPatterns = [
     message: "pullback/setup discovery must run a second deep-dive batch when the first batch has no qualified main candidate."
   },
   {
+    pattern: /PULLBACK_SETUP_BACKFILL_ROUNDS\s*\|\|\s*3/,
+    message: "pullback/setup discovery must keep backfilling for multiple rounds before giving up."
+  },
+  {
+    pattern: /selectPullbackBackfillCandidates/,
+    message: "pullback/setup backfill must exclude already tested products while continuing the search."
+  },
+  {
     pattern: /FEISHU_REPORT_TREND_IMAGE_LIMIT\s*\|\|\s*5/,
     message: "fund report image defaults should show more than three recommended funds when available."
   },
