@@ -531,10 +531,34 @@ assert.deepEqual(
   [["000010", "ready"], ["000011", "blocked"], ["000012", "waiting_pullback"]],
   "answer chart candidates must be persisted as ready, blocked, or backup watchlist candidates according to verified trend evidence"
 );
-assert(answerWatchlistUpdates[0].reason.includes("用户问答沉淀"), "answer-derived watchlist candidates must keep the user-answer origin in the backup reason");
+assert(answerWatchlistUpdates[0].reason.includes("基金推荐回答沉淀"), "answer-derived watchlist candidates must keep the recommendation-answer origin in the backup reason");
 assert(answerWatchlistUpdates[0].setupEvidence.some((item) => item.includes("回答角色：买入参考")), "answer-derived watchlist candidates must keep answer role evidence");
 assert(answerWatchlistUpdates[2].candidateRole.includes("备选观察"), "backup answer candidates must remain backup/watch candidates instead of ready buys");
 assert(answerWatchlistUpdates[1].riskNotes.some((item) => item.includes("暂不买入")), "hot answer candidates must be blocked with an explicit no-buy risk note");
+const screeningSelectedProfiles = manager.selectFundScreeningWatchlistProfiles([
+  verifiedSeedProfile
+], [
+  "结论：可以分批买入，但只做卫星仓。",
+  "000010 中证A500ETF联接C：回调完成、低位修复，C类费用适合短中期，下一次盘前复查。"
+].join("\n"), "000010 可以买吗");
+assert.equal(screeningSelectedProfiles.length, 1, "specific fund screening answers with action advice must produce watchlist candidates");
+assert.equal(screeningSelectedProfiles[0].reportChartRole, "买入参考图", "positive screening candidates should be treated as buy-reference watchlist evidence");
+const screeningWatchlistUpdates = manager.buildPortfolioWatchlistUpdatesFromAnswerProfiles(screeningSelectedProfiles, {
+  userText: "000010 可以买吗",
+  answerText: "000010 中证A500ETF联接C：可以分批买入，回调完成且低位修复。",
+  source: "fund_screening_answer"
+});
+assert.equal(screeningWatchlistUpdates[0].source, "fund_screening_answer", "specific fund screening candidates must be traceable to screening answers");
+assert(screeningWatchlistUpdates[0].reason.includes("具体基金分析沉淀"), "specific fund screening candidates must keep the screening-answer origin in the backup reason");
+const rejectedScreeningWatchlistUpdates = manager.buildPortfolioWatchlistUpdatesFromAnswerProfiles([
+  verifiedSeedProfile
+], {
+  userText: "000010 可以买吗",
+  answerText: "000010 中证A500ETF联接C：暂不买入，不符合当前风控要求，先排除。",
+  source: "fund_screening_answer"
+});
+assert.equal(rejectedScreeningWatchlistUpdates[0].status, "blocked", "answer context must prevent rejected screening funds from becoming ready watchlist buys");
+assert(rejectedScreeningWatchlistUpdates[0].reason.includes("暂不买入/排除"), "rejected screening candidates must preserve the no-buy answer context");
 const dailyRecheckUpdates = manager.buildPortfolioWatchlistRecheckUpdates([
   { code: "000010", name: "中证A500ETF联接C", status: "waiting_pullback", priority: 3, reason: "等低位启动确认", buyTriggers: ["温和转强"] },
   { code: "000011", name: "热门强势主题基金A", status: "ready", priority: 1, reason: "原本接近可买" }

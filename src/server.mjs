@@ -527,6 +527,12 @@ async function handleMessageEvent(payload) {
       analystReview,
       committeeVote
     });
+    persistAnswerWatchlistCandidates({
+      userText,
+      answerText: analysis,
+      chartProfiles: selectFundScreeningWatchlistProfiles(enrichments, analysis, userText),
+      source: "fund_screening_answer"
+    });
     await replyToMessage(
       message.message_id,
       [buildCompletionPrefix(images.length, userText), analysis].filter(Boolean).join("\n\n"),
@@ -2007,6 +2013,7 @@ function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = [], optio
 function buildPortfolioWatchlistUpdatesFromAnswerProfiles(profiles = [], options = {}) {
   const input = Array.isArray(profiles) ? profiles : [profiles].filter(Boolean);
   const userText = String(options.userText || "").trim();
+  const answerText = String(options.answerText || "").trim();
   const source = String(options.source || "fund_answer_watchlist").trim() || "fund_answer_watchlist";
   const seen = new Set();
   return input
@@ -2014,14 +2021,19 @@ function buildPortfolioWatchlistUpdatesFromAnswerProfiles(profiles = [], options
       const code = String(profile?.code || profile?.seed?.code || "").match(/^\d{6}$/)?.[0] || "";
       if (!code || seen.has(code)) return null;
       seen.add(code);
-      const role = profile.reportChartRole === "备选观察图" ? "backup" : "buy_reference";
-      const status = inferPortfolioWatchStatusFromAnswerProfile(profile, role);
+      const context = extractAnswerWatchlistProfileContext(answerText, profile);
+      const role = inferAnswerWatchlistRole(profile, context);
+      const rejectedByAnswer = isAnswerWatchlistRejectedContext(context);
+      const status = rejectedByAnswer ? "blocked" : inferPortfolioWatchStatusFromAnswerProfile(profile, role);
       const trendEvidence = formatPortfolioSeedVerifiedTrendEvidence(profile);
       const shareClass = profile?.fees?.shareClass || profile?.shareClass || profile?.seed?.shareClass || inferFundShareClass(profile?.name || profile?.seed?.name || "");
       const feeModel = profile?.fees?.shareClassFeeModel || profile?.shareClassFeeModel || profile?.seed?.shareClassFeeModel || inferShareClassFeeModel(shareClass, profile?.fees || {});
       const oneYearFeeCost = toNumber(profile?.fees?.feeImpact?.oneYearCostPer10000);
-      const answerRole = role === "backup" ? "备选观察" : "买入参考";
-      const statusReason = formatAnswerWatchlistStatusReason(status, role);
+      const answerRole = rejectedByAnswer ? "暂不买入/排除" : role === "backup" ? "备选观察" : "买入参考";
+      const originLabel = formatAnswerWatchlistSourceLabel(source);
+      const statusReason = rejectedByAnswer
+        ? "回答中明确写了暂不买入、回避或排除，系统写入暂不买入而不是可买。"
+        : formatAnswerWatchlistStatusReason(status, role);
       return {
         operation: "UPSERT",
         code,
@@ -2030,9 +2042,11 @@ function buildPortfolioWatchlistUpdatesFromAnswerProfiles(profiles = [], options
         type: profile.type || profile.seed?.type || "",
         status,
         priority: scoreAnswerWatchPriority(status, role),
-        candidateRole: role === "backup" ? "用户问答备选观察候选" : "用户问答主推荐候选",
+        candidateRole: rejectedByAnswer
+          ? `${originLabel}排除候选`
+          : role === "backup" ? `${originLabel}备选观察候选` : `${originLabel}主推荐候选`,
         reason: [
-          `用户问答沉淀：本次回答将其列为${answerRole}。`,
+          `${originLabel}沉淀：本次回答将其列为${answerRole}。`,
           statusReason,
           trendEvidence,
           userText ? `用户原始需求：${userText.slice(0, 80)}` : ""
@@ -2053,13 +2067,64 @@ function buildPortfolioWatchlistUpdatesFromAnswerProfiles(profiles = [], options
         reviewDate: "下一次盘前观察或用户复问时复查",
         dataBasis: [
           `来源：${source}`,
-          "来自本次回答的主推荐/备选配图候选",
+          `来自本次回答的${answerRole}候选`,
           profile.sources?.[0] ? `资料源：${profile.sources[0]}` : ""
         ].filter(Boolean),
         source
       };
     })
     .filter(Boolean);
+}
+
+function selectFundScreeningWatchlistProfiles(profiles = [], answerText = "", userText = "") {
+  if (String(process.env.PORTFOLIO_SCREENING_WATCHLIST_ENABLED ?? "true") === "false") return [];
+  const input = Array.isArray(profiles) ? profiles : [profiles].filter(Boolean);
+  if (!input.length) return [];
+  const actionSeeking = isActionSeekingFundQuestion(userText)
+    || isPullbackSetupRequest(userText)
+    || /(买入|分批|持有|观察|备选|等待|回避|不买|换基|加仓|减仓|止盈|止损)/.test(String(answerText || ""));
+  if (!actionSeeking) return [];
+  return input
+    .filter((profile) => profile?.code && profile.trendProfile?.ok)
+    .map((profile) => {
+      const context = extractAnswerWatchlistProfileContext(answerText, profile);
+      return {
+        ...profile,
+        reportChartRole: inferAnswerWatchlistRole(profile, context) === "backup" ? "备选观察图" : "买入参考图"
+      };
+    });
+}
+
+function extractAnswerWatchlistProfileContext(answerText = "", profile = {}) {
+  const body = String(answerText || "");
+  if (!body.trim()) return "";
+  const code = profile?.code || profile?.seed?.code || "";
+  const name = profile?.name || profile?.seed?.name || "";
+  const codeIndex = code ? body.indexOf(code) : -1;
+  const nameIndex = name ? body.indexOf(name) : -1;
+  const indexes = [codeIndex, nameIndex].filter((index) => index >= 0).sort((a, b) => a - b);
+  if (!indexes.length) return "";
+  return extractFundChartContext(body, code, name, indexes[0]);
+}
+
+function inferAnswerWatchlistRole(profile = {}, context = "") {
+  if (profile.reportChartRole === "备选观察图") return "backup";
+  const text = String(context || "");
+  if (/(备选|观察|只观察|等待|等回撤|等回调|回踩|可关注|接近可买)/.test(text)) return "backup";
+  return "buy_reference";
+}
+
+function isAnswerWatchlistRejectedContext(context = "") {
+  const text = String(context || "");
+  if (!text.trim()) return false;
+  return /(回避|剔除|排除|不推荐|不作为主推荐|不是主推|暂不买|暂不加仓|不买|追涨|偏热|过热|不符合|风险偏高)/.test(text);
+}
+
+function formatAnswerWatchlistSourceLabel(source = "") {
+  if (source === "fund_screening_answer") return "具体基金分析";
+  if (source === "fund_recommendation_answer") return "基金推荐回答";
+  if (source === "fund_qa_answer") return "基金问答";
+  return "用户问答";
 }
 
 function buildPortfolioWatchlistRecheckUpdates(watchlist = [], options = {}) {
@@ -12508,6 +12573,7 @@ export {
   buildPortfolioWatchlistUpdatesFromSeedCandidates,
   selectPullbackBackfillCandidates,
   selectFundReportProfilesForAnswer,
+  selectFundScreeningWatchlistProfiles,
   selectPortfolioWatchlistSeedCandidates,
   selectWeeklyReversalRankCandidates,
   summarizePortfolioWatchItem,

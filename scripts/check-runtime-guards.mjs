@@ -240,7 +240,23 @@ const requiredPatterns = [
     message: "fund QA answers with concrete candidates must mark watchlist entries with a traceable QA-answer source."
   },
   {
-    pattern: /用户问答沉淀/,
+    pattern: /source:\s*"fund_screening_answer"/,
+    message: "specific fund screening answers must persist eligible analyzed funds into the manager watchlist."
+  },
+  {
+    pattern: /selectFundScreeningWatchlistProfiles/,
+    message: "fund screening answers must select analyzed profiles for watchlist persistence."
+  },
+  {
+    pattern: /isAnswerWatchlistRejectedContext/,
+    message: "answer-derived watchlist updates must not turn explicitly rejected funds into ready buys."
+  },
+  {
+    pattern: /source === "fund_screening_answer"[\s\S]{0,120}具体基金分析/,
+    message: "screening-derived watchlist candidates must explain their screening-answer origin."
+  },
+  {
+    pattern: /沉淀：本次回答/,
     message: "answer-derived watchlist entries must explain why the manager kept the candidate."
   },
   {
