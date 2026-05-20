@@ -220,6 +220,26 @@ const requiredPatterns = [
     message: "portfolio watchlist deterministic seeds must be judged with enriched NAV/trend profiles."
   },
   {
+    pattern: /buildPortfolioWatchlistRecheckUpdates/,
+    message: "daily portfolio decisions must recheck existing ready/waiting watchlist candidates with fresh NAV evidence."
+  },
+  {
+    pattern: /decision_watchlist_recheck/,
+    message: "daily watchlist rechecks must leave a traceable source in the candidate ledger."
+  },
+  {
+    pattern: /buildPortfolioDecisionReadinessQueue/,
+    message: "daily portfolio decisions must expose a ready/waiting buy-preparation queue to the model."
+  },
+  {
+    pattern: /ensurePortfolioReadyWatchlistReviewed/,
+    message: "daily portfolio decisions must add a fallback review action when ready watchlist candidates are omitted."
+  },
+  {
+    pattern: /ready_watchlist_review_fallback/,
+    message: "ready watchlist fallback actions must be traceable and not look like model-written buys."
+  },
+  {
     pattern: /已用净值下钻验证/,
     message: "portfolio watchlist ready seeds must explicitly prove NAV trend verification passed."
   },

@@ -866,9 +866,17 @@ async function executePortfolioDecision(db, run, config) {
   await yieldToEventLoop();
   const heldCodes = db.account.positions.map((position) => position.code).filter(Boolean);
   const heldProfiles = heldCodes.length ? await enrichFunds(heldCodes) : [];
-  const watchlist = getActivePortfolioWatchlist(db);
+  let watchlist = getActivePortfolioWatchlist(db);
   const watchlistCodes = mergeFundCodes(watchlist.map((item) => item.code));
   const watchlistProfiles = watchlistCodes.length ? await enrichFunds(watchlistCodes) : [];
+  const preDecisionWatchlistUpdates = applyPortfolioWatchlistUpdates(
+    db,
+    buildPortfolioWatchlistRecheckUpdates(watchlist, { profiles: watchlistProfiles }),
+    { run, profiles: watchlistProfiles, source: "decision_watchlist_recheck" }
+  );
+  if (preDecisionWatchlistUpdates.length) {
+    watchlist = getActivePortfolioWatchlist(db);
+  }
   markPortfolioRunProgress(db, run, "正在扫描低位回调候选，补充经理自选基金池。");
   await yieldToEventLoop();
   const watchlistSeedCandidates = await fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist).catch((error) => {
@@ -896,7 +904,11 @@ async function executePortfolioDecision(db, run, config) {
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "模型已返回，正在解析投委会决策。");
   await yieldToEventLoop();
-  const decision = normalizePortfolioDecision(raw);
+  const decision = ensurePortfolioReadyWatchlistReviewed(
+    normalizePortfolioDecision(raw),
+    watchlist,
+    { profiles: watchlistProfiles }
+  );
   markPortfolioRunProgress(db, run, `已解析 ${decision.actions.length} 条动作，正在补全拟交易基金净值。`);
   await yieldToEventLoop();
   const profileCodes = decision.actions.map((action) => action.code).filter(Boolean);
@@ -926,7 +938,7 @@ async function executePortfolioDecision(db, run, config) {
   run.accountAfter = summarizePortfolioAccount(db.account);
   run.team = decision.team;
   run.actions = decision.actions;
-  run.watchlistUpdates = watchlistUpdates;
+  run.watchlistUpdates = [...preDecisionWatchlistUpdates, ...watchlistUpdates];
   run.orders = execution.orders;
   run.transactions = transactions;
   run.executionNotes = [...lifecycleBefore.notes, ...execution.notes];
@@ -935,7 +947,7 @@ async function executePortfolioDecision(db, run, config) {
   run.rawModelOutput = decision.rawModelOutput;
   run.card = buildPortfolioDecisionCard({
     decision,
-    watchlistUpdates,
+    watchlistUpdates: run.watchlistUpdates,
     account: db.account,
     orders: execution.orders,
     transactions,
@@ -1263,6 +1275,10 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "自选基金池联网资料：",
     JSON.stringify((watchlistProfiles || []).map(compactPortfolioReviewProfile), null, 2),
+    "",
+    "今日购买准备队列（系统复核后）：",
+    JSON.stringify(buildPortfolioDecisionReadinessQueue(watchlist, watchlistProfiles), null, 2),
+    "要求：队列中的接近可买候选必须在 actions 中逐只给 BUY 或 WATCH/HOLD 理由；如果不买，要写清仍差的触发条件，不能忽略。",
     "",
     "系统确定性召回的低位/回调候选：",
     JSON.stringify((watchlistSeedCandidates || []).map(compactPortfolioSeedCandidateForModel), null, 2),
@@ -2020,6 +2036,118 @@ function buildPortfolioWatchlistUpdatesFromAnswerProfiles(profiles = [], options
       };
     })
     .filter(Boolean);
+}
+
+function buildPortfolioWatchlistRecheckUpdates(watchlist = [], options = {}) {
+  const profiles = Array.isArray(options) ? options : options.profiles || [];
+  const profileByCode = new Map((profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
+  return normalizePortfolioWatchlist(watchlist)
+    .filter((item) => ["ready", "waiting_pullback"].includes(item.status))
+    .map((item) => {
+      const profile = profileByCode.get(item.code) || item.lastSnapshot || null;
+      if (!profile) return null;
+      const score = item.status === "ready" ? 72 : 64;
+      const status = inferPortfolioWatchStatusFromSeedCandidate(item, score, profile);
+      const trendEvidence = formatPortfolioSeedVerifiedTrendEvidence(profile);
+      return {
+        operation: "UPSERT",
+        code: item.code,
+        name: item.name || profile?.name || "",
+        shareClass: item.shareClass || profile?.fees?.shareClass || profile?.shareClass || "",
+        type: item.type || profile?.type || "",
+        status,
+        priority: status === "ready" ? Math.min(Number(item.priority || 2), 2) : status === "blocked" ? 5 : Math.max(Number(item.priority || 3), 3),
+        candidateRole: item.candidateRole || (status === "ready" ? "每日复核接近可买候选" : "每日复核等待回调候选"),
+        reason: [
+          `系统每日复核自选池：${formatPortfolioWatchStatus(item.status)} -> ${formatPortfolioWatchStatus(status)}。`,
+          formatPortfolioSeedStatusReason(status, profile),
+          trendEvidence,
+          item.reason || ""
+        ].filter(Boolean).join(" "),
+        setupEvidence: mergeStringLists(item.setupEvidence, [trendEvidence]),
+        buyTriggers: mergeStringLists(item.buyTriggers, buildAnswerWatchBuyTriggers(status, item.status === "waiting_pullback" ? "backup" : "buy_reference")),
+        riskNotes: mergeStringLists(item.riskNotes, buildAnswerWatchRiskNotes(status, profile)),
+        feeNotes: item.feeNotes || [],
+        positionPlan: item.positionPlan || formatAnswerWatchPositionPlan(status, item.status === "waiting_pullback" ? "backup" : "buy_reference"),
+        reviewDate: "本次每日决策已复核，下一次盘前继续确认",
+        dataBasis: mergeStringLists(item.dataBasis, ["来源：decision_watchlist_recheck", trendEvidence]),
+        source: "decision_watchlist_recheck"
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildPortfolioDecisionReadinessQueue(watchlist = [], profiles = []) {
+  const profileByCode = new Map((profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
+  return normalizePortfolioWatchlist(watchlist)
+    .filter((item) => ["ready", "waiting_pullback"].includes(item.status))
+    .slice(0, 8)
+    .map((item) => {
+      const profile = profileByCode.get(item.code) || item.lastSnapshot || null;
+      return {
+        code: item.code,
+        name: item.name,
+        status: item.status,
+        priority: item.priority,
+        reason: item.reason,
+        firstTrigger: item.buyTriggers?.[0] || "",
+        firstRisk: item.riskNotes?.[0] || "",
+        positionPlan: item.positionPlan || "",
+        trendEvidence: profile ? formatPortfolioSeedVerifiedTrendEvidence(profile) : item.lastSnapshot?.trendSummary || "",
+        feeNotes: item.feeNotes || [],
+        reviewDate: item.reviewDate || ""
+      };
+    });
+}
+
+function buildPortfolioReadyWatchlistReviewActions(watchlist = [], existingActions = [], options = {}) {
+  const profiles = Array.isArray(options) ? options : options.profiles || [];
+  const profileByCode = new Map((profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
+  const existingCodes = new Set((existingActions || []).map((action) => action.code).filter(Boolean));
+  return normalizePortfolioWatchlist(watchlist)
+    .filter((item) => item.status === "ready" && item.code && !existingCodes.has(item.code))
+    .slice(0, 5)
+    .map((item) => {
+      const profile = profileByCode.get(item.code) || item.lastSnapshot || null;
+      const trendEvidence = profile ? formatPortfolioSeedVerifiedTrendEvidence(profile) : item.lastSnapshot?.trendSummary || "";
+      return {
+        action: "WATCH",
+        code: item.code,
+        name: item.name || profile?.name || "",
+        amount: 0,
+        targetWeightPct: 0,
+        reason: "系统补充复查动作：接近可买自选候选未被模型逐项评估，本轮先列入观察，不允许静默遗漏。",
+        dataBasis: ["来源：ready_watchlist_review_fallback", trendEvidence, item.reason].filter(Boolean),
+        rotationCheck: item.setupEvidence?.[0] || trendEvidence || "等待轮动/低位证据复查。",
+        positionCheck: trendEvidence || "等待净值复核。",
+        chaseRisk: item.riskNotes?.[0] || "若短期涨幅扩大，继续等待回撤，不能追涨。",
+        feeCheck: item.feeNotes?.[0] || "份额和费用待复核。",
+        riskControl: item.buyTriggers?.[0] || "下一次盘前继续复查买入触发条件。"
+      };
+    });
+}
+
+function ensurePortfolioReadyWatchlistReviewed(decision, watchlist = [], options = {}) {
+  const normalized = {
+    ...decision,
+    actions: normalizePortfolioActions(decision?.actions),
+    watchlistUpdates: normalizePortfolioWatchlistUpdates(decision?.watchlistUpdates),
+    team: Array.isArray(decision?.team) ? decision.team : [],
+    riskNotes: Array.isArray(decision?.riskNotes) ? decision.riskNotes : [],
+    learningNotes: Array.isArray(decision?.learningNotes) ? decision.learningNotes : [],
+    sources: Array.isArray(decision?.sources) ? decision.sources : []
+  };
+  const fallbackActions = buildPortfolioReadyWatchlistReviewActions(watchlist, normalized.actions, options);
+  if (!fallbackActions.length) return normalized;
+  return {
+    ...normalized,
+    actions: [...normalized.actions, ...fallbackActions],
+    learningNotes: mergeStringLists(
+      normalized.learningNotes,
+      [`系统补充了 ${fallbackActions.length} 条接近可买自选候选复查动作，防止每日决策遗漏购买准备队列。`]
+    ),
+    sources: mergeStringLists(normalized.sources, ["ready_watchlist_review_fallback"])
+  };
 }
 
 function inferPortfolioWatchStatusFromAnswerProfile(profile = {}, role = "buy_reference") {
@@ -11631,6 +11759,9 @@ export {
   allowedSkillIdsForWorkflow,
   buildSkillContextForIntent,
   buildMarketDeepDiveSummary,
+  buildPortfolioDecisionReadinessQueue,
+  buildPortfolioReadyWatchlistReviewActions,
+  buildPortfolioWatchlistRecheckUpdates,
   buildPortfolioWatchlistStatusLines,
   buildPortfolioWatchlistUpdatesFromAnswerProfiles,
   buildPullbackQualityFallbackAnswer,
@@ -11644,6 +11775,7 @@ export {
   getFundQaSkillIds,
   getFundRecommendationSkillIds,
   guardPortfolioWatchlistReadyUpdate,
+  ensurePortfolioReadyWatchlistReviewed,
   isGenericPullbackSetupRequest,
   isPullbackSetupRequest,
   mergeCandidateFunds,

@@ -488,6 +488,29 @@ assert(answerWatchlistUpdates[0].reason.includes("用户问答沉淀"), "answer-
 assert(answerWatchlistUpdates[0].setupEvidence.some((item) => item.includes("回答角色：买入参考")), "answer-derived watchlist candidates must keep answer role evidence");
 assert(answerWatchlistUpdates[2].candidateRole.includes("备选观察"), "backup answer candidates must remain backup/watch candidates instead of ready buys");
 assert(answerWatchlistUpdates[1].riskNotes.some((item) => item.includes("暂不买入")), "hot answer candidates must be blocked with an explicit no-buy risk note");
+const dailyRecheckUpdates = manager.buildPortfolioWatchlistRecheckUpdates([
+  { code: "000010", name: "中证A500ETF联接C", status: "waiting_pullback", priority: 3, reason: "等低位启动确认", buyTriggers: ["温和转强"] },
+  { code: "000011", name: "热门强势主题基金A", status: "ready", priority: 1, reason: "原本接近可买" }
+], { profiles: [verifiedSeedProfile, hotVerifiedSeedProfile] });
+assert.deepEqual(
+  dailyRecheckUpdates.map((item) => [item.code, item.status]).sort((a, b) => a[0].localeCompare(b[0])),
+  [["000010", "ready"], ["000011", "blocked"]],
+  "daily decision recheck must upgrade verified low-position candidates and block newly hot ready candidates"
+);
+assert(dailyRecheckUpdates[0].reason.includes("系统每日复核自选池"), "daily watchlist recheck must leave a traceable reason");
+const readinessQueue = manager.buildPortfolioDecisionReadinessQueue([
+  { code: "000010", name: "中证A500ETF联接C", status: "ready", priority: 1, reason: "低位回调", buyTriggers: ["温和转强"], riskNotes: ["不追涨"] }
+], [verifiedSeedProfile]);
+assert.equal(readinessQueue[0].firstTrigger, "温和转强", "portfolio decision prompt must expose ready candidate triggers");
+const fallbackReadyActions = manager.buildPortfolioReadyWatchlistReviewActions([
+  { code: "000010", name: "中证A500ETF联接C", status: "ready", priority: 1, reason: "低位回调", buyTriggers: ["温和转强"], riskNotes: ["不追涨"], feeNotes: ["C类短期更合适"] }
+], [], { profiles: [verifiedSeedProfile] });
+assert.equal(fallbackReadyActions[0].action, "WATCH", "ready watchlist fallback must review omitted candidates without forcing an automatic buy");
+assert(fallbackReadyActions[0].reason.includes("未被模型逐项评估"), "ready watchlist fallback must explain why the review action was added");
+const reviewedDecision = manager.ensurePortfolioReadyWatchlistReviewed({ actions: [], watchlistUpdates: [], learningNotes: [], sources: [] }, [
+  { code: "000010", name: "中证A500ETF联接C", status: "ready", priority: 1, reason: "低位回调" }
+], { profiles: [verifiedSeedProfile] });
+assert(reviewedDecision.actions.some((item) => item.code === "000010"), "portfolio decision must not silently omit ready watchlist candidates");
 
 const setupDigest = {
   ok: true,
