@@ -856,6 +856,14 @@ const requiredPatterns = [
     message: "watch/reject pullback candidates must not receive buy amounts in execution plans."
   },
   {
+    pattern: /watch_candidate_given_buy_signal/,
+    message: "watch/reject pullback candidates must not receive buy-intent language even without an explicit amount."
+  },
+  {
+    pattern: /hasPositiveBuyIntentForFundCode[\s\S]{0,800}hasPositiveBuyIntentText/,
+    message: "pullback/setup answer quality must detect watch-candidate buy intent separately from numeric execution."
+  },
+  {
     pattern: /formatPullbackSetupCandidateGaps/,
     message: "pullback/setup summaries must explain exactly what observation candidates still lack."
   },

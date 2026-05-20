@@ -7261,7 +7261,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "禁止机械写“信心：高。”、“把握度：高。”、“Confidence: high”。要改成自然句，例如“我对这条判断把握度较高，主要因为证据比较一致。”",
       "禁止输出 Verdict、Confidence、Score、buy、staged、wait、avoid、hold、switch 等英文动作/栏目词；全部改成结论、把握度、评分、买入、分批买入、等待、回避、持有、换基。",
       "若质检问题包含 watch_candidate_promoted_to_recommendation、recommendation_not_from_pullback_main_candidates 或 recommends_without_qualified_pullback_candidate，必须按证据里的 mainCandidateCodes 重写主推荐；watchOrRejectCodes 只能写进观察/排除原因。",
-      "若质检问题包含 watch_candidate_given_buy_execution，观察/排除候选不能在1万元执行里获得任何买入金额；只能写0元观察或等待条件。",
+      "若质检问题包含 watch_candidate_given_buy_execution 或 watch_candidate_given_buy_signal，观察/排除候选不能获得买入金额，也不能写“可以买、小仓位试探、少买一点、建仓”等买入暗示；只能写0元观察或等待条件。",
       "若质检问题包含 missing_pullback_timing_evidence，主推荐每条必须写出5日/10日早期转强、120日区间低位或距高点回撤等数字证据；若包含 missing_pullback_three_tier_execution，必须给激进/均衡/保守三档金额。",
       "若质检问题包含 missing_pullback_share_class_fee，主推荐每条必须写份额类别和费用模型，例如 C类无前端申购费但有销售服务费，或 A类有申购费但长期持有持续费率较低。",
       "若质检问题包含 insufficient_chart_linked_candidates，必须补足 12 张左右可配图候选：主买入参考和备选观察分开写，每只都写代码、买入/备选角色、图上看的走势/回撤/低位/费用证据。",
@@ -7421,6 +7421,9 @@ function evaluatePullbackAnswerDiscipline({ text, userText, evidence }) {
     if ([...watchCodes].some((code) => hasPositiveBuyExecutionForFundCode(body, code))) {
       issues.push("watch_candidate_given_buy_execution");
     }
+    if ([...watchCodes].some((code) => hasPositiveBuyIntentForFundCode(body, code))) {
+      issues.push("watch_candidate_given_buy_signal");
+    }
     if (recommendedCodes.length && !mainRecommended.length) {
       issues.push("recommendation_not_from_pullback_main_candidates");
     }
@@ -7460,6 +7463,7 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
   const severeIssues = new Set([
     "watch_candidate_promoted_to_recommendation",
     "watch_candidate_given_buy_execution",
+    "watch_candidate_given_buy_signal",
     "recommendation_not_from_pullback_main_candidates",
     "missing_pullback_main_candidate_code",
     "missing_no_qualified_pullback_message",
@@ -7621,11 +7625,37 @@ function hasPositiveBuyExecutionForFundCode(text, code) {
   });
 }
 
+function hasPositiveBuyIntentForFundCode(text, code) {
+  const fundCode = String(code || "");
+  if (!fundCode) return false;
+  const lines = String(text || "").split(/\r?\n/);
+  return lines.some((line, index) => {
+    if (!line.includes(fundCode)) return false;
+    const contextLines = [line, lines[index + 1] || ""];
+    return contextLines.some((contextLine, offset) => {
+      if (contextLine.includes(fundCode) && hasPositiveBuyIntentText(contextLine)) return true;
+      const clauses = String(contextLine || "").split(/[，,。；;\n]/);
+      return clauses.some((clause) => {
+        const hasTargetCode = clause.includes(fundCode);
+        const isContinuation = offset > 0 && !/\b\d{6}\b/.test(clause);
+        if (!hasTargetCode && !isContinuation) return false;
+        return hasPositiveBuyIntentText(clause);
+      });
+    });
+  });
+}
+
 function hasPositiveBuyExecutionText(text) {
   const body = String(text || "");
   if (!/(买入|买|加仓|配置|投入|建仓|申购)/.test(body)) return false;
   if (/(不买|不建议买|暂停买|停止买|别买|不要买|回避买|(?:^|[^\d.])0(?:\.0+)?\s*(?:元|%|成)|零元)/.test(body)) return false;
   return /(?:(?:[1-9]\d*(?:\.\d+)?|0\.[1-9]\d*)\s*(?:元|万|%|成)|[一二三四五六七八九十]+成|半仓|底仓)/.test(body);
+}
+
+function hasPositiveBuyIntentText(text) {
+  const body = String(text || "");
+  if (/(不买|不建议买|不能买|暂不买|暂停买|停止买|别买|不要买|回避|只观察|只放观察|等待条件|等.*再(?:买|加|配)|(?:^|[^\d.])0(?:\.0+)?\s*(?:元|%|成)|零元)/.test(body)) return false;
+  return /(可以买|可买|买入|分批|小仓位|试探|底仓|建仓|配置|申购|加仓|少买一点|买一点)/.test(body);
 }
 
 function hasShareClassFeeEvidenceAvailable(candidate = {}) {
