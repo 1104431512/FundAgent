@@ -85,6 +85,10 @@ const requiredPatterns = [
     message: "pullback/setup discovery must keep a wide ranking recall pool."
   },
   {
+    pattern: /PULLBACK_SETUP_BACKFILL_DIVE_LIMIT\s*\|\|\s*8/,
+    message: "pullback/setup discovery must run a second deep-dive batch when the first batch has no qualified main candidate."
+  },
+  {
     pattern: /FEISHU_REPORT_TREND_IMAGE_LIMIT\s*\|\|\s*5/,
     message: "fund report image defaults should show more than three recommended funds when available."
   },
@@ -135,6 +139,10 @@ const requiredPatterns = [
   {
     pattern: /hasHighChaseTheme/,
     message: "pullback/setup main candidates must reject crowded or high-chase-risk themes."
+  },
+  {
+    pattern: /hasQualifiedPullbackMainCandidate/,
+    message: "pullback/setup discovery must detect whether first-pass deep dives produced any qualified main candidate."
   },
   {
     pattern: /mergeCandidateFundRecord/,

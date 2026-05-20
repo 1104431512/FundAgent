@@ -3649,6 +3649,7 @@ function buildMarketDeepDiveSummary(deepDive) {
     `deepDive.ok=${Boolean(deepDive.ok)}`,
     deepDive.focus ? `deepDive.focus=${deepDive.focus}` : "",
     deepDive.selectionDiscipline ? `selectionDiscipline=${deepDive.selectionDiscipline}` : "",
+    Array.isArray(deepDive.backfillCodes) && deepDive.backfillCodes.length ? `backfillCodes=${deepDive.backfillCodes.join("/")}` : "",
     Array.isArray(deepDive.searchKeywords) && deepDive.searchKeywords.length ? `searchKeywords=${deepDive.searchKeywords.join("/")}` : ""
   ].filter(Boolean);
 
@@ -4610,9 +4611,13 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
     const evidenceLine = Number.isFinite(Number(hottest.return20dPct)) || Number.isFinite(Number(hottest.return60dPct))
       ? `候选池里偏热样本的近20日约${formatFallbackPct(hottest.return20dPct)}、近60日约${formatFallbackPct(hottest.return60dPct)}，不符合“回调完成后低位启动”。`
       : "候选池没有同时满足回调完成、低位修复和不过热的标的。";
+    const watchLines = watch.map((item, index) =>
+      `${index + 1}. ${formatPullbackFallbackWatchCandidate(item.candidate)}`
+    );
     return [
       "直接结论：这次先不买，也不硬凑基金代码。",
       `原因：${evidenceLine}`,
+      ...(watchLines.length ? ["", "观察池（不是主推荐）：", ...watchLines] : []),
       "",
       "执行方案：1万元新资金暂时买入0元；激进、均衡、保守三档都先等待下一轮筛选。",
       "复查条件：等候选出现回调幅度适中、处在120日区间偏低位置、5日/10日刚转强且近60日不过热，再进入分批买入评估。",
@@ -6152,21 +6157,26 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
     };
   }
 
-  const candidates = await Promise.all(selected.map(async (candidate) => {
-    try {
-      return await fetchFundResearchDigest(candidate.code, candidate);
-    } catch (error) {
-      recordError(error, { marketDeepDiveFailures: 1 });
-      return {
-        ok: false,
-        code: candidate.code,
-        name: candidate.name,
-        keywords: candidate.keywords || [],
-        error: error.message,
-        seed: candidate
-      };
+  let selectedForDive = selected;
+  const candidates = await fetchMarketResearchDigests(selected);
+  const backfillLimit = Math.max(0, Number(process.env.PULLBACK_SETUP_BACKFILL_DIVE_LIMIT || 8));
+  let backfillSelected = [];
+  if (preferPullbackSetup && backfillLimit && !hasQualifiedPullbackMainCandidate(candidates)) {
+    const selectedCodes = new Set(selected.map((item) => item.code).filter(Boolean));
+    const selectedProductKeys = new Set(selected.map(getCandidateProductKey).filter(Boolean));
+    const backfillPool = merged.filter((item) => {
+      if (!item?.code || selectedCodes.has(item.code)) return false;
+      const productKey = getCandidateProductKey(item);
+      return !productKey || !selectedProductKeys.has(productKey);
+    });
+    backfillSelected = selectDiversifiedDeepDiveCandidates(backfillPool, backfillLimit, {
+      diversifyExposure: false
+    });
+    if (backfillSelected.length) {
+      selectedForDive = [...selected, ...backfillSelected];
+      candidates.push(...await fetchMarketResearchDigests(backfillSelected));
     }
-  }));
+  }
   const orderedCandidates = preferPullbackSetup
     ? [...candidates].sort((a, b) => scoreResearchDigestForPullbackSetup(b) - scoreResearchDigestForPullbackSetup(a))
     : candidates;
@@ -6188,9 +6198,32 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
       ? inferPullbackSetupSearchKeywords(userText, relevantThemeRadar)
       : inferFocusedFundSearchKeywords(userText),
     selectionDiscipline: preferPullbackSetup ? "prefer_pullback_complete_launch_setup_not_chase" : "balanced_theme_relevance",
-    selectedCodes: selected.map((item) => item.code),
+    selectedCodes: selectedForDive.map((item) => item.code),
+    backfillCodes: backfillSelected.map((item) => item.code),
     candidates: orderedCandidates
   };
+}
+
+async function fetchMarketResearchDigests(candidates = []) {
+  return Promise.all((candidates || []).map(async (candidate) => {
+    try {
+      return await fetchFundResearchDigest(candidate.code, candidate);
+    } catch (error) {
+      recordError(error, { marketDeepDiveFailures: 1 });
+      return {
+        ok: false,
+        code: candidate.code,
+        name: candidate.name,
+        keywords: candidate.keywords || [],
+        error: error.message,
+        seed: candidate
+      };
+    }
+  }));
+}
+
+function hasQualifiedPullbackMainCandidate(candidates = []) {
+  return (candidates || []).some((candidate) => classifyPullbackSetupCandidateForSummary(candidate) === "main_candidate");
 }
 
 function isPullbackSetupRequest(text) {

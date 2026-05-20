@@ -455,12 +455,14 @@ const deepDiveSummary = manager.buildMarketDeepDiveSummary({
   focus: "pullback_setup_discovery",
   selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
   searchKeywords: ["中证500"],
+  backfillCodes: ["000004", "000005"],
   candidates: [
     { ...setupDigest, code: "000001", name: "低位修复基金A" },
     { ...hotDigest, code: "000003", name: "追涨观察基金A" }
   ]
 });
 assert(deepDiveSummary.includes("pullbackSetupRanking"), "deep dive summary must expose pullback/setup ranking evidence");
+assert(deepDiveSummary.includes("backfillCodes=000004/000005"), "deep dive summary must expose secondary backfill searches when the first pullback batch has no main candidate");
 assert(deepDiveSummary.includes("mainCandidateCodes=000001"), "deep dive summary must identify main pullback/setup candidates");
 assert(deepDiveSummary.includes("watchOrRejectCodes=000003"), "deep dive summary must keep hot candidates out of main recommendations");
 
@@ -630,7 +632,10 @@ const deterministicNoMainFallback = manager.buildPullbackQualityFallbackAnswer({
   }
 });
 assert(deterministicNoMainFallback.includes("暂时买入0元"), "no-main fallback must explicitly avoid buying");
-assert(!/\b\d{6}\b/.test(deterministicNoMainFallback), "no-main fallback must not hard-code candidate fund codes");
+assert(deterministicNoMainFallback.includes("观察池（不是主推荐）"), "no-main fallback must show transparent watchlist evidence instead of sounding like no search was performed");
+assert(deterministicNoMainFallback.includes("000003"), "no-main fallback may show rejected candidates as observation-only evidence");
+assert(!deterministicNoMainFallback.includes("推荐清单："), "no-main fallback must not create a recommendation section");
+assert(!/000003.{0,40}(?:买入|分批|配置)\d+/s.test(deterministicNoMainFallback), "no-main fallback must not assign buy amounts to rejected candidates");
 
 async function assertIntent({ userText, expectedWorkflow, expectedReason, expectedMode = null, requiredSkills = [] }) {
   const routed = await manager.classifyMessageIntent({
