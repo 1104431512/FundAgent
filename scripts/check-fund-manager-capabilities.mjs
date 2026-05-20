@@ -1163,27 +1163,31 @@ const expandedChartUniverse = [
   { ...setupDigestSecond, code: "000006", name: "低位观察基金C", reportChartRole: "备选观察图", trendProfile: { ...setupDigestSecond.trendProfile, series: chartSeries } },
   { ...setupDigest, code: "000007", name: "低位扩散基金C", reportChartRole: "备选观察图", trendProfile: { ...setupDigest.trendProfile, series: chartSeries } },
   { ...setupDigestSecond, code: "000008", name: "费用占优基金C", reportChartRole: "备选观察图", trendProfile: { ...setupDigestSecond.trendProfile, series: chartSeries } },
-  { ...setupDigest, code: "000009", name: "均衡低位基金A", trendProfile: { ...setupDigest.trendProfile, series: chartSeries } }
+  { ...setupDigest, code: "000009", name: "均衡低位基金A", trendProfile: { ...setupDigest.trendProfile, series: chartSeries } },
+  { ...setupDigestSecond, code: "000025", name: "低位确认基金C", reportChartRole: "备选观察图", trendProfile: { ...setupDigestSecond.trendProfile, series: chartSeries } },
+  { ...setupDigest, code: "000026", name: "回调完成基金A", trendProfile: { ...setupDigest.trendProfile, series: chartSeries } }
 ];
 const expandedChartProfiles = manager.selectFundReportProfilesForAnswer(expandedChartUniverse, [
   "推荐清单：",
   "1. 000001 低位修复基金A：回调完成，可分批，配图看低位和费用。",
   "备选观察：",
   "000004 备选回踩基金C：等待触发，配图看回踩确认。"
-].join("\n"), { minCount: 8, limit: 12 });
-assert.equal(expandedChartProfiles.length, 8, "report image selector must expand sparse answers to about eight chart-backed candidates");
+].join("\n"), { minCount: 10, limit: 12 });
+assert.equal(expandedChartProfiles.length, 10, "report image selector must expand sparse answers to about ten chart-backed candidates");
 assert(expandedChartProfiles.some((profile) => profile.code === "000002"), "expanded report images should add qualified launch/setup candidates not only explicitly mentioned funds");
 assert(expandedChartProfiles.some((profile) => profile.code === "000006" && profile.reportChartRole === "备选观察图"), "expanded report images should include qualified backup charts");
 assert(expandedChartProfiles.some((profile) => profile.code === "000007" && profile.reportChartRole === "备选观察图"), "expanded report images should fill the richer backup chart set when evidence exists");
 assert(expandedChartProfiles.some((profile) => profile.code === "000008" && profile.reportChartRole === "备选观察图"), "expanded report images should include a broad backup chart set when evidence exists");
 assert(expandedChartProfiles.some((profile) => profile.code === "000009"), "expanded report images should include additional qualified buy-reference charts when evidence exists");
+assert(expandedChartProfiles.some((profile) => profile.code === "000025" && profile.reportChartRole === "备选观察图"), "expanded report images should include enough backup charts for a richer visual set");
+assert(expandedChartProfiles.some((profile) => profile.code === "000026"), "expanded report images should include enough buy-reference charts for a richer visual set");
 assert(!expandedChartProfiles.some((profile) => profile.code === "000003"), "expanded report images must not add hot chase-risk candidates as filler charts");
 const previousReportImageLimit = process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT;
 const previousReportImageMin = process.env.FEISHU_REPORT_TREND_IMAGE_MIN;
 process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT = "3";
 process.env.FEISHU_REPORT_TREND_IMAGE_MIN = "2";
-assert.equal(manager.getFundReportChartLimit(), 8, "report image limit must not be configured below the rich chart floor");
-assert.equal(manager.getFundReportChartMinCount(), 8, "report image minimum must not be configured back to two or three charts");
+assert.equal(manager.getFundReportChartLimit(), 10, "report image limit must not be configured below the rich chart floor");
+assert.equal(manager.getFundReportChartMinCount(), 10, "report image minimum must not be configured back to two or three charts");
 if (previousReportImageLimit === undefined) {
   delete process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT;
 } else {
@@ -1204,8 +1208,8 @@ const sparseExplicitChartProfiles = manager.selectFundReportProfilesForAnswer([
   "2. 000001 低位修复基金A：回调完成，可分批，配图看低位。",
   "备选观察：",
   "000099 缺走势备选基金C：模型写了备选但没有走势序列。"
-].join("\n"), { minCount: 8, limit: 12 });
-assert.equal(sparseExplicitChartProfiles.length, 8, "report image selector must fill missing chart slots when explicit answer codes have no trend series");
+].join("\n"), { minCount: 10, limit: 12 });
+assert.equal(sparseExplicitChartProfiles.length, 10, "report image selector must fill missing chart slots when explicit answer codes have no trend series");
 assert(!sparseExplicitChartProfiles.some((profile) => ["000098", "000099"].includes(profile.code)), "profiles without trend series must not occupy report image slots");
 const thinChartCoverageQuality = manager.evaluateFundAnswerQuality({
   text: [
@@ -1220,11 +1224,21 @@ const thinChartCoverageQuality = manager.evaluateFundAnswerQuality({
 assert(thinChartCoverageQuality.issues.includes("insufficient_chart_linked_candidates"), "quality gate must reject answers that only support two or three report charts when more eligible candidates exist");
 const guidedChartAnswer = manager.appendFundReportChartReadingGuide("直接结论：优先分批，备选继续等触发。", expandedChartProfiles);
 assert(guidedChartAnswer.includes("配图阅读："), "final answer must append a chart reading guide when report images are attached");
-assert(guidedChartAnswer.includes("本次配图共 8 张"), "chart reading guide must summarize how many charts support the answer");
+assert(guidedChartAnswer.includes("本次配图共 10 张"), "chart reading guide must summarize how many charts support the answer");
 assert(guidedChartAnswer.includes("买入参考图"), "chart reading guide must distinguish buy-reference charts");
 assert(guidedChartAnswer.includes("备选观察图"), "chart reading guide must distinguish backup/watch charts");
 assert(guidedChartAnswer.includes("用来确认是否适合分批买入"), "buy-reference chart guide must say how the chart supports a buy decision");
 assert(guidedChartAnswer.includes("用来观察是否能从备选转入买点"), "backup chart guide must say how the chart supports a backup decision");
+const previousCardImageChunkSize = process.env.FEISHU_CARD_IMAGE_CHUNK_SIZE;
+delete process.env.FEISHU_CARD_IMAGE_CHUNK_SIZE;
+assert.equal(manager.getFeishuCardImageChunkSize(), 4, "fund report image card chunks should keep each Feishu card readable");
+const imageChunks = manager.splitFeishuCardImages(Array.from({ length: 10 }, (_, index) => ({ imageKey: `img_${index}` })));
+assert.deepEqual(imageChunks.map((chunk) => chunk.length), [4, 4, 2], "fund report images should be split into supplemental cards instead of crowding one card");
+if (previousCardImageChunkSize === undefined) {
+  delete process.env.FEISHU_CARD_IMAGE_CHUNK_SIZE;
+} else {
+  process.env.FEISHU_CARD_IMAGE_CHUNK_SIZE = previousCardImageChunkSize;
+}
 
 const deepDiveSummary = manager.buildMarketDeepDiveSummary({
   ok: true,

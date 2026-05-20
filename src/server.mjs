@@ -28,7 +28,8 @@ const MIN_FUND_COMMITTEE_OUTPUT_TOKENS = 6400;
 const MIN_FUND_QA_OUTPUT_TOKENS = 8000;
 const MIN_FUND_RECOMMENDATION_OUTPUT_TOKENS = 9600;
 const MIN_FUND_REWRITE_OUTPUT_TOKENS = 6400;
-const DEFAULT_FUND_REPORT_IMAGE_MIN = 8;
+const DEFAULT_FUND_REPORT_IMAGE_MIN = 10;
+const DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE = 4;
 const PUBLIC_DATA_TIMEOUT_MS = Number(process.env.PUBLIC_DATA_TIMEOUT_MS || 20000);
 const DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS = [
   "沪深300",
@@ -6626,7 +6627,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "必须通过 fund-actionability-evaluation 和 fund-answer-quality 质量门槛：先给直接结论，再给适合/不适合的自评估，再给执行方案。",
     "如果数据不足以支持具体基金代码，就推荐基金方向/筛选条件，并把具体代码标为待复核。",
     "回答要大胆但有边界：证据偏正面时可以给出买入或分批买入候选；不要机械地总是等待回撤。",
-    "如果下钻候选足够，回答要服务 8 张左右报告配图：主买入参考 3-4 张、备选观察 4-6 张；每只都用代码说明图上看的走势、回撤、低位、费用或风险证据。",
+    "如果下钻候选足够，回答要服务 10 张左右报告配图：主买入参考 4 张左右、备选观察 6 张左右；每只都用代码说明图上看的走势、回撤、低位、费用或风险证据。",
     "回答要像专业经理在和客户沟通：用自然中文解释把握度，不要写“信心：高。”、“Confidence: high”这类字段式短句。",
     "不要把风险写成免责声明清单。只保留会改变买入/等待/回避动作的决策边界。",
     "输出适合飞书卡片阅读，不要 Markdown 表格，不要代码块。",
@@ -6707,7 +6708,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先判断 pullbackSetup.signal、5日/10日早期转强和120日区间低位；短期涨幅偏热、20日/60日大涨且等待回撤的候选不能被包装成启动机会。",
     "如果没有抓到对应行情数据，要说明是公开数据源暂时不可用或滞后，不要简单说自己没有实时数据能力。",
     "必须通过 fund-actionability-evaluation 和 fund-answer-quality 质量门槛：前两行直接回答；有快照/下钻就引用具体字段；给明确行动、适合对象和仓位建议。",
-    "当问题涉及买入、配置、推荐或备选时，如果下钻候选足够，回答要服务 8 张左右报告配图：主买入参考和备选观察都要写代码，并说明图上看的走势、低位、回撤、费用或风险证据。",
+    "当问题涉及买入、配置、推荐或备选时，如果下钻候选足够，回答要服务 10 张左右报告配图：主买入参考和备选观察都要写代码，并说明图上看的走势、低位、回撤、费用或风险证据。",
     "回答要像专业经理在和客户沟通：用自然中文解释把握度，不要写“信心：高。”、“Confidence: high”这类字段式短句。",
     "不要把风险写成免责声明清单。只保留会改变买入/等待/回避动作的决策边界。",
     "回答中文、简洁、可执行。不要保证收益，不要给出个性化承诺。",
@@ -6815,7 +6816,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "若质检问题包含 watch_candidate_given_buy_execution，观察/排除候选不能在1万元执行里获得任何买入金额；只能写0元观察或等待条件。",
       "若质检问题包含 missing_pullback_timing_evidence，主推荐每条必须写出5日/10日早期转强、120日区间低位或距高点回撤等数字证据；若包含 missing_pullback_three_tier_execution，必须给激进/均衡/保守三档金额。",
       "若质检问题包含 missing_pullback_share_class_fee，主推荐每条必须写份额类别和费用模型，例如 C类无前端申购费但有销售服务费，或 A类有申购费但长期持有持续费率较低。",
-      "若质检问题包含 insufficient_chart_linked_candidates，必须补足 8 张左右可配图候选：主买入参考和备选观察分开写，每只都写代码、买入/备选角色、图上看的走势/回撤/低位/费用证据。",
+      "若质检问题包含 insufficient_chart_linked_candidates，必须补足 10 张左右可配图候选：主买入参考和备选观察分开写，每只都写代码、买入/备选角色、图上看的走势/回撤/低位/费用证据。",
       "若证据没有 mainCandidateCodes，必须直接说明暂未筛到合格的回调完成/低位启动主推荐，不能硬凑基金代码。",
       "保持适合飞书卡片阅读，不要 Markdown 表格或代码块。",
       "",
@@ -8635,7 +8636,7 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
       }
       return scoreDeepDiveCandidate(b, relevantThemeRadar) - scoreDeepDiveCandidate(a, relevantThemeRadar);
     });
-  const defaultLimit = preferPullbackSetup ? 18 : precious ? 8 : options.forRecommendation ? 8 : 6;
+  const defaultLimit = preferPullbackSetup ? 24 : precious ? 10 : options.forRecommendation ? 14 : 10;
   const limit = Math.max(0, Number(process.env.MARKET_DEEP_DIVE_FUND_LIMIT ?? defaultLimit));
   const selected = selectDiversifiedDeepDiveCandidates(merged, limit, {
     diversifyExposure: options.forRecommendation || precious
@@ -11086,7 +11087,9 @@ async function replyToMessage(messageId, text, options = {}) {
   const config = getEffectiveConfig();
   const token = await getTenantAccessToken(config);
   const url = new URL(`/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reply`, config.feishuBaseUrl);
-  const payload = buildFeishuReplyPayload(text, options);
+  const imageChunks = splitFeishuCardImages(options.images);
+  const primaryOptions = imageChunks.length ? { ...options, images: imageChunks[0] } : options;
+  const payload = buildFeishuReplyPayload(text, primaryOptions);
 
   try {
     await postJson(url, payload, { Authorization: `Bearer ${token}` });
@@ -11106,13 +11109,45 @@ async function replyToMessage(messageId, text, options = {}) {
       throw error;
     }
   }
+
+  if (payload.msg_type === "interactive" && imageChunks.length > 1) {
+    for (let index = 1; index < imageChunks.length; index += 1) {
+      const supplementText = buildFeishuImageSupplementText(imageChunks[index], index, imageChunks.length);
+      const supplementPayload = buildFeishuReplyPayload(supplementText, {
+        ...options,
+        kind: "chart",
+        images: imageChunks[index]
+      });
+      try {
+        await postJson(url, supplementPayload, { Authorization: `Bearer ${token}` });
+      } catch (error) {
+        console.error("[fund-report-image-chunk-reply-error]", error);
+        recordError(error, { fundReportImageChunkReplyFailures: 1 });
+        await postJson(
+          url,
+          {
+            msg_type: "text",
+            content: JSON.stringify({ text: normalizeFeishuText(supplementText) })
+          },
+          {
+            Authorization: `Bearer ${token}`
+          }
+        ).catch((fallbackError) => {
+          console.error("[fund-report-image-chunk-fallback-error]", fallbackError);
+          recordError(fallbackError, { fundReportImageChunkReplyFailures: 1 });
+        });
+      }
+    }
+  }
   const kind = options.kind || "reply";
   updateStats({
     counters: {
       repliesSent: 1,
       progressReplies: kind === "progress" ? 1 : 0,
       answersSent: kind === "answer" ? 1 : 0,
-      errorReplies: kind === "error" ? 1 : 0
+      errorReplies: kind === "error" ? 1 : 0,
+      fundReportImageReplyChunks: imageChunks.length > 1 ? imageChunks.length : 0,
+      fundReportImageSupplementReplies: Math.max(0, imageChunks.length - 1)
     },
     last: {
       lastReplyAt: new Date().toISOString(),
@@ -11127,9 +11162,11 @@ async function sendFeishuMessage(receiveId, text, options = {}) {
   const receiveIdType = options.receiveIdType || "chat_id";
   const url = new URL("/open-apis/im/v1/messages", config.feishuBaseUrl);
   url.searchParams.set("receive_id_type", receiveIdType);
+  const imageChunks = splitFeishuCardImages(options.images);
+  const primaryOptions = imageChunks.length ? { ...options, images: imageChunks[0] } : options;
   const payload = {
     receive_id: receiveId,
-    ...buildFeishuReplyPayload(text, options)
+    ...buildFeishuReplyPayload(text, primaryOptions)
   };
 
   try {
@@ -11150,13 +11187,77 @@ async function sendFeishuMessage(receiveId, text, options = {}) {
     }
   }
 
+  if (payload.msg_type === "interactive" && imageChunks.length > 1) {
+    for (let index = 1; index < imageChunks.length; index += 1) {
+      const supplementText = buildFeishuImageSupplementText(imageChunks[index], index, imageChunks.length);
+      const supplementPayload = {
+        receive_id: receiveId,
+        ...buildFeishuReplyPayload(supplementText, {
+          ...options,
+          kind: "chart",
+          images: imageChunks[index]
+        })
+      };
+      try {
+        await postJson(url, supplementPayload, { Authorization: `Bearer ${token}` });
+      } catch (error) {
+        console.error("[fund-report-image-chunk-send-error]", error);
+        recordError(error, { fundReportImageChunkReplyFailures: 1 });
+        await postJson(
+          url,
+          {
+            receive_id: receiveId,
+            msg_type: "text",
+            content: JSON.stringify({ text: normalizeFeishuText(supplementText) })
+          },
+          { Authorization: `Bearer ${token}` }
+        ).catch((fallbackError) => {
+          console.error("[fund-report-image-chunk-send-fallback-error]", fallbackError);
+          recordError(fallbackError, { fundReportImageChunkReplyFailures: 1 });
+        });
+      }
+    }
+  }
+
   updateStats({
-    counters: { proactiveRepliesSent: 1 },
+    counters: {
+      proactiveRepliesSent: 1,
+      fundReportImageReplyChunks: imageChunks.length > 1 ? imageChunks.length : 0,
+      fundReportImageSupplementReplies: Math.max(0, imageChunks.length - 1)
+    },
     last: {
       lastProactiveReplyAt: new Date().toISOString(),
       lastProactiveReplyType: options.kind || "reply"
     }
   });
+}
+
+function splitFeishuCardImages(images = []) {
+  const list = Array.isArray(images) ? images.filter((image) => image?.imageKey) : [];
+  if (!list.length) return [];
+  const chunkSize = getFeishuCardImageChunkSize();
+  const chunks = [];
+  for (let index = 0; index < list.length; index += chunkSize) {
+    chunks.push(list.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+function getFeishuCardImageChunkSize() {
+  const configured = Math.floor(Number(process.env.FEISHU_CARD_IMAGE_CHUNK_SIZE || DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE));
+  return Math.max(1, Math.min(6, Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE));
+}
+
+function buildFeishuImageSupplementText(images = [], chunkIndex = 0, chunkTotal = 1) {
+  const lines = (images || []).map((image, index) => {
+    const label = String(image?.alt || "基金报告图").replace(/\s+/g, " ").trim();
+    return `${index + 1}. ${label.slice(0, 120)}`;
+  });
+  return [
+    `配图补充（第 ${chunkIndex + 1}/${chunkTotal} 组）：`,
+    "这组继续对应上一条的买入参考和备选观察，请对照正文里的配图阅读。",
+    ...lines
+  ].filter(Boolean).join("\n");
 }
 
 function buildFeishuReplyPayload(text, options = {}) {
@@ -11251,6 +11352,7 @@ function getCardMeta(kind) {
   const meta = {
     progress: { template: "blue", title: "🔎 基金经理正在处理" },
     answer: { template: "turquoise", title: "📊 基金分析完成" },
+    chart: { template: "turquoise", title: "📈 基金配图补充" },
     portfolio: { template: "green", title: "🧭 虚拟基金经理" },
     error: { template: "red", title: "⚠️ 分析遇到问题" },
     noContent: { template: "yellow", title: "📷 请发送基金截图" },
@@ -13027,6 +13129,7 @@ export {
   evaluatePortfolioWatchlistFreshness,
   evaluateFundAnswerQuality,
   filterFocusedPullbackRankingCandidates,
+  getFeishuCardImageChunkSize,
   getFundReportChartLimit,
   getFundReportChartMinCount,
   getFundAnalysisSkillIds,
@@ -13055,5 +13158,6 @@ export {
   selectWeeklyReversalRankCandidates,
   summarizePortfolioWatchItem,
   scorePullbackSetupSeedCandidate,
-  scoreResearchDigestForPullbackSetup
+  scoreResearchDigestForPullbackSetup,
+  splitFeishuCardImages
 };

@@ -184,7 +184,7 @@ const requiredPatterns = [
     message: "fund report image defaults should show a broad buy and backup chart set when available."
   },
   {
-    pattern: /DEFAULT_FUND_REPORT_IMAGE_MIN\s*=\s*8/,
+    pattern: /DEFAULT_FUND_REPORT_IMAGE_MIN\s*=\s*10/,
     message: "fund report image defaults should target a richer chart set than two or three images."
   },
   {
@@ -230,6 +230,22 @@ const requiredPatterns = [
   {
     pattern: /配图阅读/,
     message: "fund answers must tell users how to read the attached buy/reference and backup charts."
+  },
+  {
+    pattern: /DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE\s*=\s*4/,
+    message: "fund report image cards should be split into readable chunks instead of crowding one card."
+  },
+  {
+    pattern: /splitFeishuCardImages/,
+    message: "fund report images must be sent in supplemental chunks when the visual set is large."
+  },
+  {
+    pattern: /buildFeishuImageSupplementText/,
+    message: "supplemental fund image cards must explain which buy or backup charts they contain."
+  },
+  {
+    pattern: /preferPullbackSetup\s*\?\s*24\s*:\s*precious\s*\?\s*10\s*:\s*options\.forRecommendation\s*\?\s*14\s*:\s*10/,
+    message: "market deep dive defaults must fetch enough candidates to support a broad chart set."
   },
   {
     pattern: /normalizePortfolioWatchlist/,
