@@ -6020,9 +6020,55 @@ function formatPullbackSetupCandidateLine(candidate = {}, ranked = {}) {
     formatCandidateThemeEvidence(candidate),
     trend.trendLabelText ? `趋势=${trend.trendLabelText}` : "",
     trend.entryBiasText ? `入场=${trend.entryBiasText}` : "",
-    actionability.actionText ? `动作=${actionability.actionText}` : ""
+    actionability.actionText ? `动作=${actionability.actionText}` : "",
+    `缺口=${formatPullbackSetupCandidateGaps(candidate)}`
   ].filter(Boolean);
   return `- ${fields.join(", ")}`;
+}
+
+function formatPullbackSetupCandidateGaps(candidate = {}) {
+  const gaps = buildPullbackSetupCandidateGaps(candidate);
+  return gaps.length ? gaps.slice(0, 5).join("/") : "无";
+}
+
+function buildPullbackSetupCandidateGaps(candidate = {}) {
+  const trend = candidate.trendProfile || {};
+  const gaps = [];
+  if (candidate?.ok === false || trend.ok === false) {
+    gaps.push("缺少可验证净值下钻");
+    return gaps;
+  }
+  const signal = trend.pullbackSetup?.signal || "";
+  if (!["pullback_complete", "launch_setup"].includes(signal)) {
+    gaps.push("回调完成/启动前夜信号未确认");
+  }
+  if (!isEarlyTurnSetupTrend(trend)) {
+    gaps.push("5日/10日未温和转强");
+  }
+  if (!hasPullbackLowPositionEvidence(trend)) {
+    gaps.push("120日低位或距高点回撤证据不足");
+  }
+  const return20d = finiteMetricNumber(trend.return20dPct);
+  const return60d = finiteMetricNumber(trend.return60dPct);
+  if (Number.isFinite(return20d) && return20d > 10) {
+    gaps.push(`近20日${formatFallbackPct(return20d)}偏热`);
+  } else if (!Number.isFinite(return20d)) {
+    gaps.push("缺少近20日温和转强验证");
+  }
+  if (Number.isFinite(return60d) && return60d > 24) {
+    gaps.push(`近60日${formatFallbackPct(return60d)}偏热`);
+  } else if (!Number.isFinite(return60d)) {
+    gaps.push("缺少近60日不过热验证");
+  }
+  if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback") {
+    gaps.push("仍是等待回撤而非低位启动");
+  } else if (trend.entryBias === "avoid_now") {
+    gaps.push("入场判断仍是回避");
+  }
+  if (hasHighChaseTheme(candidate)) {
+    gaps.push("题材拥挤或追涨风险未消化");
+  }
+  return [...new Set(gaps)];
 }
 
 function getCandidateThemeSignals(candidate = {}) {
@@ -7029,7 +7075,8 @@ function formatPullbackFallbackWatchCandidate(candidate = {}) {
   const reason = trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback"
     ? "短期偏热或仍需等待回撤"
     : "暂未形成主推荐信号";
-  return `${candidate.code || "待复核"} ${candidate.name || candidate.seed?.name || ""}：${reason}，近20日${formatFallbackPct(trend.return20dPct)}，近60日${formatFallbackPct(trend.return60dPct)}。`;
+  const gaps = formatPullbackSetupCandidateGaps(candidate);
+  return `${candidate.code || "待复核"} ${candidate.name || candidate.seed?.name || ""}：${reason}，近20日${formatFallbackPct(trend.return20dPct)}，近60日${formatFallbackPct(trend.return60dPct)}；还差：${gaps}。`;
 }
 
 function formatFallbackPct(value) {

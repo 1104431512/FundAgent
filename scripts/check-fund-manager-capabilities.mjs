@@ -1207,6 +1207,8 @@ assert(deepDiveSummary.includes("pullbackSetupRanking"), "deep dive summary must
 assert(deepDiveSummary.includes("backfillCodes=000004/000005"), "deep dive summary must expose secondary backfill searches when the first pullback batch has no main candidate");
 assert(deepDiveSummary.includes("mainCandidateCodes=000001"), "deep dive summary must identify main pullback/setup candidates");
 assert(deepDiveSummary.includes("watchOrRejectCodes=000003"), "deep dive summary must keep hot candidates out of main recommendations");
+assert(deepDiveSummary.includes("缺口=回调完成/启动前夜信号未确认"), "deep dive summary must expose why watch/reject candidates are not low-position launch buys");
+assert(deepDiveSummary.includes("近20日+33.41%偏热"), "deep dive summary must show concrete overheat gaps instead of only labeling candidates as watch");
 const firstBackfillBatch = manager.selectPullbackBackfillCandidates([
   { code: "000100", name: "中证500ETF联接A" },
   { code: "000101", name: "中证500ETF联接C" },
@@ -1395,6 +1397,8 @@ const deterministicNoMainFallback = manager.buildPullbackQualityFallbackAnswer({
 assert(deterministicNoMainFallback.includes("暂时买入0元"), "no-main fallback must explicitly avoid buying");
 assert(deterministicNoMainFallback.includes("观察池（不是主推荐）"), "no-main fallback must show transparent watchlist evidence instead of sounding like no search was performed");
 assert(deterministicNoMainFallback.includes("000003"), "no-main fallback may show rejected candidates as observation-only evidence");
+assert(deterministicNoMainFallback.includes("还差：回调完成/启动前夜信号未确认"), "no-main fallback must explain exactly what rejected observation candidates still lack");
+assert(deterministicNoMainFallback.includes("近60日+36.64%偏热"), "no-main fallback must surface concrete overheat evidence for rejected candidates");
 assert(!deterministicNoMainFallback.includes("推荐清单："), "no-main fallback must not create a recommendation section");
 assert(!/000003.{0,40}(?:买入|分批|配置)\d+/s.test(deterministicNoMainFallback), "no-main fallback must not assign buy amounts to rejected candidates");
 const enforcedNoMainFallback = await manager.enforceFundAnswerQuality({

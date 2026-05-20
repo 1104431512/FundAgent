@@ -672,6 +672,14 @@ const requiredPatterns = [
     message: "watch/reject pullback candidates must not receive buy amounts in execution plans."
   },
   {
+    pattern: /formatPullbackSetupCandidateGaps/,
+    message: "pullback/setup summaries must explain exactly what observation candidates still lack."
+  },
+  {
+    pattern: /还差：\$\{gaps\}/,
+    message: "no-main pullback fallback answers must expose missing setup, low-position, and overheat conditions."
+  },
+  {
     pattern: /const deterministicFallback = buildPullbackQualityFallbackAnswer[\s\S]{0,420}FUND_ANSWER_QUALITY_REWRITE/,
     message: "severe pullback/setup quality violations must use deterministic fallback before model rewrite."
   },
