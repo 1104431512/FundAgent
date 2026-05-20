@@ -214,6 +214,7 @@ assert(watchSummary.reason.includes("回调完成"), "watchlist candidates must 
 assert(watchSummary.buyTriggers.length > 0, "watchlist candidates must keep buy triggers");
 assert(watchSummary.riskNotes.length > 0, "watchlist candidates must keep risk notes");
 assert(watchSummary.feeNotes.length > 0, "watchlist candidates must keep fee/share-class notes");
+assert(watchSummary.readinessGaps.some((item) => item.includes("缺少可验证净值")), "watchlist summary must expose buy-readiness gaps when NAV evidence is missing");
 const watchlistStatusLines = manager.buildPortfolioWatchlistStatusLines([
   {
     ...normalizedWatchDb.watchlist[0],
@@ -222,6 +223,12 @@ const watchlistStatusLines = manager.buildPortfolioWatchlistStatusLines([
       navDate: "2026-05-19",
       trendSummary: "20日+4.8%，60日+7.6%，趋势回调完成，入场可买",
       trendProfile: {
+        ok: true,
+        pullbackSetup: { signal: "pullback_complete" },
+        trendLabel: "pullback_complete",
+        entryBias: "buyable_now",
+        return20dPct: 4.8,
+        return60dPct: 7.6,
         lowPositionPct120: 42.4,
         drawdownFromRecentHighPct: -7.1
       }
@@ -235,7 +242,19 @@ const watchlistStatusLines = manager.buildPortfolioWatchlistStatusLines([
     reason: "近20日涨幅略快，等待回踩。",
     buyTriggers: ["回踩不破前低"],
     riskNotes: ["若继续放量冲高则不追"],
-    feeNotes: ["C类适合短期观察"]
+    feeNotes: ["C类适合短期观察"],
+    lastSnapshot: {
+      trendProfile: {
+        ok: true,
+        pullbackSetup: { signal: "none" },
+        trendLabel: "range_or_mixed",
+        entryBias: "wait_pullback",
+        return20dPct: 8.8,
+        return60dPct: 18.2,
+        lowPositionPct120: 58.6,
+        drawdownFromRecentHighPct: -4.1
+      }
+    }
   },
   {
     code: "000003",
@@ -258,6 +277,8 @@ assert(watchlistStatusLines.includes("触发：放量站回20日均线"), "portf
 assert(watchlistStatusLines.includes("风险边界：若近20日涨幅超过10%则暂停追入"), "portfolio status answer must include risk boundaries");
 assert(watchlistStatusLines.includes("费用/份额：C类更适合短中期观察"), "portfolio status answer must include fee/share-class notes");
 assert(watchlistStatusLines.includes("最新走势：20日+4.8%"), "portfolio status answer must include latest trend evidence");
+assert(watchlistStatusLines.includes("缺口=低位/启动/不过热条件已满足"), "buy-preparation queue must tell managers when ready candidates have no remaining setup gap");
+assert(watchlistStatusLines.includes("买入缺口：还差回调完成或启动前夜信号"), "watchlist detail must expose what waiting candidates still lack before buying");
 assert.equal(
   manager.normalizePortfolioWatchlistUpdates([{ operation: "REMOVE", code: "000001", reason: "主题过热" }])[0].operation,
   "REMOVE",
@@ -523,6 +544,7 @@ const readinessQueue = manager.buildPortfolioDecisionReadinessQueue([
   { code: "000010", name: "中证A500ETF联接C", status: "ready", priority: 1, reason: "低位回调", buyTriggers: ["温和转强"], riskNotes: ["不追涨"] }
 ], [verifiedSeedProfile]);
 assert.equal(readinessQueue[0].firstTrigger, "温和转强", "portfolio decision prompt must expose ready candidate triggers");
+assert(readinessQueue[0].readinessGaps.some((item) => item.includes("低位/启动/不过热条件已满足")), "portfolio decision prompt must expose remaining buy-readiness gaps or confirmation status");
 const fallbackReadyActions = manager.buildPortfolioReadyWatchlistReviewActions([
   { code: "000010", name: "中证A500ETF联接C", status: "ready", priority: 1, reason: "低位回调", buyTriggers: ["温和转强"], riskNotes: ["不追涨"], feeNotes: ["C类短期更合适"] }
 ], [], { profiles: [verifiedSeedProfile] });

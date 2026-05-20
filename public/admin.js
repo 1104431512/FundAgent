@@ -436,6 +436,7 @@ function selectWatchlistActionItems(items = [], status, limit) {
 function renderWatchlistActionCard(item) {
   const statusClass = getWatchlistStatusClass(item.status);
   const trigger = item.buyTriggers?.[0] || item.positionPlan || "等待下一次复查";
+  const gap = item.readinessGaps?.[0] || "等待下一次复查";
   const risk = item.riskNotes?.[0] || "风险边界待补充";
   const fee = item.feeNotes?.[0] || "费用/份额待复核";
   const trend = getFundSnapshotTrendText(item.lastSnapshot || {});
@@ -448,6 +449,7 @@ function renderWatchlistActionCard(item) {
       <p>${escapeHtml(item.reason || item.candidateRole || "暂无备选理由")}</p>
       ${trend && trend !== "走势数据不足" ? `<small>${escapeHtml(trend)}</small>` : ""}
       <small>触发：${escapeHtml(trigger)}</small>
+      <small>缺口：${escapeHtml(gap)}</small>
       <small>风险：${escapeHtml(risk)}</small>
       <small>费用：${escapeHtml(fee)}</small>
       <small>${escapeHtml(item.reviewDate || "下一次盘前观察复查")}</small>
@@ -492,6 +494,7 @@ function renderWatchlistItem(item) {
       <div class="watchlist-evidence-grid">
         ${renderWatchlistEvidenceBlock("备选证据", item.setupEvidence)}
         ${renderWatchlistEvidenceBlock("买入触发", item.buyTriggers)}
+        ${renderWatchlistEvidenceBlock("买入缺口", item.readinessGaps)}
         ${renderWatchlistEvidenceBlock("风险边界", item.riskNotes)}
         ${renderWatchlistEvidenceBlock("费用/份额", item.feeNotes)}
         ${renderWatchlistEvidenceBlock("净值快照", snapshotEvidence)}

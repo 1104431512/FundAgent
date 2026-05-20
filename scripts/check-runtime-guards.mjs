@@ -344,6 +344,18 @@ const requiredPatterns = [
     message: "portfolio status replies must summarize ready and waiting candidates as a buy-preparation queue."
   },
   {
+    pattern: /buildPortfolioWatchReadinessGaps/,
+    message: "portfolio watchlist must expose the remaining buy-readiness gaps for ready/waiting candidates."
+  },
+  {
+    pattern: /readinessGaps/,
+    message: "portfolio watchlist API/model payloads must carry buy-readiness gap details."
+  },
+  {
+    pattern: /买入缺口/,
+    message: "manager-facing and admin-facing watchlist views must show what is still missing before buying."
+  },
+  {
     pattern: /formatWatchlistSnapshotEvidence/,
     message: "admin portfolio watchlist must show NAV/trend snapshot evidence for candidates."
   },

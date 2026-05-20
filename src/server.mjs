@@ -2109,6 +2109,7 @@ function buildPortfolioDecisionReadinessQueue(watchlist = [], profiles = []) {
         firstRisk: item.riskNotes?.[0] || "",
         positionPlan: item.positionPlan || "",
         trendEvidence: profile ? formatPortfolioSeedVerifiedTrendEvidence(profile) : item.lastSnapshot?.trendSummary || "",
+        readinessGaps: buildPortfolioWatchReadinessGaps(item, profile),
         feeNotes: item.feeNotes || [],
         reviewDate: item.reviewDate || ""
       };
@@ -2586,6 +2587,7 @@ function summarizePortfolioWatchlistForModel(watchlist = []) {
       riskNotes: item.riskNotes,
       feeNotes: item.feeNotes,
       positionPlan: item.positionPlan,
+      readinessGaps: buildPortfolioWatchReadinessGaps(item),
       reviewDate: item.reviewDate,
       trendSummary: item.lastSnapshot?.trendSummary || "",
       updatedAt: item.updatedAt
@@ -2608,6 +2610,7 @@ function summarizePortfolioWatchItem(item = {}) {
     riskNotes: item.riskNotes || [],
     feeNotes: item.feeNotes || [],
     positionPlan: item.positionPlan || "",
+    readinessGaps: buildPortfolioWatchReadinessGaps(item),
     reviewDate: item.reviewDate || "",
     dataBasis: item.dataBasis || [],
     source: item.source || "",
@@ -2616,6 +2619,52 @@ function summarizePortfolioWatchItem(item = {}) {
     addedAt: item.addedAt || "",
     updatedAt: item.updatedAt || ""
   };
+}
+
+function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
+  const evidence = profile || item.lastSnapshot || null;
+  const trend = evidence?.trendProfile || {};
+  const gaps = [];
+  if (!evidence || !trend.ok) {
+    gaps.push("缺少可验证净值/走势下钻，不能进入买入执行。");
+    return gaps;
+  }
+  const signal = trend.pullbackSetup?.signal || "";
+  if (!["pullback_complete", "launch_setup"].includes(signal)) {
+    gaps.push("还差回调完成或启动前夜信号。");
+  }
+  if (!hasPullbackLowPositionEvidence(trend)) {
+    gaps.push("还差120日低位或距高点回撤证据。");
+  }
+  const return20d = finiteMetricNumber(trend.return20dPct);
+  const return60d = finiteMetricNumber(trend.return60dPct);
+  if (!Number.isFinite(return20d)) {
+    gaps.push("缺少近20日涨幅验证。");
+  } else if (return20d > 10) {
+    gaps.push(`近20日${formatFallbackPct(return20d)}，需降温到10%以内。`);
+  }
+  if (!Number.isFinite(return60d)) {
+    gaps.push("缺少近60日涨幅验证。");
+  } else if (return60d > 24) {
+    gaps.push(`近60日${formatFallbackPct(return60d)}，需消化到24%以内。`);
+  }
+  if (trend.entryBias === "wait_pullback") {
+    gaps.push("入场判断仍是等待回撤。");
+  } else if (trend.entryBias === "avoid_now") {
+    gaps.push("入场判断仍是暂时回避。");
+  }
+  if (evidence.actionability?.action === "wait") {
+    gaps.push("可操作性仍是等待。");
+  } else if (evidence.actionability?.action === "avoid") {
+    gaps.push("可操作性仍是回避。");
+  }
+  if (hasHighChaseTheme(evidence) || hasHighChaseTheme(item)) {
+    gaps.push("题材拥挤或追涨风险仍需下降。");
+  }
+  if (!gaps.length && item.status === "ready") {
+    return ["低位/启动/不过热条件已满足，下一次盘前确认后再分批评估。"];
+  }
+  return gaps;
 }
 
 function formatPortfolioWatchStatus(value) {
@@ -3710,7 +3759,8 @@ function buildPortfolioWatchlistActionQueueLines(watchlist = []) {
     const status = item.status === "ready" ? "接近可买" : "等待回调";
     const trigger = item.buyTriggers?.[0] || item.positionPlan || "等待下一次复查";
     const risk = item.riskNotes?.[0] || "风险边界待补充";
-    lines.push(`- ${item.code} ${item.name || ""}（${status}）：触发=${trigger}；风险=${risk}；复查=${item.reviewDate || "下一次盘前观察"}`);
+    const gap = buildPortfolioWatchReadinessGaps(item)[0] || "等待下一次复查";
+    lines.push(`- ${item.code} ${item.name || ""}（${status}）：触发=${trigger}；缺口=${gap}；风险=${risk}；复查=${item.reviewDate || "下一次盘前观察"}`);
   }
   return lines;
 }
@@ -3732,6 +3782,7 @@ function formatPortfolioWatchDetailLine(item = {}) {
     item.riskNotes?.length ? `风险边界：${item.riskNotes.slice(0, 2).join("；")}` : "",
     item.feeNotes?.length ? `费用/份额：${item.feeNotes.slice(0, 2).join("；")}` : "",
     item.positionPlan ? `仓位计划：${item.positionPlan}` : "",
+    item.readinessGaps?.length ? `买入缺口：${item.readinessGaps.slice(0, 3).join("；")}` : "",
     trendEvidence ? `最新走势：${trendEvidence}` : "",
     item.reviewDate ? `复查：${item.reviewDate}` : ""
   ].filter(Boolean);
@@ -11997,6 +12048,7 @@ export {
   buildMarketDeepDiveSummary,
   buildPortfolioDecisionReadinessQueue,
   buildPortfolioReadyWatchlistReviewActions,
+  buildPortfolioWatchReadinessGaps,
   buildPortfolioWatchlistRecheckUpdates,
   buildPortfolioWatchlistStatusLines,
   buildPortfolioWatchlistUpdatesFromAnswerProfiles,
