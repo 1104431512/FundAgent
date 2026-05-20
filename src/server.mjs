@@ -5162,12 +5162,13 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
     }
   });
 
+  const deterministicFallback = buildPullbackQualityFallbackAnswer({ userText, evidence, issues: evaluation.issues });
+  if (deterministicFallback) {
+    updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
+    return deterministicFallback;
+  }
+
   if (String(process.env.FUND_ANSWER_QUALITY_REWRITE ?? "true") === "false") {
-    const deterministicFallback = buildPullbackQualityFallbackAnswer({ userText, evidence, issues: evaluation.issues });
-    if (deterministicFallback) {
-      updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
-      return deterministicFallback;
-    }
     return localizedText;
   }
 
@@ -11252,6 +11253,7 @@ export {
   classifyMessageIntent,
   computeTrendProfile,
   defaultSkillIdsForWorkflow,
+  enforceFundAnswerQuality,
   evaluateFundAnswerQuality,
   filterFocusedPullbackRankingCandidates,
   getFundAnalysisSkillIds,

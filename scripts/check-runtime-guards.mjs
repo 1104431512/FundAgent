@@ -268,6 +268,14 @@ const requiredPatterns = [
     message: "watch/reject pullback candidates must not receive buy amounts in execution plans."
   },
   {
+    pattern: /const deterministicFallback = buildPullbackQualityFallbackAnswer[\s\S]{0,420}FUND_ANSWER_QUALITY_REWRITE/,
+    message: "severe pullback/setup quality violations must use deterministic fallback before model rewrite."
+  },
+  {
+    pattern: /enforceFundAnswerQuality/,
+    message: "fund answer quality enforcement must stay testable for deterministic pullback fallback behavior."
+  },
+  {
     pattern: /resolveFundMentionsFromText/,
     message: "text-only fund screening must resolve fund names into codes before enrichment."
   },

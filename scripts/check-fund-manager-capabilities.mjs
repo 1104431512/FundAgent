@@ -874,6 +874,26 @@ assert(deterministicNoMainFallback.includes("观察池（不是主推荐）"), "
 assert(deterministicNoMainFallback.includes("000003"), "no-main fallback may show rejected candidates as observation-only evidence");
 assert(!deterministicNoMainFallback.includes("推荐清单："), "no-main fallback must not create a recommendation section");
 assert(!/000003.{0,40}(?:买入|分批|配置)\d+/s.test(deterministicNoMainFallback), "no-main fallback must not assign buy amounts to rejected candidates");
+const enforcedNoMainFallback = await manager.enforceFundAnswerQuality({
+  text: [
+    "推荐清单：",
+    "1. 000003 追涨观察基金A：建议分批买入1000元。",
+    "1万元执行：激进1000元，均衡500元。"
+  ].join("\n"),
+  workflow: "fund_recommendation",
+  userText: setupQuery,
+  intent: { workflow: "fund_recommendation", mode: "pullback_setup_discovery" },
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      candidates: [{ ...hotDigest, code: "000003", name: "追涨观察基金A" }]
+    }
+  }
+});
+assert(enforcedNoMainFallback.includes("直接结论：这次先不买"), "quality enforcement must immediately use deterministic fallback for severe pullback violations");
+assert(enforcedNoMainFallback.includes("暂时买入0元"), "quality enforcement fallback must keep rejected pullback candidates at zero buy amount");
+assert(!enforcedNoMainFallback.includes("推荐清单："), "quality enforcement fallback must not preserve a bad recommendation section when no main candidate exists");
 
 async function assertIntent({ userText, expectedWorkflow, expectedReason, expectedMode = null, requiredSkills = [] }) {
   const routed = await manager.classifyMessageIntent({
