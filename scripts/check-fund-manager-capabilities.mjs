@@ -47,6 +47,17 @@ assert(
   setupSkillContext.indexOf("# Skill: fund-theme-radar") < setupSkillContext.indexOf("# Skill: fund-answer-quality"),
   "skill context must preserve requested workflow priority order"
 );
+assert(
+  !serverSource.includes("Math.min(getConfiguredMaxOutputTokens(), 5200)") &&
+    !serverSource.includes("Math.min(getConfiguredMaxOutputTokens(), 4800)"),
+  "fund analyst and committee stages must not be capped below the richer workflow token budget"
+);
+assert(
+  serverSource.includes("getFundWorkflowMaxOutputTokens(MIN_FUND_ANALYST_OUTPUT_TOKENS)") &&
+    serverSource.includes("getFundWorkflowMaxOutputTokens(MIN_FUND_COMMITTEE_OUTPUT_TOKENS)"),
+  "intermediate fund workflow stages must use explicit high token floors"
+);
+assert(!serverSource.includes("maxTokens: 900"), "fund screenshot extraction must not use the old 900-token cap");
 
 await assertIntent({
   userText: "黄金里面找一个回调完成、低位、准备启动的基金",

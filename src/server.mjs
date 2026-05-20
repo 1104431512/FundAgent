@@ -22,6 +22,9 @@ const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS || 120000);
 const DEFAULT_MODEL_HTTP_TIMEOUT_MS = Number(process.env.MODEL_HTTP_TIMEOUT_MS ?? 0);
 const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 9600;
 const DEFAULT_REPLY_MAX_CHARS = 18000;
+const MIN_FUND_EXTRACTION_OUTPUT_TOKENS = 1800;
+const MIN_FUND_ANALYST_OUTPUT_TOKENS = 7200;
+const MIN_FUND_COMMITTEE_OUTPUT_TOKENS = 6400;
 const MIN_FUND_QA_OUTPUT_TOKENS = 8000;
 const MIN_FUND_RECOMMENDATION_OUTPUT_TOKENS = 9600;
 const MIN_FUND_REWRITE_OUTPUT_TOKENS = 6400;
@@ -4847,7 +4850,12 @@ async function extractFundFactsWithModel({ images, userText, messageType }) {
   ].join("\n");
 
   try {
-    const raw = await callModel({ systemText, userPrompt, images, maxTokens: 900 });
+    const raw = await callModel({
+      systemText,
+      userPrompt,
+      images,
+      maxTokens: getFundWorkflowMaxOutputTokens(MIN_FUND_EXTRACTION_OUTPUT_TOKENS)
+    });
     const parsed = parseJsonFromModel(raw);
     const fundCodes = mergeFundCodes(extractFundCodes(userText), parsed.fundCodes || []);
     updateStats({
@@ -5061,7 +5069,7 @@ async function buildAnalystReviewWithModel({ images, userText, messageType, extr
     isComparison ? "4. 初步排序：给出首选、备选、观察/剔除对象和原因，不要给最终用户话术。" : "4. 初步评分区间：给一个区间和原因，不要给最终动作。"
   ].join("\n");
 
-  const maxTokens = Math.max(3600, Math.min(getConfiguredMaxOutputTokens(), 5200));
+  const maxTokens = getFundWorkflowMaxOutputTokens(MIN_FUND_ANALYST_OUTPUT_TOKENS);
   const review = await callModel({ systemText, userPrompt, images, maxTokens });
   updateStats({
     counters: { analystReviewCalls: 1 },
@@ -5104,7 +5112,7 @@ async function buildCommitteeVoteWithModel({ userText, messageType, extracted, e
     "6. 10000 元草案：激进、均衡、保守各自金额。"
   ].join("\n");
 
-  const maxTokens = Math.max(3200, Math.min(getConfiguredMaxOutputTokens(), 4800));
+  const maxTokens = getFundWorkflowMaxOutputTokens(MIN_FUND_COMMITTEE_OUTPUT_TOKENS);
   const vote = await callModel({ systemText, userPrompt, images: [], maxTokens });
   updateStats({
     counters: { committeeVoteCalls: 1 },

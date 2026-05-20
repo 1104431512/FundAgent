@@ -104,6 +104,42 @@ const requiredPatterns = [
     message: "fund recommendation workflow must have enough output budget for evidence, fees, execution tiers, and chart context."
   },
   {
+    pattern: /MIN_FUND_ANALYST_OUTPUT_TOKENS\s*=\s*7200/,
+    message: "fund analyst review must have enough output budget to preserve the full multi-skill evidence chain."
+  },
+  {
+    pattern: /MIN_FUND_COMMITTEE_OUTPUT_TOKENS\s*=\s*6400/,
+    message: "fund committee voting must have enough output budget for bull/bear/risk sizing before final synthesis."
+  },
+  {
+    pattern: /MIN_FUND_EXTRACTION_OUTPUT_TOKENS\s*=\s*1800/,
+    message: "fund screenshot extraction must not be constrained by the old tiny JSON output cap."
+  },
+  {
+    pattern: /buildAnalystReviewWithModel[\s\S]{0,1600}getFundWorkflowMaxOutputTokens\(MIN_FUND_ANALYST_OUTPUT_TOKENS\)/,
+    message: "fund analyst review must respect the shared high-budget workflow floor instead of a fixed low cap."
+  },
+  {
+    pattern: /buildCommitteeVoteWithModel[\s\S]{0,1600}getFundWorkflowMaxOutputTokens\(MIN_FUND_COMMITTEE_OUTPUT_TOKENS\)/,
+    message: "fund committee vote must respect the shared high-budget workflow floor instead of a fixed low cap."
+  },
+  {
+    pattern: /modelMaxOutputTokens\s*=\s*Number\(payload\.modelMaxOutputTokens\s*\|\|\s*9600\)/,
+    message: "admin config must not silently save the obsolete 4800-token model cap."
+  },
+  {
+    pattern: /replyMaxChars\s*=\s*Number\(payload\.replyMaxChars\s*\|\|\s*18000\)/,
+    message: "admin config must not silently save the obsolete 9000-character reply cap."
+  },
+  {
+    pattern: /name="modelMaxOutputTokens"[\s\S]{0,80}max="32000"/,
+    message: "admin config UI must allow larger model output budgets for richer fund workflows."
+  },
+  {
+    pattern: /name="replyMaxChars"[\s\S]{0,80}max="30000"/,
+    message: "admin config UI must allow longer fund answers when the evidence and charts need context."
+  },
+  {
     pattern: /PULLBACK_SETUP_RANK_LIMIT\s*\|\|\s*60/,
     message: "pullback/setup discovery must keep a wide ranking recall pool."
   },
