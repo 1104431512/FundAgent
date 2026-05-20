@@ -692,6 +692,14 @@ const requiredPatterns = [
     message: "pullback/setup discovery must tag low-base launch-eve candidates for ranking and watchlist persistence."
   },
   {
+    pattern: /isLowBaseLaunchWatchSeed/,
+    message: "portfolio watchlist persistence must recognize low-base launch-eve candidates explicitly."
+  },
+  {
+    pattern: /启动前夜观察池/,
+    message: "low-base launch-eve watchlist seeds must stay in a pre-buy observation plan until NAV verification confirms the setup."
+  },
+  {
     pattern: /filterFocusedPullbackRankingCandidates/,
     message: "focused pullback/setup requests must filter broad ranking scans to the requested theme."
   },

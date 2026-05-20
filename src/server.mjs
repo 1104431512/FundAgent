@@ -2050,7 +2050,11 @@ function selectPortfolioWatchlistSeedCandidates(candidates = [], watchlist = [],
       Number(candidate.portfolioWatchlistSeedScore || 0) >= minScore
       && !isPortfolioWatchlistChaseSeed(candidate)
     )
-    .sort((a, b) => Number(b.portfolioWatchlistSeedScore || 0) - Number(a.portfolioWatchlistSeedScore || 0));
+    .sort((a, b) => {
+      const scoreDiff = Number(b.portfolioWatchlistSeedScore || 0) - Number(a.portfolioWatchlistSeedScore || 0);
+      if (scoreDiff) return scoreDiff;
+      return Number(isLowBaseLaunchWatchSeed(b)) - Number(isLowBaseLaunchWatchSeed(a));
+    });
 
   return selectDiversifiedDeepDiveCandidates(scored, limit, { diversifyExposure: true });
 }
@@ -2074,6 +2078,32 @@ function isPortfolioWatchlistChaseSeed(candidate = {}) {
   );
 }
 
+function isLowBaseLaunchWatchSeed(candidate = {}) {
+  const text = [
+    candidate.name || "",
+    candidate.type || "",
+    candidate.setupDiscoverySource || "",
+    ...(candidate.discoverySources || []),
+    ...(candidate.keywords || [])
+  ].join(" ");
+  return /低位启动前夜候选|low_base_turn_scan/.test(text);
+}
+
+function formatPortfolioWatchSeedKind(candidate = {}) {
+  if (isLowBaseLaunchWatchSeed(candidate)) return "低位启动前夜候选";
+  const text = `${candidate.name || ""} ${(candidate.keywords || []).join(" ")} ${candidate.setupDiscoverySource || ""}`;
+  if (/近1周低位转强候选|weekly_reversal_scan/.test(text)) return "近1周低位转强候选";
+  return "低位回调召回候选";
+}
+
+function formatPortfolioWatchSeedCandidateRole(status, seedKind) {
+  if (status === "blocked") return "追涨风险拦截候选";
+  if (status === "ready") {
+    return seedKind === "低位启动前夜候选" ? "净值验证低位启动前夜备选" : "净值验证低位启动备选";
+  }
+  return seedKind === "低位启动前夜候选" ? "低位启动前夜观察备选" : "回调观察备选";
+}
+
 function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = [], options = {}) {
   const profiles = Array.isArray(options) ? options : options.profiles || [];
   const profileByCode = new Map((profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
@@ -2092,6 +2122,7 @@ function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = [], optio
     const verifiedTrendEvidence = formatPortfolioSeedVerifiedTrendEvidence(profile);
     const statusReason = formatPortfolioSeedStatusReason(status, profile);
     const oneYearFeeCost = toNumber(profile?.fees?.feeImpact?.oneYearCostPer10000);
+    const seedKind = formatPortfolioWatchSeedKind(candidate);
     return {
       operation: "UPSERT",
       code: candidate.code,
@@ -2099,16 +2130,18 @@ function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = [], optio
       shareClass,
       type: candidate.type || profile?.type || "",
       status,
-      priority: scorePortfolioWatchSeedPriority(seedScore, status),
-      candidateRole: status === "ready" ? "净值验证低位启动备选" : status === "blocked" ? "追涨风险拦截候选" : "回调观察备选",
+      priority: scorePortfolioWatchSeedPriority(seedScore, status, seedKind),
+      candidateRole: formatPortfolioWatchSeedCandidateRole(status, seedKind),
       reason: [
         `系统低位回调召回评分 ${round(seedScore, 1)}。`,
+        `召回定位：${seedKind}。`,
         statusReason,
         returnEvidence || "短期收益结构待复核。",
         verifiedTrendEvidence,
         themeEvidence || "题材轮动信号待复核。"
       ].filter(Boolean).join(" "),
       setupEvidence: [
+        `召回定位：${seedKind}`,
         verifiedTrendEvidence,
         returnEvidence,
         themeEvidence,
@@ -2136,7 +2169,9 @@ function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = [], optio
         ? "触发后先作为卫星仓小额分批，不直接重仓。"
         : status === "blocked"
           ? "暂不买入；只有重新回到低位、回撤完成并消化追涨风险后才复核。"
-          : "先放入观察池，等待回调完成和走势确认。",
+          : seedKind === "低位启动前夜候选"
+            ? "先放入启动前夜观察池；只等净值下钻确认回调完成、低位和早期转强后小额分批。"
+            : "先放入观察池，等待回调完成和走势确认。",
       reviewDate: "下一次盘前观察或每日决策复核",
       dataBasis: [
         candidate.setupDiscoverySource ? `召回来源：${candidate.setupDiscoverySource}` : "",
@@ -2728,11 +2763,11 @@ function formatPortfolioFeeVerificationEvidence(profile = {}) {
   ].filter(Boolean).join("，");
 }
 
-function scorePortfolioWatchSeedPriority(seedScore, status) {
+function scorePortfolioWatchSeedPriority(seedScore, status, seedKind = "") {
   if (status === "blocked") return 5;
-  if (status === "ready" && seedScore >= 72) return 1;
+  if (status === "ready" && (seedScore >= 72 || seedKind === "低位启动前夜候选")) return 1;
   if (status === "ready") return 2;
-  if (status === "waiting_pullback" && seedScore >= 64) return 3;
+  if (status === "waiting_pullback" && (seedScore >= 64 || seedKind === "低位启动前夜候选")) return 3;
   if (seedScore >= 56) return 4;
   return 4;
 }

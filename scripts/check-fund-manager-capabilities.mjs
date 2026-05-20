@@ -488,6 +488,7 @@ assert(
 );
 const portfolioWatchlistSeeds = manager.selectPortfolioWatchlistSeedCandidates([
   weeklyChaseSeed,
+  { ...lowBaseTurnSeed, keywords: ["低位启动前夜候选"], setupDiscoverySource: "low_base_turn_scan" },
   weeklyTurnSeed,
   { code: "000013", name: "已有候选基金C", type: "指数型基金", oneWeekPct: 2.1, oneMonthPct: 3.2, threeMonthPct: -4.5, sixMonthPct: -8.4 }
 ], [
@@ -495,18 +496,23 @@ const portfolioWatchlistSeeds = manager.selectPortfolioWatchlistSeedCandidates([
 ], [], { limit: 3, minScore: 52 });
 assert.deepEqual(
   portfolioWatchlistSeeds.map((item) => item.code),
-  ["000010"],
-  "portfolio watchlist seed selection must add low-position weekly turns while rejecting chases and existing watchlist items"
+  ["000014", "000010"],
+  "portfolio watchlist seed selection must prioritize low-base launch-eve candidates while rejecting chases and existing watchlist items"
 );
 const portfolioSeedUpdates = manager.buildPortfolioWatchlistUpdatesFromSeedCandidates(portfolioWatchlistSeeds);
 assert.equal(portfolioSeedUpdates[0].source, "deterministic_pullback_recall", "portfolio watchlist seeds must be traceable to deterministic pullback recall");
 assert.equal(portfolioSeedUpdates[0].status, "waiting_pullback", "portfolio watchlist seeds without NAV verification must not be marked ready");
 assert(portfolioSeedUpdates[0].reason.includes("系统低位回调召回评分"), "portfolio watchlist seed must keep a detailed backup reason");
+assert(portfolioSeedUpdates[0].reason.includes("召回定位：低位启动前夜候选"), "portfolio watchlist seed must preserve low-base launch-eve positioning in backup reason");
+assert(portfolioSeedUpdates[0].candidateRole.includes("低位启动前夜观察"), "low-base launch-eve seeds must be clearly labeled in the watchlist role");
 assert(portfolioSeedUpdates[0].reason.includes("待净值下钻确认"), "portfolio watchlist seed must say unverified ranking recalls are only watch candidates");
 assert(portfolioSeedUpdates[0].setupEvidence.length > 0, "portfolio watchlist seed must include setup evidence");
+assert(portfolioSeedUpdates[0].setupEvidence.some((item) => item.includes("低位启动前夜候选")), "portfolio watchlist seed must keep launch-eve setup evidence");
 assert(portfolioSeedUpdates[0].buyTriggers.length > 0, "portfolio watchlist seed must include buy triggers");
 assert(portfolioSeedUpdates[0].riskNotes.length > 0, "portfolio watchlist seed must include risk notes");
 assert(portfolioSeedUpdates[0].feeNotes.length > 0, "portfolio watchlist seed must include fee/share-class notes");
+assert(portfolioSeedUpdates[0].positionPlan.includes("启动前夜观察池"), "low-base launch-eve seeds must get a stricter pre-buy observation plan");
+assert.equal(portfolioSeedUpdates[0].priority, 3, "low-base launch-eve seeds should enter the actionable watch queue ahead of generic waiting candidates");
 const verifiedSeedProfile = {
   ok: true,
   code: "000010",
@@ -533,8 +539,10 @@ const verifiedSeedProfile = {
   },
   sources: ["https://fund.eastmoney.com/000010.html"]
 };
+const weeklyWatchlistSeed = portfolioWatchlistSeeds.find((item) => item.code === "000010");
+assert(weeklyWatchlistSeed, "portfolio watchlist seed selection must still keep generic weekly-turn candidates after low-base candidates");
 const verifiedSeedUpdates = manager.buildPortfolioWatchlistUpdatesFromSeedCandidates([
-  { ...portfolioWatchlistSeeds[0], portfolioWatchlistSeedScore: 72 }
+  { ...weeklyWatchlistSeed, portfolioWatchlistSeedScore: 72 }
 ], { profiles: [verifiedSeedProfile] });
 assert.equal(verifiedSeedUpdates[0].status, "ready", "verified low-position pullback seed can become ready");
 assert(verifiedSeedUpdates[0].reason.includes("已用净值下钻验证"), "ready seed must explain that NAV trend verification passed");
