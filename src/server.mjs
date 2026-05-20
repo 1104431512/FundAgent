@@ -48,7 +48,20 @@ const DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS = [
   "半导体",
   "传媒",
   "机器人",
-  "人工智能"
+  "人工智能",
+  "中证2000",
+  "科创100",
+  "上证50",
+  "央企",
+  "国企",
+  "基建",
+  "房地产",
+  "家电",
+  "农业",
+  "畜牧",
+  "有色金属",
+  "电力",
+  "公用事业"
 ];
 const DEFAULT_PORTFOLIO_MANAGER_PROFILE = [
   "定位：教育性虚拟基金经理，不进行真实交易；先保护本金，再在证据明确时参与基金主题轮动。",
@@ -7106,6 +7119,14 @@ function inferFocusedFundSearchKeywords(userText) {
     { needles: ["医药", "医疗", "创新药"], keywords: ["医药", "医疗", "创新药"] },
     { needles: ["港股", "恒生", "香港"], keywords: ["港股", "恒生"] },
     { needles: ["红利", "高股息"], keywords: ["红利", "高股息"] },
+    { needles: ["小盘", "微盘", "中证2000"], keywords: ["中证2000", "中证1000"] },
+    { needles: ["国企", "央企", "中特估"], keywords: ["国企", "央企"] },
+    { needles: ["基建", "建筑"], keywords: ["基建", "建筑"] },
+    { needles: ["地产", "房地产"], keywords: ["房地产", "地产"] },
+    { needles: ["家电"], keywords: ["家电"] },
+    { needles: ["农业", "养殖", "畜牧"], keywords: ["农业", "畜牧"] },
+    { needles: ["有色", "铜", "铝"], keywords: ["有色金属", "有色"] },
+    { needles: ["电力", "公用"], keywords: ["电力", "公用事业"] },
     { needles: ["纳斯达克", "标普", "美股"], keywords: ["纳斯达克", "标普500"] },
     { needles: ["越南"], keywords: ["越南"] },
     { needles: ["印度"], keywords: ["印度"] },
@@ -7155,7 +7176,7 @@ function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
     .map((item) => item.trim())
     .filter(Boolean);
   return [...new Set([...(configured.length ? configured : DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS), ...radarKeywords])]
-    .slice(0, Number(process.env.PULLBACK_SETUP_KEYWORD_LIMIT || 24));
+    .slice(0, Number(process.env.PULLBACK_SETUP_KEYWORD_LIMIT || 32));
 }
 
 async function fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar = []) {
@@ -7207,6 +7228,14 @@ function buildFocusedKeywordAliases(keywords = []) {
     [["医药", "医疗", "创新药"], ["医药", "医疗", "创新药", "生物医药"]],
     [["港股", "恒生"], ["港股", "恒生", "香港"]],
     [["红利", "高股息"], ["红利", "高股息"]],
+    [["小盘", "微盘", "中证2000"], ["小盘", "微盘", "中证2000", "中证1000"]],
+    [["国企", "央企", "中特估"], ["国企", "央企", "中特估", "一带一路"]],
+    [["基建", "建筑"], ["基建", "建筑", "工程"]],
+    [["地产", "房地产"], ["地产", "房地产"]],
+    [["家电"], ["家电"]],
+    [["农业", "养殖", "畜牧"], ["农业", "养殖", "畜牧"]],
+    [["有色", "有色金属", "铜", "铝"], ["有色", "有色金属", "铜", "铝"]],
+    [["电力", "公用事业"], ["电力", "公用事业", "公用"]],
     [["纳斯达克", "标普500"], ["纳斯达克", "标普", "美股"]],
     [["越南"], ["越南"]],
     [["印度"], ["印度"]],
@@ -11985,6 +12014,7 @@ export {
   getFundRecommendationSkillIds,
   guardPortfolioWatchlistReadyUpdate,
   ensurePortfolioReadyWatchlistReviewed,
+  inferPullbackSetupSearchKeywords,
   isGenericPullbackSetupRequest,
   isPullbackSetupRequest,
   mergeCandidateFunds,

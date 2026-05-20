@@ -355,6 +355,25 @@ assert.deepEqual(
 assert(serverSource.includes('metric: "zzf"'), "pullback setup recall must directly scan one-week ranking data");
 assert(serverSource.includes("PULLBACK_SETUP_WEEKLY_RANK_LIMIT || 160"), "one-week ranking scan must use a wider pool to catch mild early turns after hot weekly leaders");
 assert(serverSource.includes("PULLBACK_SETUP_BACKFILL_ROUNDS || 3"), "pullback setup deep-dive must keep searching beyond a single backfill batch");
+const genericSetupKeywords = manager.inferPullbackSetupSearchKeywords(setupQuery, []);
+for (const keyword of ["中证2000", "科创100", "央企", "国企", "基建", "房地产", "有色金属", "电力", "公用事业"]) {
+  assert(genericSetupKeywords.includes(keyword), `generic pullback setup recall must include low-position rotation keyword: ${keyword}`);
+}
+assert(genericSetupKeywords.length > 24, "generic pullback setup recall must expand beyond the old narrow 24-keyword pool");
+assert.deepEqual(
+  manager.inferPullbackSetupSearchKeywords("小盘低位刚要启动", []),
+  ["中证2000", "中证1000"],
+  "focused pullback setup recall must understand small-cap/CSI2000 requests"
+);
+assert.deepEqual(
+  manager.filterFocusedPullbackRankingCandidates([
+    { code: "000020", name: "中证2000ETF联接C", type: "指数型基金", keywords: ["近1周低位转强候选"] },
+    { code: "000021", name: "央企红利ETF联接C", type: "指数型基金", keywords: ["近1周低位转强候选"] },
+    { code: "000022", name: "新能源主题基金C", type: "股票型基金", keywords: ["近1周低位转强候选"] }
+  ], ["小盘"]).map((item) => item.code),
+  ["000020"],
+  "focused ranking scan must keep small-cap low-position candidates without leaking unrelated hot themes"
+);
 const mergedWeeklyEvidence = manager.mergeCandidateFunds([
   { code: "000010", name: "中证A500ETF联接C", keywords: ["中证A500"], setupDiscoverySource: "keyword_search" }
 ], [

@@ -148,6 +148,18 @@ const requiredPatterns = [
     message: "pullback/setup discovery must directly scan one-week ranking candidates instead of only inheriting weekly evidence from monthly/quarterly lists."
   },
   {
+    pattern: /PULLBACK_SETUP_KEYWORD_LIMIT\s*\|\|\s*32/,
+    message: "pullback/setup discovery must keep a broad default keyword pool so low-position rotation themes are not missed."
+  },
+  {
+    pattern: /中证2000[\s\S]{0,200}科创100[\s\S]{0,200}央企[\s\S]{0,200}国企/,
+    message: "pullback/setup default search keywords must include small-cap and state-owned rotation exposures."
+  },
+  {
+    pattern: /有色金属[\s\S]{0,160}电力[\s\S]{0,160}公用事业/,
+    message: "pullback/setup default search keywords must include cyclical and defensive low-position rotation exposures."
+  },
+  {
     pattern: /metric:\s*"zzf"[\s\S]{0,80}近1周转强候选/,
     message: "pullback/setup discovery must include the Eastmoney one-week ranking metric for early-turn recall."
   },
