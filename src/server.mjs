@@ -1149,7 +1149,7 @@ async function executePortfolioWeekly(db, run, config) {
 
 async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, config, profileContext }) {
   const skillContext = buildSkillContextForIntent(
-    { skillIds: ["fund-portfolio-profile", "fund-portfolio-research", "fund-portfolio-decision", "fund-portfolio-execution"] },
+    { workflow: "portfolio_status", skillIds: ["fund-portfolio-profile", "fund-portfolio-research", "fund-portfolio-decision", "fund-portfolio-execution"] },
     []
   );
   const systemText = [
@@ -1233,7 +1233,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
 
 async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, positionUpdates, profiles, config, profileContext }) {
   const skillContext = buildSkillContextForIntent(
-    { skillIds: ["fund-portfolio-profile", "fund-portfolio-review", "fund-portfolio-execution"] },
+    { workflow: "portfolio_status", skillIds: ["fund-portfolio-profile", "fund-portfolio-review", "fund-portfolio-execution"] },
     []
   );
   const compactProfiles = (profiles || []).map(compactPortfolioReviewProfile);
@@ -1340,7 +1340,7 @@ function buildFallbackPortfolioValuationRaw({ accountBefore, accountAfter, posit
 
 async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profiles, activeOrders, lifecycle, config, profileContext }) {
   const skillContext = buildSkillContextForIntent(
-    { skillIds: ["fund-portfolio-profile", "fund-portfolio-premarket", "fund-portfolio-research", "fund-portfolio-execution"] },
+    { workflow: "portfolio_status", skillIds: ["fund-portfolio-profile", "fund-portfolio-premarket", "fund-portfolio-research", "fund-portfolio-execution"] },
     []
   );
   const systemText = [
@@ -1382,7 +1382,7 @@ async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profi
 
 async function buildPortfolioWeeklyWithModel({ account, weeklyContext, profiles, lifecycle, config, profileContext }) {
   const skillContext = buildSkillContextForIntent(
-    { skillIds: ["fund-portfolio-profile", "fund-portfolio-weekly", "fund-portfolio-review", "fund-portfolio-execution"] },
+    { workflow: "portfolio_status", skillIds: ["fund-portfolio-profile", "fund-portfolio-weekly", "fund-portfolio-review", "fund-portfolio-execution"] },
     []
   );
   const systemText = [
@@ -3959,7 +3959,7 @@ function getFundQaSkillIds(extra = []) {
 }
 
 function buildFundCommitteeSystemText(skillIds = getFundAnalysisSkillIds()) {
-  const skillContext = buildSkillContextForIntent({ skillIds }, []);
+  const skillContext = buildSkillContextForIntent({ workflow: "fund_screening", skillIds }, []);
   return [
     "你是飞书机器人“基金经理”。你的任务是根据用户发送的基金截图或基金文字信息做教育性基金筛选分析。",
     "必须严格遵循当前阶段加载的 modular skills。只使用与当前任务相关的 skill，不要把所有基金流程强行套到用户请求上。",
@@ -4135,7 +4135,7 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
 }
 
 async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
-  const skillContext = buildSkillContextForIntent(intent, getFundRecommendationSkillIds());
+  const skillContext = buildSkillContextForIntent(intent, getFundRecommendationSkillIds(), { userText });
   const marketEvidence = buildMarketEvidenceSummary(userText, marketSnapshot);
   const marketDeepDive = await fetchMarketDeepDive(userText, marketSnapshot, { forRecommendation: true });
   const marketDeepDiveSummary = buildMarketDeepDiveSummary(marketDeepDive);
@@ -4214,7 +4214,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
 }
 
 async function answerFundQuestionWithModel({ userText, intent, marketSnapshot }) {
-  const skillContext = buildSkillContextForIntent(intent, getFundQaSkillIds());
+  const skillContext = buildSkillContextForIntent(intent, getFundQaSkillIds(), { userText });
   const marketEvidence = buildMarketEvidenceSummary(userText, marketSnapshot);
   const marketDeepDive = await fetchMarketDeepDive(userText, marketSnapshot, { forRecommendation: false });
   const marketDeepDiveSummary = buildMarketDeepDiveSummary(marketDeepDive);
@@ -9747,18 +9747,63 @@ function hasAny(text, needles) {
   return needles.some((needle) => text.includes(needle.toLowerCase()));
 }
 
-function buildSkillContextForIntent(intent, fallbackSkillIds = []) {
+function buildSkillContextForIntent(intent, fallbackSkillIds = [], options = {}) {
   const requestedIds = Array.isArray(intent?.skillIds) ? intent.skillIds : [];
   const ids = [...new Set([...requestedIds, ...fallbackSkillIds].map(String).filter(Boolean))];
-  const skills = listSkills(true).filter((skill) => ids.includes(skill.id));
+  const skillById = new Map(listSkills(true).map((skill) => [skill.id, skill]));
+  const skills = ids.map((id) => skillById.get(id)).filter(Boolean);
+  const focusDirective = buildSkillFocusDirective({ ...intent, userText: options.userText || intent?.userText || "" }, skills);
   if (!skills.length) {
-    return "本工作流没有加载额外 skill。";
+    return [focusDirective, "本工作流没有加载额外 skill。"].filter(Boolean).join("\n");
   }
 
   return [
+    focusDirective,
+    `已按优先级加载 ${skills.length} 个 skills：${skills.map((skill) => skill.id).join(" / ")}`,
     "本工作流按需加载以下 skills。只在用户意图需要时使用，不要把 skill 模板强行套到无关对话：",
     ...skills.map((skill) => [`# Skill: ${skill.id}`, skill.content].join("\n"))
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
+}
+
+function buildSkillFocusDirective(intent = {}, skills = []) {
+  const workflow = String(intent.workflow || "");
+  const mode = String(intent.mode || "");
+  const userText = String(intent.userText || "");
+  const skillList = (skills || []).map((skill) => skill.id).filter(Boolean).join(" / ");
+  const lines = [
+    "Skill 使用纪律：先执行本次任务焦点，再引用相关 skill；如果多个 skill 表述有冲突，以用户需求、已验证数据和质量门槛为准。",
+    skillList ? `本次 skill 顺序：${skillList}` : ""
+  ];
+
+  if (workflow === "fund_recommendation" && (mode === "pullback_setup_discovery" || isPullbackSetupRequest(userText))) {
+    lines.push(
+      "本次任务焦点：回调完成/低位启动，不追热点。",
+      "判断顺序：先看 5日/10日是否刚转强、120日区间位置是否偏低、20日/60日是否不过热，再看题材催化和基金质量。",
+      "推荐纪律：主推荐只能来自合格的回调/启动候选；短期大涨、等待回撤、只适合观察的基金只能进观察/排除，1万元执行中必须是0元或等待条件。",
+      "如果没有合格主候选，要明确说暂未筛到，不要用黄金、贵金属或其他热门基金硬凑。"
+    );
+  } else if (workflow === "fund_recommendation") {
+    lines.push(
+      "本次任务焦点：给候选清单时先判断题材阶段、板块轮动、低位程度和拥挤度，再选择基金承载工具。",
+      "不要把新闻热度或近期涨幅当成买入理由；推荐必须同时交代份额类别、费用模型、仓位和复查边界。"
+    );
+  } else if (workflow === "fund_screening") {
+    lines.push(
+      "本次任务焦点：评价用户给出的具体基金，必须分开基金长期质量、当前买点、份额费用和适合对象。",
+      "不要把基金质量好直接等同于现在可以买；A/C/D/I 等份额类别要按预计持有期解释。"
+    );
+  } else if (workflow === "fund_qa") {
+    lines.push(
+      "本次任务焦点：直接回答问题，不套推荐清单模板；如果问题带有买卖意图，要给出买入、分批买入、等待或回避的中文动作和理由。",
+      "市场或题材问题要先看阶段、拥挤度和低位/回撤修复，再谈相关基金。"
+    );
+  } else if (workflow === "portfolio_status") {
+    lines.push(
+      "本次任务焦点：解释虚拟组合操作和复盘，不把组合任务扩写成普通基金推荐；所有动作必须有数据来源、纪律检查和风险边界。"
+    );
+  }
+
+  return lines.filter(Boolean).join("\n");
 }
 
 function extractFundCodes(text) {
@@ -10123,6 +10168,7 @@ function timingSafeEqualString(a, b) {
 
 export {
   allowedSkillIdsForWorkflow,
+  buildSkillContextForIntent,
   buildMarketDeepDiveSummary,
   buildPullbackQualityFallbackAnswer,
   classifyMessageIntent,

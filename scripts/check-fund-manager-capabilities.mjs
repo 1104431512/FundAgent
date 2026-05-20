@@ -34,6 +34,19 @@ assertSkillCoverage(intent.skillIds, [
   "fund-answer-quality",
   "fund-synthesis"
 ], "pullback setup recommendation");
+const setupSkillContext = manager.buildSkillContextForIntent(intent, manager.getFundRecommendationSkillIds(), { userText: setupQuery });
+assert(
+  setupSkillContext.includes("本次任务焦点：回调完成/低位启动，不追热点。"),
+  "pullback setup skill context must keep the ready-to-launch task focus above generic skill details"
+);
+assert(
+  setupSkillContext.indexOf("本次任务焦点：回调完成/低位启动") < setupSkillContext.indexOf("# Skill: fund-theme-radar"),
+  "task focus directive must appear before loaded skill bodies"
+);
+assert(
+  setupSkillContext.indexOf("# Skill: fund-theme-radar") < setupSkillContext.indexOf("# Skill: fund-answer-quality"),
+  "skill context must preserve requested workflow priority order"
+);
 
 await assertIntent({
   userText: "黄金里面找一个回调完成、低位、准备启动的基金",

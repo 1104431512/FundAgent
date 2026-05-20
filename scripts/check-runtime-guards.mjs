@@ -73,6 +73,14 @@ const requiredPatterns = [
     message: "fund report image defaults should show more than three recommended funds when available."
   },
   {
+    pattern: /buildSkillFocusDirective/,
+    message: "skill growth must be anchored by a task focus directive before detailed skill bodies."
+  },
+  {
+    pattern: /本次任务焦点：回调完成\/低位启动，不追热点/,
+    message: "pullback/setup prompts must keep low-position launch discovery ahead of generic theme skills."
+  },
+  {
     pattern: /return5dPct[\s\S]{0,120}return10dPct/,
     message: "pullback/setup discovery must expose early 5/10-day turn signals."
   },
