@@ -2289,6 +2289,27 @@ function hasVerifiedPortfolioBuySetup(profile = {}) {
     && return60d <= 24;
 }
 
+function hasVerifiedPortfolioFeeEvidence(profile = {}) {
+  const fees = profile?.fees || {};
+  const shareClass = String(fees.shareClass || profile.shareClass || "").toUpperCase();
+  const feeModel = fees.shareClassFeeModel || profile.shareClassFeeModel || {};
+  const impact = fees.feeImpact || profile.feeImpact || {};
+  const missing = new Set(normalizeStringArray(impact.missingFeeData || fees.missingFeeData));
+  const oneYearCost = toNumber(impact.oneYearCostPer10000);
+  if (!shareClass || !feeModel.label || feeModel.type === "unknown") return false;
+  if (["share_class", "subscription_or_sales_service_fee", "sales_service_fee", "subscription_fee"].some((item) => missing.has(item))) {
+    return false;
+  }
+  if (Number.isFinite(oneYearCost)) return true;
+  if (["C", "E"].includes(shareClass)) {
+    return Number.isFinite(toNumber(fees.salesServiceFeePct)) && feeModel.type === "sales_service_fee";
+  }
+  if (["A", "B"].includes(shareClass)) {
+    return Number.isFinite(toNumber(fees.currentRatePct)) || Number.isFinite(toNumber(fees.sourceRatePct));
+  }
+  return Boolean(fees.source || fees.feeRules?.subscription || fees.feeRules?.redemption);
+}
+
 function hasPortfolioVerifiedSeedChaseRisk(candidate = {}, profile = {}) {
   const trend = profile?.trendProfile || {};
   const return20d = finiteMetricNumber(trend.return20dPct);
@@ -2329,6 +2350,21 @@ function formatPortfolioSeedVerifiedTrendEvidence(profile = null) {
     Number.isFinite(Number(trend.return60dPct)) ? `60日${formatFallbackPct(trend.return60dPct)}` : "",
     Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置${round(Number(trend.lowPositionPct120), 1)}%` : "",
     Number.isFinite(Number(trend.drawdownFromRecentHighPct)) ? `距高点${formatFallbackPct(trend.drawdownFromRecentHighPct)}` : ""
+  ].filter(Boolean).join("，");
+}
+
+function formatPortfolioFeeVerificationEvidence(profile = {}) {
+  const fees = profile?.fees || {};
+  const shareClass = fees.shareClass || profile.shareClass || "";
+  const feeModel = fees.shareClassFeeModel || profile.shareClassFeeModel || {};
+  const impact = fees.feeImpact || profile.feeImpact || {};
+  const missing = normalizeStringArray(impact.missingFeeData || fees.missingFeeData);
+  return [
+    "费用验证：",
+    shareClass ? `${shareClass}类` : "份额未知",
+    feeModel.label || "费用模型未知",
+    Number.isFinite(toNumber(impact.oneYearCostPer10000)) ? `每万元1年约${round(toNumber(impact.oneYearCostPer10000), 0)}元` : "",
+    missing.length ? `缺失${missing.slice(0, 3).join("/")}` : ""
   ].filter(Boolean).join("，");
 }
 
@@ -2466,7 +2502,15 @@ function evaluatePortfolioBuyDiscipline(action = {}, profile = null) {
       evidence: [trendEvidence]
     };
   }
-  return { ok: true, reason: "", evidence: [trendEvidence].filter(Boolean) };
+  const feeEvidence = formatPortfolioFeeVerificationEvidence(profile);
+  if (!hasVerifiedPortfolioFeeEvidence(profile)) {
+    return {
+      ok: false,
+      reason: "系统买入纪律拦截：缺少可验证费用/份额证据，不能提交虚拟申购。",
+      evidence: [trendEvidence, feeEvidence].filter(Boolean)
+    };
+  }
+  return { ok: true, reason: "", evidence: [trendEvidence, feeEvidence].filter(Boolean) };
 }
 
 function applyPortfolioWatchlistUpdates(db, updates = [], options = {}) {
@@ -2661,8 +2705,11 @@ function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
   if (hasHighChaseTheme(evidence) || hasHighChaseTheme(item)) {
     gaps.push("题材拥挤或追涨风险仍需下降。");
   }
+  if (!hasVerifiedPortfolioFeeEvidence(evidence)) {
+    gaps.push("还差可验证费用/份额证据。");
+  }
   if (!gaps.length && item.status === "ready") {
-    return ["低位/启动/不过热条件已满足，下一次盘前确认后再分批评估。"];
+    return ["低位/启动/不过热/费用条件已满足，下一次盘前确认后再分批评估。"];
   }
   return gaps;
 }

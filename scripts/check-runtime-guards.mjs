@@ -300,6 +300,14 @@ const requiredPatterns = [
     message: "portfolio BUY execution must require verified pullback/launch and low-position setup evidence, not merely absence of chase risk."
   },
   {
+    pattern: /hasVerifiedPortfolioFeeEvidence/,
+    message: "portfolio BUY execution must require verified share-class and fee evidence before virtual subscription."
+  },
+  {
+    pattern: /缺少可验证费用\/份额证据/,
+    message: "portfolio BUY guard must explain when share-class fee evidence is missing."
+  },
+  {
     pattern: /缺少回调完成\/启动前夜和低位证据/,
     message: "portfolio BUY guard must explain when low-position launch evidence is missing."
   },

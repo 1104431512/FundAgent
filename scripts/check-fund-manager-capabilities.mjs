@@ -231,6 +231,11 @@ const watchlistStatusLines = manager.buildPortfolioWatchlistStatusLines([
         return60dPct: 7.6,
         lowPositionPct120: 42.4,
         drawdownFromRecentHighPct: -7.1
+      },
+      fees: {
+        shareClass: "C",
+        shareClassFeeModel: { label: "C类：通常无申购费，销售服务费按年计提" },
+        feeImpact: { oneYearCostPer10000: 42 }
       }
     }
   },
@@ -277,7 +282,7 @@ assert(watchlistStatusLines.includes("触发：放量站回20日均线"), "portf
 assert(watchlistStatusLines.includes("风险边界：若近20日涨幅超过10%则暂停追入"), "portfolio status answer must include risk boundaries");
 assert(watchlistStatusLines.includes("费用/份额：C类更适合短中期观察"), "portfolio status answer must include fee/share-class notes");
 assert(watchlistStatusLines.includes("最新走势：20日+4.8%"), "portfolio status answer must include latest trend evidence");
-assert(watchlistStatusLines.includes("缺口=低位/启动/不过热条件已满足"), "buy-preparation queue must tell managers when ready candidates have no remaining setup gap");
+assert(watchlistStatusLines.includes("缺口=低位/启动/不过热/费用条件已满足"), "buy-preparation queue must tell managers when ready candidates have no remaining setup and fee gap");
 assert(watchlistStatusLines.includes("买入缺口：还差回调完成或启动前夜信号"), "watchlist detail must expose what waiting candidates still lack before buying");
 assert.equal(
   manager.normalizePortfolioWatchlistUpdates([{ operation: "REMOVE", code: "000001", reason: "主题过热" }])[0].operation,
@@ -544,7 +549,7 @@ const readinessQueue = manager.buildPortfolioDecisionReadinessQueue([
   { code: "000010", name: "中证A500ETF联接C", status: "ready", priority: 1, reason: "低位回调", buyTriggers: ["温和转强"], riskNotes: ["不追涨"] }
 ], [verifiedSeedProfile]);
 assert.equal(readinessQueue[0].firstTrigger, "温和转强", "portfolio decision prompt must expose ready candidate triggers");
-assert(readinessQueue[0].readinessGaps.some((item) => item.includes("低位/启动/不过热条件已满足")), "portfolio decision prompt must expose remaining buy-readiness gaps or confirmation status");
+assert(readinessQueue[0].readinessGaps.some((item) => item.includes("低位/启动/不过热/费用条件已满足")), "portfolio decision prompt must expose remaining buy-readiness gaps or confirmation status");
 const fallbackReadyActions = manager.buildPortfolioReadyWatchlistReviewActions([
   { code: "000010", name: "中证A500ETF联接C", status: "ready", priority: 1, reason: "低位回调", buyTriggers: ["温和转强"], riskNotes: ["不追涨"], feeNotes: ["C类短期更合适"] }
 ], [], { profiles: [verifiedSeedProfile] });
@@ -593,6 +598,21 @@ const noLaunchSignalBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: 
 });
 assert.equal(noLaunchSignalBuyGuard.ok, false, "portfolio buy discipline must require pullback-complete or launch-setup evidence before buying");
 assert(noLaunchSignalBuyGuard.reason.includes("启动前夜"), "missing setup signal block must explain the launch evidence requirement");
+const missingFeeProfile = {
+  ...verifiedSeedProfile,
+  fees: {
+    shareClass: "C",
+    shareClassFeeModel: { type: "likely_sales_service_fee", label: "C类：通常需重点核对销售服务费" },
+    feeImpact: { missingFeeData: ["sales_service_fee"], oneYearCostPer10000: null }
+  }
+};
+const missingFeeBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, missingFeeProfile);
+assert.equal(missingFeeBuyGuard.ok, false, "portfolio buy discipline must block buys without verified share-class fee evidence");
+assert(missingFeeBuyGuard.reason.includes("费用/份额证据"), "missing fee evidence block must explain the fee/share-class requirement");
+assert(
+  manager.buildPortfolioWatchReadinessGaps({ code: "000010", status: "ready" }, missingFeeProfile).some((item) => item.includes("费用/份额")),
+  "watchlist readiness gaps must expose missing fee/share-class evidence before buying"
+);
 
 const setupDigest = {
   ok: true,
