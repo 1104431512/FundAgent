@@ -4240,7 +4240,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "候选基金下钻摘要：",
     marketDeepDiveSummary,
     "",
-    "请直接回答用户问题。若用户问“值得买吗”，必须给 buy/staged/wait/avoid 之一，并给新资金和已有持仓分别怎么做。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
+    "请直接回答用户问题。若用户问“值得买吗”，必须给中文动作“买入 / 分批买入 / 等待 / 回避”之一，并给新资金和已有持仓分别怎么做。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
   ].join("\n");
 
   const draft = await callModel({
@@ -4311,7 +4311,8 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "不要编造证据里没有的基金代码、市场数字或行情。",
       "必须使用自然中文。禁止输出内部字段名或英文枚举，例如 trendProfile、actionability、entryBias、fitLabel、extended_uptrend、tactical_only、staged_buy、wait_pullback。",
       "遇到内部标签时要翻译成客户能读懂的话：extended_uptrend=短期涨幅偏热，tactical_only=只适合战术小仓位，staged_buy=分批买入，wait_pullback=等待回撤。",
-      "禁止机械写“信心：高。”、“信心：中。”、“Confidence: high”。要改成自然句，例如“我对这条判断把握度较高，主要因为证据比较一致。”",
+      "禁止机械写“信心：高。”、“把握度：高。”、“Confidence: high”。要改成自然句，例如“我对这条判断把握度较高，主要因为证据比较一致。”",
+      "禁止输出 Verdict、Confidence、Score、buy、staged、wait、avoid、hold、switch 等英文动作/栏目词；全部改成结论、把握度、评分、买入、分批买入、等待、回避、持有、换基。",
       "若质检问题包含 watch_candidate_promoted_to_recommendation、recommendation_not_from_pullback_main_candidates 或 recommends_without_qualified_pullback_candidate，必须按证据里的 mainCandidateCodes 重写主推荐；watchOrRejectCodes 只能写进观察/排除原因。",
       "若证据没有 mainCandidateCodes，必须直接说明暂未筛到合格的回调完成/低位启动主推荐，不能硬凑基金代码。",
       "保持适合飞书卡片阅读，不要 Markdown 表格或代码块。",
@@ -4394,10 +4395,13 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
     /需要结合自身情况/
   ].filter((pattern) => pattern.test(body)).length;
   const riskCount = (body.match(/风险/g) || []).length;
-  const stiffConfidenceLabel = /(^|[\n。；;])\s*(?:信心|confidence)\s*[：:]\s*(?:高|中|低|high|medium|low)\s*[。.]?(?=\s|$)/i.test(String(text || ""));
+  const stiffConfidenceLabel = /(^|[\n。；;])\s*(?:信心|把握度|confidence)\s*[：:]\s*(?:高|中|低|high|medium|low)\s*[。.]?(?=\s|$)/i.test(String(text || ""));
+  const rawEnglishActionLeak = workflow !== "conversation"
+    && /\b(?:verdict|confidence|score|buy|staged\s*buy|staged|wait|avoid|hold|switch)\b\s*[：:]?/i.test(String(text || ""));
 
   if (hasInternalFundSignalLeak(body)) issues.push("internal_signal_leak");
   if (stiffConfidenceLabel) issues.push("stiff_confidence_label");
+  if (rawEnglishActionLeak) issues.push("raw_english_action_leak");
   issues.push(...evaluatePullbackAnswerDiscipline({ text, userText, evidence }));
   if (actionSeeking && !hasAction) issues.push("missing_direct_action");
   if (actionSeeking && !hasSizing) issues.push("missing_sizing_or_execution");
@@ -4564,6 +4568,21 @@ function normalizeUserFacingFundAnswer(text) {
   }
   return output
     .replace(/\bNAV\b/g, "净值")
+    .replace(/\bVerdict\s*[：:]/gi, "结论：")
+    .replace(/\bConfidence\s*[：:]/gi, "把握度：")
+    .replace(/\bScore\s*[：:]/gi, "评分：")
+    .replace(/\bstaged\s+buy\b/gi, "分批买入")
+    .replace(/\bbuy\b/gi, "买入")
+    .replace(/\bstaged\b/gi, "分批")
+    .replace(/\bwait\b/gi, "等待")
+    .replace(/\bavoid\b/gi, "回避")
+    .replace(/\bhold\b/gi, "持有")
+    .replace(/\bswitch\b/gi, "换基")
+    .replace(/分批\s+买入/g, "分批买入")
+    .replace(/(结论|评分)：\s+/g, "$1：")
+    .replace(/(^|[\n。；;])\s*把握度\s*[：:]\s*(?:高|high)\s*[。.]?/gi, "$1我对这条判断把握度较高。")
+    .replace(/(^|[\n。；;])\s*把握度\s*[：:]\s*(?:中|medium)\s*[。.]?/gi, "$1这条判断把握度中等，需要按条件执行。")
+    .replace(/(^|[\n。；;])\s*把握度\s*[：:]\s*(?:低|low)\s*[。.]?/gi, "$1这条判断把握度偏低，只适合先观察。")
     .replace(/(^|[\n。；;])\s*信心\s*[：:]\s*高\s*[。.]?/g, "$1我对这条判断把握度较高。")
     .replace(/(^|[\n。；;])\s*信心\s*[：:]\s*中\s*[。.]?/g, "$1这条判断把握度中等，需要按条件执行。")
     .replace(/(^|[\n。；;])\s*信心\s*[：:]\s*低\s*[。.]?/g, "$1这条判断把握度偏低，只适合先观察。")

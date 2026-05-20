@@ -166,6 +166,17 @@ assert(
   manager.normalizeUserFacingFundAnswer(stiffAnswer).includes("我对这条判断把握度较高"),
   "localization pass must rewrite stiff confidence labels into natural Chinese"
 );
+const stiffConfidenceAlias = manager.evaluateFundAnswerQuality({
+  text: "把握度：高。\n建议先观察回调确认，不追涨。",
+  workflow: "fund_qa",
+  userText: "黄金最近值得买吗",
+  evidence: { marketDeepDive: { candidates: [setupDigest] } }
+});
+assert(stiffConfidenceAlias.issues.includes("stiff_confidence_label"), "quality gate must reject translated-but-stiff confidence labels");
+assert(
+  manager.normalizeUserFacingFundAnswer("把握度：高。").includes("我对这条判断把握度较高"),
+  "localization pass must rewrite translated confidence labels into natural Chinese"
+);
 
 const leakQuality = manager.evaluateFundAnswerQuality({
   text: "趋势/动作：extended_uptrend，actionability 为 tactical only / staged_buy，但 entryBias 是 wait_pullback。",
@@ -174,6 +185,18 @@ const leakQuality = manager.evaluateFundAnswerQuality({
   evidence: { marketDeepDive: { candidates: [hotDigest] } }
 });
 assert(leakQuality.issues.includes("internal_signal_leak"), "quality gate must reject internal enum leaks");
+
+const englishActionQuality = manager.evaluateFundAnswerQuality({
+  text: "Verdict: buy. Confidence: high. Score: 82/100. 新资金先买1000元。",
+  workflow: "fund_qa",
+  userText: "黄金最近值得买吗",
+  evidence: { marketDeepDive: { candidates: [setupDigest] } }
+});
+assert(englishActionQuality.issues.includes("raw_english_action_leak"), "quality gate must reject raw English action labels");
+const localizedEnglishAction = manager.normalizeUserFacingFundAnswer("Verdict: staged buy. Confidence: high. Score: 82/100.");
+assert(localizedEnglishAction.includes("结论：分批买入"), "localization pass must translate Verdict/staged buy");
+assert(!/\b(?:Verdict|Confidence|Score|staged buy|buy|wait|avoid)\b/i.test(localizedEnglishAction), "localized answer must not keep raw English action labels");
+assert(!serverSource.includes("buy/staged/wait/avoid"), "fund QA prompt must not ask for raw English action labels");
 
 const png = manager.renderFundReportSummaryPng({
   profile: buildChartProfile(),
