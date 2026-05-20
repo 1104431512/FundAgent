@@ -291,11 +291,72 @@ const hotDigest = {
   },
   actionability: { score: 68 }
 };
+const highPositionPullbackDigest = {
+  ok: true,
+  trendProfile: {
+    pullbackSetup: { signal: "pullback_complete", score: 78 },
+    trendLabel: "pullback_complete",
+    entryBias: "buyable_now",
+    return5dPct: 1.6,
+    return10dPct: 3.2,
+    return20dPct: 5.8,
+    return60dPct: 9.4,
+    lowPositionPct120: 74.5,
+    drawdownFromRecentHighPct: -3.4
+  },
+  actionability: { score: 76 },
+  fees: {
+    shareClass: "C",
+    shareClassFeeModel: { label: "C类：通常无申购费，销售服务费按年计提" }
+  }
+};
+const missingLowPositionDigest = {
+  ok: true,
+  trendProfile: {
+    pullbackSetup: { signal: "pullback_complete", score: 72 },
+    trendLabel: "pullback_complete",
+    entryBias: "buyable_now",
+    return5dPct: 1.5,
+    return10dPct: 2.9,
+    return20dPct: 4.8,
+    return60dPct: 8.8,
+    lowPositionPct120: null,
+    drawdownFromRecentHighPct: -3.2
+  },
+  actionability: { score: 72 },
+  fees: {
+    shareClass: "C",
+    shareClassFeeModel: { label: "C类：通常无申购费，销售服务费按年计提" }
+  }
+};
 assert(
   manager.scoreResearchDigestForPullbackSetup(setupDigest) >
     manager.scoreResearchDigestForPullbackSetup(hotDigest),
   "deep-dive scoring must rank pullback-complete candidates above extended uptrends"
 );
+assert(
+  manager.scoreResearchDigestForPullbackSetup(setupDigest) >
+    manager.scoreResearchDigestForPullbackSetup(highPositionPullbackDigest),
+  "deep-dive scoring must prefer genuinely low-position pullbacks over mid/high-position repaired funds"
+);
+assert(
+  manager.scoreResearchDigestForPullbackSetup(setupDigest) >
+    manager.scoreResearchDigestForPullbackSetup(missingLowPositionDigest),
+  "deep-dive scoring must not treat missing low-position data as zero-percent low-position evidence"
+);
+const highPositionSummary = manager.buildMarketDeepDiveSummary({
+  ok: true,
+  focus: "pullback_setup_discovery",
+  selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+  candidates: [
+    { ...setupDigest, code: "000001", name: "低位修复基金A" },
+    { ...highPositionPullbackDigest, code: "000004", name: "位置偏高修复基金C" },
+    { ...missingLowPositionDigest, code: "000005", name: "低位缺失修复基金C" }
+  ]
+});
+assert(highPositionSummary.includes("mainCandidateCodes=000001"), "genuinely low-position setup should remain a main candidate");
+assert(/watchOrRejectCodes=.*000004/.test(highPositionSummary), "pullback-looking but high-position fund must be demoted to watch/reject");
+assert(/watchOrRejectCodes=.*000005/.test(highPositionSummary), "pullback-looking fund with missing low-position evidence must be visible only as watch/reject");
 const rotationSupportedDigest = {
   ...setupDigest,
   code: "000021",

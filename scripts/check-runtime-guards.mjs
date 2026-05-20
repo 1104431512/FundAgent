@@ -121,6 +121,14 @@ const requiredPatterns = [
     message: "pullback/setup discovery must judge whether the fund is actually in a low 120-day position."
   },
   {
+    pattern: /hasPullbackLowPositionEvidence/,
+    message: "pullback/setup main candidates must require actual low-position evidence, not only a repaired trend label."
+  },
+  {
+    pattern: /finiteMetricNumber/,
+    message: "pullback/setup low-position checks must not treat null or missing metrics as zero."
+  },
+  {
     pattern: /dateFallback/,
     message: "fund ranking recall must fall back to latest rankings when a dated window returns empty."
   },

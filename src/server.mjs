@@ -3687,11 +3687,27 @@ function classifyPullbackSetupCandidateForSummary(candidate = {}) {
   if (["pullback_complete", "launch_setup"].includes(signal)
     && trend.trendLabel !== "extended_uptrend"
     && trend.entryBias !== "wait_pullback"
+    && hasPullbackLowPositionEvidence(trend)
     && Number(trend.return20dPct) <= 10
     && Number(trend.return60dPct) <= 24) {
     return "main_candidate";
   }
   return "watch_or_reject";
+}
+
+function hasPullbackLowPositionEvidence(trend = {}) {
+  const lowPosition = finiteMetricNumber(trend.lowPositionPct120);
+  const drawdown120 = finiteMetricNumber(trend.drawdownFrom120HighPct);
+  const drawdownRecent = finiteMetricNumber(trend.drawdownFromRecentHighPct);
+  const drawdown = Number.isFinite(drawdown120) ? drawdown120 : drawdownRecent;
+  if (Number.isFinite(lowPosition)) return lowPosition >= 0 && lowPosition <= 60;
+  return Number.isFinite(drawdown) && drawdown <= -5;
+}
+
+function finiteMetricNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function formatPullbackSetupCandidateLine(candidate = {}, ranked = {}) {
@@ -6257,14 +6273,16 @@ function scoreResearchDigestForPullbackSetup(digest = {}) {
   const actionability = digest.actionability || {};
   let score = Number(actionability.score || 0) * 0.35;
   const setupScore = Number(trend.pullbackSetup?.score || 0);
-  const lowPosition = Number(trend.lowPositionPct120);
+  const lowPosition = finiteMetricNumber(trend.lowPositionPct120);
   const earlyTurn = isEarlyTurnSetupTrend(trend);
   if (Number.isFinite(setupScore)) score += setupScore * 0.75;
   if (trend.pullbackSetup?.signal === "pullback_complete") score += 28;
   if (trend.pullbackSetup?.signal === "launch_setup") score += 16;
   if (earlyTurn) score += 12;
   if (Number.isFinite(lowPosition) && lowPosition >= 12 && lowPosition <= 55) score += 10;
+  if (Number.isFinite(lowPosition) && lowPosition > 60 && lowPosition <= 85) score -= 10;
   if (Number.isFinite(lowPosition) && lowPosition > 85) score -= 12;
+  if (!hasPullbackLowPositionEvidence(trend)) score -= 18;
   if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback") score -= 34;
   if (Number(trend.return5dPct) > 5 || Number(trend.return10dPct) > 9) score -= 12;
   if (Number(trend.return20dPct) > 10) score -= 18;
