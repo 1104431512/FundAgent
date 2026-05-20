@@ -395,6 +395,16 @@ const weeklyTurnSeed = {
   sixMonthPct: -12.4,
   dailyPct: 0.6
 };
+const lowBaseTurnSeed = {
+  code: "000014",
+  name: "低位启动前夜基金C",
+  type: "指数型基金",
+  oneWeekPct: 1.6,
+  oneMonthPct: 2.1,
+  threeMonthPct: -10.4,
+  sixMonthPct: -18.2,
+  dailyPct: 0.5
+};
 const weeklyChaseSeed = {
   code: "000011",
   name: "热门强势主题基金A",
@@ -419,8 +429,24 @@ assert.deepEqual(
   ["000010"],
   "weekly reversal scanner must keep mild one-week turns and reject chases or still-falling funds"
 );
+assert.deepEqual(
+  manager.selectLowBaseTurnRankCandidates([
+    weeklyChaseSeed,
+    lowBaseTurnSeed,
+    { code: "000015", name: "横盘未启动基金C", oneWeekPct: 0.1, oneMonthPct: -1.2, threeMonthPct: -8.4, sixMonthPct: -16.1 },
+    { code: "000016", name: "月线追涨基金C", oneWeekPct: 3.2, oneMonthPct: 12.4, threeMonthPct: 18.8, sixMonthPct: 35.2 }
+  ]).map((item) => item.code),
+  ["000014"],
+  "low-base turn scanner must keep low-position launch-eve candidates while rejecting no-turn and monthly chase candidates"
+);
+assert(
+  manager.scorePullbackSetupSeedCandidate({ ...lowBaseTurnSeed, keywords: ["低位启动前夜候选"] }, [], setupQuery) >
+    manager.scorePullbackSetupSeedCandidate(weeklyTurnSeed, [], setupQuery),
+  "pullback setup scoring must prioritize low-base launch-eve candidates when return evidence is stronger"
+);
 assert(serverSource.includes('metric: "zzf"'), "pullback setup recall must directly scan one-week ranking data");
 assert(serverSource.includes("PULLBACK_SETUP_WEEKLY_RANK_LIMIT || 160"), "one-week ranking scan must use a wider pool to catch mild early turns after hot weekly leaders");
+assert(serverSource.includes("PULLBACK_SETUP_LOW_BASE_LIMIT || 96"), "low-base launch-eve scan must keep a broad candidate pool");
 assert(serverSource.includes("PULLBACK_SETUP_BACKFILL_ROUNDS || 3"), "pullback setup deep-dive must keep searching beyond a single backfill batch");
 const genericSetupKeywords = manager.inferPullbackSetupSearchKeywords(setupQuery, []);
 for (const keyword of ["中证2000", "科创100", "央企", "国企", "基建", "房地产", "有色金属", "电力", "公用事业"]) {

@@ -148,6 +148,10 @@ const requiredPatterns = [
     message: "pullback/setup discovery must directly scan one-week ranking candidates instead of only inheriting weekly evidence from monthly/quarterly lists."
   },
   {
+    pattern: /PULLBACK_SETUP_LOW_BASE_LIMIT\s*\|\|\s*96/,
+    message: "pullback/setup discovery must keep a broad low-base launch-eve recall pool."
+  },
+  {
     pattern: /PULLBACK_SETUP_KEYWORD_LIMIT\s*\|\|\s*32/,
     message: "pullback/setup discovery must keep a broad default keyword pool so low-position rotation themes are not missed."
   },
@@ -654,6 +658,14 @@ const requiredPatterns = [
   {
     pattern: /selectWeeklyReversalRankCandidates/,
     message: "pullback/setup discovery must preserve mild one-week low-position reversal candidates."
+  },
+  {
+    pattern: /selectLowBaseTurnRankCandidates/,
+    message: "pullback/setup discovery must preserve low-base launch-eve candidates that are not weekly chases."
+  },
+  {
+    pattern: /低位启动前夜候选/,
+    message: "pullback/setup discovery must tag low-base launch-eve candidates for ranking and watchlist persistence."
   },
   {
     pattern: /filterFocusedPullbackRankingCandidates/,

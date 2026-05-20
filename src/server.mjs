@@ -8223,8 +8223,13 @@ async function fetchPullbackSetupRankingCandidates() {
     keywords: [...new Set([...(item.keywords || []), "近1周低位转强候选"].filter(Boolean))],
     setupDiscoverySource: "weekly_reversal_scan"
   }));
+  const lowBaseTurnItems = selectLowBaseTurnRankCandidates(rankedItems).map((item) => ({
+    ...item,
+    keywords: [...new Set([...(item.keywords || []), "低位启动前夜候选"].filter(Boolean))],
+    setupDiscoverySource: "low_base_turn_scan"
+  }));
 
-  return mergeCandidateFunds(weeklyReversalItems, rankedItems);
+  return mergeCandidateFunds(lowBaseTurnItems, weeklyReversalItems, rankedItems);
 }
 
 function selectWeeklyReversalRankCandidates(items = []) {
@@ -8232,6 +8237,13 @@ function selectWeeklyReversalRankCandidates(items = []) {
     .filter(isWeeklyReversalSeedCandidate)
     .sort((a, b) => scoreWeeklyReversalSeed(b) - scoreWeeklyReversalSeed(a))
     .slice(0, Number(process.env.PULLBACK_SETUP_REVERSAL_LIMIT || 72));
+}
+
+function selectLowBaseTurnRankCandidates(items = []) {
+  return (items || [])
+    .filter(isLowBaseTurnSeedCandidate)
+    .sort((a, b) => scoreLowBaseTurnSeed(b) - scoreLowBaseTurnSeed(a))
+    .slice(0, Number(process.env.PULLBACK_SETUP_LOW_BASE_LIMIT || 96));
 }
 
 function isWeeklyReversalSeedCandidate(item = {}) {
@@ -8249,6 +8261,25 @@ function isWeeklyReversalSeedCandidate(item = {}) {
     && (!Number.isFinite(daily) || daily <= 4.5);
 }
 
+function isLowBaseTurnSeedCandidate(item = {}) {
+  const oneWeek = toNumber(item.oneWeekPct);
+  const oneMonth = toNumber(item.oneMonthPct);
+  const threeMonth = toNumber(item.threeMonthPct);
+  const sixMonth = toNumber(item.sixMonthPct);
+  const daily = toNumber(item.dailyPct);
+  return Number.isFinite(oneWeek)
+    && oneWeek >= 0.2
+    && oneWeek <= 4
+    && Number.isFinite(oneMonth)
+    && oneMonth >= -8
+    && oneMonth <= 5.5
+    && Number.isFinite(threeMonth)
+    && threeMonth >= -28
+    && threeMonth <= 4
+    && (!Number.isFinite(sixMonth) || (sixMonth >= -35 && sixMonth <= 12))
+    && (!Number.isFinite(daily) || daily <= 3.5);
+}
+
 function scoreWeeklyReversalSeed(item = {}) {
   const oneWeek = toNumber(item.oneWeekPct);
   const oneMonth = toNumber(item.oneMonthPct);
@@ -8259,6 +8290,19 @@ function scoreWeeklyReversalSeed(item = {}) {
   if (Number.isFinite(oneMonth)) score += oneMonth >= -2 && oneMonth <= 6 ? 12 : 0;
   if (Number.isFinite(threeMonth) && threeMonth <= 3) score += 8;
   if (Number.isFinite(sixMonth) && sixMonth <= 8) score += 6;
+  return score;
+}
+
+function scoreLowBaseTurnSeed(item = {}) {
+  const oneWeek = toNumber(item.oneWeekPct);
+  const oneMonth = toNumber(item.oneMonthPct);
+  const threeMonth = toNumber(item.threeMonthPct);
+  const sixMonth = toNumber(item.sixMonthPct);
+  let score = 0;
+  if (Number.isFinite(oneWeek)) score += 18 - Math.abs(oneWeek - 1.8) * 2.2;
+  if (Number.isFinite(oneMonth)) score += oneMonth >= -3 && oneMonth <= 4.5 ? 14 : 0;
+  if (Number.isFinite(threeMonth)) score += threeMonth >= -18 && threeMonth <= 1 ? 14 : 0;
+  if (Number.isFinite(sixMonth)) score += sixMonth >= -28 && sixMonth <= 6 ? 8 : 0;
   return score;
 }
 
@@ -8344,6 +8388,7 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
   if (/股票|混合|指数|ETF|QDII|LOF/i.test(text)) score += 4;
   if (/货币|短债|纯债|债券/.test(text) && !hasAny(normalizeIntentText(userText), ["债", "固收", "现金"])) score -= 24;
   if (/近1周低位转强候选/.test(text)) score += 10;
+  if (/低位启动前夜候选/.test(text)) score += 16;
 
   if (Number.isFinite(oneWeek)) {
     if (oneWeek >= 0.3 && oneWeek <= 5) score += 18;
@@ -8362,6 +8407,7 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
   if (Number.isFinite(sixMonth)) {
     if (sixMonth >= -30 && sixMonth <= 18) score += 8;
     if (sixMonth <= 0 && Number.isFinite(oneMonth) && oneMonth > 0 && oneMonth <= 8) score += 8;
+    if (sixMonth <= 8 && Number.isFinite(threeMonth) && threeMonth <= 4 && Number.isFinite(oneWeek) && oneWeek > 0 && oneWeek <= 4) score += 10;
     if (sixMonth > 45) score -= 16;
   }
   if (Number.isFinite(oneYear) && oneYear >= -35 && oneYear <= 35) score += 4;
@@ -12968,6 +13014,7 @@ export {
   selectPullbackBackfillCandidates,
   selectFundReportProfilesForAnswer,
   selectFundScreeningWatchlistProfiles,
+  selectLowBaseTurnRankCandidates,
   selectPortfolioWatchlistSeedCandidates,
   selectWeeklyReversalRankCandidates,
   summarizePortfolioWatchItem,
