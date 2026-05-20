@@ -1260,6 +1260,22 @@ const localizedEnglishAction = manager.normalizeUserFacingFundAnswer("Verdict: s
 assert(localizedEnglishAction.includes("结论：分批买入"), "localization pass must translate Verdict/staged buy");
 assert(!/\b(?:Verdict|Confidence|Score|staged buy|buy|wait|avoid)\b/i.test(localizedEnglishAction), "localized answer must not keep raw English action labels");
 assert(!serverSource.includes("buy/staged/wait/avoid"), "fund QA prompt must not ask for raw English action labels");
+const englishSectionQuality = manager.evaluateFundAnswerQuality({
+  text: [
+    "Manager Decision：建议先观察，暂不买。",
+    "Evidence：近20日+4.5%，120日位置38.5%。",
+    "Missing data：还需要复查最新净值。"
+  ].join("\n"),
+  workflow: "fund_screening",
+  userText: "这个基金能买吗",
+  evidence: { enrichments: [{ code: "000001", trendProfile: { ok: true } }] }
+});
+assert(englishSectionQuality.issues.includes("raw_english_section_leak"), "quality gate must reject English section headers in user-facing fund answers");
+const localizedEnglishSections = manager.normalizeUserFacingFundAnswer("Manager Decision: wait. Evidence: 120日位置38.5%。Missing data to check: 最新净值。");
+assert(localizedEnglishSections.includes("经理最终判断：等待"), "localized answer must translate Manager Decision and action text");
+assert(localizedEnglishSections.includes("证据：120日位置38.5%"), "localized answer must translate Evidence headers");
+assert(localizedEnglishSections.includes("缺失数据：最新净值"), "localized answer must translate Missing data headers");
+assert(!/\b(?:Manager Decision|Evidence|Missing data|wait)\b/i.test(localizedEnglishSections), "localized answer must not keep raw English section headers");
 
 const png = manager.renderFundReportSummaryPng({
   profile: buildChartProfile(),

@@ -6901,6 +6901,7 @@ function buildFundCommitteeSystemText(skillIds = getFundAnalysisSkillIds(), { us
     "最终回复会以飞书卡片展示，可使用少量 Markdown 加粗和编号列表，但不要输出 Markdown 表格或代码块。",
     "回答中文，优先简洁、明确、可执行。不要保证收益，不要给出个性化承诺；但如果证据偏正面，要敢于给出买入/分批买入方案，不要机械地总是建议等待回撤或极低仓位。",
     "面向用户时禁止输出内部字段名或英文枚举，例如 trendProfile、actionability、entryBias、fitLabel、extended_uptrend、tactical_only、staged_buy、wait_pullback；必须转成自然中文。",
+    "最终给用户的回答禁止输出 Manager Decision、Evidence、Confidence、Verdict、Score 等英文栏目词；必须改成结论、证据、把握度、评分、经理判断等自然中文。",
     "",
     skillContext
   ].join("\n");
@@ -7036,9 +7037,9 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
     isComparison
       ? "2. 多基金选择：给出排名、首选、备选、为什么不选其他基金；不要给每只基金都套 8 角色长流程。"
       : "2. 投研团队视角：产品、业绩、持仓、市场、风险等角色各 1 行，给出正/中/负倾向和关键理由。",
-    "3. Manager Decision：最终动作必须是买入 / 分批买入 / 持有 / 换基 / 观察 / 回避之一，并说明最大买点和最大不买理由。",
+    "3. 经理最终判断：最终动作必须是买入 / 分批买入 / 持有 / 换基 / 观察 / 回避之一，并说明最大买点和最大不买理由。",
     "4. 1万元执行方案：假设用户准备新增 10000 元，给出激进、均衡、保守三档的金额或比例；如果基金适合出击，激进档可以给到更高比例，但要写清止损/再评估触发条件。",
-    "5. 自评估结果：是否适合当前用户真实需求，适合谁，不适合谁，confidence。",
+    "5. 自评估结果：是否适合当前用户真实需求，适合谁，不适合谁；把把握度写成自然句，不要写 confidence 或“信心：高”这类字段。",
     "6. 决策边界：最多 2 条，只列会改变买入/持有/回避动作的条件，不要写通用风险清单。",
     "7. 缺失数据：只列真正影响结论的字段；不要把已联网补全的夏普率、回撤、波动率重复列为缺失。"
   ].join("\n");
@@ -7292,7 +7293,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "必须使用自然中文。禁止输出内部字段名或英文枚举，例如 trendProfile、actionability、entryBias、fitLabel、extended_uptrend、tactical_only、staged_buy、wait_pullback。",
       "遇到内部标签时要翻译成客户能读懂的话：extended_uptrend=短期涨幅偏热，tactical_only=只适合战术小仓位，staged_buy=分批买入，wait_pullback=等待回撤。",
       "禁止机械写“信心：高。”、“把握度：高。”、“Confidence: high”。要改成自然句，例如“我对这条判断把握度较高，主要因为证据比较一致。”",
-      "禁止输出 Verdict、Confidence、Score、buy、staged、wait、avoid、hold、switch 等英文动作/栏目词；全部改成结论、把握度、评分、买入、分批买入、等待、回避、持有、换基。",
+      "禁止输出 Manager Decision、Evidence、Research debate、Allocation proposal、Risk committee、Missing data、Verdict、Confidence、Score、buy、staged、wait、avoid、hold、switch 等英文动作/栏目词；全部改成经理最终判断、证据、投研分歧、配置方案、风控检查、缺失数据、结论、把握度、评分、买入、分批买入、等待、回避、持有、换基。",
       "若质检问题包含 watch_candidate_promoted_to_recommendation、recommendation_not_from_pullback_main_candidates 或 recommends_without_qualified_pullback_candidate，必须按证据里的 mainCandidateCodes 重写主推荐；watchOrRejectCodes 只能写进观察/排除原因。",
       "若质检问题包含 watch_candidate_given_buy_execution 或 watch_candidate_given_buy_signal，观察/排除候选不能获得买入金额，也不能写“可以买、小仓位试探、少买一点、建仓”等买入暗示；只能写0元观察或等待条件。",
       "若质检问题包含 missing_pullback_timing_evidence，主推荐每条必须写出5日/10日早期转强、120日区间低位或距高点回撤等数字证据；若包含 missing_pullback_three_tier_execution，必须给激进/均衡/保守三档金额。",
@@ -7319,7 +7320,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "draftAnswer:",
       String(text || "").slice(0, 12000),
       "",
-      "现在重写回答。保留证据支持的具体数字、基金代码、动作、仓位、把握度和决策边界，但必须把内部字段转成自然中文。"
+      "现在重写回答。保留证据支持的具体数字、基金代码、动作、仓位、把握度和决策边界，但必须把内部字段和英文栏目转成自然中文。"
     ].join("\n");
     const rewritten = await callModel({
       systemText,
@@ -7382,10 +7383,12 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   const stiffConfidenceLabel = /(^|[\n。；;])\s*(?:信心|把握度|confidence)\s*[：:]\s*(?:高|中|低|high|medium|low)\s*[。.]?(?=\s|$)/i.test(String(text || ""));
   const rawEnglishActionLeak = workflow !== "conversation"
     && /\b(?:verdict|confidence|score|buy|staged\s*buy|staged|wait|avoid|hold|switch)\b\s*[：:]?/i.test(String(text || ""));
+  const rawEnglishSectionLeak = workflow !== "conversation" && hasRawEnglishFundSectionLeak(text);
 
   if (hasInternalFundSignalLeak(body)) issues.push("internal_signal_leak");
   if (stiffConfidenceLabel) issues.push("stiff_confidence_label");
   if (rawEnglishActionLeak) issues.push("raw_english_action_leak");
+  if (rawEnglishSectionLeak) issues.push("raw_english_section_leak");
   issues.push(...evaluatePullbackAnswerDiscipline({ text, userText, evidence }));
   issues.push(...evaluateFundAnswerChartCoverage({ text, workflow, userText, evidence }));
   if (actionSeeking && !hasAction) issues.push("missing_direct_action");
@@ -7728,6 +7731,10 @@ function hasInternalFundSignalLeak(text) {
     || /\b(?:stage|trend|action|fit)\s*[=:：]\s*[a-z_ -]{3,}/i.test(body);
 }
 
+function hasRawEnglishFundSectionLeak(text) {
+  return /(^|[\n。；;])\s*(?:Manager\s+Decision|Evidence|Evidence\s+intake|Research\s+debate|Allocation\s+proposal|Risk\s+committee|Committee\s+consensus|Execution|Missing\s+data(?:\s+to\s+check)?|Key\s+disagreement)\s*[：:]/i.test(String(text || ""));
+}
+
 function normalizeUserFacingFundAnswer(text) {
   let output = String(text || "");
   for (const [raw, label] of [...USER_FACING_FUND_FIELD_LABELS, ...USER_FACING_FUND_LABELS]) {
@@ -7735,6 +7742,16 @@ function normalizeUserFacingFundAnswer(text) {
   }
   return output
     .replace(/\bNAV\b/g, "净值")
+    .replace(/\bManager\s+Decision\s*[：:]/gi, "经理最终判断：")
+    .replace(/\bEvidence\s+intake\s*[：:]/gi, "证据整理：")
+    .replace(/\bEvidence\s*[：:]/gi, "证据：")
+    .replace(/\bResearch\s+debate\s*[：:]/gi, "投研分歧：")
+    .replace(/\bAllocation\s+proposal\s*[：:]/gi, "配置方案：")
+    .replace(/\bRisk\s+committee\s*[：:]/gi, "风控检查：")
+    .replace(/\bCommittee\s+consensus\s*[：:]/gi, "委员会共识：")
+    .replace(/\bExecution\s*[：:]/gi, "执行复查：")
+    .replace(/\bMissing\s+data(?:\s+to\s+check)?\s*[：:]/gi, "缺失数据：")
+    .replace(/\bKey\s+disagreement\s*[：:]/gi, "关键分歧：")
     .replace(/\bVerdict\s*[：:]/gi, "结论：")
     .replace(/\bConfidence\s*[：:]/gi, "把握度：")
     .replace(/\bScore\s*[：:]/gi, "评分：")
@@ -7746,7 +7763,7 @@ function normalizeUserFacingFundAnswer(text) {
     .replace(/\bhold\b/gi, "持有")
     .replace(/\bswitch\b/gi, "换基")
     .replace(/分批\s+买入/g, "分批买入")
-    .replace(/(结论|评分)：\s+/g, "$1：")
+    .replace(/(经理最终判断|证据整理|证据|投研分歧|配置方案|风控检查|委员会共识|执行复查|缺失数据|关键分歧|结论|把握度|评分)：\s+/g, "$1：")
     .replace(/(^|[\n。；;])\s*把握度\s*[：:]\s*(?:高|high)\s*[。.]?/gi, "$1我对这条判断把握度较高。")
     .replace(/(^|[\n。；;])\s*把握度\s*[：:]\s*(?:中|medium)\s*[。.]?/gi, "$1这条判断把握度中等，需要按条件执行。")
     .replace(/(^|[\n。；;])\s*把握度\s*[：:]\s*(?:低|low)\s*[。.]?/gi, "$1这条判断把握度偏低，只适合先观察。")

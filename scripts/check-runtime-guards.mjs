@@ -64,6 +64,22 @@ const requiredPatterns = [
     message: "fund answer quality gate must reject stiff confidence labels such as 信心：高。"
   },
   {
+    pattern: /raw_english_section_leak/,
+    message: "fund answer quality gate must reject English section headers such as Manager Decision."
+  },
+  {
+    pattern: /hasRawEnglishFundSectionLeak/,
+    message: "fund answer quality gate must detect English committee-style headers separately from action enums."
+  },
+  {
+    pattern: /Manager\\s\+Decision[\s\S]{0,260}经理最终判断/,
+    message: "fund answer localization must translate Manager Decision into natural Chinese."
+  },
+  {
+    pattern: /经理最终判断：最终动作/,
+    message: "fund screening final prompt must use Chinese manager-decision wording instead of Manager Decision."
+  },
+  {
     pattern: /BUY\/FEE/,
     message: "fund report charts must include a readable buy-point and fee evidence panel."
   },
