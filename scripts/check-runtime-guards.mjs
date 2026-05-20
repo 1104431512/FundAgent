@@ -804,6 +804,22 @@ const requiredPatterns = [
     message: "pullback/setup main-candidate classification must reject year-to-date high pseudo-low candidates."
   },
   {
+    pattern: /isPullbackTrendFreshEnough[\s\S]{0,360}classifyPullbackSetupCandidateForSummary|classifyPullbackSetupCandidateForSummary[\s\S]{0,360}isPullbackTrendFreshEnough/,
+    message: "pullback/setup main-candidate classification must reject stale NAV/trend evidence."
+  },
+  {
+    pattern: /evaluatePullbackTrendFreshness[\s\S]{0,360}PULLBACK_SETUP_MAX_TREND_AGE_DAYS/,
+    message: "pullback/setup freshness guard must have a configurable maximum NAV/trend evidence age."
+  },
+  {
+    pattern: /净值日期=\$\{trendDate\}/,
+    message: "pullback/setup summaries must expose stale NAV/trend evidence dates."
+  },
+  {
+    pattern: /净值走势已过期/,
+    message: "pullback/setup summaries must explain stale-data gaps before buying."
+  },
+  {
     pattern: /今年以来=\$\{seedThisYear\}%[\s\S]{0,2600}今年以来\$\{formatFallbackPct\(seedThisYear\)\}偏高/,
     message: "pullback/setup summaries must expose and explain year-to-date high-position evidence."
   },

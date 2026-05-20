@@ -3667,6 +3667,7 @@ function extractPortfolioWatchSnapshotDate(snapshot = {}) {
     snapshot.snapshotDate
     || snapshot.navDate
     || snapshot.date
+    || snapshot.trendProfile?.latestDate
     || snapshot.trendProfile?.snapshotDate
     || ""
   ).trim();
@@ -6420,6 +6421,7 @@ function classifyPullbackSetupCandidateForSummary(candidate = {}) {
   const signal = trend.pullbackSetup?.signal || "";
   if (hasHighChaseTheme(candidate)) return "watch_or_reject";
   if (hasPullbackYearToDateChaseRisk(candidate)) return "watch_or_reject";
+  if (!isPullbackTrendFreshEnough(candidate)) return "watch_or_reject";
   if (["pullback_complete", "launch_setup"].includes(signal)
     && isEarlyTurnSetupTrend(trend)
     && trend.trendLabel !== "extended_uptrend"
@@ -6451,6 +6453,7 @@ function formatPullbackSetupCandidateLine(candidate = {}, ranked = {}) {
   const trend = candidate.trendProfile || {};
   const actionability = candidate.actionability || {};
   const seedThisYear = getCandidateSeedThisYearPct(candidate);
+  const trendDate = getPullbackTrendEvidenceDate(candidate);
   const fields = [
     `${candidate.code || "unknown"} ${candidate.name || candidate.seed?.name || ""}`.trim(),
     `bucket=${ranked.bucket || classifyPullbackSetupCandidateForSummary(candidate)}`,
@@ -6461,6 +6464,7 @@ function formatPullbackSetupCandidateLine(candidate = {}, ranked = {}) {
     Number.isFinite(Number(trend.return10dPct)) ? `10日=${trend.return10dPct}%` : "",
     Number.isFinite(Number(trend.return20dPct)) ? `20日=${trend.return20dPct}%` : "",
     Number.isFinite(Number(trend.return60dPct)) ? `60日=${trend.return60dPct}%` : "",
+    trendDate ? `净值日期=${trendDate}` : "",
     Number.isFinite(seedThisYear) ? `今年以来=${seedThisYear}%` : "",
     Number.isFinite(Number(trend.drawdownFromRecentHighPct)) ? `距高点=${trend.drawdownFromRecentHighPct}%` : "",
     Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置=${trend.lowPositionPct120}%` : "",
@@ -6511,6 +6515,7 @@ function buildPullbackSetupCandidateGaps(candidate = {}) {
   if (Number.isFinite(seedThisYear) && seedThisYear > 30) {
     gaps.push(`今年以来${formatFallbackPct(seedThisYear)}偏高`);
   }
+  gaps.push(...evaluatePullbackTrendFreshness(candidate).issues);
   if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback") {
     gaps.push("仍是等待回撤而非低位启动");
   } else if (trend.entryBias === "avoid_now") {
@@ -6565,6 +6570,31 @@ function getCandidateSeedThisYearPct(candidate = {}) {
 function hasPullbackYearToDateChaseRisk(candidate = {}) {
   const thisYear = getCandidateSeedThisYearPct(candidate);
   return Number.isFinite(thisYear) && thisYear > 30;
+}
+
+function getPullbackTrendEvidenceDate(candidate = {}) {
+  return extractPortfolioWatchSnapshotDate({
+    snapshotDate: candidate.snapshotDate,
+    navDate: candidate.nav?.navDate || candidate.navDate,
+    date: candidate.date,
+    trendProfile: candidate.trendProfile || {}
+  });
+}
+
+function evaluatePullbackTrendFreshness(candidate = {}, options = {}) {
+  const evidenceDate = getPullbackTrendEvidenceDate(candidate);
+  if (!evidenceDate) return { ok: true, issues: [] };
+  const nowMs = Date.parse(options.now || new Date().toISOString());
+  const age = daysSincePortfolioDate(evidenceDate, nowMs);
+  const maxAge = finiteNumberOr(process.env.PULLBACK_SETUP_MAX_TREND_AGE_DAYS, 10);
+  if (Number.isFinite(age) && age > maxAge) {
+    return { ok: false, issues: [`净值走势已过期${age}天，需要重新下钻后再判断买点`] };
+  }
+  return { ok: true, issues: [] };
+}
+
+function isPullbackTrendFreshEnough(candidate = {}) {
+  return evaluatePullbackTrendFreshness(candidate).ok;
 }
 
 function scorePullbackThemeRotation(candidate = {}) {
@@ -9332,6 +9362,7 @@ function scoreResearchDigestForPullbackSetup(digest = {}) {
   if (Number(trend.return20dPct) > 10) score -= 18;
   if (Number(trend.return60dPct) > 24) score -= 16;
   if (Number(trend.drawdownFromRecentHighPct) > -2 && Number(trend.return20dPct) > 6) score -= 14;
+  if (!isPullbackTrendFreshEnough(digest)) score -= 30;
   if (Number.isFinite(seedThisYear)) {
     if (seedThisYear >= -35 && seedThisYear <= 12) score += 6;
     if (seedThisYear <= 5 && Number(trend.return20dPct) > 0 && Number(trend.return20dPct) <= 8) score += 6;

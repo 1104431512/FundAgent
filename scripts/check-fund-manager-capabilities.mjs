@@ -1056,6 +1056,13 @@ const highYtdPullbackDigest = {
     keywords: ["近1周低位转强候选"]
   }
 };
+const stalePullbackDigest = {
+  ...setupDigest,
+  trendProfile: {
+    ...setupDigest.trendProfile,
+    latestDate: "2000-01-01"
+  }
+};
 const missingLowPositionDigest = {
   ok: true,
   trendProfile: {
@@ -1111,6 +1118,11 @@ assert(
     manager.scoreResearchDigestForPullbackSetup(highYtdPullbackDigest),
   "deep-dive scoring must downgrade year-to-date high pullbacks that only look low in short windows"
 );
+assert(
+  manager.scoreResearchDigestForPullbackSetup(setupDigest) >
+    manager.scoreResearchDigestForPullbackSetup(stalePullbackDigest),
+  "deep-dive scoring must downgrade stale NAV/trend evidence before treating a setup as actionable"
+);
 const highPositionSummary = manager.buildMarketDeepDiveSummary({
   ok: true,
   focus: "pullback_setup_discovery",
@@ -1120,7 +1132,8 @@ const highPositionSummary = manager.buildMarketDeepDiveSummary({
     { ...highPositionPullbackDigest, code: "000004", name: "位置偏高修复基金C" },
     { ...missingLowPositionDigest, code: "000005", name: "低位缺失修复基金C" },
     { ...noEarlyTurnPullbackDigest, code: "000006", name: "未启动修复基金C" },
-    { ...highYtdPullbackDigest, code: "000007", name: "年内高位修复基金C" }
+    { ...highYtdPullbackDigest, code: "000007", name: "年内高位修复基金C" },
+    { ...stalePullbackDigest, code: "000008", name: "旧净值修复基金C" }
   ]
 });
 assert(highPositionSummary.includes("mainCandidateCodes=000001"), "genuinely low-position setup should remain a main candidate");
@@ -1128,8 +1141,11 @@ assert(/watchOrRejectCodes=.*000004/.test(highPositionSummary), "pullback-lookin
 assert(/watchOrRejectCodes=.*000005/.test(highPositionSummary), "pullback-looking fund with missing low-position evidence must be visible only as watch/reject");
 assert(/watchOrRejectCodes=.*000006/.test(highPositionSummary), "pullback-looking fund without 5/10-day early turn must be visible only as watch/reject");
 assert(/watchOrRejectCodes=.*000007/.test(highPositionSummary), "year-to-date high pullback-looking fund must be demoted to watch/reject");
+assert(/watchOrRejectCodes=.*000008/.test(highPositionSummary), "stale pullback-looking fund must be demoted to watch/reject");
 assert(highPositionSummary.includes("今年以来=52.4%"), "deep-dive summary must expose year-to-date position evidence for pullback candidates");
 assert(highPositionSummary.includes("今年以来+52.4%偏高"), "deep-dive summary must explain when a candidate is not truly low because year-to-date return is high");
+assert(highPositionSummary.includes("净值日期=2000-01-01"), "deep-dive summary must expose stale NAV/trend evidence dates");
+assert(highPositionSummary.includes("净值走势已过期"), "deep-dive summary must explain stale trend evidence before buying");
 const rotationSupportedDigest = {
   ...setupDigest,
   code: "000021",
