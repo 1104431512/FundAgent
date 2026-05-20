@@ -1095,6 +1095,35 @@ assert(expandedChartProfiles.some((profile) => profile.code === "000002"), "expa
 assert(expandedChartProfiles.some((profile) => profile.code === "000006" && profile.reportChartRole === "备选观察图"), "expanded report images should include qualified backup charts");
 assert(expandedChartProfiles.some((profile) => profile.code === "000007" && profile.reportChartRole === "备选观察图"), "expanded report images should fill the richer backup chart set when evidence exists");
 assert(!expandedChartProfiles.some((profile) => profile.code === "000003"), "expanded report images must not add hot chase-risk candidates as filler charts");
+const previousReportImageLimit = process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT;
+const previousReportImageMin = process.env.FEISHU_REPORT_TREND_IMAGE_MIN;
+process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT = "3";
+process.env.FEISHU_REPORT_TREND_IMAGE_MIN = "2";
+assert.equal(manager.getFundReportChartLimit(), 6, "report image limit must not be configured below the rich chart floor");
+assert.equal(manager.getFundReportChartMinCount(), 6, "report image minimum must not be configured back to two or three charts");
+if (previousReportImageLimit === undefined) {
+  delete process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT;
+} else {
+  process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT = previousReportImageLimit;
+}
+if (previousReportImageMin === undefined) {
+  delete process.env.FEISHU_REPORT_TREND_IMAGE_MIN;
+} else {
+  process.env.FEISHU_REPORT_TREND_IMAGE_MIN = previousReportImageMin;
+}
+const sparseExplicitChartProfiles = manager.selectFundReportProfilesForAnswer([
+  { ...setupDigest, code: "000098", name: "缺走势主推基金A" },
+  { ...setupDigestSecond, code: "000099", name: "缺走势备选基金C", reportChartRole: "备选观察图" },
+  ...expandedChartUniverse
+], [
+  "推荐清单：",
+  "1. 000098 缺走势主推基金A：模型写了代码但没有走势序列。",
+  "2. 000001 低位修复基金A：回调完成，可分批，配图看低位。",
+  "备选观察：",
+  "000099 缺走势备选基金C：模型写了备选但没有走势序列。"
+].join("\n"), { minCount: 6, limit: 10 });
+assert.equal(sparseExplicitChartProfiles.length, 6, "report image selector must fill missing chart slots when explicit answer codes have no trend series");
+assert(!sparseExplicitChartProfiles.some((profile) => ["000098", "000099"].includes(profile.code)), "profiles without trend series must not occupy report image slots");
 const thinChartCoverageQuality = manager.evaluateFundAnswerQuality({
   text: [
     "直接结论：可以分批买入，先用1000元。",

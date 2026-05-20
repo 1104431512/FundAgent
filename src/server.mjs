@@ -5291,19 +5291,23 @@ async function buildFundReportCardImages(profiles, config) {
 }
 
 function getFundReportChartLimit() {
-  return Math.max(0, Number(process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT || 10) || 10);
+  const configured = Math.max(0, Number(process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT || 10) || 10);
+  return Math.max(DEFAULT_FUND_REPORT_IMAGE_MIN, configured);
 }
 
 function getFundReportChartMinCount() {
   const configured = Number(process.env.FEISHU_REPORT_TREND_IMAGE_MIN || DEFAULT_FUND_REPORT_IMAGE_MIN);
-  return Math.min(getFundReportChartLimit(), Math.max(0, configured || DEFAULT_FUND_REPORT_IMAGE_MIN));
+  return Math.min(
+    getFundReportChartLimit(),
+    Math.max(DEFAULT_FUND_REPORT_IMAGE_MIN, configured || DEFAULT_FUND_REPORT_IMAGE_MIN)
+  );
 }
 
 function collectTrendSnapshotsFromProfiles(profiles) {
   const byCode = new Map();
   const list = Array.isArray(profiles) ? profiles : [profiles].filter(Boolean);
   const add = (profile) => {
-    if (!profile?.trendProfile?.series?.length) return;
+    if (!hasFundReportChartSeries(profile)) return;
     const code = profile.code || profile.seed?.code || "";
     const name = profile.name || profile.seed?.name || "";
     const key = code || name;
@@ -5321,9 +5325,14 @@ function collectTrendSnapshotsFromProfiles(profiles) {
   return [...byCode.values()];
 }
 
+function hasFundReportChartSeries(profile) {
+  return Boolean(profile?.trendProfile?.series?.length);
+}
+
 function selectFundReportProfilesForAnswer(profiles, answerText, options = {}) {
   const list = Array.isArray(profiles) ? profiles.filter(Boolean) : [profiles].filter(Boolean);
-  if (!list.length) return [];
+  const chartableList = list.filter(hasFundReportChartSeries);
+  if (!chartableList.length) return [];
   const limit = Math.max(0, Number(options.limit ?? getFundReportChartLimit()) || 0);
   if (!limit) return [];
   const minCount = Math.min(limit, Math.max(0, Number(options.minCount || 0) || 0));
@@ -5333,7 +5342,7 @@ function selectFundReportProfilesForAnswer(profiles, answerText, options = {}) {
   const sectionCodes = new Set(selectionSections.flatMap((section) => extractFundCodes(section.text)));
   const explicitCodes = sectionCodes.size ? sectionCodes : new Set(extractFundCodes(text));
   const ranked = [];
-  for (const profile of list) {
+  for (const profile of chartableList) {
     const code = profile?.code || profile?.seed?.code || "";
     const name = profile?.name || profile?.seed?.name || "";
     if (explicitCodes.size && code && !explicitCodes.has(code)) continue;
@@ -5379,8 +5388,9 @@ function selectFundReportProfilesForAnswer(profiles, answerText, options = {}) {
       return true;
     })
     .map((item) => item.profile);
-  if (selected.length < minCount) {
-    selected.push(...selectSupplementalFundReportProfiles(list, selected, minCount - selected.length));
+  const selectedChartCount = collectTrendSnapshotsFromProfiles(selected).length;
+  if (selectedChartCount < minCount) {
+    selected.push(...selectSupplementalFundReportProfiles(chartableList, selected, minCount - selectedChartCount));
   }
   return selected.slice(0, limit);
 }
@@ -5404,7 +5414,7 @@ function selectSupplementalFundReportProfiles(profiles, selected, needed) {
 }
 
 function isSupplementalFundReportProfileEligible(profile) {
-  if (!profile?.trendProfile?.series?.length) return false;
+  if (!hasFundReportChartSeries(profile)) return false;
   const trend = profile.trendProfile || {};
   if (profile.ok === false || profile.actionability?.action === "avoid") return false;
   if (trend.entryBias === "avoid_now" || trend.trendLabel === "extended_uptrend") return false;
@@ -12758,6 +12768,8 @@ export {
   evaluatePortfolioWatchlistFreshness,
   evaluateFundAnswerQuality,
   filterFocusedPullbackRankingCandidates,
+  getFundReportChartLimit,
+  getFundReportChartMinCount,
   getFundAnalysisSkillIds,
   getFundQaSkillIds,
   getFundRecommendationSkillIds,

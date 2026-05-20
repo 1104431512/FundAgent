@@ -184,8 +184,16 @@ const requiredPatterns = [
     message: "fund report image defaults should target a richer chart set than two or three images."
   },
   {
+    pattern: /getFundReportChartLimit[\s\S]{0,220}Math\.max\(DEFAULT_FUND_REPORT_IMAGE_MIN,\s*configured\)/,
+    message: "fund report image limit must not be lowered to two or three charts by runtime config."
+  },
+  {
     pattern: /FEISHU_REPORT_TREND_IMAGE_MIN/,
     message: "fund report image count should be configurable without lowering the default rich chart set."
+  },
+  {
+    pattern: /hasFundReportChartSeries[\s\S]{0,700}selectFundReportProfilesForAnswer/,
+    message: "fund report image selection must only count candidates that can actually render chart images."
   },
   {
     pattern: /extractAnswerChartEvidenceSections/,
