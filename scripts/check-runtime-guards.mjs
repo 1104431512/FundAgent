@@ -85,6 +85,10 @@ const requiredPatterns = [
     message: "pullback/setup recommendations must include aggressive/balanced/conservative execution tiers."
   },
   {
+    pattern: /missing_pullback_share_class_fee/,
+    message: "pullback/setup recommendations must include share-class and fee evidence per candidate."
+  },
+  {
     pattern: /resolveFundMentionsFromText/,
     message: "text-only fund screening must resolve fund names into codes before enrichment."
   },

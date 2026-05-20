@@ -193,6 +193,25 @@ const setupDigest = {
     shareClassFeeModel: { label: "C类：通常无申购费，销售服务费按年计提" }
   }
 };
+const setupDigestSecond = {
+  ok: true,
+  trendProfile: {
+    pullbackSetup: { signal: "launch_setup", score: 68 },
+    trendLabel: "launch_setup",
+    entryBias: "staged_buy",
+    return5dPct: 1.1,
+    return10dPct: 2.2,
+    return20dPct: 3.8,
+    return60dPct: 4.9,
+    lowPositionPct120: 34.2,
+    drawdownFromRecentHighPct: -6.2
+  },
+  actionability: { score: 69 },
+  fees: {
+    shareClass: "C",
+    shareClassFeeModel: { label: "C类：通常无申购费，销售服务费按年计提" }
+  }
+};
 const hotDigest = {
   ok: true,
   trendProfile: {
@@ -370,6 +389,40 @@ assert(
 assert(
   thinPullbackQuality.issues.includes("missing_pullback_three_tier_execution"),
   "pullback recommendations must include aggressive/balanced/conservative execution tiers"
+);
+assert(
+  thinPullbackQuality.issues.includes("missing_pullback_share_class_fee"),
+  "pullback recommendations must include share-class and fee evidence"
+);
+
+const partialEvidenceQuality = manager.evaluateFundAnswerQuality({
+  text: [
+    "推荐清单：",
+    "1. 000001 低位修复基金A：C类，近5日+1.4%、近10日+2.8%，120日位置38.5%，可以分批。",
+    "2. 000002 启动前夜基金C：回调完成，可以分批买入。",
+    "1万元执行：激进2000元，均衡1000元，保守0元。"
+  ].join("\n"),
+  workflow: "fund_recommendation",
+  userText: setupQuery,
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      candidates: [
+        { ...setupDigest, code: "000001", name: "低位修复基金A" },
+        { ...setupDigestSecond, code: "000002", name: "启动前夜基金C" },
+        { ...hotDigest, code: "000003", name: "追涨观察基金A" }
+      ]
+    }
+  }
+});
+assert(
+  partialEvidenceQuality.issues.includes("missing_pullback_timing_evidence"),
+  "every recommended pullback candidate must carry its own timing evidence"
+);
+assert(
+  partialEvidenceQuality.issues.includes("missing_pullback_share_class_fee"),
+  "every recommended pullback candidate must carry its own share-class evidence"
 );
 
 const noQualifiedQuality = manager.evaluateFundAnswerQuality({

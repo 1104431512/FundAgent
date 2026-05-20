@@ -4327,6 +4327,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "禁止输出 Verdict、Confidence、Score、buy、staged、wait、avoid、hold、switch 等英文动作/栏目词；全部改成结论、把握度、评分、买入、分批买入、等待、回避、持有、换基。",
       "若质检问题包含 watch_candidate_promoted_to_recommendation、recommendation_not_from_pullback_main_candidates 或 recommends_without_qualified_pullback_candidate，必须按证据里的 mainCandidateCodes 重写主推荐；watchOrRejectCodes 只能写进观察/排除原因。",
       "若质检问题包含 missing_pullback_timing_evidence，主推荐每条必须写出5日/10日早期转强、120日区间低位或距高点回撤等数字证据；若包含 missing_pullback_three_tier_execution，必须给激进/均衡/保守三档金额。",
+      "若质检问题包含 missing_pullback_share_class_fee，主推荐每条必须写份额类别和费用模型，例如 C类无前端申购费但有销售服务费，或 A类有申购费但长期持有持续费率较低。",
       "若证据没有 mainCandidateCodes，必须直接说明暂未筛到合格的回调完成/低位启动主推荐，不能硬凑基金代码。",
       "保持适合飞书卡片阅读，不要 Markdown 表格或代码块。",
       "",
@@ -4464,8 +4465,18 @@ function evaluatePullbackAnswerDiscipline({ text, userText, evidence }) {
     if (!recommendedCodes.length && !hasNoQualifiedPullbackMessage(body)) {
       issues.push("missing_pullback_main_candidate_code");
     }
-    if (mainRecommended.length && hasPullbackTimingEvidenceAvailable(ranked) && !hasPullbackTimingEvidenceInAnswer(recommendationSection || body)) {
+    const mainRecommendedItems = ranked.filter((item) => mainCodes.has(item.candidate?.code) && recommendedCodes.includes(item.candidate?.code));
+    if (mainRecommendedItems.some((item) => {
+      const context = extractFundRecommendationContext(recommendationSection || body, item.candidate?.code);
+      return hasPullbackTimingEvidenceAvailable([item]) && !hasPullbackTimingEvidenceInAnswer(context);
+    })) {
       issues.push("missing_pullback_timing_evidence");
+    }
+    if (mainRecommendedItems.some((item) => {
+      const context = extractFundRecommendationContext(recommendationSection || body, item.candidate?.code);
+      return hasShareClassFeeEvidenceAvailable(item.candidate) && !hasShareClassFeeEvidenceInAnswer(context);
+    })) {
+      issues.push("missing_pullback_share_class_fee");
     }
     if (mainRecommended.length && !hasThreeTierPullbackExecution(body)) {
       issues.push("missing_pullback_three_tier_execution");
@@ -4491,6 +4502,7 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
     "missing_no_qualified_pullback_message",
     "recommends_without_qualified_pullback_candidate",
     "missing_pullback_timing_evidence",
+    "missing_pullback_share_class_fee",
     "missing_pullback_three_tier_execution"
   ]);
   if (!(issues || []).some((issue) => severeIssues.has(issue))) return "";
@@ -4606,6 +4618,37 @@ function hasPullbackTimingEvidenceInAnswer(text) {
   const body = String(text || "");
   const numericTiming = /(?:近?\s*(?:5|10|20|60|120)\s*日|120日(?:区间)?位置|区间低位|低位|距高点|回撤).{0,18}[+-]?\d+(?:\.\d+)?%|[+-]?\d+(?:\.\d+)?%.{0,18}(?:近?\s*(?:5|10|20|60|120)\s*日|120日(?:区间)?位置|区间低位|低位|距高点|回撤)/;
   return numericTiming.test(body);
+}
+
+function extractFundRecommendationContext(text, code) {
+  const body = String(text || "");
+  const fundCode = String(code || "");
+  if (!fundCode) return body;
+  const lines = body.split(/\r?\n/);
+  const lineIndex = lines.findIndex((line) => line.includes(fundCode));
+  if (lineIndex >= 0) {
+    return [lines[lineIndex], lines[lineIndex + 1] || ""].join("\n");
+  }
+  const index = body.indexOf(fundCode);
+  if (index < 0) return "";
+  return body.slice(Math.max(0, index - 80), index + 180);
+}
+
+function hasShareClassFeeEvidenceAvailable(candidate = {}) {
+  const fees = candidate.fees || {};
+  return Boolean(
+    fees.shareClass
+    || fees.shareClassFeeModel?.label
+    || candidate.shareClass
+    || candidate.shareClassFeeModel?.label
+    || candidate.seed?.shareClass
+    || candidate.seed?.shareClassFeeModel?.label
+    || inferFundShareClass(candidate.name || candidate.seed?.name || "")
+  );
+}
+
+function hasShareClassFeeEvidenceInAnswer(text) {
+  return /(A类|B类|C类|D类|I类|Y类|份额|申购费|销售服务费|赎回费|费率|费用|无前端|前端收费|持有期)/.test(String(text || ""));
 }
 
 function hasThreeTierPullbackExecution(text) {
