@@ -296,6 +296,59 @@ assert(
     manager.scoreResearchDigestForPullbackSetup(hotDigest),
   "deep-dive scoring must rank pullback-complete candidates above extended uptrends"
 );
+const rotationSupportedDigest = {
+  ...setupDigest,
+  code: "000021",
+  name: "低位轮动修复基金C",
+  seed: {
+    matchedThemes: [{
+      id: "medicine",
+      name: "医药",
+      stage: "low_position_rotation",
+      positionSignal: "low_position_rotation",
+      rotationScore: 58,
+      lowPositionScore: 62,
+      crowdingScore: 18,
+      forwardScore: 46
+    }]
+  }
+};
+const crowdedThemeDigest = {
+  ...setupDigest,
+  code: "000022",
+  name: "拥挤主题修复基金C",
+  seed: {
+    matchedThemes: [{
+      id: "precious_metals",
+      name: "贵金属",
+      stage: "crowded",
+      positionSignal: "high_chase_risk",
+      rotationScore: 22,
+      lowPositionScore: 12,
+      crowdingScore: 72,
+      forwardScore: 40
+    }]
+  }
+};
+assert(
+  manager.scoreResearchDigestForPullbackSetup(rotationSupportedDigest) >
+    manager.scoreResearchDigestForPullbackSetup(setupDigest),
+  "deep-dive scoring must reward pullback candidates backed by low-position sector rotation"
+);
+assert(
+  manager.scoreResearchDigestForPullbackSetup(crowdedThemeDigest) <
+    manager.scoreResearchDigestForPullbackSetup(setupDigest),
+  "deep-dive scoring must downgrade pullback-looking funds in crowded/high-chase themes"
+);
+const rotationSummary = manager.buildMarketDeepDiveSummary({
+  ok: true,
+  focus: "pullback_setup_discovery",
+  selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+  candidates: [rotationSupportedDigest, crowdedThemeDigest]
+});
+assert(rotationSummary.includes("mainCandidateCodes=000021"), "low-position rotation candidate should remain eligible for main pullback recommendations");
+assert(rotationSummary.includes("watchOrRejectCodes=000022"), "crowded/high-chase theme candidate should be demoted to watch/reject even if fund trend looks repaired");
+assert(rotationSummary.includes("题材=医药/低位轮动"), "deep-dive summary should expose sector rotation evidence for the manager");
 const earlyTurnTrend = manager.computeTrendProfile(buildEarlyTurnNavPoints());
 assert.equal(earlyTurnTrend.ok, true, "early-turn synthetic series should produce a trend profile");
 assert(

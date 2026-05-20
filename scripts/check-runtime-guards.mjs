@@ -129,6 +129,14 @@ const requiredPatterns = [
     message: "focused pullback/setup requests must filter broad ranking scans to the requested theme."
   },
   {
+    pattern: /scorePullbackThemeRotation/,
+    message: "pullback/setup deep-dive ranking must incorporate sector rotation, low-position, and crowding evidence."
+  },
+  {
+    pattern: /hasHighChaseTheme/,
+    message: "pullback/setup main candidates must reject crowded or high-chase-risk themes."
+  },
+  {
     pattern: /mergeCandidateFundRecord/,
     message: "candidate recall must merge return evidence from multiple discovery sources, not just keywords."
   },

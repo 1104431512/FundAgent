@@ -3682,6 +3682,7 @@ function classifyPullbackSetupCandidateForSummary(candidate = {}) {
   if (!candidate?.ok) return "watch_or_reject";
   const trend = candidate.trendProfile || {};
   const signal = trend.pullbackSetup?.signal || "";
+  if (hasHighChaseTheme(candidate)) return "watch_or_reject";
   if (["pullback_complete", "launch_setup"].includes(signal)
     && trend.trendLabel !== "extended_uptrend"
     && trend.entryBias !== "wait_pullback"
@@ -3707,11 +3708,89 @@ function formatPullbackSetupCandidateLine(candidate = {}, ranked = {}) {
     Number.isFinite(Number(trend.return60dPct)) ? `60日=${trend.return60dPct}%` : "",
     Number.isFinite(Number(trend.drawdownFromRecentHighPct)) ? `距高点=${trend.drawdownFromRecentHighPct}%` : "",
     Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置=${trend.lowPositionPct120}%` : "",
+    formatCandidateThemeEvidence(candidate),
     trend.trendLabelText ? `趋势=${trend.trendLabelText}` : "",
     trend.entryBiasText ? `入场=${trend.entryBiasText}` : "",
     actionability.actionText ? `动作=${actionability.actionText}` : ""
   ].filter(Boolean);
   return `- ${fields.join(", ")}`;
+}
+
+function getCandidateThemeSignals(candidate = {}) {
+  const raw = [
+    ...(Array.isArray(candidate.matchedThemes) ? candidate.matchedThemes : []),
+    ...(Array.isArray(candidate.seed?.matchedThemes) ? candidate.seed.matchedThemes : [])
+  ];
+  const seen = new Set();
+  return raw
+    .map((theme) => ({
+      id: String(theme?.id || theme?.name || "").trim(),
+      name: String(theme?.name || theme?.id || "").trim(),
+      stage: theme?.stage || "",
+      positionSignal: theme?.positionSignal || "",
+      actionBias: theme?.actionBias || "",
+      forwardScore: Number(theme?.forwardScore),
+      crowdingScore: Number(theme?.crowdingScore),
+      rotationScore: Number(theme?.rotationScore),
+      lowPositionScore: Number(theme?.lowPositionScore)
+    }))
+    .filter((theme) => theme.id || theme.name)
+    .filter((theme) => {
+      const key = `${theme.id}|${theme.name}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 3);
+}
+
+function hasHighChaseTheme(candidate = {}) {
+  return getCandidateThemeSignals(candidate).some((theme) =>
+    theme.positionSignal === "high_chase_risk"
+    || theme.stage === "crowded"
+    || Number(theme.crowdingScore) >= 55
+  );
+}
+
+function scorePullbackThemeRotation(candidate = {}) {
+  const themes = getCandidateThemeSignals(candidate);
+  if (!themes.length) return 0;
+  let score = 0;
+  for (const theme of themes.slice(0, 2)) {
+    const crowding = Number(theme.crowdingScore);
+    const rotation = Number(theme.rotationScore);
+    const lowPosition = Number(theme.lowPositionScore);
+    if (theme.positionSignal === "high_chase_risk") score -= 28;
+    if (theme.stage === "crowded") score -= 20;
+    if (Number.isFinite(crowding)) {
+      if (crowding >= 55) score -= 18;
+      else if (crowding >= 40) score -= 8;
+    }
+    if (theme.positionSignal === "low_position_rotation") score += 18;
+    if (theme.positionSignal === "acceptable_position") score += 10;
+    if (theme.stage === "low_position_rotation") score += 10;
+    if (Number.isFinite(rotation) && Number.isFinite(lowPosition)) {
+      if (rotation >= 45 && lowPosition >= 45) score += 14;
+      else if (rotation >= 35 && lowPosition >= 35) score += 8;
+    }
+    if (Number.isFinite(lowPosition) && lowPosition < 20 && Number.isFinite(crowding) && crowding >= 35) score -= 8;
+  }
+  return Math.max(-50, Math.min(34, score));
+}
+
+function formatCandidateThemeEvidence(candidate = {}) {
+  const theme = getCandidateThemeSignals(candidate)[0];
+  if (!theme) return "";
+  const parts = [
+    theme.name || "题材",
+    theme.positionSignal === "high_chase_risk" || theme.stage === "crowded" ? "偏拥挤" : "",
+    theme.positionSignal === "low_position_rotation" || theme.stage === "low_position_rotation" ? "低位轮动" : "",
+    theme.positionSignal === "acceptable_position" ? "位置尚可" : "",
+    Number.isFinite(theme.rotationScore) ? `轮动=${round(theme.rotationScore, 1)}` : "",
+    Number.isFinite(theme.lowPositionScore) ? `低位=${round(theme.lowPositionScore, 1)}` : "",
+    Number.isFinite(theme.crowdingScore) ? `拥挤=${round(theme.crowdingScore, 1)}` : ""
+  ].filter(Boolean);
+  return parts.length ? `题材=${parts.join("/")}` : "";
 }
 
 function collectPortfolioSources(...items) {
@@ -6158,6 +6237,7 @@ function scoreResearchDigestForPullbackSetup(digest = {}) {
   if (Number(trend.return20dPct) > 10) score -= 18;
   if (Number(trend.return60dPct) > 24) score -= 16;
   if (Number(trend.drawdownFromRecentHighPct) > -2 && Number(trend.return20dPct) > 6) score -= 14;
+  score += scorePullbackThemeRotation(digest);
   return score;
 }
 
