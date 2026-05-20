@@ -176,11 +176,11 @@ const requiredPatterns = [
     message: "pullback/setup backfill must exclude already tested products while continuing the search."
   },
   {
-    pattern: /FEISHU_REPORT_TREND_IMAGE_LIMIT\s*\|\|\s*10/,
+    pattern: /FEISHU_REPORT_TREND_IMAGE_LIMIT\s*\|\|\s*12/,
     message: "fund report image defaults should show a broad buy and backup chart set when available."
   },
   {
-    pattern: /DEFAULT_FUND_REPORT_IMAGE_MIN\s*=\s*6/,
+    pattern: /DEFAULT_FUND_REPORT_IMAGE_MIN\s*=\s*8/,
     message: "fund report image defaults should target a richer chart set than two or three images."
   },
   {
@@ -214,6 +214,10 @@ const requiredPatterns = [
   {
     pattern: /appendFundReportChartReadingGuide/,
     message: "fund answers with attached report images must include a text guide that ties each chart to buy or backup reasoning."
+  },
+  {
+    pattern: /本次配图共/,
+    message: "fund chart reading guides must summarize how many charts support buy and backup reasoning."
   },
   {
     pattern: /用来确认是否适合分批买入[\s\S]{0,120}用来观察是否能从备选转入买点/,
@@ -364,8 +368,12 @@ const requiredPatterns = [
     message: "portfolio watchlist ready seeds must explicitly prove NAV trend verification passed."
   },
   {
-    pattern: /function inferPortfolioWatchStatusFromSeedCandidate[\s\S]{0,900}hasPullbackLowPositionEvidence/,
-    message: "portfolio watchlist seed status must require verified low-position pullback evidence."
+    pattern: /function inferPortfolioWatchStatusFromSeedCandidate[\s\S]{0,900}hasVerifiedPortfolioBuySetup/,
+    message: "portfolio watchlist seed status must require the shared verified buy setup gate."
+  },
+  {
+    pattern: /function hasVerifiedPortfolioBuySetup[\s\S]{0,700}hasPullbackLowPositionEvidence/,
+    message: "portfolio verified buy setup must require low-position pullback evidence."
   },
   {
     pattern: /hasPortfolioVerifiedSeedChaseRisk/,
@@ -386,6 +394,10 @@ const requiredPatterns = [
   {
     pattern: /hasVerifiedPortfolioBuySetup/,
     message: "portfolio BUY execution must require verified pullback/launch and low-position setup evidence, not merely absence of chase risk."
+  },
+  {
+    pattern: /hasVerifiedPortfolioBuySetup[\s\S]{0,500}isEarlyTurnSetupTrend/,
+    message: "portfolio BUY execution must require 5/10-day early-turn evidence before virtual subscription."
   },
   {
     pattern: /hasVerifiedPortfolioFeeEvidence/,
@@ -412,8 +424,12 @@ const requiredPatterns = [
     message: "portfolio BUY guard must explain when share-class fee evidence is missing."
   },
   {
-    pattern: /缺少回调完成\/启动前夜和低位证据/,
-    message: "portfolio BUY guard must explain when low-position launch evidence is missing."
+    pattern: /缺少回调完成\/启动前夜、5日\/10日刚转强和低位证据/,
+    message: "portfolio BUY guard must explain when low-position launch or early-turn evidence is missing."
+  },
+  {
+    pattern: /还差5日\/10日刚转强证据/,
+    message: "watchlist readiness gaps must expose missing early-turn evidence before buying."
   },
   {
     pattern: /portfolio_buy_discipline_guard/,

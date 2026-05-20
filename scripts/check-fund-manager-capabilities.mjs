@@ -265,6 +265,8 @@ const watchlistStatusLines = manager.buildPortfolioWatchlistStatusLines([
         pullbackSetup: { signal: "pullback_complete" },
         trendLabel: "pullback_complete",
         entryBias: "buyable_now",
+        return5dPct: 1.2,
+        return10dPct: 3.2,
         return20dPct: 4.8,
         return60dPct: 7.6,
         lowPositionPct120: 42.4,
@@ -321,7 +323,7 @@ assert(watchlistStatusLines.includes("触发：放量站回20日均线"), "portf
 assert(watchlistStatusLines.includes("风险边界：若近20日涨幅超过10%则暂停追入"), "portfolio status answer must include risk boundaries");
 assert(watchlistStatusLines.includes("费用/份额：C类更适合短中期观察"), "portfolio status answer must include fee/share-class notes");
 assert(watchlistStatusLines.includes("最新走势：20日+4.8%"), "portfolio status answer must include latest trend evidence");
-assert(watchlistStatusLines.includes("缺口=低位/启动/不过热/费用条件已满足"), "buy-preparation queue must tell managers when ready candidates have no remaining setup and fee gap");
+assert(watchlistStatusLines.includes("缺口=低位/启动/刚转强/不过热/费用条件已满足"), "buy-preparation queue must tell managers when ready candidates have no remaining setup, early-turn, and fee gap");
 assert(watchlistStatusLines.includes("买入缺口：还差回调完成或启动前夜信号"), "watchlist detail must expose what waiting candidates still lack before buying");
 assert.equal(
   manager.normalizePortfolioWatchlistUpdates([{ operation: "REMOVE", code: "000001", reason: "主题过热" }])[0].operation,
@@ -653,7 +655,7 @@ const readinessQueue = manager.buildPortfolioDecisionReadinessQueue([
 assert.equal(readinessQueue[0].firstTrigger, "温和转强", "portfolio decision prompt must expose ready candidate triggers");
 assert(readinessQueue[0].readinessScore >= 85, "portfolio decision prompt must expose deterministic buy-preparation readiness scores");
 assert.equal(readinessQueue[0].readinessLabel, "买入准备充分", "portfolio decision prompt must expose readable readiness labels");
-assert(readinessQueue[0].readinessGaps.some((item) => item.includes("低位/启动/不过热/费用条件已满足")), "portfolio decision prompt must expose remaining buy-readiness gaps or confirmation status");
+assert(readinessQueue[0].readinessGaps.some((item) => item.includes("低位/启动/刚转强/不过热/费用条件已满足")), "portfolio decision prompt must expose remaining buy-readiness gaps or confirmation status");
 const fallbackReadyActions = manager.buildPortfolioReadyWatchlistReviewActions([
   { code: "000010", name: "中证A500ETF联接C", status: "ready", priority: 1, reason: "低位回调", buyTriggers: ["温和转强"], riskNotes: ["不追涨"], feeNotes: ["C类短期更合适"] }
 ], [], { profiles: [verifiedSeedProfile] });
@@ -715,6 +717,22 @@ const noLaunchSignalBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: 
 });
 assert.equal(noLaunchSignalBuyGuard.ok, false, "portfolio buy discipline must require pullback-complete or launch-setup evidence before buying");
 assert(noLaunchSignalBuyGuard.reason.includes("启动前夜"), "missing setup signal block must explain the launch evidence requirement");
+const noEarlyTurnProfile = {
+  ...verifiedSeedProfile,
+  trendProfile: {
+    ...verifiedSeedProfile.trendProfile,
+    return5dPct: -0.8,
+    return10dPct: 0.2,
+    return20dPct: 4.2
+  }
+};
+const noEarlyTurnBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, noEarlyTurnProfile);
+assert.equal(noEarlyTurnBuyGuard.ok, false, "portfolio buy discipline must block low-position pullbacks that have not started turning up");
+assert(noEarlyTurnBuyGuard.reason.includes("5日/10日刚转强"), "missing early-turn block must explain the 5/10-day turn requirement");
+assert(
+  manager.buildPortfolioWatchReadinessGaps({ code: "000010", status: "ready" }, noEarlyTurnProfile).some((item) => item.includes("5日/10日刚转强")),
+  "watchlist readiness gaps must expose missing early-turn evidence before buying"
+);
 const missingFeeProfile = {
   ...verifiedSeedProfile,
   fees: {
@@ -1109,25 +1127,29 @@ const expandedChartUniverse = [
   { ...setupDigestSecond, code: "000004", name: "备选回踩基金C", reportChartRole: "备选观察图", trendProfile: { ...setupDigestSecond.trendProfile, series: chartSeries } },
   { ...setupDigest, code: "000005", name: "轮动低位基金C", trendProfile: { ...setupDigest.trendProfile, series: chartSeries } },
   { ...setupDigestSecond, code: "000006", name: "低位观察基金C", reportChartRole: "备选观察图", trendProfile: { ...setupDigestSecond.trendProfile, series: chartSeries } },
-  { ...setupDigest, code: "000007", name: "低位扩散基金C", reportChartRole: "备选观察图", trendProfile: { ...setupDigest.trendProfile, series: chartSeries } }
+  { ...setupDigest, code: "000007", name: "低位扩散基金C", reportChartRole: "备选观察图", trendProfile: { ...setupDigest.trendProfile, series: chartSeries } },
+  { ...setupDigestSecond, code: "000008", name: "费用占优基金C", reportChartRole: "备选观察图", trendProfile: { ...setupDigestSecond.trendProfile, series: chartSeries } },
+  { ...setupDigest, code: "000009", name: "均衡低位基金A", trendProfile: { ...setupDigest.trendProfile, series: chartSeries } }
 ];
 const expandedChartProfiles = manager.selectFundReportProfilesForAnswer(expandedChartUniverse, [
   "推荐清单：",
   "1. 000001 低位修复基金A：回调完成，可分批，配图看低位和费用。",
   "备选观察：",
   "000004 备选回踩基金C：等待触发，配图看回踩确认。"
-].join("\n"), { minCount: 6, limit: 10 });
-assert.equal(expandedChartProfiles.length, 6, "report image selector must expand sparse answers to about six chart-backed candidates");
+].join("\n"), { minCount: 8, limit: 12 });
+assert.equal(expandedChartProfiles.length, 8, "report image selector must expand sparse answers to about eight chart-backed candidates");
 assert(expandedChartProfiles.some((profile) => profile.code === "000002"), "expanded report images should add qualified launch/setup candidates not only explicitly mentioned funds");
 assert(expandedChartProfiles.some((profile) => profile.code === "000006" && profile.reportChartRole === "备选观察图"), "expanded report images should include qualified backup charts");
 assert(expandedChartProfiles.some((profile) => profile.code === "000007" && profile.reportChartRole === "备选观察图"), "expanded report images should fill the richer backup chart set when evidence exists");
+assert(expandedChartProfiles.some((profile) => profile.code === "000008" && profile.reportChartRole === "备选观察图"), "expanded report images should include a broad backup chart set when evidence exists");
+assert(expandedChartProfiles.some((profile) => profile.code === "000009"), "expanded report images should include additional qualified buy-reference charts when evidence exists");
 assert(!expandedChartProfiles.some((profile) => profile.code === "000003"), "expanded report images must not add hot chase-risk candidates as filler charts");
 const previousReportImageLimit = process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT;
 const previousReportImageMin = process.env.FEISHU_REPORT_TREND_IMAGE_MIN;
 process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT = "3";
 process.env.FEISHU_REPORT_TREND_IMAGE_MIN = "2";
-assert.equal(manager.getFundReportChartLimit(), 6, "report image limit must not be configured below the rich chart floor");
-assert.equal(manager.getFundReportChartMinCount(), 6, "report image minimum must not be configured back to two or three charts");
+assert.equal(manager.getFundReportChartLimit(), 8, "report image limit must not be configured below the rich chart floor");
+assert.equal(manager.getFundReportChartMinCount(), 8, "report image minimum must not be configured back to two or three charts");
 if (previousReportImageLimit === undefined) {
   delete process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT;
 } else {
@@ -1148,8 +1170,8 @@ const sparseExplicitChartProfiles = manager.selectFundReportProfilesForAnswer([
   "2. 000001 低位修复基金A：回调完成，可分批，配图看低位。",
   "备选观察：",
   "000099 缺走势备选基金C：模型写了备选但没有走势序列。"
-].join("\n"), { minCount: 6, limit: 10 });
-assert.equal(sparseExplicitChartProfiles.length, 6, "report image selector must fill missing chart slots when explicit answer codes have no trend series");
+].join("\n"), { minCount: 8, limit: 12 });
+assert.equal(sparseExplicitChartProfiles.length, 8, "report image selector must fill missing chart slots when explicit answer codes have no trend series");
 assert(!sparseExplicitChartProfiles.some((profile) => ["000098", "000099"].includes(profile.code)), "profiles without trend series must not occupy report image slots");
 const thinChartCoverageQuality = manager.evaluateFundAnswerQuality({
   text: [
@@ -1164,6 +1186,7 @@ const thinChartCoverageQuality = manager.evaluateFundAnswerQuality({
 assert(thinChartCoverageQuality.issues.includes("insufficient_chart_linked_candidates"), "quality gate must reject answers that only support two or three report charts when more eligible candidates exist");
 const guidedChartAnswer = manager.appendFundReportChartReadingGuide("直接结论：优先分批，备选继续等触发。", expandedChartProfiles);
 assert(guidedChartAnswer.includes("配图阅读："), "final answer must append a chart reading guide when report images are attached");
+assert(guidedChartAnswer.includes("本次配图共 8 张"), "chart reading guide must summarize how many charts support the answer");
 assert(guidedChartAnswer.includes("买入参考图"), "chart reading guide must distinguish buy-reference charts");
 assert(guidedChartAnswer.includes("备选观察图"), "chart reading guide must distinguish backup/watch charts");
 assert(guidedChartAnswer.includes("用来确认是否适合分批买入"), "buy-reference chart guide must say how the chart supports a buy decision");
