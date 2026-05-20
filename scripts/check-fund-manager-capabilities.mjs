@@ -341,6 +341,8 @@ const workflowWatchlistInput = [
   {
     ...normalizedWatchDb.watchlist[0],
     updatedAt: "2026-05-20T00:00:00.000Z",
+    alternativeShareClasses: [{ code: "000101", name: "低位修复基金A", shareClass: "A", feeNotes: ["A类适合更长持有"] }],
+    sameExposureAlternatives: [{ code: "000005", name: "同指数低费率联接C", shareClass: "C" }],
     lastSnapshot: {
       snapshotDate: "2026-05-19",
       navDate: "2026-05-19",
@@ -404,6 +406,8 @@ assert.deepEqual(staleWorkflowRefreshCandidates.map((item) => item.code), ["0000
 const workflowWatchlistSummary = manager.buildFundWorkflowWatchlistSummary(workflowWatchlistCandidates);
 assert(workflowWatchlistSummary.includes("经理自选候选池（优先复核，不自动买入）"), "fund workflow prompt must expose manager-maintained candidates");
 assert(workflowWatchlistSummary.includes("000002 等待回调基金C"), "fund workflow prompt must include launch-eve watchlist candidates");
+assert(workflowWatchlistSummary.includes("替代份额=000101"), "fund workflow prompt must expose alternative A/C share classes from the watchlist");
+assert(workflowWatchlistSummary.includes("同类替代=000005"), "fund workflow prompt must expose same-exposure alternatives from the watchlist");
 const mergedWatchDeepDive = manager.mergeFundWorkflowWatchlistIntoDeepDive({
   ok: true,
   focus: "pullback_setup_discovery",
@@ -414,6 +418,7 @@ const mergedWatchSummary = manager.buildMarketDeepDiveSummary(mergedWatchDeepDiv
 assert(mergedWatchSummary.includes("mainCandidateCodes=000001"), "ready watchlist candidates with verified pullback evidence must be visible to pullback quality gates");
 assert(mergedWatchSummary.includes("watchOrRejectCodes=000002"), "launch-eve watchlist candidates that still wait for confirmation must stay out of main recommendations");
 assert(mergedWatchDeepDive.portfolioWatchlistCandidates?.length === 2, "merged deep-dive evidence must keep traceable watchlist context");
+assert(mergedWatchDeepDive.candidates.find((item) => item.code === "000001")?.seed?.alternativeShareClasses?.some((item) => item.code === "000101"), "merged watchlist candidates must carry share-class alternatives into deep-dive evidence");
 const mergedWatchWithFailedMarketFetch = manager.mergeFundWorkflowWatchlistIntoDeepDive({
   ok: true,
   focus: "pullback_setup_discovery",

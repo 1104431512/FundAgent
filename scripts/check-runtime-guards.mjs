@@ -360,6 +360,18 @@ const requiredPatterns = [
     message: "fund workflow prompts must expose self-selected candidates without implying automatic buys."
   },
   {
+    pattern: /替代份额=/,
+    message: "fund workflow watchlist prompts must expose alternative share classes for A/C fee comparison."
+  },
+  {
+    pattern: /同类替代=/,
+    message: "fund workflow watchlist prompts must expose same-exposure alternatives without cluttering main picks."
+  },
+  {
+    pattern: /alternativeShareClasses[\s\S]{0,160}sameExposureAlternatives/,
+    message: "fund workflow watchlist deep-dive evidence must preserve share-class and same-exposure alternatives."
+  },
+  {
     pattern: /portfolioWatchlist/,
     message: "fund answer quality evidence must carry manager watchlist context."
   },

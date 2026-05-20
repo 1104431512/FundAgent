@@ -3363,7 +3363,9 @@ function buildFundWorkflowWatchlistSummary(candidates = []) {
         item.reason ? `备选理由=${item.reason}` : "",
         item.readinessGaps?.length ? `缺口=${item.readinessGaps.slice(0, 2).join("/")}` : "",
         item.buyTriggers?.length ? `触发=${item.buyTriggers.slice(0, 2).join("/")}` : "",
-        item.feeNotes?.length ? `费用=${item.feeNotes.slice(0, 1).join("/")}` : ""
+        item.feeNotes?.length ? `费用=${item.feeNotes.slice(0, 1).join("/")}` : "",
+        item.alternativeShareClasses?.length ? `替代份额=${formatPortfolioWatchAlternativesText(item.alternativeShareClasses)}` : "",
+        item.sameExposureAlternatives?.length ? `同类替代=${formatPortfolioWatchAlternativesText(item.sameExposureAlternatives)}` : ""
       ].filter(Boolean);
       return `- ${fields.join("，")}`;
     })
@@ -3432,7 +3434,9 @@ function portfolioWatchItemToDeepDiveCandidate(item = {}) {
       code: item.code || "",
       name: item.name || "",
       keywords: ["经理自选候选池", ...(isLowBaseLaunchWatchSeed(item) ? ["低位启动前夜候选"] : [])],
-      setupDiscoverySource: item.source || item.dataBasis?.find((value) => /来源|召回/.test(value)) || "portfolio_watchlist_context"
+      setupDiscoverySource: item.source || item.dataBasis?.find((value) => /来源|召回/.test(value)) || "portfolio_watchlist_context",
+      alternativeShareClasses: item.alternativeShareClasses || [],
+      sameExposureAlternatives: item.sameExposureAlternatives || []
     },
     portfolioWatchlist: {
       status: item.status || "",
