@@ -545,6 +545,39 @@ assert.deepEqual(
   "daily decision recheck must upgrade verified low-position candidates and block newly hot ready candidates"
 );
 assert(dailyRecheckUpdates[0].reason.includes("系统每日复核自选池"), "daily watchlist recheck must leave a traceable reason");
+const staleReadyProfile = {
+  ...verifiedSeedProfile,
+  snapshotDate: "2000-01-01",
+  navDate: "2000-01-01"
+};
+const staleWatchFreshness = manager.evaluatePortfolioWatchlistFreshness(
+  { code: "000010", status: "ready", updatedAt: "2000-01-01T00:00:00.000Z" },
+  staleReadyProfile
+);
+assert.equal(staleWatchFreshness.ok, false, "ready watchlist candidates must fail freshness checks when NAV evidence is stale");
+assert(staleWatchFreshness.issues.some((item) => item.includes("净值快照已过期")), "stale watchlist candidates must expose expired NAV evidence");
+const staleReadyRecheck = manager.buildPortfolioWatchlistRecheckUpdates([
+  {
+    code: "000010",
+    name: "中证A500ETF联接C",
+    status: "ready",
+    priority: 1,
+    reason: "旧的接近可买候选",
+    updatedAt: "2000-01-01T00:00:00.000Z",
+    lastSnapshot: staleReadyProfile
+  }
+], { profiles: [] });
+assert.equal(staleReadyRecheck[0].status, "waiting_pullback", "stale ready candidates must be downgraded until fresh NAV evidence is fetched");
+assert(staleReadyRecheck[0].reason.includes("系统时效复核"), "stale watchlist downgrade must explain the freshness guard");
+assert(staleReadyRecheck[0].dataBasis.includes("来源：watchlist_freshness_guard"), "stale watchlist downgrade must leave a traceable source");
+const staleGuardedReadyUpdate = manager.guardPortfolioWatchlistReadyUpdate({
+  code: "000010",
+  status: "ready",
+  priority: 1,
+  reason: "模型声称旧候选仍可买"
+}, staleReadyProfile, { updatedAt: "2000-01-01T00:00:00.000Z" });
+assert.equal(staleGuardedReadyUpdate.status, "waiting_pullback", "watchlist write path must not mark stale NAV evidence as ready");
+assert(staleGuardedReadyUpdate.reason.includes("系统时效验证降级"), "stale ready write downgrade must be visible in the saved reason");
 const readinessQueue = manager.buildPortfolioDecisionReadinessQueue([
   { code: "000010", name: "中证A500ETF联接C", status: "ready", priority: 1, reason: "低位回调", buyTriggers: ["温和转强"], riskNotes: ["不追涨"] }
 ], [verifiedSeedProfile]);

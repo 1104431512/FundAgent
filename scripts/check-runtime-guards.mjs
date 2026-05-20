@@ -264,6 +264,22 @@ const requiredPatterns = [
     message: "daily watchlist rechecks must leave a traceable source in the candidate ledger."
   },
   {
+    pattern: /evaluatePortfolioWatchlistFreshness/,
+    message: "portfolio watchlist readiness must account for stale NAV snapshots and stale reviews."
+  },
+  {
+    pattern: /watchlist_freshness_guard/,
+    message: "portfolio watchlist freshness downgrades must leave a traceable source."
+  },
+  {
+    pattern: /系统时效复核/,
+    message: "daily watchlist rechecks must explain freshness downgrades in user-readable Chinese."
+  },
+  {
+    pattern: /净值快照已过期/,
+    message: "watchlist readiness gaps must expose expired NAV evidence before buying."
+  },
+  {
     pattern: /buildPortfolioDecisionReadinessQueue/,
     message: "daily portfolio decisions must expose a ready/waiting buy-preparation queue to the model."
   },

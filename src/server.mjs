@@ -2068,11 +2068,17 @@ function buildPortfolioWatchlistRecheckUpdates(watchlist = [], options = {}) {
   return normalizePortfolioWatchlist(watchlist)
     .filter((item) => ["ready", "waiting_pullback"].includes(item.status))
     .map((item) => {
-      const profile = profileByCode.get(item.code) || item.lastSnapshot || null;
+      const freshProfile = profileByCode.get(item.code) || null;
+      const profile = freshProfile || item.lastSnapshot || null;
       if (!profile) return null;
       const score = item.status === "ready" ? 72 : 64;
-      const status = inferPortfolioWatchStatusFromSeedCandidate(item, score, profile);
+      const inferredStatus = inferPortfolioWatchStatusFromSeedCandidate(item, score, profile);
+      const freshness = evaluatePortfolioWatchlistFreshness({ ...item, status: inferredStatus }, profile, {
+        ignoreReviewAge: Boolean(freshProfile)
+      });
+      const status = inferredStatus === "ready" && !freshness.ok ? "waiting_pullback" : inferredStatus;
       const trendEvidence = formatPortfolioSeedVerifiedTrendEvidence(profile);
+      const freshnessNotes = freshness.issues.map((issue) => `系统时效复核：${issue}`);
       return {
         operation: "UPSERT",
         code: item.code,
@@ -2085,16 +2091,17 @@ function buildPortfolioWatchlistRecheckUpdates(watchlist = [], options = {}) {
         reason: [
           `系统每日复核自选池：${formatPortfolioWatchStatus(item.status)} -> ${formatPortfolioWatchStatus(status)}。`,
           formatPortfolioSeedStatusReason(status, profile),
+          ...freshnessNotes,
           trendEvidence,
           item.reason || ""
         ].filter(Boolean).join(" "),
         setupEvidence: mergeStringLists(item.setupEvidence, [trendEvidence]),
         buyTriggers: mergeStringLists(item.buyTriggers, buildAnswerWatchBuyTriggers(status, item.status === "waiting_pullback" ? "backup" : "buy_reference")),
-        riskNotes: mergeStringLists(item.riskNotes, buildAnswerWatchRiskNotes(status, profile)),
+        riskNotes: mergeStringLists(item.riskNotes, buildAnswerWatchRiskNotes(status, profile), freshnessNotes),
         feeNotes: item.feeNotes || [],
         positionPlan: item.positionPlan || formatAnswerWatchPositionPlan(status, item.status === "waiting_pullback" ? "backup" : "buy_reference"),
-        reviewDate: "本次每日决策已复核，下一次盘前继续确认",
-        dataBasis: mergeStringLists(item.dataBasis, ["来源：decision_watchlist_recheck", trendEvidence]),
+        reviewDate: freshness.ok ? "本次每日决策已复核，下一次盘前继续确认" : "需重新下钻刷新净值后再评估买入",
+        dataBasis: mergeStringLists(item.dataBasis, ["来源：decision_watchlist_recheck", "来源：watchlist_freshness_guard", trendEvidence]),
         source: "decision_watchlist_recheck"
       };
     })
@@ -2770,7 +2777,7 @@ function applyPortfolioWatchlistUpdates(db, updates = [], options = {}) {
     const evidenceProfile = profile || existing?.lastSnapshot || null;
     const guardedUpdate = update.operation === "REMOVE"
       ? update
-      : guardPortfolioWatchlistReadyUpdate(update, evidenceProfile);
+      : guardPortfolioWatchlistReadyUpdate(update, evidenceProfile, existing);
     const snapshot = profile ? buildPortfolioFundSnapshot(profile) : update.lastSnapshot || existing?.lastSnapshot || null;
     const defaults = {
       now,
@@ -2823,12 +2830,24 @@ function applyPortfolioWatchlistUpdates(db, updates = [], options = {}) {
   return applied.map(summarizePortfolioWatchItem);
 }
 
-function guardPortfolioWatchlistReadyUpdate(update = {}, profile = null) {
+function guardPortfolioWatchlistReadyUpdate(update = {}, profile = null, existing = null) {
   if (update.status !== "ready") {
     return update;
   }
   const verifiedStatus = inferPortfolioWatchStatusFromSeedCandidate(update, 60, profile);
   if (verifiedStatus === "ready") {
+    const freshness = evaluatePortfolioWatchlistFreshness({ ...(existing || {}), ...update, status: "ready" }, profile);
+    if (!freshness.ok) {
+      const guardReason = `系统时效验证降级：${freshness.issues[0]}`;
+      return {
+        ...update,
+        status: "waiting_pullback",
+        priority: Math.max(Number(update.priority || 3), 3),
+        reason: [update.reason, guardReason].filter(Boolean).join(" "),
+        riskNotes: mergeStringLists(update.riskNotes, [guardReason]),
+        dataBasis: mergeStringLists(update.dataBasis, ["来源：watchlist_freshness_guard"])
+      };
+    }
     return update;
   }
   const guardReason = verifiedStatus === "blocked"
@@ -2950,10 +2969,62 @@ function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
   if (!hasVerifiedPortfolioFeeEvidence(evidence)) {
     gaps.push("还差可验证费用/份额证据。");
   }
+  const freshness = evaluatePortfolioWatchlistFreshness(item, evidence);
+  gaps.push(...freshness.issues);
   if (!gaps.length && item.status === "ready") {
     return ["低位/启动/不过热/费用条件已满足，下一次盘前确认后再分批评估。"];
   }
   return gaps;
+}
+
+function evaluatePortfolioWatchlistFreshness(item = {}, profile = null, options = {}) {
+  const status = normalizePortfolioWatchStatus(item.status || "watch");
+  if (!["ready", "waiting_pullback"].includes(status)) {
+    return { ok: true, issues: [] };
+  }
+  const nowMs = Date.parse(options.now || new Date().toISOString());
+  const issues = [];
+  const maxSnapshotAgeDays = status === "ready"
+    ? finiteNumberOr(process.env.PORTFOLIO_WATCH_READY_MAX_SNAPSHOT_AGE_DAYS, 5)
+    : finiteNumberOr(process.env.PORTFOLIO_WATCH_WAITING_MAX_SNAPSHOT_AGE_DAYS, 10);
+  const maxReviewAgeDays = finiteNumberOr(process.env.PORTFOLIO_WATCH_MAX_REVIEW_AGE_DAYS, 14);
+  const snapshotDate = extractPortfolioWatchSnapshotDate(profile || item.lastSnapshot || {});
+  const snapshotAge = daysSincePortfolioDate(snapshotDate, nowMs);
+  if (Number.isFinite(snapshotAge)) {
+    if (snapshotAge > maxSnapshotAgeDays) {
+      issues.push(`净值快照已过期${snapshotAge}天，需要重新下钻后才能买入。`);
+    }
+  } else {
+    issues.push("缺少净值快照日期，需要重新下钻后才能买入。");
+  }
+
+  if (!options.ignoreReviewAge) {
+    const reviewAge = daysSincePortfolioDate(item.updatedAt || item.addedAt || "", nowMs);
+    if (Number.isFinite(reviewAge) && reviewAge > maxReviewAgeDays) {
+      issues.push(`自选复查已超过${reviewAge}天，需要重新复核后才能买入。`);
+    }
+  }
+
+  return { ok: issues.length === 0, issues };
+}
+
+function extractPortfolioWatchSnapshotDate(snapshot = {}) {
+  return String(
+    snapshot.snapshotDate
+    || snapshot.navDate
+    || snapshot.date
+    || snapshot.trendProfile?.snapshotDate
+    || ""
+  ).trim();
+}
+
+function daysSincePortfolioDate(value, nowMs = Date.now()) {
+  const text = String(value || "").trim();
+  if (!text || !Number.isFinite(nowMs)) return null;
+  const dateText = text.match(/\d{4}-\d{2}-\d{2}/)?.[0] || text;
+  const parsed = Date.parse(dateText.length === 10 ? `${dateText}T00:00:00Z` : dateText);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Math.floor((nowMs - parsed) / 86400000));
 }
 
 function formatPortfolioWatchStatus(value) {
@@ -12414,6 +12485,7 @@ export {
   enforcePortfolioSellDiscipline,
   evaluatePortfolioBuyDiscipline,
   evaluatePortfolioSellDiscipline,
+  evaluatePortfolioWatchlistFreshness,
   evaluateFundAnswerQuality,
   filterFocusedPullbackRankingCandidates,
   getFundAnalysisSkillIds,
