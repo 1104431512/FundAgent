@@ -889,7 +889,7 @@ async function executePortfolioDecision(db, run, config) {
   const watchlistUpdates = applyPortfolioWatchlistUpdates(
     db,
     [
-      ...buildPortfolioWatchlistUpdatesFromSeedCandidates(watchlistSeedCandidates),
+      ...buildPortfolioWatchlistUpdatesFromSeedCandidates(watchlistSeedCandidates, { profiles: seedProfiles }),
       ...decision.watchlistUpdates,
       ...buildPortfolioWatchlistUpdatesFromActions(decision.actions)
     ],
@@ -1110,7 +1110,7 @@ async function executePortfolioPremarket(db, run, config) {
   assertPortfolioRunActive(run);
   const observation = normalizePortfolioPremarket(raw);
   const watchlistUpdates = applyPortfolioWatchlistUpdates(db, [
-    ...buildPortfolioWatchlistUpdatesFromSeedCandidates(watchlistSeedCandidates),
+    ...buildPortfolioWatchlistUpdatesFromSeedCandidates(watchlistSeedCandidates, { profiles: seedProfiles }),
     ...observation.watchlistUpdates
   ], {
     run,
@@ -1874,33 +1874,42 @@ function isPortfolioWatchlistChaseSeed(candidate = {}) {
   );
 }
 
-function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = []) {
+function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = [], options = {}) {
+  const profiles = Array.isArray(options) ? options : options.profiles || [];
+  const profileByCode = new Map((profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
   return (candidates || []).map((candidate) => {
-    const shareClass = candidate.shareClass || inferFundShareClass(candidate.name || "");
-    const feeModel = candidate.shareClassFeeModel || inferShareClassFeeModel(shareClass, {
+    const profile = profileByCode.get(candidate.code) || null;
+    const shareClass = profile?.fees?.shareClass || profile?.shareClass || candidate.shareClass || inferFundShareClass(candidate.name || "");
+    const feeModel = profile?.fees?.shareClassFeeModel || profile?.shareClassFeeModel || candidate.shareClassFeeModel || inferShareClassFeeModel(shareClass, {
       sourceRatePct: candidate.sourceRatePct || "",
       currentRatePct: candidate.currentRatePct || "",
       salesServiceFeePct: ""
     });
     const seedScore = Number(candidate.portfolioWatchlistSeedScore || scorePullbackSetupSeedCandidate(candidate, candidate.matchedThemes || [], "回调完成 低位 准备启动 基金"));
-    const status = inferPortfolioWatchStatusFromSeedCandidate(candidate, seedScore);
+    const status = inferPortfolioWatchStatusFromSeedCandidate(candidate, seedScore, profile);
     const themeEvidence = formatPortfolioSeedThemeEvidence(candidate);
     const returnEvidence = formatPortfolioSeedReturnEvidence(candidate);
+    const verifiedTrendEvidence = formatPortfolioSeedVerifiedTrendEvidence(profile);
+    const statusReason = formatPortfolioSeedStatusReason(status, profile);
+    const oneYearFeeCost = toNumber(profile?.fees?.feeImpact?.oneYearCostPer10000);
     return {
       operation: "UPSERT",
       code: candidate.code,
-      name: candidate.name || "",
+      name: profile?.name || candidate.name || "",
       shareClass,
-      type: candidate.type || "",
+      type: candidate.type || profile?.type || "",
       status,
       priority: scorePortfolioWatchSeedPriority(seedScore, status),
-      candidateRole: status === "ready" ? "低位启动备选" : "回调观察备选",
+      candidateRole: status === "ready" ? "净值验证低位启动备选" : status === "blocked" ? "追涨风险拦截候选" : "回调观察备选",
       reason: [
         `系统低位回调召回评分 ${round(seedScore, 1)}。`,
+        statusReason,
         returnEvidence || "短期收益结构待复核。",
+        verifiedTrendEvidence,
         themeEvidence || "题材轮动信号待复核。"
       ].filter(Boolean).join(" "),
       setupEvidence: [
+        verifiedTrendEvidence,
         returnEvidence,
         themeEvidence,
         ...(candidate.keywords || []).slice(0, 3).map((keyword) => `召回标签：${keyword}`)
@@ -1911,17 +1920,28 @@ function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = []) {
         "费用和份额类别适合计划持有期后，再小仓位分批。"
       ],
       riskNotes: [
-        "候选来自公开排行和搜索召回，尚需净值、回撤、持仓和费率二次核验。",
+        profile?.trendProfile?.ok
+          ? "候选已做净值下钻，但仍需在下一次盘前观察复核是否继续低位转强。"
+          : "候选来自公开排行和搜索召回，缺少可用净值下钻时不能标记为可买。",
+        status === "blocked" ? "净值下钻显示偏热、等待回撤或缺少低位证据，已拦截为非买入候选。" : "",
         "如果近1周或近1月涨幅突然扩大，降级为等待回调，避免追涨。"
-      ],
-      feeNotes: [feeModel?.label || "份额类别和费率待基金详情页复核。"].filter(Boolean),
+      ].filter(Boolean),
+      feeNotes: [
+        feeModel?.label || "份额类别和费率待基金详情页复核。",
+        Number.isFinite(oneYearFeeCost)
+          ? `估算持有1年每万元费用约 ${round(oneYearFeeCost, 0)} 元。`
+          : ""
+      ].filter(Boolean),
       positionPlan: status === "ready"
         ? "触发后先作为卫星仓小额分批，不直接重仓。"
-        : "先放入观察池，等待回调完成和走势确认。",
+        : status === "blocked"
+          ? "暂不买入；只有重新回到低位、回撤完成并消化追涨风险后才复核。"
+          : "先放入观察池，等待回调完成和走势确认。",
       reviewDate: "下一次盘前观察或每日决策复核",
       dataBasis: [
         candidate.setupDiscoverySource ? `召回来源：${candidate.setupDiscoverySource}` : "",
         candidate.source || "",
+        profile?.sources?.[0] ? `净值下钻来源：${profile.sources[0]}` : "",
         returnEvidence
       ].filter(Boolean),
       source: "deterministic_pullback_recall"
@@ -1929,23 +1949,82 @@ function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = []) {
   });
 }
 
-function inferPortfolioWatchStatusFromSeedCandidate(candidate = {}, seedScore = 0) {
-  const oneWeek = toNumber(candidate.oneWeekPct);
-  const oneMonth = toNumber(candidate.oneMonthPct);
-  if (Number(seedScore) >= 64
-    && Number.isFinite(oneWeek)
-    && oneWeek >= 0.3
-    && oneWeek <= 5
-    && (!Number.isFinite(oneMonth) || (oneMonth >= -2 && oneMonth <= 8))) {
+function inferPortfolioWatchStatusFromSeedCandidate(candidate = {}, seedScore = 0, profile = null) {
+  const trend = profile?.trendProfile || {};
+  if (!profile || !trend.ok) {
+    return "waiting_pullback";
+  }
+  if (hasPortfolioVerifiedSeedChaseRisk(candidate, profile)) {
+    return "blocked";
+  }
+  const signal = trend.pullbackSetup?.signal || "";
+  const return20d = finiteMetricNumber(trend.return20dPct);
+  const return60d = finiteMetricNumber(trend.return60dPct);
+  const verifiedReady = Number(seedScore) >= 60
+    && ["pullback_complete", "launch_setup"].includes(signal)
+    && trend.trendLabel !== "extended_uptrend"
+    && trend.entryBias !== "wait_pullback"
+    && trend.entryBias !== "avoid_now"
+    && hasPullbackLowPositionEvidence(trend)
+    && Number.isFinite(return20d)
+    && return20d <= 10
+    && Number.isFinite(return60d)
+    && return60d <= 24;
+  if (verifiedReady) {
     return "ready";
   }
   return "waiting_pullback";
 }
 
+function hasPortfolioVerifiedSeedChaseRisk(candidate = {}, profile = {}) {
+  const trend = profile?.trendProfile || {};
+  const return20d = finiteMetricNumber(trend.return20dPct);
+  const return60d = finiteMetricNumber(trend.return60dPct);
+  if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "avoid_now") return true;
+  if (Number.isFinite(return20d) && return20d > 10) return true;
+  if (Number.isFinite(return60d) && return60d > 24) return true;
+  if (profile?.actionability?.action === "avoid") return true;
+  return hasHighChaseTheme(profile) || hasHighChaseTheme(candidate);
+}
+
+function formatPortfolioSeedStatusReason(status, profile = null) {
+  if (!profile) {
+    return "待净值下钻确认，先观察，不能仅凭榜单召回标记可买。";
+  }
+  if (!profile.trendProfile?.ok) {
+    return "净值下钻暂不可用，先观察，不标记可买。";
+  }
+  if (status === "ready") {
+    return "已用净值下钻验证低位/回撤证据，且20日、60日涨幅未过热。";
+  }
+  if (status === "blocked") {
+    return "净值下钻显示偏热、等待消化或追涨风险，暂不作为可买候选。";
+  }
+  return "净值下钻尚未证明回调完成和低位启动，等待下一轮信号确认。";
+}
+
+function formatPortfolioSeedVerifiedTrendEvidence(profile = null) {
+  if (!profile) return "净值验证：待下钻确认";
+  const trend = profile.trendProfile || {};
+  if (!trend.ok) return `净值验证：${trend.note || profile.error || "走势数据不足"}`;
+  return [
+    `净值验证：趋势${formatTrendLabel(trend.trendLabel)}`,
+    `入场${formatEntryBias(trend.entryBias)}`,
+    Number.isFinite(Number(trend.return5dPct)) ? `5日${formatFallbackPct(trend.return5dPct)}` : "",
+    Number.isFinite(Number(trend.return10dPct)) ? `10日${formatFallbackPct(trend.return10dPct)}` : "",
+    Number.isFinite(Number(trend.return20dPct)) ? `20日${formatFallbackPct(trend.return20dPct)}` : "",
+    Number.isFinite(Number(trend.return60dPct)) ? `60日${formatFallbackPct(trend.return60dPct)}` : "",
+    Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置${round(Number(trend.lowPositionPct120), 1)}%` : "",
+    Number.isFinite(Number(trend.drawdownFromRecentHighPct)) ? `距高点${formatFallbackPct(trend.drawdownFromRecentHighPct)}` : ""
+  ].filter(Boolean).join("，");
+}
+
 function scorePortfolioWatchSeedPriority(seedScore, status) {
+  if (status === "blocked") return 5;
   if (status === "ready" && seedScore >= 72) return 1;
-  if (seedScore >= 64) return 2;
-  if (seedScore >= 56) return 3;
+  if (status === "ready") return 2;
+  if (status === "waiting_pullback" && seedScore >= 64) return 3;
+  if (seedScore >= 56) return 4;
   return 4;
 }
 
@@ -2017,24 +2096,28 @@ function applyPortfolioWatchlistUpdates(db, updates = [], options = {}) {
   for (const update of normalizedUpdates) {
     const profile = profileByCode.get(update.code);
     const existing = byCode.get(update.code);
+    const evidenceProfile = profile || existing?.lastSnapshot || null;
+    const guardedUpdate = update.operation === "REMOVE"
+      ? update
+      : guardPortfolioWatchlistReadyUpdate(update, evidenceProfile);
     const snapshot = profile ? buildPortfolioFundSnapshot(profile) : update.lastSnapshot || existing?.lastSnapshot || null;
     const defaults = {
       now,
       addedAt: existing?.addedAt || now,
       updatedAt: now,
-      name: update.name || existing?.name || profile?.name || "",
-      shareClass: update.shareClass || existing?.shareClass || profile?.fees?.shareClass || profile?.shareClass || inferFundShareClass(profile?.name || update.name || existing?.name || ""),
-      type: update.type || existing?.type || profile?.type || "",
-      source: update.source || options.source || existing?.source || "",
+      name: guardedUpdate.name || existing?.name || profile?.name || "",
+      shareClass: guardedUpdate.shareClass || existing?.shareClass || profile?.fees?.shareClass || profile?.shareClass || inferFundShareClass(profile?.name || guardedUpdate.name || existing?.name || ""),
+      type: guardedUpdate.type || existing?.type || profile?.type || "",
+      source: guardedUpdate.source || options.source || existing?.source || "",
       sourceRunId: options.run?.id || existing?.sourceRunId || "",
       lastSnapshot: snapshot
     };
 
-    if (update.operation === "REMOVE") {
+    if (guardedUpdate.operation === "REMOVE") {
       const removed = normalizePortfolioWatchItem({
-        ...(existing || update),
+        ...(existing || guardedUpdate),
         status: "removed",
-        reason: update.reason || existing?.reason || "模型建议移出自选基金池。",
+        reason: guardedUpdate.reason || existing?.reason || "模型建议移出自选基金池。",
         updatedAt: now
       }, defaults);
       if (removed) {
@@ -2046,15 +2129,15 @@ function applyPortfolioWatchlistUpdates(db, updates = [], options = {}) {
 
     const merged = normalizePortfolioWatchItem({
       ...(existing || {}),
-      ...update,
-      status: update.status || existing?.status || "watch",
-      priority: update.priority || existing?.priority || 3,
-      reason: update.reason || existing?.reason || "",
-      setupEvidence: mergeStringLists(update.setupEvidence, existing?.setupEvidence),
-      buyTriggers: mergeStringLists(update.buyTriggers, existing?.buyTriggers),
-      riskNotes: mergeStringLists(update.riskNotes, existing?.riskNotes),
-      feeNotes: mergeStringLists(update.feeNotes, existing?.feeNotes),
-      dataBasis: mergeStringLists(update.dataBasis, existing?.dataBasis),
+      ...guardedUpdate,
+      status: guardedUpdate.status || existing?.status || "watch",
+      priority: guardedUpdate.priority || existing?.priority || 3,
+      reason: guardedUpdate.reason || existing?.reason || "",
+      setupEvidence: mergeStringLists(guardedUpdate.setupEvidence, existing?.setupEvidence),
+      buyTriggers: mergeStringLists(guardedUpdate.buyTriggers, existing?.buyTriggers),
+      riskNotes: mergeStringLists(guardedUpdate.riskNotes, existing?.riskNotes),
+      feeNotes: mergeStringLists(guardedUpdate.feeNotes, existing?.feeNotes),
+      dataBasis: mergeStringLists(guardedUpdate.dataBasis, existing?.dataBasis),
       updatedAt: now
     }, defaults);
     if (!merged) continue;
@@ -2067,6 +2150,29 @@ function applyPortfolioWatchlistUpdates(db, updates = [], options = {}) {
     db.updatedAt = now;
   }
   return applied.map(summarizePortfolioWatchItem);
+}
+
+function guardPortfolioWatchlistReadyUpdate(update = {}, profile = null) {
+  if (update.status !== "ready") {
+    return update;
+  }
+  const verifiedStatus = inferPortfolioWatchStatusFromSeedCandidate(update, 60, profile);
+  if (verifiedStatus === "ready") {
+    return update;
+  }
+  const guardReason = verifiedStatus === "blocked"
+    ? "系统净值验证拦截：候选偏热、仍需回撤或存在追涨风险，不能写入可买状态。"
+    : "系统净值验证降级：缺少低位回调完成证据，不能仅凭描述写入可买状态。";
+  return {
+    ...update,
+    status: verifiedStatus,
+    priority: verifiedStatus === "blocked" ? 5 : Math.max(Number(update.priority || 3), 3),
+    reason: [update.reason, guardReason].filter(Boolean).join(" "),
+    riskNotes: mergeStringLists(update.riskNotes, [guardReason]),
+    dataBasis: mergeStringLists(update.dataBasis, [
+      profile?.trendProfile?.ok ? formatPortfolioSeedVerifiedTrendEvidence(profile) : "净值验证：缺失或不足"
+    ])
+  };
 }
 
 function mergeStringLists(...groups) {
@@ -11151,6 +11257,7 @@ export {
   getFundAnalysisSkillIds,
   getFundQaSkillIds,
   getFundRecommendationSkillIds,
+  guardPortfolioWatchlistReadyUpdate,
   isGenericPullbackSetupRequest,
   isPullbackSetupRequest,
   mergeCandidateFunds,

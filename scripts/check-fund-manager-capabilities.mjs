@@ -327,11 +327,92 @@ assert.deepEqual(
 );
 const portfolioSeedUpdates = manager.buildPortfolioWatchlistUpdatesFromSeedCandidates(portfolioWatchlistSeeds);
 assert.equal(portfolioSeedUpdates[0].source, "deterministic_pullback_recall", "portfolio watchlist seeds must be traceable to deterministic pullback recall");
+assert.equal(portfolioSeedUpdates[0].status, "waiting_pullback", "portfolio watchlist seeds without NAV verification must not be marked ready");
 assert(portfolioSeedUpdates[0].reason.includes("系统低位回调召回评分"), "portfolio watchlist seed must keep a detailed backup reason");
+assert(portfolioSeedUpdates[0].reason.includes("待净值下钻确认"), "portfolio watchlist seed must say unverified ranking recalls are only watch candidates");
 assert(portfolioSeedUpdates[0].setupEvidence.length > 0, "portfolio watchlist seed must include setup evidence");
 assert(portfolioSeedUpdates[0].buyTriggers.length > 0, "portfolio watchlist seed must include buy triggers");
 assert(portfolioSeedUpdates[0].riskNotes.length > 0, "portfolio watchlist seed must include risk notes");
 assert(portfolioSeedUpdates[0].feeNotes.length > 0, "portfolio watchlist seed must include fee/share-class notes");
+const verifiedSeedProfile = {
+  ok: true,
+  code: "000010",
+  name: "中证A500ETF联接C",
+  snapshotDate: "2026-05-19",
+  trendProfile: {
+    ok: true,
+    pullbackSetup: { signal: "pullback_complete", score: 78 },
+    trendLabel: "pullback_complete",
+    entryBias: "buyable_now",
+    return5dPct: 1.2,
+    return10dPct: 2.4,
+    return20dPct: 4.8,
+    return60dPct: 7.6,
+    lowPositionPct120: 42.4,
+    drawdownFromRecentHighPct: -7.1
+  },
+  actionability: { action: "staged_buy", score: 73 },
+  fees: {
+    shareClass: "C",
+    shareClassFeeModel: { label: "C类：通常无申购费，销售服务费按年计提" },
+    feeImpact: { oneYearCostPer10000: 42 }
+  },
+  sources: ["https://fund.eastmoney.com/000010.html"]
+};
+const verifiedSeedUpdates = manager.buildPortfolioWatchlistUpdatesFromSeedCandidates([
+  { ...portfolioWatchlistSeeds[0], portfolioWatchlistSeedScore: 72 }
+], { profiles: [verifiedSeedProfile] });
+assert.equal(verifiedSeedUpdates[0].status, "ready", "verified low-position pullback seed can become ready");
+assert(verifiedSeedUpdates[0].reason.includes("已用净值下钻验证"), "ready seed must explain that NAV trend verification passed");
+assert(verifiedSeedUpdates[0].setupEvidence.some((item) => item.includes("净值验证")), "ready seed must include verified trend evidence");
+assert(verifiedSeedUpdates[0].feeNotes.some((item) => item.includes("42")), "ready seed must keep fee impact evidence");
+const hotVerifiedSeedProfile = {
+  ok: true,
+  code: "000011",
+  name: "热门强势主题基金A",
+  trendProfile: {
+    ok: true,
+    pullbackSetup: { signal: "none", score: 18 },
+    trendLabel: "extended_uptrend",
+    entryBias: "wait_pullback",
+    return5dPct: 8.2,
+    return10dPct: 16.4,
+    return20dPct: 33.41,
+    return60dPct: 36.64,
+    lowPositionPct120: 93.2,
+    drawdownFromRecentHighPct: -0.8
+  },
+  actionability: { action: "wait", score: 68 },
+  fees: { shareClass: "A", shareClassFeeModel: { label: "A类：有申购费，适合较长持有期再比较" } },
+  sources: ["https://fund.eastmoney.com/000011.html"]
+};
+const hotVerifiedSeedUpdates = manager.buildPortfolioWatchlistUpdatesFromSeedCandidates([
+  { ...weeklyTurnSeed, code: "000011", name: "热门强势主题基金A", portfolioWatchlistSeedScore: 76 }
+], { profiles: [hotVerifiedSeedProfile] });
+assert.notEqual(hotVerifiedSeedUpdates[0].status, "ready", "verified extended uptrend seed must not be ready");
+assert.equal(hotVerifiedSeedUpdates[0].status, "blocked", "verified extended uptrend seed should be blocked as chase risk");
+assert(hotVerifiedSeedUpdates[0].riskNotes.some((item) => item.includes("拦截")), "blocked seed must explain chase-risk downrank");
+assert(hotVerifiedSeedUpdates[0].setupEvidence.some((item) => item.includes("20日+33.41%")), "blocked seed must expose hot-return evidence");
+const guardedHotWatchUpdate = manager.guardPortfolioWatchlistReadyUpdate({
+  code: "000011",
+  status: "ready",
+  priority: 1,
+  reason: "模型声称低位可买",
+  riskNotes: [],
+  dataBasis: []
+}, hotVerifiedSeedProfile);
+assert.equal(guardedHotWatchUpdate.status, "blocked", "watchlist write path must block model ready updates when verified trend is hot");
+assert(guardedHotWatchUpdate.reason.includes("系统净值验证拦截"), "guarded hot watch update must explain the automatic block");
+const guardedUnverifiedWatchUpdate = manager.guardPortfolioWatchlistReadyUpdate({
+  code: "000012",
+  status: "ready",
+  priority: 1,
+  reason: "模型声称可买",
+  riskNotes: [],
+  dataBasis: []
+}, null);
+assert.equal(guardedUnverifiedWatchUpdate.status, "waiting_pullback", "watchlist write path must downgrade ready updates without NAV verification");
+assert(guardedUnverifiedWatchUpdate.reason.includes("系统净值验证降级"), "guarded unverified watch update must explain the automatic downgrade");
 
 const setupDigest = {
   ok: true,

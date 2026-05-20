@@ -23,6 +23,10 @@ const forbiddenPatterns = [
   {
     pattern: /drawText\([^;\n]*,\s*1\)/,
     message: "fund report charts must not use scale-1 bitmap text because Feishu thumbnails make it look like QR noise."
+  },
+  {
+    pattern: /buildPortfolioWatchlistUpdatesFromSeedCandidates\(watchlistSeedCandidates\)/,
+    message: "portfolio watchlist seed updates must receive enriched seedProfiles before assigning watch status."
   }
 ];
 
@@ -134,6 +138,30 @@ const requiredPatterns = [
   {
     pattern: /deterministic_pullback_recall/,
     message: "portfolio watchlist candidates must preserve traceable deterministic recall evidence."
+  },
+  {
+    pattern: /buildPortfolioWatchlistUpdatesFromSeedCandidates\(watchlistSeedCandidates,\s*\{\s*profiles:\s*seedProfiles\s*\}\)/,
+    message: "portfolio watchlist deterministic seeds must be judged with enriched NAV/trend profiles."
+  },
+  {
+    pattern: /已用净值下钻验证/,
+    message: "portfolio watchlist ready seeds must explicitly prove NAV trend verification passed."
+  },
+  {
+    pattern: /function inferPortfolioWatchStatusFromSeedCandidate[\s\S]{0,900}hasPullbackLowPositionEvidence/,
+    message: "portfolio watchlist seed status must require verified low-position pullback evidence."
+  },
+  {
+    pattern: /hasPortfolioVerifiedSeedChaseRisk/,
+    message: "portfolio watchlist seed status must block verified chase-risk candidates."
+  },
+  {
+    pattern: /guardPortfolioWatchlistReadyUpdate/,
+    message: "portfolio watchlist write path must downgrade model-written ready candidates without NAV verification."
+  },
+  {
+    pattern: /系统净值验证降级/,
+    message: "portfolio watchlist ready downgrade must be visible in the saved reason."
   },
   {
     pattern: /renderWatchlist/,
