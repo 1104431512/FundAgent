@@ -109,6 +109,14 @@ const requiredPatterns = [
     message: "pullback/setup prompts must keep low-position launch discovery ahead of generic theme skills."
   },
   {
+    pattern: /低位刚要启动/,
+    message: "pullback/setup routing must recognize natural low-position launch phrasing without the word 基金."
+  },
+  {
+    pattern: /回踩完成/,
+    message: "pullback/setup routing must recognize pullback-complete phrasing beyond 回调完成."
+  },
+  {
     pattern: /isPullbackSetupRequest\(text\)\s*&&\s*\(hasFundWord\s*\|\|\s*asksRecommendation\)/,
     message: "pullback/setup discovery must route correctly even when the user omits the word 基金."
   },

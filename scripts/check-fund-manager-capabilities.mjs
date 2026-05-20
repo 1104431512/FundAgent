@@ -62,6 +62,21 @@ await assertIntent({
   expectedMode: "pullback_setup_discovery",
   requiredSkills: ["fund-theme-radar", "theme-stage-analysis", "fund-market-timing", "fund-fee-share-class", "fund-answer-quality"]
 });
+for (const userText of [
+  "有没有低位刚要启动的标的",
+  "找低位刚启动的机会",
+  "有没有回踩完成准备向上的基金",
+  "帮我筛低位修复要启动的",
+  "有回撤企稳准备走强的标的吗"
+]) {
+  await assertIntent({
+    userText,
+    expectedWorkflow: "fund_recommendation",
+    expectedReason: "hard_rule_pullback_setup_request",
+    expectedMode: "pullback_setup_discovery",
+    requiredSkills: ["fund-theme-radar", "theme-stage-analysis", "fund-market-timing", "fund-fee-share-class", "fund-answer-quality"]
+  });
+}
 assert(!serverSource.includes("preferPullbackSetup && !precious"), "precious-metal pullback setup requests must not bypass setup discovery");
 assert.deepEqual(
   manager.filterFocusedPullbackRankingCandidates([
