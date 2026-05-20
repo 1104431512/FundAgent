@@ -55,6 +55,13 @@ await assertIntent({
   expectedMode: "pullback_setup_discovery",
   requiredSkills: ["fund-theme-radar", "theme-stage-analysis", "fund-market-timing", "fund-fee-share-class", "fund-answer-quality"]
 });
+await assertIntent({
+  userText: "找一个回调完成、低位、准备启动的",
+  expectedWorkflow: "fund_recommendation",
+  expectedReason: "hard_rule_pullback_setup_request",
+  expectedMode: "pullback_setup_discovery",
+  requiredSkills: ["fund-theme-radar", "theme-stage-analysis", "fund-market-timing", "fund-fee-share-class", "fund-answer-quality"]
+});
 assert(!serverSource.includes("preferPullbackSetup && !precious"), "precious-metal pullback setup requests must not bypass setup discovery");
 assert.deepEqual(
   manager.filterFocusedPullbackRankingCandidates([
@@ -130,6 +137,35 @@ await assertIntent({
   expectedReason: "hard_rule_virtual_manager_account_query",
   requiredSkills: []
 });
+
+const moneyMarketSkillContext = manager.buildSkillContextForIntent({
+  workflow: "fund_screening",
+  userText: "天弘余额宝货币能买吗",
+  skillIds: manager.getFundAnalysisSkillIds(["fund-synthesis"])
+});
+assert(moneyMarketSkillContext.includes("产品类型焦点：货币基金按现金管理评估"), "money-market screening must prioritize cash-management evidence");
+assert(moneyMarketSkillContext.indexOf("产品类型焦点：货币基金") < moneyMarketSkillContext.indexOf("# Skill: fund-data-enrichment"), "money-market focus must appear before skill bodies");
+
+const bondSkillContext = manager.buildSkillContextForIntent({
+  workflow: "fund_screening",
+  userText: "诺德短债A适合买吗",
+  skillIds: manager.getFundAnalysisSkillIds(["fund-synthesis"])
+});
+assert(bondSkillContext.includes("产品类型焦点：债基按久期、信用风险"), "bond screening must prioritize duration, credit, and drawdown evidence");
+
+const qdiiSkillContext = manager.buildSkillContextForIntent({
+  workflow: "fund_screening",
+  userText: "华安纳斯达克100ETF联接QDIIA还能买吗",
+  skillIds: manager.getFundAnalysisSkillIds(["fund-synthesis"])
+});
+assert(qdiiSkillContext.includes("产品类型焦点：QDII/海外基金"), "QDII screening must prioritize overseas, FX, NAV-lag, and liquidity evidence");
+
+const shareClassSkillContext = manager.buildSkillContextForIntent({
+  workflow: "fund_screening",
+  userText: "博时黄金ETF联接C和A哪个好",
+  skillIds: manager.getFundAnalysisSkillIds(["fund-comparison", "fund-synthesis"])
+});
+assert(shareClassSkillContext.includes("对比焦点：同一基金 A/C 等份额先比较费用和预计持有期"), "share-class comparisons must prioritize fees and holding period");
 
 const lowSetupSeed = {
   name: "中证500ETF联接C",

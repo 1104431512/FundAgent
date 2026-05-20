@@ -81,6 +81,18 @@ const requiredPatterns = [
     message: "pullback/setup prompts must keep low-position launch discovery ahead of generic theme skills."
   },
   {
+    pattern: /isPullbackSetupRequest\(text\)\s*&&\s*\(hasFundWord\s*\|\|\s*asksRecommendation\)/,
+    message: "pullback/setup discovery must route correctly even when the user omits the word 基金."
+  },
+  {
+    pattern: /产品类型焦点：货币基金按现金管理评估/,
+    message: "money-market screening must not use equity pullback/chase framing."
+  },
+  {
+    pattern: /产品类型焦点：QDII\/海外基金/,
+    message: "QDII screening must account for overseas market, FX, and NAV-lag evidence."
+  },
+  {
     pattern: /return5dPct[\s\S]{0,120}return10dPct/,
     message: "pullback/setup discovery must expose early 5/10-day turn signals."
   },

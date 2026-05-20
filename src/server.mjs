@@ -3958,8 +3958,8 @@ function getFundQaSkillIds(extra = []) {
   ];
 }
 
-function buildFundCommitteeSystemText(skillIds = getFundAnalysisSkillIds()) {
-  const skillContext = buildSkillContextForIntent({ workflow: "fund_screening", skillIds }, []);
+function buildFundCommitteeSystemText(skillIds = getFundAnalysisSkillIds(), { userText = "" } = {}) {
+  const skillContext = buildSkillContextForIntent({ workflow: "fund_screening", skillIds, userText }, [], { userText });
   return [
     "你是飞书机器人“基金经理”。你的任务是根据用户发送的基金截图或基金文字信息做教育性基金筛选分析。",
     "必须严格遵循当前阶段加载的 modular skills。只使用与当前任务相关的 skill，不要把所有基金流程强行套到用户请求上。",
@@ -4002,7 +4002,8 @@ async function buildAnalystReviewWithModel({ images, userText, messageType, extr
   const systemText = buildFundCommitteeSystemText(
     isComparison
       ? getFundAnalysisSkillIds(["fund-comparison"])
-      : getFundAnalysisSkillIds()
+      : getFundAnalysisSkillIds(),
+    { userText }
   );
   const userPrompt = [
     buildFundCommitteeEvidencePrompt({ images, userText, messageType, extracted, enrichments }),
@@ -4037,7 +4038,7 @@ function getFundWorkflowMaxOutputTokens(minimum) {
 
 async function buildCommitteeVoteWithModel({ userText, messageType, extracted, enrichments, analystReview }) {
   const isComparison = detectComparisonNeed({ userText, extracted, enrichments });
-  const systemText = buildFundCommitteeSystemText(isComparison ? getFundAnalysisSkillIds(["fund-comparison"]) : getFundAnalysisSkillIds());
+  const systemText = buildFundCommitteeSystemText(isComparison ? getFundAnalysisSkillIds(["fund-comparison"]) : getFundAnalysisSkillIds(), { userText });
   const userPrompt = [
     buildFundCommitteeEvidencePrompt({ images: [], userText, messageType, extracted, enrichments }),
     "",
@@ -4076,7 +4077,8 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
     buildFundCommitteeSystemText(
       isComparison
         ? getFundAnalysisSkillIds(["fund-comparison", "fund-synthesis"])
-        : getFundAnalysisSkillIds(["fund-synthesis"])
+        : getFundAnalysisSkillIds(["fund-synthesis"]),
+      { userText }
     ),
     "",
     isComparison
@@ -9372,7 +9374,7 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
     };
   }
 
-  if (hasFundWord && isPullbackSetupRequest(text)) {
+  if (isPullbackSetupRequest(text) && (hasFundWord || asksRecommendation)) {
     return {
       workflow: "fund_recommendation",
       mode: "pullback_setup_discovery",
@@ -9788,10 +9790,32 @@ function buildSkillFocusDirective(intent = {}, skills = []) {
       "不要把新闻热度或近期涨幅当成买入理由；推荐必须同时交代份额类别、费用模型、仓位和复查边界。"
     );
   } else if (workflow === "fund_screening") {
+    const normalized = normalizeIntentText(userText);
     lines.push(
       "本次任务焦点：评价用户给出的具体基金，必须分开基金长期质量、当前买点、份额费用和适合对象。",
       "不要把基金质量好直接等同于现在可以买；A/C/D/I 等份额类别要按预计持有期解释。"
     );
+    if (/(货币|余额宝|现金管理|零钱)/.test(normalized)) {
+      lines.push(
+        "产品类型焦点：货币基金按现金管理评估，优先看7日年化、万份收益、流动性、规模和收益稳定性。",
+        "不要套用权益基金追涨/回调/启动框架，也不要把货币基金当进攻仓推荐。"
+      );
+    } else if (/(债券|债基|短债|中短债|纯债|固收)/.test(normalized)) {
+      lines.push(
+        "产品类型焦点：债基按久期、信用风险、利率环境、历史回撤和赎回流动性评估。",
+        "不要只看近短期收益；短债/纯债更重视波动和回撤控制。"
+      );
+    } else if (/(qdii|纳斯达克|标普|美股|港股|恒生|印度|越南|海外)/.test(normalized)) {
+      lines.push(
+        "产品类型焦点：QDII/海外基金要额外检查海外市场估值、汇率、净值披露时差、申赎确认延迟和场内溢价折价。",
+        "不能把滞后的净值当实时买点，也不能忽略人民币汇率风险。"
+      );
+    }
+    if (/(对比|比较|哪个好|哪个更好|哪只好|选哪|a类|c类|份额|申购费|销售服务费)/i.test(normalized)) {
+      lines.push(
+        "对比焦点：同一基金 A/C 等份额先比较费用和预计持有期，再比较代码；同一指数/主题产品要比较跟踪误差、规模、费率和流动性。"
+      );
+    }
   } else if (workflow === "fund_qa") {
     lines.push(
       "本次任务焦点：直接回答问题，不套推荐清单模板；如果问题带有买卖意图，要给出买入、分批买入、等待或回避的中文动作和理由。",
