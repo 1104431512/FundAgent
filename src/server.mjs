@@ -3464,6 +3464,7 @@ function buildPortfolioWatchlistStatusLines(watchlist = [], options = {}) {
   const lines = [
     `合计 ${normalized.length} 只：${groups.map((group) => `${group.label}${group.items.length}只`).join("，")}。`
   ];
+  lines.push(...buildPortfolioWatchlistActionQueueLines(normalized));
 
   for (const group of groups) {
     lines.push(`【${group.label}】${group.items.length}只`);
@@ -3473,6 +3474,24 @@ function buildPortfolioWatchlistStatusLines(watchlist = [], options = {}) {
     if (group.items.length > limitPerStatus) {
       lines.push(`还有 ${group.items.length - limitPerStatus} 只同状态候选，可在管理页自选基金池查看。`);
     }
+  }
+  return lines;
+}
+
+function buildPortfolioWatchlistActionQueueLines(watchlist = []) {
+  const ready = normalizePortfolioWatchlist(watchlist)
+    .filter((item) => item.status === "ready")
+    .slice(0, 3);
+  const waiting = normalizePortfolioWatchlist(watchlist)
+    .filter((item) => item.status === "waiting_pullback")
+    .slice(0, 3);
+  if (!ready.length && !waiting.length) return ["购买准备队列：暂无接近可买或等待回调候选。"];
+  const lines = ["购买准备队列："];
+  for (const item of [...ready, ...waiting]) {
+    const status = item.status === "ready" ? "接近可买" : "等待回调";
+    const trigger = item.buyTriggers?.[0] || item.positionPlan || "等待下一次复查";
+    const risk = item.riskNotes?.[0] || "风险边界待补充";
+    lines.push(`- ${item.code} ${item.name || ""}（${status}）：触发=${trigger}；风险=${risk}；复查=${item.reviewDate || "下一次盘前观察"}`);
   }
   return lines;
 }

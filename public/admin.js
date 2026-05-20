@@ -363,6 +363,7 @@ function renderWatchlist(items) {
   const groups = groupWatchlistItems(items);
   list.innerHTML = [
     renderWatchlistSummary(items),
+    renderWatchlistActionQueue(items),
     ...WATCHLIST_STATUS_ORDER
       .filter((status) => groups.get(status)?.length)
       .map((status) => renderWatchlistGroup(status, groups.get(status)))
@@ -394,6 +395,63 @@ function renderWatchlistSummary(items) {
     <div class="watchlist-summary">
       ${counts.map((item) => `<span class="watchlist-pill ${getWatchlistStatusClass(item.status)}">${escapeHtml(WATCHLIST_STATUS_LABELS[item.status] || item.status)} ${item.count}</span>`).join("")}
     </div>
+  `;
+}
+
+function renderWatchlistActionQueue(items = []) {
+  const ready = selectWatchlistActionItems(items, "ready", 3);
+  const waiting = selectWatchlistActionItems(items, "waiting_pullback", 3);
+  const queue = [...ready, ...waiting];
+  if (!queue.length) {
+    return `
+      <section class="watchlist-action-queue">
+        <div class="watchlist-action-head">
+          <strong>购买准备队列</strong>
+          <span>暂无接近可买或等待回调候选</span>
+        </div>
+      </section>
+    `;
+  }
+  return `
+    <section class="watchlist-action-queue">
+      <div class="watchlist-action-head">
+        <strong>购买准备队列</strong>
+        <span>接近可买 ${ready.length} · 等待回调 ${waiting.length}</span>
+      </div>
+      <div class="watchlist-action-grid">
+        ${queue.map(renderWatchlistActionCard).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function selectWatchlistActionItems(items = [], status, limit) {
+  return (items || [])
+    .filter((item) => item.status === status)
+    .sort((a, b) => Number(a.priority || 3) - Number(b.priority || 3)
+      || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
+    .slice(0, limit);
+}
+
+function renderWatchlistActionCard(item) {
+  const statusClass = getWatchlistStatusClass(item.status);
+  const trigger = item.buyTriggers?.[0] || item.positionPlan || "等待下一次复查";
+  const risk = item.riskNotes?.[0] || "风险边界待补充";
+  const fee = item.feeNotes?.[0] || "费用/份额待复核";
+  const trend = getFundSnapshotTrendText(item.lastSnapshot || {});
+  return `
+    <article class="watchlist-action-card">
+      <div class="watchlist-action-title">
+        <strong>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</strong>
+        <span class="${statusClass}">${escapeHtml(item.statusText || formatWatchlistStatus(item.status))}</span>
+      </div>
+      <p>${escapeHtml(item.reason || item.candidateRole || "暂无备选理由")}</p>
+      ${trend && trend !== "走势数据不足" ? `<small>${escapeHtml(trend)}</small>` : ""}
+      <small>触发：${escapeHtml(trigger)}</small>
+      <small>风险：${escapeHtml(risk)}</small>
+      <small>费用：${escapeHtml(fee)}</small>
+      <small>${escapeHtml(item.reviewDate || "下一次盘前观察复查")}</small>
+    </article>
   `;
 }
 

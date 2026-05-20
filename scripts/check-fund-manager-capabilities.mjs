@@ -247,6 +247,9 @@ const watchlistStatusLines = manager.buildPortfolioWatchlistStatusLines([
   }
 ]).join("\n");
 assert(watchlistStatusLines.includes("合计 3 只"), "portfolio status answer must summarize watchlist counts");
+assert(watchlistStatusLines.includes("购买准备队列："), "portfolio status answer must surface an actionable buy-preparation queue");
+assert(watchlistStatusLines.includes("000001 低位修复基金C（接近可买）"), "buy-preparation queue must highlight ready watchlist candidates");
+assert(watchlistStatusLines.includes("000002 等待回调基金C（等待回调）"), "buy-preparation queue must highlight backup candidates waiting for pullback");
 assert(watchlistStatusLines.includes("【接近可买】"), "portfolio status answer must group ready watchlist candidates");
 assert(watchlistStatusLines.includes("【等待回调】"), "portfolio status answer must group waiting watchlist candidates");
 assert(watchlistStatusLines.includes("【暂不买入】"), "portfolio status answer must group blocked watchlist candidates");

@@ -252,6 +252,22 @@ const requiredPatterns = [
     message: "admin portfolio watchlist must expose evidence blocks, not only fund names."
   },
   {
+    pattern: /renderWatchlistActionQueue/,
+    message: "admin portfolio watchlist must surface a buy-preparation queue above the detailed pool."
+  },
+  {
+    pattern: /watchlist-action-card/,
+    message: "admin portfolio watchlist must render actionable ready/waiting candidates as scannable cards."
+  },
+  {
+    pattern: /购买准备队列/,
+    message: "manager-facing watchlist replies and admin UI must expose a Chinese buy-preparation queue."
+  },
+  {
+    pattern: /buildPortfolioWatchlistActionQueueLines/,
+    message: "portfolio status replies must summarize ready and waiting candidates as a buy-preparation queue."
+  },
+  {
     pattern: /formatWatchlistSnapshotEvidence/,
     message: "admin portfolio watchlist must show NAV/trend snapshot evidence for candidates."
   },
