@@ -2172,6 +2172,12 @@ function buildPortfolioWatchlistUpdatesFromAnswerProfiles(profiles = [], options
       const statusReason = rejectedByAnswer
         ? "回答中明确写了暂不买入、回避或排除，系统写入暂不买入而不是可买。"
         : formatAnswerWatchlistStatusReason(status, role);
+      const gapEvidence = formatAnswerWatchlistGapEvidence(profile, {
+        status,
+        role,
+        userText,
+        context
+      });
       return {
         operation: "UPSERT",
         code,
@@ -2186,17 +2192,19 @@ function buildPortfolioWatchlistUpdatesFromAnswerProfiles(profiles = [], options
         reason: [
           `${originLabel}沉淀：本次回答将其列为${answerRole}。`,
           statusReason,
+          gapEvidence,
           trendEvidence,
           userText ? `用户原始需求：${userText.slice(0, 80)}` : ""
         ].filter(Boolean).join(" "),
         setupEvidence: [
           `回答角色：${answerRole}`,
+          gapEvidence,
           trendEvidence,
           profile.actionability?.action ? `自评动作：${formatActionabilityAction(profile.actionability.action)}${profile.actionability.allocationBand ? ` ${profile.actionability.allocationBand}` : ""}` : "",
           Number.isFinite(Number(profile.trendProfile?.lowPositionPct120)) ? `120日位置${round(Number(profile.trendProfile.lowPositionPct120), 1)}%` : ""
         ].filter(Boolean),
         buyTriggers: buildAnswerWatchBuyTriggers(status, role),
-        riskNotes: buildAnswerWatchRiskNotes(status, profile),
+        riskNotes: [...buildAnswerWatchRiskNotes(status, profile), gapEvidence].filter(Boolean),
         feeNotes: [
           feeModel?.label || "份额类别和费率待基金详情页复核。",
           Number.isFinite(oneYearFeeCost) ? `估算持有1年每万元费用约 ${round(oneYearFeeCost, 0)} 元。` : ""
@@ -2513,6 +2521,29 @@ function formatAnswerWatchlistStatusReason(status, role) {
       : "暂未完全证明低位启动，先等待回调/确认。";
   }
   return "作为普通观察候选保留，等待更多数据确认。";
+}
+
+function formatAnswerWatchlistGapEvidence(profile = {}, options = {}) {
+  const status = String(options.status || "");
+  const role = String(options.role || "");
+  const userText = String(options.userText || "");
+  const context = String(options.context || "");
+  const text = normalizeIntentText(`${userText} ${context}`);
+  const shouldExplainGap = isPullbackSetupRequest(userText)
+    || /(回调|回踩|回撤|低位|启动|追涨|备选|观察|等待)/.test(text);
+  if (!shouldExplainGap) return "";
+
+  const gaps = buildPullbackSetupCandidateGaps(profile);
+  if (gaps.length) {
+    return `观察缺口：${gaps.slice(0, 4).join("；")}。`;
+  }
+  if (status === "ready") {
+    return "观察缺口：低位启动条件暂已满足，等待下一次净值确认。";
+  }
+  if (role === "backup") {
+    return "观察缺口：回答定位为备选，仍需下一次盘前触发确认。";
+  }
+  return "";
 }
 
 function buildAnswerWatchBuyTriggers(status, role) {

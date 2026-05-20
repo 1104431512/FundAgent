@@ -288,6 +288,14 @@ const requiredPatterns = [
     message: "answer-derived watchlist entries must explain why the manager kept the candidate."
   },
   {
+    pattern: /formatAnswerWatchlistGapEvidence/,
+    message: "answer-derived watchlist entries must preserve setup gaps in the self-selected fund pool."
+  },
+  {
+    pattern: /观察缺口：/,
+    message: "answer-derived watchlist reasons must explain whether candidates are ready, backup-only, or blocked by setup gaps."
+  },
+  {
     pattern: /fetchPortfolioWatchlistSeedCandidates/,
     message: "portfolio manager must deterministically recall low-position pullback candidates into its watchlist instead of waiting only for model-written updates."
   },

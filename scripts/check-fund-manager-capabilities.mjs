@@ -579,9 +579,12 @@ assert.deepEqual(
   "answer chart candidates must be persisted as ready, blocked, or backup watchlist candidates according to verified trend evidence"
 );
 assert(answerWatchlistUpdates[0].reason.includes("基金推荐回答沉淀"), "answer-derived watchlist candidates must keep the recommendation-answer origin in the backup reason");
+assert(answerWatchlistUpdates[0].reason.includes("观察缺口：低位启动条件暂已满足"), "ready answer-derived watchlist candidates must explain that the setup is ready but still needs the next NAV check");
 assert(answerWatchlistUpdates[0].setupEvidence.some((item) => item.includes("回答角色：买入参考")), "answer-derived watchlist candidates must keep answer role evidence");
 assert(answerWatchlistUpdates[2].candidateRole.includes("备选观察"), "backup answer candidates must remain backup/watch candidates instead of ready buys");
+assert(answerWatchlistUpdates[2].reason.includes("回答定位为备选"), "backup answer-derived watchlist candidates must preserve why they are not immediately buyable");
 assert(answerWatchlistUpdates[1].riskNotes.some((item) => item.includes("暂不买入")), "hot answer candidates must be blocked with an explicit no-buy risk note");
+assert(answerWatchlistUpdates[1].riskNotes.some((item) => item.includes("观察缺口") && item.includes("近20日+33.41%偏热")), "blocked answer-derived watchlist candidates must preserve concrete missing setup and overheat gaps");
 const screeningSelectedProfiles = manager.selectFundScreeningWatchlistProfiles([
   verifiedSeedProfile
 ], [
