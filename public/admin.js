@@ -428,7 +428,8 @@ function renderWatchlistActionQueue(items = []) {
 function selectWatchlistActionItems(items = [], status, limit) {
   return (items || [])
     .filter((item) => item.status === status)
-    .sort((a, b) => Number(a.priority || 3) - Number(b.priority || 3)
+    .sort((a, b) => Number(b.readinessScore || 0) - Number(a.readinessScore || 0)
+      || Number(a.priority || 3) - Number(b.priority || 3)
       || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
     .slice(0, limit);
 }
@@ -440,12 +441,14 @@ function renderWatchlistActionCard(item) {
   const risk = item.riskNotes?.[0] || "风险边界待补充";
   const fee = item.feeNotes?.[0] || "费用/份额待复核";
   const trend = getFundSnapshotTrendText(item.lastSnapshot || {});
+  const readiness = formatWatchlistReadiness(item);
   return `
     <article class="watchlist-action-card">
       <div class="watchlist-action-title">
         <strong>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</strong>
         <span class="${statusClass}">${escapeHtml(item.statusText || formatWatchlistStatus(item.status))}</span>
       </div>
+      ${readiness ? `<div class="watchlist-readiness">${readiness}</div>` : ""}
       <p>${escapeHtml(item.reason || item.candidateRole || "暂无备选理由")}</p>
       ${trend && trend !== "走势数据不足" ? `<small>${escapeHtml(trend)}</small>` : ""}
       <small>触发：${escapeHtml(trigger)}</small>
@@ -487,6 +490,7 @@ function renderWatchlistItem(item) {
       </div>
       <div>
         <strong class="${statusClass}">${escapeHtml(item.statusText || formatWatchlistStatus(item.status))}</strong>
+        ${formatWatchlistReadiness(item) ? `<small>${formatWatchlistReadiness(item)}</small>` : ""}
         <small>优先级 ${escapeHtml(item.priority || 3)}</small>
         <small>${escapeHtml(item.reviewDate || "待复查")}</small>
         ${item.updatedAt ? `<small>更新 ${escapeHtml(formatDateTime(item.updatedAt))}</small>` : ""}
@@ -505,6 +509,13 @@ function renderWatchlistItem(item) {
       </div>
     </div>
   `;
+}
+
+function formatWatchlistReadiness(item = {}) {
+  const score = Number(item.readinessScore);
+  if (!Number.isFinite(score)) return "";
+  const label = item.readinessLabel || "买入准备度";
+  return `准备度 ${formatNumber(score, 0)} · ${escapeHtml(label)}`;
 }
 
 function formatWatchlistAlternativeItems(items = []) {

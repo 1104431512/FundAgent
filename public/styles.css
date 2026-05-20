@@ -456,6 +456,19 @@ button:disabled {
   font-weight: 800;
 }
 
+.watchlist-readiness {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  margin-top: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #16563f;
+  background: #eaf7ef;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .watchlist-action-card p,
 .watchlist-action-card small {
   display: block;

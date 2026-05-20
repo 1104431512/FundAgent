@@ -2307,24 +2307,28 @@ function buildPortfolioDecisionReadinessQueue(watchlist = [], profiles = []) {
   const profileByCode = new Map((profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
   return normalizePortfolioWatchlist(watchlist)
     .filter((item) => ["ready", "waiting_pullback"].includes(item.status))
-    .slice(0, 8)
     .map((item) => {
       const profile = profileByCode.get(item.code) || item.lastSnapshot || null;
+      const readiness = evaluatePortfolioWatchReadiness(item, profile);
       return {
         code: item.code,
         name: item.name,
         status: item.status,
         priority: item.priority,
+        readinessScore: readiness.score,
+        readinessLabel: readiness.label,
         reason: item.reason,
         firstTrigger: item.buyTriggers?.[0] || "",
         firstRisk: item.riskNotes?.[0] || "",
         positionPlan: item.positionPlan || "",
         trendEvidence: profile ? formatPortfolioSeedVerifiedTrendEvidence(profile) : item.lastSnapshot?.trendSummary || "",
-        readinessGaps: buildPortfolioWatchReadinessGaps(item, profile),
+        readinessGaps: readiness.gaps,
         feeNotes: item.feeNotes || [],
         reviewDate: item.reviewDate || ""
       };
-    });
+    })
+    .sort(comparePortfolioWatchReadiness)
+    .slice(0, 8);
 }
 
 function buildPortfolioHeldPositionReviewQueue(positions = [], profiles = []) {
@@ -3128,30 +3132,36 @@ function summarizePortfolioWatchlistForModel(watchlist = []) {
   return normalizePortfolioWatchlist(watchlist)
     .filter((item) => item.status !== "removed")
     .slice(0, 30)
-    .map((item) => ({
-      code: item.code,
-      name: item.name,
-      shareClass: item.shareClass,
-      type: item.type,
-      status: item.status,
-      priority: item.priority,
-      candidateRole: item.candidateRole,
-      reason: item.reason,
-      setupEvidence: item.setupEvidence,
-      buyTriggers: item.buyTriggers,
-      riskNotes: item.riskNotes,
-      feeNotes: item.feeNotes,
-      positionPlan: item.positionPlan,
-      readinessGaps: buildPortfolioWatchReadinessGaps(item),
-      reviewDate: item.reviewDate,
-      alternativeShareClasses: item.alternativeShareClasses || [],
-      sameExposureAlternatives: item.sameExposureAlternatives || [],
-      trendSummary: item.lastSnapshot?.trendSummary || "",
-      updatedAt: item.updatedAt
-    }));
+    .map((item) => {
+      const readiness = evaluatePortfolioWatchReadiness(item);
+      return {
+        code: item.code,
+        name: item.name,
+        shareClass: item.shareClass,
+        type: item.type,
+        status: item.status,
+        priority: item.priority,
+        readinessScore: readiness.score,
+        readinessLabel: readiness.label,
+        candidateRole: item.candidateRole,
+        reason: item.reason,
+        setupEvidence: item.setupEvidence,
+        buyTriggers: item.buyTriggers,
+        riskNotes: item.riskNotes,
+        feeNotes: item.feeNotes,
+        positionPlan: item.positionPlan,
+        readinessGaps: readiness.gaps,
+        reviewDate: item.reviewDate,
+        alternativeShareClasses: item.alternativeShareClasses || [],
+        sameExposureAlternatives: item.sameExposureAlternatives || [],
+        trendSummary: item.lastSnapshot?.trendSummary || "",
+        updatedAt: item.updatedAt
+      };
+    });
 }
 
 function summarizePortfolioWatchItem(item = {}) {
+  const readiness = evaluatePortfolioWatchReadiness(item);
   return {
     code: item.code,
     name: item.name,
@@ -3160,6 +3170,8 @@ function summarizePortfolioWatchItem(item = {}) {
     status: item.status || "watch",
     statusText: formatPortfolioWatchStatus(item.status),
     priority: item.priority || 3,
+    readinessScore: readiness.score,
+    readinessLabel: readiness.label,
     candidateRole: item.candidateRole || "",
     reason: item.reason || "",
     setupEvidence: item.setupEvidence || [],
@@ -3167,7 +3179,7 @@ function summarizePortfolioWatchItem(item = {}) {
     riskNotes: item.riskNotes || [],
     feeNotes: item.feeNotes || [],
     positionPlan: item.positionPlan || "",
-    readinessGaps: buildPortfolioWatchReadinessGaps(item),
+    readinessGaps: readiness.gaps,
     reviewDate: item.reviewDate || "",
     dataBasis: item.dataBasis || [],
     alternativeShareClasses: item.alternativeShareClasses || [],
@@ -3229,6 +3241,70 @@ function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
     return ["低位/启动/不过热/费用条件已满足，下一次盘前确认后再分批评估。"];
   }
   return gaps;
+}
+
+function evaluatePortfolioWatchReadiness(item = {}, profile = null) {
+  const status = normalizePortfolioWatchStatus(item.status || "watch");
+  const evidence = profile || item.lastSnapshot || null;
+  const trend = evidence?.trendProfile || {};
+  const gaps = buildPortfolioWatchReadinessGaps(item, profile);
+  let score = evidence && trend.ok ? 100 : 18;
+  for (const gap of gaps) {
+    score -= scorePortfolioWatchReadinessGapPenalty(gap);
+  }
+  if (gaps.some((gap) => gap.includes("条件已满足"))) {
+    score = Math.max(score, 88);
+  }
+  const statusCaps = {
+    ready: 100,
+    waiting_pullback: 78,
+    watch: 58,
+    blocked: 24,
+    in_position: 68,
+    removed: 0
+  };
+  score = Math.min(score, statusCaps[status] ?? 58);
+  const bounded = Math.round(clampScore(score));
+  return {
+    score: bounded,
+    label: formatPortfolioWatchReadinessLabel(bounded),
+    gaps
+  };
+}
+
+function scorePortfolioWatchReadinessGapPenalty(gap = "") {
+  const text = String(gap || "");
+  if (/缺少可验证净值|走势下钻/.test(text)) return 70;
+  if (/回调完成|启动前夜/.test(text)) return 18;
+  if (/120日低位|距高点回撤/.test(text)) return 16;
+  if (/近20日.*需降温|近60日.*需消化/.test(text)) return 16;
+  if (/等待回撤|可操作性仍是等待|入场判断仍是等待/.test(text)) return 14;
+  if (/暂时回避|仍是回避/.test(text)) return 28;
+  if (/题材拥挤|追涨风险/.test(text)) return 16;
+  if (/费用\/份额/.test(text)) return 10;
+  if (/快照已过期|重新下钻|复核已过期/.test(text)) return 18;
+  if (/缺少近20日|缺少近60日/.test(text)) return 8;
+  return 7;
+}
+
+function formatPortfolioWatchReadinessLabel(score) {
+  const value = Number(score);
+  if (value >= 85) return "买入准备充分";
+  if (value >= 70) return "接近可买，等盘前确认";
+  if (value >= 55) return "备选观察";
+  if (value >= 35) return "条件不足";
+  return "暂不买入";
+}
+
+function comparePortfolioWatchReadiness(a = {}, b = {}) {
+  return getPortfolioWatchReadinessScore(b) - getPortfolioWatchReadinessScore(a)
+    || Number(a.priority || 3) - Number(b.priority || 3)
+    || String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+}
+
+function getPortfolioWatchReadinessScore(item = {}) {
+  const score = Number(item.readinessScore ?? item.score);
+  return Number.isFinite(score) ? score : evaluatePortfolioWatchReadiness(item).score;
 }
 
 function evaluatePortfolioWatchlistFreshness(item = {}, profile = null, options = {}) {
@@ -4427,9 +4503,13 @@ function buildPortfolioWatchlistStatusLines(watchlist = [], options = {}) {
 function buildPortfolioWatchlistActionQueueLines(watchlist = []) {
   const ready = normalizePortfolioWatchlist(watchlist)
     .filter((item) => item.status === "ready")
+    .map((item) => ({ ...item, ...evaluatePortfolioWatchReadiness(item) }))
+    .sort(comparePortfolioWatchReadiness)
     .slice(0, 3);
   const waiting = normalizePortfolioWatchlist(watchlist)
     .filter((item) => item.status === "waiting_pullback")
+    .map((item) => ({ ...item, ...evaluatePortfolioWatchReadiness(item) }))
+    .sort(comparePortfolioWatchReadiness)
     .slice(0, 3);
   if (!ready.length && !waiting.length) return ["购买准备队列：暂无接近可买或等待回调候选。"];
   const lines = ["购买准备队列："];
@@ -4437,18 +4517,20 @@ function buildPortfolioWatchlistActionQueueLines(watchlist = []) {
     const status = item.status === "ready" ? "接近可买" : "等待回调";
     const trigger = item.buyTriggers?.[0] || item.positionPlan || "等待下一次复查";
     const risk = item.riskNotes?.[0] || "风险边界待补充";
-    const gap = buildPortfolioWatchReadinessGaps(item)[0] || "等待下一次复查";
-    lines.push(`- ${item.code} ${item.name || ""}（${status}）：触发=${trigger}；缺口=${gap}；风险=${risk}；复查=${item.reviewDate || "下一次盘前观察"}`);
+    const gap = item.gaps?.[0] || buildPortfolioWatchReadinessGaps(item)[0] || "等待下一次复查";
+    lines.push(`- ${item.code} ${item.name || ""}（${status}，准备度${item.score}，${item.label}）：触发=${trigger}；缺口=${gap}；风险=${risk}；复查=${item.reviewDate || "下一次盘前观察"}`);
   }
   return lines;
 }
 
 function formatPortfolioWatchDetailLine(item = {}) {
   const head = `${item.code || ""} ${item.name || ""}`.trim();
+  const readiness = item.readinessScore === undefined ? evaluatePortfolioWatchReadiness(item) : { score: item.readinessScore, label: item.readinessLabel || "" };
   const meta = [
     item.shareClass ? `${item.shareClass}类` : "",
     item.type || "",
     item.candidateRole || "",
+    `准备度${readiness.score}${readiness.label ? `/${readiness.label}` : ""}`,
     `优先级${item.priority || 3}`
   ].filter(Boolean).join("，");
   const trendEvidence = formatPortfolioWatchSnapshotEvidence(item.lastSnapshot || {});
@@ -12765,6 +12847,7 @@ export {
   enforcePortfolioSellDiscipline,
   evaluatePortfolioBuyDiscipline,
   evaluatePortfolioSellDiscipline,
+  evaluatePortfolioWatchReadiness,
   evaluatePortfolioWatchlistFreshness,
   evaluateFundAnswerQuality,
   filterFocusedPullbackRankingCandidates,

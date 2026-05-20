@@ -310,8 +310,9 @@ const watchlistStatusLines = manager.buildPortfolioWatchlistStatusLines([
 ]).join("\n");
 assert(watchlistStatusLines.includes("合计 3 只"), "portfolio status answer must summarize watchlist counts");
 assert(watchlistStatusLines.includes("购买准备队列："), "portfolio status answer must surface an actionable buy-preparation queue");
-assert(watchlistStatusLines.includes("000001 低位修复基金C（接近可买）"), "buy-preparation queue must highlight ready watchlist candidates");
-assert(watchlistStatusLines.includes("000002 等待回调基金C（等待回调）"), "buy-preparation queue must highlight backup candidates waiting for pullback");
+assert(watchlistStatusLines.includes("000001 低位修复基金C（接近可买，准备度"), "buy-preparation queue must highlight ready watchlist candidates with readiness score");
+assert(watchlistStatusLines.includes("000002 等待回调基金C（等待回调，准备度"), "buy-preparation queue must highlight backup candidates waiting for pullback with readiness score");
+assert(watchlistStatusLines.includes("买入准备充分"), "portfolio status answer must translate readiness score into a client-readable label");
 assert(watchlistStatusLines.includes("【接近可买】"), "portfolio status answer must group ready watchlist candidates");
 assert(watchlistStatusLines.includes("【等待回调】"), "portfolio status answer must group waiting watchlist candidates");
 assert(watchlistStatusLines.includes("【暂不买入】"), "portfolio status answer must group blocked watchlist candidates");
@@ -506,6 +507,12 @@ assert.equal(verifiedSeedUpdates[0].status, "ready", "verified low-position pull
 assert(verifiedSeedUpdates[0].reason.includes("已用净值下钻验证"), "ready seed must explain that NAV trend verification passed");
 assert(verifiedSeedUpdates[0].setupEvidence.some((item) => item.includes("净值验证")), "ready seed must include verified trend evidence");
 assert(verifiedSeedUpdates[0].feeNotes.some((item) => item.includes("42")), "ready seed must keep fee impact evidence");
+const readyWatchReadiness = manager.evaluatePortfolioWatchReadiness({ ...verifiedSeedUpdates[0], updatedAt: "2026-05-20" }, verifiedSeedProfile);
+assert(readyWatchReadiness.score >= 85, "verified low-position ready watchlist candidates must show high buy-preparation readiness");
+assert.equal(readyWatchReadiness.label, "买入准备充分", "high-readiness watchlist candidates must have a client-readable readiness label");
+const unverifiedWatchReadiness = manager.evaluatePortfolioWatchReadiness(portfolioSeedUpdates[0]);
+assert(unverifiedWatchReadiness.score < 35, "unverified watchlist seeds must show low readiness until NAV/trend evidence is available");
+assert.equal(unverifiedWatchReadiness.label, "暂不买入", "low-readiness watchlist seeds must not sound buyable");
 const hotVerifiedSeedProfile = {
   ok: true,
   code: "000011",
@@ -644,6 +651,8 @@ const readinessQueue = manager.buildPortfolioDecisionReadinessQueue([
   { code: "000010", name: "中证A500ETF联接C", status: "ready", priority: 1, reason: "低位回调", buyTriggers: ["温和转强"], riskNotes: ["不追涨"] }
 ], [verifiedSeedProfile]);
 assert.equal(readinessQueue[0].firstTrigger, "温和转强", "portfolio decision prompt must expose ready candidate triggers");
+assert(readinessQueue[0].readinessScore >= 85, "portfolio decision prompt must expose deterministic buy-preparation readiness scores");
+assert.equal(readinessQueue[0].readinessLabel, "买入准备充分", "portfolio decision prompt must expose readable readiness labels");
 assert(readinessQueue[0].readinessGaps.some((item) => item.includes("低位/启动/不过热/费用条件已满足")), "portfolio decision prompt must expose remaining buy-readiness gaps or confirmation status");
 const fallbackReadyActions = manager.buildPortfolioReadyWatchlistReviewActions([
   { code: "000010", name: "中证A500ETF联接C", status: "ready", priority: 1, reason: "低位回调", buyTriggers: ["温和转强"], riskNotes: ["不追涨"], feeNotes: ["C类短期更合适"] }

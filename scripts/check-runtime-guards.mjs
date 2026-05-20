@@ -324,6 +324,22 @@ const requiredPatterns = [
     message: "daily portfolio decisions must expose a ready/waiting buy-preparation queue to the model."
   },
   {
+    pattern: /evaluatePortfolioWatchReadiness/,
+    message: "portfolio watchlist must compute deterministic buy-preparation readiness instead of relying only on status labels."
+  },
+  {
+    pattern: /readinessScore[\s\S]{0,120}readinessLabel/,
+    message: "portfolio watchlist readiness scores and readable labels must be exposed to prompts, status answers, and UI."
+  },
+  {
+    pattern: /准备度/,
+    message: "portfolio watchlist readiness must be shown in user-readable Chinese."
+  },
+  {
+    pattern: /watchlist-readiness/,
+    message: "admin watchlist UI must show buy-preparation readiness on candidate cards."
+  },
+  {
     pattern: /ensurePortfolioReadyWatchlistReviewed/,
     message: "daily portfolio decisions must add a fallback review action when ready watchlist candidates are omitted."
   },
