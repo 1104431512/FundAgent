@@ -31,6 +31,8 @@ const MIN_FUND_REWRITE_OUTPUT_TOKENS = 6400;
 const DEFAULT_FUND_REPORT_IMAGE_MIN = 12;
 const DEFAULT_FUND_REPORT_BUY_IMAGE_MIN = 6;
 const DEFAULT_FUND_REPORT_BACKUP_IMAGE_MIN = 6;
+const DEFAULT_FUND_REPORT_CHART_BACKFILL_DIVE_LIMIT = 12;
+const DEFAULT_FUND_REPORT_CHART_BACKFILL_ROUNDS = 2;
 const DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE = 4;
 const DEFAULT_PORTFOLIO_REPORT_IMAGE_MIN = 8;
 const DEFAULT_PORTFOLIO_REPORT_IMAGE_LIMIT = 8;
@@ -6386,6 +6388,7 @@ function buildMarketDeepDiveSummary(deepDive) {
     deepDive.focus ? `deepDive.focus=${deepDive.focus}` : "",
     deepDive.selectionDiscipline ? `selectionDiscipline=${deepDive.selectionDiscipline}` : "",
     Array.isArray(deepDive.backfillCodes) && deepDive.backfillCodes.length ? `backfillCodes=${deepDive.backfillCodes.join("/")}` : "",
+    Array.isArray(deepDive.chartBackfillCodes) && deepDive.chartBackfillCodes.length ? `chartBackfillCodes=${deepDive.chartBackfillCodes.join("/")}` : "",
     Array.isArray(deepDive.searchKeywords) && deepDive.searchKeywords.length ? `searchKeywords=${deepDive.searchKeywords.join("/")}` : ""
   ].filter(Boolean);
 
@@ -9199,6 +9202,23 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
     selectedForDive = [...selectedForDive, ...nextBackfill];
     candidates.push(...await fetchMarketResearchDigests(nextBackfill));
   }
+  const chartBackfillTarget = getFundReportChartBackfillTarget({ userText, options, preferPullbackSetup, precious });
+  const chartBackfillLimit = Math.max(0, Number(process.env.FUND_REPORT_CHART_BACKFILL_DIVE_LIMIT || DEFAULT_FUND_REPORT_CHART_BACKFILL_DIVE_LIMIT));
+  const chartBackfillRounds = Math.max(1, Number(process.env.FUND_REPORT_CHART_BACKFILL_ROUNDS || DEFAULT_FUND_REPORT_CHART_BACKFILL_ROUNDS));
+  let chartBackfillSelected = [];
+  for (let roundIndex = 0; chartBackfillTarget
+    && chartBackfillLimit
+    && roundIndex < chartBackfillRounds
+    && countEligibleFundReportProfiles(candidates) < chartBackfillTarget; roundIndex += 1) {
+    const nextChartBackfill = selectFundReportChartBackfillCandidates(merged, selectedForDive, chartBackfillLimit, {
+      preferPullbackSetup,
+      diversifyExposure: options.forRecommendation || precious
+    });
+    if (!nextChartBackfill.length) break;
+    chartBackfillSelected = [...chartBackfillSelected, ...nextChartBackfill];
+    selectedForDive = [...selectedForDive, ...nextChartBackfill];
+    candidates.push(...await fetchMarketResearchDigests(nextChartBackfill));
+  }
   const orderedCandidates = preferPullbackSetup
     ? [...candidates].sort((a, b) => scoreResearchDigestForPullbackSetup(b) - scoreResearchDigestForPullbackSetup(a))
     : candidates;
@@ -9222,8 +9242,31 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
     selectionDiscipline: preferPullbackSetup ? "prefer_pullback_complete_launch_setup_not_chase" : "balanced_theme_relevance",
     selectedCodes: selectedForDive.map((item) => item.code),
     backfillCodes: backfillSelected.map((item) => item.code),
+    chartBackfillCodes: chartBackfillSelected.map((item) => item.code),
     candidates: orderedCandidates
   };
+}
+
+function getFundReportChartBackfillTarget({ userText = "", options = {}, preferPullbackSetup = false, precious = false } = {}) {
+  const needsCharts = options.forRecommendation
+    || preferPullbackSetup
+    || precious
+    || isActionSeekingFundQuestion(userText)
+    || isPullbackSetupRequest(userText);
+  return needsCharts ? getFundReportChartMinCount() : 0;
+}
+
+function selectFundReportChartBackfillCandidates(merged = [], selectedForDive = [], limit = 0, options = {}) {
+  const selectedCodes = new Set((selectedForDive || []).map((item) => item.code).filter(Boolean));
+  const selectedProductKeys = new Set((selectedForDive || []).map(getCandidateProductKey).filter(Boolean));
+  const pool = (merged || []).filter((item) => {
+    if (!item?.code || selectedCodes.has(item.code)) return false;
+    const productKey = getCandidateProductKey(item);
+    return !productKey || !selectedProductKeys.has(productKey);
+  });
+  return selectDiversifiedDeepDiveCandidates(pool, limit, {
+    diversifyExposure: Boolean(options.diversifyExposure) && !options.preferPullbackSetup
+  });
 }
 
 function selectPullbackBackfillCandidates(merged = [], selectedForDive = [], limit = 0) {
@@ -13697,6 +13740,8 @@ export {
   capPortfolioSellAmountByDiscipline,
   resolvePortfolioTradeAmount,
   buildPortfolioWatchlistUpdatesFromSeedCandidates,
+  getFundReportChartBackfillTarget,
+  selectFundReportChartBackfillCandidates,
   selectPullbackBackfillCandidates,
   selectFundReportProfilesForAnswer,
   selectFundScreeningWatchlistProfiles,

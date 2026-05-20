@@ -1345,6 +1345,36 @@ assert(expandedChartProfiles.some((profile) => profile.code === "000026"), "expa
 assert(expandedChartProfiles.filter((profile) => profile.reportChartRole === "买入参考图").length >= 6, "expanded report images should keep enough buy-reference charts to explain buy decisions");
 assert(expandedChartProfiles.filter((profile) => profile.reportChartRole === "备选观察图").length >= 6, "expanded report images should keep enough backup/watch charts to explain alternatives");
 assert(!expandedChartProfiles.some((profile) => profile.code === "000003"), "expanded report images must not add hot chase-risk candidates as filler charts");
+assert.equal(
+  manager.getFundReportChartBackfillTarget({ userText: "按最近题材推荐几个基金", options: { forRecommendation: true } }),
+  12,
+  "recommendation deep dives should keep fetching enough candidates to support a broad chart set"
+);
+assert.equal(
+  manager.getFundReportChartBackfillTarget({ userText: "讲讲基金费率概念", options: { forRecommendation: false } }),
+  0,
+  "non-action fund education answers should not force extra chart backfill work"
+);
+const chartBackfillBatch = manager.selectFundReportChartBackfillCandidates([
+  { code: "000100", name: "中证500ETF联接A" },
+  { code: "000101", name: "中证500ETF联接C" },
+  { code: "000102", name: "中证1000ETF联接C" },
+  { code: "000103", name: "创业板ETF联接C" }
+], [
+  { code: "000100", name: "中证500ETF联接A" }
+], 2, { diversifyExposure: true });
+assert.deepEqual(
+  chartBackfillBatch.map((item) => item.code),
+  ["000102", "000103"],
+  "report-chart backfill should skip already tested products and fetch additional chart candidates"
+);
+const chartBackfillSummary = manager.buildMarketDeepDiveSummary({
+  ok: true,
+  focus: "market_recommendation",
+  chartBackfillCodes: ["000102", "000103"],
+  candidates: []
+});
+assert(chartBackfillSummary.includes("chartBackfillCodes=000102/000103"), "deep-dive summary must expose report-chart backfill codes when sparse images are repaired");
 const previousReportImageLimit = process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT;
 const previousReportImageMin = process.env.FEISHU_REPORT_TREND_IMAGE_MIN;
 process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT = "3";

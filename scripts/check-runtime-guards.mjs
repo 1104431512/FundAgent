@@ -200,6 +200,18 @@ const requiredPatterns = [
     message: "fund report image count should be configurable without lowering the default rich chart set."
   },
   {
+    pattern: /FUND_REPORT_CHART_BACKFILL_DIVE_LIMIT\s*\|\|\s*DEFAULT_FUND_REPORT_CHART_BACKFILL_DIVE_LIMIT/,
+    message: "fund report generation must keep backfilling deep-dive candidates when only two or three chartable funds are available."
+  },
+  {
+    pattern: /countEligibleFundReportProfiles\(candidates\)[\s\S]{0,520}selectFundReportChartBackfillCandidates/,
+    message: "market deep dives must continue fetching chart-backed candidates until the report image target is reachable."
+  },
+  {
+    pattern: /chartBackfillCodes/,
+    message: "market deep dive summaries must expose report-chart backfill codes for debugging sparse image replies."
+  },
+  {
     pattern: /hasFundReportChartSeries[\s\S]{0,700}selectFundReportProfilesForAnswer/,
     message: "fund report image selection must only count candidates that can actually render chart images."
   },
