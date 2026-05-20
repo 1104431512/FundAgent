@@ -363,6 +363,7 @@ function renderWatchlist(items) {
   const groups = groupWatchlistItems(items);
   list.innerHTML = [
     renderWatchlistSummary(items),
+    renderWatchlistSetupFocus(items),
     renderWatchlistActionQueue(items),
     ...WATCHLIST_STATUS_ORDER
       .filter((status) => groups.get(status)?.length)
@@ -395,6 +396,50 @@ function renderWatchlistSummary(items) {
     <div class="watchlist-summary">
       ${counts.map((item) => `<span class="watchlist-pill ${getWatchlistStatusClass(item.status)}">${escapeHtml(WATCHLIST_STATUS_LABELS[item.status] || item.status)} ${item.count}</span>`).join("")}
     </div>
+  `;
+}
+
+function renderWatchlistSetupFocus(items = []) {
+  const focusItems = selectWatchlistSetupFocusItems(items);
+  if (!focusItems.length) return "";
+  return `
+    <section class="watchlist-setup-focus">
+      <div class="watchlist-action-head">
+        <strong>启动前夜重点复核</strong>
+        <span>${focusItems.length} 只 · 等净值下钻确认后再进入买点评估</span>
+      </div>
+      <div class="watchlist-setup-list">
+        ${focusItems.map(renderWatchlistSetupFocusItem).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function selectWatchlistSetupFocusItems(items = []) {
+  return (items || [])
+    .filter(isWatchlistLaunchEveCandidate)
+    .filter((item) => !["blocked", "removed", "in_position"].includes(item.status))
+    .sort((a, b) => Number(b.readinessScore || 0) - Number(a.readinessScore || 0)
+      || Number(a.priority || 3) - Number(b.priority || 3)
+      || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
+    .slice(0, 5);
+}
+
+function renderWatchlistSetupFocusItem(item) {
+  const gap = selectWatchlistPrimaryGap(item);
+  const trend = getFundSnapshotTrendText(item.lastSnapshot || {});
+  return `
+    <article class="watchlist-setup-item">
+      <div>
+        <strong>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</strong>
+        <small>${escapeHtml([item.statusText || formatWatchlistStatus(item.status), formatWatchlistReadiness(item)].filter(Boolean).join(" · "))}</small>
+      </div>
+      <div>
+        <span class="watchlist-setup-badge">启动前夜</span>
+        <small>${escapeHtml(gap)}</small>
+        ${trend && trend !== "走势数据不足" ? `<small>${escapeHtml(trend)}</small>` : ""}
+      </div>
+    </article>
   `;
 }
 
@@ -442,12 +487,14 @@ function renderWatchlistActionCard(item) {
   const fee = item.feeNotes?.[0] || "费用/份额待复核";
   const trend = getFundSnapshotTrendText(item.lastSnapshot || {});
   const readiness = formatWatchlistReadiness(item);
+  const setupBadge = isWatchlistLaunchEveCandidate(item) ? `<span class="watchlist-setup-badge">启动前夜</span>` : "";
   return `
     <article class="watchlist-action-card">
       <div class="watchlist-action-title">
         <strong>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</strong>
         <span class="${statusClass}">${escapeHtml(item.statusText || formatWatchlistStatus(item.status))}</span>
       </div>
+      ${setupBadge}
       ${readiness ? `<div class="watchlist-readiness">${readiness}</div>` : ""}
       <p>${escapeHtml(item.reason || item.candidateRole || "暂无备选理由")}</p>
       ${trend && trend !== "走势数据不足" ? `<small>${escapeHtml(trend)}</small>` : ""}
@@ -480,10 +527,12 @@ function renderWatchlistItem(item) {
   const snapshotEvidence = formatWatchlistSnapshotEvidence(snapshot);
   const source = item.source || snapshot.sources?.[0] || "";
   const observationGaps = selectWatchlistObservationGaps(item);
+  const setupBadge = isWatchlistLaunchEveCandidate(item) ? `<span class="watchlist-setup-badge">启动前夜</span>` : "";
   return `
     <div class="data-row watchlist-row">
       <div>
         <strong>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</strong>
+        ${setupBadge}
         <p>${escapeHtml(item.reason || "暂无备选理由")}</p>
         ${trend && trend !== "走势数据不足" ? `<p>${escapeHtml(trend)}</p>` : ""}
         ${renderWatchlistObservationGapPanel(observationGaps)}
@@ -546,6 +595,18 @@ function selectWatchlistObservationGaps(item = {}) {
     }
   }
   return [...new Set(gaps.filter(Boolean))].slice(0, 4);
+}
+
+function isWatchlistLaunchEveCandidate(item = {}) {
+  const values = [
+    item.candidateRole,
+    item.reason,
+    item.positionPlan,
+    item.source,
+    ...(item.setupEvidence || []),
+    ...(item.dataBasis || [])
+  ];
+  return values.some((value) => /启动前夜|低位启动前夜|low_base_turn_scan/.test(String(value || "")));
 }
 
 function renderWatchlistObservationGapPanel(gaps = []) {

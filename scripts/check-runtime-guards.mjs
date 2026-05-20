@@ -536,6 +536,22 @@ const requiredPatterns = [
     message: "admin portfolio watchlist must surface a buy-preparation queue above the detailed pool."
   },
   {
+    pattern: /renderWatchlistSetupFocus/,
+    message: "admin portfolio watchlist must surface low-base launch-eve candidates before the general buy-preparation queue."
+  },
+  {
+    pattern: /isWatchlistLaunchEveCandidate/,
+    message: "admin portfolio watchlist must recognize launch-eve candidates from persisted watchlist evidence."
+  },
+  {
+    pattern: /启动前夜重点复核/,
+    message: "admin portfolio watchlist must label launch-eve candidates as review focus, not automatic buys."
+  },
+  {
+    pattern: /watchlist-setup-badge/,
+    message: "admin portfolio watchlist must visually distinguish launch-eve setup candidates."
+  },
+  {
     pattern: /watchlist-action-card/,
     message: "admin portfolio watchlist must render actionable ready/waiting candidates as scannable cards."
   },
