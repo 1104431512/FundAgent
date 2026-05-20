@@ -3968,8 +3968,8 @@ async function buildFundReportCardImages(profiles, config) {
           })
         : renderFundReportSummaryPng({
             profile: item.snapshot,
-            width: 980,
-            height: 620
+            width: 1280,
+            height: 760
           });
       if (!png) continue;
       const imageKey = await uploadFeishuImage(png, `fund-report-${chartMode}-${item.code || "fund"}.png`, config);
@@ -7392,7 +7392,10 @@ function renderTrendSeriesPng({ series = [], width = 720, height = 260 } = {}) {
   return encodePngRgba(canvas);
 }
 
-function renderFundReportSummaryPng({ profile, width = 980, height = 620 } = {}) {
+const REPORT_CHART_MIN_TEXT_SCALE = 3;
+const REPORT_CHART_VALUE_SCALE = 5;
+
+function renderFundReportSummaryPng({ profile, width = 1280, height = 760 } = {}) {
   const trend = profile?.trendProfile || {};
   const points = normalizeChartSeries(trend.series || []);
   if (points.length < 2) return null;
@@ -7407,32 +7410,35 @@ function renderFundReportSummaryPng({ profile, width = 980, height = 620 } = {})
   const muted = [100, 116, 139, 255];
   const ink = [15, 23, 42, 255];
 
-  drawText(canvas, 28, 18, `${code}${shareClass ? ` ${shareClass}` : ""} FUND`, ink, 4);
-  drawText(canvas, 28, 52, `${first.date || "START"} / ${last.date || "LAST"}  NAV ${formatChartNumber(last.nav)}`, muted, 2);
-  drawTextFit(canvas, width - 320, 20, `RANGE ${formatChartPct(changePct)}`, lineColor, 4, 292, 3);
+  drawTextFit(canvas, 32, 22, `${code}${shareClass ? ` ${shareClass}` : ""} FUND`, ink, 5, 560, 4);
+  drawText(canvas, 32, 72, `NAV ${formatChartNumber(last.nav)}  ${shortChartDate(first.date)}-${shortChartDate(last.date)}`, muted, REPORT_CHART_MIN_TEXT_SCALE);
+  drawTextFit(canvas, width - 416, 28, `RANGE ${formatChartPct(changePct)}`, lineColor, REPORT_CHART_VALUE_SCALE, 384, 4);
   drawDecisionEvidenceStrip(canvas, {
-    x: 28,
-    y: 86,
-    width: width - 56,
+    x: 32,
+    y: 108,
+    width: width - 64,
     profile,
     trend
   });
 
   drawLineChartPanel(canvas, {
-    x: 92,
-    y: 206,
-    width: width - 156,
-    height: 258,
+    x: 56,
+    y: 264,
+    width: Math.max(420, width - 456),
+    height: 374,
     points,
     color: lineColor,
-    label: "NAV"
+    label: "NAV",
+    showAxisLabels: false,
+    labelScale: REPORT_CHART_MIN_TEXT_SCALE,
+    endpointScale: REPORT_CHART_MIN_TEXT_SCALE
   });
 
   drawSignalMetricsPanel(canvas, {
-    x: 28,
-    y: 532,
-    width: width - 56,
-    height: 62,
+    x: width - 360,
+    y: 264,
+    width: 328,
+    height: 374,
     profile,
     trend
   });
@@ -7448,15 +7454,30 @@ function normalizeChartSeries(series = []) {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function drawLineChartPanel(canvas, { x, y, width, height, points, color, label }) {
+function drawLineChartPanel(canvas, {
+  x,
+  y,
+  width,
+  height,
+  points,
+  color,
+  label,
+  showAxisLabels = true,
+  labelScale = 2,
+  endpointScale = 2
+}) {
   const values = points.map((item) => item.nav);
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
-  drawText(canvas, x, y - 22, label, [51, 65, 85, 255], 2);
+  drawText(canvas, x, y - 30, label, [51, 65, 85, 255], labelScale);
   drawChartFrame(canvas, x, y, width, height);
-  drawYAxisTickLabels(canvas, x, y, height, [max, min + range / 2, min], formatChartNumber);
-  drawXAxisDateLabels(canvas, x, y + height + 8, width, points);
+  if (showAxisLabels) {
+    drawYAxisTickLabels(canvas, x, y, height, [max, min + range / 2, min], formatChartNumber);
+    drawXAxisDateLabels(canvas, x, y + height + 8, width, points);
+  } else {
+    drawChartEndpointDateLabels(canvas, x, y + height + 14, width, points, endpointScale);
+  }
 
   const px = points.map((item, index) => ({
     x: x + 10 + (index / Math.max(1, points.length - 1)) * (width - 20),
@@ -7467,6 +7488,14 @@ function drawLineChartPanel(canvas, { x, y, width, height, points, color, label 
   }
   drawCircle(canvas, px[0].x, px[0].y, 4, [100, 116, 139, 255]);
   drawCircle(canvas, px[px.length - 1].x, px[px.length - 1].y, 5, color);
+}
+
+function drawChartEndpointDateLabels(canvas, x, y, width, points, scale = REPORT_CHART_MIN_TEXT_SCALE) {
+  const color = [100, 116, 139, 255];
+  const first = shortChartDate(points[0]?.date || "");
+  const last = shortChartDate(points[points.length - 1]?.date || "");
+  drawText(canvas, x, y, first, color, scale);
+  drawText(canvas, x + width - Math.max(92, measureChartText(last, scale)), y, last, color, scale);
 }
 
 function drawDrawdownPanel(canvas, { x, y, width, height, points }) {
@@ -7535,45 +7564,45 @@ function drawDecisionEvidenceStrip(canvas, { x, y, width, profile = {}, trend = 
   ];
   const gap = 10;
   const tileW = Math.floor((width - gap * (items.length - 1)) / items.length);
-  const tileH = 78;
+  const tileH = 96;
   drawRect(canvas, x, y, width, tileH, [226, 232, 240, 255], 1);
   items.forEach(([label, value, color], index) => {
     const tileX = x + index * (tileW + gap);
     fillRect(canvas, tileX, y, tileW, tileH, [248, 250, 252, 255]);
     drawRect(canvas, tileX, y, tileW, tileH, [226, 232, 240, 255], 1);
-    drawText(canvas, tileX + 10, y + 8, label, [100, 116, 139, 255], 2);
-    drawTextFit(canvas, tileX + 10, y + 36, value, color, 4, tileW - 20, 3);
+    drawText(canvas, tileX + 14, y + 12, label, [100, 116, 139, 255], REPORT_CHART_MIN_TEXT_SCALE);
+    drawTextFit(canvas, tileX + 14, y + 50, value, color, REPORT_CHART_VALUE_SCALE, tileW - 28, 4);
   });
 }
 
 function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, trend = {} }) {
-  drawText(canvas, x, y - 30, "BUY/FEE", [51, 65, 85, 255], 3);
-  const risk = profile?.risk?.oneYear || profile?.riskMetrics?.periods?.["1y"] || {};
+  drawText(canvas, x, y - 30, "BUY/FEE", [51, 65, 85, 255], REPORT_CHART_MIN_TEXT_SCALE);
   const feeImpact = profile?.fees?.feeImpact || profile?.feeImpact || {};
   const shareClass = getChartShareClass(profile);
   const rows = [
     ["CLASS", shareClass || "MISS"],
     ["FEE", feeImpact.oneYearCostPer10000],
-    ["SHRP", risk.sharpe],
-    ["YRET", risk.annualizedReturnPct],
-    ["5", trend.return5dPct],
     ["20", trend.return20dPct],
     ["60", trend.return60dPct],
-    ["DROP", trend.drawdownFromRecentHighPct]
+    ["DROP", trend.drawdownFromRecentHighPct],
+    ["SIZE", formatChartScale(profile?.scale || profile?.seed?.scale)]
   ];
-  const gap = 6;
-  const tileW = Math.floor((width - gap * (rows.length - 1)) / rows.length);
-  const tileH = Math.max(54, height);
-  drawRect(canvas, x, y, width, tileH, [226, 232, 240, 255], 1);
+  const gap = 10;
+  const columns = 2;
+  const tileW = Math.floor((width - gap * (columns - 1)) / columns);
+  const tileH = Math.floor((height - gap * 2) / 3);
+  drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
   rows.forEach(([label, rawValue], index) => {
-    const tileX = x + index * (tileW + gap);
-    const tileY = y;
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const tileX = x + column * (tileW + gap);
+    const tileY = y + row * (tileH + gap);
     const value = formatChartMetricValue(label, rawValue);
     const color = chartMetricColor(label, rawValue);
     fillRect(canvas, tileX, tileY, tileW, tileH, [248, 250, 252, 255]);
     drawRect(canvas, tileX, tileY, tileW, tileH, [226, 232, 240, 255], 1);
-    drawText(canvas, tileX + 8, tileY + 7, label, [100, 116, 139, 255], 2);
-    drawTextFit(canvas, tileX + 8, tileY + 34, value, color, 3, tileW - 16, 2);
+    drawText(canvas, tileX + 12, tileY + 12, label, [100, 116, 139, 255], REPORT_CHART_MIN_TEXT_SCALE);
+    drawTextFit(canvas, tileX + 12, tileY + 58, value, color, REPORT_CHART_VALUE_SCALE, tileW - 24, 4);
   });
 }
 

@@ -566,16 +566,18 @@ assert(!serverSource.includes("buy/staged/wait/avoid"), "fund QA prompt must not
 
 const png = manager.renderFundReportSummaryPng({
   profile: buildChartProfile(),
-  width: 980,
-  height: 620
+  width: 1280,
+  height: 760
 });
 assert(Buffer.isBuffer(png), "summary chart renderer must return a PNG buffer");
 assert.equal(png.slice(0, 8).toString("hex"), "89504e470d0a1a0a", "summary chart must be a PNG");
-assert.equal(png.readUInt32BE(16), 980, "summary chart width must match requested width");
-assert.equal(png.readUInt32BE(20), 620, "summary chart height must match requested height");
-assert(png.length > 8000, "summary chart should contain dense report-card evidence, not only a sparse legacy line");
+assert.equal(png.readUInt32BE(16), 1280, "summary chart width must match requested width");
+assert.equal(png.readUInt32BE(20), 760, "summary chart height must match requested height");
+assert(png.length > 12000, "summary chart should contain dense report-card evidence, not only a sparse legacy line");
 assert(serverSource.includes("sanitizeChartText"), "summary chart renderer must sanitize non-ASCII labels before bitmap drawing");
 assert(serverSource.includes("drawTextFit"), "summary chart renderer must fit large metric labels instead of shrinking them into QR-like bitmap text");
+assert(serverSource.includes("REPORT_CHART_MIN_TEXT_SCALE = 3"), "summary chart must keep thumbnail-safe minimum text scale");
+assert(serverSource.includes("showAxisLabels: false"), "summary chart must hide dense axis tick text in Feishu thumbnails");
 for (const label of ["FUND", "NAV", "RANGE", "RET", "BUY/FEE", "ENTRY", "SIG", "LOW", "ACT", "CLASS", "FEE", "SHRP", "YRET", "SIZE"]) {
   assert(serverSource.includes(label), `summary chart must use readable compact label: ${label}`);
 }

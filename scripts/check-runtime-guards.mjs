@@ -64,8 +64,16 @@ const requiredPatterns = [
     message: "fund report charts must include a readable buy-point and fee evidence panel."
   },
   {
-    pattern: /function renderFundReportSummaryPng\(\{\s*profile,\s*width\s*=\s*980,\s*height\s*=\s*620\s*\}\s*=\s*\{\}\)/,
+    pattern: /function renderFundReportSummaryPng\(\{\s*profile,\s*width\s*=\s*1280,\s*height\s*=\s*760\s*\}\s*=\s*\{\}\)/,
     message: "fund report chart defaults must remain large enough for dense evidence cards."
+  },
+  {
+    pattern: /REPORT_CHART_MIN_TEXT_SCALE\s*=\s*3/,
+    message: "fund report chart text must stay thumbnail-readable instead of falling back to tiny bitmap blocks."
+  },
+  {
+    pattern: /showAxisLabels:\s*false/,
+    message: "fund report chart thumbnails must hide dense axis tick text that looks like QR noise."
   },
   {
     pattern: /sanitizeChartText/,
