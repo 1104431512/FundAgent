@@ -65,6 +65,14 @@ const requiredPatterns = [
     message: "pullback/setup discovery must judge whether the fund is actually in a low 120-day position."
   },
   {
+    pattern: /dateFallback/,
+    message: "fund ranking recall must fall back to latest rankings when a dated window returns empty."
+  },
+  {
+    pattern: /selectWeeklyReversalRankCandidates/,
+    message: "pullback/setup discovery must preserve mild one-week low-position reversal candidates."
+  },
+  {
     pattern: /resolveFundMentionsFromText/,
     message: "text-only fund screening must resolve fund names into codes before enrichment."
   },

@@ -103,6 +103,7 @@ await assertIntent({
 const lowSetupSeed = {
   name: "中证500ETF联接C",
   type: "指数型基金",
+  oneWeekPct: 2.6,
   oneMonthPct: 4.2,
   threeMonthPct: -6.5,
   sixMonthPct: -11.8,
@@ -112,6 +113,7 @@ const lowSetupSeed = {
 const chaseSeed = {
   name: "热门黄金主题基金A",
   type: "股票型基金",
+  oneWeekPct: 9.8,
   oneMonthPct: 33.4,
   threeMonthPct: 36.6,
   sixMonthPct: 58.1,
@@ -122,6 +124,40 @@ assert(
   manager.scorePullbackSetupSeedCandidate(lowSetupSeed, [], setupQuery) >
     manager.scorePullbackSetupSeedCandidate(chaseSeed, [], setupQuery),
   "pullback setup seed scoring must prefer low-position repair over recent surge/chase candidates"
+);
+const weeklyTurnSeed = {
+  code: "000010",
+  name: "中证A500ETF联接C",
+  type: "指数型基金",
+  oneWeekPct: 2.4,
+  oneMonthPct: 1.2,
+  threeMonthPct: -7.5,
+  sixMonthPct: -12.4,
+  dailyPct: 0.6
+};
+const weeklyChaseSeed = {
+  code: "000011",
+  name: "热门强势主题基金A",
+  type: "股票型基金",
+  oneWeekPct: 9.2,
+  oneMonthPct: 26.8,
+  threeMonthPct: 42.1,
+  sixMonthPct: 66.5,
+  dailyPct: 5.4
+};
+assert(
+  manager.scorePullbackSetupSeedCandidate(weeklyTurnSeed, [], setupQuery) >
+    manager.scorePullbackSetupSeedCandidate(weeklyChaseSeed, [], setupQuery),
+  "pullback setup seed scoring must prefer one-week low-position reversals over weekly/monthly chases"
+);
+assert.deepEqual(
+  manager.selectWeeklyReversalRankCandidates([
+    weeklyChaseSeed,
+    weeklyTurnSeed,
+    { code: "000012", name: "仍在下跌基金C", oneWeekPct: -3.1, oneMonthPct: -8.2, threeMonthPct: -15.4 }
+  ]).map((item) => item.code),
+  ["000010"],
+  "weekly reversal scanner must keep mild one-week turns and reject chases or still-falling funds"
 );
 
 const setupDigest = {

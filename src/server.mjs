@@ -5496,7 +5496,7 @@ async function fetchPullbackSetupRankingCandidates() {
     { metric: "3yzf", sort: "asc", label: "近3月低位候选" },
     { metric: "6yzf", sort: "asc", label: "近6月低位候选" }
   ];
-  const limit = Number(process.env.PULLBACK_SETUP_RANK_LIMIT || 24);
+  const limit = Number(process.env.PULLBACK_SETUP_RANK_LIMIT || 40);
   const groups = await Promise.all(fundTypes.flatMap(([fundType, label]) =>
     metrics.map((metric) =>
       fetchFundRankingByMetric(fundType, label, {
@@ -5508,13 +5508,55 @@ async function fetchPullbackSetupRankingCandidates() {
     )
   ));
 
-  return groups.flatMap((group) =>
+  const rankedItems = groups.flatMap((group) =>
     (group.items || []).map((item) => ({
       ...item,
       keywords: [...new Set([...(item.keywords || []), group.rankingMetric || "低位候选"].filter(Boolean))],
       setupDiscoverySource: "ranking_scan"
     }))
   );
+  const weeklyReversalItems = selectWeeklyReversalRankCandidates(rankedItems).map((item) => ({
+    ...item,
+    keywords: [...new Set([...(item.keywords || []), "近1周低位转强候选"].filter(Boolean))],
+    setupDiscoverySource: "weekly_reversal_scan"
+  }));
+
+  return mergeCandidateFunds(weeklyReversalItems, rankedItems);
+}
+
+function selectWeeklyReversalRankCandidates(items = []) {
+  return (items || [])
+    .filter(isWeeklyReversalSeedCandidate)
+    .sort((a, b) => scoreWeeklyReversalSeed(b) - scoreWeeklyReversalSeed(a))
+    .slice(0, Number(process.env.PULLBACK_SETUP_REVERSAL_LIMIT || 48));
+}
+
+function isWeeklyReversalSeedCandidate(item = {}) {
+  const oneWeek = toNumber(item.oneWeekPct);
+  const oneMonth = toNumber(item.oneMonthPct);
+  const threeMonth = toNumber(item.threeMonthPct);
+  const sixMonth = toNumber(item.sixMonthPct);
+  const daily = toNumber(item.dailyPct);
+  return Number.isFinite(oneWeek)
+    && oneWeek >= 0.3
+    && oneWeek <= 5
+    && (!Number.isFinite(oneMonth) || (oneMonth >= -5 && oneMonth <= 8))
+    && (!Number.isFinite(threeMonth) || threeMonth <= 12)
+    && (!Number.isFinite(sixMonth) || sixMonth <= 24)
+    && (!Number.isFinite(daily) || daily <= 4.5);
+}
+
+function scoreWeeklyReversalSeed(item = {}) {
+  const oneWeek = toNumber(item.oneWeekPct);
+  const oneMonth = toNumber(item.oneMonthPct);
+  const threeMonth = toNumber(item.threeMonthPct);
+  const sixMonth = toNumber(item.sixMonthPct);
+  let score = 0;
+  if (Number.isFinite(oneWeek)) score += 16 - Math.abs(oneWeek - 2.2) * 2;
+  if (Number.isFinite(oneMonth)) score += oneMonth >= -2 && oneMonth <= 6 ? 12 : 0;
+  if (Number.isFinite(threeMonth) && threeMonth <= 3) score += 8;
+  if (Number.isFinite(sixMonth) && sixMonth <= 8) score += 6;
+  return score;
 }
 
 function mergeCandidateFunds(...groups) {
@@ -5534,6 +5576,7 @@ function mergeCandidateFunds(...groups) {
 function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
   const text = `${item.name || ""} ${item.type || ""} ${(item.keywords || []).join(" ")}`;
   const oneMonth = toNumber(item?.oneMonthPct);
+  const oneWeek = toNumber(item?.oneWeekPct);
   const threeMonth = toNumber(item?.threeMonthPct);
   const sixMonth = toNumber(item?.sixMonthPct);
   const oneYear = toNumber(item?.oneYearPct);
@@ -5544,7 +5587,13 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
   if (/ETF|联接|指数/.test(text)) score += 8;
   if (/股票|混合|指数|ETF|QDII|LOF/i.test(text)) score += 4;
   if (/货币|短债|纯债|债券/.test(text) && !hasAny(normalizeIntentText(userText), ["债", "固收", "现金"])) score -= 24;
+  if (/近1周低位转强候选/.test(text)) score += 10;
 
+  if (Number.isFinite(oneWeek)) {
+    if (oneWeek >= 0.3 && oneWeek <= 5) score += 18;
+    else if (oneWeek > 7) score -= Math.min(18, (oneWeek - 7) * 2);
+    else if (oneWeek < -5) score -= 8;
+  }
   if (Number.isFinite(oneMonth)) {
     if (oneMonth >= -2 && oneMonth <= 8) score += 22;
     else if (oneMonth > 12) score -= Math.min(40, (oneMonth - 12) * 2.2 + 12);
@@ -5595,11 +5644,18 @@ function scoreDeepDiveCandidate(item, themeRadar = []) {
 
 function scoreCandidateReturnSetup(item) {
   const oneMonth = toNumber(item?.oneMonthPct);
+  const oneWeek = toNumber(item?.oneWeekPct);
   const threeMonth = toNumber(item?.threeMonthPct);
   const sixMonth = toNumber(item?.sixMonthPct);
   const oneYear = toNumber(item?.oneYearPct);
   const daily = toNumber(item?.dailyPct);
   let score = 0;
+
+  if (Number.isFinite(oneWeek)) {
+    if (oneWeek >= 0.3 && oneWeek <= 5) score += 12;
+    else if (oneWeek > 7) score -= Math.min(12, (oneWeek - 7) * 1.8);
+    else if (oneWeek < -5) score -= 5;
+  }
 
   if (Number.isFinite(oneMonth)) {
     if (oneMonth >= 1 && oneMonth <= 8) score += 10;
@@ -5689,6 +5745,7 @@ function appendCandidateAlternative(base, candidate, field) {
       shareClassFeeModel: candidate.shareClassFeeModel || null,
       type: candidate.type || "",
       company: candidate.company || "",
+      oneWeekPct: candidate.oneWeekPct ?? "",
       oneMonthPct: candidate.oneMonthPct ?? "",
       oneYearPct: candidate.oneYearPct ?? "",
       unitNav: candidate.unitNav ?? "",
@@ -5916,6 +5973,7 @@ async function fetchFundResearchDigest(code, seed = {}) {
     seed: {
       type: seed.type || "",
       keywords: seed.keywords || [],
+      oneWeekPct: seed.oneWeekPct ?? "",
       oneMonthPct: seed.oneMonthPct ?? "",
       threeMonthPct: seed.threeMonthPct ?? "",
       sixMonthPct: seed.sixMonthPct ?? "",
@@ -7002,7 +7060,43 @@ async function fetchFundRankingByMetric(fundType, label, options = {}) {
   startDate.setMonth(startDate.getMonth() - 1);
   const metric = options.metric || "1yzf";
   const sort = options.sort || "desc";
+  const limit = Number(options.limit || process.env.FUND_DISCOVERY_RANK_LIMIT || 24);
+  const datedStartDate = formatDate(startDate);
+  const datedEndDate = formatDate(endDate);
+  const datedUrl = buildFundRankingUrl({ fundType, metric, sort, limit, startDate: datedStartDate, endDate: datedEndDate });
+  const text = await fetchText(datedUrl.href);
+  let items = parseFundRankData(text, label);
+  let usedStartDate = datedStartDate;
+  let usedEndDate = datedEndDate;
+  let dateFallback = false;
+  let fetches = 1;
+  if (!items.length && options.allowDateFallback !== false) {
+    const fallbackUrl = buildFundRankingUrl({ fundType, metric, sort, limit });
+    const fallbackText = await fetchText(fallbackUrl.href);
+    fetches += 1;
+    const fallbackItems = parseFundRankData(fallbackText, label);
+    if (fallbackItems.length) {
+      items = fallbackItems;
+      usedStartDate = "latest";
+      usedEndDate = "latest";
+      dateFallback = true;
+    }
+  }
+  updateStats({ counters: { fundRankingFetches: fetches, fundRankingDateFallbacks: dateFallback ? 1 : 0 } });
+  return {
+    ok: true,
+    fundType,
+    label,
+    rankingMetric: options.rankingMetric || "近1月涨幅",
+    rankingSort: sort,
+    startDate: usedStartDate,
+    endDate: usedEndDate,
+    dateFallback,
+    items
+  };
+}
 
+function buildFundRankingUrl({ fundType, metric, sort, limit, startDate = "", endDate = "" } = {}) {
   const url = new URL("https://fund.eastmoney.com/data/rankhandler.aspx");
   const params = {
     op: "ph",
@@ -7012,31 +7106,21 @@ async function fetchFundRankingByMetric(fundType, label, options = {}) {
     gs: "0",
     sc: metric,
     st: sort,
-    sd: formatDate(startDate),
-    ed: formatDate(endDate),
     qdii: "",
     tabSubtype: ",,,,,",
     pi: "1",
-    pn: String(Number(options.limit || process.env.FUND_DISCOVERY_RANK_LIMIT || 24)),
+    pn: String(Number(limit || 24)),
     dx: "1",
     v: String(Date.now())
   };
+  if (startDate && endDate) {
+    params.sd = startDate;
+    params.ed = endDate;
+  }
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
-
-  const text = await fetchText(url.href);
-  updateStats({ counters: { fundRankingFetches: 1 } });
-  return {
-    ok: true,
-    fundType,
-    label,
-    rankingMetric: options.rankingMetric || "近1月涨幅",
-    rankingSort: sort,
-    startDate: formatDate(startDate),
-    endDate: formatDate(endDate),
-    items: parseFundRankData(text, label)
-  };
+  return url;
 }
 
 function parseFundRankData(text, label) {
@@ -9824,6 +9908,7 @@ export {
   normalizeUserFacingFundAnswer,
   renderFundReportSummaryPng,
   selectFundReportProfilesForAnswer,
+  selectWeeklyReversalRankCandidates,
   scorePullbackSetupSeedCandidate,
   scoreResearchDigestForPullbackSetup
 };
