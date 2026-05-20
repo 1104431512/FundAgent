@@ -20,6 +20,83 @@ assert.equal(intent.mode, "pullback_setup_discovery", "pullback setup query must
 assert.equal(intent.reason, "hard_rule_pullback_setup_request", "pullback setup routing must not depend on model router");
 assert.equal(manager.isPullbackSetupRequest(setupQuery), true, "setup query must be recognized as pullback/setup request");
 assert.equal(manager.isGenericPullbackSetupRequest(setupQuery), true, "generic setup query must expand beyond a single named theme");
+assertSkillCoverage(intent.skillIds, [
+  "fund-theme-radar",
+  "theme-stage-analysis",
+  "theme-to-fund-mapping",
+  "forward-looking-actionability",
+  "fund-recommendation",
+  "fund-market-timing",
+  "fund-fee-share-class",
+  "fund-actionability-evaluation",
+  "fund-answer-quality",
+  "fund-synthesis"
+], "pullback setup recommendation");
+
+await assertIntent({
+  userText: "按最近题材推荐几个基金",
+  expectedWorkflow: "fund_recommendation",
+  expectedReason: "hard_rule_text_requests_recommendations_without_specific_fund",
+  requiredSkills: ["fund-theme-radar", "theme-to-fund-mapping", "fund-recommendation", "fund-market-timing", "fund-answer-quality"]
+});
+
+await assertIntent({
+  userText: "招商行业精选股票基金怎么样",
+  expectedWorkflow: "fund_screening",
+  expectedReason: "hard_rule_text_mentions_specific_fund_action",
+  requiredSkills: ["fund-data-enrichment", "fund-trend-analysis", "fund-risk-analysis", "fund-holdings-style", "fund-fee-share-class", "fund-manager-quality", "fund-actionability-evaluation", "fund-answer-quality"]
+});
+
+await assertIntent({
+  userText: "诺德短债A适合买吗",
+  expectedWorkflow: "fund_screening",
+  expectedReason: "hard_rule_text_mentions_specific_fund_action",
+  requiredSkills: ["fund-data-enrichment", "fund-risk-analysis", "fund-fee-share-class", "fund-actionability-evaluation", "fund-answer-quality"]
+});
+
+await assertIntent({
+  userText: "天弘余额宝货币能买吗",
+  expectedWorkflow: "fund_screening",
+  expectedReason: "hard_rule_text_mentions_specific_fund_action",
+  requiredSkills: ["fund-data-enrichment", "fund-risk-analysis", "fund-fee-share-class", "fund-actionability-evaluation", "fund-answer-quality"]
+});
+
+await assertIntent({
+  userText: "华安纳斯达克100ETF联接QDIIA还能买吗",
+  expectedWorkflow: "fund_screening",
+  expectedReason: "hard_rule_text_mentions_specific_fund_action",
+  requiredSkills: ["fund-data-enrichment", "fund-trend-analysis", "fund-risk-analysis", "fund-fee-share-class", "fund-actionability-evaluation", "fund-answer-quality"]
+});
+
+await assertIntent({
+  userText: "博时黄金ETF联接C和A哪个好",
+  expectedWorkflow: "fund_screening",
+  expectedReason: "hard_rule_text_mentions_specific_fund_action",
+  expectedMode: "comparison_or_specific_fund",
+  requiredSkills: ["fund-comparison", "fund-synthesis", "fund-fee-share-class", "fund-answer-quality"]
+});
+
+await assertIntent({
+  userText: "黄金最近值得买吗",
+  expectedWorkflow: "fund_qa",
+  expectedReason: "hard_rule_market_action_question",
+  expectedMode: "market_question",
+  requiredSkills: ["fund-theme-radar", "theme-stage-analysis", "forward-looking-actionability", "fund-market-timing", "fund-trend-analysis", "fund-answer-quality", "fund-synthesis"]
+});
+
+await assertIntent({
+  userText: "你能做什么",
+  expectedWorkflow: "conversation",
+  expectedReason: "hard_rule_plain_conversation",
+  requiredSkills: []
+});
+
+await assertIntent({
+  userText: "我的虚拟组合今天买卖了吗",
+  expectedWorkflow: "portfolio_status",
+  expectedReason: "hard_rule_virtual_manager_account_query",
+  requiredSkills: []
+});
 
 const lowSetupSeed = {
   name: "中证500ETF联接C",
@@ -106,6 +183,26 @@ assert.equal(png.slice(0, 8).toString("hex"), "89504e470d0a1a0a", "summary chart
 assert.equal(png.readUInt32BE(16), 900, "summary chart width must match requested width");
 assert.equal(png.readUInt32BE(20), 520, "summary chart height must match requested height");
 assert(png.length > 5000, "summary chart should contain more than a sparse legacy line");
+
+async function assertIntent({ userText, expectedWorkflow, expectedReason, expectedMode = null, requiredSkills = [] }) {
+  const routed = await manager.classifyMessageIntent({
+    userText,
+    messageType: "text",
+    imageKeys: []
+  });
+  assert.equal(routed.workflow, expectedWorkflow, `${userText} should route to ${expectedWorkflow}`);
+  assert.equal(routed.reason, expectedReason, `${userText} should use deterministic routing`);
+  if (expectedMode) {
+    assert.equal(routed.mode, expectedMode, `${userText} should use mode ${expectedMode}`);
+  }
+  assertSkillCoverage(routed.skillIds || [], requiredSkills, userText);
+}
+
+function assertSkillCoverage(actual, required, label) {
+  for (const skill of required) {
+    assert(actual.includes(skill), `${label} must load ${skill}`);
+  }
+}
 
 function buildChartProfile() {
   const start = new Date("2026-01-01T00:00:00Z");

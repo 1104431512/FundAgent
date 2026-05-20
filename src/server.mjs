@@ -8546,7 +8546,37 @@ function cleanFeishuUserText(text, content = {}) {
 async function classifyMessageIntent({ imageKeys = [], userText = "", messageType = "" }) {
   const text = normalizeIntentText(userText);
   const fundCodes = extractFundCodes(text);
-  const hasFundWord = hasAny(text, ["基金", "etf", "lof", "qdii", "指数", "主动", "混合", "股票型", "债基", "货币"]);
+  const hasFundWord = hasAny(text, ["基金", "etf", "lof", "qdii", "指数", "主动", "混合", "股票型", "债基", "债券", "纯债", "短债", "货币"]);
+  const asksRecommendation =
+    hasAny(text, ["推荐", "筛选", "找一个", "找一只", "找几个", "几个基金", "哪些基金", "买什么", "投什么", "配什么", "配置", "候选", "清单", "回调完成", "准备启动", "低位启动", "不要追涨"]) ||
+    (hasAny(text, ["最近", "最新", "当前", "现在", "市场", "行情", "题材", "热点", "板块", "赛道", "机会"]) &&
+      hasAny(text, ["基金", "etf", "配置", "推荐", "候选", "清单"]));
+  const asksCompare = hasAny(text, ["对比", "比较", "哪个好", "哪个更好", "哪只好", "哪只更好", "哪一个好", "选哪", "挑一个", "二选一", "三选一", "排名", "pk"]);
+  const asksSpecificAction = hasAny(text, [
+    "这只基金",
+    "这个基金",
+    "该基金",
+    "基金代码",
+    "值得买吗",
+    "适合买吗",
+    "还能买吗",
+    "能买吗",
+    "能不能买",
+    "买不买",
+    "要不要买",
+    "要不要卖",
+    "持有",
+    "卖出",
+    "买入",
+    "加仓",
+    "减仓",
+    "定投",
+    "仓位",
+    "评分",
+    "评价",
+    "怎么样",
+    "分析一下"
+  ]);
 
   if (imageKeys.length) {
     return {
@@ -8603,6 +8633,50 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
     };
   }
 
+  if (!fundCodes.length && asksRecommendation) {
+    return {
+      workflow: "fund_recommendation",
+      mode: "market_theme_discovery",
+      reason: "hard_rule_text_requests_recommendations_without_specific_fund",
+      fundCodes,
+      skillIds: getFundRecommendationSkillIds(),
+      messageType
+    };
+  }
+
+  if (hasFundWord && (asksSpecificAction || asksCompare)) {
+    return {
+      workflow: "fund_screening",
+      mode: asksCompare ? "comparison_or_specific_fund" : "specific_fund_or_fund_name",
+      reason: "hard_rule_text_mentions_specific_fund_action",
+      fundCodes,
+      skillIds: getFundAnalysisSkillIds(asksCompare ? ["fund-comparison", "fund-synthesis"] : ["fund-synthesis"]),
+      messageType
+    };
+  }
+
+  if (looksLikeConversation(text)) {
+    return {
+      workflow: "conversation",
+      mode: "plain_conversation",
+      reason: "hard_rule_plain_conversation",
+      fundCodes,
+      skillIds: [],
+      messageType
+    };
+  }
+
+  if (shouldFetchMarketSnapshotForQuestion(text) && isActionSeekingFundQuestion(text)) {
+    return {
+      workflow: "fund_qa",
+      mode: "market_question",
+      reason: "hard_rule_market_action_question",
+      fundCodes,
+      skillIds: getFundQaSkillIds(),
+      messageType
+    };
+  }
+
   const modelIntent = await classifyTextIntentWithModel({ userText, messageType }).catch((error) => {
     console.error("[intent-router-error]", error);
     recordError(error, { intentRouterFailures: 1 });
@@ -8611,32 +8685,6 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
   if (modelIntent?.workflow) {
     return normalizeIntentResult(modelIntent, { fundCodes, messageType, source: "model_router" });
   }
-
-  const asksRecommendation =
-    hasAny(text, ["推荐", "筛选", "找一个", "找一只", "找几个", "几个基金", "哪些基金", "买什么", "投什么", "配什么", "配置", "候选", "清单", "回调完成", "准备启动", "低位启动", "不要追涨"]) ||
-    (hasAny(text, ["最近", "最新", "当前", "现在", "市场", "行情", "题材", "热点", "板块", "赛道", "机会"]) &&
-      hasAny(text, ["基金", "etf", "买", "投", "配置", "推荐"]));
-
-  const asksCompare = hasAny(text, ["对比", "比较", "哪个更好", "哪只更好", "二选一", "三选一", "pk"]);
-  const asksSpecificAction = hasAny(text, [
-    "这只基金",
-    "这个基金",
-    "该基金",
-    "基金代码",
-    "值得买吗",
-    "还能买吗",
-    "能买吗",
-    "要不要买",
-    "要不要卖",
-    "持有",
-    "卖出",
-    "买入",
-    "定投",
-    "仓位",
-    "评分",
-    "评价",
-    "分析一下"
-  ]);
 
   if (!fundCodes.length && asksRecommendation) {
     return {
@@ -9324,8 +9372,13 @@ function timingSafeEqualString(a, b) {
 }
 
 export {
+  allowedSkillIdsForWorkflow,
   classifyMessageIntent,
+  defaultSkillIdsForWorkflow,
   evaluateFundAnswerQuality,
+  getFundAnalysisSkillIds,
+  getFundQaSkillIds,
+  getFundRecommendationSkillIds,
   isGenericPullbackSetupRequest,
   isPullbackSetupRequest,
   normalizeUserFacingFundAnswer,
