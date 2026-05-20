@@ -20,7 +20,26 @@ const SKILLS_DIR = path.join(ROOT, "skills");
 const STARTED_AT = new Date();
 const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS || 120000);
 const DEFAULT_MODEL_HTTP_TIMEOUT_MS = Number(process.env.MODEL_HTTP_TIMEOUT_MS ?? 0);
+const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 4800;
+const DEFAULT_REPLY_MAX_CHARS = 9000;
+const MIN_FUND_QA_OUTPUT_TOKENS = 4200;
+const MIN_FUND_RECOMMENDATION_OUTPUT_TOKENS = 5200;
+const MIN_FUND_REWRITE_OUTPUT_TOKENS = 3200;
 const PUBLIC_DATA_TIMEOUT_MS = Number(process.env.PUBLIC_DATA_TIMEOUT_MS || 20000);
+const DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS = [
+  "沪深300",
+  "中证500",
+  "中证1000",
+  "创业板",
+  "科创50",
+  "红利",
+  "医药",
+  "消费",
+  "新能源",
+  "军工",
+  "港股",
+  "半导体"
+];
 const DEFAULT_PORTFOLIO_MANAGER_PROFILE = [
   "定位：教育性虚拟基金经理，不进行真实交易；先保护本金，再在证据明确时参与基金主题轮动。",
   "买入纪律：优先选择净值、持仓、风险指标和数据来源可验证的基金；避免仅凭热点重仓追涨。",
@@ -1190,7 +1209,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     systemText,
     userPrompt,
     images: [],
-    maxTokens: Math.min(Number(config.modelMaxOutputTokens || 2800), 3600)
+    maxTokens: Math.min(Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS), 3600)
   });
   updateStats({
     counters: { portfolioManagerModelCalls: 1 },
@@ -1236,7 +1255,7 @@ async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, p
     systemText,
     userPrompt,
     images: [],
-    maxTokens: Math.max(Number(config.modelMaxOutputTokens || 2800), 3600)
+    maxTokens: Math.max(Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS), 3600)
   });
   updateStats({
     counters: { portfolioReviewModelCalls: 1 },
@@ -1343,7 +1362,7 @@ async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profi
     systemText,
     userPrompt,
     images: [],
-    maxTokens: Math.min(Number(config.modelMaxOutputTokens || 2800), 1800)
+    maxTokens: Math.min(Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS), 1800)
   });
   return text;
 }
@@ -1385,7 +1404,7 @@ async function buildPortfolioWeeklyWithModel({ account, weeklyContext, profiles,
     systemText,
     userPrompt,
     images: [],
-    maxTokens: Math.min(Number(config.modelMaxOutputTokens || 2800), 2200)
+    maxTokens: Math.min(Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS), 2200)
   });
   return text;
 }
@@ -3280,8 +3299,8 @@ async function buildFundReportCardImages(profiles, config) {
           })
         : renderFundReportSummaryPng({
             profile: item.snapshot,
-            width: 820,
-            height: 420
+            width: 900,
+            height: 520
           });
       if (!png) continue;
       const imageKey = await uploadFeishuImage(png, `fund-report-${chartMode}-${item.code || "fund"}.png`, config);
@@ -3863,13 +3882,21 @@ async function buildAnalystReviewWithModel({ images, userText, messageType, extr
     isComparison ? "4. 初步排序：给出首选、备选、观察/剔除对象和原因，不要给最终用户话术。" : "4. 初步评分区间：给一个区间和原因，不要给最终动作。"
   ].join("\n");
 
-  const maxTokens = Math.min(Number(getEffectiveConfig().modelMaxOutputTokens || 2800), 1800);
+  const maxTokens = Math.max(2600, Math.min(getConfiguredMaxOutputTokens(), 3600));
   const review = await callModel({ systemText, userPrompt, images, maxTokens });
   updateStats({
     counters: { analystReviewCalls: 1 },
     last: { lastAnalystReviewAt: new Date().toISOString() }
   });
   return review;
+}
+
+function getConfiguredMaxOutputTokens() {
+  return Number(getEffectiveConfig().modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS);
+}
+
+function getFundWorkflowMaxOutputTokens(minimum) {
+  return Math.max(getConfiguredMaxOutputTokens(), Number(minimum || 0));
 }
 
 async function buildCommitteeVoteWithModel({ userText, messageType, extracted, enrichments, analystReview }) {
@@ -3898,7 +3925,7 @@ async function buildCommitteeVoteWithModel({ userText, messageType, extracted, e
     "6. 10000 元草案：激进、均衡、保守各自金额。"
   ].join("\n");
 
-  const maxTokens = Math.min(Number(getEffectiveConfig().modelMaxOutputTokens || 2800), 1400);
+  const maxTokens = Math.max(2200, Math.min(getConfiguredMaxOutputTokens(), 3200));
   const vote = await callModel({ systemText, userPrompt, images: [], maxTokens });
   updateStats({
     counters: { committeeVoteCalls: 1 },
@@ -3934,8 +3961,8 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
     "",
     "请按以下结构输出，不要输出 Markdown 表格：",
     isComparison
-      ? "1. 开场结论：首选哪只/哪几只、Confidence、选择理由；不需要给每只基金都打完整单基分。"
-      : "1. 开场结论：Verdict、Confidence、Score，并用一句话解释这个分数的含义，例如“61/100 = 可观察但还没到重仓”。",
+      ? "1. 开场结论：首选哪只/哪几只、把握度、选择理由；不需要给每只基金都打完整单基分。"
+      : "1. 开场结论：结论、把握度、评分，并用一句话解释这个分数的含义，例如“61/100 = 可观察但还没到重仓”。",
     isComparison
       ? "2. 多基金选择：给出排名、首选、备选、为什么不选其他基金；不要给每只基金都套 8 角色长流程。"
       : "2. 投研团队视角：产品、业绩、持仓、市场、风险等角色各 1 行，给出正/中/负倾向和关键理由。",
@@ -3950,7 +3977,7 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
     systemText,
     userPrompt,
     images: [],
-    maxTokens: getEffectiveConfig().modelMaxOutputTokens
+    maxTokens: getFundWorkflowMaxOutputTokens(MIN_FUND_QA_OUTPUT_TOKENS)
   });
   const guardedText = await enforceFundAnswerQuality({
     text: finalText,
@@ -3991,6 +4018,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "必须通过 fund-actionability-evaluation 和 fund-answer-quality 质量门槛：先给直接结论，再给适合/不适合的自评估，再给执行方案。",
     "如果数据不足以支持具体基金代码，就推荐基金方向/筛选条件，并把具体代码标为待复核。",
     "回答要大胆但有边界：证据偏正面时可以给出买入或分批买入候选；不要机械地总是等待回撤。",
+    "回答要像专业经理在和客户沟通：用自然中文解释把握度，不要写“信心：高。”、“Confidence: high”这类字段式短句。",
     "不要把风险写成免责声明清单。只保留会改变买入/等待/回避动作的决策边界。",
     "输出适合飞书卡片阅读，不要 Markdown 表格，不要代码块。",
     "",
@@ -4015,7 +4043,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "请输出：",
     "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
     "2. 题材雷达：先列 1-3 个相关题材的中文阶段、前瞻评分、拥挤度、为什么现在值得/不值得看；不要输出 stage/forwardScore/crowdingScore 这些字段名。",
-    "3. 自评估：这类需求是否适合现在做，confidence，适合激进/均衡/保守哪类。",
+    "3. 自评估：这类需求是否适合现在做、把握度如何、适合激进/均衡/保守哪类。",
     "4. 推荐清单：优先 3-5 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号、趋势/自评估动作、为什么入选。只能使用快照或下钻中的候选代码；如果没有足够代码，就写“待复核方向”。",
     "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
     "5. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
@@ -4026,7 +4054,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     systemText,
     userPrompt,
     images: [],
-    maxTokens: getEffectiveConfig().modelMaxOutputTokens
+    maxTokens: getFundWorkflowMaxOutputTokens(MIN_FUND_RECOMMENDATION_OUTPUT_TOKENS)
   });
   const text = await enforceFundAnswerQuality({
     text: draft,
@@ -4065,6 +4093,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先判断 pullbackSetup.signal；短期涨幅偏热、20日/60日大涨且等待回撤的候选不能被包装成启动机会。",
     "如果没有抓到对应行情数据，要说明是公开数据源暂时不可用或滞后，不要简单说自己没有实时数据能力。",
     "必须通过 fund-actionability-evaluation 和 fund-answer-quality 质量门槛：前两行直接回答；有快照/下钻就引用具体字段；给明确行动、适合对象和仓位建议。",
+    "回答要像专业经理在和客户沟通：用自然中文解释把握度，不要写“信心：高。”、“Confidence: high”这类字段式短句。",
     "不要把风险写成免责声明清单。只保留会改变买入/等待/回避动作的决策边界。",
     "回答中文、简洁、可执行。不要保证收益，不要给出个性化承诺。",
     "输出适合飞书卡片阅读，不要 Markdown 表格，不要代码块。",
@@ -4094,7 +4123,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     systemText,
     userPrompt,
     images: [],
-    maxTokens: Math.min(Number(getEffectiveConfig().modelMaxOutputTokens || 2800), 1800)
+    maxTokens: getFundWorkflowMaxOutputTokens(MIN_FUND_QA_OUTPUT_TOKENS)
   });
   const text = await enforceFundAnswerQuality({
     text: draft,
@@ -4153,6 +4182,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "不要编造证据里没有的基金代码、市场数字或行情。",
       "必须使用自然中文。禁止输出内部字段名或英文枚举，例如 trendProfile、actionability、entryBias、fitLabel、extended_uptrend、tactical_only、staged_buy、wait_pullback。",
       "遇到内部标签时要翻译成客户能读懂的话：extended_uptrend=短期涨幅偏热，tactical_only=只适合战术小仓位，staged_buy=分批买入，wait_pullback=等待回撤。",
+      "禁止机械写“信心：高。”、“信心：中。”、“Confidence: high”。要改成自然句，例如“我对这条判断把握度较高，主要因为证据比较一致。”",
       "保持适合飞书卡片阅读，不要 Markdown 表格或代码块。",
       "",
       skillContext
@@ -4171,15 +4201,15 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       compactQualityEvidence(evidence),
       "",
       "draftAnswer:",
-      String(text || "").slice(0, 8000),
+      String(text || "").slice(0, 12000),
       "",
-      "现在重写回答。保留证据支持的具体数字、基金代码、动作、仓位、信心和决策边界，但必须把内部字段转成自然中文。"
+      "现在重写回答。保留证据支持的具体数字、基金代码、动作、仓位、把握度和决策边界，但必须把内部字段转成自然中文。"
     ].join("\n");
     const rewritten = await callModel({
       systemText,
       userPrompt,
       images: [],
-      maxTokens: Math.min(Number(getEffectiveConfig().modelMaxOutputTokens || 2800), 1800)
+      maxTokens: getFundWorkflowMaxOutputTokens(MIN_FUND_REWRITE_OUTPUT_TOKENS)
     });
     const cleanedRewrite = normalizeUserFacingFundAnswer(rewritten || localizedText);
     const secondPass = evaluateFundAnswerQuality({ text: cleanedRewrite, workflow, userText, evidence });
@@ -4221,11 +4251,16 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
     /需要结合自身情况/
   ].filter((pattern) => pattern.test(body)).length;
   const riskCount = (body.match(/风险/g) || []).length;
+  const stiffConfidenceLabel = /(^|[\n。；;])\s*(?:信心|confidence)\s*[：:]\s*(?:高|中|低|high|medium|low)\s*[。.]?(?=\s|$)/i.test(String(text || ""));
 
   if (hasInternalFundSignalLeak(body)) issues.push("internal_signal_leak");
+  if (stiffConfidenceLabel) issues.push("stiff_confidence_label");
   if (actionSeeking && !hasAction) issues.push("missing_direct_action");
   if (actionSeeking && !hasSizing) issues.push("missing_sizing_or_execution");
   if (evidenceAvailable && !hasEvidence) issues.push("missing_concrete_evidence");
+  if (isPullbackSetupRequest(userText) && !/(回调|低位|启动|修复|追涨|偏热|高点|低点|20日|60日)/.test(body)) {
+    issues.push("missing_pullback_setup_assessment");
+  }
   if (clicheCount >= 1 && (!hasSizing || !hasEvidence)) issues.push("generic_cliche_answer");
   if (riskCount >= 6 && !/(边界|触发|仓位|等待|暂停|回避|上限|下限)/.test(body)) {
     issues.push("risk_dump_without_decision_boundary");
@@ -4249,6 +4284,12 @@ function normalizeUserFacingFundAnswer(text) {
   }
   return output
     .replace(/\bNAV\b/g, "净值")
+    .replace(/(^|[\n。；;])\s*信心\s*[：:]\s*高\s*[。.]?/g, "$1我对这条判断把握度较高。")
+    .replace(/(^|[\n。；;])\s*信心\s*[：:]\s*中\s*[。.]?/g, "$1这条判断把握度中等，需要按条件执行。")
+    .replace(/(^|[\n。；;])\s*信心\s*[：:]\s*低\s*[。.]?/g, "$1这条判断把握度偏低，只适合先观察。")
+    .replace(/\bConfidence\s*[：:]\s*high\b/gi, "把握度较高")
+    .replace(/\bConfidence\s*[：:]\s*medium\b/gi, "把握度中等")
+    .replace(/\bConfidence\s*[：:]\s*low\b/gi, "把握度偏低")
     .replace(/(趋势|动作|入场判断|适配度)[:：]\s*/g, "$1：")
     .trim();
 }
@@ -4324,7 +4365,7 @@ async function answerConversationWithModel({ userText, intent }) {
     systemText,
     userPrompt,
     images: [],
-    maxTokens: Math.min(Number(getEffectiveConfig().modelMaxOutputTokens || 2800), 1000)
+    maxTokens: Math.min(getConfiguredMaxOutputTokens(), 1200)
   });
   updateStats({
     counters: { conversationModelCalls: 1 },
@@ -4390,7 +4431,7 @@ async function callResponsesApi({ config, systemText, userPrompt, images, maxTok
     model: config.modelName,
     instructions: systemText,
     input: [{ role: "user", content }],
-    max_output_tokens: Number(maxTokens || config.modelMaxOutputTokens || 2800)
+    max_output_tokens: Number(maxTokens || config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS)
   };
 
   const reasoningEffort = normalizeReasoningEffort(config.modelReasoningEffort);
@@ -4447,7 +4488,7 @@ async function callChatCompletionsApi({ config, systemText, userPrompt, images, 
         { role: "system", content: systemText },
         { role: "user", content: userContent }
       ],
-      max_tokens: Number(maxTokens || config.modelMaxOutputTokens || 2800)
+      max_tokens: Number(maxTokens || config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS)
     },
     {
       Authorization: `Bearer ${config.modelApiKey}`
@@ -4894,6 +4935,9 @@ function matchCandidateThemes(candidate, themes = []) {
       stage: theme.stage,
       forwardScore: theme.forwardScore,
       crowdingScore: theme.crowdingScore,
+      rotationScore: theme.rotationScore,
+      lowPositionScore: theme.lowPositionScore,
+      positionSignal: theme.positionSignal,
       actionBias: theme.actionBias
     }))
     .slice(0, 3);
@@ -5085,6 +5129,83 @@ async function fetchFocusedFundCandidates(userText) {
   return [...byCode.values()];
 }
 
+function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
+  const explicit = inferFocusedFundSearchKeywords(userText);
+  if (explicit.length) return explicit;
+
+  const radarKeywords = (themeRadar || [])
+    .filter((theme) => Number(theme.lowPositionScore || 0) >= 35 || ["low_position_rotation", "acceptable_position"].includes(theme.positionSignal))
+    .flatMap((theme) => [theme.name, ...(theme.fundKeywords || []), ...(theme.keywords || [])])
+    .filter(Boolean);
+  const configured = String(process.env.PULLBACK_SETUP_FUND_KEYWORDS || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return [...new Set([...(configured.length ? configured : DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS), ...radarKeywords])]
+    .slice(0, Number(process.env.PULLBACK_SETUP_KEYWORD_LIMIT || 10));
+}
+
+async function fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar = []) {
+  const keywordGroups = await Promise.all(inferPullbackSetupSearchKeywords(userText, themeRadar).map((keyword) =>
+    fetchFundSearchCandidates(keyword).catch((error) => ({ ok: false, keyword, error: error.message, items: [] }))
+  ));
+  const rankingGroups = await fetchPullbackSetupRankingCandidates();
+  const keywordItems = keywordGroups.flatMap((group) =>
+    (group.items || []).map((item) => ({
+      ...item,
+      keywords: [...new Set([...(item.keywords || []), group.keyword, "回调启动候选"].filter(Boolean))],
+      setupDiscoverySource: "keyword_search"
+    }))
+  );
+  const snapshotItems = [
+    ...(marketSnapshot?.fundCandidates?.stockFunds || []),
+    ...(marketSnapshot?.fundCandidates?.hybridFunds || []),
+    ...(marketSnapshot?.fundCandidates?.indexFunds || []),
+    ...(marketSnapshot?.fundCandidates?.qdiiFunds || [])
+  ].map((item) => ({
+    ...item,
+    keywords: [...new Set([...(item.keywords || []), "市场候选池"].filter(Boolean))],
+    setupDiscoverySource: "market_snapshot"
+  }));
+
+  return mergeCandidateFunds(keywordItems, rankingGroups, snapshotItems)
+    .sort((a, b) => scorePullbackSetupSeedCandidate(b, themeRadar, userText) - scorePullbackSetupSeedCandidate(a, themeRadar, userText))
+    .slice(0, Number(process.env.PULLBACK_SETUP_SEED_LIMIT || 80));
+}
+
+async function fetchPullbackSetupRankingCandidates() {
+  const fundTypes = [
+    ["gp", "股票型基金"],
+    ["hh", "混合型基金"],
+    ["zs", "指数型基金"],
+    ["qdii", "QDII基金"]
+  ];
+  const metrics = [
+    { metric: "1yzf", sort: "desc", label: "近1月转强候选" },
+    { metric: "3yzf", sort: "asc", label: "近3月低位候选" },
+    { metric: "6yzf", sort: "asc", label: "近6月低位候选" }
+  ];
+  const limit = Number(process.env.PULLBACK_SETUP_RANK_LIMIT || 24);
+  const groups = await Promise.all(fundTypes.flatMap(([fundType, label]) =>
+    metrics.map((metric) =>
+      fetchFundRankingByMetric(fundType, label, {
+        metric: metric.metric,
+        sort: metric.sort,
+        rankingMetric: metric.label,
+        limit
+      }).catch((error) => ({ ok: false, error: error.message, items: [] }))
+    )
+  ));
+
+  return groups.flatMap((group) =>
+    (group.items || []).map((item) => ({
+      ...item,
+      keywords: [...new Set([...(item.keywords || []), group.rankingMetric || "低位候选"].filter(Boolean))],
+      setupDiscoverySource: "ranking_scan"
+    }))
+  );
+}
+
 function mergeCandidateFunds(...groups) {
   const byCode = new Map();
   for (const item of groups.flat()) {
@@ -5097,6 +5218,49 @@ function mergeCandidateFunds(...groups) {
     }
   }
   return [...byCode.values()];
+}
+
+function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
+  const text = `${item.name || ""} ${item.type || ""} ${(item.keywords || []).join(" ")}`;
+  const oneMonth = toNumber(item?.oneMonthPct);
+  const threeMonth = toNumber(item?.threeMonthPct);
+  const sixMonth = toNumber(item?.sixMonthPct);
+  const oneYear = toNumber(item?.oneYearPct);
+  const daily = toNumber(item?.dailyPct);
+  let score = 0;
+
+  score += scoreCandidateReturnSetup(item) * 1.8;
+  if (/ETF|联接|指数/.test(text)) score += 8;
+  if (/股票|混合|指数|ETF|QDII|LOF/i.test(text)) score += 4;
+  if (/货币|短债|纯债|债券/.test(text) && !hasAny(normalizeIntentText(userText), ["债", "固收", "现金"])) score -= 24;
+
+  if (Number.isFinite(oneMonth)) {
+    if (oneMonth >= -2 && oneMonth <= 8) score += 22;
+    else if (oneMonth > 12) score -= Math.min(40, (oneMonth - 12) * 2.2 + 12);
+    else if (oneMonth < -10) score -= 8;
+  }
+  if (Number.isFinite(threeMonth)) {
+    if (threeMonth >= -15 && threeMonth <= 12) score += 12;
+    else if (threeMonth > 25) score -= Math.min(28, (threeMonth - 25) * 1.1 + 8);
+  }
+  if (Number.isFinite(sixMonth)) {
+    if (sixMonth >= -30 && sixMonth <= 18) score += 8;
+    if (sixMonth <= 0 && Number.isFinite(oneMonth) && oneMonth > 0 && oneMonth <= 8) score += 8;
+    if (sixMonth > 45) score -= 16;
+  }
+  if (Number.isFinite(oneYear) && oneYear >= -35 && oneYear <= 35) score += 4;
+  if (Number.isFinite(daily) && daily > 5) score -= 10;
+
+  const matchedThemes = item.matchedThemes?.length ? item.matchedThemes : matchCandidateThemes(item, themeRadar);
+  for (const theme of matchedThemes.slice(0, 2)) {
+    score += Math.min(14, Number(theme.lowPositionScore || 0) / 6);
+    score += Math.min(12, Number(theme.rotationScore || 0) / 8);
+    if (theme.positionSignal === "high_chase_risk") score -= 16;
+    if (theme.stage === "crowded") score -= 10;
+  }
+
+  if (isGenericPullbackSetupRequest(userText) && /黄金|贵金属|白银/.test(text)) score -= 18;
+  return score;
 }
 
 function scoreDeepDiveCandidate(item, themeRadar = []) {
@@ -5267,10 +5431,18 @@ function normalizeCandidateFundName(name) {
 
 async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
   if (!marketSnapshot) return null;
-  const focusedCandidates = await fetchFocusedFundCandidates(userText);
   const relevantThemeRadar = selectRelevantThemeRadar(userText, marketSnapshot);
   const precious = isPreciousMetalQuestion(userText);
   const preferPullbackSetup = isPullbackSetupRequest(userText);
+  const [focusedCandidates, pullbackSetupCandidates] = await Promise.all([
+    fetchFocusedFundCandidates(userText),
+    preferPullbackSetup && !precious
+      ? fetchPullbackSetupCandidates(userText, marketSnapshot, relevantThemeRadar).catch((error) => {
+          recordError(error, { pullbackSetupDiscoveryFailures: 1 });
+          return [];
+        })
+      : Promise.resolve([])
+  ]);
   const snapshotCandidates = precious
     ? (marketSnapshot.fundCandidates?.preciousMetalFunds || [])
     : options.forRecommendation
@@ -5281,10 +5453,15 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
           ...(marketSnapshot.fundCandidates?.qdiiFunds || [])
         ]
       : [];
-  const merged = mergeCandidateFunds(focusedCandidates, snapshotCandidates)
+  const merged = mergeCandidateFunds(focusedCandidates, pullbackSetupCandidates, snapshotCandidates)
     .map((item) => ({ ...item, matchedThemes: matchCandidateThemes(item, relevantThemeRadar) }))
-    .sort((a, b) => scoreDeepDiveCandidate(b, relevantThemeRadar) - scoreDeepDiveCandidate(a, relevantThemeRadar));
-  const defaultLimit = preferPullbackSetup ? 6 : precious ? 4 : 3;
+    .sort((a, b) => {
+      if (preferPullbackSetup && !precious) {
+        return scorePullbackSetupSeedCandidate(b, relevantThemeRadar, userText) - scorePullbackSetupSeedCandidate(a, relevantThemeRadar, userText);
+      }
+      return scoreDeepDiveCandidate(b, relevantThemeRadar) - scoreDeepDiveCandidate(a, relevantThemeRadar);
+    });
+  const defaultLimit = preferPullbackSetup ? 12 : precious ? 4 : 3;
   const limit = Math.max(0, Number(process.env.MARKET_DEEP_DIVE_FUND_LIMIT ?? defaultLimit));
   const selected = selectDiversifiedDeepDiveCandidates(merged, limit, {
     diversifyExposure: options.forRecommendation || precious
@@ -5323,9 +5500,15 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
 
   return {
     ok: true,
-    focus: precious ? "precious_metals" : focusedCandidates.length ? "focused_theme_search" : "market_recommendation",
+    focus: precious
+      ? "precious_metals"
+      : preferPullbackSetup
+        ? "pullback_setup_discovery"
+        : focusedCandidates.length ? "focused_theme_search" : "market_recommendation",
     themeRadar: relevantThemeRadar,
-    searchKeywords: inferFocusedFundSearchKeywords(userText),
+    searchKeywords: preferPullbackSetup && !precious
+      ? inferPullbackSetupSearchKeywords(userText, relevantThemeRadar)
+      : inferFocusedFundSearchKeywords(userText),
     selectionDiscipline: preferPullbackSetup ? "prefer_pullback_complete_launch_setup_not_chase" : "balanced_theme_relevance",
     selectedCodes: selected.map((item) => item.code),
     candidates: orderedCandidates
@@ -5351,6 +5534,10 @@ function isPullbackSetupRequest(text) {
     "不追涨",
     "追涨"
   ]);
+}
+
+function isGenericPullbackSetupRequest(text) {
+  return isPullbackSetupRequest(text) && !inferFocusedFundSearchKeywords(text).length;
 }
 
 function scoreResearchDigestForPullbackSetup(digest = {}) {
@@ -5733,7 +5920,7 @@ function renderTrendSeriesPng({ series = [], width = 720, height = 260 } = {}) {
   return encodePngRgba(canvas);
 }
 
-function renderFundReportSummaryPng({ profile, width = 760, height = 360 } = {}) {
+function renderFundReportSummaryPng({ profile, width = 900, height = 520 } = {}) {
   const trend = profile?.trendProfile || {};
   const points = normalizeChartSeries(trend.series || []);
   if (points.length < 2) return null;
@@ -5747,33 +5934,42 @@ function renderFundReportSummaryPng({ profile, width = 760, height = 360 } = {})
   const muted = [100, 116, 139, 255];
   const ink = [15, 23, 42, 255];
 
-  drawText(canvas, 28, 18, `${code} FUND REPORT`, ink, 3);
-  drawText(canvas, 28, 44, `${first.date || "START"} / ${last.date || "LAST"}`, muted, 2);
-  drawText(canvas, width - 244, 24, `RANGE ${formatChartPct(changePct)}`, lineColor, 3);
+  drawText(canvas, 28, 18, `${code} FUND SETUP`, ink, 3);
+  drawText(canvas, 28, 46, `${first.date || "START"} / ${last.date || "LAST"}  NAV ${formatChartNumber(last.nav)}`, muted, 2);
+  drawText(canvas, width - 278, 24, `RANGE ${formatChartPct(changePct)}`, lineColor, 3);
 
   drawLineChartPanel(canvas, {
-    x: 78,
-    y: 88,
-    width: 470,
-    height: 170,
+    x: 88,
+    y: 104,
+    width: 540,
+    height: 210,
     points,
     color: lineColor,
     label: "NAV TREND"
   });
 
   drawDrawdownPanel(canvas, {
-    x: 78,
-    y: 322,
-    width: 470,
-    height: 56,
+    x: 88,
+    y: 392,
+    width: 540,
+    height: 70,
     points
   });
 
   drawReturnBarsPanel(canvas, {
-    x: 574,
-    y: 96,
-    width: 222,
-    height: 250,
+    x: 662,
+    y: 104,
+    width: 210,
+    height: 210,
+    trend
+  });
+
+  drawSignalMetricsPanel(canvas, {
+    x: 662,
+    y: 356,
+    width: 210,
+    height: 108,
+    profile,
     trend
   });
 
@@ -5863,6 +6059,43 @@ function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
   });
 }
 
+function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, trend = {} }) {
+  drawText(canvas, x, y - 28, "SETUP / RISK", [51, 65, 85, 255], 2);
+  drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
+  const risk = profile?.risk?.oneYear || profile?.riskMetrics?.periods?.["1y"] || {};
+  const actionability = profile?.actionability || {};
+  const feeImpact = profile?.fees?.feeImpact || profile?.feeImpact || {};
+  const rows = [
+    ["SETUP", trend.pullbackSetup?.score],
+    ["SIG", formatChartSetupSignal(trend.pullbackSetup?.signal)],
+    ["ENTRY", formatChartEntryBias(trend.entryBias)],
+    ["ACT", formatChartAction(actionability.action)],
+    ["DD", trend.drawdownFromRecentHighPct],
+    ["1YDD", risk.maxDrawdownPct],
+    ["SHARP", risk.sharpe],
+    ["FEEY", feeImpact.oneYearCostPer10000]
+  ];
+  const tileW = Math.floor((width - 30) / 2);
+  const tileH = 20;
+  rows.forEach(([label, rawValue], index) => {
+    const col = index % 2;
+    const row = Math.floor(index / 2);
+    const tileX = x + 10 + col * (tileW + 10);
+    const tileY = y + 12 + row * (tileH + 4);
+    const value = formatChartMetricValue(label, rawValue);
+    const positive = Number(rawValue) > 0;
+    const color = ["DD", "1YDD", "FEEY"].includes(label)
+      ? [194, 65, 12, 255]
+      : positive
+        ? [22, 130, 93, 255]
+        : [15, 23, 42, 255];
+    fillRect(canvas, tileX, tileY, tileW, tileH, [248, 250, 252, 255]);
+    drawRect(canvas, tileX, tileY, tileW, tileH, [226, 232, 240, 255], 1);
+    drawText(canvas, tileX + 4, tileY + 4, label, [100, 116, 139, 255], 1);
+    drawText(canvas, tileX + 40, tileY + 5, value, color, 1);
+  });
+}
+
 function drawChartFrame(canvas, x, y, width, height) {
   const grid = [229, 235, 243, 255];
   for (let i = 1; i <= 3; i += 1) {
@@ -5912,6 +6145,48 @@ function formatChartPct(value) {
   if (!Number.isFinite(value)) return "NA";
   const number = round(value, 1);
   return `${number > 0 ? "+" : ""}${number}%`;
+}
+
+function formatChartMetricValue(label, value) {
+  if (value === null || value === undefined || value === "") return "NA";
+  if (label === "SIG" || label === "ENTRY" || label === "ACT") return String(value || "NA").slice(0, 6).toUpperCase();
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return String(value || "NA").slice(0, 6).toUpperCase();
+  if (["DD", "1YDD"].includes(label)) return formatChartPct(numeric);
+  if (label === "FEEY") return `${round(numeric, 0)}`;
+  if (label === "SHARP") return String(round(numeric, 2));
+  return String(round(numeric, 0));
+}
+
+function formatChartSetupSignal(value) {
+  const labels = {
+    pullback_complete: "PULLBK",
+    launch_setup: "LAUNCH",
+    none: "NONE"
+  };
+  return labels[value] || "NA";
+}
+
+function formatChartEntryBias(value) {
+  const labels = {
+    buyable_now: "BUY",
+    staged_buy: "STAGE",
+    wait_pullback: "WAIT",
+    hold_observe: "WATCH",
+    avoid_now: "AVOID"
+  };
+  return labels[value] || "WATCH";
+}
+
+function formatChartAction(value) {
+  const labels = {
+    buy: "BUY",
+    staged_buy: "STAGE",
+    wait: "WAIT",
+    avoid: "AVOID",
+    hold: "HOLD"
+  };
+  return labels[value] || "NA";
 }
 
 function getChartPixelRatio() {
@@ -6278,9 +6553,20 @@ async function fetchEastmoneyBoards(kind) {
 }
 
 async function fetchFundRanking(fundType, label) {
+  return fetchFundRankingByMetric(fundType, label, {
+    metric: "1yzf",
+    sort: "desc",
+    rankingMetric: "近1月涨幅",
+    limit: Number(process.env.FUND_DISCOVERY_RANK_LIMIT || 24)
+  });
+}
+
+async function fetchFundRankingByMetric(fundType, label, options = {}) {
   const endDate = new Date();
   const startDate = new Date(endDate);
   startDate.setMonth(startDate.getMonth() - 1);
+  const metric = options.metric || "1yzf";
+  const sort = options.sort || "desc";
 
   const url = new URL("https://fund.eastmoney.com/data/rankhandler.aspx");
   const params = {
@@ -6289,14 +6575,14 @@ async function fetchFundRanking(fundType, label) {
     ft: fundType,
     rs: "",
     gs: "0",
-    sc: "1yzf",
-    st: "desc",
+    sc: metric,
+    st: sort,
     sd: formatDate(startDate),
     ed: formatDate(endDate),
     qdii: "",
     tabSubtype: ",,,,,",
     pi: "1",
-    pn: String(Number(process.env.FUND_DISCOVERY_RANK_LIMIT || 10)),
+    pn: String(Number(options.limit || process.env.FUND_DISCOVERY_RANK_LIMIT || 24)),
     dx: "1",
     v: String(Date.now())
   };
@@ -6310,7 +6596,8 @@ async function fetchFundRanking(fundType, label) {
     ok: true,
     fundType,
     label,
-    rankingMetric: "近1月涨幅",
+    rankingMetric: options.rankingMetric || "近1月涨幅",
+    rankingSort: sort,
     startDate: formatDate(startDate),
     endDate: formatDate(endDate),
     items: parseFundRankData(text, label)
@@ -7683,10 +7970,10 @@ function getEffectiveConfig() {
     modelApiKey: process.env.MODEL_API_KEY || process.env.OPENAI_API_KEY || codexDefaults.modelApiKey || "",
     modelWireApi: process.env.MODEL_WIRE_API || codexDefaults.modelWireApi || "responses",
     modelReasoningEffort: process.env.MODEL_REASONING_EFFORT || codexDefaults.modelReasoningEffort || "high",
-    modelMaxOutputTokens: Number(process.env.MODEL_MAX_OUTPUT_TOKENS || 2800),
+    modelMaxOutputTokens: Number(process.env.MODEL_MAX_OUTPUT_TOKENS || DEFAULT_MODEL_MAX_OUTPUT_TOKENS),
     modelHttpTimeoutMs: Number(process.env.MODEL_HTTP_TIMEOUT_MS ?? DEFAULT_MODEL_HTTP_TIMEOUT_MS),
     modelResponsesStream: parseBoolean(process.env.MODEL_RESPONSES_STREAM, true),
-    replyMaxChars: Number(process.env.FEISHU_REPLY_MAX_CHARS || 7000),
+    replyMaxChars: Number(process.env.FEISHU_REPLY_MAX_CHARS || DEFAULT_REPLY_MAX_CHARS),
     portfolioEnabled: parseBoolean(process.env.PORTFOLIO_ENABLED, false),
     portfolioInitialCapital: Number(process.env.PORTFOLIO_INITIAL_CAPITAL || 100000),
     portfolioPremarketTime: process.env.PORTFOLIO_PREMARKET_TIME || "09:00",
@@ -7713,10 +8000,10 @@ function normalizeEffectiveConfig(config) {
   const next = { ...config };
   next.modelWireApi = normalizeWireApi(next.modelWireApi || "responses");
   next.modelReasoningEffort = normalizeReasoningEffort(next.modelReasoningEffort) || "high";
-  next.modelMaxOutputTokens = Number(next.modelMaxOutputTokens || 2800);
+  next.modelMaxOutputTokens = Number(next.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS);
   next.modelHttpTimeoutMs = Math.max(0, Number(next.modelHttpTimeoutMs ?? DEFAULT_MODEL_HTTP_TIMEOUT_MS) || 0);
   next.modelResponsesStream = parseBoolean(next.modelResponsesStream, true);
-  next.replyMaxChars = Number(next.replyMaxChars || 7000);
+  next.replyMaxChars = Number(next.replyMaxChars || DEFAULT_REPLY_MAX_CHARS);
   next.portfolioEnabled = parseBoolean(next.portfolioEnabled, false);
   next.portfolioInitialCapital = Math.max(1000, Number(next.portfolioInitialCapital || 100000));
   next.portfolioPremarketTime = normalizeClockTime(next.portfolioPremarketTime, "09:00");
@@ -7746,10 +8033,10 @@ function getPublicConfig(config = getEffectiveConfig()) {
       modelName: config.modelName || "gpt-5.5",
       modelWireApi: normalizeWireApi(config.modelWireApi),
       modelReasoningEffort: config.modelReasoningEffort || "high",
-      modelMaxOutputTokens: Number(config.modelMaxOutputTokens || 2800),
+      modelMaxOutputTokens: Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS),
       modelHttpTimeoutMs: Math.max(0, Number(config.modelHttpTimeoutMs || 0)),
       modelResponsesStream: String(Boolean(config.modelResponsesStream)),
-      replyMaxChars: Number(config.replyMaxChars || 7000),
+      replyMaxChars: Number(config.replyMaxChars || DEFAULT_REPLY_MAX_CHARS),
       portfolioEnabled: String(Boolean(config.portfolioEnabled)),
       portfolioInitialCapital: Number(config.portfolioInitialCapital || 100000),
       portfolioPremarketTime: config.portfolioPremarketTime || "09:00",
@@ -7898,6 +8185,7 @@ function getDefaultStats() {
       preciousMetalQuoteFetches: 0,
       preciousMetalFundSearches: 0,
       fundRankingFetches: 0,
+      pullbackSetupDiscoveryFailures: 0,
       navHistoryFetches: 0,
       navHistoryPoints: 0,
       analystReviewCalls: 0,
@@ -8300,6 +8588,17 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
     };
   }
 
+  if (hasFundWord && isPullbackSetupRequest(text)) {
+    return {
+      workflow: "fund_recommendation",
+      mode: "pullback_setup_discovery",
+      reason: "hard_rule_pullback_setup_request",
+      fundCodes,
+      skillIds: getFundRecommendationSkillIds(),
+      messageType
+    };
+  }
+
   const modelIntent = await classifyTextIntentWithModel({ userText, messageType }).catch((error) => {
     console.error("[intent-router-error]", error);
     recordError(error, { intentRouterFailures: 1 });
@@ -8310,7 +8609,7 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
   }
 
   const asksRecommendation =
-    hasAny(text, ["推荐", "筛选", "找几个", "几个基金", "哪些基金", "买什么", "投什么", "配什么", "配置", "候选", "清单"]) ||
+    hasAny(text, ["推荐", "筛选", "找一个", "找一只", "找几个", "几个基金", "哪些基金", "买什么", "投什么", "配什么", "配置", "候选", "清单", "回调完成", "准备启动", "低位启动", "不要追涨"]) ||
     (hasAny(text, ["最近", "最新", "当前", "现在", "市场", "行情", "题材", "热点", "板块", "赛道", "机会"]) &&
       hasAny(text, ["基金", "etf", "买", "投", "配置", "推荐"]));
 
@@ -8743,7 +9042,7 @@ function extractResponsesText(json) {
 function normalizeFeishuText(text) {
   const config = getEffectiveConfig();
   const cleaned = stripMarkdownForFeishu(String(text || "")).trim();
-  const maxLength = Number(config.replyMaxChars || 7000);
+  const maxLength = Number(config.replyMaxChars || DEFAULT_REPLY_MAX_CHARS);
   if (cleaned.length <= maxLength) {
     return cleaned;
   }
@@ -8752,7 +9051,7 @@ function normalizeFeishuText(text) {
 
 function normalizeFeishuCardMarkdown(text, kind) {
   const config = getEffectiveConfig();
-  const maxLength = Number(config.replyMaxChars || 7000);
+  const maxLength = Number(config.replyMaxChars || DEFAULT_REPLY_MAX_CHARS);
   let cleaned = String(text || "")
     .replace(/\r\n/g, "\n")
     .replace(/```[a-zA-Z0-9_-]*\n?/g, "")

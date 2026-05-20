@@ -43,9 +43,9 @@ document.querySelector("#testFeishuBtn").addEventListener("click", () => runTest
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const payload = Object.fromEntries(new FormData(form).entries());
-  payload.modelMaxOutputTokens = Number(payload.modelMaxOutputTokens || 2800);
+  payload.modelMaxOutputTokens = Number(payload.modelMaxOutputTokens || 4800);
   payload.modelHttpTimeoutMs = Number(payload.modelHttpTimeoutMs || 0);
-  payload.replyMaxChars = Number(payload.replyMaxChars || 7000);
+  payload.replyMaxChars = Number(payload.replyMaxChars || 9000);
   payload.portfolioInitialCapital = Number(payload.portfolioInitialCapital || 100000);
   payload.portfolioRetentionDays = Number(payload.portfolioRetentionDays || 90);
   payload.portfolioWeeklyReviewDay = Number(payload.portfolioWeeklyReviewDay ?? 5);
