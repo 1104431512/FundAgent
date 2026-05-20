@@ -8684,6 +8684,7 @@ function isWeeklyReversalSeedCandidate(item = {}) {
   const oneMonth = toNumber(item.oneMonthPct);
   const threeMonth = toNumber(item.threeMonthPct);
   const sixMonth = toNumber(item.sixMonthPct);
+  const thisYear = toNumber(item.thisYearPct);
   const daily = toNumber(item.dailyPct);
   return Number.isFinite(oneWeek)
     && oneWeek >= 0.3
@@ -8691,6 +8692,7 @@ function isWeeklyReversalSeedCandidate(item = {}) {
     && (!Number.isFinite(oneMonth) || (oneMonth >= -5 && oneMonth <= 8))
     && (!Number.isFinite(threeMonth) || threeMonth <= 12)
     && (!Number.isFinite(sixMonth) || sixMonth <= 24)
+    && (!Number.isFinite(thisYear) || thisYear <= 38)
     && (!Number.isFinite(daily) || daily <= 4.5);
 }
 
@@ -8699,6 +8701,7 @@ function isLowBaseTurnSeedCandidate(item = {}) {
   const oneMonth = toNumber(item.oneMonthPct);
   const threeMonth = toNumber(item.threeMonthPct);
   const sixMonth = toNumber(item.sixMonthPct);
+  const thisYear = toNumber(item.thisYearPct);
   const daily = toNumber(item.dailyPct);
   return Number.isFinite(oneWeek)
     && oneWeek >= 0.2
@@ -8710,6 +8713,7 @@ function isLowBaseTurnSeedCandidate(item = {}) {
     && threeMonth >= -28
     && threeMonth <= 4
     && (!Number.isFinite(sixMonth) || (sixMonth >= -35 && sixMonth <= 12))
+    && (!Number.isFinite(thisYear) || thisYear <= 32)
     && (!Number.isFinite(daily) || daily <= 3.5);
 }
 
@@ -8718,11 +8722,16 @@ function scoreWeeklyReversalSeed(item = {}) {
   const oneMonth = toNumber(item.oneMonthPct);
   const threeMonth = toNumber(item.threeMonthPct);
   const sixMonth = toNumber(item.sixMonthPct);
+  const thisYear = toNumber(item.thisYearPct);
   let score = 0;
   if (Number.isFinite(oneWeek)) score += 16 - Math.abs(oneWeek - 2.2) * 2;
   if (Number.isFinite(oneMonth)) score += oneMonth >= -2 && oneMonth <= 6 ? 12 : 0;
   if (Number.isFinite(threeMonth) && threeMonth <= 3) score += 8;
   if (Number.isFinite(sixMonth) && sixMonth <= 8) score += 6;
+  if (Number.isFinite(thisYear)) {
+    if (thisYear >= -30 && thisYear <= 12) score += 6;
+    if (thisYear > 38) score -= Math.min(18, (thisYear - 38) * 0.8 + 6);
+  }
   return score;
 }
 
@@ -8731,11 +8740,16 @@ function scoreLowBaseTurnSeed(item = {}) {
   const oneMonth = toNumber(item.oneMonthPct);
   const threeMonth = toNumber(item.threeMonthPct);
   const sixMonth = toNumber(item.sixMonthPct);
+  const thisYear = toNumber(item.thisYearPct);
   let score = 0;
   if (Number.isFinite(oneWeek)) score += 18 - Math.abs(oneWeek - 1.8) * 2.2;
   if (Number.isFinite(oneMonth)) score += oneMonth >= -3 && oneMonth <= 4.5 ? 14 : 0;
   if (Number.isFinite(threeMonth)) score += threeMonth >= -18 && threeMonth <= 1 ? 14 : 0;
   if (Number.isFinite(sixMonth)) score += sixMonth >= -28 && sixMonth <= 6 ? 8 : 0;
+  if (Number.isFinite(thisYear)) {
+    if (thisYear >= -35 && thisYear <= 8) score += 10;
+    if (thisYear > 32) score -= Math.min(24, (thisYear - 32) * 0.9 + 8);
+  }
   return score;
 }
 
@@ -8811,6 +8825,7 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
   const threeMonth = toNumber(item?.threeMonthPct);
   const sixMonth = toNumber(item?.sixMonthPct);
   const oneYear = toNumber(item?.oneYearPct);
+  const thisYear = toNumber(item?.thisYearPct);
   const daily = toNumber(item?.dailyPct);
   let score = 0;
 
@@ -8844,6 +8859,12 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
     if (sixMonth > 45) score -= 16;
   }
   if (Number.isFinite(oneYear) && oneYear >= -35 && oneYear <= 35) score += 4;
+  if (Number.isFinite(thisYear)) {
+    if (thisYear >= -35 && thisYear <= 15) score += 8;
+    if (thisYear <= 5 && Number.isFinite(oneMonth) && oneMonth > 0 && oneMonth <= 8) score += 8;
+    if (thisYear > 30) score -= Math.min(28, (thisYear - 30) * 0.9 + 8);
+    if (thisYear > 55) score -= 10;
+  }
   if (Number.isFinite(daily) && daily > 5) score -= 10;
 
   const matchedThemes = item.matchedThemes?.length ? item.matchedThemes : matchCandidateThemes(item, themeRadar);
@@ -8883,6 +8904,7 @@ function scoreCandidateReturnSetup(item) {
   const threeMonth = toNumber(item?.threeMonthPct);
   const sixMonth = toNumber(item?.sixMonthPct);
   const oneYear = toNumber(item?.oneYearPct);
+  const thisYear = toNumber(item?.thisYearPct);
   const daily = toNumber(item?.dailyPct);
   let score = 0;
 
@@ -8915,6 +8937,11 @@ function scoreCandidateReturnSetup(item) {
   if (Number.isFinite(oneYear)) {
     if (oneYear >= -18 && oneYear <= 35) score += 2;
     else if (oneYear > 60) score -= 5;
+  }
+
+  if (Number.isFinite(thisYear)) {
+    if (thisYear >= -25 && thisYear <= 12) score += 4;
+    else if (thisYear > 30) score -= Math.min(12, (thisYear - 30) * 0.45 + 4);
   }
 
   if (Number.isFinite(daily)) {
@@ -9310,6 +9337,7 @@ async function fetchFundResearchDigest(code, seed = {}) {
       threeMonthPct: seed.threeMonthPct ?? "",
       sixMonthPct: seed.sixMonthPct ?? "",
       oneYearPct: seed.oneYearPct ?? "",
+      thisYearPct: seed.thisYearPct ?? "",
       productKey: seed.productKey || "",
       exposureKey: seed.exposureKey || "",
       matchedThemes: (seed.matchedThemes || []).slice(0, 3),

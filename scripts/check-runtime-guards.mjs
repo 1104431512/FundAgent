@@ -792,6 +792,14 @@ const requiredPatterns = [
     message: "pullback/setup discovery must preserve low-base launch-eve candidates that are not weekly chases."
   },
   {
+    pattern: /isLowBaseTurnSeedCandidate[\s\S]{0,420}thisYearPct/,
+    message: "pullback/setup discovery must use year-to-date evidence when ranking low-base launch-eve candidates."
+  },
+  {
+    pattern: /thisYear\s*>\s*30[\s\S]{0,180}score\s*-=|score\s*-=[\s\S]{0,180}thisYear\s*>\s*30/,
+    message: "pullback/setup scoring must penalize year-to-date high candidates that only look mild in short windows."
+  },
+  {
     pattern: /低位启动前夜候选/,
     message: "pullback/setup discovery must tag low-base launch-eve candidates for ranking and watchlist persistence."
   },

@@ -468,6 +468,7 @@ const lowSetupSeed = {
   oneMonthPct: 4.2,
   threeMonthPct: -6.5,
   sixMonthPct: -11.8,
+  thisYearPct: -7.6,
   oneYearPct: -8.4,
   dailyPct: 0.8
 };
@@ -478,13 +479,30 @@ const chaseSeed = {
   oneMonthPct: 33.4,
   threeMonthPct: 36.6,
   sixMonthPct: 58.1,
+  thisYearPct: 64.2,
   oneYearPct: 92.5,
   dailyPct: 4.9
+};
+const yearHighFakeLowSeed = {
+  code: "000017",
+  name: "年内高位伪低位基金C",
+  type: "指数型基金",
+  oneWeekPct: 2.2,
+  oneMonthPct: 4.8,
+  threeMonthPct: -1.2,
+  sixMonthPct: 8.6,
+  thisYearPct: 52.4,
+  dailyPct: 0.7
 };
 assert(
   manager.scorePullbackSetupSeedCandidate(lowSetupSeed, [], setupQuery) >
     manager.scorePullbackSetupSeedCandidate(chaseSeed, [], setupQuery),
   "pullback setup seed scoring must prefer low-position repair over recent surge/chase candidates"
+);
+assert(
+  manager.scorePullbackSetupSeedCandidate({ ...lowSetupSeed, code: "000018" }, [], setupQuery) >
+    manager.scorePullbackSetupSeedCandidate(yearHighFakeLowSeed, [], setupQuery),
+  "pullback setup seed scoring must penalize year-to-date high candidates that only look mild in short windows"
 );
 const weeklyTurnSeed = {
   code: "000010",
@@ -494,6 +512,7 @@ const weeklyTurnSeed = {
   oneMonthPct: 1.2,
   threeMonthPct: -7.5,
   sixMonthPct: -12.4,
+  thisYearPct: -9.6,
   dailyPct: 0.6
 };
 const lowBaseTurnSeed = {
@@ -504,6 +523,7 @@ const lowBaseTurnSeed = {
   oneMonthPct: 2.1,
   threeMonthPct: -10.4,
   sixMonthPct: -18.2,
+  thisYearPct: -14.8,
   dailyPct: 0.5
 };
 const weeklyChaseSeed = {
@@ -514,6 +534,7 @@ const weeklyChaseSeed = {
   oneMonthPct: 26.8,
   threeMonthPct: 42.1,
   sixMonthPct: 66.5,
+  thisYearPct: 71.3,
   dailyPct: 5.4
 };
 assert(
@@ -535,10 +556,11 @@ assert.deepEqual(
     weeklyChaseSeed,
     lowBaseTurnSeed,
     { code: "000015", name: "横盘未启动基金C", oneWeekPct: 0.1, oneMonthPct: -1.2, threeMonthPct: -8.4, sixMonthPct: -16.1 },
-    { code: "000016", name: "月线追涨基金C", oneWeekPct: 3.2, oneMonthPct: 12.4, threeMonthPct: 18.8, sixMonthPct: 35.2 }
+    { code: "000016", name: "月线追涨基金C", oneWeekPct: 3.2, oneMonthPct: 12.4, threeMonthPct: 18.8, sixMonthPct: 35.2 },
+    yearHighFakeLowSeed
   ]).map((item) => item.code),
   ["000014"],
-  "low-base turn scanner must keep low-position launch-eve candidates while rejecting no-turn and monthly chase candidates"
+  "low-base turn scanner must keep low-position launch-eve candidates while rejecting no-turn, monthly chase, and year-to-date high candidates"
 );
 assert(
   manager.scorePullbackSetupSeedCandidate({ ...lowBaseTurnSeed, keywords: ["低位启动前夜候选"] }, [], setupQuery) >
@@ -575,6 +597,7 @@ const mergedWeeklyEvidence = manager.mergeCandidateFunds([
 ])[0];
 assert.equal(mergedWeeklyEvidence.oneWeekPct, 2.4, "candidate merge must preserve ranking return evidence when keyword search sees the fund first");
 assert(mergedWeeklyEvidence.keywords.includes("近1周低位转强候选"), "candidate merge must preserve setup discovery tags");
+assert.equal(mergedWeeklyEvidence.thisYearPct, -9.6, "candidate merge must preserve year-to-date ranking evidence for low-base scoring");
 assert(mergedWeeklyEvidence.setupDiscoverySource.includes("keyword_search"), "candidate merge must preserve original discovery source");
 assert(mergedWeeklyEvidence.setupDiscoverySource.includes("weekly_reversal_scan"), "candidate merge must preserve later ranking discovery source");
 assert(
