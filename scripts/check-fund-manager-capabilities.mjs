@@ -215,6 +215,44 @@ assert(watchSummary.buyTriggers.length > 0, "watchlist candidates must keep buy 
 assert(watchSummary.riskNotes.length > 0, "watchlist candidates must keep risk notes");
 assert(watchSummary.feeNotes.length > 0, "watchlist candidates must keep fee/share-class notes");
 assert(watchSummary.readinessGaps.some((item) => item.includes("缺少可验证净值")), "watchlist summary must expose buy-readiness gaps when NAV evidence is missing");
+const consolidatedWatchDb = manager.normalizePortfolioDb({
+  watchlist: [
+    {
+      code: "000101",
+      name: "中证500ETF联接A",
+      shareClass: "A",
+      status: "ready",
+      priority: 2,
+      reason: "A类同基金份额，适合长期持有再比较。",
+      feeNotes: ["A类有申购费，长期可比较。"]
+    },
+    {
+      code: "000102",
+      name: "中证500ETF联接C",
+      shareClass: "C",
+      status: "ready",
+      priority: 1,
+      reason: "C类同基金份额，短中期观察更灵活。",
+      feeNotes: ["C类通常无申购费，有销售服务费。"]
+    },
+    {
+      code: "000103",
+      name: "南方中证500ETF联接C",
+      shareClass: "C",
+      status: "waiting_pullback",
+      priority: 3,
+      reason: "同指数替代工具，等待回踩。"
+    }
+  ]
+});
+assert.equal(consolidatedWatchDb.watchlist.length, 1, "watchlist must consolidate duplicate share classes and same-exposure alternatives into one scannable candidate");
+assert.equal(consolidatedWatchDb.watchlist[0].code, "000102", "watchlist consolidation should keep the most actionable C-share primary when status evidence is comparable");
+assert(consolidatedWatchDb.watchlist[0].alternativeShareClasses.some((item) => item.code === "000101"), "watchlist consolidation must preserve same-fund A/C alternatives");
+assert(consolidatedWatchDb.watchlist[0].sameExposureAlternatives.some((item) => item.code === "000103"), "watchlist consolidation must preserve same-index exposure alternatives");
+assert(consolidatedWatchDb.watchlist[0].dataBasis.includes("来源：watchlist_exposure_consolidation"), "watchlist exposure consolidation must leave a traceable source");
+const consolidatedWatchLines = manager.buildPortfolioWatchlistStatusLines(consolidatedWatchDb.watchlist).join("\n");
+assert(consolidatedWatchLines.includes("替代份额：000101"), "portfolio status answer must show consolidated share-class alternatives");
+assert(consolidatedWatchLines.includes("同类替代：000103"), "portfolio status answer must show consolidated same-exposure alternatives");
 const watchlistStatusLines = manager.buildPortfolioWatchlistStatusLines([
   {
     ...normalizedWatchDb.watchlist[0],

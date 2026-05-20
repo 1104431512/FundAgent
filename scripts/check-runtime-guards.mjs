@@ -220,6 +220,22 @@ const requiredPatterns = [
     message: "virtual fund manager must persist a self-selected fund watchlist instead of only ad hoc weekly text."
   },
   {
+    pattern: /consolidatePortfolioWatchlistAlternatives/,
+    message: "portfolio watchlist must consolidate duplicate share classes and same-exposure alternatives."
+  },
+  {
+    pattern: /alternativeShareClasses/,
+    message: "portfolio watchlist must preserve same-fund A/C alternatives instead of losing them during consolidation."
+  },
+  {
+    pattern: /sameExposureAlternatives/,
+    message: "portfolio watchlist must preserve same-index or same-theme alternatives without cluttering the main queue."
+  },
+  {
+    pattern: /watchlist_exposure_consolidation/,
+    message: "portfolio watchlist exposure consolidation must leave traceable evidence."
+  },
+  {
     pattern: /watchlistUpdates/,
     message: "portfolio decision/premarket/weekly model outputs must be able to update the self-selected fund pool."
   },
@@ -466,6 +482,10 @@ const requiredPatterns = [
   {
     pattern: /watchlist-evidence-grid/,
     message: "admin portfolio watchlist must keep detailed backup evidence readable in the UI."
+  },
+  {
+    pattern: /替代份额[\s\S]{0,120}同类替代/,
+    message: "admin portfolio watchlist must display consolidated share-class and same-exposure alternatives."
   },
   {
     pattern: /自选基金池/,

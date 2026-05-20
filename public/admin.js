@@ -497,12 +497,23 @@ function renderWatchlistItem(item) {
         ${renderWatchlistEvidenceBlock("买入缺口", item.readinessGaps)}
         ${renderWatchlistEvidenceBlock("风险边界", item.riskNotes)}
         ${renderWatchlistEvidenceBlock("费用/份额", item.feeNotes)}
+        ${renderWatchlistEvidenceBlock("替代份额", formatWatchlistAlternativeItems(item.alternativeShareClasses))}
+        ${renderWatchlistEvidenceBlock("同类替代", formatWatchlistAlternativeItems(item.sameExposureAlternatives))}
         ${renderWatchlistEvidenceBlock("净值快照", snapshotEvidence)}
         ${renderWatchlistEvidenceBlock("数据依据", [...(item.dataBasis || []), source].filter(Boolean))}
         ${item.positionPlan ? renderWatchlistEvidenceBlock("仓位计划", [item.positionPlan]) : ""}
       </div>
     </div>
   `;
+}
+
+function formatWatchlistAlternativeItems(items = []) {
+  return (items || []).map((item) => [
+    item.code,
+    item.name || "",
+    item.shareClass ? `${item.shareClass}类` : "",
+    item.statusText || (item.status ? formatWatchlistStatus(item.status) : "")
+  ].filter(Boolean).join(" "));
 }
 
 function renderWatchlistEvidenceBlock(title, values = []) {

@@ -1732,7 +1732,11 @@ function normalizePortfolioWatchlist(value) {
       byCode.set(normalized.code, normalized);
     }
   }
-  return [...byCode.values()].sort((a, b) => {
+  return sortPortfolioWatchlist(consolidatePortfolioWatchlistAlternatives([...byCode.values()]));
+}
+
+function sortPortfolioWatchlist(items = []) {
+  return [...items].sort((a, b) => {
     if (a.status === "removed" && b.status !== "removed") return 1;
     if (a.status !== "removed" && b.status === "removed") return -1;
     return Number(a.priority || 3) - Number(b.priority || 3)
@@ -1763,10 +1767,134 @@ function normalizePortfolioWatchItem(item = {}, defaults = {}) {
     dataBasis: normalizeStringArray(item.dataBasis || defaults.dataBasis).slice(0, 8),
     source: String(item.source || defaults.source || "").trim().slice(0, 120),
     sourceRunId: String(item.sourceRunId || defaults.sourceRunId || "").trim().slice(0, 80),
+    alternativeShareClasses: normalizePortfolioWatchAlternatives(item.alternativeShareClasses || defaults.alternativeShareClasses).slice(0, 8),
+    sameExposureAlternatives: normalizePortfolioWatchAlternatives(item.sameExposureAlternatives || defaults.sameExposureAlternatives).slice(0, 8),
     lastSnapshot: item.lastSnapshot || defaults.lastSnapshot || null,
     addedAt: String(item.addedAt || defaults.addedAt || now),
     updatedAt: String(item.updatedAt || defaults.updatedAt || now)
   };
+}
+
+function normalizePortfolioWatchAlternatives(value) {
+  const input = Array.isArray(value) ? value : [];
+  const byCode = new Map();
+  for (const item of input) {
+    const code = String(item?.code || "").match(/^\d{6}$/)?.[0] || "";
+    if (!code || byCode.has(code)) continue;
+    byCode.set(code, {
+      code,
+      name: String(item.name || "").trim(),
+      shareClass: String(item.shareClass || "").trim().toUpperCase(),
+      type: String(item.type || "").trim(),
+      status: item.status ? normalizePortfolioWatchStatus(item.status) : "",
+      statusText: item.statusText || (item.status ? formatPortfolioWatchStatus(item.status) : ""),
+      priority: item.priority === undefined || item.priority === null || item.priority === "" ? null : normalizePortfolioWatchPriority(item.priority),
+      reason: String(item.reason || "").trim().slice(0, 260),
+      feeNotes: normalizeStringArray(item.feeNotes).slice(0, 3),
+      riskNotes: normalizeStringArray(item.riskNotes).slice(0, 3),
+      source: String(item.source || "").trim().slice(0, 120),
+      updatedAt: String(item.updatedAt || "").trim()
+    });
+  }
+  return [...byCode.values()];
+}
+
+function consolidatePortfolioWatchlistAlternatives(items = []) {
+  const active = (items || []).filter((item) => item?.status !== "removed");
+  const removed = (items || []).filter((item) => item?.status === "removed");
+  const byProduct = consolidatePortfolioWatchlistByKey(active, getPortfolioWatchProductKey, "alternativeShareClasses", "watchlist_product_consolidation");
+  const byExposure = consolidatePortfolioWatchlistByKey(byProduct, getPortfolioWatchExposureKey, "sameExposureAlternatives", "watchlist_exposure_consolidation");
+  return [...byExposure, ...removed];
+}
+
+function consolidatePortfolioWatchlistByKey(items = [], keyFn, field, sourceLabel) {
+  const groups = new Map();
+  const passthrough = [];
+  for (const item of items || []) {
+    const key = keyFn(item);
+    if (!key) {
+      passthrough.push(item);
+      continue;
+    }
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+
+  const consolidated = [];
+  for (const group of groups.values()) {
+    if (group.length <= 1) {
+      consolidated.push(group[0]);
+      continue;
+    }
+    const sorted = [...group].sort(comparePortfolioWatchPrimaryCandidate);
+    const primary = sorted[0];
+    const alternatives = sorted.slice(1).map(buildPortfolioWatchAlternative);
+    consolidated.push({
+      ...primary,
+      [field]: mergePortfolioWatchAlternatives(primary[field], alternatives),
+      dataBasis: mergeStringLists(primary.dataBasis, [`来源：${sourceLabel}`]),
+      riskNotes: mergeStringLists(
+        primary.riskNotes,
+        field === "alternativeShareClasses"
+          ? ["同一基金不同份额已归并为替代份额，主列表只保留最可操作的一只。"]
+          : ["同一指数/同主题暴露已归并为同类替代，避免重复占用自选池名额。"]
+      )
+    });
+  }
+  return [...passthrough, ...consolidated];
+}
+
+function comparePortfolioWatchPrimaryCandidate(a = {}, b = {}) {
+  return portfolioWatchStatusRank(a.status) - portfolioWatchStatusRank(b.status)
+    || Number(a.priority || 3) - Number(b.priority || 3)
+    || portfolioWatchShareClassRank(a.shareClass) - portfolioWatchShareClassRank(b.shareClass)
+    || String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+}
+
+function portfolioWatchStatusRank(status) {
+  const ranks = {
+    in_position: 0,
+    ready: 1,
+    waiting_pullback: 2,
+    watch: 3,
+    blocked: 5,
+    removed: 9
+  };
+  return ranks[status] ?? 4;
+}
+
+function portfolioWatchShareClassRank(shareClass) {
+  const ranks = { C: 0, E: 1, I: 1, A: 2, B: 3, D: 3 };
+  return ranks[String(shareClass || "").toUpperCase()] ?? 4;
+}
+
+function buildPortfolioWatchAlternative(item = {}) {
+  return {
+    code: item.code || "",
+    name: item.name || "",
+    shareClass: item.shareClass || "",
+    type: item.type || "",
+    status: item.status || "",
+    statusText: formatPortfolioWatchStatus(item.status),
+    priority: item.priority || null,
+    reason: item.reason || "",
+    feeNotes: item.feeNotes || [],
+    riskNotes: item.riskNotes || [],
+    source: item.source || "",
+    updatedAt: item.updatedAt || ""
+  };
+}
+
+function mergePortfolioWatchAlternatives(...groups) {
+  return normalizePortfolioWatchAlternatives(groups.flat()).slice(0, 8);
+}
+
+function getPortfolioWatchProductKey(item = {}) {
+  return getCandidateProductKey(item);
+}
+
+function getPortfolioWatchExposureKey(item = {}) {
+  return getCandidateExposureKey(item);
 }
 
 function normalizePortfolioWatchStatus(value) {
@@ -1825,6 +1953,8 @@ function normalizePortfolioWatchlistUpdates(value) {
         positionPlan: String(item.positionPlan || "").trim(),
         reviewDate: String(item.reviewDate || "").trim(),
         dataBasis: normalizeStringArray(item.dataBasis).slice(0, 8),
+        alternativeShareClasses: normalizePortfolioWatchAlternatives(item.alternativeShareClasses).slice(0, 8),
+        sameExposureAlternatives: normalizePortfolioWatchAlternatives(item.sameExposureAlternatives).slice(0, 8),
         source: String(item.source || "").trim()
       };
     })
@@ -2881,6 +3011,8 @@ function applyPortfolioWatchlistUpdates(db, updates = [], options = {}) {
       riskNotes: mergeStringLists(guardedUpdate.riskNotes, existing?.riskNotes),
       feeNotes: mergeStringLists(guardedUpdate.feeNotes, existing?.feeNotes),
       dataBasis: mergeStringLists(guardedUpdate.dataBasis, existing?.dataBasis),
+      alternativeShareClasses: mergePortfolioWatchAlternatives(guardedUpdate.alternativeShareClasses, existing?.alternativeShareClasses),
+      sameExposureAlternatives: mergePortfolioWatchAlternatives(guardedUpdate.sameExposureAlternatives, existing?.sameExposureAlternatives),
       updatedAt: now
     }, defaults);
     if (!merged) continue;
@@ -2959,6 +3091,8 @@ function summarizePortfolioWatchlistForModel(watchlist = []) {
       positionPlan: item.positionPlan,
       readinessGaps: buildPortfolioWatchReadinessGaps(item),
       reviewDate: item.reviewDate,
+      alternativeShareClasses: item.alternativeShareClasses || [],
+      sameExposureAlternatives: item.sameExposureAlternatives || [],
       trendSummary: item.lastSnapshot?.trendSummary || "",
       updatedAt: item.updatedAt
     }));
@@ -2983,6 +3117,8 @@ function summarizePortfolioWatchItem(item = {}) {
     readinessGaps: buildPortfolioWatchReadinessGaps(item),
     reviewDate: item.reviewDate || "",
     dataBasis: item.dataBasis || [],
+    alternativeShareClasses: item.alternativeShareClasses || [],
+    sameExposureAlternatives: item.sameExposureAlternatives || [],
     source: item.source || "",
     sourceRunId: item.sourceRunId || "",
     lastSnapshot: item.lastSnapshot || null,
@@ -4263,12 +4399,21 @@ function formatPortfolioWatchDetailLine(item = {}) {
     item.buyTriggers?.length ? `触发：${item.buyTriggers.slice(0, 2).join("；")}` : "",
     item.riskNotes?.length ? `风险边界：${item.riskNotes.slice(0, 2).join("；")}` : "",
     item.feeNotes?.length ? `费用/份额：${item.feeNotes.slice(0, 2).join("；")}` : "",
+    item.alternativeShareClasses?.length ? `替代份额：${formatPortfolioWatchAlternativesText(item.alternativeShareClasses)}` : "",
+    item.sameExposureAlternatives?.length ? `同类替代：${formatPortfolioWatchAlternativesText(item.sameExposureAlternatives)}` : "",
     item.positionPlan ? `仓位计划：${item.positionPlan}` : "",
     item.readinessGaps?.length ? `买入缺口：${item.readinessGaps.slice(0, 3).join("；")}` : "",
     trendEvidence ? `最新走势：${trendEvidence}` : "",
     item.reviewDate ? `复查：${item.reviewDate}` : ""
   ].filter(Boolean);
   return `- ${parts.join("；")}`;
+}
+
+function formatPortfolioWatchAlternativesText(items = []) {
+  return (items || [])
+    .slice(0, 3)
+    .map((item) => [item.code, item.name || "", item.shareClass ? `${item.shareClass}类` : "", item.statusText || formatPortfolioWatchStatus(item.status)].filter(Boolean).join(" "))
+    .join(" / ");
 }
 
 function formatPortfolioWatchSnapshotEvidence(snapshot = {}) {
