@@ -368,6 +368,22 @@ const requiredPatterns = [
     message: "portfolio BUY execution must require verified share-class and fee evidence before virtual subscription."
   },
   {
+    pattern: /evaluatePortfolioBuyExposureDiscipline/,
+    message: "portfolio BUY execution must block duplicate same-index or same-theme exposure before virtual subscription."
+  },
+  {
+    pattern: /findPortfolioSameExposurePositions/,
+    message: "portfolio BUY exposure discipline must inspect existing same-exposure holdings."
+  },
+  {
+    pattern: /PORTFOLIO_BUY_MAX_SAME_EXPOSURE_WEIGHT_PCT/,
+    message: "portfolio BUY sizing must cap aggregate same-index or same-theme exposure."
+  },
+  {
+    pattern: /同一指数\/同主题/,
+    message: "portfolio BUY exposure guard must explain duplicate exposure blocks in user-readable Chinese."
+  },
+  {
     pattern: /缺少可验证费用\/份额证据/,
     message: "portfolio BUY guard must explain when share-class fee evidence is missing."
   },

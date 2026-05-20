@@ -937,7 +937,7 @@ async function executePortfolioDecision(db, run, config) {
   await yieldToEventLoop();
   const profileCodes = decision.actions.map((action) => action.code).filter(Boolean);
   const actionProfiles = profileCodes.length ? await enrichFunds(profileCodes) : [];
-  decision.actions = enforcePortfolioBuyDiscipline(decision.actions, actionProfiles);
+  decision.actions = enforcePortfolioBuyDiscipline(decision.actions, actionProfiles, db.account.positions);
   decision.actions = enforcePortfolioSellDiscipline(decision.actions, actionProfiles, db.account.positions);
   const watchlistUpdates = applyPortfolioWatchlistUpdates(
     db,
@@ -2748,11 +2748,11 @@ function inferPortfolioWatchStatusFromAction(action = {}) {
   return "watch";
 }
 
-function enforcePortfolioBuyDiscipline(actions = [], profiles = []) {
+function enforcePortfolioBuyDiscipline(actions = [], profiles = [], positions = []) {
   const profileByCode = new Map((profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
   return normalizePortfolioActions(actions).map((action) => {
     if (action.action !== "BUY") return action;
-    const guard = evaluatePortfolioBuyDiscipline(action, profileByCode.get(action.code));
+    const guard = evaluatePortfolioBuyDiscipline(action, profileByCode.get(action.code), positions);
     if (guard.ok) return action;
     return {
       ...action,
@@ -2767,7 +2767,7 @@ function enforcePortfolioBuyDiscipline(actions = [], profiles = []) {
   });
 }
 
-function evaluatePortfolioBuyDiscipline(action = {}, profile = null) {
+function evaluatePortfolioBuyDiscipline(action = {}, profile = null, positions = []) {
   if (!action.code) {
     return {
       ok: false,
@@ -2825,7 +2825,35 @@ function evaluatePortfolioBuyDiscipline(action = {}, profile = null) {
       evidence: [trendEvidence, feeEvidence].filter(Boolean)
     };
   }
+  const exposureGuard = evaluatePortfolioBuyExposureDiscipline(action, profile, positions);
+  if (!exposureGuard.ok) {
+    return {
+      ok: false,
+      reason: exposureGuard.reason,
+      evidence: [trendEvidence, feeEvidence, ...exposureGuard.evidence].filter(Boolean)
+    };
+  }
   return { ok: true, reason: "", evidence: [trendEvidence, feeEvidence].filter(Boolean) };
+}
+
+function evaluatePortfolioBuyExposureDiscipline(action = {}, profile = null, positions = []) {
+  const exposureKey = getPortfolioExposureKey(profile || action);
+  if (!exposureKey) return { ok: true, reason: "", evidence: [] };
+  const sameExposure = findPortfolioSameExposurePositions(positions, exposureKey, action.code);
+  const sameExposureValue = sameExposure.reduce((sum, position) => sum + Number(position.currentValue || 0), 0);
+  if (sameExposureValue <= 0) return { ok: true, reason: "", evidence: [] };
+  const evidence = [
+    `同类暴露：${exposureKey}`,
+    `已有同类持仓：${sameExposure.map((item) => `${item.code} ${item.name || ""} ${round(Number(item.currentValue || 0), 2)}元`).join("；")}`
+  ];
+  if (sameExposure.length >= finiteNumberOr(process.env.PORTFOLIO_BUY_MAX_SAME_EXPOSURE_FUNDS, 1)) {
+    return {
+      ok: false,
+      reason: "系统买入纪律拦截：组合中已有同一指数/同主题暴露，不能用另一只基金重复买入；应复核原持仓或替代份额。",
+      evidence
+    };
+  }
+  return { ok: true, reason: "", evidence };
 }
 
 function enforcePortfolioSellDiscipline(actions = [], profiles = [], positions = []) {
@@ -2955,6 +2983,31 @@ function formatPortfolioPositionEvidence(position = {}) {
     Number.isFinite(Number(position.weightPct)) ? `仓位${round(Number(position.weightPct), 2)}%` : "",
     Number.isFinite(Number(position.unrealizedPnlPct)) ? `浮盈亏${formatFallbackPct(position.unrealizedPnlPct)}` : ""
   ].filter(Boolean).join("，");
+}
+
+function getPortfolioExposureKey(item = {}) {
+  return item?.exposureKey
+    || item?.seed?.exposureKey
+    || item?.fundSnapshot?.exposureKey
+    || getCandidateExposureKey(item)
+    || getCandidateExposureKey(item?.seed || {})
+    || getCandidateExposureKey(item?.fundSnapshot || {});
+}
+
+function findPortfolioSameExposurePositions(positions = [], exposureKey = "", excludeCode = "") {
+  if (!exposureKey) return [];
+  return (positions || []).filter((position) => {
+    if (!position?.code || position.code === excludeCode) return false;
+    return getPortfolioExposureKey(position) === exposureKey;
+  });
+}
+
+function getPortfolioSameExposureValue(positions = [], item = {}) {
+  const exposureKey = getPortfolioExposureKey(item);
+  if (!exposureKey) return 0;
+  return (positions || [])
+    .filter((position) => getPortfolioExposureKey(position) === exposureKey)
+    .reduce((sum, position) => sum + Number(position.currentValue || 0), 0);
 }
 
 function applyPortfolioWatchlistUpdates(db, updates = [], options = {}) {
@@ -3283,7 +3336,7 @@ async function submitPortfolioOrders(db, actions, profiles, run, config = getEff
         existingPosition.fundSnapshot = buildPortfolioFundSnapshot(profile, existingPosition);
         recalculatePortfolioAccount(db.account);
       }
-      const amount = resolvePortfolioTradeAmount(db.account, action, "BUY");
+      const amount = resolvePortfolioTradeAmount(db.account, action, "BUY", null, profile);
       if (amount <= 0) {
         notes.push({
           action: "BUY",
@@ -3693,7 +3746,7 @@ function recordPortfolioTransaction(db, run, action, amount, side, profile, exec
   return transaction;
 }
 
-function resolvePortfolioTradeAmount(account, action, side, position = null) {
+function resolvePortfolioTradeAmount(account, action, side, position = null, profile = null) {
   const totalAsset = Number(account.totalAsset || 0);
   const targetWeightPct = Number(action.targetWeightPct || 0);
   const requestedAmount = Number(action.amount || 0);
@@ -3705,7 +3758,7 @@ function resolvePortfolioTradeAmount(account, action, side, position = null) {
     const targetDelta = targetValue === null ? requestedAmount : Math.max(0, targetValue - currentValue);
     const proposedAmount = requestedAmount > 0 && targetDelta > 0 ? Math.min(requestedAmount, targetDelta) : targetDelta;
     const cashLimitedAmount = Math.min(Number(account.cash || 0), Math.max(0, proposedAmount || 0));
-    return capPortfolioBuyAmountByDiscipline(account, action, cashLimitedAmount, currentValue);
+    return capPortfolioBuyAmountByDiscipline(account, action, cashLimitedAmount, currentValue, profile);
   }
 
   if (side === "SELL") {
@@ -3720,22 +3773,29 @@ function resolvePortfolioTradeAmount(account, action, side, position = null) {
   return 0;
 }
 
-function capPortfolioBuyAmountByDiscipline(account = {}, action = {}, amount = 0, currentValue = 0) {
+function capPortfolioBuyAmountByDiscipline(account = {}, action = {}, amount = 0, currentValue = 0, profile = null) {
   const totalAsset = Number(account.totalAsset || 0);
   const cash = Number(account.cash || 0);
   if (!Number.isFinite(totalAsset) || totalAsset <= 0 || !Number.isFinite(cash) || cash <= 0) return 0;
   const maxSingleFundWeightPct = finiteNumberOr(process.env.PORTFOLIO_BUY_MAX_SINGLE_FUND_WEIGHT_PCT, 6);
   const maxSingleOrderWeightPct = finiteNumberOr(process.env.PORTFOLIO_BUY_MAX_SINGLE_ORDER_WEIGHT_PCT, 4);
+  const maxSameExposureWeightPct = finiteNumberOr(process.env.PORTFOLIO_BUY_MAX_SAME_EXPOSURE_WEIGHT_PCT, 8);
   const minCashReservePct = finiteNumberOr(process.env.PORTFOLIO_BUY_MIN_CASH_RESERVE_PCT, 20);
   const maxSingleFundValue = Math.max(0, totalAsset * maxSingleFundWeightPct / 100);
   const maxSingleOrderAmount = Math.max(0, totalAsset * maxSingleOrderWeightPct / 100);
+  const maxSameExposureValue = Math.max(0, totalAsset * maxSameExposureWeightPct / 100);
   const minCashReserve = Math.max(0, totalAsset * minCashReservePct / 100);
   const availableAfterReserve = Math.max(0, cash - minCashReserve);
   const remainingFundRoom = Math.max(0, maxSingleFundValue - Number(currentValue || 0));
+  const sameExposureValue = getPortfolioSameExposureValue(account.positions || [], profile || action);
+  const remainingExposureRoom = sameExposureValue > 0
+    ? Math.max(0, maxSameExposureValue - sameExposureValue)
+    : maxSameExposureValue;
   const capped = Math.min(
     Math.max(0, Number(amount || 0)),
     maxSingleOrderAmount,
     remainingFundRoom,
+    remainingExposureRoom,
     availableAfterReserve
   );
   return round(capped, 2);

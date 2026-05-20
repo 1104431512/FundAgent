@@ -721,6 +721,18 @@ assert(
   manager.buildPortfolioWatchReadinessGaps({ code: "000010", status: "ready" }, missingFeeProfile).some((item) => item.includes("费用/份额")),
   "watchlist readiness gaps must expose missing fee/share-class evidence before buying"
 );
+const duplicateExposureBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, verifiedSeedProfile, [
+  { code: "000099", name: "南方中证A500ETF联接C", currentValue: 7000 }
+]);
+assert.equal(duplicateExposureBuyGuard.ok, false, "portfolio buy discipline must block buying a duplicate same-index exposure through another fund");
+assert(duplicateExposureBuyGuard.reason.includes("同一指数/同主题"), "duplicate exposure buy block must explain the exposure overlap");
+const enforcedDuplicateExposureBuy = manager.enforcePortfolioBuyDiscipline([
+  { action: "BUY", code: "000010", name: "中证A500ETF联接C", amount: 2000, reason: "模型想买同指数另一只" }
+], [verifiedSeedProfile], [
+  { code: "000099", name: "南方中证A500ETF联接C", currentValue: 7000 }
+]);
+assert.equal(enforcedDuplicateExposureBuy[0].action, "WATCH", "execution guard must convert duplicate exposure BUY actions into WATCH");
+assert(enforcedDuplicateExposureBuy[0].dataBasis.includes("来源：portfolio_buy_discipline_guard"), "duplicate exposure buy guard must leave a traceable source");
 const oversizedBuyAmount = manager.resolvePortfolioTradeAmount({
   totalAsset: 100000,
   cash: 90000,
@@ -739,6 +751,12 @@ const cashReserveAmount = manager.resolvePortfolioTradeAmount({
   positions: []
 }, { action: "BUY", code: "000010", amount: 5000, targetWeightPct: 5 }, "BUY");
 assert.equal(cashReserveAmount, 2000, "portfolio buy sizing must preserve the configured cash reserve before buying");
+const sameExposureCapAmount = manager.resolvePortfolioTradeAmount({
+  totalAsset: 100000,
+  cash: 90000,
+  positions: [{ code: "000099", name: "南方中证A500ETF联接C", currentValue: 7000 }]
+}, { action: "BUY", code: "000010", amount: 5000, targetWeightPct: 5 }, "BUY", null, verifiedSeedProfile);
+assert.equal(sameExposureCapAmount, 1000, "portfolio buy sizing must cap the aggregate same-index exposure before creating orders");
 const noRiskSellGuard = manager.evaluatePortfolioSellDiscipline(
   { action: "SELL", code: "000010", amount: 3000, reason: "模型想卖出" },
   verifiedSeedProfile,
