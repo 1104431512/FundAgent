@@ -117,6 +117,14 @@ const requiredPatterns = [
     message: "pullback/setup routing must recognize pullback-complete phrasing beyond 回调完成."
   },
   {
+    pattern: /specific_pullback_setup_assessment/,
+    message: "specific fund-code pullback/setup questions must not degrade into generic fund screening."
+  },
+  {
+    pattern: /text_contains_fund_code_pullback_setup_request/,
+    message: "specific fund-code pullback/setup routing must be deterministic and visible."
+  },
+  {
     pattern: /isPullbackSetupRequest\(text\)\s*&&\s*\(hasFundWord\s*\|\|\s*asksRecommendation\)/,
     message: "pullback/setup discovery must route correctly even when the user omits the word 基金."
   },

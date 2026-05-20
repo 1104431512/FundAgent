@@ -77,6 +77,27 @@ for (const userText of [
     requiredSkills: ["fund-theme-radar", "theme-stage-analysis", "fund-market-timing", "fund-fee-share-class", "fund-answer-quality"]
   });
 }
+for (const userText of [
+  "000001 是不是回调完成低位准备启动",
+  "000001 有没有低位刚启动机会",
+  "帮我看000001是不是回踩完成准备向上"
+]) {
+  await assertIntent({
+    userText,
+    expectedWorkflow: "fund_screening",
+    expectedReason: "text_contains_fund_code_pullback_setup_request",
+    expectedMode: "specific_pullback_setup_assessment",
+    requiredSkills: ["fund-data-enrichment", "fund-trend-analysis", "fund-risk-analysis", "fund-fee-share-class", "fund-market-timing", "fund-actionability-evaluation", "fund-answer-quality"]
+  });
+}
+const specificPullbackContext = manager.buildSkillContextForIntent({
+  workflow: "fund_screening",
+  mode: "specific_pullback_setup_assessment",
+  userText: "000001 是不是回调完成低位准备启动",
+  skillIds: manager.getFundAnalysisSkillIds(["fund-market-timing", "fund-synthesis"])
+});
+assert(specificPullbackContext.includes("具体基金的回调完成/低位启动评估"), "specific fund pullback setup requests must get a dedicated low-position launch focus");
+assert(specificPullbackContext.includes("如果不符合，要说等待什么条件，不要给买入金额"), "specific fund pullback setup focus must forbid buy amounts when conditions are not met");
 assert(!serverSource.includes("preferPullbackSetup && !precious"), "precious-metal pullback setup requests must not bypass setup discovery");
 assert.deepEqual(
   manager.filterFocusedPullbackRankingCandidates([

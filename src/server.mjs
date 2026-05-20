@@ -9585,12 +9585,15 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
   }
 
   if (fundCodes.length) {
+    const specificPullbackSetup = isPullbackSetupRequest(text);
     return {
       workflow: "fund_screening",
-      mode: fundCodes.length > 1 ? "comparison_or_specific_fund" : "specific_fund_or_fund_name",
-      reason: "text_contains_fund_code",
+      mode: specificPullbackSetup
+        ? "specific_pullback_setup_assessment"
+        : fundCodes.length > 1 ? "comparison_or_specific_fund" : "specific_fund_or_fund_name",
+      reason: specificPullbackSetup ? "text_contains_fund_code_pullback_setup_request" : "text_contains_fund_code",
       fundCodes,
-      skillIds: getFundAnalysisSkillIds(["fund-comparison", "fund-synthesis"]),
+      skillIds: getFundAnalysisSkillIds(specificPullbackSetup ? ["fund-market-timing", "fund-synthesis"] : ["fund-comparison", "fund-synthesis"]),
       messageType
     };
   }
@@ -10016,6 +10019,13 @@ function buildSkillFocusDirective(intent = {}, skills = []) {
       "本次任务焦点：评价用户给出的具体基金，必须分开基金长期质量、当前买点、份额费用和适合对象。",
       "不要把基金质量好直接等同于现在可以买；A/C/D/I 等份额类别要按预计持有期解释。"
     );
+    if (mode === "specific_pullback_setup_assessment" || isPullbackSetupRequest(userText)) {
+      lines.push(
+        "本次任务焦点：具体基金的回调完成/低位启动评估，不追热点。",
+        "判断顺序：先看 5日/10日是否刚转强、120日区间位置是否偏低、20日/60日是否不过热，再看基金质量、风险、费用和适合对象。",
+        "回答纪律：必须明确这只基金是否符合“回调完成、低位、准备启动”；如果不符合，要说等待什么条件，不要给买入金额。"
+      );
+    }
     if (/(货币|余额宝|现金管理|零钱)/.test(normalized)) {
       lines.push(
         "产品类型焦点：货币基金按现金管理评估，优先看7日年化、万份收益、流动性、规模和收益稳定性。",
