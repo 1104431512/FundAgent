@@ -3185,12 +3185,13 @@ function resolvePortfolioTradeAmount(account, action, side, position = null) {
   const requestedAmount = Number(action.amount || 0);
 
   if (side === "BUY") {
-    const currentPosition = account.positions.find((item) => item.code === action.code);
+    const currentPosition = (account.positions || []).find((item) => item.code === action.code);
     const currentValue = Number(currentPosition?.currentValue || 0);
     const targetValue = targetWeightPct > 0 ? (totalAsset * targetWeightPct) / 100 : null;
     const targetDelta = targetValue === null ? requestedAmount : Math.max(0, targetValue - currentValue);
     const proposedAmount = requestedAmount > 0 && targetDelta > 0 ? Math.min(requestedAmount, targetDelta) : targetDelta;
-    return round(Math.min(Number(account.cash || 0), Math.max(0, proposedAmount || 0)), 2);
+    const cashLimitedAmount = Math.min(Number(account.cash || 0), Math.max(0, proposedAmount || 0));
+    return capPortfolioBuyAmountByDiscipline(account, action, cashLimitedAmount, currentValue);
   }
 
   if (side === "SELL") {
@@ -3202,6 +3203,27 @@ function resolvePortfolioTradeAmount(account, action, side, position = null) {
   }
 
   return 0;
+}
+
+function capPortfolioBuyAmountByDiscipline(account = {}, action = {}, amount = 0, currentValue = 0) {
+  const totalAsset = Number(account.totalAsset || 0);
+  const cash = Number(account.cash || 0);
+  if (!Number.isFinite(totalAsset) || totalAsset <= 0 || !Number.isFinite(cash) || cash <= 0) return 0;
+  const maxSingleFundWeightPct = finiteNumberOr(process.env.PORTFOLIO_BUY_MAX_SINGLE_FUND_WEIGHT_PCT, 6);
+  const maxSingleOrderWeightPct = finiteNumberOr(process.env.PORTFOLIO_BUY_MAX_SINGLE_ORDER_WEIGHT_PCT, 4);
+  const minCashReservePct = finiteNumberOr(process.env.PORTFOLIO_BUY_MIN_CASH_RESERVE_PCT, 20);
+  const maxSingleFundValue = Math.max(0, totalAsset * maxSingleFundWeightPct / 100);
+  const maxSingleOrderAmount = Math.max(0, totalAsset * maxSingleOrderWeightPct / 100);
+  const minCashReserve = Math.max(0, totalAsset * minCashReservePct / 100);
+  const availableAfterReserve = Math.max(0, cash - minCashReserve);
+  const remainingFundRoom = Math.max(0, maxSingleFundValue - Number(currentValue || 0));
+  const capped = Math.min(
+    Math.max(0, Number(amount || 0)),
+    maxSingleOrderAmount,
+    remainingFundRoom,
+    availableAfterReserve
+  );
+  return round(capped, 2);
 }
 
 function buildPortfolioFundSnapshot(profile, position = null) {
@@ -12122,6 +12144,7 @@ export {
   normalizePortfolioWatchlist,
   normalizePortfolioWatchlistUpdates,
   renderFundReportSummaryPng,
+  resolvePortfolioTradeAmount,
   buildPortfolioWatchlistUpdatesFromSeedCandidates,
   selectPullbackBackfillCandidates,
   selectFundReportProfilesForAnswer,

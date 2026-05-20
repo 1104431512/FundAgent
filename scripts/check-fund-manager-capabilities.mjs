@@ -613,6 +613,24 @@ assert(
   manager.buildPortfolioWatchReadinessGaps({ code: "000010", status: "ready" }, missingFeeProfile).some((item) => item.includes("费用/份额")),
   "watchlist readiness gaps must expose missing fee/share-class evidence before buying"
 );
+const oversizedBuyAmount = manager.resolvePortfolioTradeAmount({
+  totalAsset: 100000,
+  cash: 90000,
+  positions: []
+}, { action: "BUY", code: "000010", amount: 50000, targetWeightPct: 50 }, "BUY");
+assert.equal(oversizedBuyAmount, 4000, "portfolio buy sizing must cap a single order to the staged-entry weight limit");
+const nearSingleFundCapAmount = manager.resolvePortfolioTradeAmount({
+  totalAsset: 100000,
+  cash: 90000,
+  positions: [{ code: "000010", currentValue: 5800 }]
+}, { action: "BUY", code: "000010", amount: 50000, targetWeightPct: 50 }, "BUY");
+assert.equal(nearSingleFundCapAmount, 200, "portfolio buy sizing must not exceed the single-fund exposure cap");
+const cashReserveAmount = manager.resolvePortfolioTradeAmount({
+  totalAsset: 100000,
+  cash: 22000,
+  positions: []
+}, { action: "BUY", code: "000010", amount: 5000, targetWeightPct: 5 }, "BUY");
+assert.equal(cashReserveAmount, 2000, "portfolio buy sizing must preserve the configured cash reserve before buying");
 
 const setupDigest = {
   ok: true,

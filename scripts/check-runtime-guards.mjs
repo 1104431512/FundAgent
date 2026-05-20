@@ -316,6 +316,22 @@ const requiredPatterns = [
     message: "portfolio BUY guard must leave traceable evidence when it blocks model-written buys."
   },
   {
+    pattern: /capPortfolioBuyAmountByDiscipline/,
+    message: "portfolio BUY sizing must apply system-level staged-entry caps before creating orders."
+  },
+  {
+    pattern: /PORTFOLIO_BUY_MAX_SINGLE_ORDER_WEIGHT_PCT/,
+    message: "portfolio BUY sizing must cap each order as a configurable percentage of total assets."
+  },
+  {
+    pattern: /PORTFOLIO_BUY_MAX_SINGLE_FUND_WEIGHT_PCT/,
+    message: "portfolio BUY sizing must cap single-fund exposure after a buy."
+  },
+  {
+    pattern: /PORTFOLIO_BUY_MIN_CASH_RESERVE_PCT/,
+    message: "portfolio BUY sizing must preserve a configurable cash reserve."
+  },
+  {
     pattern: /系统买入纪律拦截/,
     message: "portfolio BUY guard must explain blocked buys in user-readable Chinese."
   },
