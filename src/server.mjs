@@ -3312,14 +3312,14 @@ async function buildFundReportCardImages(profiles, config) {
           })
         : renderFundReportSummaryPng({
             profile: item.snapshot,
-            width: 900,
-            height: 520
+            width: 980,
+            height: 620
           });
       if (!png) continue;
       const imageKey = await uploadFeishuImage(png, `fund-report-${chartMode}-${item.code || "fund"}.png`, config);
       images.push({
         imageKey,
-        alt: `${item.code} ${item.name} 走势 / 回撤 / 阶段收益图`.trim() || "基金报告图"
+        alt: `${item.code} ${item.name} 走势 / 回撤 / 阶段收益 / 买点费用风险图`.trim() || "基金报告图"
       });
     } catch (error) {
       console.error("[fund-report-trend-image-error]", item.code || item.name || "unknown", error);
@@ -6594,6 +6594,7 @@ function renderFundReportSummaryPng({ profile, width = 900, height = 520 } = {})
 
   const canvas = createRgbaCanvas(width, height, [255, 255, 255, 255], getChartPixelRatio());
   const code = String(profile?.code || "").slice(0, 12) || "FUND";
+  const shareClass = getChartShareClass(profile);
   const first = points[0];
   const last = points[points.length - 1];
   const changePct = first.nav > 0 ? (last.nav / first.nav - 1) * 100 : 0;
@@ -6601,41 +6602,48 @@ function renderFundReportSummaryPng({ profile, width = 900, height = 520 } = {})
   const muted = [100, 116, 139, 255];
   const ink = [15, 23, 42, 255];
 
-  drawText(canvas, 28, 18, `${code} 基金报告`, ink, 3);
-  drawText(canvas, 28, 46, `${first.date || "START"} / ${last.date || "LAST"}  净值 ${formatChartNumber(last.nav)}`, muted, 2);
-  drawText(canvas, width - 238, 24, `区间 ${formatChartPct(changePct)}`, lineColor, 3);
+  drawText(canvas, 28, 18, `${code}${shareClass ? ` ${shareClass}` : ""} FUND`, ink, 3);
+  drawText(canvas, 28, 48, `${first.date || "START"} / ${last.date || "LAST"}  NAV ${formatChartNumber(last.nav)}`, muted, 2);
+  drawText(canvas, width - 238, 24, `RANGE ${formatChartPct(changePct)}`, lineColor, 3);
+  drawDecisionEvidenceStrip(canvas, {
+    x: 28,
+    y: 76,
+    width: width - 56,
+    profile,
+    trend
+  });
 
   drawLineChartPanel(canvas, {
     x: 88,
-    y: 104,
-    width: 540,
-    height: 210,
+    y: 146,
+    width: 600,
+    height: 250,
     points,
     color: lineColor,
-    label: "净值走势"
+    label: "NAV"
   });
 
   drawDrawdownPanel(canvas, {
     x: 88,
-    y: 392,
-    width: 540,
+    y: 512,
+    width: 600,
     height: 70,
     points
   });
 
   drawReturnBarsPanel(canvas, {
-    x: 662,
-    y: 104,
-    width: 210,
-    height: 210,
+    x: 720,
+    y: 146,
+    width: 230,
+    height: 230,
     trend
   });
 
   drawSignalMetricsPanel(canvas, {
-    x: 662,
-    y: 356,
-    width: 210,
-    height: 108,
+    x: 720,
+    y: 430,
+    width: 230,
+    height: 132,
     profile,
     trend
   });
@@ -6680,9 +6688,9 @@ function drawDrawdownPanel(canvas, { x, y, width, height, points }) {
   });
   const min = Math.min(...drawdowns, -1);
   const range = Math.abs(min) || 1;
-  drawText(canvas, x, y - 22, "最大回撤", [51, 65, 85, 255], 2);
+  drawText(canvas, x, y - 22, "DD", [51, 65, 85, 255], 2);
   drawChartFrame(canvas, x, y, width, height);
-  drawYAxisTickLabels(canvas, x, y, height, [0, min], formatChartPct, "回撤");
+  drawYAxisTickLabels(canvas, x, y, height, [0, min], formatChartPct, "DD");
   drawXAxisDateLabels(canvas, x, y + height + 8, width, points);
   const zeroY = y + 10;
   drawLine(canvas, x + 8, zeroY, x + width - 8, zeroY, [203, 213, 225, 255], 1);
@@ -6693,22 +6701,22 @@ function drawDrawdownPanel(canvas, { x, y, width, height, points }) {
   for (let i = 1; i < px.length; i += 1) {
     drawLine(canvas, px[i - 1].x, px[i - 1].y, px[i].x, px[i].y, [217, 119, 6, 255], 3);
   }
-  drawText(canvas, x + width - 104, y + height - 18, `最大 ${formatChartPct(min)}`, [217, 119, 6, 255], 2);
+  drawText(canvas, x + width - 118, y + height - 18, `MAX ${formatChartPct(min)}`, [217, 119, 6, 255], 2);
 }
 
 function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
-  drawText(canvas, x, y - 28, "阶段收益", [51, 65, 85, 255], 2);
+  drawText(canvas, x, y - 28, "RET", [51, 65, 85, 255], 2);
   drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
   const items = [
-    ["5日", trend.return5dPct],
-    ["10日", trend.return10dPct],
-    ["20日", trend.return20dPct],
-    ["60日", trend.return60dPct],
-    ["120日", trend.return120dPct],
-    ["年", trend.return250dPct]
+    ["5d", trend.return5dPct],
+    ["10d", trend.return10dPct],
+    ["20d", trend.return20dPct],
+    ["60d", trend.return60dPct],
+    ["120d", trend.return120dPct],
+    ["Y", trend.return250dPct]
   ].map(([label, value]) => ({ label, value: Number(value) })).filter((item) => Number.isFinite(item.value));
   if (!items.length) {
-    drawText(canvas, x + 18, y + 92, "无数据", [100, 116, 139, 255], 3);
+    drawText(canvas, x + 18, y + 92, "NO DATA", [100, 116, 139, 255], 3);
     return;
   }
   const maxAbs = Math.max(5, ...items.map((item) => Math.abs(item.value)));
@@ -6728,45 +6736,69 @@ function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
   });
 }
 
+function drawDecisionEvidenceStrip(canvas, { x, y, width, profile = {}, trend = {} }) {
+  const risk = profile?.risk?.oneYear || profile?.riskMetrics?.periods?.["1y"] || {};
+  const actionability = profile?.actionability || {};
+  const feeImpact = profile?.fees?.feeImpact || profile?.feeImpact || {};
+  const shareClass = getChartShareClass(profile);
+  const items = [
+    ["ENTRY", formatChartEntryBias(trend.entryBias), chartDecisionColor(trend.entryBias)],
+    ["SIG", formatChartSetupSignal(trend.pullbackSetup?.signal), chartSignalColor(trend.pullbackSetup?.signal)],
+    ["LOW", formatChartMetricValue("LOW", trend.lowPositionPct120), chartLowPositionColor(trend.lowPositionPct120)],
+    ["ACT", formatChartAction(actionability.action), chartActionColor(actionability.action)],
+    ["CLASS", shareClass || "MISS", shareClass ? [15, 23, 42, 255] : [194, 65, 12, 255]],
+    ["FEE", formatChartMetricValue("FEE", feeImpact.oneYearCostPer10000), chartFeeColor(feeImpact.oneYearCostPer10000)],
+    ["SHRP", formatChartMetricValue("SHRP", risk.sharpe), chartSharpeColor(risk.sharpe)]
+  ];
+  const gap = 8;
+  const tileW = Math.floor((width - gap * (items.length - 1)) / items.length);
+  drawRect(canvas, x, y, width, 42, [226, 232, 240, 255], 1);
+  items.forEach(([label, value, color], index) => {
+    const tileX = x + index * (tileW + gap);
+    fillRect(canvas, tileX, y, tileW, 42, [248, 250, 252, 255]);
+    drawRect(canvas, tileX, y, tileW, 42, [226, 232, 240, 255], 1);
+    drawText(canvas, tileX + 6, y + 6, label, [100, 116, 139, 255], 1);
+    drawText(canvas, tileX + 6, y + 22, value, color, 2);
+  });
+}
+
 function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, trend = {} }) {
-  drawText(canvas, x, y - 28, "启动/风险", [51, 65, 85, 255], 2);
+  drawText(canvas, x, y - 28, "BUY/FEE", [51, 65, 85, 255], 2);
   drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
   const risk = profile?.risk?.oneYear || profile?.riskMetrics?.periods?.["1y"] || {};
   const actionability = profile?.actionability || {};
   const feeImpact = profile?.fees?.feeImpact || profile?.feeImpact || {};
+  const shareClass = getChartShareClass(profile);
   const rows = [
-    ["启动", trend.pullbackSetup?.score],
-    ["信号", formatChartSetupSignal(trend.pullbackSetup?.signal)],
-    ["低位", trend.lowPositionPct120],
-    ["5日", trend.return5dPct],
-    ["10日", trend.return10dPct],
-    ["入场", formatChartEntryBias(trend.entryBias)],
-    ["动作", formatChartAction(actionability.action)],
-    ["回撤", trend.drawdownFromRecentHighPct],
-    ["年撤", risk.maxDrawdownPct],
-    ["费用", feeImpact.oneYearCostPer10000]
+    ["CLS", shareClass || ""],
+    ["SET", trend.pullbackSetup?.score],
+    ["SIG", formatChartSetupSignal(trend.pullbackSetup?.signal)],
+    ["LOW", trend.lowPositionPct120],
+    ["5d", trend.return5dPct],
+    ["10d", trend.return10dPct],
+    ["ENT", formatChartEntryBias(trend.entryBias)],
+    ["ACT", formatChartAction(actionability.action)],
+    ["DD", trend.drawdownFromRecentHighPct],
+    ["YDD", risk.maxDrawdownPct],
+    ["YRET", risk.annualizedReturnPct],
+    ["SHRP", risk.sharpe],
+    ["FEE", feeImpact.oneYearCostPer10000],
+    ["SIZE", formatChartScale(profile.scale)]
   ];
   const tileW = Math.floor((width - 30) / 2);
-  const tileH = rows.length > 8 ? 16 : 20;
-  const tileGap = rows.length > 8 ? 3 : 4;
+  const tileH = rows.length > 10 ? 13 : rows.length > 8 ? 16 : 20;
+  const tileGap = rows.length > 10 ? 3 : rows.length > 8 ? 3 : 4;
   rows.forEach(([label, rawValue], index) => {
     const col = index % 2;
     const row = Math.floor(index / 2);
     const tileX = x + 10 + col * (tileW + 10);
     const tileY = y + 8 + row * (tileH + tileGap);
     const value = formatChartMetricValue(label, rawValue);
-    const numeric = Number(rawValue);
-    const color = label === "低位" && Number.isFinite(numeric)
-      ? (numeric <= 55 ? [22, 130, 93, 255] : numeric >= 85 ? [194, 65, 12, 255] : [15, 23, 42, 255])
-      : ["回撤", "年撤", "费用"].includes(label)
-        ? [194, 65, 12, 255]
-        : Number(rawValue) > 0
-          ? [22, 130, 93, 255]
-          : [15, 23, 42, 255];
+    const color = chartMetricColor(label, rawValue);
     fillRect(canvas, tileX, tileY, tileW, tileH, [248, 250, 252, 255]);
     drawRect(canvas, tileX, tileY, tileW, tileH, [226, 232, 240, 255], 1);
-    drawText(canvas, tileX + 4, tileY + 3, label, [100, 116, 139, 255], 1);
-    drawText(canvas, tileX + 38, tileY + 4, value, color, 1);
+    drawText(canvas, tileX + 4, tileY + 2, label, [100, 116, 139, 255], 1);
+    drawText(canvas, tileX + 38, tileY + 3, value, color, 1);
   });
 }
 
@@ -6823,45 +6855,122 @@ function formatChartPct(value) {
 
 function formatChartMetricValue(label, value) {
   if (value === null || value === undefined || value === "") return "NA";
-  if (label === "信号" || label === "入场" || label === "动作") return String(value || "NA").slice(0, 6).toUpperCase();
+  if (["SIG", "ENT", "ENTRY", "ACT", "CLS", "CLASS", "SIZE"].includes(label)) return String(value || "NA").slice(0, 8);
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return String(value || "NA").slice(0, 6).toUpperCase();
-  if (label === "低位") return `${round(numeric, 1)}%`;
-  if (["回撤", "年撤", "5日", "10日"].includes(label)) return formatChartPct(numeric);
-  if (label === "费用") return `${round(numeric, 0)}`;
-  if (label === "夏普") return String(round(numeric, 2));
+  if (label === "LOW") return `${round(numeric, 1)}%`;
+  if (["DD", "YDD", "YRET", "5d", "10d"].includes(label)) return formatChartPct(numeric);
+  if (label === "FEE") return `${round(numeric, 0)}`;
+  if (label === "SHRP") return String(round(numeric, 2));
   return String(round(numeric, 0));
+}
+
+function getChartShareClass(profile = {}) {
+  return String(
+    profile?.fees?.shareClass
+      || profile?.shareClass
+      || profile?.seed?.shareClass
+      || inferFundShareClass(profile?.name || profile?.seed?.name || "")
+      || ""
+  ).toUpperCase();
+}
+
+function formatChartScale(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const number = toNumber(text);
+  if (!Number.isFinite(number)) return text.slice(0, 8);
+  return String(round(number, number >= 100 ? 0 : 1));
+}
+
+function chartMetricColor(label, value) {
+  if (label === "LOW") return chartLowPositionColor(value);
+  if (label === "ENT" || label === "ENTRY") return chartDecisionColor(value);
+  if (label === "ACT") return chartActionColor(value);
+  if (label === "SIG") return chartSignalColor(value);
+  if (label === "FEE") return chartFeeColor(value);
+  if (label === "SHRP") return chartSharpeColor(value);
+  const numeric = Number(value);
+  if (["DD", "YDD"].includes(label)) return [194, 65, 12, 255];
+  if (Number.isFinite(numeric) && numeric > 0) return [22, 130, 93, 255];
+  return [15, 23, 42, 255];
+}
+
+function chartDecisionColor(value) {
+  return ["buyable_now", "staged_buy", "BUY", "STAGE"].includes(String(value || ""))
+    ? [22, 130, 93, 255]
+    : ["wait_pullback", "avoid_now", "WAIT", "AVOID"].includes(String(value || ""))
+      ? [194, 65, 12, 255]
+      : [15, 23, 42, 255];
+}
+
+function chartSignalColor(value) {
+  return ["pullback_complete", "launch_setup", "PULL", "LAUNCH"].includes(String(value || ""))
+    ? [22, 130, 93, 255]
+    : [15, 23, 42, 255];
+}
+
+function chartLowPositionColor(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return [15, 23, 42, 255];
+  if (numeric <= 55) return [22, 130, 93, 255];
+  if (numeric >= 85) return [194, 65, 12, 255];
+  return [15, 23, 42, 255];
+}
+
+function chartActionColor(value) {
+  return ["buy", "staged_buy", "BUY", "STAGE"].includes(String(value || ""))
+    ? [22, 130, 93, 255]
+    : ["wait", "avoid", "WAIT", "AVOID"].includes(String(value || ""))
+      ? [194, 65, 12, 255]
+      : [15, 23, 42, 255];
+}
+
+function chartFeeColor(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return [15, 23, 42, 255];
+  if (numeric >= 120) return [194, 65, 12, 255];
+  if (numeric >= 60) return [217, 119, 6, 255];
+  return [22, 130, 93, 255];
+}
+
+function chartSharpeColor(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return [15, 23, 42, 255];
+  if (numeric >= 0.8) return [22, 130, 93, 255];
+  if (numeric < 0) return [194, 65, 12, 255];
+  return [15, 23, 42, 255];
 }
 
 function formatChartSetupSignal(value) {
   const labels = {
-    pullback_complete: "回调",
-    launch_setup: "启动",
-    none: "无"
+    pullback_complete: "PULL",
+    launch_setup: "LAUNCH",
+    none: "NO"
   };
-  return labels[value] || "缺失";
+  return labels[value] || "MISS";
 }
 
 function formatChartEntryBias(value) {
   const labels = {
-    buyable_now: "可买",
-    staged_buy: "分批",
-    wait_pullback: "等待",
-    hold_observe: "观察",
-    avoid_now: "回避"
+    buyable_now: "BUY",
+    staged_buy: "STAGE",
+    wait_pullback: "WAIT",
+    hold_observe: "OBS",
+    avoid_now: "AVOID"
   };
-  return labels[value] || "观察";
+  return labels[value] || "OBS";
 }
 
 function formatChartAction(value) {
   const labels = {
-    buy: "买入",
-    staged_buy: "分批",
-    wait: "等待",
-    avoid: "回避",
-    hold: "持有"
+    buy: "BUY",
+    staged_buy: "STAGE",
+    wait: "WAIT",
+    avoid: "AVOID",
+    hold: "HOLD"
   };
-  return labels[value] || "缺失";
+  return labels[value] || "MISS";
 }
 
 function getChartPixelRatio() {
@@ -7040,12 +7149,15 @@ const TINY_FONT = {
   "动": ["1110110", "0010010", "1111111", "0010010", "1110010", "0010010", "0101100"],
   "风": ["1111110", "1000010", "1010100", "1001000", "1010100", "1000010", "1000111"],
   "险": ["1101110", "0101010", "0101010", "1101110", "0101010", "0100010", "0111110"],
+  "低": ["0101111", "0101000", "1101110", "0101010", "0101110", "0101010", "0101011"],
+  "位": ["0100100", "0101111", "1100100", "0101110", "0100100", "0100100", "0101111"],
   "信": ["0101111", "0100000", "0111110", "1100000", "0101110", "0101010", "0101110"],
   "号": ["1111111", "1000001", "1111111", "0010000", "1111110", "0000010", "0111100"],
   "入": ["0010000", "0010000", "0101000", "0101000", "1000100", "1000100", "0000011"],
   "场": ["0101111", "1110010", "0101110", "0100010", "1111110", "0001010", "0110010"],
   "作": ["0101111", "0100100", "1101110", "0100100", "0101110", "0100100", "0100100"],
   "年": ["0010000", "1111111", "0100000", "1111110", "0100000", "1111111", "0100000"],
+  "日": ["1111111", "1000001", "1000001", "1111111", "1000001", "1000001", "1111111"],
   "夏": ["1111111", "0010000", "1111111", "1000001", "1111111", "0101010", "1010001"],
   "普": ["0101010", "1111111", "0101010", "1111111", "1000001", "1111111", "1000001"],
   "费": ["1111111", "0010000", "1111111", "1000001", "1111111", "0010100", "1100011"],
@@ -7053,6 +7165,7 @@ const TINY_FONT = {
   "调": ["1011111", "0010101", "1011111", "0010101", "1011111", "0010101", "0011111"],
   "可": ["1111111", "0000001", "0111101", "0100101", "0111101", "0000001", "0000110"],
   "买": ["1111111", "0000010", "1111110", "0010000", "0101010", "1000100", "0000011"],
+  "点": ["0010000", "1111111", "0010000", "0111110", "0000000", "1010101", "1010101"],
   "分": ["0101010", "0101010", "1000001", "0010000", "0101110", "1000010", "0001100"],
   "批": ["0101010", "1101010", "0101111", "0111010", "1101010", "0101010", "0101111"],
   "等": ["0101010", "1111111", "0101010", "1111111", "0010000", "1111111", "0000010"],
@@ -7063,7 +7176,13 @@ const TINY_FONT = {
   "持": ["0101010", "1101111", "0101010", "0111111", "1101010", "0101010", "0100110"],
   "有": ["0010000", "1111111", "0100000", "1111110", "1000010", "1111110", "1000010"],
   "缺": ["1110100", "1010100", "1111111", "1010100", "1110100", "1001010", "1010001"],
-  "失": ["0010000", "1111111", "0010000", "1111111", "0101000", "1000100", "0000011"]
+  "失": ["0010000", "1111111", "0010000", "1111111", "0101000", "1000100", "0000011"],
+  "份": ["0101010", "0101010", "1101010", "0101010", "0101110", "0110010", "0100110"],
+  "额": ["1111011", "1001010", "1111011", "0010010", "1111110", "0010100", "1100011"],
+  "类": ["0010000", "1010101", "0111110", "0010000", "0101010", "1000100", "0000011"],
+  "规": ["1010101", "1010101", "1111111", "1010101", "1010101", "0010101", "0100011"],
+  "模": ["1010101", "1111111", "1010101", "1111111", "1010101", "1010101", "1011010"],
+  "亿": ["0100000", "0101110", "1100010", "0100100", "0101000", "0100010", "0101110"]
 };
 
 function encodePngRgba(canvas) {

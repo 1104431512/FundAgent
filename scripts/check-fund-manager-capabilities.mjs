@@ -360,20 +360,21 @@ assert(!serverSource.includes("buy/staged/wait/avoid"), "fund QA prompt must not
 
 const png = manager.renderFundReportSummaryPng({
   profile: buildChartProfile(),
-  width: 900,
-  height: 520
+  width: 980,
+  height: 620
 });
 assert(Buffer.isBuffer(png), "summary chart renderer must return a PNG buffer");
 assert.equal(png.slice(0, 8).toString("hex"), "89504e470d0a1a0a", "summary chart must be a PNG");
-assert.equal(png.readUInt32BE(16), 900, "summary chart width must match requested width");
-assert.equal(png.readUInt32BE(20), 520, "summary chart height must match requested height");
-assert(png.length > 5000, "summary chart should contain more than a sparse legacy line");
-for (const label of ["基金报告", "净值走势", "最大回撤", "阶段收益", "启动/风险", "启动", "信号", "低位", "5日", "10日", "入场", "动作", "费用"]) {
-  assert(serverSource.includes(label), `summary chart must use Chinese label: ${label}`);
+assert.equal(png.readUInt32BE(16), 980, "summary chart width must match requested width");
+assert.equal(png.readUInt32BE(20), 620, "summary chart height must match requested height");
+assert(png.length > 8000, "summary chart should contain dense report-card evidence, not only a sparse legacy line");
+for (const label of ["FUND", "NAV", "RANGE", "RET", "BUY/FEE", "ENTRY", "SIG", "LOW", "ACT", "CLASS", "FEE", "SHRP", "YRET", "SIZE"]) {
+  assert(serverSource.includes(label), `summary chart must use readable compact label: ${label}`);
 }
-for (const staleLabel of ["FUND SETUP", "NAV TREND", "DRAWDOWN FROM HIGH", "STAGE RETURN", "SETUP / RISK", "PULLBK", "LAUNCH", "FEEY", "20D", "60D", "120D", "250D"]) {
+for (const staleLabel of ["FUND SETUP", "NAV TREND", "DRAWDOWN FROM HIGH", "STAGE RETURN", "SETUP / RISK", "PULLBK", "FEEY", "20D", "60D", "120D", "250D"]) {
   assert(!serverSource.includes(staleLabel), `summary chart should not expose stale English label: ${staleLabel}`);
 }
+assert(!/drawText\([^)]*[\u4e00-\u9fff]/.test(serverSource), "chart renderer must not draw tiny bitmap Chinese text inside PNGs");
 
 const selectedChartCodes = manager.selectFundReportProfilesForAnswer([
   { code: "000001", name: "低位修复基金A", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.01 }] } },
@@ -607,6 +608,7 @@ function buildChartProfile() {
   });
   return {
     code: "000000",
+    name: "低位修复基金C",
     trendProfile: {
       series,
       return20dPct: 4.5,
@@ -623,14 +625,17 @@ function buildChartProfile() {
     risk: {
       oneYear: {
         maxDrawdownPct: -18.6,
-        sharpe: 0.82
+        sharpe: 0.82,
+        annualizedReturnPct: 7.6
       }
     },
     fees: {
+      shareClass: "C",
       feeImpact: {
         oneYearCostPer10000: 42
       }
     },
+    scale: "42.6亿元",
     actionability: {
       action: "buy"
     }

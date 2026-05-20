@@ -49,8 +49,16 @@ const requiredPatterns = [
     message: "fund answer quality gate must reject stiff confidence labels such as 信心：高。"
   },
   {
-    pattern: /启动\/风险/,
-    message: "fund report charts must include a Chinese setup/risk metrics panel, not only a line chart."
+    pattern: /BUY\/FEE/,
+    message: "fund report charts must include a readable buy-point and fee evidence panel."
+  },
+  {
+    pattern: /width:\s*980,\s*\n\s*height:\s*620/,
+    message: "fund report chart defaults must remain large enough for dense evidence cards."
+  },
+  {
+    pattern: /drawDecisionEvidenceStrip/,
+    message: "fund report charts must expose decision evidence above the trend line."
   },
   {
     pattern: /DEFAULT_MODEL_MAX_OUTPUT_TOKENS\s*=\s*9600/,
