@@ -260,6 +260,37 @@ assert(
   "quality gate must reject hard-coded recommendations when no qualified pullback candidate exists"
 );
 
+const deterministicMainFallback = manager.buildPullbackQualityFallbackAnswer({
+  userText: setupQuery,
+  issues: promotedWatchQuality.issues,
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      candidates: [
+        { ...setupDigest, code: "000001", name: "低位修复基金A" },
+        { ...hotDigest, code: "000003", name: "追涨观察基金A" }
+      ]
+    }
+  }
+});
+assert(deterministicMainFallback.includes("000001"), "deterministic fallback must keep qualified main candidates");
+assert(!deterministicMainFallback.split("推荐清单：")[1].split("1万元执行")[0].includes("000003"), "deterministic fallback must not promote watch candidates into recommendations");
+
+const deterministicNoMainFallback = manager.buildPullbackQualityFallbackAnswer({
+  userText: setupQuery,
+  issues: noQualifiedQuality.issues,
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      candidates: [{ ...hotDigest, code: "000003", name: "追涨观察基金A" }]
+    }
+  }
+});
+assert(deterministicNoMainFallback.includes("暂时买入0元"), "no-main fallback must explicitly avoid buying");
+assert(!/\b\d{6}\b/.test(deterministicNoMainFallback), "no-main fallback must not hard-code candidate fund codes");
+
 async function assertIntent({ userText, expectedWorkflow, expectedReason, expectedMode = null, requiredSkills = [] }) {
   const routed = await manager.classifyMessageIntent({
     userText,

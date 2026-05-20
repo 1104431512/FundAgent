@@ -4291,6 +4291,11 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
   });
 
   if (String(process.env.FUND_ANSWER_QUALITY_REWRITE ?? "true") === "false") {
+    const deterministicFallback = buildPullbackQualityFallbackAnswer({ userText, evidence, issues: evaluation.issues });
+    if (deterministicFallback) {
+      updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
+      return deterministicFallback;
+    }
     return localizedText;
   }
 
@@ -4349,10 +4354,22 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
         lastFundAnswerQualityRewriteIssues: secondPass.issues.join(",")
       }
     });
+    if (!secondPass.ok) {
+      const deterministicFallback = buildPullbackQualityFallbackAnswer({ userText, evidence, issues: secondPass.issues });
+      if (deterministicFallback) {
+        updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
+        return deterministicFallback;
+      }
+    }
     return cleanedRewrite || localizedText;
   } catch (error) {
     console.error("[fund-answer-quality-rewrite-error]", error);
     recordError(error, { fundAnswerQualityRewriteFailures: 1 });
+    const deterministicFallback = buildPullbackQualityFallbackAnswer({ userText, evidence, issues: evaluation.issues });
+    if (deterministicFallback) {
+      updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
+      return deterministicFallback;
+    }
     return localizedText;
   }
 }
@@ -4440,6 +4457,92 @@ function evaluatePullbackAnswerDiscipline({ text, userText, evidence }) {
   }
 
   return issues;
+}
+
+function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] }) {
+  if (!isPullbackSetupRequest(userText)) return "";
+  const severeIssues = new Set([
+    "watch_candidate_promoted_to_recommendation",
+    "recommendation_not_from_pullback_main_candidates",
+    "missing_pullback_main_candidate_code",
+    "missing_no_qualified_pullback_message",
+    "recommends_without_qualified_pullback_candidate"
+  ]);
+  if (!(issues || []).some((issue) => severeIssues.has(issue))) return "";
+  const deepDive = evidence?.marketDeepDive || null;
+  if (deepDive?.selectionDiscipline !== "prefer_pullback_complete_launch_setup_not_chase") return "";
+
+  const ranked = (deepDive.candidates || [])
+    .map((candidate) => ({
+      candidate,
+      bucket: classifyPullbackSetupCandidateForSummary(candidate),
+      score: scoreResearchDigestForPullbackSetup(candidate)
+    }))
+    .sort((a, b) => b.score - a.score);
+  const main = ranked.filter((item) => item.bucket === "main_candidate").slice(0, 3);
+  const watch = ranked.filter((item) => item.bucket !== "main_candidate").slice(0, 3);
+
+  if (!main.length) {
+    const hottest = watch[0]?.candidate?.trendProfile || {};
+    const evidenceLine = Number.isFinite(Number(hottest.return20dPct)) || Number.isFinite(Number(hottest.return60dPct))
+      ? `候选池里偏热样本的近20日约${formatFallbackPct(hottest.return20dPct)}、近60日约${formatFallbackPct(hottest.return60dPct)}，不符合“回调完成后低位启动”。`
+      : "候选池没有同时满足回调完成、低位修复和不过热的标的。";
+    return [
+      "直接结论：这次先不买，也不硬凑基金代码。",
+      `原因：${evidenceLine}`,
+      "",
+      "执行方案：1万元新资金暂时买入0元；激进、均衡、保守三档都先等待下一轮筛选。",
+      "复查条件：等候选出现回调幅度适中、近20日温和转强、近60日不过热，再进入分批买入评估。",
+      "我对这条纪律判断把握度较高，因为当前证据不足以支持“回调完成、低位、准备启动”的主推荐。"
+    ].join("\n");
+  }
+
+  const recommendationLines = main.map((item, index) =>
+    `${index + 1}. ${formatPullbackFallbackCandidate(item.candidate)}`
+  );
+  const watchLines = watch.map((item, index) =>
+    `${index + 1}. ${formatPullbackFallbackWatchCandidate(item.candidate)}`
+  );
+  return [
+    "直接结论：只保留符合回调启动纪律的候选，偏热或等待回撤的标的不放进主推荐。",
+    "我对这条筛选把握度中等偏高，依据是下钻信号已经把主候选和观察池分开。",
+    "",
+    "推荐清单：",
+    ...recommendationLines,
+    "",
+    "1万元执行：激进2000元以内，均衡1000元以内，保守先0元观察；只分批，不追单。",
+    watchLines.length ? "观察/排除：" : "",
+    ...watchLines,
+    "决策边界：若近20日涨幅继续快速扩大，或近60日收益进入偏热区间，暂停买入并等下一次回撤确认。"
+  ].filter(Boolean).join("\n");
+}
+
+function formatPullbackFallbackCandidate(candidate = {}) {
+  const trend = candidate.trendProfile || {};
+  const actionability = candidate.actionability || {};
+  const parts = [
+    `${candidate.code || "待复核"} ${candidate.name || candidate.seed?.name || ""}`.trim(),
+    trend.pullbackSetup?.signalText || "回调启动信号待复核",
+    `近20日${formatFallbackPct(trend.return20dPct)}`,
+    `近60日${formatFallbackPct(trend.return60dPct)}`,
+    `距高点${formatFallbackPct(trend.drawdownFromRecentHighPct)}`,
+    actionability.allocationBand ? `仓位上限${actionability.allocationBand}` : "小仓位分批"
+  ].filter(Boolean);
+  return `${parts.join("；")}。`;
+}
+
+function formatPullbackFallbackWatchCandidate(candidate = {}) {
+  const trend = candidate.trendProfile || {};
+  const reason = trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback"
+    ? "短期偏热或仍需等待回撤"
+    : "暂未形成主推荐信号";
+  return `${candidate.code || "待复核"} ${candidate.name || candidate.seed?.name || ""}：${reason}，近20日${formatFallbackPct(trend.return20dPct)}，近60日${formatFallbackPct(trend.return60dPct)}。`;
+}
+
+function formatFallbackPct(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "缺失";
+  return `${numeric > 0 ? "+" : ""}${round(numeric, 2)}%`;
 }
 
 function hasNoQualifiedPullbackMessage(text) {
@@ -8368,6 +8471,12 @@ function getDefaultStats() {
       analystReviewCalls: 0,
       committeeVoteCalls: 0,
       managerReviewCalls: 0,
+      fundAnswerQualityPasses: 0,
+      fundAnswerQualityFailures: 0,
+      fundAnswerQualityRewrites: 0,
+      fundAnswerQualityRewritePasses: 0,
+      fundAnswerQualityRewriteFailures: 0,
+      fundAnswerQualityDeterministicFallbacks: 0,
       conversationModelCalls: 0,
       fundRecommendationModelCalls: 0,
       fundQaModelCalls: 0,
@@ -9547,6 +9656,7 @@ function timingSafeEqualString(a, b) {
 export {
   allowedSkillIdsForWorkflow,
   buildMarketDeepDiveSummary,
+  buildPullbackQualityFallbackAnswer,
   classifyMessageIntent,
   defaultSkillIdsForWorkflow,
   evaluateFundAnswerQuality,
