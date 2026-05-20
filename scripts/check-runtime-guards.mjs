@@ -608,6 +608,14 @@ const requiredPatterns = [
     message: "pullback/setup routing must recognize pullback-complete phrasing beyond 回调完成."
   },
   {
+    pattern: /回调到位[\s\S]{0,260}刚拐头[\s\S]{0,260}筑底/,
+    message: "pullback/setup routing must recognize launch-eve natural language such as 回调到位, 筑底, and 刚拐头."
+  },
+  {
+    pattern: /isPullbackSetupDiscoveryAsk/,
+    message: "pullback/setup routing must allow discovery verbs only after a setup intent is detected."
+  },
+  {
     pattern: /specific_pullback_setup_assessment/,
     message: "specific fund-code pullback/setup questions must not degrade into generic fund screening."
   },
@@ -616,7 +624,7 @@ const requiredPatterns = [
     message: "specific fund-code pullback/setup routing must be deterministic and visible."
   },
   {
-    pattern: /isPullbackSetupRequest\(text\)\s*&&\s*\(hasFundWord\s*\|\|\s*asksRecommendation\)/,
+    pattern: /isPullbackSetupRequest\(text\)\s*&&\s*\(hasFundWord\s*\|\|\s*asksRecommendation\s*\|\|\s*isPullbackSetupDiscoveryAsk\(text\)\)/,
     message: "pullback/setup discovery must route correctly even when the user omits the word 基金."
   },
   {

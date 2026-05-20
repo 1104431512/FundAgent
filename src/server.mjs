@@ -8731,18 +8731,27 @@ function isPullbackSetupRequest(text) {
     "回调完成",
     "回调结束",
     "回调企稳",
+    "回调到位",
     "回踩完成",
     "回踩结束",
+    "回踩到位",
     "调整完成",
     "调整结束",
+    "调整到位",
     "回撤企稳",
+    "回撤到位",
+    "跌下来",
+    "跌下来后",
     "准备启动",
     "准备要启动",
     "准备向上",
     "准备走强",
+    "开始走强",
     "要启动",
     "刚要启动",
     "刚启动",
+    "刚拐头",
+    "拐头",
     "即将启动",
     "启动前",
     "启动前夜",
@@ -8753,13 +8762,40 @@ function isPullbackSetupRequest(text) {
     "低位修复",
     "低位企稳",
     "低位反转",
+    "低位横盘",
     "底部启动",
+    "筑底",
+    "筑底企稳",
+    "止跌反弹",
     "止跌企稳",
+    "企稳反弹",
     "蓄势",
     "别追涨",
     "不要追涨",
     "不追涨",
     "追涨"
+  ]);
+}
+
+function isPullbackSetupDiscoveryAsk(text) {
+  const normalized = normalizeIntentText(text);
+  return isPullbackSetupRequest(normalized) && hasAny(normalized, [
+    "找",
+    "筛",
+    "帮我",
+    "想要",
+    "想找",
+    "有没有",
+    "有无",
+    "哪些",
+    "哪个",
+    "标的",
+    "机会",
+    "候选",
+    "清单",
+    "名单",
+    "买什么",
+    "配置"
   ]);
 }
 
@@ -12116,7 +12152,7 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
     };
   }
 
-  if (isPullbackSetupRequest(text) && (hasFundWord || asksRecommendation)) {
+  if (isPullbackSetupRequest(text) && (hasFundWord || asksRecommendation || isPullbackSetupDiscoveryAsk(text))) {
     return {
       workflow: "fund_recommendation",
       mode: "pullback_setup_discovery",
