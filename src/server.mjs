@@ -28,6 +28,7 @@ const MIN_FUND_COMMITTEE_OUTPUT_TOKENS = 6400;
 const MIN_FUND_QA_OUTPUT_TOKENS = 8000;
 const MIN_FUND_RECOMMENDATION_OUTPUT_TOKENS = 9600;
 const MIN_FUND_REWRITE_OUTPUT_TOKENS = 6400;
+const DEFAULT_FUND_REPORT_IMAGE_MIN = 5;
 const PUBLIC_DATA_TIMEOUT_MS = Number(process.env.PUBLIC_DATA_TIMEOUT_MS || 20000);
 const DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS = [
   "沪深300",
@@ -913,6 +914,7 @@ async function executePortfolioDecision(db, run, config) {
   await yieldToEventLoop();
   const profileCodes = decision.actions.map((action) => action.code).filter(Boolean);
   const actionProfiles = profileCodes.length ? await enrichFunds(profileCodes) : [];
+  decision.actions = enforcePortfolioBuyDiscipline(decision.actions, actionProfiles);
   const watchlistUpdates = applyPortfolioWatchlistUpdates(
     db,
     [
@@ -2375,6 +2377,71 @@ function inferPortfolioWatchStatusFromAction(action = {}) {
   if (/(等待|等回撤|等回调|回踩|回撤|回调)/.test(text)) return "waiting_pullback";
   if (/(可买|分批|低位|启动|回调完成|修复|轮动)/.test(text)) return "ready";
   return "watch";
+}
+
+function enforcePortfolioBuyDiscipline(actions = [], profiles = []) {
+  const profileByCode = new Map((profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
+  return normalizePortfolioActions(actions).map((action) => {
+    if (action.action !== "BUY") return action;
+    const guard = evaluatePortfolioBuyDiscipline(action, profileByCode.get(action.code));
+    if (guard.ok) return action;
+    return {
+      ...action,
+      action: "WATCH",
+      amount: 0,
+      targetWeightPct: 0,
+      reason: [action.reason, guard.reason].filter(Boolean).join(" "),
+      dataBasis: mergeStringLists(action.dataBasis, guard.evidence, ["来源：portfolio_buy_discipline_guard"]),
+      chaseRisk: [action.chaseRisk, guard.reason].filter(Boolean).join("；"),
+      riskControl: action.riskControl || "本轮不提交虚拟申购，下一次盘前复核低位/回调/拥挤度证据。"
+    };
+  });
+}
+
+function evaluatePortfolioBuyDiscipline(action = {}, profile = null) {
+  if (!action.code) {
+    return {
+      ok: false,
+      reason: "系统买入纪律拦截：缺少基金代码，不能提交虚拟申购。",
+      evidence: []
+    };
+  }
+  if (!profile) {
+    return {
+      ok: false,
+      reason: "系统买入纪律拦截：缺少联网补全资料，不能提交虚拟申购。",
+      evidence: []
+    };
+  }
+  const nav = getProfileNav(profile);
+  if (!nav) {
+    return {
+      ok: false,
+      reason: "系统买入纪律拦截：缺少可验证单位净值，不能提交虚拟申购。",
+      evidence: [profile.error || ""].filter(Boolean)
+    };
+  }
+  const trend = profile.trendProfile || {};
+  if (!trend.ok) {
+    return {
+      ok: false,
+      reason: "系统买入纪律拦截：缺少可验证走势、回调和低位证据，不能提交虚拟申购。",
+      evidence: [trend.note || profile.error || ""].filter(Boolean)
+    };
+  }
+  const trendEvidence = formatPortfolioSeedVerifiedTrendEvidence(profile);
+  if (hasPortfolioVerifiedSeedChaseRisk(action, profile)
+    || trend.entryBias === "wait_pullback"
+    || trend.entryBias === "avoid_now"
+    || profile.actionability?.action === "wait"
+    || profile.actionability?.action === "avoid") {
+    return {
+      ok: false,
+      reason: "系统买入纪律拦截：净值下钻显示偏热、等待回撤或追涨风险，不能提交虚拟申购。",
+      evidence: [trendEvidence]
+    };
+  }
+  return { ok: true, reason: "", evidence: [trendEvidence].filter(Boolean) };
 }
 
 function applyPortfolioWatchlistUpdates(db, updates = [], options = {}) {
@@ -4427,7 +4494,7 @@ async function buildFundReportCardImages(profiles, config) {
   if (String(process.env.FEISHU_REPORT_TREND_IMAGES ?? "true") === "false") {
     return [];
   }
-  const limit = Math.max(0, Number(process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT || 8) || 8);
+  const limit = getFundReportChartLimit();
   const chartMode = String(process.env.FEISHU_REPORT_CHART_MODE || "summary").toLowerCase();
   const snapshots = collectTrendSnapshotsFromProfiles(profiles).slice(0, limit);
   const images = [];
@@ -4461,6 +4528,15 @@ async function buildFundReportCardImages(profiles, config) {
   return images;
 }
 
+function getFundReportChartLimit() {
+  return Math.max(0, Number(process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT || 8) || 8);
+}
+
+function getFundReportChartMinCount() {
+  const configured = Number(process.env.FEISHU_REPORT_TREND_IMAGE_MIN || DEFAULT_FUND_REPORT_IMAGE_MIN);
+  return Math.min(getFundReportChartLimit(), Math.max(0, configured || DEFAULT_FUND_REPORT_IMAGE_MIN));
+}
+
 function collectTrendSnapshotsFromProfiles(profiles) {
   const byCode = new Map();
   const list = Array.isArray(profiles) ? profiles : [profiles].filter(Boolean);
@@ -4483,9 +4559,12 @@ function collectTrendSnapshotsFromProfiles(profiles) {
   return [...byCode.values()];
 }
 
-function selectFundReportProfilesForAnswer(profiles, answerText) {
+function selectFundReportProfilesForAnswer(profiles, answerText, options = {}) {
   const list = Array.isArray(profiles) ? profiles.filter(Boolean) : [profiles].filter(Boolean);
   if (!list.length) return [];
+  const limit = Math.max(0, Number(options.limit ?? getFundReportChartLimit()) || 0);
+  if (!limit) return [];
+  const minCount = Math.min(limit, Math.max(0, Number(options.minCount || 0) || 0));
 
   const text = String(answerText || "");
   const selectionSections = extractAnswerChartEvidenceSections(text);
@@ -4530,7 +4609,7 @@ function selectFundReportProfilesForAnswer(profiles, answerText) {
   }
 
   const seen = new Set();
-  return ranked
+  const selected = ranked
     .sort((a, b) => a.score - b.score)
     .filter((item) => {
       if (!item.key || seen.has(item.key)) return false;
@@ -4538,6 +4617,87 @@ function selectFundReportProfilesForAnswer(profiles, answerText) {
       return true;
     })
     .map((item) => item.profile);
+  if (selected.length < minCount) {
+    selected.push(...selectSupplementalFundReportProfiles(list, selected, minCount - selected.length));
+  }
+  return selected.slice(0, limit);
+}
+
+function selectSupplementalFundReportProfiles(profiles, selected, needed) {
+  if (needed <= 0) return [];
+  const selectedKeys = new Set((selected || []).map(getFundReportProfileKey).filter(Boolean));
+  return (profiles || [])
+    .filter((profile) => isSupplementalFundReportProfileEligible(profile))
+    .map((profile) => ({
+      profile,
+      key: getFundReportProfileKey(profile),
+      score: scoreSupplementalFundReportProfile(profile)
+    }))
+    .filter((item) => item.key && !selectedKeys.has(item.key))
+    .sort((a, b) => a.score - b.score)
+    .slice(0, needed)
+    .map((item) => withFundReportChartMeta(item.profile, {
+      role: inferSupplementalFundReportChartRole(item.profile)
+    }));
+}
+
+function isSupplementalFundReportProfileEligible(profile) {
+  if (!profile?.trendProfile?.series?.length) return false;
+  const trend = profile.trendProfile || {};
+  if (profile.ok === false || profile.actionability?.action === "avoid") return false;
+  if (trend.entryBias === "avoid_now" || trend.trendLabel === "extended_uptrend") return false;
+  if (hasPortfolioVerifiedSeedChaseRisk(profile, profile)) return false;
+  return true;
+}
+
+function scoreSupplementalFundReportProfile(profile) {
+  let score = 1000 - scoreResearchDigestForPullbackSetup(profile);
+  const trend = profile?.trendProfile || {};
+  const bucket = classifyPullbackSetupCandidateForSummary(profile);
+  if (bucket === "main_candidate") score -= 300;
+  if (["pullback_complete", "launch_setup"].includes(trend.pullbackSetup?.signal)) score -= 120;
+  if (["buyable_now", "staged_buy"].includes(trend.entryBias)) score -= 80;
+  if (trend.entryBias === "wait_pullback") score += 60;
+  if (String(profile?.reportChartRole || "").includes("备选")) score -= 20;
+  return score;
+}
+
+function inferSupplementalFundReportChartRole(profile) {
+  if (String(profile?.reportChartRole || "").includes("备选")) return "备选观察图";
+  if (classifyPullbackSetupCandidateForSummary(profile) === "main_candidate") return "买入参考图";
+  return "备选观察图";
+}
+
+function getFundReportProfileKey(profile) {
+  return profile?.code || profile?.seed?.code || profile?.name || profile?.seed?.name || "";
+}
+
+function appendFundReportChartReadingGuide(text, chartProfiles = []) {
+  const body = String(text || "").trim();
+  const snapshots = collectTrendSnapshotsFromProfiles(chartProfiles).slice(0, getFundReportChartLimit());
+  if (!body || !snapshots.length || /配图阅读/.test(body)) return body;
+  const lines = snapshots.map((item, index) => {
+    const profile = item.snapshot || {};
+    const role = profile.reportChartRole || inferSupplementalFundReportChartRole(profile);
+    return `${index + 1}. ${[item.code, item.name].filter(Boolean).join(" ")}（${role}）：${formatFundReportChartGuideEvidence(profile)}`;
+  });
+  return [body, "", "配图阅读：", ...lines].join("\n");
+}
+
+function formatFundReportChartGuideEvidence(profile = {}) {
+  const trend = profile.trendProfile || {};
+  const fees = profile.fees || {};
+  const fields = [
+    trend.pullbackSetup?.signalText || formatTrendLabel(trend.trendLabel),
+    formatEntryBias(trend.entryBias),
+    Number.isFinite(Number(trend.return5dPct)) ? `近5日${formatFallbackPct(trend.return5dPct)}` : "",
+    Number.isFinite(Number(trend.return10dPct)) ? `近10日${formatFallbackPct(trend.return10dPct)}` : "",
+    Number.isFinite(Number(trend.return20dPct)) ? `近20日${formatFallbackPct(trend.return20dPct)}` : "",
+    Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置${round(Number(trend.lowPositionPct120), 1)}%` : "",
+    fees.shareClassFeeModel?.label || profile.shareClassFeeModel?.label || ""
+  ].filter(Boolean);
+  const compact = fields.join("，");
+  return compact ? `图上看 ${compact.slice(0, 150)}。` : "图上看净值趋势、回撤位置、阶段收益和费用栏，作为买入或备选的证据。";
 }
 
 function withFundReportChartMeta(profile, meta = {}) {
@@ -5515,6 +5675,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "必须通过 fund-actionability-evaluation 和 fund-answer-quality 质量门槛：先给直接结论，再给适合/不适合的自评估，再给执行方案。",
     "如果数据不足以支持具体基金代码，就推荐基金方向/筛选条件，并把具体代码标为待复核。",
     "回答要大胆但有边界：证据偏正面时可以给出买入或分批买入候选；不要机械地总是等待回撤。",
+    "如果下钻候选足够，回答要服务 5 张左右报告配图：主买入参考 2-3 张、备选观察 2-4 张；每只都用代码说明图上看的走势、回撤、低位、费用或风险证据。",
     "回答要像专业经理在和客户沟通：用自然中文解释把握度，不要写“信心：高。”、“Confidence: high”这类字段式短句。",
     "不要把风险写成免责声明清单。只保留会改变买入/等待/回避动作的决策边界。",
     "输出适合飞书卡片阅读，不要 Markdown 表格，不要代码块。",
@@ -5541,10 +5702,10 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
     "2. 题材雷达：先列 1-3 个相关题材的中文阶段、前瞻评分、拥挤度、为什么现在值得/不值得看；不要输出 stage/forwardScore/crowdingScore 这些字段名。",
     "3. 自评估：这类需求是否适合现在做、把握度如何、适合激进/均衡/保守哪类。",
-    "4. 推荐清单：优先 3-5 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号、5日/10日早期转强、120日区间低位、趋势/自评估动作、为什么入选。只能使用快照或下钻中的候选代码；如果没有足够代码，就写“待复核方向”。",
+    "4. 推荐清单：优先 3-5 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号、5日/10日早期转强、120日区间低位、趋势/自评估动作、为什么入选，以及“配图看什么”。只能使用快照或下钻中的候选代码；如果没有足够代码，就写“待复核方向”。",
     "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
     "5. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
-    "6. 备选观察：如果有未到买点但值得等的候选，列 2-4 个备选，说明还差什么触发；偏热、追涨或回避对象单独写排除原因，不要混进备选。",
+    "6. 备选观察：如果有未到买点但值得等的候选，列 2-4 个备选，说明还差什么触发，以及对应配图看什么；偏热、追涨或回避对象单独写排除原因，不要混进备选。",
     "7. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的题材或价格条件。"
   ].join("\n");
 
@@ -5569,9 +5730,13 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     counters: { fundRecommendationModelCalls: 1 },
     last: { lastFundRecommendationAt: new Date().toISOString() }
   });
+  const chartProfiles = selectFundReportProfilesForAnswer(marketDeepDive?.candidates || [], text, {
+    minCount: getFundReportChartMinCount(),
+    limit: getFundReportChartLimit()
+  });
   return {
-    text,
-    chartProfiles: selectFundReportProfilesForAnswer(marketDeepDive?.candidates || [], text)
+    text: appendFundReportChartReadingGuide(text, chartProfiles),
+    chartProfiles
   };
 }
 
@@ -5591,6 +5756,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先判断 pullbackSetup.signal、5日/10日早期转强和120日区间低位；短期涨幅偏热、20日/60日大涨且等待回撤的候选不能被包装成启动机会。",
     "如果没有抓到对应行情数据，要说明是公开数据源暂时不可用或滞后，不要简单说自己没有实时数据能力。",
     "必须通过 fund-actionability-evaluation 和 fund-answer-quality 质量门槛：前两行直接回答；有快照/下钻就引用具体字段；给明确行动、适合对象和仓位建议。",
+    "当问题涉及买入、配置、推荐或备选时，如果下钻候选足够，回答要服务 5 张左右报告配图：主买入参考和备选观察都要写代码，并说明图上看的走势、低位、回撤、费用或风险证据。",
     "回答要像专业经理在和客户沟通：用自然中文解释把握度，不要写“信心：高。”、“Confidence: high”这类字段式短句。",
     "不要把风险写成免责声明清单。只保留会改变买入/等待/回避动作的决策边界。",
     "回答中文、简洁、可执行。不要保证收益，不要给出个性化承诺。",
@@ -5614,7 +5780,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "候选基金下钻摘要：",
     marketDeepDiveSummary,
     "",
-    "请直接回答用户问题。若用户问“值得买吗”，必须给中文动作“买入 / 分批买入 / 等待 / 回避”之一，并给新资金和已有持仓分别怎么做。如回答里给出具体基金候选，主买入和备选观察都要写代码、中文走势证据和触发条件；偏热回避对象不要和备选混写。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
+    "请直接回答用户问题。若用户问“值得买吗”，必须给中文动作“买入 / 分批买入 / 等待 / 回避”之一，并给新资金和已有持仓分别怎么做。如回答里给出具体基金候选，主买入和备选观察都要写代码、中文走势证据、触发条件和配图看点；偏热回避对象不要和备选混写。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
   ].join("\n");
 
   const draft = await callModel({
@@ -5638,9 +5804,15 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     counters: { fundQaModelCalls: 1 },
     last: { lastFundQaAt: new Date().toISOString() }
   });
+  const chartProfiles = selectFundReportProfilesForAnswer(marketDeepDive?.candidates || [], text, {
+    minCount: shouldRequireExpandedFundReportCharts({ workflow: "fund_qa", userText, evidence: { marketDeepDive } })
+      ? getFundReportChartMinCount()
+      : 0,
+    limit: getFundReportChartLimit()
+  });
   return {
-    text,
-    chartProfiles: selectFundReportProfilesForAnswer(marketDeepDive?.candidates || [], text)
+    text: appendFundReportChartReadingGuide(text, chartProfiles),
+    chartProfiles
   };
 }
 
@@ -5692,6 +5864,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "若质检问题包含 watch_candidate_given_buy_execution，观察/排除候选不能在1万元执行里获得任何买入金额；只能写0元观察或等待条件。",
       "若质检问题包含 missing_pullback_timing_evidence，主推荐每条必须写出5日/10日早期转强、120日区间低位或距高点回撤等数字证据；若包含 missing_pullback_three_tier_execution，必须给激进/均衡/保守三档金额。",
       "若质检问题包含 missing_pullback_share_class_fee，主推荐每条必须写份额类别和费用模型，例如 C类无前端申购费但有销售服务费，或 A类有申购费但长期持有持续费率较低。",
+      "若质检问题包含 insufficient_chart_linked_candidates，必须补足 5 张左右可配图候选：主买入参考和备选观察分开写，每只都写代码、买入/备选角色、图上看的走势/回撤/低位/费用证据。",
       "若证据没有 mainCandidateCodes，必须直接说明暂未筛到合格的回调完成/低位启动主推荐，不能硬凑基金代码。",
       "保持适合飞书卡片阅读，不要 Markdown 表格或代码块。",
       "",
@@ -5781,6 +5954,7 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   if (stiffConfidenceLabel) issues.push("stiff_confidence_label");
   if (rawEnglishActionLeak) issues.push("raw_english_action_leak");
   issues.push(...evaluatePullbackAnswerDiscipline({ text, userText, evidence }));
+  issues.push(...evaluateFundAnswerChartCoverage({ text, workflow, userText, evidence }));
   if (actionSeeking && !hasAction) issues.push("missing_direct_action");
   if (actionSeeking && !hasSizing) issues.push("missing_sizing_or_execution");
   if (evidenceAvailable && !hasEvidence) issues.push("missing_concrete_evidence");
@@ -5793,6 +5967,27 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   }
 
   return { ok: issues.length === 0, issues };
+}
+
+function evaluateFundAnswerChartCoverage({ text, workflow, userText, evidence }) {
+  if (!shouldRequireExpandedFundReportCharts({ workflow, userText, evidence })) return [];
+  const profiles = evidence?.marketDeepDive?.candidates || [];
+  const minCount = Math.min(getFundReportChartMinCount(), countEligibleFundReportProfiles(profiles));
+  if (minCount <= 0) return [];
+  const selected = selectFundReportProfilesForAnswer(profiles, text, { minCount: 0, limit: getFundReportChartLimit() });
+  const chartBackedCodes = new Set(selected.map((profile) => profile.code || profile.seed?.code || "").filter(Boolean));
+  return chartBackedCodes.size >= minCount ? [] : ["insufficient_chart_linked_candidates"];
+}
+
+function shouldRequireExpandedFundReportCharts({ workflow, userText, evidence }) {
+  const profiles = evidence?.marketDeepDive?.candidates || [];
+  if (!Array.isArray(profiles) || profiles.length < 2) return false;
+  if (workflow === "fund_recommendation") return true;
+  return workflow === "fund_qa" && (isActionSeekingFundQuestion(userText) || isPullbackSetupRequest(userText));
+}
+
+function countEligibleFundReportProfiles(profiles = []) {
+  return (profiles || []).filter((profile) => isSupplementalFundReportProfileEligible(profile)).length;
 }
 
 function evaluatePullbackAnswerDiscipline({ text, userText, evidence }) {
@@ -11757,6 +11952,7 @@ function timingSafeEqualString(a, b) {
 
 export {
   allowedSkillIdsForWorkflow,
+  appendFundReportChartReadingGuide,
   buildSkillContextForIntent,
   buildMarketDeepDiveSummary,
   buildPortfolioDecisionReadinessQueue,
@@ -11769,6 +11965,8 @@ export {
   computeTrendProfile,
   defaultSkillIdsForWorkflow,
   enforceFundAnswerQuality,
+  enforcePortfolioBuyDiscipline,
+  evaluatePortfolioBuyDiscipline,
   evaluateFundAnswerQuality,
   filterFocusedPullbackRankingCandidates,
   getFundAnalysisSkillIds,

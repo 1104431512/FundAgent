@@ -168,6 +168,14 @@ const requiredPatterns = [
     message: "fund report image defaults should show buy and backup candidates when available."
   },
   {
+    pattern: /DEFAULT_FUND_REPORT_IMAGE_MIN\s*=\s*5/,
+    message: "fund report image defaults should target a richer chart set than two or three images."
+  },
+  {
+    pattern: /FEISHU_REPORT_TREND_IMAGE_MIN/,
+    message: "fund report image count should be configurable without lowering the default rich chart set."
+  },
+  {
     pattern: /extractAnswerChartEvidenceSections/,
     message: "fund report images must select from both recommendation and qualified backup/watch sections."
   },
@@ -178,6 +186,18 @@ const requiredPatterns = [
   {
     pattern: /备选观察图/,
     message: "fund report images must label backup/watch charts so users understand why they are shown."
+  },
+  {
+    pattern: /insufficient_chart_linked_candidates/,
+    message: "fund answer quality gate must reject sparse answers that only support two or three charts when more qualified candidates exist."
+  },
+  {
+    pattern: /appendFundReportChartReadingGuide/,
+    message: "fund answers with attached report images must include a text guide that ties each chart to buy or backup reasoning."
+  },
+  {
+    pattern: /配图阅读/,
+    message: "fund answers must tell users how to read the attached buy/reference and backup charts."
   },
   {
     pattern: /normalizePortfolioWatchlist/,
@@ -254,6 +274,22 @@ const requiredPatterns = [
   {
     pattern: /guardPortfolioWatchlistReadyUpdate/,
     message: "portfolio watchlist write path must downgrade model-written ready candidates without NAV verification."
+  },
+  {
+    pattern: /enforcePortfolioBuyDiscipline/,
+    message: "portfolio BUY execution must be blocked before virtual orders when NAV/trend/chase discipline fails."
+  },
+  {
+    pattern: /evaluatePortfolioBuyDiscipline/,
+    message: "portfolio BUY execution discipline must remain directly testable."
+  },
+  {
+    pattern: /portfolio_buy_discipline_guard/,
+    message: "portfolio BUY guard must leave traceable evidence when it blocks model-written buys."
+  },
+  {
+    pattern: /系统买入纪律拦截/,
+    message: "portfolio BUY guard must explain blocked buys in user-readable Chinese."
   },
   {
     pattern: /系统净值验证降级/,

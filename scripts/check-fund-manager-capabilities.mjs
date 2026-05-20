@@ -395,6 +395,7 @@ const verifiedSeedProfile = {
   code: "000010",
   name: "中证A500ETF联接C",
   snapshotDate: "2026-05-19",
+  unitNav: 1.234,
   trendProfile: {
     ok: true,
     pullbackSetup: { signal: "pullback_complete", score: 78 },
@@ -426,6 +427,7 @@ const hotVerifiedSeedProfile = {
   ok: true,
   code: "000011",
   name: "热门强势主题基金A",
+  unitNav: 1.456,
   trendProfile: {
     ok: true,
     pullbackSetup: { signal: "none", score: 18 },
@@ -511,6 +513,25 @@ const reviewedDecision = manager.ensurePortfolioReadyWatchlistReviewed({ actions
   { code: "000010", name: "中证A500ETF联接C", status: "ready", priority: 1, reason: "低位回调" }
 ], { profiles: [verifiedSeedProfile] });
 assert(reviewedDecision.actions.some((item) => item.code === "000010"), "portfolio decision must not silently omit ready watchlist candidates");
+assert.equal(
+  manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, verifiedSeedProfile).ok,
+  true,
+  "portfolio buy discipline should allow verified low-position ready candidates"
+);
+const hotBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000011" }, hotVerifiedSeedProfile);
+assert.equal(hotBuyGuard.ok, false, "portfolio buy discipline must block verified chase-risk buys");
+assert(hotBuyGuard.reason.includes("系统买入纪律拦截"), "blocked portfolio buy must explain the execution-layer guard");
+const enforcedHotBuy = manager.enforcePortfolioBuyDiscipline([
+  { action: "BUY", code: "000011", name: "热门强势主题基金A", amount: 1000, reason: "模型想买" }
+], [hotVerifiedSeedProfile]);
+assert.equal(enforcedHotBuy[0].action, "WATCH", "execution guard must convert chase-risk BUY actions into WATCH");
+assert.equal(enforcedHotBuy[0].amount, 0, "execution guard must zero out blocked buy amounts");
+assert(enforcedHotBuy[0].dataBasis.includes("来源：portfolio_buy_discipline_guard"), "execution guard must leave a traceable data source");
+assert.equal(
+  manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000099" }, null).ok,
+  false,
+  "portfolio buy discipline must block buys without enriched trend profiles"
+);
 
 const setupDigest = {
   ok: true,
@@ -794,6 +815,40 @@ assert.equal(
   "备选观察图",
   "backup report images must be labeled as backup/watch evidence instead of buy-only charts"
 );
+const chartSeries = [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.01 }];
+const expandedChartUniverse = [
+  { ...setupDigest, code: "000001", name: "低位修复基金A", trendProfile: { ...setupDigest.trendProfile, series: chartSeries } },
+  { ...setupDigestSecond, code: "000002", name: "启动前夜基金C", trendProfile: { ...setupDigestSecond.trendProfile, series: chartSeries } },
+  { ...hotDigest, code: "000003", name: "追涨观察基金A", trendProfile: { ...hotDigest.trendProfile, series: chartSeries } },
+  { ...setupDigestSecond, code: "000004", name: "备选回踩基金C", reportChartRole: "备选观察图", trendProfile: { ...setupDigestSecond.trendProfile, series: chartSeries } },
+  { ...setupDigest, code: "000005", name: "轮动低位基金C", trendProfile: { ...setupDigest.trendProfile, series: chartSeries } },
+  { ...setupDigestSecond, code: "000006", name: "低位观察基金C", reportChartRole: "备选观察图", trendProfile: { ...setupDigestSecond.trendProfile, series: chartSeries } }
+];
+const expandedChartProfiles = manager.selectFundReportProfilesForAnswer(expandedChartUniverse, [
+  "推荐清单：",
+  "1. 000001 低位修复基金A：回调完成，可分批，配图看低位和费用。",
+  "备选观察：",
+  "000004 备选回踩基金C：等待触发，配图看回踩确认。"
+].join("\n"), { minCount: 5, limit: 8 });
+assert.equal(expandedChartProfiles.length, 5, "report image selector must expand sparse answers to about five chart-backed candidates");
+assert(expandedChartProfiles.some((profile) => profile.code === "000002"), "expanded report images should add qualified launch/setup candidates not only explicitly mentioned funds");
+assert(expandedChartProfiles.some((profile) => profile.code === "000006" && profile.reportChartRole === "备选观察图"), "expanded report images should include qualified backup charts");
+assert(!expandedChartProfiles.some((profile) => profile.code === "000003"), "expanded report images must not add hot chase-risk candidates as filler charts");
+const thinChartCoverageQuality = manager.evaluateFundAnswerQuality({
+  text: [
+    "直接结论：可以分批买入，先用1000元。",
+    "推荐清单：",
+    "1. 000001 低位修复基金A：近20日4.5%，C类费用适合短中期，配图看低位修复。"
+  ].join("\n"),
+  workflow: "fund_recommendation",
+  userText: "按最近题材推荐几个基金",
+  evidence: { marketDeepDive: { candidates: expandedChartUniverse } }
+});
+assert(thinChartCoverageQuality.issues.includes("insufficient_chart_linked_candidates"), "quality gate must reject answers that only support two or three report charts when more eligible candidates exist");
+const guidedChartAnswer = manager.appendFundReportChartReadingGuide("直接结论：优先分批，备选继续等触发。", expandedChartProfiles);
+assert(guidedChartAnswer.includes("配图阅读："), "final answer must append a chart reading guide when report images are attached");
+assert(guidedChartAnswer.includes("买入参考图"), "chart reading guide must distinguish buy-reference charts");
+assert(guidedChartAnswer.includes("备选观察图"), "chart reading guide must distinguish backup/watch charts");
 
 const deepDiveSummary = manager.buildMarketDeepDiveSummary({
   ok: true,
