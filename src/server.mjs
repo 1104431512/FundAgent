@@ -847,10 +847,13 @@ async function executePortfolioDecision(db, run, config) {
   const accountBefore = summarizePortfolioAccount(db.account);
   const marketSnapshot = await fetchMarketSnapshot();
   assertPortfolioRunActive(run);
-  markPortfolioRunProgress(db, run, "正在补全当前持仓基金资料。");
+  markPortfolioRunProgress(db, run, "正在补全当前持仓和自选基金池资料。");
   await yieldToEventLoop();
   const heldCodes = db.account.positions.map((position) => position.code).filter(Boolean);
   const heldProfiles = heldCodes.length ? await enrichFunds(heldCodes) : [];
+  const watchlist = getActivePortfolioWatchlist(db);
+  const watchlistCodes = mergeFundCodes(watchlist.map((item) => item.code));
+  const watchlistProfiles = watchlistCodes.length ? await enrichFunds(watchlistCodes) : [];
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, `资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度生成今日操作。`);
   await yieldToEventLoop();
@@ -858,6 +861,8 @@ async function executePortfolioDecision(db, run, config) {
     account: accountBefore,
     marketSnapshot,
     heldProfiles,
+    watchlist,
+    watchlistProfiles,
     config,
     profileContext
   });
@@ -869,6 +874,11 @@ async function executePortfolioDecision(db, run, config) {
   await yieldToEventLoop();
   const profileCodes = decision.actions.map((action) => action.code).filter(Boolean);
   const actionProfiles = profileCodes.length ? await enrichFunds(profileCodes) : [];
+  const watchlistUpdates = applyPortfolioWatchlistUpdates(
+    db,
+    [...decision.watchlistUpdates, ...buildPortfolioWatchlistUpdatesFromActions(decision.actions)],
+    { run, profiles: [...heldProfiles, ...watchlistProfiles, ...actionProfiles], source: "decision" }
+  );
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "正在校验交易规则并生成虚拟订单。");
   await yieldToEventLoop();
@@ -885,14 +895,16 @@ async function executePortfolioDecision(db, run, config) {
   run.accountAfter = summarizePortfolioAccount(db.account);
   run.team = decision.team;
   run.actions = decision.actions;
+  run.watchlistUpdates = watchlistUpdates;
   run.orders = execution.orders;
   run.transactions = transactions;
   run.executionNotes = [...lifecycleBefore.notes, ...execution.notes];
   run.settlementEvents = lifecycleBefore.settlementEvents;
-  run.sources = collectPortfolioSources(marketSnapshot, heldProfiles, actionProfiles, decision);
+  run.sources = collectPortfolioSources(marketSnapshot, heldProfiles, watchlistProfiles, actionProfiles, decision);
   run.rawModelOutput = decision.rawModelOutput;
   run.card = buildPortfolioDecisionCard({
     decision,
+    watchlistUpdates,
     account: db.account,
     orders: execution.orders,
     transactions,
@@ -1047,10 +1059,13 @@ async function executePortfolioPremarket(db, run, config) {
   const account = summarizePortfolioAccount(db.account);
   const marketSnapshot = await fetchMarketSnapshot();
   assertPortfolioRunActive(run);
-  markPortfolioRunProgress(db, run, "正在补全盘前持仓观察资料。");
+  markPortfolioRunProgress(db, run, "正在补全盘前持仓和自选基金池资料。");
   await yieldToEventLoop();
   const codes = db.account.positions.map((position) => position.code).filter(Boolean);
   const profiles = codes.length ? await enrichFunds(codes) : [];
+  const watchlist = getActivePortfolioWatchlist(db);
+  const watchlistCodes = mergeFundCodes(watchlist.map((item) => item.code));
+  const watchlistProfiles = watchlistCodes.length ? await enrichFunds(watchlistCodes) : [];
   const activeOrders = (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status));
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, `盘前资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度生成观察清单。`);
@@ -1059,6 +1074,8 @@ async function executePortfolioPremarket(db, run, config) {
     account,
     marketSnapshot,
     profiles,
+    watchlist,
+    watchlistProfiles,
     activeOrders,
     lifecycle,
     config,
@@ -1066,20 +1083,27 @@ async function executePortfolioPremarket(db, run, config) {
   });
   assertPortfolioRunActive(run);
   const observation = normalizePortfolioPremarket(raw);
+  const watchlistUpdates = applyPortfolioWatchlistUpdates(db, observation.watchlistUpdates, {
+    run,
+    profiles: [...profiles, ...watchlistProfiles],
+    source: "premarket"
+  });
   markPortfolioRunProgress(db, run, "盘前观察已生成，正在保存任务结果。");
 
   run.title = "盘前观察";
   run.summary = observation.summary;
   run.accountAfter = summarizePortfolioAccount(db.account);
   run.observation = observation;
+  run.watchlistUpdates = watchlistUpdates;
   run.orderUpdates = lifecycle.orderUpdates;
   run.transactions = lifecycle.transactions;
   run.settlementEvents = lifecycle.settlementEvents;
   run.executionNotes = lifecycle.notes;
-  run.sources = collectPortfolioSources(marketSnapshot, profiles, observation);
+  run.sources = collectPortfolioSources(marketSnapshot, profiles, watchlistProfiles, observation);
   run.rawModelOutput = observation.rawModelOutput;
   run.card = buildPortfolioPremarketCard({
     observation,
+    watchlistUpdates,
     account: db.account,
     activeOrders,
     lifecycle,
@@ -1102,12 +1126,13 @@ async function executePortfolioWeekly(db, run, config) {
   const lifecycle = await processPortfolioOrderLifecycle(db, run, config);
   assertPortfolioRunActive(run);
   const weeklyContext = buildPortfolioWeeklyContext(db, run.date);
-  markPortfolioRunProgress(db, run, "正在补全周总结所需持仓资料。");
+  markPortfolioRunProgress(db, run, "正在补全周总结所需持仓和自选基金池资料。");
   await yieldToEventLoop();
   const codes = mergeFundCodes(
     db.account.positions.map((position) => position.code),
     weeklyContext.transactions.map((item) => item.code),
-    weeklyContext.orders.map((item) => item.code)
+    weeklyContext.orders.map((item) => item.code),
+    getActivePortfolioWatchlist(db).map((item) => item.code)
   );
   const profiles = codes.length ? await enrichFunds(codes) : [];
   assertPortfolioRunActive(run);
@@ -1117,12 +1142,18 @@ async function executePortfolioWeekly(db, run, config) {
     account: summarizePortfolioAccount(db.account),
     weeklyContext,
     profiles,
+    watchlist: getActivePortfolioWatchlist(db),
     lifecycle,
     config,
     profileContext
   });
   assertPortfolioRunActive(run);
   const weekly = normalizePortfolioWeekly(raw);
+  const watchlistUpdates = applyPortfolioWatchlistUpdates(db, weekly.watchlistUpdates, {
+    run,
+    profiles,
+    source: "weekly"
+  });
   markPortfolioRunProgress(db, run, "周总结已生成，正在保存任务结果。");
 
   run.title = "周计划与总结";
@@ -1130,13 +1161,14 @@ async function executePortfolioWeekly(db, run, config) {
   run.accountAfter = summarizePortfolioAccount(db.account);
   run.weeklyContext = weeklyContext;
   run.weekly = weekly;
+  run.watchlistUpdates = watchlistUpdates;
   run.orderUpdates = lifecycle.orderUpdates;
   run.transactions = weeklyContext.transactions;
   run.settlementEvents = lifecycle.settlementEvents;
   run.executionNotes = lifecycle.notes;
   run.sources = collectPortfolioSources(profiles, weekly);
   run.rawModelOutput = weekly.rawModelOutput;
-  run.card = buildPortfolioWeeklyCard({ weekly, weeklyContext, account: db.account, run });
+  run.card = buildPortfolioWeeklyCard({ weekly, weeklyContext, watchlistUpdates, account: db.account, run });
 
   updateStats({
     counters: {
@@ -1147,7 +1179,7 @@ async function executePortfolioWeekly(db, run, config) {
   });
 }
 
-async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, config, profileContext }) {
+async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, watchlist = [], watchlistProfiles = [], config, profileContext }) {
   const skillContext = buildSkillContextForIntent(
     { workflow: "portfolio_status", skillIds: ["fund-portfolio-profile", "fund-portfolio-research", "fund-portfolio-decision", "fund-portfolio-execution"] },
     []
@@ -1156,7 +1188,9 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "你是飞书机器人“基金经理”的虚拟基金经理。你每天管理一个教育性虚拟组合，不进行真实交易。",
     "你的目标不是永远保守，而是在证据足够时敢于出击；但每次动作都必须写清数据来源、风险控制和复盘条件。",
     "你有一个投委会：市场分析师、题材分析师、基金研究员、组合经理、风控经理、主席。每个角色必须贡献可保存的观点。",
-    "只能基于传入的公开市场快照、基金候选池和当前持仓做判断；不要编造快照中不存在的基金代码、涨跌幅或排名。",
+    "只能基于传入的公开市场快照、基金候选池、当前持仓和自选基金池做判断；不要编造快照中不存在的基金代码、涨跌幅或排名。",
+    "你必须维护自己的自选基金池：暂时不买但值得盯的基金要写入 watchlistUpdates，已有候选要复核是否 ready、waiting_pullback、watch 或 blocked，不能只围绕已有持仓转。",
+    "自选基金池是未来随时准备购入的候选账本，每只候选都必须有备选理由、买入触发条件、风险备注和费用/份额说明。",
     "新闻只能作为催化证据，不能单独触发 BUY。每次买入前必须通过“轮动/低位/拥挤度”检查：优先低位轮动、回撤修复和早期确认，回避仅因新闻热度和短期涨幅追高。",
     "如果 themeRadar.positionSignal 是 high_chase_risk，或 crowdingScore 高但 lowPositionScore/rotationScore 不支持，只能 WATCH、HOLD 或小额试探，不能重仓追涨。",
     "同一基金不同份额类别不能混着推荐；必须比较 A/C/D/I 等份额的申购费、销售服务费、赎回费、起购门槛和渠道可得性，并说明费用拖累是否适合本次持有期。",
@@ -1179,6 +1213,12 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "当前持仓联网资料：",
     JSON.stringify(heldProfiles || [], null, 2),
+    "",
+    "当前自选基金池：",
+    JSON.stringify(summarizePortfolioWatchlistForModel(watchlist), null, 2),
+    "",
+    "自选基金池联网资料：",
+    JSON.stringify((watchlistProfiles || []).map(compactPortfolioReviewProfile), null, 2),
     "",
     "输出 JSON 结构：",
     JSON.stringify(
@@ -1209,6 +1249,26 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
             riskControl: "止损、复查或减仓触发条件"
           }
         ],
+        watchlistUpdates: [
+          {
+            operation: "UPSERT/REMOVE",
+            code: "6位基金代码",
+            name: "基金名称",
+            shareClass: "A/C/D/I/未知",
+            type: "基金类型或主题",
+            status: "ready/waiting_pullback/watch/blocked/in_position",
+            priority: 1,
+            candidateRole: "核心候选/卫星候选/观察/替代份额",
+            reason: "为什么放入或保留自选池，必须具体",
+            setupEvidence: ["低位、回调、轮动、走势、基本面证据"],
+            buyTriggers: ["什么条件出现就可以考虑买入或分批"],
+            riskNotes: ["不买或少买的风险边界"],
+            feeNotes: ["A/C 等份额费率、持有期、赎回费或销售服务费说明"],
+            positionPlan: "若触发买点，准备作为几成仓/核心或卫星",
+            reviewDate: "YYYY-MM-DD 或复查条件",
+            dataBasis: ["使用了哪些快照字段或资料"]
+          }
+        ],
         riskNotes: ["最多3条"],
         learningNotes: ["这次值得回溯学习的点"],
         sources: ["数据源 URL 或快照字段名"]
@@ -1222,7 +1282,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     systemText,
     userPrompt,
     images: [],
-    maxTokens: Math.min(Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS), 5200)
+    maxTokens: Math.max(Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS), 7600)
   });
   updateStats({
     counters: { portfolioManagerModelCalls: 1 },
@@ -1338,7 +1398,7 @@ function buildFallbackPortfolioValuationRaw({ accountBefore, accountAfter, posit
   });
 }
 
-async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profiles, activeOrders, lifecycle, config, profileContext }) {
+async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profiles, watchlist = [], watchlistProfiles = [], activeOrders, lifecycle, config, profileContext }) {
   const skillContext = buildSkillContextForIntent(
     { workflow: "portfolio_status", skillIds: ["fund-portfolio-profile", "fund-portfolio-premarket", "fund-portfolio-research", "fund-portfolio-execution"] },
     []
@@ -1346,7 +1406,8 @@ async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profi
   const systemText = [
     "你是飞书机器人“基金经理”的虚拟基金经理，正在做盘前观察。",
     "盘前观察只给观察清单和下午决策偏向，不生成 BUY/SELL 订单。",
-    "请基于传入的市场快照、持仓资料、订单生命周期和经理画像输出 JSON，不要编造资料之外的数据。",
+    "请基于传入的市场快照、持仓资料、自选基金池、订单生命周期和经理画像输出 JSON，不要编造资料之外的数据。",
+    "盘前必须复核自选基金池：哪些已经接近可买、哪些还要等回调、哪些因为追高/费用/数据不足应降级。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
     "",
     skillContext
@@ -1364,23 +1425,29 @@ async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profi
     "当前持仓资料：",
     JSON.stringify(profiles || [], null, 2),
     "",
+    "当前自选基金池：",
+    JSON.stringify(summarizePortfolioWatchlistForModel(watchlist), null, 2),
+    "",
+    "自选基金池联网资料：",
+    JSON.stringify((watchlistProfiles || []).map(compactPortfolioReviewProfile), null, 2),
+    "",
     "活动订单与生命周期更新：",
     JSON.stringify({ activeOrders, lifecycle }, null, 2),
     "",
     "输出 JSON 结构：",
-    '{"summary":"盘前一句话结论","marketTone":"aggressive/neutral/defensive/wait","positionFocus":["持仓观察点"],"riskAlerts":["风险提醒"],"todayPlan":["今天观察什么"],"afternoonDecisionBias":"下午决策偏向","sources":["数据源"]}'
+    '{"summary":"盘前一句话结论","marketTone":"aggressive/neutral/defensive/wait","positionFocus":["持仓观察点"],"riskAlerts":["风险提醒"],"todayPlan":["今天观察什么"],"afternoonDecisionBias":"下午决策偏向","watchlistUpdates":[{"operation":"UPSERT/REMOVE","code":"6位基金代码","name":"基金名称","shareClass":"A/C/D/I/未知","type":"基金类型或主题","status":"ready/waiting_pullback/watch/blocked/in_position","priority":1,"candidateRole":"核心候选/卫星候选/观察/替代份额","reason":"备选理由","setupEvidence":["低位/轮动/走势证据"],"buyTriggers":["买入触发条件"],"riskNotes":["风险边界"],"feeNotes":["份额和费用说明"],"positionPlan":"触发后仓位计划","reviewDate":"复查日期或条件","dataBasis":["数据字段"]}],"sources":["数据源"]}'
   ].join("\n");
 
   const text = await callModel({
     systemText,
     userPrompt,
     images: [],
-    maxTokens: Math.min(Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS), 2600)
+    maxTokens: Math.max(Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS), 5200)
   });
   return text;
 }
 
-async function buildPortfolioWeeklyWithModel({ account, weeklyContext, profiles, lifecycle, config, profileContext }) {
+async function buildPortfolioWeeklyWithModel({ account, weeklyContext, profiles, watchlist = [], lifecycle, config, profileContext }) {
   const skillContext = buildSkillContextForIntent(
     { workflow: "portfolio_status", skillIds: ["fund-portfolio-profile", "fund-portfolio-weekly", "fund-portfolio-review", "fund-portfolio-execution"] },
     []
@@ -1388,7 +1455,8 @@ async function buildPortfolioWeeklyWithModel({ account, weeklyContext, profiles,
   const systemText = [
     "你是飞书机器人“基金经理”的虚拟基金经理，正在做周计划与总结。",
     "周总结只复盘和规划，不生成 BUY/SELL 订单；下周具体交易由每日决策任务决定。",
-    "请基于传入的账本、持仓资料和经理画像输出 JSON，不要编造资料之外的数据。",
+    "请基于传入的账本、持仓资料、自选基金池和经理画像输出 JSON，不要编造资料之外的数据。",
+    "周计划必须维护下周自选基金池：保留、升级、降级或移除候选，并写清备选理由、触发条件、风险和费用。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
     "",
     skillContext
@@ -1406,18 +1474,21 @@ async function buildPortfolioWeeklyWithModel({ account, weeklyContext, profiles,
     "持仓联网资料：",
     JSON.stringify(profiles || [], null, 2),
     "",
+    "当前自选基金池：",
+    JSON.stringify(summarizePortfolioWatchlistForModel(watchlist), null, 2),
+    "",
     "订单生命周期更新：",
     JSON.stringify(lifecycle, null, 2),
     "",
     "输出 JSON 结构：",
-    '{"summary":"本周一句话总结","pnlAttribution":["盈亏归因"],"operationReview":["操作复盘"],"disciplineReview":["纪律执行情况"],"mistakes":["错误或不足"],"nextWeekPlan":["下周计划"],"watchlist":["观察清单"],"riskNotes":["风险提醒"],"sources":["数据源"]}'
+    '{"summary":"本周一句话总结","pnlAttribution":["盈亏归因"],"operationReview":["操作复盘"],"disciplineReview":["纪律执行情况"],"mistakes":["错误或不足"],"nextWeekPlan":["下周计划"],"watchlist":["简短观察清单"],"watchlistUpdates":[{"operation":"UPSERT/REMOVE","code":"6位基金代码","name":"基金名称","shareClass":"A/C/D/I/未知","type":"基金类型或主题","status":"ready/waiting_pullback/watch/blocked/in_position","priority":1,"candidateRole":"核心候选/卫星候选/观察/替代份额","reason":"备选理由","setupEvidence":["低位/轮动/走势证据"],"buyTriggers":["买入触发条件"],"riskNotes":["风险边界"],"feeNotes":["份额和费用说明"],"positionPlan":"触发后仓位计划","reviewDate":"复查日期或条件","dataBasis":["数据字段"]}],"riskNotes":["风险提醒"],"sources":["数据源"]}'
   ].join("\n");
 
   const text = await callModel({
     systemText,
     userPrompt,
     images: [],
-    maxTokens: Math.min(Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS), 3600)
+    maxTokens: Math.max(Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS), 6200)
   });
   return text;
 }
@@ -1435,6 +1506,7 @@ function normalizePortfolioDecision(raw) {
     marketView: String(parsed.marketView || "").trim(),
     team: normalizePortfolioTeam(parsed.team),
     actions: normalizePortfolioActions(parsed.actions),
+    watchlistUpdates: normalizePortfolioWatchlistUpdates(parsed.watchlistUpdates),
     riskNotes: normalizeStringArray(parsed.riskNotes).slice(0, 5),
     learningNotes: normalizeStringArray(parsed.learningNotes).slice(0, 5),
     sources: normalizeStringArray(parsed.sources).slice(0, 20),
@@ -1473,6 +1545,7 @@ function normalizePortfolioPremarket(raw) {
     riskAlerts: normalizeStringArray(parsed.riskAlerts).slice(0, 8),
     todayPlan: normalizeStringArray(parsed.todayPlan).slice(0, 8),
     afternoonDecisionBias: String(parsed.afternoonDecisionBias || "").trim(),
+    watchlistUpdates: normalizePortfolioWatchlistUpdates(parsed.watchlistUpdates),
     sources: normalizeStringArray(parsed.sources).slice(0, 20),
     rawModelOutput: String(raw || "").slice(0, 12000)
   };
@@ -1493,6 +1566,7 @@ function normalizePortfolioWeekly(raw) {
     mistakes: normalizeStringArray(parsed.mistakes).slice(0, 8),
     nextWeekPlan: normalizeStringArray(parsed.nextWeekPlan).slice(0, 8),
     watchlist: normalizeStringArray(parsed.watchlist).slice(0, 8),
+    watchlistUpdates: normalizePortfolioWatchlistUpdates(parsed.watchlistUpdates),
     riskNotes: normalizeStringArray(parsed.riskNotes).slice(0, 8),
     sources: normalizeStringArray(parsed.sources).slice(0, 20),
     rawModelOutput: String(raw || "").slice(0, 12000)
@@ -1538,6 +1612,312 @@ function normalizePortfolioActions(value) {
     })
     .filter((item) => item.action === "HOLD" || item.action === "WATCH" || item.code)
     .slice(0, 10);
+}
+
+function getActivePortfolioWatchlist(db) {
+  db.watchlist = normalizePortfolioWatchlist(db.watchlist);
+  return db.watchlist.filter((item) => item.status !== "removed").slice(0, 60);
+}
+
+function normalizePortfolioWatchlist(value) {
+  const input = Array.isArray(value) ? value : [];
+  const byCode = new Map();
+  for (const item of input) {
+    const normalized = normalizePortfolioWatchItem(item);
+    if (!normalized) continue;
+    const existing = byCode.get(normalized.code);
+    if (!existing || Date.parse(normalized.updatedAt || "") >= Date.parse(existing.updatedAt || "")) {
+      byCode.set(normalized.code, normalized);
+    }
+  }
+  return [...byCode.values()].sort((a, b) => {
+    if (a.status === "removed" && b.status !== "removed") return 1;
+    if (a.status !== "removed" && b.status === "removed") return -1;
+    return Number(a.priority || 3) - Number(b.priority || 3)
+      || String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+  });
+}
+
+function normalizePortfolioWatchItem(item = {}, defaults = {}) {
+  const now = defaults.now || new Date().toISOString();
+  const code = String(item?.code || defaults.code || "").match(/^\d{6}$/)?.[0] || "";
+  if (!code) return null;
+  const status = normalizePortfolioWatchStatus(item.status || defaults.status || "watch");
+  return {
+    code,
+    name: String(item.name || defaults.name || "").trim(),
+    shareClass: String(item.shareClass || defaults.shareClass || "").trim().toUpperCase(),
+    type: String(item.type || defaults.type || "").trim(),
+    status,
+    priority: normalizePortfolioWatchPriority(item.priority ?? defaults.priority ?? 3),
+    candidateRole: String(item.candidateRole || defaults.candidateRole || "").trim(),
+    reason: String(item.reason || defaults.reason || "").trim().slice(0, 1200),
+    setupEvidence: normalizeStringArray(item.setupEvidence || defaults.setupEvidence).slice(0, 8),
+    buyTriggers: normalizeStringArray(item.buyTriggers || defaults.buyTriggers).slice(0, 8),
+    riskNotes: normalizeStringArray(item.riskNotes || defaults.riskNotes).slice(0, 8),
+    feeNotes: normalizeStringArray(item.feeNotes || defaults.feeNotes).slice(0, 8),
+    positionPlan: String(item.positionPlan || defaults.positionPlan || "").trim().slice(0, 600),
+    reviewDate: String(item.reviewDate || defaults.reviewDate || "").trim().slice(0, 80),
+    dataBasis: normalizeStringArray(item.dataBasis || defaults.dataBasis).slice(0, 8),
+    source: String(item.source || defaults.source || "").trim().slice(0, 120),
+    sourceRunId: String(item.sourceRunId || defaults.sourceRunId || "").trim().slice(0, 80),
+    lastSnapshot: item.lastSnapshot || defaults.lastSnapshot || null,
+    addedAt: String(item.addedAt || defaults.addedAt || now),
+    updatedAt: String(item.updatedAt || defaults.updatedAt || now)
+  };
+}
+
+function normalizePortfolioWatchStatus(value) {
+  const raw = String(value || "watch").trim().toLowerCase();
+  const aliases = {
+    buy: "ready",
+    buyable: "ready",
+    ready_to_buy: "ready",
+    staged_buy: "ready",
+    wait: "waiting_pullback",
+    waiting: "waiting_pullback",
+    wait_pullback: "waiting_pullback",
+    hold_observe: "watch",
+    avoid: "blocked",
+    avoid_now: "blocked",
+    reject: "blocked",
+    remove: "removed",
+    deleted: "removed",
+    bought: "in_position",
+    holding: "in_position"
+  };
+  const status = aliases[raw] || raw;
+  return ["ready", "waiting_pullback", "watch", "blocked", "in_position", "removed"].includes(status)
+    ? status
+    : "watch";
+}
+
+function normalizePortfolioWatchPriority(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 3;
+  return Math.max(1, Math.min(5, Math.round(numeric)));
+}
+
+function normalizePortfolioWatchlistUpdates(value) {
+  const input = Array.isArray(value) ? value : [];
+  return input
+    .map((item) => {
+      const code = String(item?.code || "").match(/^\d{6}$/)?.[0] || "";
+      if (!code) return null;
+      return {
+        operation: normalizePortfolioWatchOperation(item.operation || item.updateAction || item.action || "UPSERT"),
+        code,
+        name: String(item.name || "").trim(),
+        shareClass: String(item.shareClass || "").trim().toUpperCase(),
+        type: String(item.type || "").trim(),
+        status: item.status ? normalizePortfolioWatchStatus(item.status) : "",
+        priority: item.priority === undefined || item.priority === null || item.priority === ""
+          ? null
+          : normalizePortfolioWatchPriority(item.priority),
+        candidateRole: String(item.candidateRole || "").trim(),
+        reason: String(item.reason || "").trim(),
+        setupEvidence: normalizeStringArray(item.setupEvidence).slice(0, 8),
+        buyTriggers: normalizeStringArray(item.buyTriggers).slice(0, 8),
+        riskNotes: normalizeStringArray(item.riskNotes).slice(0, 8),
+        feeNotes: normalizeStringArray(item.feeNotes).slice(0, 8),
+        positionPlan: String(item.positionPlan || "").trim(),
+        reviewDate: String(item.reviewDate || "").trim(),
+        dataBasis: normalizeStringArray(item.dataBasis).slice(0, 8),
+        source: String(item.source || "").trim()
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+function normalizePortfolioWatchOperation(value) {
+  const text = String(value || "UPSERT").trim().toUpperCase();
+  if (["REMOVE", "DELETE", "DROP"].includes(text)) return "REMOVE";
+  return "UPSERT";
+}
+
+function buildPortfolioWatchlistUpdatesFromActions(actions = []) {
+  return (actions || [])
+    .filter((action) => action?.code && ["BUY", "WATCH", "HOLD", "SELL"].includes(action.action))
+    .map((action) => {
+      const status = inferPortfolioWatchStatusFromAction(action);
+      return {
+        operation: "UPSERT",
+        code: action.code,
+        name: action.name || "",
+        status,
+        priority: status === "ready" ? 1 : status === "waiting_pullback" ? 2 : status === "blocked" ? 5 : 3,
+        candidateRole: action.action === "BUY"
+          ? "已触发买入候选"
+          : action.action === "WATCH"
+            ? "自选观察候选"
+            : action.action === "SELL"
+              ? "卖出后复查候选"
+              : "持仓复查候选",
+        reason: action.reason || "",
+        setupEvidence: [action.rotationCheck, action.positionCheck].filter(Boolean),
+        buyTriggers: action.action === "WATCH" ? [action.riskControl].filter(Boolean) : [],
+        riskNotes: [action.chaseRisk, action.riskControl].filter(Boolean),
+        feeNotes: [action.feeCheck].filter(Boolean),
+        positionPlan: action.targetWeightPct
+          ? `触发后目标仓位约 ${action.targetWeightPct}%。`
+          : action.amount
+            ? `触发后先观察 ${action.amount} 元级别试探。`
+            : "",
+        dataBasis: action.dataBasis || [],
+        source: "portfolio_action"
+      };
+    });
+}
+
+function inferPortfolioWatchStatusFromAction(action = {}) {
+  if (action.action === "BUY") return "in_position";
+  const text = [
+    action.reason,
+    action.rotationCheck,
+    action.positionCheck,
+    action.chaseRisk,
+    action.riskControl
+  ].filter(Boolean).join(" ");
+  if (/(回避|不买|过热|偏热|追涨|拥挤|风险高|不符合)/.test(text)) return "blocked";
+  if (/(等待|等回撤|等回调|回踩|回撤|回调)/.test(text)) return "waiting_pullback";
+  if (/(可买|分批|低位|启动|回调完成|修复|轮动)/.test(text)) return "ready";
+  return "watch";
+}
+
+function applyPortfolioWatchlistUpdates(db, updates = [], options = {}) {
+  db.watchlist = normalizePortfolioWatchlist(db.watchlist);
+  const normalizedUpdates = normalizePortfolioWatchlistUpdates(updates);
+  if (!normalizedUpdates.length) return [];
+  const now = new Date().toISOString();
+  const profileByCode = new Map((options.profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
+  const byCode = new Map(db.watchlist.map((item) => [item.code, item]));
+  const applied = [];
+
+  for (const update of normalizedUpdates) {
+    const profile = profileByCode.get(update.code);
+    const existing = byCode.get(update.code);
+    const snapshot = profile ? buildPortfolioFundSnapshot(profile) : update.lastSnapshot || existing?.lastSnapshot || null;
+    const defaults = {
+      now,
+      addedAt: existing?.addedAt || now,
+      updatedAt: now,
+      name: update.name || existing?.name || profile?.name || "",
+      shareClass: update.shareClass || existing?.shareClass || profile?.fees?.shareClass || profile?.shareClass || inferFundShareClass(profile?.name || update.name || existing?.name || ""),
+      type: update.type || existing?.type || profile?.type || "",
+      source: update.source || options.source || existing?.source || "",
+      sourceRunId: options.run?.id || existing?.sourceRunId || "",
+      lastSnapshot: snapshot
+    };
+
+    if (update.operation === "REMOVE") {
+      const removed = normalizePortfolioWatchItem({
+        ...(existing || update),
+        status: "removed",
+        reason: update.reason || existing?.reason || "模型建议移出自选基金池。",
+        updatedAt: now
+      }, defaults);
+      if (removed) {
+        byCode.set(removed.code, removed);
+        applied.push(removed);
+      }
+      continue;
+    }
+
+    const merged = normalizePortfolioWatchItem({
+      ...(existing || {}),
+      ...update,
+      status: update.status || existing?.status || "watch",
+      priority: update.priority || existing?.priority || 3,
+      reason: update.reason || existing?.reason || "",
+      setupEvidence: mergeStringLists(update.setupEvidence, existing?.setupEvidence),
+      buyTriggers: mergeStringLists(update.buyTriggers, existing?.buyTriggers),
+      riskNotes: mergeStringLists(update.riskNotes, existing?.riskNotes),
+      feeNotes: mergeStringLists(update.feeNotes, existing?.feeNotes),
+      dataBasis: mergeStringLists(update.dataBasis, existing?.dataBasis),
+      updatedAt: now
+    }, defaults);
+    if (!merged) continue;
+    byCode.set(merged.code, merged);
+    applied.push(merged);
+  }
+
+  db.watchlist = normalizePortfolioWatchlist([...byCode.values()]);
+  if (applied.length) {
+    db.updatedAt = now;
+  }
+  return applied.map(summarizePortfolioWatchItem);
+}
+
+function mergeStringLists(...groups) {
+  const values = [];
+  for (const item of groups.flat()) {
+    const text = String(item || "").trim();
+    if (text && !values.includes(text)) values.push(text);
+  }
+  return values;
+}
+
+function summarizePortfolioWatchlistForModel(watchlist = []) {
+  return normalizePortfolioWatchlist(watchlist)
+    .filter((item) => item.status !== "removed")
+    .slice(0, 30)
+    .map((item) => ({
+      code: item.code,
+      name: item.name,
+      shareClass: item.shareClass,
+      type: item.type,
+      status: item.status,
+      priority: item.priority,
+      candidateRole: item.candidateRole,
+      reason: item.reason,
+      setupEvidence: item.setupEvidence,
+      buyTriggers: item.buyTriggers,
+      riskNotes: item.riskNotes,
+      feeNotes: item.feeNotes,
+      positionPlan: item.positionPlan,
+      reviewDate: item.reviewDate,
+      trendSummary: item.lastSnapshot?.trendSummary || "",
+      updatedAt: item.updatedAt
+    }));
+}
+
+function summarizePortfolioWatchItem(item = {}) {
+  return {
+    code: item.code,
+    name: item.name,
+    shareClass: item.shareClass || "",
+    type: item.type || "",
+    status: item.status || "watch",
+    statusText: formatPortfolioWatchStatus(item.status),
+    priority: item.priority || 3,
+    candidateRole: item.candidateRole || "",
+    reason: item.reason || "",
+    setupEvidence: item.setupEvidence || [],
+    buyTriggers: item.buyTriggers || [],
+    riskNotes: item.riskNotes || [],
+    feeNotes: item.feeNotes || [],
+    positionPlan: item.positionPlan || "",
+    reviewDate: item.reviewDate || "",
+    dataBasis: item.dataBasis || [],
+    source: item.source || "",
+    sourceRunId: item.sourceRunId || "",
+    lastSnapshot: item.lastSnapshot || null,
+    addedAt: item.addedAt || "",
+    updatedAt: item.updatedAt || ""
+  };
+}
+
+function formatPortfolioWatchStatus(value) {
+  const labels = {
+    ready: "接近可买",
+    waiting_pullback: "等待回调",
+    watch: "继续观察",
+    blocked: "暂不买入",
+    in_position: "已进入持仓",
+    removed: "已移出"
+  };
+  return labels[value] || labels.watch;
 }
 
 async function submitPortfolioOrders(db, actions, profiles, run, config = getEffectiveConfig()) {
@@ -2374,7 +2754,7 @@ function capturePortfolioPushTarget(payload) {
   writePortfolioDb(db);
 }
 
-function buildPortfolioDecisionCard({ decision, account, orders = [], transactions, executionNotes = [], settlementEvents = [], run }) {
+function buildPortfolioDecisionCard({ decision, watchlistUpdates = [], account, orders = [], transactions, executionNotes = [], settlementEvents = [], run }) {
   const actionLines = decision.actions.length
     ? decision.actions.map((action) => {
         const name = [action.code, action.name].filter(Boolean).join(" ");
@@ -2407,6 +2787,9 @@ function buildPortfolioDecisionCard({ decision, account, orders = [], transactio
   const noteLines = executionNotes.length
     ? executionNotes.map((item) => `${item.action || "SKIP"} ${item.code || ""} ${item.name || ""}：${item.reason}`)
     : [];
+  const watchlistLines = watchlistUpdates.length
+    ? watchlistUpdates.slice(0, 8).map(formatPortfolioWatchLine)
+    : ["本次没有更新自选基金池。"];
 
   return [
     `虚拟基金经理日报 ${run.date}`,
@@ -2431,6 +2814,9 @@ function buildPortfolioDecisionCard({ decision, account, orders = [], transactio
     noteLines.length ? "" : "",
     noteLines.length ? "未执行说明：" : "",
     ...noteLines,
+    "",
+    "自选基金池：",
+    ...watchlistLines,
     "",
     `当前资产：${account.totalAsset}元，可用现金 ${account.cash}元，待确认申购 ${account.pendingBuyAmount || 0}元，应收赎回 ${account.receivableCash || 0}元，仓位 ${account.positionWeightPct}%`,
     decision.riskNotes.length ? ["", "风险控制：", ...decision.riskNotes].join("\n") : "",
@@ -2482,10 +2868,13 @@ function buildPortfolioValuationCard({ review, account, positionUpdates, lifecyc
     .join("\n");
 }
 
-function buildPortfolioPremarketCard({ observation, account, activeOrders = [], lifecycle = {}, run }) {
+function buildPortfolioPremarketCard({ observation, watchlistUpdates = [], account, activeOrders = [], lifecycle = {}, run }) {
   const orderLines = activeOrders.length
     ? activeOrders.slice(0, 8).map((order) => `${order.side} ${order.code} ${order.name}：${order.status}，估值日 ${order.priceDate}，确认日 ${order.confirmDate}`)
     : ["暂无未完成订单。"];
+  const watchlistLines = watchlistUpdates.length
+    ? watchlistUpdates.slice(0, 8).map(formatPortfolioWatchLine)
+    : ["盘前未更新自选基金池。"];
 
   return [
     `虚拟基金经理盘前观察 ${run.date}`,
@@ -2503,6 +2892,9 @@ function buildPortfolioPremarketCard({ observation, account, activeOrders = [], 
     observation.riskAlerts.length ? "风险提醒：" : "",
     ...observation.riskAlerts,
     "",
+    "自选基金池：",
+    ...watchlistLines,
+    "",
     "订单状态：",
     ...orderLines,
     lifecycle.orderUpdates?.length ? "" : "",
@@ -2517,7 +2909,10 @@ function buildPortfolioPremarketCard({ observation, account, activeOrders = [], 
     .join("\n");
 }
 
-function buildPortfolioWeeklyCard({ weekly, weeklyContext, account, run }) {
+function buildPortfolioWeeklyCard({ weekly, weeklyContext, watchlistUpdates = [], account, run }) {
+  const watchlistLines = watchlistUpdates.length
+    ? watchlistUpdates.slice(0, 10).map(formatPortfolioWatchLine)
+    : weekly.watchlist;
   return [
     `虚拟基金经理周计划与总结 ${weeklyContext.startDate} 至 ${weeklyContext.endDate}`,
     "",
@@ -2537,9 +2932,9 @@ function buildPortfolioWeeklyCard({ weekly, weeklyContext, account, run }) {
     "",
     "下周计划：",
     ...(weekly.nextWeekPlan.length ? weekly.nextWeekPlan : ["等待下周盘前观察和每日决策任务更新。"]),
-    weekly.watchlist.length ? "" : "",
-    weekly.watchlist.length ? "观察清单：" : "",
-    ...weekly.watchlist,
+    watchlistLines.length ? "" : "",
+    watchlistLines.length ? "自选基金池：" : "",
+    ...watchlistLines,
     weekly.riskNotes.length ? "" : "",
     weekly.riskNotes.length ? "风险提醒：" : "",
     ...weekly.riskNotes,
@@ -2551,6 +2946,16 @@ function buildPortfolioWeeklyCard({ weekly, weeklyContext, account, run }) {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function formatPortfolioWatchLine(item = {}) {
+  const head = `${item.code || ""} ${item.name || ""}`.trim();
+  const status = item.statusText || formatPortfolioWatchStatus(item.status);
+  const reason = item.reason ? `：${item.reason}` : "";
+  const trigger = item.buyTriggers?.length ? `；触发=${item.buyTriggers.slice(0, 2).join(" / ")}` : "";
+  const risk = item.riskNotes?.length ? `；风险=${item.riskNotes.slice(0, 2).join(" / ")}` : "";
+  const fee = item.feeNotes?.length ? `；费用=${item.feeNotes.slice(0, 1).join(" / ")}` : "";
+  return `${head}（${status}，优先级${item.priority || 3}）${reason}${trigger}${risk}${fee}`;
 }
 
 function buildPortfolioManagerProfileContext(config, db = null) {
@@ -2583,9 +2988,13 @@ function summarizePortfolioManagerBehavior(db) {
   const sells = transactions.filter((item) => item.side === "SELL");
   const recentRuns = (db.runs || []).slice(-20);
   const recentOrders = (db.orders || []).slice(-30);
+  const watchlist = getActivePortfolioWatchlist(db);
   return {
     currentPositionWeightPct: account.positionWeightPct,
     currentCash: account.cash,
+    watchlistCount: watchlist.length,
+    readyWatchlistCount: watchlist.filter((item) => item.status === "ready").length,
+    waitingWatchlistCount: watchlist.filter((item) => item.status === "waiting_pullback").length,
     recentTradeCount: transactions.length,
     recentBuyCount: buys.length,
     recentSellCount: sells.length,
@@ -2642,9 +3051,10 @@ function buildPortfolioStatusAnswer(userText, intent) {
   const positions = account.positions || [];
   const wantsOperation = isPortfolioOperationQuestion(userText);
   const wantsPosition = isPortfolioPositionQuestion(userText);
+  const wantsWatchlist = isPortfolioWatchlistQuestion(userText);
   const wantsSchedule = isPortfolioScheduleQuestion(userText);
   const wantsProfile = isPortfolioProfileQuestion(userText);
-  const wantsOnlyProfileOrSchedule = (wantsSchedule || wantsProfile) && !wantsOperation && !wantsPosition;
+  const wantsOnlyProfileOrSchedule = (wantsSchedule || wantsProfile) && !wantsOperation && !wantsPosition && !wantsWatchlist;
 
   const lines = ["虚拟基金经理账本"];
   lines.push("");
@@ -2664,6 +3074,7 @@ function buildPortfolioStatusAnswer(userText, intent) {
     lines.push(`当前配置风格：${config.portfolioRiskProfile || "balanced"}。`);
     lines.push(
       `账本行为画像：当前仓位 ${behavior.currentPositionWeightPct}%，可用现金 ${behavior.currentCash}元；` +
+        `自选基金 ${behavior.watchlistCount} 只，其中接近可买 ${behavior.readyWatchlistCount} 只、等待回调 ${behavior.waitingWatchlistCount} 只；` +
         `最近 ${behavior.recentTradeCount} 笔确认交易，买入 ${behavior.recentBuyCount} 笔、卖出 ${behavior.recentSellCount} 笔；` +
         `平均买入 ${behavior.averageBuyAmount}元，平均卖出 ${behavior.averageSellAmount}元，未完成订单 ${behavior.activeOrderCount} 张。`
     );
@@ -2681,7 +3092,7 @@ function buildPortfolioStatusAnswer(userText, intent) {
     lines.push(`累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（${formatSignedNumber(account.cumulativePnlPct)}%）`);
   }
 
-  if (wantsPosition || (!wantsOperation && !wantsOnlyProfileOrSchedule)) {
+  if (wantsPosition || (!wantsOperation && !wantsOnlyProfileOrSchedule && !wantsWatchlist)) {
     lines.push("");
     lines.push("当前持仓：");
     if (positions.length) {
@@ -2709,6 +3120,23 @@ function buildPortfolioStatusAnswer(userText, intent) {
       }
     } else {
       lines.push("暂无基金持仓，当前为 100% 现金。");
+    }
+  }
+
+  if (wantsWatchlist || (!wantsOperation && !wantsOnlyProfileOrSchedule)) {
+    const watchlist = getActivePortfolioWatchlist(db);
+    lines.push("");
+    lines.push("自选基金池：");
+    if (watchlist.length) {
+      for (const item of watchlist.slice(0, 10)) {
+        lines.push(formatPortfolioWatchLine(summarizePortfolioWatchItem(item)));
+        if (item.setupEvidence?.length) lines.push(`备选证据：${item.setupEvidence.slice(0, 3).join("；")}`);
+        if (item.positionPlan) lines.push(`仓位计划：${item.positionPlan}`);
+        const snapshot = item.lastSnapshot || {};
+        if (snapshot.trendSummary) lines.push(`最新走势：${snapshot.trendSummary}`);
+      }
+    } else {
+      lines.push("暂无自选基金。下一次盘前观察、今日操作或周总结会开始沉淀候选池。");
     }
   }
 
@@ -2813,6 +3241,7 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
     })),
     account: summarizePortfolioAccount(db.account),
     positions: db.account.positions.map(summarizePortfolioPosition),
+    watchlist: getActivePortfolioWatchlist(db).slice(0, lightweight ? 12 : 50).map(summarizePortfolioWatchItem),
     activeOrders: (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status)).map(summarizePortfolioOrder),
     recentRuns: (db.runs || []).slice(-recentRunLimit).reverse().map(lightweight ? summarizePortfolioRunBrief : summarizePortfolioRun),
     recentOrders: (db.orders || []).slice(-recentItemLimit).reverse().map(summarizePortfolioOrder),
@@ -2931,6 +3360,7 @@ function resetPortfolioAccount(initialCapital, options = {}) {
     db.transactions = [];
     db.settlements = [];
     db.dailyEquity = [];
+    db.watchlist = [];
     db.scheduler = {};
   } else {
     db.orders = [];
@@ -3062,8 +3492,12 @@ function compactPortfolioDbForStorage(db) {
   }
   const maxRuns = Math.max(20, Number(process.env.PORTFOLIO_DB_MAX_RUNS || 120));
   const maxList = Math.max(50, Number(process.env.PORTFOLIO_DB_MAX_LIST_ITEMS || 300));
+  const maxWatchlist = Math.max(20, Number(process.env.PORTFOLIO_DB_MAX_WATCHLIST_ITEMS || 100));
   if (Array.isArray(db.runs) && db.runs.length > maxRuns) {
     db.runs = db.runs.slice(-maxRuns);
+  }
+  if (Array.isArray(db.watchlist)) {
+    db.watchlist = normalizePortfolioWatchlist(db.watchlist).slice(0, maxWatchlist);
   }
   for (const key of ["orders", "transactions", "settlements", "dailyEquity"]) {
     if (Array.isArray(db[key]) && db[key].length > maxList) {
@@ -3095,6 +3529,7 @@ function normalizePortfolioDb(value) {
     updatedAt: now,
     account: createPortfolioAccount(config),
     pushTargets: [],
+    watchlist: [],
     runs: [],
     orders: [],
     transactions: [],
@@ -3104,6 +3539,7 @@ function normalizePortfolioDb(value) {
     ...value
   };
   db.pushTargets = Array.isArray(db.pushTargets) ? db.pushTargets : [];
+  db.watchlist = normalizePortfolioWatchlist(db.watchlist || db.selfSelectedFunds || db.candidatePool || []);
   db.runs = Array.isArray(db.runs) ? db.runs : [];
   db.orders = Array.isArray(db.orders) ? db.orders : [];
   db.transactions = Array.isArray(db.transactions) ? db.transactions : [];
@@ -9712,7 +10148,7 @@ async function classifyTextIntentWithModel({ userText, messageType }) {
     "不要因为机器人名称叫基金经理，就把自我介绍、寒暄、能力询问、普通聊天强行归类到基金工作流。",
     "可选 workflow：",
     "- conversation：自我介绍、能做什么、寒暄、帮助、普通非基金对话。",
-    "- portfolio_status：用户询问机器人/虚拟基金经理自己的仓位、持仓、今日操作、买卖、现金、盈亏、账户或虚拟组合。",
+    "- portfolio_status：用户询问机器人/虚拟基金经理自己的仓位、持仓、自选基金池、候选池、今日操作、买卖、现金、盈亏、账户或虚拟组合。",
     "- fund_recommendation：用户让你推荐几个基金、按最近题材/市场/热点找基金、给配置清单。",
     "- fund_screening：用户提供具体基金名称/代码、问某只基金能买吗/要不要卖/评分/对比。",
     "- fund_qa：基金知识、市场题材解释、投资方法问题，但没有要求给候选基金清单。",
@@ -9873,6 +10309,21 @@ function looksLikePortfolioStatusQuestion(text) {
     "你现在的仓位",
     "你现在仓位",
     "你的持仓",
+    "你的自选",
+    "你的自选基金",
+    "你的候选池",
+    "你的观察池",
+    "自选基金池",
+    "自选基金",
+    "候选基金池",
+    "候选池",
+    "观察池",
+    "观察名单",
+    "备选基金",
+    "备选理由",
+    "待买基金",
+    "准备购入",
+    "买入候选",
     "你现在持仓",
     "当前仓位",
     "现在仓位",
@@ -9920,6 +10371,12 @@ function looksLikePortfolioStatusQuestion(text) {
   const asksAccountState = hasAny(normalized, [
     "仓位",
     "持仓",
+    "自选",
+    "候选池",
+    "观察池",
+    "备选",
+    "待买",
+    "准备购入",
     "总资产",
     "现金",
     "盈亏",
@@ -9959,6 +10416,11 @@ function isPortfolioOperationQuestion(text) {
 function isPortfolioPositionQuestion(text) {
   const normalized = normalizeIntentText(text);
   return hasAny(normalized, ["仓位", "持仓", "总资产", "现金", "盈亏", "收益", "亏损", "账户", "组合", "本金"]);
+}
+
+function isPortfolioWatchlistQuestion(text) {
+  const normalized = normalizeIntentText(text);
+  return hasAny(normalized, ["自选", "自选基金", "候选池", "观察池", "观察名单", "备选", "备选基金", "备选理由", "待买", "准备购入", "买入候选"]);
 }
 
 function isPortfolioScheduleQuestion(text) {
@@ -10444,9 +10906,13 @@ export {
   isPullbackSetupRequest,
   mergeCandidateFunds,
   normalizeUserFacingFundAnswer,
+  normalizePortfolioDb,
+  normalizePortfolioWatchlist,
+  normalizePortfolioWatchlistUpdates,
   renderFundReportSummaryPng,
   selectFundReportProfilesForAnswer,
   selectWeeklyReversalRankCandidates,
+  summarizePortfolioWatchItem,
   scorePullbackSetupSeedCandidate,
   scoreResearchDigestForPullbackSetup
 };

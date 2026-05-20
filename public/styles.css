@@ -380,7 +380,8 @@ button:disabled {
 }
 
 .table-list,
-.run-list {
+.run-list,
+.watchlist-list {
   display: grid;
   gap: 10px;
 }
@@ -398,6 +399,15 @@ button:disabled {
   color: var(--muted);
   font-size: 13px;
   margin-top: 5px;
+}
+
+.watchlist-row {
+  grid-template-columns: minmax(0, 1.45fr) 0.45fr minmax(0, 0.85fr) minmax(0, 0.85fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+.watchlist-row strong {
+  display: block;
 }
 
 .data-row small {

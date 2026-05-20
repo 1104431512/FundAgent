@@ -174,6 +174,41 @@ await assertIntent({
   requiredSkills: []
 });
 
+await assertIntent({
+  userText: "基金经理你的自选基金池有哪些，备选理由是什么",
+  expectedWorkflow: "portfolio_status",
+  expectedReason: "hard_rule_virtual_manager_account_query",
+  requiredSkills: []
+});
+
+const normalizedWatchDb = manager.normalizePortfolioDb({
+  watchlist: [
+    {
+      code: "000001",
+      name: "低位修复基金C",
+      status: "ready_to_buy",
+      priority: 1,
+      reason: "回调完成后低位修复，适合等待触发后分批。",
+      setupEvidence: ["120日位置偏低", "5日/10日刚转强"],
+      buyTriggers: ["放量站回20日均线"],
+      riskNotes: ["若近20日涨幅超过10%则暂停追入"],
+      feeNotes: ["C类更适合短中期观察，A类适合更长持有"]
+    }
+  ]
+});
+assert.equal(normalizedWatchDb.watchlist.length, 1, "portfolio db must persist manager self-selected funds");
+assert.equal(normalizedWatchDb.watchlist[0].status, "ready", "watchlist status aliases must normalize to ready");
+const watchSummary = manager.summarizePortfolioWatchItem(normalizedWatchDb.watchlist[0]);
+assert(watchSummary.reason.includes("回调完成"), "watchlist candidates must keep detailed backup reasons");
+assert(watchSummary.buyTriggers.length > 0, "watchlist candidates must keep buy triggers");
+assert(watchSummary.riskNotes.length > 0, "watchlist candidates must keep risk notes");
+assert(watchSummary.feeNotes.length > 0, "watchlist candidates must keep fee/share-class notes");
+assert.equal(
+  manager.normalizePortfolioWatchlistUpdates([{ operation: "REMOVE", code: "000001", reason: "主题过热" }])[0].operation,
+  "REMOVE",
+  "watchlist updates must support removing stale candidates"
+);
+
 const moneyMarketSkillContext = manager.buildSkillContextForIntent({
   workflow: "fund_screening",
   userText: "天弘余额宝货币能买吗",

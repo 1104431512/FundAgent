@@ -196,6 +196,7 @@ async function loadPortfolio() {
   setText("#portfolioRetention", `${portfolio.retentionDays || 90} 天`);
   renderOrders(portfolio.activeOrders || []);
   renderPositions(portfolio.positions || []);
+  renderWatchlist(portfolio.watchlist || []);
   renderRuns(portfolio.recentRuns || []);
   renderTransactions(portfolio.recentTransactions || []);
   renderEquity(portfolio.recentEquity || []);
@@ -228,6 +229,13 @@ function formatPortfolioOutput(portfolio) {
   if (portfolio.scheduler?.dbFlushError) {
     lines.push("");
     lines.push(`数据保存异常：${portfolio.scheduler.dbFlushError}`);
+  }
+  const watchlist = portfolio.watchlist || [];
+  if (watchlist.length) {
+    const ready = watchlist.filter((item) => item.status === "ready").length;
+    const waiting = watchlist.filter((item) => item.status === "waiting_pullback").length;
+    lines.push("");
+    lines.push(`自选基金池：${watchlist.length} 只，接近可买 ${ready} 只，等待回调 ${waiting} 只。`);
   }
   return lines.join("\n");
 }
@@ -331,6 +339,65 @@ function renderPositions(positions) {
       `;
       }
     )
+    .join("");
+}
+
+function renderWatchlist(items) {
+  const list = document.querySelector("#watchlistList");
+  const count = document.querySelector("#watchlistCount");
+  count.textContent = `${items.length}`;
+  if (!items.length) {
+    list.innerHTML = `<div class="empty">暂无自选基金。盘前观察、今日操作或周总结会把值得等待的候选沉淀到这里。</div>`;
+    return;
+  }
+  list.innerHTML = items
+    .map((item) => {
+      const snapshot = item.lastSnapshot || {};
+      const trend = getFundSnapshotTrendText(snapshot);
+      const trendChart = renderTrendChart(snapshot);
+      const evidence = renderWatchlistTags(item.setupEvidence);
+      const triggers = renderWatchlistTags(item.buyTriggers);
+      const risks = renderWatchlistTags(item.riskNotes);
+      const fees = renderWatchlistTags(item.feeNotes);
+      const statusClass = getWatchlistStatusClass(item.status);
+      return `
+        <div class="data-row watchlist-row">
+          <div>
+            <strong>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</strong>
+            <p>${escapeHtml(item.reason || "暂无备选理由")}</p>
+            ${trend && trend !== "走势数据不足" ? `<p>${escapeHtml(trend)}</p>` : ""}
+            ${trendChart}
+            <small>${escapeHtml([item.type, item.shareClass ? `${item.shareClass}类` : "", item.candidateRole].filter(Boolean).join(" · "))}</small>
+          </div>
+          <div>
+            <strong class="${statusClass}">${escapeHtml(item.statusText || formatWatchlistStatus(item.status))}</strong>
+            <small>优先级 ${escapeHtml(item.priority || 3)}</small>
+            <small>${escapeHtml(item.reviewDate || "待复查")}</small>
+          </div>
+          <div>
+            <strong>备选证据</strong>
+            ${evidence || `<small>暂无</small>`}
+          </div>
+          <div>
+            <strong>买入触发</strong>
+            ${triggers || `<small>暂无</small>`}
+          </div>
+          <div>
+            <strong>风险/费用</strong>
+            ${risks || `<small>暂无风险备注</small>`}
+            ${fees || `<small>暂无费用备注</small>`}
+            ${item.positionPlan ? `<small>${escapeHtml(item.positionPlan)}</small>` : ""}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderWatchlistTags(values = []) {
+  return (values || [])
+    .slice(0, 4)
+    .map((value) => `<small>${escapeHtml(value)}</small>`)
     .join("");
 }
 
@@ -630,6 +697,7 @@ function renderPortfolioResult(result) {
     setText("#portfolioSchedule", formatPortfolioSchedule(portfolio));
     renderOrders(portfolio.activeOrders || []);
     renderPositions(portfolio.positions || []);
+    renderWatchlist(portfolio.watchlist || []);
     renderRuns(portfolio.recentRuns || []);
     renderTransactions(portfolio.recentTransactions || []);
     renderEquity(portfolio.recentEquity || []);
@@ -755,6 +823,24 @@ function formatNumber(value, digits = 2) {
     minimumFractionDigits: 0,
     maximumFractionDigits: digits
   });
+}
+
+function formatWatchlistStatus(value) {
+  const labels = {
+    ready: "接近可买",
+    waiting_pullback: "等待回调",
+    watch: "继续观察",
+    blocked: "暂不买入",
+    in_position: "已进入持仓",
+    removed: "已移出"
+  };
+  return labels[value] || labels.watch;
+}
+
+function getWatchlistStatusClass(value) {
+  if (value === "ready" || value === "in_position") return "ok-text";
+  if (value === "waiting_pullback" || value === "watch") return "warn-text";
+  return "bad-text";
 }
 
 function escapeHtml(value) {

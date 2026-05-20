@@ -3,6 +3,9 @@ import path from "node:path";
 
 const root = process.cwd();
 const server = fs.readFileSync(path.join(root, "src", "server.mjs"), "utf8");
+const admin = fs.readFileSync(path.join(root, "public", "admin.js"), "utf8");
+const adminHtml = fs.readFileSync(path.join(root, "public", "admin.html"), "utf8");
+const allSource = [server, admin, adminHtml].join("\n");
 
 const forbiddenPatterns = [
   {
@@ -107,6 +110,22 @@ const requiredPatterns = [
   {
     pattern: /FEISHU_REPORT_TREND_IMAGE_LIMIT\s*\|\|\s*5/,
     message: "fund report image defaults should show more than three recommended funds when available."
+  },
+  {
+    pattern: /normalizePortfolioWatchlist/,
+    message: "virtual fund manager must persist a self-selected fund watchlist instead of only ad hoc weekly text."
+  },
+  {
+    pattern: /watchlistUpdates/,
+    message: "portfolio decision/premarket/weekly model outputs must be able to update the self-selected fund pool."
+  },
+  {
+    pattern: /renderWatchlist/,
+    message: "admin portfolio page must render the manager's self-selected fund pool."
+  },
+  {
+    pattern: /自选基金池/,
+    message: "manager-facing and admin-facing portfolio UI must expose the self-selected fund pool in Chinese."
   },
   {
     pattern: /buildSkillFocusDirective/,
@@ -219,7 +238,7 @@ const failures = [
   .filter((item) => item.pattern.test(server))
   .map((item) => item.message),
   ...requiredPatterns
-    .filter((item) => !item.pattern.test(server))
+    .filter((item) => !item.pattern.test(allSource))
     .map((item) => item.message)
 ];
 
