@@ -176,6 +176,22 @@ const requiredPatterns = [
     message: "admin portfolio page must render the manager's self-selected fund pool."
   },
   {
+    pattern: /groupWatchlistItems/,
+    message: "admin portfolio watchlist must group candidates by readiness status for fast scanning."
+  },
+  {
+    pattern: /renderWatchlistEvidenceBlock/,
+    message: "admin portfolio watchlist must expose evidence blocks, not only fund names."
+  },
+  {
+    pattern: /formatWatchlistSnapshotEvidence/,
+    message: "admin portfolio watchlist must show NAV/trend snapshot evidence for candidates."
+  },
+  {
+    pattern: /watchlist-evidence-grid/,
+    message: "admin portfolio watchlist must keep detailed backup evidence readable in the UI."
+  },
+  {
     pattern: /自选基金池/,
     message: "manager-facing and admin-facing portfolio UI must expose the self-selected fund pool in Chinese."
   },

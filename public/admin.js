@@ -11,6 +11,16 @@ let currentSkills = [];
 let portfolioPollTimer = null;
 let portfolioPollFailures = 0;
 
+const WATCHLIST_STATUS_ORDER = ["ready", "waiting_pullback", "watch", "blocked", "in_position", "removed"];
+const WATCHLIST_STATUS_LABELS = {
+  ready: "接近可买",
+  waiting_pullback: "等待回调",
+  watch: "观察",
+  blocked: "暂不买",
+  in_position: "已持仓",
+  removed: "已移出"
+};
+
 const tokenFromUrl = new URLSearchParams(location.search).get("token");
 if (tokenFromUrl) {
   localStorage.setItem("fundagent_admin_token", tokenFromUrl);
@@ -350,48 +360,109 @@ function renderWatchlist(items) {
     list.innerHTML = `<div class="empty">暂无自选基金。盘前观察、今日操作或周总结会把值得等待的候选沉淀到这里。</div>`;
     return;
   }
-  list.innerHTML = items
-    .map((item) => {
-      const snapshot = item.lastSnapshot || {};
-      const trend = getFundSnapshotTrendText(snapshot);
-      const trendChart = renderTrendChart(snapshot);
-      const evidence = renderWatchlistTags(item.setupEvidence);
-      const triggers = renderWatchlistTags(item.buyTriggers);
-      const risks = renderWatchlistTags(item.riskNotes);
-      const fees = renderWatchlistTags(item.feeNotes);
-      const statusClass = getWatchlistStatusClass(item.status);
-      return `
-        <div class="data-row watchlist-row">
-          <div>
-            <strong>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</strong>
-            <p>${escapeHtml(item.reason || "暂无备选理由")}</p>
-            ${trend && trend !== "走势数据不足" ? `<p>${escapeHtml(trend)}</p>` : ""}
-            ${trendChart}
-            <small>${escapeHtml([item.type, item.shareClass ? `${item.shareClass}类` : "", item.candidateRole].filter(Boolean).join(" · "))}</small>
-          </div>
-          <div>
-            <strong class="${statusClass}">${escapeHtml(item.statusText || formatWatchlistStatus(item.status))}</strong>
-            <small>优先级 ${escapeHtml(item.priority || 3)}</small>
-            <small>${escapeHtml(item.reviewDate || "待复查")}</small>
-          </div>
-          <div>
-            <strong>备选证据</strong>
-            ${evidence || `<small>暂无</small>`}
-          </div>
-          <div>
-            <strong>买入触发</strong>
-            ${triggers || `<small>暂无</small>`}
-          </div>
-          <div>
-            <strong>风险/费用</strong>
-            ${risks || `<small>暂无风险备注</small>`}
-            ${fees || `<small>暂无费用备注</small>`}
-            ${item.positionPlan ? `<small>${escapeHtml(item.positionPlan)}</small>` : ""}
-          </div>
-        </div>
-      `;
-    })
-    .join("");
+  const groups = groupWatchlistItems(items);
+  list.innerHTML = [
+    renderWatchlistSummary(items),
+    ...WATCHLIST_STATUS_ORDER
+      .filter((status) => groups.get(status)?.length)
+      .map((status) => renderWatchlistGroup(status, groups.get(status)))
+  ].join("");
+}
+
+function groupWatchlistItems(items) {
+  const groups = new Map(WATCHLIST_STATUS_ORDER.map((status) => [status, []]));
+  for (const item of items || []) {
+    const status = WATCHLIST_STATUS_ORDER.includes(item.status) ? item.status : "watch";
+    groups.get(status).push(item);
+  }
+  for (const group of groups.values()) {
+    group.sort((a, b) => Number(a.priority || 3) - Number(b.priority || 3)
+      || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+  }
+  return groups;
+}
+
+function renderWatchlistSummary(items) {
+  const counts = WATCHLIST_STATUS_ORDER
+    .map((status) => ({
+      status,
+      count: (items || []).filter((item) => (WATCHLIST_STATUS_ORDER.includes(item.status) ? item.status : "watch") === status).length
+    }))
+    .filter((item) => item.count);
+  if (!counts.length) return "";
+  return `
+    <div class="watchlist-summary">
+      ${counts.map((item) => `<span class="watchlist-pill ${getWatchlistStatusClass(item.status)}">${escapeHtml(WATCHLIST_STATUS_LABELS[item.status] || item.status)} ${item.count}</span>`).join("")}
+    </div>
+  `;
+}
+
+function renderWatchlistGroup(status, items = []) {
+  return `
+    <section class="watchlist-group" data-watchlist-status="${escapeHtml(status)}">
+      <div class="watchlist-group-head">
+        <strong>${escapeHtml(WATCHLIST_STATUS_LABELS[status] || formatWatchlistStatus(status))}</strong>
+        <span>${items.length} 只</span>
+      </div>
+      ${items.map(renderWatchlistItem).join("")}
+    </section>
+  `;
+}
+
+function renderWatchlistItem(item) {
+  const snapshot = item.lastSnapshot || {};
+  const trend = getFundSnapshotTrendText(snapshot);
+  const trendChart = renderTrendChart(snapshot);
+  const statusClass = getWatchlistStatusClass(item.status);
+  const snapshotEvidence = formatWatchlistSnapshotEvidence(snapshot);
+  const source = item.source || snapshot.sources?.[0] || "";
+  return `
+    <div class="data-row watchlist-row">
+      <div>
+        <strong>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</strong>
+        <p>${escapeHtml(item.reason || "暂无备选理由")}</p>
+        ${trend && trend !== "走势数据不足" ? `<p>${escapeHtml(trend)}</p>` : ""}
+        ${trendChart}
+        <small>${escapeHtml([item.type, item.shareClass ? `${item.shareClass}类` : "", item.candidateRole].filter(Boolean).join(" · "))}</small>
+      </div>
+      <div>
+        <strong class="${statusClass}">${escapeHtml(item.statusText || formatWatchlistStatus(item.status))}</strong>
+        <small>优先级 ${escapeHtml(item.priority || 3)}</small>
+        <small>${escapeHtml(item.reviewDate || "待复查")}</small>
+        ${item.updatedAt ? `<small>更新 ${escapeHtml(formatDateTime(item.updatedAt))}</small>` : ""}
+      </div>
+      <div class="watchlist-evidence-grid">
+        ${renderWatchlistEvidenceBlock("备选证据", item.setupEvidence)}
+        ${renderWatchlistEvidenceBlock("买入触发", item.buyTriggers)}
+        ${renderWatchlistEvidenceBlock("风险边界", item.riskNotes)}
+        ${renderWatchlistEvidenceBlock("费用/份额", item.feeNotes)}
+        ${renderWatchlistEvidenceBlock("净值快照", snapshotEvidence)}
+        ${renderWatchlistEvidenceBlock("数据依据", [...(item.dataBasis || []), source].filter(Boolean))}
+        ${item.positionPlan ? renderWatchlistEvidenceBlock("仓位计划", [item.positionPlan]) : ""}
+      </div>
+    </div>
+  `;
+}
+
+function renderWatchlistEvidenceBlock(title, values = []) {
+  return `
+    <div class="watchlist-evidence-block">
+      <strong>${escapeHtml(title)}</strong>
+      ${renderWatchlistTags(values) || `<small>暂无</small>`}
+    </div>
+  `;
+}
+
+function formatWatchlistSnapshotEvidence(snapshot = {}) {
+  const trend = snapshot.trendProfile || {};
+  return [
+    snapshot.nav ? `净值 ${formatNumber(snapshot.nav, 4)}${snapshot.navDate ? `（${snapshot.navDate}）` : ""}` : "",
+    snapshot.navBasis && snapshot.navBasis !== "missing" ? `净值依据 ${snapshot.navBasis}` : "",
+    Number.isFinite(Number(trend.return20dPct)) ? `20日 ${formatSigned(trend.return20dPct)}%` : "",
+    Number.isFinite(Number(trend.return60dPct)) ? `60日 ${formatSigned(trend.return60dPct)}%` : "",
+    Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置 ${formatNumber(trend.lowPositionPct120, 1)}%` : "",
+    Number.isFinite(Number(trend.drawdownFromRecentHighPct)) ? `距高点 ${formatSigned(trend.drawdownFromRecentHighPct)}%` : ""
+  ].filter(Boolean);
 }
 
 function renderWatchlistTags(values = []) {
