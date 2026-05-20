@@ -4326,6 +4326,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "禁止机械写“信心：高。”、“把握度：高。”、“Confidence: high”。要改成自然句，例如“我对这条判断把握度较高，主要因为证据比较一致。”",
       "禁止输出 Verdict、Confidence、Score、buy、staged、wait、avoid、hold、switch 等英文动作/栏目词；全部改成结论、把握度、评分、买入、分批买入、等待、回避、持有、换基。",
       "若质检问题包含 watch_candidate_promoted_to_recommendation、recommendation_not_from_pullback_main_candidates 或 recommends_without_qualified_pullback_candidate，必须按证据里的 mainCandidateCodes 重写主推荐；watchOrRejectCodes 只能写进观察/排除原因。",
+      "若质检问题包含 watch_candidate_given_buy_execution，观察/排除候选不能在1万元执行里获得任何买入金额；只能写0元观察或等待条件。",
       "若质检问题包含 missing_pullback_timing_evidence，主推荐每条必须写出5日/10日早期转强、120日区间低位或距高点回撤等数字证据；若包含 missing_pullback_three_tier_execution，必须给激进/均衡/保守三档金额。",
       "若质检问题包含 missing_pullback_share_class_fee，主推荐每条必须写份额类别和费用模型，例如 C类无前端申购费但有销售服务费，或 A类有申购费但长期持有持续费率较低。",
       "若证据没有 mainCandidateCodes，必须直接说明暂未筛到合格的回调完成/低位启动主推荐，不能硬凑基金代码。",
@@ -4459,6 +4460,9 @@ function evaluatePullbackAnswerDiscipline({ text, userText, evidence }) {
     if (promotedWatchCodes.length) {
       issues.push("watch_candidate_promoted_to_recommendation");
     }
+    if ([...watchCodes].some((code) => hasPositiveBuyExecutionForFundCode(body, code))) {
+      issues.push("watch_candidate_given_buy_execution");
+    }
     if (recommendedCodes.length && !mainRecommended.length) {
       issues.push("recommendation_not_from_pullback_main_candidates");
     }
@@ -4497,6 +4501,7 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
   if (!isPullbackSetupRequest(userText)) return "";
   const severeIssues = new Set([
     "watch_candidate_promoted_to_recommendation",
+    "watch_candidate_given_buy_execution",
     "recommendation_not_from_pullback_main_candidates",
     "missing_pullback_main_candidate_code",
     "missing_no_qualified_pullback_message",
@@ -4632,6 +4637,32 @@ function extractFundRecommendationContext(text, code) {
   const index = body.indexOf(fundCode);
   if (index < 0) return "";
   return body.slice(Math.max(0, index - 80), index + 180);
+}
+
+function hasPositiveBuyExecutionForFundCode(text, code) {
+  const fundCode = String(code || "");
+  if (!fundCode) return false;
+  const lines = String(text || "").split(/\r?\n/);
+  return lines.some((line, index) => {
+    if (!line.includes(fundCode)) return false;
+    const contextLines = [line, lines[index + 1] || ""];
+    return contextLines.some((contextLine, offset) => {
+      const clauses = String(contextLine || "").split(/[，,。；;\n]/);
+      return clauses.some((clause) => {
+        const hasTargetCode = clause.includes(fundCode);
+        const isContinuation = offset > 0 && !/\b\d{6}\b/.test(clause);
+        if (!hasTargetCode && !isContinuation) return false;
+        return hasPositiveBuyExecutionText(clause);
+      });
+    });
+  });
+}
+
+function hasPositiveBuyExecutionText(text) {
+  const body = String(text || "");
+  if (!/(买入|买|加仓|配置|投入|建仓|申购)/.test(body)) return false;
+  if (/(不买|不建议买|暂停买|停止买|别买|不要买|回避买|(?:^|[^\d.])0(?:\.0+)?\s*(?:元|%|成)|零元)/.test(body)) return false;
+  return /(?:(?:[1-9]\d*(?:\.\d+)?|0\.[1-9]\d*)\s*(?:元|万|%|成)|[一二三四五六七八九十]+成|半仓|底仓)/.test(body);
 }
 
 function hasShareClassFeeEvidenceAvailable(candidate = {}) {

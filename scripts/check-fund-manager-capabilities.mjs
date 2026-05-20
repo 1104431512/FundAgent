@@ -381,6 +381,31 @@ assert(
   "quality gate must reject watch/reject candidates promoted into the recommendation list"
 );
 
+const watchExecutionQuality = manager.evaluateFundAnswerQuality({
+  text: [
+    "推荐清单：",
+    "1. 000001 低位修复基金A：C类，近5日+1.4%、近10日+2.8%，120日位置38.5%，可以分批。",
+    "观察/排除：000003 追涨观察基金A：短期偏热，只观察。",
+    "1万元执行：激进给000001买1500元，均衡给000001买800元，保守0元；000003买入500元做试探。"
+  ].join("\n"),
+  workflow: "fund_recommendation",
+  userText: setupQuery,
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      candidates: [
+        { ...setupDigest, code: "000001", name: "低位修复基金A" },
+        { ...hotDigest, code: "000003", name: "追涨观察基金A" }
+      ]
+    }
+  }
+});
+assert(
+  watchExecutionQuality.issues.includes("watch_candidate_given_buy_execution"),
+  "quality gate must reject buy amounts assigned to watch/reject candidates outside the recommendation list"
+);
+
 const thinPullbackQuality = manager.evaluateFundAnswerQuality({
   text: [
     "推荐清单：",

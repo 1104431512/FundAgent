@@ -93,6 +93,10 @@ const requiredPatterns = [
     message: "pullback/setup recommendations must include share-class and fee evidence per candidate."
   },
   {
+    pattern: /watch_candidate_given_buy_execution/,
+    message: "watch/reject pullback candidates must not receive buy amounts in execution plans."
+  },
+  {
     pattern: /resolveFundMentionsFromText/,
     message: "text-only fund screening must resolve fund names into codes before enrichment."
   },
