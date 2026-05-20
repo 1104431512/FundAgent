@@ -600,6 +600,14 @@ const requiredPatterns = [
     message: "pullback/setup main candidates must require actual low-position evidence, not only a repaired trend label."
   },
   {
+    pattern: /classifyPullbackSetupCandidateForSummary[\s\S]{0,500}isEarlyTurnSetupTrend/,
+    message: "pullback/setup main candidates must require 5/10-day early-turn evidence, not only low-position repair."
+  },
+  {
+    pattern: /scoreResearchDigestForPullbackSetup[\s\S]{0,900}!earlyTurn[\s\S]{0,80}score\s*-=+\s*14/,
+    message: "pullback/setup ranking must downgrade low-position funds that have not started turning up."
+  },
+  {
     pattern: /finiteMetricNumber/,
     message: "pullback/setup low-position checks must not treat null or missing metrics as zero."
   },

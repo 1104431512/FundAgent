@@ -889,6 +889,17 @@ const missingLowPositionDigest = {
     shareClassFeeModel: { label: "C类：通常无申购费，销售服务费按年计提" }
   }
 };
+const noEarlyTurnPullbackDigest = {
+  ...setupDigest,
+  trendProfile: {
+    ...setupDigest.trendProfile,
+    pullbackSetup: { signal: "pullback_complete", score: 76 },
+    return5dPct: -0.8,
+    return10dPct: 0.2,
+    return20dPct: 4.2,
+    return60dPct: 6.8
+  }
+};
 assert(
   manager.scoreResearchDigestForPullbackSetup(setupDigest) >
     manager.scoreResearchDigestForPullbackSetup(hotDigest),
@@ -904,6 +915,11 @@ assert(
     manager.scoreResearchDigestForPullbackSetup(missingLowPositionDigest),
   "deep-dive scoring must not treat missing low-position data as zero-percent low-position evidence"
 );
+assert(
+  manager.scoreResearchDigestForPullbackSetup(setupDigest) >
+    manager.scoreResearchDigestForPullbackSetup(noEarlyTurnPullbackDigest),
+  "deep-dive scoring must prefer pullbacks with 5/10-day early-turn evidence over low but not-yet-launching funds"
+);
 const highPositionSummary = manager.buildMarketDeepDiveSummary({
   ok: true,
   focus: "pullback_setup_discovery",
@@ -911,12 +927,14 @@ const highPositionSummary = manager.buildMarketDeepDiveSummary({
   candidates: [
     { ...setupDigest, code: "000001", name: "低位修复基金A" },
     { ...highPositionPullbackDigest, code: "000004", name: "位置偏高修复基金C" },
-    { ...missingLowPositionDigest, code: "000005", name: "低位缺失修复基金C" }
+    { ...missingLowPositionDigest, code: "000005", name: "低位缺失修复基金C" },
+    { ...noEarlyTurnPullbackDigest, code: "000006", name: "未启动修复基金C" }
   ]
 });
 assert(highPositionSummary.includes("mainCandidateCodes=000001"), "genuinely low-position setup should remain a main candidate");
 assert(/watchOrRejectCodes=.*000004/.test(highPositionSummary), "pullback-looking but high-position fund must be demoted to watch/reject");
 assert(/watchOrRejectCodes=.*000005/.test(highPositionSummary), "pullback-looking fund with missing low-position evidence must be visible only as watch/reject");
+assert(/watchOrRejectCodes=.*000006/.test(highPositionSummary), "pullback-looking fund without 5/10-day early turn must be visible only as watch/reject");
 const rotationSupportedDigest = {
   ...setupDigest,
   code: "000021",

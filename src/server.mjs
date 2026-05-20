@@ -5962,6 +5962,7 @@ function classifyPullbackSetupCandidateForSummary(candidate = {}) {
   const signal = trend.pullbackSetup?.signal || "";
   if (hasHighChaseTheme(candidate)) return "watch_or_reject";
   if (["pullback_complete", "launch_setup"].includes(signal)
+    && isEarlyTurnSetupTrend(trend)
     && trend.trendLabel !== "extended_uptrend"
     && trend.entryBias !== "wait_pullback"
     && hasPullbackLowPositionEvidence(trend)
@@ -8640,6 +8641,7 @@ function scoreResearchDigestForPullbackSetup(digest = {}) {
   if (trend.pullbackSetup?.signal === "pullback_complete") score += 28;
   if (trend.pullbackSetup?.signal === "launch_setup") score += 16;
   if (earlyTurn) score += 12;
+  if (!earlyTurn) score -= 14;
   if (Number.isFinite(lowPosition) && lowPosition >= 12 && lowPosition <= 55) score += 10;
   if (Number.isFinite(lowPosition) && lowPosition > 60 && lowPosition <= 85) score -= 10;
   if (Number.isFinite(lowPosition) && lowPosition > 85) score -= 12;
