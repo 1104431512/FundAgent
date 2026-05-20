@@ -3350,27 +3350,84 @@ function selectFundReportProfilesForAnswer(profiles, answerText) {
   if (!list.length) return [];
 
   const text = String(answerText || "");
-  const explicitCodes = new Set(extractFundCodes(text));
+  const selectionText = extractAnswerRecommendationSection(text);
+  const sectionCodes = new Set(extractFundCodes(selectionText));
+  const explicitCodes = sectionCodes.size ? sectionCodes : new Set(extractFundCodes(text));
   const ranked = [];
   for (const profile of list) {
     const code = profile?.code || profile?.seed?.code || "";
     const name = profile?.name || profile?.seed?.name || "";
-    const codeIndex = code && explicitCodes.has(code) ? text.indexOf(code) : -1;
-    const nameIndex = name ? text.indexOf(name) : -1;
+    if (explicitCodes.size && code && !explicitCodes.has(code)) continue;
+
+    const codeIndex = code && explicitCodes.has(code) ? selectionText.indexOf(code) : -1;
+    const nameIndex = !explicitCodes.size && name ? selectionText.indexOf(name) : -1;
     const index = [codeIndex, nameIndex].filter((value) => value >= 0).sort((a, b) => a - b)[0];
     if (index === undefined) continue;
-    ranked.push({ profile, key: code || name, index });
+    const context = selectionText.slice(Math.max(0, index - 56), index + 96);
+    if (isChartExcludedByAnswerContext(context)) continue;
+    ranked.push({
+      profile,
+      key: code || name,
+      index,
+      score: index - scorePositiveChartContext(context) + scoreNegativeChartContext(context)
+    });
   }
 
   const seen = new Set();
   return ranked
-    .sort((a, b) => a.index - b.index)
+    .sort((a, b) => a.score - b.score)
     .filter((item) => {
       if (!item.key || seen.has(item.key)) return false;
       seen.add(item.key);
       return true;
     })
     .map((item) => item.profile);
+}
+
+function extractAnswerRecommendationSection(text) {
+  const body = String(text || "");
+  if (!body.trim()) return "";
+  const startMarkers = ["推荐清单", "推荐候选", "主推荐", "候选基金", "推荐：", "推荐:"];
+  const starts = startMarkers.map((marker) => body.indexOf(marker)).filter((index) => index >= 0);
+  if (!starts.length) return body;
+  const start = Math.min(...starts);
+  const endMarkers = [
+    "1万元执行",
+    "一万元执行",
+    "执行方案",
+    "决策边界",
+    "观察名单",
+    "观察池",
+    "为什么不选",
+    "回避",
+    "风险",
+    "缺失数据"
+  ];
+  const ends = endMarkers
+    .map((marker) => body.indexOf(marker, start + 1))
+    .filter((index) => index > start)
+    .sort((a, b) => a - b);
+  return body.slice(start, ends[0] || body.length);
+}
+
+function isChartExcludedByAnswerContext(context) {
+  return scoreNegativeChartContext(context) >= 12 && scorePositiveChartContext(context) < 8;
+}
+
+function scorePositiveChartContext(context) {
+  const text = String(context || "");
+  let score = 0;
+  if (/(主推荐|首选|推荐清单|推荐候选|入选|可以买|买入|分批|配置|候选|优先)/.test(text)) score += 8;
+  if (/(回调完成|低位|启动|修复|可买|分批买)/.test(text)) score += 4;
+  return score;
+}
+
+function scoreNegativeChartContext(context) {
+  const text = String(context || "");
+  let score = 0;
+  if (/(观察名单|观察池|只观察|列入观察|等待|等回撤|回避|剔除|不推荐|不作为主推荐|不是主推|暂不|少买|不买)/.test(text)) score += 12;
+  if (/(追涨|偏热|过热|不符合|风险偏高)/.test(text)) score += 6;
+  return score;
 }
 
 async function buildPortfolioTrendCardImages(run, config) {
@@ -3579,7 +3636,70 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
 
 function buildMarketDeepDiveSummary(deepDive) {
   if (!deepDive) return "未执行候选基金下钻。";
-  return JSON.stringify(deepDive, null, 2);
+  const lines = [
+    `deepDive.ok=${Boolean(deepDive.ok)}`,
+    deepDive.focus ? `deepDive.focus=${deepDive.focus}` : "",
+    deepDive.selectionDiscipline ? `selectionDiscipline=${deepDive.selectionDiscipline}` : "",
+    Array.isArray(deepDive.searchKeywords) && deepDive.searchKeywords.length ? `searchKeywords=${deepDive.searchKeywords.join("/")}` : ""
+  ].filter(Boolean);
+
+  if (deepDive.selectionDiscipline === "prefer_pullback_complete_launch_setup_not_chase") {
+    const ranked = (deepDive.candidates || [])
+      .map((candidate) => ({
+        candidate,
+        setupRankScore: scoreResearchDigestForPullbackSetup(candidate),
+        bucket: classifyPullbackSetupCandidateForSummary(candidate)
+      }))
+      .sort((a, b) => b.setupRankScore - a.setupRankScore);
+    const mainCandidates = ranked.filter((item) => item.bucket === "main_candidate").slice(0, 5);
+    const watchCandidates = ranked.filter((item) => item.bucket !== "main_candidate").slice(0, 5);
+    lines.push("pullbackSetupRanking:");
+    lines.push(...ranked.slice(0, 8).map((item) => formatPullbackSetupCandidateLine(item.candidate, item)));
+    lines.push(`mainCandidateCodes=${mainCandidates.map((item) => item.candidate.code).filter(Boolean).join("/") || "none"}`);
+    lines.push(`watchOrRejectCodes=${watchCandidates.map((item) => item.candidate.code).filter(Boolean).join("/") || "none"}`);
+    if (!mainCandidates.length) {
+      lines.push("qualityInstruction=没有形成回调完成/启动前夜的主候选时，必须直接说明“暂未筛到合格主推荐”，不要把短期暴涨或等待回撤的基金包装成低位启动。");
+    } else {
+      lines.push("qualityInstruction=主推荐只能从 main_candidate 中选择；watch_or_reject 只能放观察或排除原因，不能出现在主推荐图表里。");
+    }
+  }
+
+  lines.push("compactDeepDiveJson:");
+  lines.push(compactQualityEvidence(deepDive));
+  return lines.join("\n");
+}
+
+function classifyPullbackSetupCandidateForSummary(candidate = {}) {
+  if (!candidate?.ok) return "watch_or_reject";
+  const trend = candidate.trendProfile || {};
+  const signal = trend.pullbackSetup?.signal || "";
+  if (["pullback_complete", "launch_setup"].includes(signal)
+    && trend.trendLabel !== "extended_uptrend"
+    && trend.entryBias !== "wait_pullback"
+    && Number(trend.return20dPct) <= 10
+    && Number(trend.return60dPct) <= 24) {
+    return "main_candidate";
+  }
+  return "watch_or_reject";
+}
+
+function formatPullbackSetupCandidateLine(candidate = {}, ranked = {}) {
+  const trend = candidate.trendProfile || {};
+  const actionability = candidate.actionability || {};
+  const fields = [
+    `${candidate.code || "unknown"} ${candidate.name || candidate.seed?.name || ""}`.trim(),
+    `bucket=${ranked.bucket || classifyPullbackSetupCandidateForSummary(candidate)}`,
+    `setupRankScore=${round(Number(ranked.setupRankScore ?? scoreResearchDigestForPullbackSetup(candidate)), 1)}`,
+    trend.pullbackSetup?.signalText ? `signal=${trend.pullbackSetup.signalText}` : "",
+    Number.isFinite(Number(trend.pullbackSetup?.score)) ? `setupScore=${trend.pullbackSetup.score}` : "",
+    Number.isFinite(Number(trend.return20dPct)) ? `20日=${trend.return20dPct}%` : "",
+    Number.isFinite(Number(trend.return60dPct)) ? `60日=${trend.return60dPct}%` : "",
+    Number.isFinite(Number(trend.drawdownFromRecentHighPct)) ? `距高点=${trend.drawdownFromRecentHighPct}%` : "",
+    trend.trendLabelText ? `趋势=${trend.trendLabelText}` : "",
+    trend.entryBiasText ? `入场=${trend.entryBiasText}` : "",
+    actionability.actionText ? `动作=${actionability.actionText}` : ""
+  ].filter(Boolean);
+  return `- ${fields.join(", ")}`;
 }
 
 function collectPortfolioSources(...items) {
@@ -9373,6 +9493,7 @@ function timingSafeEqualString(a, b) {
 
 export {
   allowedSkillIdsForWorkflow,
+  buildMarketDeepDiveSummary,
   classifyMessageIntent,
   defaultSkillIdsForWorkflow,
   evaluateFundAnswerQuality,
@@ -9383,6 +9504,7 @@ export {
   isPullbackSetupRequest,
   normalizeUserFacingFundAnswer,
   renderFundReportSummaryPng,
+  selectFundReportProfilesForAnswer,
   scorePullbackSetupSeedCandidate,
   scoreResearchDigestForPullbackSetup
 };

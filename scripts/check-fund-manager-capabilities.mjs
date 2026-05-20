@@ -184,6 +184,37 @@ assert.equal(png.readUInt32BE(16), 900, "summary chart width must match requeste
 assert.equal(png.readUInt32BE(20), 520, "summary chart height must match requested height");
 assert(png.length > 5000, "summary chart should contain more than a sparse legacy line");
 
+const selectedChartCodes = manager.selectFundReportProfilesForAnswer([
+  { code: "000001", name: "低位修复基金A", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.01 }] } },
+  { code: "000002", name: "启动前夜基金C", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.02 }] } },
+  { code: "000003", name: "追涨观察基金A", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.03 }] } }
+], [
+  "推荐清单：",
+  "1. 000001 低位修复基金A：回调完成，可分批。",
+  "2. 000002 启动前夜基金C：低位修复，适合小仓位。",
+  "观察名单：",
+  "000003 追涨观察基金A：短期偏热，只观察，不作为主推荐。"
+].join("\n")).map((profile) => profile.code);
+assert.deepEqual(
+  selectedChartCodes,
+  ["000001", "000002"],
+  "report images must align with the recommendation list and exclude watch/reject candidates"
+);
+
+const deepDiveSummary = manager.buildMarketDeepDiveSummary({
+  ok: true,
+  focus: "pullback_setup_discovery",
+  selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+  searchKeywords: ["中证500"],
+  candidates: [
+    { ...setupDigest, code: "000001", name: "低位修复基金A" },
+    { ...hotDigest, code: "000003", name: "追涨观察基金A" }
+  ]
+});
+assert(deepDiveSummary.includes("pullbackSetupRanking"), "deep dive summary must expose pullback/setup ranking evidence");
+assert(deepDiveSummary.includes("mainCandidateCodes=000001"), "deep dive summary must identify main pullback/setup candidates");
+assert(deepDiveSummary.includes("watchOrRejectCodes=000003"), "deep dive summary must keep hot candidates out of main recommendations");
+
 async function assertIntent({ userText, expectedWorkflow, expectedReason, expectedMode = null, requiredSkills = [] }) {
   const routed = await manager.classifyMessageIntent({
     userText,
