@@ -3242,6 +3242,173 @@ function summarizePortfolioWatchlistForModel(watchlist = []) {
     });
 }
 
+function getFundWorkflowWatchlistContext(userText = "", options = {}) {
+  if (String(process.env.FUND_WORKFLOW_WATCHLIST_CONTEXT ?? "true") === "false") {
+    return { candidates: [], summary: "经理自选候选池：未启用。" };
+  }
+  try {
+    const db = options.db || readPortfolioDb();
+    const candidates = selectFundWorkflowWatchlistCandidates(getActivePortfolioWatchlist(db), userText, {
+      limit: options.limit ?? 6
+    });
+    return {
+      candidates,
+      summary: buildFundWorkflowWatchlistSummary(candidates)
+    };
+  } catch (error) {
+    console.warn("[fund-workflow-watchlist-context-error]", error.message);
+    recordError(error, { fundWorkflowWatchlistContextFailures: 1 });
+    return { candidates: [], summary: "经理自选候选池：读取失败，本轮只使用市场候选。" };
+  }
+}
+
+function selectFundWorkflowWatchlistCandidates(watchlist = [], userText = "", options = {}) {
+  const limit = Math.max(0, Number(options.limit ?? 6) || 0);
+  if (!limit) return [];
+  const wantsPullbackSetup = isPullbackSetupRequest(userText);
+  return normalizePortfolioWatchlist(watchlist)
+    .filter((item) => ["ready", "waiting_pullback", "watch"].includes(item.status))
+    .map((item) => {
+      const readiness = evaluatePortfolioWatchReadiness(item);
+      const setupFocus = isLowBaseLaunchWatchSeed(item) || /回调完成|启动前夜|低位|刚转强/.test([
+        item.reason,
+        item.candidateRole,
+        item.positionPlan,
+        ...(item.setupEvidence || []),
+        ...(item.readinessGaps || [])
+      ].join(" "));
+      const score = Number(readiness.score || 0)
+        + (item.status === "ready" ? 28 : item.status === "waiting_pullback" ? 14 : 0)
+        + (setupFocus ? 18 : 0)
+        - Number(item.priority || 3);
+      return {
+        ...summarizePortfolioWatchItem(item),
+        workflowWatchlistScore: wantsPullbackSetup ? score : score - (setupFocus ? 0 : 8)
+      };
+    })
+    .sort((a, b) => Number(b.workflowWatchlistScore || 0) - Number(a.workflowWatchlistScore || 0)
+      || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
+    .slice(0, limit);
+}
+
+function buildFundWorkflowWatchlistSummary(candidates = []) {
+  if (!candidates.length) return "经理自选候选池：暂无可复用的接近可买或等待回调候选。";
+  return [
+    "经理自选候选池（优先复核，不自动买入）：",
+    ...candidates.map((item) => {
+      const fields = [
+        `${item.code} ${item.name || ""}`.trim(),
+        `状态=${item.statusText || formatPortfolioWatchStatus(item.status)}`,
+        `准备度=${item.readinessScore}/${item.readinessLabel || ""}`,
+        item.candidateRole ? `角色=${item.candidateRole}` : "",
+        item.reason ? `备选理由=${item.reason}` : "",
+        item.readinessGaps?.length ? `缺口=${item.readinessGaps.slice(0, 2).join("/")}` : "",
+        item.buyTriggers?.length ? `触发=${item.buyTriggers.slice(0, 2).join("/")}` : "",
+        item.feeNotes?.length ? `费用=${item.feeNotes.slice(0, 1).join("/")}` : ""
+      ].filter(Boolean);
+      return `- ${fields.join("，")}`;
+    })
+  ].join("\n");
+}
+
+function mergeFundWorkflowWatchlistIntoDeepDive(deepDive, watchlistCandidates = [], userText = "") {
+  const converted = (watchlistCandidates || []).map(portfolioWatchItemToDeepDiveCandidate).filter((item) => item.code);
+  if (!converted.length) return deepDive;
+  const base = deepDive && typeof deepDive === "object"
+    ? { ...deepDive, candidates: Array.isArray(deepDive.candidates) ? [...deepDive.candidates] : [] }
+    : {
+        ok: true,
+        focus: "portfolio_watchlist_reuse",
+        selectionDiscipline: isPullbackSetupRequest(userText) ? "prefer_pullback_complete_launch_setup_not_chase" : "balanced_theme_relevance",
+        candidates: []
+      };
+  const byCode = new Map();
+  for (const item of converted) {
+    byCode.set(item.code, item);
+  }
+  for (const candidate of base.candidates || []) {
+    const code = candidate?.code || candidate?.seed?.code || "";
+    if (!code) continue;
+    const watchCandidate = byCode.get(code);
+    byCode.set(code, watchCandidate ? mergePortfolioWatchCandidateDigest(watchCandidate, candidate) : candidate);
+  }
+  const candidates = [...byCode.values()];
+  base.candidates = base.selectionDiscipline === "prefer_pullback_complete_launch_setup_not_chase"
+    ? candidates.sort((a, b) => scoreResearchDigestForPullbackSetup(b) - scoreResearchDigestForPullbackSetup(a))
+    : candidates;
+  base.portfolioWatchlistCandidates = watchlistCandidates;
+  return base;
+}
+
+function portfolioWatchItemToDeepDiveCandidate(item = {}) {
+  const snapshot = item.lastSnapshot || {};
+  const trendProfile = snapshot.trendProfile || {};
+  const readiness = item.readinessScore === undefined
+    ? evaluatePortfolioWatchReadiness(item)
+    : { score: item.readinessScore, label: item.readinessLabel || "", gaps: item.readinessGaps || [] };
+  const action = item.status === "ready" ? "staged_buy" : item.status === "waiting_pullback" ? "wait" : "watch";
+  return {
+    ok: Boolean(trendProfile.ok),
+    code: item.code || "",
+    name: item.name || "",
+    type: item.type || "",
+    shareClass: item.shareClass || "",
+    trendProfile,
+    actionability: {
+      action,
+      actionText: formatActionabilityAction(action),
+      score: readiness.score,
+      decisionBlocker: readiness.gaps || item.readinessGaps || [],
+      decisiveEvidence: [
+        item.reason,
+        ...(item.setupEvidence || []),
+        ...(item.buyTriggers || [])
+      ].filter(Boolean).slice(0, 4)
+    },
+    fees: snapshot.fees || {
+      shareClass: item.shareClass || "",
+      shareClassFeeModel: item.feeNotes?.[0] ? { label: item.feeNotes[0] } : null
+    },
+    seed: {
+      code: item.code || "",
+      name: item.name || "",
+      keywords: ["经理自选候选池", ...(isLowBaseLaunchWatchSeed(item) ? ["低位启动前夜候选"] : [])],
+      setupDiscoverySource: item.source || item.dataBasis?.find((value) => /来源|召回/.test(value)) || "portfolio_watchlist_context"
+    },
+    portfolioWatchlist: {
+      status: item.status || "",
+      statusText: item.statusText || formatPortfolioWatchStatus(item.status),
+      readinessScore: readiness.score,
+      readinessLabel: readiness.label,
+      readinessGaps: readiness.gaps || item.readinessGaps || [],
+      candidateRole: item.candidateRole || "",
+      reason: item.reason || "",
+      positionPlan: item.positionPlan || ""
+    },
+    sources: [
+      ...(Array.isArray(snapshot.sources) ? snapshot.sources : []),
+      ...(item.dataBasis || [])
+    ].filter(Boolean)
+  };
+}
+
+function mergePortfolioWatchCandidateDigest(watchCandidate = {}, marketCandidate = {}) {
+  const preferMarket = marketCandidate?.ok !== false && marketCandidate?.trendProfile?.ok;
+  const primary = preferMarket ? marketCandidate : watchCandidate;
+  const fallback = preferMarket ? watchCandidate : marketCandidate;
+  return {
+    ...fallback,
+    ...primary,
+    portfolioWatchlist: watchCandidate.portfolioWatchlist || marketCandidate.portfolioWatchlist,
+    seed: {
+      ...(watchCandidate.seed || {}),
+      ...(marketCandidate.seed || {}),
+      keywords: [...new Set([...(watchCandidate.seed?.keywords || []), ...(marketCandidate.seed?.keywords || [])].filter(Boolean))]
+    },
+    sources: [...new Set([...(watchCandidate.sources || []), ...(marketCandidate.sources || [])].filter(Boolean))]
+  };
+}
+
 function summarizePortfolioWatchItem(item = {}) {
   const readiness = evaluatePortfolioWatchReadiness(item);
   return {
@@ -6669,7 +6836,12 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
 async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
   const skillContext = buildSkillContextForIntent(intent, getFundRecommendationSkillIds(), { userText });
   const marketEvidence = buildMarketEvidenceSummary(userText, marketSnapshot);
-  const marketDeepDive = await fetchMarketDeepDive(userText, marketSnapshot, { forRecommendation: true });
+  const portfolioWatchlistContext = getFundWorkflowWatchlistContext(userText);
+  const marketDeepDive = mergeFundWorkflowWatchlistIntoDeepDive(
+    await fetchMarketDeepDive(userText, marketSnapshot, { forRecommendation: true }),
+    portfolioWatchlistContext.candidates,
+    userText
+  );
   const marketDeepDiveSummary = buildMarketDeepDiveSummary(marketDeepDive);
   const systemText = [
     "你是飞书机器人“基金经理”的基金发现与配置工作流。",
@@ -6678,6 +6850,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "如果 marketSnapshot.themeRadar 或 marketDeepDive.themeRadar 存在，必须先使用其中的 stage、forwardScore、crowdingScore、actionBias 判断题材赔率，再筛选基金。",
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
     "如果提供了 marketDeepDive，必须使用其中的 trendProfile、risk、fees、holdings 和 actionability 来筛掉不适合的候选；不要只复述市场快照。",
+    "如果提供了经理自选候选池，必须先复核这些已经沉淀的 ready/waiting/启动前夜候选；ready 可以进入主推荐评估，waiting 或启动前夜只能写备选观察和触发条件，不能当成自动买入。",
     "marketDeepDive 中的 trendProfile、actionability、entryBias、fitLabel 等是内部字段；最终回答必须翻译成中文用户话术，不要原样输出字段名或 extended_uptrend/staged_buy/wait_pullback 这类枚举。",
     "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先选择 pullbackSetup.signal 为 pullback_complete 或 launch_setup 的候选；同时检查5日/10日是否刚转强、120日区间位置是否偏低。短期涨幅偏热、20日/60日大涨且 entryBias 为 wait_pullback 的候选只能列入观察，不得作为主推荐。",
     "不要编造 marketSnapshot 里没有的基金代码、涨跌幅、排名、金价或新闻。",
@@ -6709,11 +6882,14 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "候选基金下钻摘要：",
     marketDeepDiveSummary,
     "",
+    "经理自选候选池：",
+    portfolioWatchlistContext.summary,
+    "",
     "请输出：",
     "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
     "2. 题材雷达：先列 1-3 个相关题材的中文阶段、前瞻评分、拥挤度、为什么现在值得/不值得看；不要输出 stage/forwardScore/crowdingScore 这些字段名。",
     "3. 自评估：这类需求是否适合现在做、把握度如何、适合激进/均衡/保守哪类。",
-    "4. 推荐清单：优先 3-4 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号、5日/10日早期转强、120日区间低位、趋势/自评估动作、为什么入选，以及“配图看什么”。只能使用快照或下钻中的候选代码；如果没有足够代码，就写“待复核方向”。",
+    "4. 推荐清单：优先 3-4 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号、5日/10日早期转强、120日区间低位、趋势/自评估动作、为什么入选，以及“配图看什么”。只能使用快照、下钻或经理自选候选池中的候选代码；如果没有足够代码，就写“待复核方向”。",
     "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
     "5. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
     "6. 备选观察：如果有未到买点但值得等的候选，列 3-5 个备选，说明还差什么触发，以及对应配图看什么；偏热、追涨或回避对象单独写排除原因，不要混进备选。",
@@ -6734,7 +6910,8 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     evidence: {
       marketEvidence,
       marketSnapshot: summarizeMarketSnapshot(marketSnapshot),
-      marketDeepDive
+      marketDeepDive,
+      portfolioWatchlist: portfolioWatchlistContext.candidates
     }
   });
   updateStats({
@@ -6754,7 +6931,12 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
 async function answerFundQuestionWithModel({ userText, intent, marketSnapshot }) {
   const skillContext = buildSkillContextForIntent(intent, getFundQaSkillIds(), { userText });
   const marketEvidence = buildMarketEvidenceSummary(userText, marketSnapshot);
-  const marketDeepDive = await fetchMarketDeepDive(userText, marketSnapshot, { forRecommendation: false });
+  const portfolioWatchlistContext = getFundWorkflowWatchlistContext(userText);
+  const marketDeepDive = mergeFundWorkflowWatchlistIntoDeepDive(
+    await fetchMarketDeepDive(userText, marketSnapshot, { forRecommendation: false }),
+    portfolioWatchlistContext.candidates,
+    userText
+  );
   const marketDeepDiveSummary = buildMarketDeepDiveSummary(marketDeepDive);
   const systemText = [
     "你是飞书机器人“基金经理”的基金问答工作流。",
@@ -6763,6 +6945,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "如果传入 marketSnapshot，可用它回答近期市场/题材问题；涉及黄金、白银或贵金属时，优先引用 marketIndicators.preciousMetals 和相关基金候选。",
     "如果 marketSnapshot.themeRadar 或 marketDeepDive.themeRadar 存在，优先引用 stage、forwardScore、crowdingScore、actionBias，避免只按历史涨幅回答。",
     "如果提供了 marketDeepDive，必须使用下钻候选的 trendProfile、risk、fees、holdings 和 actionability 来形成买/等/回避判断。",
+    "如果提供了经理自选候选池，必须把它当成已经沉淀的备选来源先复核；ready 可以进入买入参考，waiting 或启动前夜只能说明等待条件。",
     "marketDeepDive 中的 trendProfile、actionability、entryBias、fitLabel 等是内部字段；最终回答必须翻译成中文用户话术，不要原样输出字段名或 extended_uptrend/staged_buy/wait_pullback 这类枚举。",
     "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先判断 pullbackSetup.signal、5日/10日早期转强和120日区间低位；短期涨幅偏热、20日/60日大涨且等待回撤的候选不能被包装成启动机会。",
     "如果没有抓到对应行情数据，要说明是公开数据源暂时不可用或滞后，不要简单说自己没有实时数据能力。",
@@ -6791,6 +6974,9 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "候选基金下钻摘要：",
     marketDeepDiveSummary,
     "",
+    "经理自选候选池：",
+    portfolioWatchlistContext.summary,
+    "",
     "请直接回答用户问题。若用户问“值得买吗”，必须给中文动作“买入 / 分批买入 / 等待 / 回避”之一，并给新资金和已有持仓分别怎么做。如回答里给出具体基金候选，主买入和备选观察都要写代码、中文走势证据、触发条件和配图看点；偏热回避对象不要和备选混写。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
   ].join("\n");
 
@@ -6808,7 +6994,8 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     evidence: {
       marketEvidence,
       marketSnapshot: summarizeMarketSnapshot(marketSnapshot),
-      marketDeepDive
+      marketDeepDive,
+      portfolioWatchlist: portfolioWatchlistContext.candidates
     }
   });
   updateStats({
@@ -7330,7 +7517,7 @@ function isActionSeekingFundQuestion(text) {
 
 function hasQualityEvidence(evidence) {
   const compact = compactQualityEvidence(evidence);
-  return /(themeRadar|forwardScore|crowdingScore|trendProfile|marketSnapshot|marketDeepDive|enrichments|riskMetrics|fundCandidates|preciousMetals|candidates|return20dPct|drawdown)/i.test(compact);
+  return /(themeRadar|forwardScore|crowdingScore|trendProfile|marketSnapshot|marketDeepDive|portfolioWatchlist|enrichments|riskMetrics|fundCandidates|preciousMetals|candidates|return20dPct|drawdown)/i.test(compact);
 }
 
 function compactQualityEvidence(evidence) {
@@ -13177,6 +13364,7 @@ export {
   buildPortfolioWatchlistLaunchEveLines,
   buildPortfolioWatchlistUpdatesFromAnswerProfiles,
   buildPullbackQualityFallbackAnswer,
+  buildFundWorkflowWatchlistSummary,
   classifyMessageIntent,
   computeTrendProfile,
   defaultSkillIdsForWorkflow,
@@ -13198,6 +13386,7 @@ export {
   guardPortfolioWatchlistReadyUpdate,
   ensurePortfolioHeldPositionsReviewed,
   ensurePortfolioReadyWatchlistReviewed,
+  mergeFundWorkflowWatchlistIntoDeepDive,
   inferPullbackSetupSearchKeywords,
   isGenericPullbackSetupRequest,
   isPullbackSetupRequest,
@@ -13215,6 +13404,7 @@ export {
   selectFundScreeningWatchlistProfiles,
   selectLowBaseTurnRankCandidates,
   selectPortfolioWatchlistSeedCandidates,
+  selectFundWorkflowWatchlistCandidates,
   selectWeeklyReversalRankCandidates,
   summarizePortfolioWatchItem,
   scorePullbackSetupSeedCandidate,

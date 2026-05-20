@@ -337,6 +337,71 @@ assert(watchlistStatusLines.includes("费用/份额：C类更适合短中期观�
 assert(watchlistStatusLines.includes("最新走势：20日+4.8%"), "portfolio status answer must include latest trend evidence");
 assert(watchlistStatusLines.includes("缺口=低位/启动/刚转强/不过热/费用条件已满足"), "buy-preparation queue must tell managers when ready candidates have no remaining setup, early-turn, and fee gap");
 assert(watchlistStatusLines.includes("买入缺口：还差回调完成或启动前夜信号"), "watchlist detail must expose what waiting candidates still lack before buying");
+const workflowWatchlistCandidates = manager.selectFundWorkflowWatchlistCandidates([
+  {
+    ...normalizedWatchDb.watchlist[0],
+    lastSnapshot: {
+      trendProfile: {
+        ok: true,
+        pullbackSetup: { signal: "pullback_complete", score: 78 },
+        trendLabel: "pullback_complete",
+        entryBias: "buyable_now",
+        return5dPct: 1.2,
+        return10dPct: 3.2,
+        return20dPct: 4.8,
+        return60dPct: 7.6,
+        lowPositionPct120: 42.4,
+        drawdownFromRecentHighPct: -7.1
+      }
+    }
+  },
+  {
+    code: "000002",
+    name: "等待回调基金C",
+    status: "waiting_pullback",
+    priority: 3,
+    candidateRole: "低位启动前夜观察备选",
+    reason: "召回定位：低位启动前夜候选。",
+    setupEvidence: ["召回定位：低位启动前夜候选"],
+    buyTriggers: ["回踩不破前低"],
+    positionPlan: "先放入启动前夜观察池。",
+    dataBasis: ["召回来源：low_base_turn_scan"],
+    lastSnapshot: {
+      trendProfile: {
+        ok: true,
+        pullbackSetup: { signal: "none" },
+        trendLabel: "range_or_mixed",
+        entryBias: "wait_pullback",
+        return20dPct: 8.8,
+        return60dPct: 18.2,
+        lowPositionPct120: 58.6,
+        drawdownFromRecentHighPct: -4.1
+      }
+    }
+  },
+  { code: "000003", name: "追涨拦截基金A", status: "blocked", reason: "短期偏热" }
+], setupQuery, { limit: 3 });
+assert.deepEqual(workflowWatchlistCandidates.map((item) => item.code), ["000001", "000002"], "fund workflows must reuse ready and launch-eve watchlist candidates while excluding blocked items");
+const workflowWatchlistSummary = manager.buildFundWorkflowWatchlistSummary(workflowWatchlistCandidates);
+assert(workflowWatchlistSummary.includes("经理自选候选池（优先复核，不自动买入）"), "fund workflow prompt must expose manager-maintained candidates");
+assert(workflowWatchlistSummary.includes("000002 等待回调基金C"), "fund workflow prompt must include launch-eve watchlist candidates");
+const mergedWatchDeepDive = manager.mergeFundWorkflowWatchlistIntoDeepDive({
+  ok: true,
+  focus: "pullback_setup_discovery",
+  selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+  candidates: []
+}, workflowWatchlistCandidates, setupQuery);
+const mergedWatchSummary = manager.buildMarketDeepDiveSummary(mergedWatchDeepDive);
+assert(mergedWatchSummary.includes("mainCandidateCodes=000001"), "ready watchlist candidates with verified pullback evidence must be visible to pullback quality gates");
+assert(mergedWatchSummary.includes("watchOrRejectCodes=000002"), "launch-eve watchlist candidates that still wait for confirmation must stay out of main recommendations");
+assert(mergedWatchDeepDive.portfolioWatchlistCandidates?.length === 2, "merged deep-dive evidence must keep traceable watchlist context");
+const mergedWatchWithFailedMarketFetch = manager.mergeFundWorkflowWatchlistIntoDeepDive({
+  ok: true,
+  focus: "pullback_setup_discovery",
+  selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+  candidates: [{ ok: false, code: "000001", name: "低位修复基金C", error: "temporary fetch failure" }]
+}, workflowWatchlistCandidates, setupQuery);
+assert.equal(mergedWatchWithFailedMarketFetch.candidates.find((item) => item.code === "000001")?.ok, true, "watchlist snapshots must not be overwritten by temporary market deep-dive failures");
 assert.equal(
   manager.normalizePortfolioWatchlistUpdates([{ operation: "REMOVE", code: "000001", reason: "主题过热" }])[0].operation,
   "REMOVE",
