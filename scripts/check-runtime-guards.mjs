@@ -520,6 +520,18 @@ const requiredPatterns = [
     message: "admin portfolio watchlist must render actionable ready/waiting candidates as scannable cards."
   },
   {
+    pattern: /selectWatchlistObservationGaps/,
+    message: "admin portfolio watchlist must extract observation/setup gaps as first-class UI data."
+  },
+  {
+    pattern: /watchlist-gap-panel/,
+    message: "admin portfolio watchlist must show observation gaps prominently on candidate rows."
+  },
+  {
+    pattern: /watchlist-gap-line/,
+    message: "admin buy-preparation queue must highlight the primary missing setup condition."
+  },
+  {
     pattern: /购买准备队列/,
     message: "manager-facing watchlist replies and admin UI must expose a Chinese buy-preparation queue."
   },

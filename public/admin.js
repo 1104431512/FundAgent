@@ -437,7 +437,7 @@ function selectWatchlistActionItems(items = [], status, limit) {
 function renderWatchlistActionCard(item) {
   const statusClass = getWatchlistStatusClass(item.status);
   const trigger = item.buyTriggers?.[0] || item.positionPlan || "等待下一次复查";
-  const gap = item.readinessGaps?.[0] || "等待下一次复查";
+  const gap = selectWatchlistPrimaryGap(item);
   const risk = item.riskNotes?.[0] || "风险边界待补充";
   const fee = item.feeNotes?.[0] || "费用/份额待复核";
   const trend = getFundSnapshotTrendText(item.lastSnapshot || {});
@@ -452,7 +452,7 @@ function renderWatchlistActionCard(item) {
       <p>${escapeHtml(item.reason || item.candidateRole || "暂无备选理由")}</p>
       ${trend && trend !== "走势数据不足" ? `<small>${escapeHtml(trend)}</small>` : ""}
       <small>触发：${escapeHtml(trigger)}</small>
-      <small>缺口：${escapeHtml(gap)}</small>
+      <small class="watchlist-gap-line">缺口：${escapeHtml(gap)}</small>
       <small>风险：${escapeHtml(risk)}</small>
       <small>费用：${escapeHtml(fee)}</small>
       <small>${escapeHtml(item.reviewDate || "下一次盘前观察复查")}</small>
@@ -479,12 +479,14 @@ function renderWatchlistItem(item) {
   const statusClass = getWatchlistStatusClass(item.status);
   const snapshotEvidence = formatWatchlistSnapshotEvidence(snapshot);
   const source = item.source || snapshot.sources?.[0] || "";
+  const observationGaps = selectWatchlistObservationGaps(item);
   return `
     <div class="data-row watchlist-row">
       <div>
         <strong>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</strong>
         <p>${escapeHtml(item.reason || "暂无备选理由")}</p>
         ${trend && trend !== "走势数据不足" ? `<p>${escapeHtml(trend)}</p>` : ""}
+        ${renderWatchlistObservationGapPanel(observationGaps)}
         ${trendChart}
         <small>${escapeHtml([item.type, item.shareClass ? `${item.shareClass}类` : "", item.candidateRole].filter(Boolean).join(" · "))}</small>
       </div>
@@ -516,6 +518,44 @@ function formatWatchlistReadiness(item = {}) {
   if (!Number.isFinite(score)) return "";
   const label = item.readinessLabel || "买入准备度";
   return `准备度 ${formatNumber(score, 0)} · ${escapeHtml(label)}`;
+}
+
+function selectWatchlistPrimaryGap(item = {}) {
+  return selectWatchlistObservationGaps(item)[0]
+    || item.readinessGaps?.[0]
+    || "等待下一次复查";
+}
+
+function selectWatchlistObservationGaps(item = {}) {
+  const values = [
+    item.reason,
+    ...(item.setupEvidence || []),
+    ...(item.riskNotes || []),
+    ...(item.readinessGaps || [])
+  ];
+  const gaps = [];
+  for (const value of values) {
+    const text = String(value || "").trim();
+    if (!text) continue;
+    const matched = text.match(/观察缺口：[^。；\n]+[。]?/g) || [];
+    for (const itemText of matched) {
+      gaps.push(itemText.replace(/^观察缺口：/, "").replace(/[。；\s]+$/g, ""));
+    }
+    if (!matched.length && /(还差|缺少|等待|偏热|未温和转强|低位.*不足|暂不买入)/.test(text)) {
+      gaps.push(text);
+    }
+  }
+  return [...new Set(gaps.filter(Boolean))].slice(0, 4);
+}
+
+function renderWatchlistObservationGapPanel(gaps = []) {
+  if (!gaps.length) return "";
+  return `
+    <div class="watchlist-gap-panel">
+      <strong>观察缺口</strong>
+      <span>${escapeHtml(gaps.join("；"))}</span>
+    </div>
+  `;
 }
 
 function formatWatchlistAlternativeItems(items = []) {

@@ -478,6 +478,14 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.watchlist-gap-line {
+  padding: 6px 8px;
+  border-left: 3px solid #d97706;
+  border-radius: 6px;
+  color: #7c2d12 !important;
+  background: #fff7ed;
+}
+
 .watchlist-group {
   display: grid;
   gap: 10px;
@@ -524,6 +532,28 @@ button:disabled {
 
 .watchlist-row strong {
   display: block;
+}
+
+.watchlist-gap-panel {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+  background: #fff7ed;
+}
+
+.watchlist-gap-panel strong {
+  color: #9a3412;
+  font-size: 13px;
+}
+
+.watchlist-gap-panel span {
+  display: block;
+  margin-top: 4px;
+  color: #7c2d12;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .watchlist-evidence-grid {
