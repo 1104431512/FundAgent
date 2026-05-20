@@ -644,6 +644,40 @@ const cashReserveAmount = manager.resolvePortfolioTradeAmount({
   positions: []
 }, { action: "BUY", code: "000010", amount: 5000, targetWeightPct: 5 }, "BUY");
 assert.equal(cashReserveAmount, 2000, "portfolio buy sizing must preserve the configured cash reserve before buying");
+const noRiskSellGuard = manager.evaluatePortfolioSellDiscipline(
+  { action: "SELL", code: "000010", amount: 3000, reason: "模型想卖出" },
+  verifiedSeedProfile,
+  { code: "000010", name: "中证A500ETF联接C", currentValue: 6000, weightPct: 6, unrealizedPnlPct: 3.2 }
+);
+assert.equal(noRiskSellGuard.ok, false, "portfolio sell discipline must block sells without risk or profit-control evidence");
+assert(noRiskSellGuard.reason.includes("系统卖出纪律拦截"), "blocked portfolio sell must explain the execution-layer guard");
+const enforcedNoRiskSell = manager.enforcePortfolioSellDiscipline([
+  { action: "SELL", code: "000010", name: "中证A500ETF联接C", amount: 3000, reason: "模型想卖出" }
+], [verifiedSeedProfile], [
+  { code: "000010", name: "中证A500ETF联接C", currentValue: 6000, weightPct: 6, unrealizedPnlPct: 3.2 }
+]);
+assert.equal(enforcedNoRiskSell[0].action, "HOLD", "execution guard must convert unsupported SELL actions into HOLD");
+assert.equal(enforcedNoRiskSell[0].amount, 0, "execution guard must zero out blocked sell amounts");
+assert(enforcedNoRiskSell[0].dataBasis.includes("来源：portfolio_sell_discipline_guard"), "sell guard must leave a traceable data source");
+const hotSellGuard = manager.evaluatePortfolioSellDiscipline(
+  { action: "SELL", code: "000011", amount: 6000, reason: "止盈减仓，防止利润回吐" },
+  hotVerifiedSeedProfile,
+  heldPosition
+);
+assert.equal(hotSellGuard.ok, true, "portfolio sell discipline should allow staged profit-control sells for verified hot holdings");
+assert(/止盈|偏热|回撤/.test(hotSellGuard.reason), "allowed sell must explain the verified reduce reason");
+const oversizedSellAmount = manager.resolvePortfolioTradeAmount({
+  totalAsset: 100000,
+  cash: 50000,
+  positions: [{ code: "000011", currentValue: 8000 }]
+}, { action: "SELL", code: "000011", amount: 8000, targetWeightPct: 0, reason: "止盈减仓" }, "SELL", { code: "000011", currentValue: 8000 });
+assert.equal(oversizedSellAmount, 4000, "portfolio sell sizing must cap normal profit-taking to a staged percentage of the position");
+const severeSellAmount = manager.resolvePortfolioTradeAmount({
+  totalAsset: 100000,
+  cash: 50000,
+  positions: [{ code: "000011", currentValue: 8000 }]
+}, { action: "SELL", code: "000011", amount: 8000, targetWeightPct: 0, reason: "趋势破位止损" }, "SELL", { code: "000011", currentValue: 8000 });
+assert.equal(severeSellAmount, 6400, "portfolio sell sizing may reduce more aggressively for verified severe risk while still avoiding blind full liquidation");
 
 const setupDigest = {
   ok: true,

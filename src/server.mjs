@@ -932,6 +932,7 @@ async function executePortfolioDecision(db, run, config) {
   const profileCodes = decision.actions.map((action) => action.code).filter(Boolean);
   const actionProfiles = profileCodes.length ? await enrichFunds(profileCodes) : [];
   decision.actions = enforcePortfolioBuyDiscipline(decision.actions, actionProfiles);
+  decision.actions = enforcePortfolioSellDiscipline(decision.actions, actionProfiles, db.account.positions);
   const watchlistUpdates = applyPortfolioWatchlistUpdates(
     db,
     [
@@ -2625,6 +2626,135 @@ function evaluatePortfolioBuyDiscipline(action = {}, profile = null) {
   return { ok: true, reason: "", evidence: [trendEvidence, feeEvidence].filter(Boolean) };
 }
 
+function enforcePortfolioSellDiscipline(actions = [], profiles = [], positions = []) {
+  const profileByCode = new Map((profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
+  const positionByCode = new Map((positions || []).filter(Boolean).map((position) => [position.code, position]));
+  return normalizePortfolioActions(actions).map((action) => {
+    if (action.action !== "SELL") return action;
+    const position = positionByCode.get(action.code);
+    const guard = evaluatePortfolioSellDiscipline(action, profileByCode.get(action.code), position);
+    if (guard.ok) {
+      return {
+        ...action,
+        reason: [action.reason, guard.reason].filter(Boolean).join(" "),
+        dataBasis: mergeStringLists(action.dataBasis, guard.evidence, ["来源：portfolio_sell_discipline_guard"]),
+        riskControl: action.riskControl || guard.riskControl || "本轮只做纪律性分批减仓，下一次每日决策继续复核是否需要追加卖出。"
+      };
+    }
+    return {
+      ...action,
+      action: "HOLD",
+      amount: 0,
+      targetWeightPct: round(Number(position?.weightPct || action.targetWeightPct || 0), 2),
+      reason: [action.reason, guard.reason].filter(Boolean).join(" "),
+      dataBasis: mergeStringLists(action.dataBasis, guard.evidence, ["来源：portfolio_sell_discipline_guard"]),
+      chaseRisk: [action.chaseRisk, guard.reason].filter(Boolean).join("；"),
+      riskControl: action.riskControl || "本轮不提交虚拟赎回，下一次复核破位、转弱、回撤扩大或止盈证据后再决定。"
+    };
+  });
+}
+
+function evaluatePortfolioSellDiscipline(action = {}, profile = null, position = null) {
+  if (!action.code) {
+    return {
+      ok: false,
+      reason: "系统卖出纪律拦截：缺少基金代码，不能提交虚拟赎回。",
+      evidence: []
+    };
+  }
+  if (!position || Number(position.currentValue || 0) <= 0) {
+    return {
+      ok: false,
+      reason: "系统卖出纪律拦截：组合中没有可卖持仓，不能提交虚拟赎回。",
+      evidence: []
+    };
+  }
+  if (!profile) {
+    return {
+      ok: false,
+      reason: "系统卖出纪律拦截：缺少联网补全资料，不能提交虚拟赎回。",
+      evidence: [formatPortfolioPositionEvidence(position)]
+    };
+  }
+  const nav = getProfileNav(profile);
+  if (!nav) {
+    return {
+      ok: false,
+      reason: "系统卖出纪律拦截：缺少可验证单位净值，不能提交虚拟赎回。",
+      evidence: [formatPortfolioPositionEvidence(position), profile.error || ""].filter(Boolean)
+    };
+  }
+  const trend = profile.trendProfile || {};
+  if (!trend.ok) {
+    return {
+      ok: false,
+      reason: "系统卖出纪律拦截：缺少可验证走势、破位、转弱或止盈证据，不能提交虚拟赎回。",
+      evidence: [formatPortfolioPositionEvidence(position), trend.note || profile.error || ""].filter(Boolean)
+    };
+  }
+
+  const evidence = [
+    formatPortfolioPositionEvidence(position),
+    formatPortfolioSeedVerifiedTrendEvidence(profile)
+  ].filter(Boolean);
+  const signals = collectPortfolioSellDisciplineSignals(action, profile, position);
+  if (!signals.length) {
+    return {
+      ok: false,
+      reason: "系统卖出纪律拦截：缺少破位、转弱、回撤扩大或止盈证据，不能提交虚拟赎回。",
+      evidence
+    };
+  }
+
+  return {
+    ok: true,
+    reason: `系统卖出纪律确认：${signals.slice(0, 3).join("；")}。`,
+    evidence: mergeStringLists(evidence, signals.map((signal) => `卖出证据：${signal}`)),
+    riskControl: signals.some((signal) => /破位|回避|止损/.test(signal))
+      ? "先按系统上限纪律性减仓，若下一次复核仍破位或回避，再评估追加卖出。"
+      : "先按系统上限分批止盈/降仓，不做一次性清仓。"
+  };
+}
+
+function collectPortfolioSellDisciplineSignals(action = {}, profile = {}, position = {}) {
+  const trend = profile.trendProfile || {};
+  const actionability = profile.actionability || {};
+  const return20d = finiteMetricNumber(trend.return20dPct);
+  const return60d = finiteMetricNumber(trend.return60dPct);
+  const drawdown = finiteMetricNumber(trend.drawdownFromRecentHighPct);
+  const unrealized = finiteMetricNumber(position.unrealizedPnlPct);
+  const actionText = [
+    action.reason,
+    action.rotationCheck,
+    action.positionCheck,
+    action.chaseRisk,
+    action.riskControl
+  ].filter(Boolean).join(" ");
+  const signals = [];
+  if (trend.trendLabel === "breakdown") signals.push("趋势破位，需要止损或降低风险敞口");
+  if (trend.trendLabel === "weakening") signals.push("趋势转弱，需要减仓观察");
+  if (actionability.action === "avoid" || trend.entryBias === "avoid_now") signals.push("可操作性已转为回避");
+  if (Number.isFinite(drawdown) && drawdown <= -10) signals.push(`距高点${formatFallbackPct(drawdown)}，回撤扩大`);
+  if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback") signals.push("短期偏热或等待回撤，适合分批止盈");
+  if (Number.isFinite(return20d) && return20d > 12) signals.push(`近20日${formatFallbackPct(return20d)}，需止盈防回吐`);
+  if (Number.isFinite(return60d) && return60d > 24) signals.push(`近60日${formatFallbackPct(return60d)}，需降仓控制追涨暴露`);
+  if (Number.isFinite(unrealized) && unrealized >= 8 && /(止盈|减仓|降仓|锁定|兑现)/.test(actionText)) {
+    signals.push(`持仓浮盈${formatFallbackPct(unrealized)}，模型给出止盈/减仓意图`);
+  }
+  return mergeStringLists(signals);
+}
+
+function formatPortfolioPositionEvidence(position = {}) {
+  return [
+    "持仓验证：",
+    position.code || "",
+    position.name || "",
+    Number.isFinite(Number(position.currentValue)) ? `市值${round(Number(position.currentValue), 2)}元` : "",
+    Number.isFinite(Number(position.weightPct)) ? `仓位${round(Number(position.weightPct), 2)}%` : "",
+    Number.isFinite(Number(position.unrealizedPnlPct)) ? `浮盈亏${formatFallbackPct(position.unrealizedPnlPct)}` : ""
+  ].filter(Boolean).join("，");
+}
+
 function applyPortfolioWatchlistUpdates(db, updates = [], options = {}) {
   db.watchlist = normalizePortfolioWatchlist(db.watchlist);
   const normalizedUpdates = normalizePortfolioWatchlistUpdates(updates);
@@ -3311,7 +3441,8 @@ function resolvePortfolioTradeAmount(account, action, side, position = null) {
     const targetValue = targetWeightPct > 0 ? (totalAsset * targetWeightPct) / 100 : null;
     const targetDelta = targetValue === null ? requestedAmount : Math.max(0, currentValue - targetValue);
     const proposedAmount = requestedAmount > 0 && targetDelta > 0 ? Math.min(requestedAmount, targetDelta) : targetDelta;
-    return round(Math.min(currentValue, Math.max(0, proposedAmount || 0)), 2);
+    const positionLimitedAmount = Math.min(currentValue, Math.max(0, proposedAmount || 0));
+    return capPortfolioSellAmountByDiscipline(account, action, positionLimitedAmount, position);
   }
 
   return 0;
@@ -3336,6 +3467,40 @@ function capPortfolioBuyAmountByDiscipline(account = {}, action = {}, amount = 0
     availableAfterReserve
   );
   return round(capped, 2);
+}
+
+function capPortfolioSellAmountByDiscipline(account = {}, action = {}, amount = 0, position = null) {
+  const totalAsset = Number(account.totalAsset || 0);
+  const currentValue = Number(position?.currentValue || 0);
+  if (!Number.isFinite(totalAsset) || totalAsset <= 0 || !Number.isFinite(currentValue) || currentValue <= 0) return 0;
+  const severe = isSeverePortfolioSellAction(action);
+  const maxPositionPct = severe
+    ? finiteNumberOr(process.env.PORTFOLIO_SELL_SEVERE_MAX_POSITION_PCT, 80)
+    : finiteNumberOr(process.env.PORTFOLIO_SELL_MAX_POSITION_PCT, 50);
+  const maxSingleOrderWeightPct = severe
+    ? finiteNumberOr(process.env.PORTFOLIO_SELL_SEVERE_MAX_SINGLE_ORDER_WEIGHT_PCT, 8)
+    : finiteNumberOr(process.env.PORTFOLIO_SELL_MAX_SINGLE_ORDER_WEIGHT_PCT, 6);
+  const maxPositionAmount = Math.max(0, currentValue * maxPositionPct / 100);
+  const maxSingleOrderAmount = Math.max(0, totalAsset * maxSingleOrderWeightPct / 100);
+  const capped = Math.min(
+    Math.max(0, Number(amount || 0)),
+    currentValue,
+    maxPositionAmount,
+    maxSingleOrderAmount
+  );
+  return round(capped, 2);
+}
+
+function isSeverePortfolioSellAction(action = {}) {
+  const text = [
+    action.reason,
+    action.rotationCheck,
+    action.positionCheck,
+    action.chaseRisk,
+    action.riskControl,
+    ...(action.dataBasis || [])
+  ].filter(Boolean).join(" ");
+  return /(破位|止损|回避|假设失效|风控|风险失效|清仓)/.test(text);
 }
 
 function buildPortfolioFundSnapshot(profile, position = null) {
@@ -12246,7 +12411,9 @@ export {
   defaultSkillIdsForWorkflow,
   enforceFundAnswerQuality,
   enforcePortfolioBuyDiscipline,
+  enforcePortfolioSellDiscipline,
   evaluatePortfolioBuyDiscipline,
+  evaluatePortfolioSellDiscipline,
   evaluateFundAnswerQuality,
   filterFocusedPullbackRankingCandidates,
   getFundAnalysisSkillIds,
@@ -12264,6 +12431,7 @@ export {
   normalizePortfolioWatchlist,
   normalizePortfolioWatchlistUpdates,
   renderFundReportSummaryPng,
+  capPortfolioSellAmountByDiscipline,
   resolvePortfolioTradeAmount,
   buildPortfolioWatchlistUpdatesFromSeedCandidates,
   selectPullbackBackfillCandidates,

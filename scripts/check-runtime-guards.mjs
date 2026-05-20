@@ -352,6 +352,38 @@ const requiredPatterns = [
     message: "portfolio BUY guard must explain blocked buys in user-readable Chinese."
   },
   {
+    pattern: /enforcePortfolioSellDiscipline/,
+    message: "portfolio SELL execution must be blocked before virtual orders when risk/profit-control evidence is missing."
+  },
+  {
+    pattern: /evaluatePortfolioSellDiscipline/,
+    message: "portfolio SELL execution discipline must remain directly testable."
+  },
+  {
+    pattern: /缺少破位、转弱、回撤扩大或止盈证据/,
+    message: "portfolio SELL guard must explain when sell evidence is missing."
+  },
+  {
+    pattern: /portfolio_sell_discipline_guard/,
+    message: "portfolio SELL guard must leave traceable evidence when it blocks or confirms model-written sells."
+  },
+  {
+    pattern: /capPortfolioSellAmountByDiscipline/,
+    message: "portfolio SELL sizing must apply system-level staged-redemption caps before creating orders."
+  },
+  {
+    pattern: /PORTFOLIO_SELL_MAX_POSITION_PCT/,
+    message: "portfolio SELL sizing must cap normal redemptions as a configurable percentage of the current holding."
+  },
+  {
+    pattern: /PORTFOLIO_SELL_SEVERE_MAX_POSITION_PCT/,
+    message: "portfolio SELL sizing must still stage severe-risk redemptions instead of blindly liquidating."
+  },
+  {
+    pattern: /系统卖出纪律拦截/,
+    message: "portfolio SELL guard must explain blocked sells in user-readable Chinese."
+  },
+  {
     pattern: /系统净值验证降级/,
     message: "portfolio watchlist ready downgrade must be visible in the saved reason."
   },
