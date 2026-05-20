@@ -368,6 +368,7 @@ assert.equal(png.slice(0, 8).toString("hex"), "89504e470d0a1a0a", "summary chart
 assert.equal(png.readUInt32BE(16), 980, "summary chart width must match requested width");
 assert.equal(png.readUInt32BE(20), 620, "summary chart height must match requested height");
 assert(png.length > 8000, "summary chart should contain dense report-card evidence, not only a sparse legacy line");
+assert(serverSource.includes("sanitizeChartText"), "summary chart renderer must sanitize non-ASCII labels before bitmap drawing");
 for (const label of ["FUND", "NAV", "RANGE", "RET", "BUY/FEE", "ENTRY", "SIG", "LOW", "ACT", "CLASS", "FEE", "SHRP", "YRET", "SIZE"]) {
   assert(serverSource.includes(label), `summary chart must use readable compact label: ${label}`);
 }
@@ -375,6 +376,9 @@ for (const staleLabel of ["FUND SETUP", "NAV TREND", "DRAWDOWN FROM HIGH", "STAG
   assert(!serverSource.includes(staleLabel), `summary chart should not expose stale English label: ${staleLabel}`);
 }
 assert(!/drawText\([^)]*[\u4e00-\u9fff]/.test(serverSource), "chart renderer must not draw tiny bitmap Chinese text inside PNGs");
+const tinyFontSource = serverSource.slice(serverSource.indexOf("const TINY_FONT"), serverSource.indexOf("function encodePngRgba"));
+assert(!/[\u4e00-\u9fff]/.test(tinyFontSource), "tiny chart font must not keep Chinese bitmap glyphs that render like QR codes");
+assert(!/drawYAxisTickLabels\([^;\n]*["'][\u4e00-\u9fff]/.test(serverSource), "summary chart must not use Chinese axis labels in bitmap text");
 
 const selectedChartCodes = manager.selectFundReportProfilesForAnswer([
   { code: "000001", name: "低位修复基金A", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.01 }] } },

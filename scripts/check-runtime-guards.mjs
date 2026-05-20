@@ -12,6 +12,10 @@ const forbiddenPatterns = [
   {
     pattern: /const hasAction = \/[^\n]*(?:buy|staged|wait|avoid|hold|sell)/i,
     message: "fund answer quality gate must not count raw English action enums as user-facing actions."
+  },
+  {
+    pattern: /drawYAxisTickLabels\([^;\n]*["'][\u4e00-\u9fff]/,
+    message: "fund report charts must not render tiny bitmap Chinese axis labels."
   }
 ];
 
@@ -53,8 +57,12 @@ const requiredPatterns = [
     message: "fund report charts must include a readable buy-point and fee evidence panel."
   },
   {
-    pattern: /width:\s*980,\s*\n\s*height:\s*620/,
+    pattern: /function renderFundReportSummaryPng\(\{\s*profile,\s*width\s*=\s*980,\s*height\s*=\s*620\s*\}\s*=\s*\{\}\)/,
     message: "fund report chart defaults must remain large enough for dense evidence cards."
+  },
+  {
+    pattern: /sanitizeChartText/,
+    message: "fund report charts must sanitize non-ASCII text before drawing bitmap labels."
   },
   {
     pattern: /drawDecisionEvidenceStrip/,

@@ -6587,7 +6587,7 @@ function renderTrendSeriesPng({ series = [], width = 720, height = 260 } = {}) {
   return encodePngRgba(canvas);
 }
 
-function renderFundReportSummaryPng({ profile, width = 900, height = 520 } = {}) {
+function renderFundReportSummaryPng({ profile, width = 980, height = 620 } = {}) {
   const trend = profile?.trendProfile || {};
   const points = normalizeChartSeries(trend.series || []);
   if (points.length < 2) return null;
@@ -6602,12 +6602,12 @@ function renderFundReportSummaryPng({ profile, width = 900, height = 520 } = {})
   const muted = [100, 116, 139, 255];
   const ink = [15, 23, 42, 255];
 
-  drawText(canvas, 28, 18, `${code}${shareClass ? ` ${shareClass}` : ""} FUND`, ink, 3);
+  drawText(canvas, 28, 18, `${code}${shareClass ? ` ${shareClass}` : ""} FUND`, ink, 4);
   drawText(canvas, 28, 48, `${first.date || "START"} / ${last.date || "LAST"}  NAV ${formatChartNumber(last.nav)}`, muted, 2);
-  drawText(canvas, width - 238, 24, `RANGE ${formatChartPct(changePct)}`, lineColor, 3);
+  drawText(canvas, width - 320, 20, `RANGE ${formatChartPct(changePct)}`, lineColor, 4);
   drawDecisionEvidenceStrip(canvas, {
     x: 28,
-    y: 76,
+    y: 80,
     width: width - 56,
     profile,
     trend
@@ -6615,9 +6615,9 @@ function renderFundReportSummaryPng({ profile, width = 900, height = 520 } = {})
 
   drawLineChartPanel(canvas, {
     x: 88,
-    y: 146,
+    y: 164,
     width: 600,
-    height: 250,
+    height: 246,
     points,
     color: lineColor,
     label: "NAV"
@@ -6625,7 +6625,7 @@ function renderFundReportSummaryPng({ profile, width = 900, height = 520 } = {})
 
   drawDrawdownPanel(canvas, {
     x: 88,
-    y: 512,
+    y: 502,
     width: 600,
     height: 70,
     points
@@ -6633,7 +6633,7 @@ function renderFundReportSummaryPng({ profile, width = 900, height = 520 } = {})
 
   drawReturnBarsPanel(canvas, {
     x: 720,
-    y: 146,
+    y: 164,
     width: 230,
     height: 230,
     trend
@@ -6643,7 +6643,7 @@ function renderFundReportSummaryPng({ profile, width = 900, height = 520 } = {})
     x: 720,
     y: 430,
     width: 230,
-    height: 132,
+    height: 154,
     profile,
     trend
   });
@@ -6666,7 +6666,7 @@ function drawLineChartPanel(canvas, { x, y, width, height, points, color, label 
   const range = max - min || 1;
   drawText(canvas, x, y - 22, label, [51, 65, 85, 255], 2);
   drawChartFrame(canvas, x, y, width, height);
-  drawYAxisTickLabels(canvas, x, y, height, [max, min + range / 2, min], formatChartNumber, "净值");
+  drawYAxisTickLabels(canvas, x, y, height, [max, min + range / 2, min], formatChartNumber);
   drawXAxisDateLabels(canvas, x, y + height + 8, width, points);
 
   const px = points.map((item, index) => ({
@@ -6688,9 +6688,9 @@ function drawDrawdownPanel(canvas, { x, y, width, height, points }) {
   });
   const min = Math.min(...drawdowns, -1);
   const range = Math.abs(min) || 1;
-  drawText(canvas, x, y - 22, "DD", [51, 65, 85, 255], 2);
+  drawText(canvas, x, y - 22, "RISK", [51, 65, 85, 255], 2);
   drawChartFrame(canvas, x, y, width, height);
-  drawYAxisTickLabels(canvas, x, y, height, [0, min], formatChartPct, "DD");
+  drawYAxisTickLabels(canvas, x, y, height, [0, min], formatChartPct);
   drawXAxisDateLabels(canvas, x, y + height + 8, width, points);
   const zeroY = y + 10;
   drawLine(canvas, x + 8, zeroY, x + width - 8, zeroY, [203, 213, 225, 255], 1);
@@ -6708,11 +6708,11 @@ function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
   drawText(canvas, x, y - 28, "RET", [51, 65, 85, 255], 2);
   drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
   const items = [
-    ["5d", trend.return5dPct],
-    ["10d", trend.return10dPct],
-    ["20d", trend.return20dPct],
-    ["60d", trend.return60dPct],
-    ["120d", trend.return120dPct],
+    ["5", trend.return5dPct],
+    ["10", trend.return10dPct],
+    ["20", trend.return20dPct],
+    ["60", trend.return60dPct],
+    ["120", trend.return120dPct],
     ["Y", trend.return250dPct]
   ].map(([label, value]) => ({ label, value: Number(value) })).filter((item) => Number.isFinite(item.value));
   if (!items.length) {
@@ -6752,13 +6752,14 @@ function drawDecisionEvidenceStrip(canvas, { x, y, width, profile = {}, trend = 
   ];
   const gap = 8;
   const tileW = Math.floor((width - gap * (items.length - 1)) / items.length);
-  drawRect(canvas, x, y, width, 42, [226, 232, 240, 255], 1);
+  const tileH = 56;
+  drawRect(canvas, x, y, width, tileH, [226, 232, 240, 255], 1);
   items.forEach(([label, value, color], index) => {
     const tileX = x + index * (tileW + gap);
-    fillRect(canvas, tileX, y, tileW, 42, [248, 250, 252, 255]);
-    drawRect(canvas, tileX, y, tileW, 42, [226, 232, 240, 255], 1);
-    drawText(canvas, tileX + 6, y + 6, label, [100, 116, 139, 255], 1);
-    drawText(canvas, tileX + 6, y + 22, value, color, 2);
+    fillRect(canvas, tileX, y, tileW, tileH, [248, 250, 252, 255]);
+    drawRect(canvas, tileX, y, tileW, tileH, [226, 232, 240, 255], 1);
+    drawText(canvas, tileX + 8, y + 7, label, [100, 116, 139, 255], 2);
+    drawText(canvas, tileX + 8, y + 30, value, color, 3);
   });
 }
 
@@ -6772,22 +6773,21 @@ function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, tre
   const rows = [
     ["CLS", shareClass || ""],
     ["SET", trend.pullbackSetup?.score],
-    ["SIG", formatChartSetupSignal(trend.pullbackSetup?.signal)],
     ["LOW", trend.lowPositionPct120],
-    ["5d", trend.return5dPct],
-    ["10d", trend.return10dPct],
+    ["5", trend.return5dPct],
+    ["10", trend.return10dPct],
     ["ENT", formatChartEntryBias(trend.entryBias)],
     ["ACT", formatChartAction(actionability.action)],
-    ["DD", trend.drawdownFromRecentHighPct],
-    ["YDD", risk.maxDrawdownPct],
+    ["DROP", trend.drawdownFromRecentHighPct],
+    ["MAX", risk.maxDrawdownPct],
     ["YRET", risk.annualizedReturnPct],
     ["SHRP", risk.sharpe],
     ["FEE", feeImpact.oneYearCostPer10000],
     ["SIZE", formatChartScale(profile.scale)]
   ];
   const tileW = Math.floor((width - 30) / 2);
-  const tileH = rows.length > 10 ? 13 : rows.length > 8 ? 16 : 20;
-  const tileGap = rows.length > 10 ? 3 : rows.length > 8 ? 3 : 4;
+  const tileH = 20;
+  const tileGap = 4;
   rows.forEach(([label, rawValue], index) => {
     const col = index % 2;
     const row = Math.floor(index / 2);
@@ -6798,7 +6798,7 @@ function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, tre
     fillRect(canvas, tileX, tileY, tileW, tileH, [248, 250, 252, 255]);
     drawRect(canvas, tileX, tileY, tileW, tileH, [226, 232, 240, 255], 1);
     drawText(canvas, tileX + 4, tileY + 2, label, [100, 116, 139, 255], 1);
-    drawText(canvas, tileX + 38, tileY + 3, value, color, 1);
+    drawText(canvas, tileX + 38, tileY + 5, value, color, 2);
   });
 }
 
@@ -6811,9 +6811,11 @@ function drawChartFrame(canvas, x, y, width, height) {
   drawRect(canvas, x, y, width, height, [203, 213, 225, 255], 1);
 }
 
-function drawYAxisTickLabels(canvas, x, y, height, values, formatter, axisLabel) {
+function drawYAxisTickLabels(canvas, x, y, height, values, formatter, axisLabel = "") {
   const color = [100, 116, 139, 255];
-  drawText(canvas, Math.max(4, x - 58), y - 18, axisLabel, color, 2);
+  if (axisLabel) {
+    drawText(canvas, Math.max(4, x - 58), y - 18, axisLabel, color, 2);
+  }
   values.forEach((value, index) => {
     const ty = values.length === 1 ? y + height : y + (index / (values.length - 1)) * height;
     drawLine(canvas, x - 4, ty, x, ty, [148, 163, 184, 255], 1);
@@ -6859,7 +6861,7 @@ function formatChartMetricValue(label, value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return String(value || "NA").slice(0, 6).toUpperCase();
   if (label === "LOW") return `${round(numeric, 1)}%`;
-  if (["DD", "YDD", "YRET", "5d", "10d"].includes(label)) return formatChartPct(numeric);
+  if (["DD", "YDD", "DROP", "MAX", "YRET", "5d", "10d", "5", "10", "20", "60", "120"].includes(label)) return formatChartPct(numeric);
   if (label === "FEE") return `${round(numeric, 0)}`;
   if (label === "SHRP") return String(round(numeric, 2));
   return String(round(numeric, 0));
@@ -6878,8 +6880,8 @@ function getChartShareClass(profile = {}) {
 function formatChartScale(value) {
   const text = String(value || "").trim();
   if (!text) return "";
-  const number = toNumber(text);
-  if (!Number.isFinite(number)) return text.slice(0, 8);
+  const number = toNumber(text) ?? Number(text.match(/-?\d+(?:\.\d+)?/)?.[0]);
+  if (!Number.isFinite(number)) return sanitizeChartText(text).slice(0, 8);
   return String(round(number, number >= 100 ? 0 : 1));
 }
 
@@ -6891,7 +6893,7 @@ function chartMetricColor(label, value) {
   if (label === "FEE") return chartFeeColor(value);
   if (label === "SHRP") return chartSharpeColor(value);
   const numeric = Number(value);
-  if (["DD", "YDD"].includes(label)) return [194, 65, 12, 255];
+  if (["DD", "YDD", "DROP", "MAX"].includes(label)) return [194, 65, 12, 255];
   if (Number.isFinite(numeric) && numeric > 0) return [22, 130, 93, 255];
   return [15, 23, 42, 255];
 }
@@ -7061,10 +7063,20 @@ function drawRect(canvas, x, y, width, height, color, strokeWidth = 1) {
   drawLine(canvas, x, y + height, x, y, color, strokeWidth);
 }
 
+function sanitizeChartText(text) {
+  return String(text || "")
+    .normalize("NFKC")
+    .replace(/[^\x20-\x7E]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function drawText(canvas, x, y, text, color = [15, 23, 42, 255], scale = 2) {
   let cursor = Math.round(x);
   const top = Math.round(y);
-  for (const rawChar of String(text || "").toUpperCase()) {
+  const safeText = sanitizeChartText(text);
+  if (!safeText) return;
+  for (const rawChar of safeText.toUpperCase()) {
     const glyph = TINY_FONT[rawChar] || TINY_FONT["?"];
     if (rawChar === " ") {
       cursor += 4 * scale;
@@ -7123,66 +7135,7 @@ const TINY_FONT = {
   "%": ["11001", "11010", "00010", "00100", "01000", "01011", "10011"],
   "/": ["00001", "00010", "00010", "00100", "01000", "01000", "10000"],
   ":": ["00000", "01100", "01100", "00000", "01100", "01100", "00000"],
-  "?": ["01110", "10001", "00001", "00010", "00100", "00000", "00100"],
-  "基": ["1111111", "0011100", "1111111", "0101010", "1111111", "0011100", "1111111"],
-  "金": ["0011100", "0101010", "1000001", "1111111", "0011100", "0101010", "1111111"],
-  "报": ["0101110", "1101010", "0101110", "0111010", "1101010", "0101001", "0101010"],
-  "告": ["0010000", "1111111", "0010000", "0111110", "1000001", "1000001", "0111110"],
-  "净": ["1001110", "0010010", "1011111", "0001010", "1111010", "0001010", "0011010"],
-  "值": ["0101111", "0100100", "0111110", "1101010", "0101110", "0101010", "0101111"],
-  "区": ["1111111", "1000101", "1001010", "1010100", "1001010", "1000101", "1111111"],
-  "间": ["1111111", "1000001", "1011101", "1010101", "1011101", "1000001", "1011111"],
-  "走": ["0010000", "1111111", "0010000", "0111110", "0010000", "0100000", "1111111"],
-  "势": ["0101010", "1111111", "0101010", "0111110", "0010000", "0101110", "1000010"],
-  "最": ["1111111", "1000001", "1111111", "1000001", "1111111", "0101010", "1111111"],
-  "大": ["0010000", "0010000", "0010000", "1111111", "0101000", "1000100", "0000011"],
-  "回": ["1111111", "1000001", "1011101", "1010101", "1011101", "1000001", "1111111"],
-  "撤": ["0101010", "1101111", "0101010", "0111110", "1101010", "0101010", "0110101"],
-  "阶": ["1101110", "0100100", "0101111", "1100100", "0101110", "0100100", "0100100"],
-  "段": ["1111010", "0101010", "1111010", "0101110", "1111010", "0101001", "0100110"],
-  "收": ["1001010", "1001010", "1111111", "1001010", "1010100", "1100010", "1000001"],
-  "益": ["0011100", "1111111", "0101010", "1111111", "1000001", "1010101", "1111111"],
-  "无": ["1111111", "0010000", "1111111", "0010000", "0101000", "1000100", "0000011"],
-  "数": ["1010101", "0111110", "1010101", "0111010", "1010100", "0101010", "1010001"],
-  "据": ["0101111", "1100100", "0101110", "0110100", "1101110", "0101010", "0101110"],
-  "启": ["1111110", "1000000", "1111110", "1000000", "1111110", "1000010", "1111110"],
-  "动": ["1110110", "0010010", "1111111", "0010010", "1110010", "0010010", "0101100"],
-  "风": ["1111110", "1000010", "1010100", "1001000", "1010100", "1000010", "1000111"],
-  "险": ["1101110", "0101010", "0101010", "1101110", "0101010", "0100010", "0111110"],
-  "低": ["0101111", "0101000", "1101110", "0101010", "0101110", "0101010", "0101011"],
-  "位": ["0100100", "0101111", "1100100", "0101110", "0100100", "0100100", "0101111"],
-  "信": ["0101111", "0100000", "0111110", "1100000", "0101110", "0101010", "0101110"],
-  "号": ["1111111", "1000001", "1111111", "0010000", "1111110", "0000010", "0111100"],
-  "入": ["0010000", "0010000", "0101000", "0101000", "1000100", "1000100", "0000011"],
-  "场": ["0101111", "1110010", "0101110", "0100010", "1111110", "0001010", "0110010"],
-  "作": ["0101111", "0100100", "1101110", "0100100", "0101110", "0100100", "0100100"],
-  "年": ["0010000", "1111111", "0100000", "1111110", "0100000", "1111111", "0100000"],
-  "日": ["1111111", "1000001", "1000001", "1111111", "1000001", "1000001", "1111111"],
-  "夏": ["1111111", "0010000", "1111111", "1000001", "1111111", "0101010", "1010001"],
-  "普": ["0101010", "1111111", "0101010", "1111111", "1000001", "1111111", "1000001"],
-  "费": ["1111111", "0010000", "1111111", "1000001", "1111111", "0010100", "1100011"],
-  "用": ["1111111", "1000001", "1111111", "1000001", "1111111", "1000001", "1000011"],
-  "调": ["1011111", "0010101", "1011111", "0010101", "1011111", "0010101", "0011111"],
-  "可": ["1111111", "0000001", "0111101", "0100101", "0111101", "0000001", "0000110"],
-  "买": ["1111111", "0000010", "1111110", "0010000", "0101010", "1000100", "0000011"],
-  "点": ["0010000", "1111111", "0010000", "0111110", "0000000", "1010101", "1010101"],
-  "分": ["0101010", "0101010", "1000001", "0010000", "0101110", "1000010", "0001100"],
-  "批": ["0101010", "1101010", "0101111", "0111010", "1101010", "0101010", "0101111"],
-  "等": ["0101010", "1111111", "0101010", "1111111", "0010000", "1111111", "0000010"],
-  "待": ["0101010", "0101111", "1101010", "0101111", "0101010", "0101010", "0100110"],
-  "观": ["1010101", "1011111", "1010001", "1111111", "1010101", "0010101", "0100011"],
-  "察": ["0011100", "1111111", "1000001", "0101010", "1111111", "0011100", "1111111"],
-  "避": ["1011110", "0010010", "1011110", "0010010", "1011110", "0101000", "1111111"],
-  "持": ["0101010", "1101111", "0101010", "0111111", "1101010", "0101010", "0100110"],
-  "有": ["0010000", "1111111", "0100000", "1111110", "1000010", "1111110", "1000010"],
-  "缺": ["1110100", "1010100", "1111111", "1010100", "1110100", "1001010", "1010001"],
-  "失": ["0010000", "1111111", "0010000", "1111111", "0101000", "1000100", "0000011"],
-  "份": ["0101010", "0101010", "1101010", "0101010", "0101110", "0110010", "0100110"],
-  "额": ["1111011", "1001010", "1111011", "0010010", "1111110", "0010100", "1100011"],
-  "类": ["0010000", "1010101", "0111110", "0010000", "0101010", "1000100", "0000011"],
-  "规": ["1010101", "1010101", "1111111", "1010101", "1010101", "0010101", "0100011"],
-  "模": ["1010101", "1111111", "1010101", "1111111", "1010101", "1010101", "1011010"],
-  "亿": ["0100000", "0101110", "1100010", "0100100", "0101000", "0100010", "0101110"]
+  "?": ["01110", "10001", "00001", "00010", "00100", "00000", "00100"]
 };
 
 function encodePngRgba(canvas) {
