@@ -16,6 +16,10 @@ const forbiddenPatterns = [
   {
     pattern: /drawYAxisTickLabels\([^;\n]*["'][\u4e00-\u9fff]/,
     message: "fund report charts must not render tiny bitmap Chinese axis labels."
+  },
+  {
+    pattern: /drawText\([^;\n]*,\s*1\)/,
+    message: "fund report charts must not use scale-1 bitmap text because Feishu thumbnails make it look like QR noise."
   }
 ];
 
@@ -67,6 +71,10 @@ const requiredPatterns = [
   {
     pattern: /drawDecisionEvidenceStrip/,
     message: "fund report charts must expose decision evidence above the trend line."
+  },
+  {
+    pattern: /drawTextFit/,
+    message: "fund report charts must fit large labels instead of shrinking them into unreadable bitmap text."
   },
   {
     pattern: /DEFAULT_MODEL_MAX_OUTPUT_TOKENS\s*=\s*9600/,

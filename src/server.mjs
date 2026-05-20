@@ -6752,47 +6752,31 @@ function renderFundReportSummaryPng({ profile, width = 980, height = 620 } = {})
   const ink = [15, 23, 42, 255];
 
   drawText(canvas, 28, 18, `${code}${shareClass ? ` ${shareClass}` : ""} FUND`, ink, 4);
-  drawText(canvas, 28, 48, `${first.date || "START"} / ${last.date || "LAST"}  NAV ${formatChartNumber(last.nav)}`, muted, 2);
-  drawText(canvas, width - 320, 20, `RANGE ${formatChartPct(changePct)}`, lineColor, 4);
+  drawText(canvas, 28, 52, `${first.date || "START"} / ${last.date || "LAST"}  NAV ${formatChartNumber(last.nav)}`, muted, 2);
+  drawTextFit(canvas, width - 320, 20, `RANGE ${formatChartPct(changePct)}`, lineColor, 4, 292, 3);
   drawDecisionEvidenceStrip(canvas, {
     x: 28,
-    y: 80,
+    y: 86,
     width: width - 56,
     profile,
     trend
   });
 
   drawLineChartPanel(canvas, {
-    x: 88,
-    y: 164,
-    width: 600,
-    height: 246,
+    x: 92,
+    y: 206,
+    width: width - 156,
+    height: 258,
     points,
     color: lineColor,
     label: "NAV"
   });
 
-  drawDrawdownPanel(canvas, {
-    x: 88,
-    y: 502,
-    width: 600,
-    height: 70,
-    points
-  });
-
-  drawReturnBarsPanel(canvas, {
-    x: 720,
-    y: 164,
-    width: 230,
-    height: 230,
-    trend
-  });
-
   drawSignalMetricsPanel(canvas, {
-    x: 720,
-    y: 430,
-    width: 230,
-    height: 154,
+    x: 28,
+    y: 532,
+    width: width - 56,
+    height: 62,
     profile,
     trend
   });
@@ -6886,68 +6870,54 @@ function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
 }
 
 function drawDecisionEvidenceStrip(canvas, { x, y, width, profile = {}, trend = {} }) {
-  const risk = profile?.risk?.oneYear || profile?.riskMetrics?.periods?.["1y"] || {};
   const actionability = profile?.actionability || {};
-  const feeImpact = profile?.fees?.feeImpact || profile?.feeImpact || {};
-  const shareClass = getChartShareClass(profile);
   const items = [
     ["ENTRY", formatChartEntryBias(trend.entryBias), chartDecisionColor(trend.entryBias)],
     ["SIG", formatChartSetupSignal(trend.pullbackSetup?.signal), chartSignalColor(trend.pullbackSetup?.signal)],
     ["LOW", formatChartMetricValue("LOW", trend.lowPositionPct120), chartLowPositionColor(trend.lowPositionPct120)],
-    ["ACT", formatChartAction(actionability.action), chartActionColor(actionability.action)],
-    ["CLASS", shareClass || "MISS", shareClass ? [15, 23, 42, 255] : [194, 65, 12, 255]],
-    ["FEE", formatChartMetricValue("FEE", feeImpact.oneYearCostPer10000), chartFeeColor(feeImpact.oneYearCostPer10000)],
-    ["SHRP", formatChartMetricValue("SHRP", risk.sharpe), chartSharpeColor(risk.sharpe)]
+    ["ACT", formatChartAction(actionability.action), chartActionColor(actionability.action)]
   ];
-  const gap = 8;
+  const gap = 10;
   const tileW = Math.floor((width - gap * (items.length - 1)) / items.length);
-  const tileH = 56;
+  const tileH = 78;
   drawRect(canvas, x, y, width, tileH, [226, 232, 240, 255], 1);
   items.forEach(([label, value, color], index) => {
     const tileX = x + index * (tileW + gap);
     fillRect(canvas, tileX, y, tileW, tileH, [248, 250, 252, 255]);
     drawRect(canvas, tileX, y, tileW, tileH, [226, 232, 240, 255], 1);
-    drawText(canvas, tileX + 8, y + 7, label, [100, 116, 139, 255], 2);
-    drawText(canvas, tileX + 8, y + 30, value, color, 3);
+    drawText(canvas, tileX + 10, y + 8, label, [100, 116, 139, 255], 2);
+    drawTextFit(canvas, tileX + 10, y + 36, value, color, 4, tileW - 20, 3);
   });
 }
 
 function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, trend = {} }) {
-  drawText(canvas, x, y - 28, "BUY/FEE", [51, 65, 85, 255], 2);
-  drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
+  drawText(canvas, x, y - 30, "BUY/FEE", [51, 65, 85, 255], 3);
   const risk = profile?.risk?.oneYear || profile?.riskMetrics?.periods?.["1y"] || {};
-  const actionability = profile?.actionability || {};
   const feeImpact = profile?.fees?.feeImpact || profile?.feeImpact || {};
   const shareClass = getChartShareClass(profile);
   const rows = [
-    ["CLS", shareClass || ""],
-    ["SET", trend.pullbackSetup?.score],
-    ["LOW", trend.lowPositionPct120],
-    ["5", trend.return5dPct],
-    ["10", trend.return10dPct],
-    ["ENT", formatChartEntryBias(trend.entryBias)],
-    ["ACT", formatChartAction(actionability.action)],
-    ["DROP", trend.drawdownFromRecentHighPct],
-    ["MAX", risk.maxDrawdownPct],
-    ["YRET", risk.annualizedReturnPct],
-    ["SHRP", risk.sharpe],
+    ["CLASS", shareClass || "MISS"],
     ["FEE", feeImpact.oneYearCostPer10000],
-    ["SIZE", formatChartScale(profile.scale)]
+    ["SHRP", risk.sharpe],
+    ["YRET", risk.annualizedReturnPct],
+    ["5", trend.return5dPct],
+    ["20", trend.return20dPct],
+    ["60", trend.return60dPct],
+    ["DROP", trend.drawdownFromRecentHighPct]
   ];
-  const tileW = Math.floor((width - 30) / 2);
-  const tileH = 20;
-  const tileGap = 4;
+  const gap = 6;
+  const tileW = Math.floor((width - gap * (rows.length - 1)) / rows.length);
+  const tileH = Math.max(54, height);
+  drawRect(canvas, x, y, width, tileH, [226, 232, 240, 255], 1);
   rows.forEach(([label, rawValue], index) => {
-    const col = index % 2;
-    const row = Math.floor(index / 2);
-    const tileX = x + 10 + col * (tileW + 10);
-    const tileY = y + 8 + row * (tileH + tileGap);
+    const tileX = x + index * (tileW + gap);
+    const tileY = y;
     const value = formatChartMetricValue(label, rawValue);
     const color = chartMetricColor(label, rawValue);
     fillRect(canvas, tileX, tileY, tileW, tileH, [248, 250, 252, 255]);
     drawRect(canvas, tileX, tileY, tileW, tileH, [226, 232, 240, 255], 1);
-    drawText(canvas, tileX + 4, tileY + 2, label, [100, 116, 139, 255], 1);
-    drawText(canvas, tileX + 38, tileY + 5, value, color, 2);
+    drawText(canvas, tileX + 8, tileY + 7, label, [100, 116, 139, 255], 2);
+    drawTextFit(canvas, tileX + 8, tileY + 34, value, color, 3, tileW - 16, 2);
   });
 }
 
@@ -7239,6 +7209,42 @@ function drawText(canvas, x, y, text, color = [15, 23, 42, 255], scale = 2) {
     }
     cursor += (glyph[0].length + 1) * scale;
   }
+}
+
+function drawTextFit(canvas, x, y, text, color = [15, 23, 42, 255], scale = 2, maxWidth = Infinity, minScale = 2) {
+  const safeText = sanitizeChartText(text);
+  if (!safeText) return;
+  for (let nextScale = scale; nextScale >= minScale; nextScale -= 1) {
+    if (measureChartText(safeText, nextScale) <= maxWidth) {
+      drawText(canvas, x, y, safeText, color, nextScale);
+      return;
+    }
+  }
+  drawText(canvas, x, y, truncateChartText(safeText, minScale, maxWidth), color, minScale);
+}
+
+function measureChartText(text, scale = 2) {
+  const safeText = sanitizeChartText(text);
+  let width = 0;
+  for (const rawChar of safeText.toUpperCase()) {
+    if (rawChar === " ") {
+      width += 4 * scale;
+      continue;
+    }
+    const glyph = TINY_FONT[rawChar] || TINY_FONT["?"];
+    width += (glyph[0].length + 1) * scale;
+  }
+  return width;
+}
+
+function truncateChartText(text, scale, maxWidth) {
+  let output = "";
+  for (const char of sanitizeChartText(text)) {
+    const next = `${output}${char}`;
+    if (measureChartText(next, scale) > maxWidth) break;
+    output = next;
+  }
+  return output || "NA";
 }
 
 const TINY_FONT = {

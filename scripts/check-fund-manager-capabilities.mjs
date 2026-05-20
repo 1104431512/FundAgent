@@ -521,6 +521,7 @@ assert.equal(png.readUInt32BE(16), 980, "summary chart width must match requeste
 assert.equal(png.readUInt32BE(20), 620, "summary chart height must match requested height");
 assert(png.length > 8000, "summary chart should contain dense report-card evidence, not only a sparse legacy line");
 assert(serverSource.includes("sanitizeChartText"), "summary chart renderer must sanitize non-ASCII labels before bitmap drawing");
+assert(serverSource.includes("drawTextFit"), "summary chart renderer must fit large metric labels instead of shrinking them into QR-like bitmap text");
 for (const label of ["FUND", "NAV", "RANGE", "RET", "BUY/FEE", "ENTRY", "SIG", "LOW", "ACT", "CLASS", "FEE", "SHRP", "YRET", "SIZE"]) {
   assert(serverSource.includes(label), `summary chart must use readable compact label: ${label}`);
 }
@@ -528,6 +529,7 @@ for (const staleLabel of ["FUND SETUP", "NAV TREND", "DRAWDOWN FROM HIGH", "STAG
   assert(!serverSource.includes(staleLabel), `summary chart should not expose stale English label: ${staleLabel}`);
 }
 assert(!/drawText\([^)]*[\u4e00-\u9fff]/.test(serverSource), "chart renderer must not draw tiny bitmap Chinese text inside PNGs");
+assert(!/drawText\([^;\n]*,\s*1\)/.test(serverSource), "summary chart must not use scale-1 bitmap text that becomes QR-like in Feishu thumbnails");
 const tinyFontSource = serverSource.slice(serverSource.indexOf("const TINY_FONT"), serverSource.indexOf("function encodePngRgba"));
 assert(!/[\u4e00-\u9fff]/.test(tinyFontSource), "tiny chart font must not keep Chinese bitmap glyphs that render like QR codes");
 assert(!/drawYAxisTickLabels\([^;\n]*["'][\u4e00-\u9fff]/.test(serverSource), "summary chart must not use Chinese axis labels in bitmap text");
