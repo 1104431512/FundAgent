@@ -184,8 +184,12 @@ const requiredPatterns = [
     message: "fund report image defaults should show a broad buy and backup chart set when available."
   },
   {
-    pattern: /DEFAULT_FUND_REPORT_IMAGE_MIN\s*=\s*10/,
+    pattern: /DEFAULT_FUND_REPORT_IMAGE_MIN\s*=\s*12/,
     message: "fund report image defaults should target a richer chart set than two or three images."
+  },
+  {
+    pattern: /DEFAULT_FUND_REPORT_BUY_IMAGE_MIN\s*=\s*6[\s\S]{0,120}DEFAULT_FUND_REPORT_BACKUP_IMAGE_MIN\s*=\s*6/,
+    message: "fund report image defaults must reserve enough charts for both buy references and backup candidates."
   },
   {
     pattern: /getFundReportChartLimit[\s\S]{0,220}Math\.max\(DEFAULT_FUND_REPORT_IMAGE_MIN,\s*configured\)/,
@@ -206,6 +210,10 @@ const requiredPatterns = [
   {
     pattern: /scoreBackupChartContext/,
     message: "fund report image selection must score qualified backup/watch candidates instead of only main buys."
+  },
+  {
+    pattern: /roleCounts[\s\S]{0,240}roleTargets[\s\S]{0,240}备选/,
+    message: "fund report image selection must balance buy-reference and backup/watch chart quotas."
   },
   {
     pattern: /备选观察图/,
@@ -234,6 +242,26 @@ const requiredPatterns = [
   {
     pattern: /DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE\s*=\s*4/,
     message: "fund report image cards should be split into readable chunks instead of crowding one card."
+  },
+  {
+    pattern: /DEFAULT_PORTFOLIO_REPORT_IMAGE_MIN\s*=\s*8/,
+    message: "portfolio manager visual reports must not default back to two or three charts."
+  },
+  {
+    pattern: /getPortfolioTrendImageLimit[\s\S]{0,220}Math\.max\(DEFAULT_PORTFOLIO_REPORT_IMAGE_MIN,\s*configured\)/,
+    message: "portfolio trend image runtime config must not lower manager reports to sparse two-or-three-chart output."
+  },
+  {
+    pattern: /buildPortfolioStatusCardImages/,
+    message: "portfolio status conversations must attach chart evidence instead of text-only status replies."
+  },
+  {
+    pattern: /watchlistUpdates[\s\S]{0,260}买入准备图[\s\S]{0,260}备选观察图/,
+    message: "portfolio chart selection must include ready buy-preparation and backup watchlist candidates."
+  },
+  {
+    pattern: /buildPortfolioTrendCardImages[\s\S]{0,520}renderFundReportSummaryPng/,
+    message: "portfolio manager images must use dense report cards rather than simple line charts."
   },
   {
     pattern: /splitFeishuCardImages/,

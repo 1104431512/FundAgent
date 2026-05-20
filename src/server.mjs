@@ -28,8 +28,12 @@ const MIN_FUND_COMMITTEE_OUTPUT_TOKENS = 6400;
 const MIN_FUND_QA_OUTPUT_TOKENS = 8000;
 const MIN_FUND_RECOMMENDATION_OUTPUT_TOKENS = 9600;
 const MIN_FUND_REWRITE_OUTPUT_TOKENS = 6400;
-const DEFAULT_FUND_REPORT_IMAGE_MIN = 10;
+const DEFAULT_FUND_REPORT_IMAGE_MIN = 12;
+const DEFAULT_FUND_REPORT_BUY_IMAGE_MIN = 6;
+const DEFAULT_FUND_REPORT_BACKUP_IMAGE_MIN = 6;
 const DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE = 4;
+const DEFAULT_PORTFOLIO_REPORT_IMAGE_MIN = 8;
+const DEFAULT_PORTFOLIO_REPORT_IMAGE_LIMIT = 8;
 const PUBLIC_DATA_TIMEOUT_MS = Number(process.env.PUBLIC_DATA_TIMEOUT_MS || 20000);
 const DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS = [
   "沪深300",
@@ -578,7 +582,12 @@ async function handlePortfolioStatusWorkflow({ message, userText, intent }) {
   });
 
   const answer = buildPortfolioStatusAnswer(userText, intent);
-  await replyToMessage(message.message_id, answer, { kind: "portfolio" });
+  const reportImages = await buildPortfolioStatusCardImages(getEffectiveConfig()).catch((error) => {
+    console.error("[portfolio-status-image-error]", error);
+    recordError(error, { portfolioTrendImageFailures: 1 });
+    return [];
+  });
+  await replyToMessage(message.message_id, answer, { kind: "portfolio", images: reportImages });
 }
 
 async function handleFundRecommendationWorkflow({ message, userText, intent }) {
@@ -5805,27 +5814,40 @@ function selectFundReportProfilesForAnswer(profiles, answerText, options = {}) {
     .map((item) => item.profile);
   const selectedChartCount = collectTrendSnapshotsFromProfiles(selected).length;
   if (selectedChartCount < minCount) {
-    selected.push(...selectSupplementalFundReportProfiles(chartableList, selected, minCount - selectedChartCount));
+    selected.push(...selectSupplementalFundReportProfiles(chartableList, selected, minCount - selectedChartCount, {
+      roleTargets: getFundReportChartRoleTargets(minCount)
+    }));
   }
   return selected.slice(0, limit);
 }
 
-function selectSupplementalFundReportProfiles(profiles, selected, needed) {
+function selectSupplementalFundReportProfiles(profiles, selected, needed, options = {}) {
   if (needed <= 0) return [];
-  const selectedKeys = new Set((selected || []).map(getFundReportProfileKey).filter(Boolean));
-  return (profiles || [])
-    .filter((profile) => isSupplementalFundReportProfileEligible(profile))
-    .map((profile) => ({
-      profile,
-      key: getFundReportProfileKey(profile),
-      score: scoreSupplementalFundReportProfile(profile)
-    }))
-    .filter((item) => item.key && !selectedKeys.has(item.key))
-    .sort((a, b) => a.score - b.score)
-    .slice(0, needed)
-    .map((item) => withFundReportChartMeta(item.profile, {
-      role: inferSupplementalFundReportChartRole(item.profile)
-    }));
+  const picked = [];
+  while (picked.length < needed) {
+    const selectedKeys = new Set([...(selected || []), ...picked].map(getFundReportProfileKey).filter(Boolean));
+    const roleCounts = countFundReportChartRoles([...(selected || []), ...picked]);
+    const next = (profiles || [])
+      .filter((profile) => isSupplementalFundReportProfileEligible(profile))
+      .map((profile) => {
+        const role = inferSupplementalFundReportChartRole(profile);
+        return {
+          profile,
+          role,
+          key: getFundReportProfileKey(profile),
+          score: scoreSupplementalFundReportProfile(profile, {
+            role,
+            roleCounts,
+            roleTargets: options.roleTargets
+          })
+        };
+      })
+      .filter((item) => item.key && !selectedKeys.has(item.key))
+      .sort((a, b) => a.score - b.score)[0];
+    if (!next) break;
+    picked.push(withFundReportChartMeta(next.profile, { role: next.role }));
+  }
+  return picked;
 }
 
 function isSupplementalFundReportProfileEligible(profile) {
@@ -5837,15 +5859,20 @@ function isSupplementalFundReportProfileEligible(profile) {
   return true;
 }
 
-function scoreSupplementalFundReportProfile(profile) {
+function scoreSupplementalFundReportProfile(profile, options = {}) {
   let score = 1000 - scoreResearchDigestForPullbackSetup(profile);
   const trend = profile?.trendProfile || {};
   const bucket = classifyPullbackSetupCandidateForSummary(profile);
+  const role = options.role || inferSupplementalFundReportChartRole(profile);
+  const roleCounts = options.roleCounts || {};
+  const roleTargets = options.roleTargets || {};
   if (bucket === "main_candidate") score -= 300;
   if (["pullback_complete", "launch_setup"].includes(trend.pullbackSetup?.signal)) score -= 120;
   if (["buyable_now", "staged_buy"].includes(trend.entryBias)) score -= 80;
   if (trend.entryBias === "wait_pullback") score += 60;
   if (String(profile?.reportChartRole || "").includes("备选")) score -= 20;
+  if (String(role).includes("买入") && Number(roleCounts.buy || 0) < Number(roleTargets.buy || 0)) score -= 420;
+  if (String(role).includes("备选") && Number(roleCounts.backup || 0) < Number(roleTargets.backup || 0)) score -= 420;
   return score;
 }
 
@@ -5853,6 +5880,33 @@ function inferSupplementalFundReportChartRole(profile) {
   if (String(profile?.reportChartRole || "").includes("备选")) return "备选观察图";
   if (classifyPullbackSetupCandidateForSummary(profile) === "main_candidate") return "买入参考图";
   return "备选观察图";
+}
+
+function getFundReportChartRoleTargets(total = getFundReportChartMinCount()) {
+  const count = Math.max(0, Number(total || 0) || 0);
+  if (!count) return { buy: 0, backup: 0 };
+  const buy = count >= DEFAULT_FUND_REPORT_IMAGE_MIN
+    ? Math.min(count, DEFAULT_FUND_REPORT_BUY_IMAGE_MIN)
+    : Math.min(count, Math.max(1, Math.round(count * 0.4)));
+  return {
+    buy,
+    backup: Math.min(Math.max(0, count - buy), DEFAULT_FUND_REPORT_BACKUP_IMAGE_MIN)
+  };
+}
+
+function countFundReportChartRoles(profiles = []) {
+  const snapshots = collectTrendSnapshotsFromProfiles(profiles);
+  let buy = 0;
+  let backup = 0;
+  for (const item of snapshots) {
+    const role = item.snapshot?.reportChartRole || inferSupplementalFundReportChartRole(item.snapshot);
+    if (String(role).includes("买入")) {
+      buy += 1;
+    } else {
+      backup += 1;
+    }
+  }
+  return { total: snapshots.length, buy, backup };
 }
 
 function getFundReportProfileKey(profile) {
@@ -6055,20 +6109,24 @@ async function buildPortfolioTrendCardImages(run, config) {
   if (String(process.env.FEISHU_PORTFOLIO_TREND_IMAGES ?? "true") === "false") {
     return [];
   }
-  const snapshots = collectTrendSnapshotsForRun(run).slice(0, Number(process.env.FEISHU_PORTFOLIO_TREND_IMAGE_LIMIT || 3));
+  const snapshots = collectTrendSnapshotsForRun(run).slice(0, getPortfolioTrendImageLimit());
   const images = [];
   for (const item of snapshots) {
-    const png = renderTrendSeriesPng({
-      title: `${item.code} ${item.name}`.trim(),
-      series: item.snapshot.trendProfile?.series || [],
-      width: 720,
-      height: 260
+    const png = renderFundReportSummaryPng({
+      profile: {
+        ...item.snapshot,
+        code: item.code || item.snapshot?.code || "",
+        name: item.name || item.snapshot?.name || "",
+        reportChartRole: item.role || item.snapshot?.reportChartRole || ""
+      },
+      width: 1280,
+      height: 760
     });
     if (!png) continue;
-    const imageKey = await uploadFeishuImage(png, `trend-${item.code || "fund"}.png`, config);
+    const imageKey = await uploadFeishuImage(png, `portfolio-report-${item.code || "fund"}.png`, config);
     images.push({
       imageKey,
-      alt: `${item.code} ${item.name} 走势曲线`.trim() || "基金走势曲线"
+      alt: `${item.role ? `${item.role}：` : ""}${item.code} ${item.name} 走势 / 回撤 / 买点 / 费用证据`.trim() || "基金走势证据图"
     });
   }
   if (images.length) {
@@ -6077,29 +6135,94 @@ async function buildPortfolioTrendCardImages(run, config) {
   return images;
 }
 
+async function buildPortfolioStatusCardImages(config = getEffectiveConfig()) {
+  if (String(process.env.FEISHU_PORTFOLIO_STATUS_IMAGES ?? "true") === "false") {
+    return [];
+  }
+  const db = readPortfolioDb();
+  ensurePortfolioAccount(db, config);
+  const activeOrders = (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status));
+  const recentTransactions = (db.transactions || []).filter((item) => ["BUY", "SELL"].includes(item.side)).slice(-8);
+  const statusRun = {
+    id: "portfolio-status",
+    type: "portfolio_status",
+    orders: activeOrders,
+    transactions: recentTransactions,
+    watchlistUpdates: getActivePortfolioWatchlist(db).map(summarizePortfolioWatchItem),
+    accountAfter: summarizePortfolioAccount(db.account)
+  };
+  return buildPortfolioTrendCardImages(statusRun, config);
+}
+
+function getPortfolioTrendImageLimit() {
+  const configured = Math.max(0, Number(process.env.FEISHU_PORTFOLIO_TREND_IMAGE_LIMIT || DEFAULT_PORTFOLIO_REPORT_IMAGE_LIMIT) || DEFAULT_PORTFOLIO_REPORT_IMAGE_LIMIT);
+  return Math.max(DEFAULT_PORTFOLIO_REPORT_IMAGE_MIN, configured);
+}
+
 function collectTrendSnapshotsForRun(run) {
   const byCode = new Map();
-  const add = (code, name, snapshot) => {
+  const add = ({ code, name, snapshot, role = "", priority = 50 } = {}) => {
     if (!snapshot?.trendProfile?.series?.length) return;
     const key = code || snapshot.code || name;
-    if (!key || byCode.has(key)) return;
+    if (!key) return;
+    const current = byCode.get(key);
+    if (current && Number(current.priority ?? 50) <= priority) return;
     byCode.set(key, {
       code: code || snapshot.code || "",
       name: name || snapshot.name || "",
-      snapshot
+      role,
+      priority,
+      snapshot: {
+        ...snapshot,
+        reportChartRole: role || snapshot.reportChartRole || ""
+      }
     });
   };
 
   for (const tx of run.transactions || []) {
-    add(tx.code, tx.name, tx.fundSnapshot);
-  }
-  for (const position of run.accountAfter?.positions || []) {
-    add(position.code, position.name, position.fundSnapshot);
+    add({
+      code: tx.code,
+      name: tx.name,
+      snapshot: tx.fundSnapshot,
+      role: tx.side === "BUY" ? "买入执行图" : "卖出复盘图",
+      priority: tx.side === "BUY" ? 0 : 8
+    });
   }
   for (const order of run.orders || []) {
-    add(order.code, order.name, order.fundSnapshot);
+    add({
+      code: order.code,
+      name: order.name,
+      snapshot: order.fundSnapshot,
+      role: order.side === "BUY" ? "买入准备图" : "卖出/减仓跟踪图",
+      priority: order.side === "BUY" ? 2 : 10
+    });
   }
-  return [...byCode.values()];
+  for (const item of run.watchlistUpdates || []) {
+    const role = item.status === "ready"
+      ? "买入准备图"
+      : item.status === "waiting_pullback" || item.status === "watch"
+        ? "备选观察图"
+        : item.status === "blocked"
+          ? "风险排除图"
+          : "自选复核图";
+    add({
+      code: item.code,
+      name: item.name,
+      snapshot: item.lastSnapshot,
+      role,
+      priority: item.status === "ready" ? 4 : item.status === "waiting_pullback" ? 12 : item.status === "watch" ? 20 : 40
+    });
+  }
+  for (const position of run.accountAfter?.positions || []) {
+    add({
+      code: position.code,
+      name: position.name,
+      snapshot: position.fundSnapshot,
+      role: "持仓跟踪图",
+      priority: 30
+    });
+  }
+  return [...byCode.values()].sort((a, b) => Number(a.priority ?? 50) - Number(b.priority ?? 50));
 }
 
 function isPreciousMetalQuestion(text) {
@@ -6922,7 +7045,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "必须通过 fund-actionability-evaluation 和 fund-answer-quality 质量门槛：先给直接结论，再给适合/不适合的自评估，再给执行方案。",
     "如果数据不足以支持具体基金代码，就推荐基金方向/筛选条件，并把具体代码标为待复核。",
     "回答要大胆但有边界：证据偏正面时可以给出买入或分批买入候选；不要机械地总是等待回撤。",
-    "如果下钻候选足够，回答要服务 10 张左右报告配图：主买入参考 4 张左右、备选观察 6 张左右；每只都用代码说明图上看的走势、回撤、低位、费用或风险证据。",
+    "如果下钻候选足够，回答要服务 12 张左右报告配图：主买入参考和备选观察各 6 张左右；每只都用代码说明图上看的走势、回撤、低位、费用或风险证据。",
     "回答要像专业经理在和客户沟通：用自然中文解释把握度，不要写“信心：高。”、“Confidence: high”这类字段式短句。",
     "不要把风险写成免责声明清单。只保留会改变买入/等待/回避动作的决策边界。",
     "输出适合飞书卡片阅读，不要 Markdown 表格，不要代码块。",
@@ -7013,7 +7136,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先判断 pullbackSetup.signal、5日/10日早期转强和120日区间低位；短期涨幅偏热、20日/60日大涨且等待回撤的候选不能被包装成启动机会。",
     "如果没有抓到对应行情数据，要说明是公开数据源暂时不可用或滞后，不要简单说自己没有实时数据能力。",
     "必须通过 fund-actionability-evaluation 和 fund-answer-quality 质量门槛：前两行直接回答；有快照/下钻就引用具体字段；给明确行动、适合对象和仓位建议。",
-    "当问题涉及买入、配置、推荐或备选时，如果下钻候选足够，回答要服务 10 张左右报告配图：主买入参考和备选观察都要写代码，并说明图上看的走势、低位、回撤、费用或风险证据。",
+    "当问题涉及买入、配置、推荐或备选时，如果下钻候选足够，回答要服务 12 张左右报告配图：主买入参考和备选观察都要写代码，并说明图上看的走势、低位、回撤、费用或风险证据。",
     "回答要像专业经理在和客户沟通：用自然中文解释把握度，不要写“信心：高。”、“Confidence: high”这类字段式短句。",
     "不要把风险写成免责声明清单。只保留会改变买入/等待/回避动作的决策边界。",
     "回答中文、简洁、可执行。不要保证收益，不要给出个性化承诺。",
@@ -7125,7 +7248,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "若质检问题包含 watch_candidate_given_buy_execution，观察/排除候选不能在1万元执行里获得任何买入金额；只能写0元观察或等待条件。",
       "若质检问题包含 missing_pullback_timing_evidence，主推荐每条必须写出5日/10日早期转强、120日区间低位或距高点回撤等数字证据；若包含 missing_pullback_three_tier_execution，必须给激进/均衡/保守三档金额。",
       "若质检问题包含 missing_pullback_share_class_fee，主推荐每条必须写份额类别和费用模型，例如 C类无前端申购费但有销售服务费，或 A类有申购费但长期持有持续费率较低。",
-      "若质检问题包含 insufficient_chart_linked_candidates，必须补足 10 张左右可配图候选：主买入参考和备选观察分开写，每只都写代码、买入/备选角色、图上看的走势/回撤/低位/费用证据。",
+      "若质检问题包含 insufficient_chart_linked_candidates，必须补足 12 张左右可配图候选：主买入参考和备选观察分开写，每只都写代码、买入/备选角色、图上看的走势/回撤/低位/费用证据。",
       "若证据没有 mainCandidateCodes，必须直接说明暂未筛到合格的回调完成/低位启动主推荐，不能硬凑基金代码。",
       "保持适合飞书卡片阅读，不要 Markdown 表格或代码块。",
       "",
@@ -13443,6 +13566,7 @@ export {
   getFeishuCardImageChunkSize,
   getFundReportChartLimit,
   getFundReportChartMinCount,
+  getPortfolioTrendImageLimit,
   getFundAnalysisSkillIds,
   getFundQaSkillIds,
   getFundRecommendationSkillIds,
@@ -13466,6 +13590,7 @@ export {
   selectFundReportProfilesForAnswer,
   selectFundScreeningWatchlistProfiles,
   selectFundWorkflowStaleWatchlistRefreshCandidates,
+  collectTrendSnapshotsForRun,
   selectLowBaseTurnRankCandidates,
   selectPortfolioWatchlistSeedCandidates,
   selectFundWorkflowWatchlistCandidates,
