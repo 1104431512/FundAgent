@@ -2245,18 +2245,26 @@ function persistAnswerWatchlistCandidates({ userText = "", answerText = "", char
 }
 
 function inferPortfolioWatchStatusFromSeedCandidate(candidate = {}, seedScore = 0, profile = null) {
-  const trend = profile?.trendProfile || {};
-  if (!profile || !trend.ok) {
+  if (!profile || !profile.trendProfile?.ok) {
     return "waiting_pullback";
   }
   if (hasPortfolioVerifiedSeedChaseRisk(candidate, profile)) {
     return "blocked";
   }
+  const verifiedReady = Number(seedScore) >= 60 && hasVerifiedPortfolioBuySetup(profile);
+  if (verifiedReady) {
+    return "ready";
+  }
+  return "waiting_pullback";
+}
+
+function hasVerifiedPortfolioBuySetup(profile = {}) {
+  const trend = profile?.trendProfile || {};
+  if (!trend.ok) return false;
   const signal = trend.pullbackSetup?.signal || "";
   const return20d = finiteMetricNumber(trend.return20dPct);
   const return60d = finiteMetricNumber(trend.return60dPct);
-  const verifiedReady = Number(seedScore) >= 60
-    && ["pullback_complete", "launch_setup"].includes(signal)
+  return ["pullback_complete", "launch_setup"].includes(signal)
     && trend.trendLabel !== "extended_uptrend"
     && trend.entryBias !== "wait_pullback"
     && trend.entryBias !== "avoid_now"
@@ -2265,10 +2273,6 @@ function inferPortfolioWatchStatusFromSeedCandidate(candidate = {}, seedScore = 
     && return20d <= 10
     && Number.isFinite(return60d)
     && return60d <= 24;
-  if (verifiedReady) {
-    return "ready";
-  }
-  return "waiting_pullback";
 }
 
 function hasPortfolioVerifiedSeedChaseRisk(candidate = {}, profile = {}) {
@@ -2438,6 +2442,13 @@ function evaluatePortfolioBuyDiscipline(action = {}, profile = null) {
     return {
       ok: false,
       reason: "系统买入纪律拦截：净值下钻显示偏热、等待回撤或追涨风险，不能提交虚拟申购。",
+      evidence: [trendEvidence]
+    };
+  }
+  if (!hasVerifiedPortfolioBuySetup(profile)) {
+    return {
+      ok: false,
+      reason: "系统买入纪律拦截：缺少回调完成/启动前夜和低位证据，不能提交虚拟申购。",
       evidence: [trendEvidence]
     };
   }

@@ -284,6 +284,14 @@ const requiredPatterns = [
     message: "portfolio BUY execution discipline must remain directly testable."
   },
   {
+    pattern: /hasVerifiedPortfolioBuySetup/,
+    message: "portfolio BUY execution must require verified pullback/launch and low-position setup evidence, not merely absence of chase risk."
+  },
+  {
+    pattern: /缺少回调完成\/启动前夜和低位证据/,
+    message: "portfolio BUY guard must explain when low-position launch evidence is missing."
+  },
+  {
     pattern: /portfolio_buy_discipline_guard/,
     message: "portfolio BUY guard must leave traceable evidence when it blocks model-written buys."
   },

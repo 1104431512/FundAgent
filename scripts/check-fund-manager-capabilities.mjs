@@ -532,6 +532,26 @@ assert.equal(
   false,
   "portfolio buy discipline must block buys without enriched trend profiles"
 );
+const midPositionBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, {
+  ...verifiedSeedProfile,
+  trendProfile: {
+    ...verifiedSeedProfile.trendProfile,
+    lowPositionPct120: 72.5,
+    drawdownFromRecentHighPct: -2.4
+  }
+});
+assert.equal(midPositionBuyGuard.ok, false, "portfolio buy discipline must block buys that are not actually low-position setups");
+assert(midPositionBuyGuard.reason.includes("低位证据"), "mid-position buy block must explain the missing low-position evidence");
+const noLaunchSignalBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, {
+  ...verifiedSeedProfile,
+  trendProfile: {
+    ...verifiedSeedProfile.trendProfile,
+    pullbackSetup: { signal: "none", score: 34 },
+    trendLabel: "uptrend"
+  }
+});
+assert.equal(noLaunchSignalBuyGuard.ok, false, "portfolio buy discipline must require pullback-complete or launch-setup evidence before buying");
+assert(noLaunchSignalBuyGuard.reason.includes("启动前夜"), "missing setup signal block must explain the launch evidence requirement");
 
 const setupDigest = {
   ok: true,
