@@ -226,6 +226,8 @@ assert.deepEqual(
   ["000010"],
   "weekly reversal scanner must keep mild one-week turns and reject chases or still-falling funds"
 );
+assert(serverSource.includes('metric: "zzf"'), "pullback setup recall must directly scan one-week ranking data");
+assert(serverSource.includes("PULLBACK_SETUP_WEEKLY_RANK_LIMIT || 160"), "one-week ranking scan must use a wider pool to catch mild early turns after hot weekly leaders");
 const mergedWeeklyEvidence = manager.mergeCandidateFunds([
   { code: "000010", name: "中证A500ETF联接C", keywords: ["中证A500"], setupDiscoverySource: "keyword_search" }
 ], [

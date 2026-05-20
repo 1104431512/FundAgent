@@ -85,6 +85,14 @@ const requiredPatterns = [
     message: "pullback/setup discovery must keep a wide ranking recall pool."
   },
   {
+    pattern: /PULLBACK_SETUP_WEEKLY_RANK_LIMIT\s*\|\|\s*160/,
+    message: "pullback/setup discovery must directly scan one-week ranking candidates instead of only inheriting weekly evidence from monthly/quarterly lists."
+  },
+  {
+    pattern: /metric:\s*"zzf"[\s\S]{0,80}近1周转强候选/,
+    message: "pullback/setup discovery must include the Eastmoney one-week ranking metric for early-turn recall."
+  },
+  {
     pattern: /PULLBACK_SETUP_BACKFILL_DIVE_LIMIT\s*\|\|\s*8/,
     message: "pullback/setup discovery must run a second deep-dive batch when the first batch has no qualified main candidate."
   },

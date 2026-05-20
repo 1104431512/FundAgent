@@ -5766,6 +5766,7 @@ async function fetchPullbackSetupRankingCandidates() {
     ["qdii", "QDII基金"]
   ];
   const metrics = [
+    { metric: "zzf", sort: "desc", label: "近1周转强候选", limit: Number(process.env.PULLBACK_SETUP_WEEKLY_RANK_LIMIT || 160) },
     { metric: "1yzf", sort: "desc", label: "近1月转强候选" },
     { metric: "3yzf", sort: "asc", label: "近3月低位候选" },
     { metric: "6yzf", sort: "asc", label: "近6月低位候选" }
@@ -5777,7 +5778,7 @@ async function fetchPullbackSetupRankingCandidates() {
         metric: metric.metric,
         sort: metric.sort,
         rankingMetric: metric.label,
-        limit
+        limit: metric.limit || limit
       }).catch((error) => ({ ok: false, error: error.message, items: [] }))
     )
   ));
