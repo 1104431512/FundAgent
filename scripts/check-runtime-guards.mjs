@@ -53,8 +53,24 @@ const requiredPatterns = [
     message: "fund report charts must include a Chinese setup/risk metrics panel, not only a line chart."
   },
   {
-    pattern: /DEFAULT_MODEL_MAX_OUTPUT_TOKENS\s*=\s*6400/,
-    message: "fund manager default output token budget must remain elevated for richer answers."
+    pattern: /DEFAULT_MODEL_MAX_OUTPUT_TOKENS\s*=\s*9600/,
+    message: "fund manager default output token budget must remain high enough for richer answers."
+  },
+  {
+    pattern: /DEFAULT_REPLY_MAX_CHARS\s*=\s*18000/,
+    message: "Feishu reply character budget must not force premature truncation."
+  },
+  {
+    pattern: /MIN_FUND_RECOMMENDATION_OUTPUT_TOKENS\s*=\s*9600/,
+    message: "fund recommendation workflow must have enough output budget for evidence, fees, execution tiers, and chart context."
+  },
+  {
+    pattern: /PULLBACK_SETUP_RANK_LIMIT\s*\|\|\s*60/,
+    message: "pullback/setup discovery must keep a wide ranking recall pool."
+  },
+  {
+    pattern: /FEISHU_REPORT_TREND_IMAGE_LIMIT\s*\|\|\s*5/,
+    message: "fund report image defaults should show more than three recommended funds when available."
   },
   {
     pattern: /return5dPct[\s\S]{0,120}return10dPct/,

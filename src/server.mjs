@@ -20,11 +20,11 @@ const SKILLS_DIR = path.join(ROOT, "skills");
 const STARTED_AT = new Date();
 const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS || 120000);
 const DEFAULT_MODEL_HTTP_TIMEOUT_MS = Number(process.env.MODEL_HTTP_TIMEOUT_MS ?? 0);
-const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 6400;
-const DEFAULT_REPLY_MAX_CHARS = 12000;
-const MIN_FUND_QA_OUTPUT_TOKENS = 5600;
-const MIN_FUND_RECOMMENDATION_OUTPUT_TOKENS = 7200;
-const MIN_FUND_REWRITE_OUTPUT_TOKENS = 4200;
+const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 9600;
+const DEFAULT_REPLY_MAX_CHARS = 18000;
+const MIN_FUND_QA_OUTPUT_TOKENS = 8000;
+const MIN_FUND_RECOMMENDATION_OUTPUT_TOKENS = 9600;
+const MIN_FUND_REWRITE_OUTPUT_TOKENS = 6400;
 const PUBLIC_DATA_TIMEOUT_MS = Number(process.env.PUBLIC_DATA_TIMEOUT_MS || 20000);
 const DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS = [
   "沪深300",
@@ -1222,7 +1222,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     systemText,
     userPrompt,
     images: [],
-    maxTokens: Math.min(Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS), 3600)
+    maxTokens: Math.min(Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS), 5200)
   });
   updateStats({
     counters: { portfolioManagerModelCalls: 1 },
@@ -1375,7 +1375,7 @@ async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profi
     systemText,
     userPrompt,
     images: [],
-    maxTokens: Math.min(Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS), 1800)
+    maxTokens: Math.min(Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS), 2600)
   });
   return text;
 }
@@ -1417,7 +1417,7 @@ async function buildPortfolioWeeklyWithModel({ account, weeklyContext, profiles,
     systemText,
     userPrompt,
     images: [],
-    maxTokens: Math.min(Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS), 2200)
+    maxTokens: Math.min(Number(config.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS), 3600)
   });
   return text;
 }
@@ -3298,7 +3298,7 @@ async function buildFundReportCardImages(profiles, config) {
   if (String(process.env.FEISHU_REPORT_TREND_IMAGES ?? "true") === "false") {
     return [];
   }
-  const limit = Math.max(0, Number(process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT || 3) || 3);
+  const limit = Math.max(0, Number(process.env.FEISHU_REPORT_TREND_IMAGE_LIMIT || 5) || 5);
   const chartMode = String(process.env.FEISHU_REPORT_CHART_MODE || "summary").toLowerCase();
   const snapshots = collectTrendSnapshotsFromProfiles(profiles).slice(0, limit);
   const images = [];
@@ -4018,7 +4018,7 @@ async function buildAnalystReviewWithModel({ images, userText, messageType, extr
     isComparison ? "4. 初步排序：给出首选、备选、观察/剔除对象和原因，不要给最终用户话术。" : "4. 初步评分区间：给一个区间和原因，不要给最终动作。"
   ].join("\n");
 
-  const maxTokens = Math.max(2600, Math.min(getConfiguredMaxOutputTokens(), 3600));
+  const maxTokens = Math.max(3600, Math.min(getConfiguredMaxOutputTokens(), 5200));
   const review = await callModel({ systemText, userPrompt, images, maxTokens });
   updateStats({
     counters: { analystReviewCalls: 1 },
@@ -4061,7 +4061,7 @@ async function buildCommitteeVoteWithModel({ userText, messageType, extracted, e
     "6. 10000 元草案：激进、均衡、保守各自金额。"
   ].join("\n");
 
-  const maxTokens = Math.max(2200, Math.min(getConfiguredMaxOutputTokens(), 3200));
+  const maxTokens = Math.max(3200, Math.min(getConfiguredMaxOutputTokens(), 4800));
   const vote = await callModel({ systemText, userPrompt, images: [], maxTokens });
   updateStats({
     counters: { committeeVoteCalls: 1 },
@@ -5582,7 +5582,7 @@ function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
     .map((item) => item.trim())
     .filter(Boolean);
   return [...new Set([...(configured.length ? configured : DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS), ...radarKeywords])]
-    .slice(0, Number(process.env.PULLBACK_SETUP_KEYWORD_LIMIT || 18));
+    .slice(0, Number(process.env.PULLBACK_SETUP_KEYWORD_LIMIT || 24));
 }
 
 async function fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar = []) {
@@ -5668,7 +5668,7 @@ async function fetchPullbackSetupRankingCandidates() {
     { metric: "3yzf", sort: "asc", label: "近3月低位候选" },
     { metric: "6yzf", sort: "asc", label: "近6月低位候选" }
   ];
-  const limit = Number(process.env.PULLBACK_SETUP_RANK_LIMIT || 40);
+  const limit = Number(process.env.PULLBACK_SETUP_RANK_LIMIT || 60);
   const groups = await Promise.all(fundTypes.flatMap(([fundType, label]) =>
     metrics.map((metric) =>
       fetchFundRankingByMetric(fundType, label, {
@@ -5700,7 +5700,7 @@ function selectWeeklyReversalRankCandidates(items = []) {
   return (items || [])
     .filter(isWeeklyReversalSeedCandidate)
     .sort((a, b) => scoreWeeklyReversalSeed(b) - scoreWeeklyReversalSeed(a))
-    .slice(0, Number(process.env.PULLBACK_SETUP_REVERSAL_LIMIT || 48));
+    .slice(0, Number(process.env.PULLBACK_SETUP_REVERSAL_LIMIT || 72));
 }
 
 function isWeeklyReversalSeedCandidate(item = {}) {
@@ -6058,7 +6058,7 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
       }
       return scoreDeepDiveCandidate(b, relevantThemeRadar) - scoreDeepDiveCandidate(a, relevantThemeRadar);
     });
-  const defaultLimit = preferPullbackSetup ? 12 : precious ? 4 : 3;
+  const defaultLimit = preferPullbackSetup ? 16 : precious ? 6 : 4;
   const limit = Math.max(0, Number(process.env.MARKET_DEEP_DIVE_FUND_LIMIT ?? defaultLimit));
   const selected = selectDiversifiedDeepDiveCandidates(merged, limit, {
     diversifyExposure: options.forRecommendation || precious
@@ -6691,7 +6691,7 @@ function drawDrawdownPanel(canvas, { x, y, width, height, points }) {
   for (let i = 1; i < px.length; i += 1) {
     drawLine(canvas, px[i - 1].x, px[i - 1].y, px[i].x, px[i].y, [217, 119, 6, 255], 3);
   }
-  drawText(canvas, x + width - 104, y + height - 18, `MAX ${formatChartPct(min)}`, [217, 119, 6, 255], 2);
+  drawText(canvas, x + width - 104, y + height - 18, `最大 ${formatChartPct(min)}`, [217, 119, 6, 255], 2);
 }
 
 function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
