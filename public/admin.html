@@ -267,9 +267,13 @@
         </section>
 
         <section class="tab-panel" data-panel="portfolio">
-          <div class="panel">
-            <div class="panel-head">
-              <h2>虚拟组合</h2>
+          <div class="panel portfolio-command-panel">
+            <div class="portfolio-hero">
+              <div>
+                <span class="eyebrow">虚拟基金经理</span>
+                <h2>组合工作台</h2>
+                <p id="portfolioBrief">正在加载组合状态。</p>
+              </div>
               <div class="actions compact-actions">
                 <button id="refreshPortfolioBtn" type="button" class="secondary">刷新</button>
                 <button id="runPremarketBtn" type="button" class="secondary">生成盘前观察</button>
@@ -280,12 +284,12 @@
                 <button id="prunePortfolioBtn" type="button" class="secondary">清理过期数据</button>
               </div>
             </div>
-            <div class="metric-grid">
-              <div class="metric"><span>总资产</span><strong id="portfolioTotalAsset">0</strong></div>
-              <div class="metric"><span>现金</span><strong id="portfolioCash">0</strong></div>
-              <div class="metric"><span>仓位</span><strong id="portfolioPositionWeight">0%</strong></div>
-              <div class="metric"><span>待确认/应收</span><strong id="portfolioPending">0</strong></div>
-              <div class="metric"><span>累计盈亏</span><strong id="portfolioPnl">0</strong></div>
+            <div class="portfolio-kpi-grid">
+              <div class="portfolio-kpi primary"><span>总资产</span><strong id="portfolioTotalAsset">0</strong><small id="portfolioAssetFootnote">本金与持仓估值合计</small></div>
+              <div class="portfolio-kpi"><span>现金</span><strong id="portfolioCash">0</strong><small>可用于下一次分批买入</small></div>
+              <div class="portfolio-kpi"><span>仓位</span><strong id="portfolioPositionWeight">0%</strong><small id="portfolioExposureFootnote">权益暴露</small></div>
+              <div class="portfolio-kpi"><span>待确认/应收</span><strong id="portfolioPending">0</strong><small>订单与赎回流转中</small></div>
+              <div class="portfolio-kpi"><span>累计盈亏</span><strong id="portfolioPnl">0</strong><small id="portfolioPnlFootnote">相对初始本金</small></div>
             </div>
             <div class="info-grid">
               <div>
@@ -301,6 +305,30 @@
                 <strong id="portfolioRetention">90 天</strong>
               </div>
             </div>
+          </div>
+
+          <div class="portfolio-insight-grid">
+            <section class="panel insight-card">
+              <div class="panel-head tight">
+                <h2>经理摘要</h2>
+                <span id="portfolioRunState" class="badge">未运行</span>
+              </div>
+              <div id="portfolioManagerSummary" class="insight-list"></div>
+            </section>
+            <section class="panel insight-card">
+              <div class="panel-head tight">
+                <h2>持仓暴露</h2>
+                <span id="portfolioPositionCount" class="badge">0 只</span>
+              </div>
+              <div id="portfolioHoldingSummary" class="insight-list"></div>
+            </section>
+            <section class="panel insight-card">
+              <div class="panel-head tight">
+                <h2>买入准备</h2>
+                <span id="portfolioReadinessCount" class="badge">0 只</span>
+              </div>
+              <div id="portfolioReadinessSummary" class="insight-list"></div>
+            </section>
           </div>
 
           <div class="panel">

@@ -480,6 +480,14 @@ const requiredPatterns = [
     message: "admin watchlist UI must show buy-preparation readiness on candidate cards."
   },
   {
+    pattern: /renderPortfolioDashboard[\s\S]{0,5000}portfolioManagerSummary[\s\S]{0,5000}portfolioHoldingSummary[\s\S]{0,5000}portfolioReadinessSummary/,
+    message: "admin portfolio UI must provide a manager dashboard with summary, holdings exposure, and buy-preparation panels."
+  },
+  {
+    pattern: /holding-strip/,
+    message: "admin portfolio UI must expose top holdings as readable chips on positions and watchlist candidates."
+  },
+  {
     pattern: /ensurePortfolioReadyWatchlistReviewed/,
     message: "daily portfolio decisions must add a fallback review action when ready watchlist candidates are omitted."
   },

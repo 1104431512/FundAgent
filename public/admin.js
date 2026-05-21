@@ -204,6 +204,7 @@ async function loadPortfolio() {
       : "未绑定"
   );
   setText("#portfolioRetention", `${portfolio.retentionDays || 90} 天`);
+  renderPortfolioDashboard(portfolio);
   renderOrders(portfolio.activeOrders || []);
   renderPositions(portfolio.positions || []);
   renderWatchlist(portfolio.watchlist || []);
@@ -248,6 +249,145 @@ function formatPortfolioOutput(portfolio) {
     lines.push(`自选基金池：${watchlist.length} 只，接近可买 ${ready} 只，等待回调 ${waiting} 只。`);
   }
   return lines.join("\n");
+}
+
+function renderPortfolioDashboard(portfolio = {}) {
+  const account = portfolio.account || {};
+  const positions = portfolio.positions || [];
+  const watchlist = portfolio.watchlist || [];
+  const runs = portfolio.recentRuns || [];
+  const latestRun = runs[0] || null;
+  const activeOrders = portfolio.activeOrders || [];
+  const ready = watchlist.filter((item) => item.status === "ready");
+  const waiting = watchlist.filter((item) => item.status === "waiting_pullback");
+  const launchEve = watchlist.filter(isWatchlistLaunchEveCandidate);
+  const blocked = watchlist.filter((item) => item.status === "blocked");
+
+  const briefParts = [
+    portfolio.enabled ? "自动运行已启用" : "自动运行停用",
+    `${positions.length} 只持仓`,
+    `${watchlist.length} 只自选候选`,
+    latestRun ? `最近：${latestRun.title || latestRun.type || "组合任务"} ${latestRun.status || ""}` : "暂无运行记录"
+  ];
+  setText("#portfolioBrief", briefParts.filter(Boolean).join(" · "));
+  setText("#portfolioAssetFootnote", `初始本金 ${formatMoney(account.initialCapital)}，今日 ${formatSigned(account.dayPnl)}`);
+  setText("#portfolioExposureFootnote", `持仓市值 ${formatMoney(account.investedValue)}，待确认 ${formatMoney(account.pendingBuyAmount)}`);
+  setText("#portfolioPnlFootnote", `相对初始本金 ${formatSigned(account.cumulativePnlPct)}%`);
+  setText("#portfolioPositionCount", `${positions.length} 只`);
+  setText("#portfolioReadinessCount", `${ready.length + waiting.length} 只`);
+  updateRunStateBadge(latestRun, portfolio.scheduler || {});
+
+  renderInsightList("#portfolioManagerSummary", buildManagerInsightItems(portfolio, latestRun, activeOrders), "暂无经理运行摘要。");
+  renderInsightList("#portfolioHoldingSummary", buildHoldingInsightItems(account, positions), "暂无持仓暴露。");
+  renderInsightList("#portfolioReadinessSummary", buildReadinessInsightItems({ ready, waiting, launchEve, blocked }), "暂无接近买点的候选。");
+}
+
+function updateRunStateBadge(latestRun, scheduler = {}) {
+  const node = document.querySelector("#portfolioRunState");
+  if (!node) return;
+  const status = scheduler.inFlight ? "running" : latestRun?.status || "idle";
+  const label = {
+    running: "运行中",
+    completed: "已完成",
+    failed: "异常",
+    interrupted: "已中断",
+    cancelled: "已结束",
+    idle: "待运行"
+  }[status] || status;
+  node.textContent = label;
+  node.className = `badge ${status === "failed" || status === "interrupted" ? "bad" : status === "running" ? "warn" : "ok"}`;
+}
+
+function buildManagerInsightItems(portfolio, latestRun, activeOrders) {
+  const scheduler = portfolio.scheduler || {};
+  return [
+    {
+      label: "最近结论",
+      value: latestRun?.summary || "暂无复盘记录",
+      meta: latestRun ? `${latestRun.date || "-"} · ${latestRun.title || latestRun.type || "-"}` : "等待盘前观察或今日操作生成"
+    },
+    {
+      label: "运行节奏",
+      value: formatPortfolioSchedule(portfolio),
+      meta: scheduler.activeRunStartedAt ? `本轮开始 ${formatDateTime(scheduler.activeRunStartedAt)}` : "盘前、决策、复盘、周总结按配置执行"
+    },
+    {
+      label: "订单状态",
+      value: activeOrders.length ? `${activeOrders.length} 笔订单流转中` : "暂无待确认订单",
+      meta: activeOrders[0] ? `${activeOrders[0].side || ""} ${activeOrders[0].code || ""} ${activeOrders[0].status || ""}` : "没有待确认申购、赎回或到账"
+    }
+  ];
+}
+
+function buildHoldingInsightItems(account, positions) {
+  if (!positions.length) return [];
+  const sorted = [...positions].sort((a, b) => Number(b.weightPct || 0) - Number(a.weightPct || 0));
+  const biggest = sorted[0];
+  const pnlSorted = [...positions].sort((a, b) => Number(b.unrealizedPnl || 0) - Number(a.unrealizedPnl || 0));
+  const topHoldings = collectPortfolioTopHoldings(positions).slice(0, 5);
+  return [
+    {
+      label: "仓位结构",
+      value: `${account.positionWeightPct || 0}% 已投入`,
+      meta: biggest ? `第一大持仓 ${biggest.code} ${biggest.name || ""}，占 ${biggest.weightPct || 0}%` : "暂无集中持仓"
+    },
+    {
+      label: "盈亏贡献",
+      value: `${formatSigned(account.cumulativePnl)} (${formatSigned(account.cumulativePnlPct)}%)`,
+      meta: pnlSorted[0] ? `当前贡献最高：${pnlSorted[0].code} ${formatSigned(pnlSorted[0].unrealizedPnl)} / ${formatSigned(pnlSorted[0].unrealizedPnlPct)}%` : "等待估值更新"
+    },
+    {
+      label: "持仓穿透",
+      value: topHoldings.length ? topHoldings.join(" / ") : "暂无前十大持仓",
+      meta: topHoldings.length ? "来自持仓基金快照的代表性前十大持仓" : "下次净值下钻后补充"
+    }
+  ];
+}
+
+function buildReadinessInsightItems({ ready, waiting, launchEve, blocked }) {
+  const bestReady = ready[0];
+  const bestWaiting = waiting[0];
+  return [
+    {
+      label: "接近可买",
+      value: bestReady ? `${bestReady.code} ${bestReady.name || ""}` : `${ready.length} 只`,
+      meta: bestReady ? `${formatWatchlistReadiness(bestReady) || "等待复查"}；${selectWatchlistPrimaryGap(bestReady)}` : "没有通过买点验证的候选"
+    },
+    {
+      label: "等待回调",
+      value: bestWaiting ? `${bestWaiting.code} ${bestWaiting.name || ""}` : `${waiting.length} 只`,
+      meta: bestWaiting ? selectWatchlistPrimaryGap(bestWaiting) : "没有正在等待回调的候选"
+    },
+    {
+      label: "纪律拦截",
+      value: `启动前夜 ${launchEve.length} · 暂不买 ${blocked.length}`,
+      meta: "启动前夜只做复核，偏热或证据不足不进入买入执行"
+    }
+  ];
+}
+
+function renderInsightList(selector, items, emptyText) {
+  const list = document.querySelector(selector);
+  if (!list) return;
+  if (!items.length) {
+    list.innerHTML = `<div class="empty compact-empty">${escapeHtml(emptyText)}</div>`;
+    return;
+  }
+  list.innerHTML = items.map((item) => `
+    <div class="insight-item">
+      <span>${escapeHtml(item.label)}</span>
+      <strong>${escapeHtml(item.value)}</strong>
+      <small>${escapeHtml(item.meta || "")}</small>
+    </div>
+  `).join("");
+}
+
+function collectPortfolioTopHoldings(positions = []) {
+  const values = [];
+  for (const position of positions) {
+    values.push(...getSnapshotTopHoldings(position.fundSnapshot || {}));
+  }
+  return [...new Set(values.map(formatHoldingText).filter(Boolean))];
 }
 
 function formatPortfolioSchedule(portfolio) {
@@ -324,32 +464,82 @@ function renderPositions(positions) {
         const navDate = snapshot.navDate || item.lastNavDate || "";
         const trend = getFundSnapshotTrendText(snapshot);
         const trendChart = renderTrendChart(snapshot);
+        const facts = renderSnapshotFactStrip(snapshot);
+        const holdings = renderHoldingChips(getSnapshotTopHoldings(snapshot), "前十大持仓");
         const source = item.dataSource || snapshot.sources?.[0] || "";
         return `
-        <div class="data-row">
-          <div>
-            <strong>${escapeHtml(item.code)} ${escapeHtml(item.name)}</strong>
-            <p>${escapeHtml(item.lastReason || "暂无最近操作理由")}</p>
-            <p>${escapeHtml(trend)}</p>
-            ${trendChart}
-            ${source ? `<small>${escapeHtml(source)}</small>` : ""}
+        <article class="position-card">
+          <div class="position-main">
+            <div>
+              <strong>${escapeHtml(item.code)} ${escapeHtml(item.name)}</strong>
+              <p>${escapeHtml(item.lastReason || "暂无最近操作理由")}</p>
+            </div>
+            <span class="${Number(item.unrealizedPnl || 0) >= 0 ? "ok-text" : "bad-text"}">${formatSigned(item.unrealizedPnl)} / ${formatSigned(item.unrealizedPnlPct)}%</span>
           </div>
-          <div>${formatMoney(item.currentValue)}</div>
-          <div>
-            <strong>${item.weightPct || 0}%</strong>
-            <small>份额 ${formatNumber(item.units, 6)}</small>
+          <div class="position-body">
+            <div class="position-chart-block">
+              <p>${escapeHtml(trend)}</p>
+              ${trendChart}
+              ${facts}
+              ${source ? `<small>${escapeHtml(source)}</small>` : ""}
+            </div>
+            <div class="position-metrics">
+              <div><span>市值</span><strong>${formatMoney(item.currentValue)}</strong></div>
+              <div><span>仓位</span><strong>${item.weightPct || 0}%</strong></div>
+              <div><span>净值</span><strong>${nav ? formatNumber(nav, 4) : "-"}</strong><small>${escapeHtml(navDate || "无日期")}</small></div>
+              <div><span>份额</span><strong>${formatNumber(item.units, 2)}</strong><small>成本 ${item.averageCostNav ? formatNumber(item.averageCostNav, 4) : "-"}</small></div>
+            </div>
           </div>
-          <div>
-            <strong>${nav ? formatNumber(nav, 4) : "-"}</strong>
-            <small>${escapeHtml(navDate || "无净值日期")}</small>
-            <small>成本 ${item.averageCostNav ? formatNumber(item.averageCostNav, 4) : "-"}</small>
-          </div>
-          <div>${formatSigned(item.unrealizedPnl)} / ${formatSigned(item.unrealizedPnlPct)}%</div>
-        </div>
+          ${holdings}
+        </article>
       `;
       }
     )
     .join("");
+}
+
+function renderSnapshotFactStrip(snapshot = {}) {
+  const trend = snapshot.trendProfile || {};
+  const actionability = snapshot.actionability || {};
+  const fees = snapshot.fees || {};
+  const oneYear = snapshot.risk?.oneYear || {};
+  const facts = [
+    actionability.action ? `动作 ${formatActionabilityAction(actionability.action)}` : "",
+    Number.isFinite(Number(trend.return20dPct)) ? `20日 ${formatSigned(trend.return20dPct)}%` : "",
+    Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置 ${formatNumber(trend.lowPositionPct120, 1)}%` : "",
+    Number.isFinite(Number(trend.drawdownFromRecentHighPct)) ? `距高点 ${formatSigned(trend.drawdownFromRecentHighPct)}%` : "",
+    Number.isFinite(Number(oneYear.maxDrawdownPct)) ? `1年回撤 ${formatSigned(oneYear.maxDrawdownPct)}%` : "",
+    fees.shareClass ? `${fees.shareClass}类` : ""
+  ].filter(Boolean);
+  if (!facts.length) return "";
+  return `<div class="fact-strip">${facts.slice(0, 6).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>`;
+}
+
+function getSnapshotTopHoldings(snapshot = {}) {
+  const outlookHoldings = snapshot.actionability?.holdingsOutlook?.topHoldings || [];
+  const holdings = snapshot.topHoldings?.length ? snapshot.topHoldings : outlookHoldings;
+  return (holdings || []).map(formatHoldingText).filter(Boolean);
+}
+
+function formatHoldingText(item) {
+  if (!item) return "";
+  if (typeof item === "string") return item;
+  return [
+    item.code || "",
+    item.name || "",
+    Number.isFinite(Number(item.pct ?? item.netValuePct)) ? `${formatNumber(item.pct ?? item.netValuePct, 2)}%` : ""
+  ].filter(Boolean).join(" ");
+}
+
+function renderHoldingChips(holdings = [], title = "持仓") {
+  const values = [...new Set((holdings || []).map(formatHoldingText).filter(Boolean))].slice(0, 6);
+  if (!values.length) return "";
+  return `
+    <div class="holding-strip">
+      <span>${escapeHtml(title)}</span>
+      <div>${values.map((item) => `<small>${escapeHtml(item)}</small>`).join("")}</div>
+    </div>
+  `;
 }
 
 function renderWatchlist(items) {
@@ -481,13 +671,16 @@ function selectWatchlistActionItems(items = [], status, limit) {
 
 function renderWatchlistActionCard(item) {
   const statusClass = getWatchlistStatusClass(item.status);
+  const snapshot = item.lastSnapshot || {};
   const trigger = item.buyTriggers?.[0] || item.positionPlan || "等待下一次复查";
   const gap = selectWatchlistPrimaryGap(item);
   const risk = item.riskNotes?.[0] || "风险边界待补充";
   const fee = item.feeNotes?.[0] || "费用/份额待复核";
-  const trend = getFundSnapshotTrendText(item.lastSnapshot || {});
+  const trend = getFundSnapshotTrendText(snapshot);
   const readiness = formatWatchlistReadiness(item);
   const setupBadge = isWatchlistLaunchEveCandidate(item) ? `<span class="watchlist-setup-badge">启动前夜</span>` : "";
+  const facts = renderSnapshotFactStrip(snapshot);
+  const holdings = renderHoldingChips(getSnapshotTopHoldings(snapshot), "持仓看点");
   return `
     <article class="watchlist-action-card">
       <div class="watchlist-action-title">
@@ -498,6 +691,8 @@ function renderWatchlistActionCard(item) {
       ${readiness ? `<div class="watchlist-readiness">${readiness}</div>` : ""}
       <p>${escapeHtml(item.reason || item.candidateRole || "暂无备选理由")}</p>
       ${trend && trend !== "走势数据不足" ? `<small>${escapeHtml(trend)}</small>` : ""}
+      ${facts}
+      ${holdings}
       <small>触发：${escapeHtml(trigger)}</small>
       <small class="watchlist-gap-line">缺口：${escapeHtml(gap)}</small>
       <small>风险：${escapeHtml(risk)}</small>
@@ -528,6 +723,8 @@ function renderWatchlistItem(item) {
   const source = item.source || snapshot.sources?.[0] || "";
   const observationGaps = selectWatchlistObservationGaps(item);
   const setupBadge = isWatchlistLaunchEveCandidate(item) ? `<span class="watchlist-setup-badge">启动前夜</span>` : "";
+  const facts = renderSnapshotFactStrip(snapshot);
+  const holdings = renderHoldingChips(getSnapshotTopHoldings(snapshot), "持仓看点");
   return `
     <div class="data-row watchlist-row">
       <div>
@@ -535,6 +732,8 @@ function renderWatchlistItem(item) {
         ${setupBadge}
         <p>${escapeHtml(item.reason || "暂无备选理由")}</p>
         ${trend && trend !== "走势数据不足" ? `<p>${escapeHtml(trend)}</p>` : ""}
+        ${facts}
+        ${holdings}
         ${renderWatchlistObservationGapPanel(observationGaps)}
         ${trendChart}
         <small>${escapeHtml([item.type, item.shareClass ? `${item.shareClass}类` : "", item.candidateRole].filter(Boolean).join(" · "))}</small>
@@ -950,6 +1149,7 @@ function renderPortfolioResult(result) {
     setText("#portfolioPending", `${formatMoney(Number(portfolio.account.pendingBuyAmount || 0) + Number(portfolio.account.receivableCash || 0))}`);
     setText("#portfolioPnl", `${formatSigned(portfolio.account.cumulativePnl)} (${formatSigned(portfolio.account.cumulativePnlPct)}%)`);
     setText("#portfolioSchedule", formatPortfolioSchedule(portfolio));
+    renderPortfolioDashboard(portfolio);
     renderOrders(portfolio.activeOrders || []);
     renderPositions(portfolio.positions || []);
     renderWatchlist(portfolio.watchlist || []);
