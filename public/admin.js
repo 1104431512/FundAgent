@@ -195,7 +195,7 @@ async function loadPortfolio() {
   setText("#portfolioCash", formatMoney(account.cash));
   setText("#portfolioPositionWeight", `${account.positionWeightPct || 0}%`);
   setText("#portfolioPending", `${formatMoney(Number(account.pendingBuyAmount || 0) + Number(account.receivableCash || 0))}`);
-  setText("#portfolioPnl", `${formatSigned(account.cumulativePnl)} (${formatSigned(account.cumulativePnlPct)}%)`);
+  setText("#portfolioPnl", formatPortfolioPnl(account));
   setText("#portfolioSchedule", formatPortfolioSchedule(portfolio));
   setText(
     "#portfolioPushTarget",
@@ -226,7 +226,7 @@ function formatPortfolioOutput(portfolio) {
   const latestRun = (portfolio.recentRuns || [])[0];
   const lines = [
     `总资产：${formatMoney(account.totalAsset)}，现金：${formatMoney(account.cash)}，仓位：${account.positionWeightPct || 0}%`,
-    `待确认/应收：${formatMoney(Number(account.pendingBuyAmount || 0) + Number(account.receivableCash || 0))}，累计盈亏：${formatSigned(account.cumulativePnl)} (${formatSigned(account.cumulativePnlPct)}%)`
+    `待确认/应收：${formatMoney(Number(account.pendingBuyAmount || 0) + Number(account.receivableCash || 0))}，累计盈亏：${formatPortfolioPnl(account)}`
   ];
   if (latestRun) {
     lines.push("");
@@ -251,6 +251,10 @@ function formatPortfolioOutput(portfolio) {
   return lines.join("\n");
 }
 
+function formatPortfolioPnl(account = {}) {
+  return `${formatSigned(account.cumulativePnl)} (${formatSigned(account.cumulativePnlPct)}%)`;
+}
+
 function renderPortfolioDashboard(portfolio = {}) {
   const account = portfolio.account || {};
   const positions = portfolio.positions || [];
@@ -271,8 +275,8 @@ function renderPortfolioDashboard(portfolio = {}) {
   ];
   setText("#portfolioBrief", briefParts.filter(Boolean).join(" · "));
   setText("#portfolioAssetFootnote", `初始本金 ${formatMoney(account.initialCapital)}，今日 ${formatSigned(account.dayPnl)}`);
-  setText("#portfolioExposureFootnote", `持仓市值 ${formatMoney(account.investedValue)}，待确认 ${formatMoney(account.pendingBuyAmount)}`);
-  setText("#portfolioPnlFootnote", `相对初始本金 ${formatSigned(account.cumulativePnlPct)}%`);
+  setText("#portfolioExposureFootnote", `持仓市值 ${formatMoney(account.investedValue)}，成本 ${formatMoney(account.investedCost)}`);
+  setText("#portfolioPnlFootnote", `按实际投入成本 ${formatMoney(account.investedCost)} 计算`);
   setText("#portfolioPositionCount", `${positions.length} 只`);
   setText("#portfolioReadinessCount", `${ready.length + waiting.length} 只`);
   updateRunStateBadge(latestRun, portfolio.scheduler || {});
@@ -333,7 +337,7 @@ function buildHoldingInsightItems(account, positions) {
     },
     {
       label: "盈亏贡献",
-      value: `${formatSigned(account.cumulativePnl)} (${formatSigned(account.cumulativePnlPct)}%)`,
+      value: formatPortfolioPnl(account),
       meta: pnlSorted[0] ? `当前贡献最高：${pnlSorted[0].code} ${formatSigned(pnlSorted[0].unrealizedPnl)} / ${formatSigned(pnlSorted[0].unrealizedPnlPct)}%` : "等待估值更新"
     },
     {
@@ -1147,7 +1151,7 @@ function renderPortfolioResult(result) {
     setText("#portfolioCash", formatMoney(portfolio.account.cash));
     setText("#portfolioPositionWeight", `${portfolio.account.positionWeightPct || 0}%`);
     setText("#portfolioPending", `${formatMoney(Number(portfolio.account.pendingBuyAmount || 0) + Number(portfolio.account.receivableCash || 0))}`);
-    setText("#portfolioPnl", `${formatSigned(portfolio.account.cumulativePnl)} (${formatSigned(portfolio.account.cumulativePnlPct)}%)`);
+    setText("#portfolioPnl", formatPortfolioPnl(portfolio.account));
     setText("#portfolioSchedule", formatPortfolioSchedule(portfolio));
     renderPortfolioDashboard(portfolio);
     renderOrders(portfolio.activeOrders || []);

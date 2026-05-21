@@ -1076,9 +1076,11 @@ async function executePortfolioValuation(db, run, config) {
     pendingBuyAmount: db.account.pendingBuyAmount,
     receivableCash: db.account.receivableCash,
     investedValue: db.account.investedValue,
+    investedCost: db.account.investedCost,
     dayPnl,
     cumulativePnl: db.account.cumulativePnl,
     cumulativePnlPct: db.account.cumulativePnlPct,
+    capitalPnlPct: db.account.capitalPnlPct,
     positions: db.account.positions.map(summarizePortfolioPosition)
   });
 
@@ -4698,7 +4700,7 @@ function buildPortfolioValuationCard({ review, account, positionUpdates, lifecyc
     "",
     `总资产：${account.totalAsset}元`,
     `今日盈亏：${formatSignedNumber(account.dayPnl)}元`,
-    `累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（${formatSignedNumber(account.cumulativePnlPct)}%）`,
+    `累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（按实际投入成本 ${account.investedCost || 0} 元计 ${formatSignedNumber(account.cumulativePnlPct)}%）`,
     `可用现金：${account.cash}元，待确认申购：${account.pendingBuyAmount || 0}元，应收赎回：${account.receivableCash || 0}元，仓位：${account.positionWeightPct}%`,
     review.nextWatch.length ? ["", "明日观察：", ...review.nextWatch].join("\n") : "",
     review.learningNotes.length ? ["", "回溯学习点：", ...review.learningNotes].join("\n") : "",
@@ -5045,7 +5047,7 @@ function buildPortfolioStatusAnswer(userText, intent) {
       lines.push(`待确认申购：${account.pendingBuyAmount || 0}元，应收赎回：${account.receivableCash || 0}元`);
     }
     lines.push(`当前仓位：${account.positionWeightPct}%`);
-    lines.push(`累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（${formatSignedNumber(account.cumulativePnlPct)}%）`);
+    lines.push(`累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（按实际投入成本 ${account.investedCost || 0} 元计 ${formatSignedNumber(account.cumulativePnlPct)}%）`);
   }
 
   if (wantsPosition || (!wantsOperation && !wantsOnlyProfileOrSchedule && !wantsWatchlist)) {
@@ -5562,11 +5564,13 @@ function createPortfolioAccount(config) {
     receivableCash: 0,
     positions: [],
     investedValue: 0,
+    investedCost: 0,
     totalAsset: initialCapital,
     positionWeightPct: 0,
     dayPnl: 0,
     cumulativePnl: 0,
     cumulativePnlPct: 0,
+    capitalPnlPct: 0,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -5595,12 +5599,14 @@ function recalculatePortfolioAccount(account) {
   account.pendingBuyAmount = round(Number(account.pendingBuyAmount || 0), 2);
   account.receivableCash = round(Number(account.receivableCash || 0), 2);
   account.investedValue = round(account.positions.reduce((sum, position) => sum + Number(position.currentValue || 0), 0), 2);
+  account.investedCost = round(account.positions.reduce((sum, position) => sum + Number(position.costAmount || 0), 0), 2);
   account.totalAsset = round(account.cash + account.investedValue + account.pendingBuyAmount + account.receivableCash, 2);
   account.availableCash = account.cash;
   account.positionWeightPct = account.totalAsset > 0 ? round((account.investedValue / account.totalAsset) * 100, 2) : 0;
   account.pendingWeightPct = account.totalAsset > 0 ? round(((account.pendingBuyAmount + account.receivableCash) / account.totalAsset) * 100, 2) : 0;
   account.cumulativePnl = round(account.totalAsset - Number(account.initialCapital || 0), 2);
-  account.cumulativePnlPct = account.initialCapital > 0 ? round((account.cumulativePnl / account.initialCapital) * 100, 2) : 0;
+  account.cumulativePnlPct = account.investedCost > 0 ? round((account.cumulativePnl / account.investedCost) * 100, 2) : 0;
+  account.capitalPnlPct = account.initialCapital > 0 ? round((account.cumulativePnl / account.initialCapital) * 100, 2) : 0;
   account.positions = account.positions.map((position) => ({
     ...position,
     weightPct: account.totalAsset > 0 ? round((Number(position.currentValue || 0) / account.totalAsset) * 100, 2) : 0,
@@ -5620,12 +5626,14 @@ function summarizePortfolioAccount(account) {
     pendingBuyAmount: round(Number(account.pendingBuyAmount || 0), 2),
     receivableCash: round(Number(account.receivableCash || 0), 2),
     investedValue: round(Number(account.investedValue || 0), 2),
+    investedCost: round(Number(account.investedCost || 0), 2),
     totalAsset: round(Number(account.totalAsset || 0), 2),
     positionWeightPct: round(Number(account.positionWeightPct || 0), 2),
     pendingWeightPct: round(Number(account.pendingWeightPct || 0), 2),
     dayPnl: round(Number(account.dayPnl || 0), 2),
     cumulativePnl: round(Number(account.cumulativePnl || 0), 2),
     cumulativePnlPct: round(Number(account.cumulativePnlPct || 0), 2),
+    capitalPnlPct: round(Number(account.capitalPnlPct || 0), 2),
     positions: account.positions.map(summarizePortfolioPosition)
   };
 }

@@ -220,6 +220,25 @@ assert(watchSummary.buyTriggers.length > 0, "watchlist candidates must keep buy 
 assert(watchSummary.riskNotes.length > 0, "watchlist candidates must keep risk notes");
 assert(watchSummary.feeNotes.length > 0, "watchlist candidates must keep fee/share-class notes");
 assert(watchSummary.readinessGaps.some((item) => item.includes("缺少可验证净值")), "watchlist summary must expose buy-readiness gaps when NAV evidence is missing");
+const investedReturnDb = manager.normalizePortfolioDb({
+  account: {
+    initialCapital: 100000,
+    cash: 90000,
+    positions: [
+      {
+        code: "000010",
+        name: "中证A500ETF联接C",
+        units: 10000,
+        costAmount: 10000,
+        currentValue: 10739.77
+      }
+    ]
+  }
+});
+assert.equal(investedReturnDb.account.investedCost, 10000, "portfolio account must expose the actual invested cost denominator");
+assert.equal(investedReturnDb.account.cumulativePnl, 739.77, "portfolio account PnL amount should still reflect total asset minus initial cash ledger");
+assert.equal(investedReturnDb.account.cumulativePnlPct, 7.4, "portfolio PnL percentage must use actual invested amount instead of initial capital");
+assert.equal(investedReturnDb.account.capitalPnlPct, 0.74, "portfolio account may still expose initial-capital return separately for reference");
 const consolidatedWatchDb = manager.normalizePortfolioDb({
   watchlist: [
     {

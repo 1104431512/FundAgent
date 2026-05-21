@@ -27,6 +27,10 @@ const forbiddenPatterns = [
   {
     pattern: /buildPortfolioWatchlistUpdatesFromSeedCandidates\(watchlistSeedCandidates\)/,
     message: "portfolio watchlist seed updates must receive enriched seedProfiles before assigning watch status."
+  },
+  {
+    pattern: /相对初始本金/,
+    message: "portfolio PnL UI must not use initial capital as the visible percentage denominator."
   }
 ];
 
@@ -478,6 +482,14 @@ const requiredPatterns = [
   {
     pattern: /watchlist-readiness/,
     message: "admin watchlist UI must show buy-preparation readiness on candidate cards."
+  },
+  {
+    pattern: /account\.investedCost[\s\S]{0,900}account\.cumulativePnlPct[\s\S]{0,220}account\.investedCost/,
+    message: "portfolio PnL percentage must use actual invested cost instead of initial capital."
+  },
+  {
+    pattern: /按实际投入/,
+    message: "admin portfolio UI must label PnL percentage as based on actual invested amount."
   },
   {
     pattern: /renderPortfolioDashboard[\s\S]{0,5000}portfolioManagerSummary[\s\S]{0,5000}portfolioHoldingSummary[\s\S]{0,5000}portfolioReadinessSummary/,
