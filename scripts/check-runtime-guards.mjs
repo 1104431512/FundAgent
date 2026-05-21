@@ -888,6 +888,22 @@ const requiredPatterns = [
     message: "pullback/setup deep-dive ranking must incorporate sector rotation, low-position, and crowding evidence."
   },
   {
+    pattern: /scoreResearchDigestForPullbackSetup[\s\S]{0,3200}scoreHoldingsOutlookForCandidate/,
+    message: "pullback/setup deep-dive ranking must score top-ten holdings outlook, not only NAV trend."
+  },
+  {
+    pattern: /buildFundActionabilitySignals[\s\S]{0,1400}buildHoldingsOutlookProfile/,
+    message: "fund actionability must incorporate structured top-ten holdings outlook."
+  },
+  {
+    pattern: /formatPullbackSetupCandidateLine[\s\S]{0,2400}formatHoldingsOutlookEvidence/,
+    message: "pullback/setup summaries must expose top-ten holdings outlook next to timing evidence."
+  },
+  {
+    pattern: /前十大持仓\/前景/,
+    message: "fund selection prompts and gaps must require top-ten holdings and outlook checks."
+  },
+  {
     pattern: /scoreResearchDigestForPullbackSetup[\s\S]{0,900}lowPositionPct250/,
     message: "pullback/setup deep-dive ranking must score longer-window low-position evidence, not only 120-day position."
   },

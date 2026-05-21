@@ -11,6 +11,7 @@ This skill explains what the fund actually owns and what risk exposures the user
 ## Duties
 
 - Use `holdings.equityTopHoldings`, `holdings.bondTopHoldings`, `assetAllocation`, and disclosed dates.
+- Treat the top ten holdings as forward-looking evidence: identify whether the leading holdings have a plausible industry/theme outlook, whether they support the user's intended direction, and whether their exposure is already crowded.
 - Identify industry/theme concentration and whether holdings match the fund name or user intent.
 - Call out Hong Kong, QDII, overseas, commodity, bond, cash, and convertible-bond exposure when visible.
 - Detect style drift or ambiguous exposure when holdings are stale or inconsistent.
@@ -27,6 +28,7 @@ Return concise internal notes:
 
 - styleLabel
 - mainExposures
+- topTenOutlook
 - concentrationRisk
 - fitWithUserIntent
 - staleHoldingCaveat

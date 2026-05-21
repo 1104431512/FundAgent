@@ -5945,6 +5945,7 @@ function formatFundReportChartGuideEvidence(profile = {}, role = "") {
     Number.isFinite(Number(trend.return20dPct)) ? `近20日${formatFallbackPct(trend.return20dPct)}` : "",
     Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置${round(Number(trend.lowPositionPct120), 1)}%` : "",
     Number.isFinite(Number(trend.lowPositionPct250)) ? `250日位置${round(Number(trend.lowPositionPct250), 1)}%` : "",
+    formatHoldingsOutlookEvidence(profile),
     fees.shareClassFeeModel?.label || profile.shareClassFeeModel?.label || ""
   ].filter(Boolean);
   const compact = fields.join("，");
@@ -6425,6 +6426,7 @@ function classifyPullbackSetupCandidateForSummary(candidate = {}) {
   const trend = candidate.trendProfile || {};
   const signal = trend.pullbackSetup?.signal || "";
   if (hasHighChaseTheme(candidate)) return "watch_or_reject";
+  if (hasSevereHoldingsOutlookRisk(candidate)) return "watch_or_reject";
   if (hasPullbackYearToDateChaseRisk(candidate)) return "watch_or_reject";
   if (hasPullbackLongPositionChaseRisk(candidate)) return "watch_or_reject";
   if (!isPullbackTrendFreshEnough(candidate)) return "watch_or_reject";
@@ -6476,6 +6478,7 @@ function formatPullbackSetupCandidateLine(candidate = {}, ranked = {}) {
     Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置=${trend.lowPositionPct120}%` : "",
     Number.isFinite(Number(trend.lowPositionPct250)) ? `250日位置=${trend.lowPositionPct250}%` : "",
     formatCandidateThemeEvidence(candidate),
+    formatHoldingsOutlookEvidence(candidate),
     trend.trendLabelText ? `趋势=${trend.trendLabelText}` : "",
     trend.entryBiasText ? `入场=${trend.entryBiasText}` : "",
     actionability.actionText ? `动作=${actionability.actionText}` : "",
@@ -6534,6 +6537,17 @@ function buildPullbackSetupCandidateGaps(candidate = {}) {
   }
   if (hasHighChaseTheme(candidate)) {
     gaps.push("题材拥挤或追涨风险未消化");
+  }
+  const holdingsOutlook = buildHoldingsOutlookProfile(candidate);
+  if (!holdingsOutlook.hasHoldings) {
+    gaps.push("缺少前十大持仓/行业前景验证");
+  } else {
+    const mismatchRisk = holdingsOutlook.risks.find((item) => /匹配度不足|目标主题/.test(item));
+    const orderedHoldingRisks = [
+      mismatchRisk,
+      ...holdingsOutlook.risks.filter((item) => item !== mismatchRisk)
+    ].filter(Boolean);
+    gaps.push(...orderedHoldingRisks.slice(0, 3));
   }
   return [...new Set(gaps)];
 }
@@ -6942,10 +6956,10 @@ function buildFundCommitteeEvidencePrompt({ images = [], userText, messageType, 
     JSON.stringify(enrichments || [], null, 2),
     "",
     "如果联网补全资料中包含 riskMetrics，请优先使用其中的 1y/3y/5y 夏普率、年化波动、最大回撤、年化收益来评分；不要再要求用户手动补这些指标。只有 riskMetrics.ok=false 或点数不足时，才把这些列为缺失。",
-    "如果联网补全资料中包含 holdings，请优先使用 equityTopHoldings / bondTopHoldings 做持仓风格分析。港股通、QDII、债基和指数基金可能分别出现在股票投资明细、债券投资明细或资产配置字段中；不要在已有 holdings 时说缺少十大持仓。",
+    "如果联网补全资料中包含 holdings，请优先使用 equityTopHoldings / bondTopHoldings 做前十大持仓、行业前景、集中度、披露日期和风格匹配分析。港股通、QDII、债基和指数基金可能分别出现在股票投资明细、债券投资明细或资产配置字段中；不要在已有 holdings 时说缺少十大持仓。",
     "如果联网补全资料中包含 moneyMarket，请按现金管理产品分析，优先看7日年化、万份收益、流动性和收益稳定性，不要套用权益基金追涨/回撤框架。",
     "如果资料中包含 trendProfile 或 actionability，请优先使用它们判断入场时机、适合对象和仓位上限。",
-    "分析时必须拆开走势/买点、风险/回撤、持仓/风格、份额/费率、经理质量这五块；最终汇总必须经过 fund-actionability-evaluation 和 fund-answer-quality，避免只给“可以配置但别追高”这类泛泛结论。"
+    "分析时必须拆开走势/买点、风险/回撤、前十大持仓/前景、份额/费率、经理质量这五块；最终汇总必须经过 fund-actionability-evaluation 和 fund-answer-quality，避免只给“可以配置但别追高”这类泛泛结论。"
   ].join("\n");
 }
 
@@ -9455,6 +9469,7 @@ function scoreResearchDigestForPullbackSetup(digest = {}) {
   }
   if (hasPullbackLongPositionChaseRisk(digest)) score -= 18;
   score += scorePullbackThemeRotation(digest);
+  score += scoreHoldingsOutlookForCandidate(digest);
   return score;
 }
 
@@ -9587,20 +9602,285 @@ async function fetchFundRecentNavHistory(code) {
 }
 
 function buildHoldingsDigest(holdings = {}, fallbackTopStocks = []) {
-  const equity = (holdings.equityTopHoldings || []).slice(0, 5).map((item) =>
-    [item.code, item.name, item.netValuePct ? `${item.netValuePct}%` : ""].filter(Boolean).join(" ")
-  );
-  const bond = (holdings.bondTopHoldings || []).slice(0, 5).map((item) =>
-    [item.code, item.name, item.netValuePct ? `${item.netValuePct}%` : ""].filter(Boolean).join(" ")
-  );
+  const equitySource = holdings.equityTopHoldings?.length ? holdings.equityTopHoldings : fallbackTopStocks;
+  const equity = normalizeHoldingItems(equitySource).slice(0, 10).map(formatNormalizedHoldingItem);
+  const bond = normalizeHoldingItems(holdings.bondTopHoldings || []).slice(0, 10).map(formatNormalizedHoldingItem);
   return {
     ok: Boolean(holdings.ok || equity.length || bond.length || fallbackTopStocks.length),
     equityDisclosureDate: holdings.equityDisclosureDate || "",
     bondDisclosureDate: holdings.bondDisclosureDate || "",
-    equityTopHoldings: equity.length ? equity : fallbackTopStocks.slice(0, 5),
+    equityTopHoldings: equity.length ? equity : fallbackTopStocks.slice(0, 10),
     bondTopHoldings: bond,
-    note: holdings.ok ? "已下钻持仓摘要。" : "持仓下钻不足，使用可见候选信息。"
+    note: holdings.ok ? "已下钻前十大持仓摘要。" : "持仓下钻不足，使用可见候选信息。"
   };
+}
+
+const HOLDING_THEME_GROUPS = [
+  ["贵金属", "黄金", "有色", "资源", "矿业", "铜", "铝", "锂"],
+  ["医药", "医疗", "创新药", "生物医药", "CXO", "医疗器械"],
+  ["科技", "半导体", "芯片", "AI", "人工智能", "算力", "通信", "电子"],
+  ["新能源", "电池", "光伏", "储能", "电力设备", "智能车", "汽车"],
+  ["消费", "白酒", "食品饮料", "家电", "农业"],
+  ["金融", "银行", "保险", "券商", "证券"],
+  ["红利", "央企", "煤炭", "电力", "公用事业", "运营商"],
+  ["港股", "互联网", "恒生科技", "中概"]
+];
+
+const HOLDING_THEME_PATTERNS = [
+  { tag: "贵金属", pattern: /紫金矿业|山东黄金|中金黄金|赤峰黄金|湖南黄金|银泰黄金|招金矿业|黄金|白银|贵金属|铜|铝|锂|洛阳钼业|江西铜业|中国铝业|天齐锂业|赣锋锂业/ },
+  { tag: "医药", pattern: /恒瑞医药|药明康德|药明生物|迈瑞医疗|爱尔眼科|片仔癀|泰格医药|百济神州|智飞生物|长春高新|康方生物|医疗|医药|创新药|生物/ },
+  { tag: "科技", pattern: /中芯国际|海光信息|寒武纪|北方华创|兆易创新|韦尔股份|中际旭创|新易盛|工业富联|沪电股份|立讯精密|紫光国微|长电科技|中微公司|澜起科技|半导体|芯片|算力|人工智能|AI/i },
+  { tag: "新能源", pattern: /宁德时代|比亚迪|阳光电源|隆基绿能|通威股份|亿纬锂能|天赐材料|华友钴业|三花智控|光伏|储能|电池|新能源|电动车|智能车/ },
+  { tag: "消费", pattern: /贵州茅台|五粮液|泸州老窖|山西汾酒|伊利股份|海天味业|美的集团|格力电器|牧原股份|温氏股份|消费|白酒|食品饮料|家电|农业/ },
+  { tag: "金融", pattern: /招商银行|宁波银行|工商银行|建设银行|农业银行|中国平安|中国人寿|中信证券|东方财富|银行|保险|证券|券商|金融/ },
+  { tag: "红利", pattern: /中国神华|陕西煤业|长江电力|中国移动|中国电信|中国海油|中国石油|中国石化|兖矿能源|煤炭|电力|运营商|红利|央企/ },
+  { tag: "港股互联网", pattern: /腾讯控股|阿里巴巴|美团|小米集团|快手|京东|网易|百度|港股|互联网|恒生科技|中概/ }
+];
+
+function normalizeHoldingItems(items = []) {
+  const normalized = [];
+  const seen = new Set();
+  for (const item of Array.isArray(items) ? items : []) {
+    const holding = normalizeHoldingItem(item);
+    if (!holding) continue;
+    const key = `${holding.code || ""}|${holding.name || ""}|${holding.text || ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(holding);
+  }
+  return normalized;
+}
+
+function normalizeHoldingItem(item) {
+  if (!item) return null;
+  if (typeof item === "string") return parseHoldingText(item);
+  const code = String(item.code || item.stockCode || item.bondCode || item.f12 || "").trim();
+  const name = String(item.name || item.stockName || item.bondName || item.f14 || "").trim();
+  const pct = parseHoldingPct(item.netValuePct ?? item.navPct ?? item.percent ?? item.ratio ?? item.zjzbl);
+  if (!code && !name) return parseHoldingText(String(item.text || item.title || ""));
+  const text = [code, name, Number.isFinite(pct) ? `${round(pct, 2)}%` : ""].filter(Boolean).join(" ");
+  return { code, name, pct, text };
+}
+
+function parseHoldingText(value) {
+  const text = stripHtml(value).replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  const pctMatch = text.match(/(-?\d+(?:\.\d+)?)\s*%/);
+  const pct = pctMatch ? Number(pctMatch[1]) : null;
+  const withoutPct = text.replace(/-?\d+(?:\.\d+)?\s*%/g, " ").replace(/\s+/g, " ").trim();
+  const codeMatch = withoutPct.match(/(?:^|\s)([A-Z]?\d{4,6}(?:\.[A-Z]+)?|\d{5}\.HK)(?=\s|$)/i);
+  const code = codeMatch ? codeMatch[1].trim() : "";
+  const name = codeMatch
+    ? withoutPct.replace(codeMatch[0], " ").replace(/\s+/g, " ").trim()
+    : withoutPct;
+  return { code, name, pct: Number.isFinite(pct) ? pct : null, text };
+}
+
+function parseHoldingPct(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const numeric = toNumber(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function formatNormalizedHoldingItem(item = {}) {
+  return [item.code, item.name, Number.isFinite(item.pct) ? `${round(item.pct, 2)}%` : ""]
+    .filter(Boolean)
+    .join(" ") || item.text || "";
+}
+
+function buildHoldingsOutlookProfile(candidate = {}) {
+  const equityHoldings = collectCandidateHoldings(candidate, "equity").slice(0, 10);
+  const bondHoldings = collectCandidateHoldings(candidate, "bond").slice(0, 10);
+  const primaryHoldings = equityHoldings.length ? equityHoldings : bondHoldings;
+  const hasHoldings = primaryHoldings.length > 0;
+  if (!hasHoldings) {
+    return {
+      ok: false,
+      hasHoldings: false,
+      score: -8,
+      label: "缺少前十大持仓",
+      evidence: "持仓前景=缺少前十大持仓/行业前景验证",
+      risks: ["缺少前十大持仓/行业前景验证"],
+      topHoldings: []
+    };
+  }
+
+  const holdingsText = primaryHoldings.map((item) => `${item.code || ""} ${item.name || ""}`.trim()).join(" ");
+  const holdingTags = [...new Set(primaryHoldings.flatMap((item) => inferHoldingThemeTags(`${item.code || ""} ${item.name || ""}`)))].slice(0, 5);
+  const themeSignals = getCandidateThemeSignals(candidate);
+  const intentTerms = getCandidateOutlookTerms(candidate);
+  const focusedTerms = intentTerms.filter(isSpecificThemeTerm);
+  const matchedTags = holdingTags.filter((tag) => focusedTerms.some((term) => areThemeTermsRelated(term, tag))).slice(0, 4);
+  const matchedThemeSignals = themeSignals.filter((theme) =>
+    holdingTags.some((tag) => areThemeTermsRelated(theme.name || theme.id, tag))
+  );
+  const top1Pct = primaryHoldings[0] ? primaryHoldings[0].pct : null;
+  const top3Pct = sumFinitePct(primaryHoldings.slice(0, 3));
+  const top10Pct = sumFinitePct(primaryHoldings);
+  const disclosureDate = equityHoldings.length
+    ? candidate.holdings?.equityDisclosureDate
+    : candidate.holdings?.bondDisclosureDate;
+  const disclosureAge = daysSincePortfolioDate(disclosureDate);
+  const risks = [];
+  const positives = [];
+  let score = equityHoldings.length ? 6 : 3;
+  if (primaryHoldings.length >= 8) score += 2;
+
+  if (Number.isFinite(top10Pct)) {
+    if (top10Pct >= 20 && top10Pct <= 58) score += 4;
+    if (top10Pct > 70) {
+      score -= 9;
+      risks.push(`前十大集中度${formatFallbackPlainPct(top10Pct)}偏高`);
+    }
+  }
+  if (Number.isFinite(top3Pct)) {
+    if (top3Pct <= 32) score += 2;
+    if (top3Pct > 42) {
+      score -= 7;
+      risks.push(`前三大集中度${formatFallbackPlainPct(top3Pct)}偏高`);
+    }
+  }
+  if (Number.isFinite(top1Pct) && top1Pct > 18) {
+    score -= 5;
+    risks.push(`第一大持仓${formatFallbackPlainPct(top1Pct)}偏重`);
+  }
+
+  if (holdingTags.length) {
+    score += 2;
+    positives.push(`行业线索=${holdingTags.join("/")}`);
+  }
+  if (matchedTags.length) {
+    score += 9;
+    positives.push(`持仓匹配目标主题=${matchedTags.join("/")}`);
+  } else if (focusedTerms.length && holdingTags.length) {
+    score -= 6;
+    risks.push("前十大持仓与目标主题匹配度不足");
+  }
+  if (matchedThemeSignals.some((theme) => theme.positionSignal === "low_position_rotation" || theme.stage === "low_position_rotation")) {
+    score += 5;
+    positives.push("持仓方向与低位轮动线索一致");
+  }
+  if (matchedThemeSignals.some((theme) => theme.positionSignal === "high_chase_risk" || theme.stage === "crowded" || Number(theme.crowdingScore) >= 55)) {
+    score -= 8;
+    risks.push("持仓方向对应题材拥挤，前景兑现风险偏高");
+  }
+
+  if (Number.isFinite(disclosureAge)) {
+    const maxAge = finiteNumberOr(process.env.FUND_HOLDINGS_MAX_DISCLOSURE_AGE_DAYS, 150);
+    if (disclosureAge > maxAge) {
+      score -= 8;
+      risks.push(`持仓披露已滞后${disclosureAge}天`);
+    } else {
+      score += 2;
+    }
+  }
+
+  const boundedScore = Math.max(-24, Math.min(24, Math.round(score)));
+  const label = boundedScore >= 14
+    ? "支撑买点"
+    : boundedScore >= 7
+      ? "中性偏正"
+      : boundedScore >= 0
+        ? "需要复核"
+        : "拖累买点";
+  const topNames = primaryHoldings.slice(0, 3).map(formatNormalizedHoldingItem).filter(Boolean);
+  const evidenceParts = [
+    topNames.length ? `前三=${topNames.join("/")}` : "",
+    Number.isFinite(top10Pct) ? `前十大约${formatFallbackPlainPct(top10Pct)}` : "",
+    Number.isFinite(top3Pct) ? `前三约${formatFallbackPlainPct(top3Pct)}` : "",
+    holdingTags.length ? `行业=${holdingTags.join("/")}` : "",
+    matchedTags.length ? `匹配=${matchedTags.join("/")}` : "",
+    disclosureDate ? `披露=${disclosureDate}` : ""
+  ].filter(Boolean);
+  return {
+    ok: true,
+    hasHoldings: true,
+    score: boundedScore,
+    label,
+    evidence: `持仓前景=${label}${evidenceParts.length ? `（${evidenceParts.join("，")}）` : ""}`,
+    risks: [...new Set(risks)].slice(0, 4),
+    positives: [...new Set(positives)].slice(0, 4),
+    topHoldings: primaryHoldings,
+    holdingTags,
+    matchedTags,
+    concentration: {
+      top1Pct: Number.isFinite(top1Pct) ? round(top1Pct, 2) : null,
+      top3Pct: Number.isFinite(top3Pct) ? round(top3Pct, 2) : null,
+      top10Pct: Number.isFinite(top10Pct) ? round(top10Pct, 2) : null
+    },
+    disclosureDate: disclosureDate || "",
+    disclosureAgeDays: Number.isFinite(disclosureAge) ? disclosureAge : null,
+    holdingsText
+  };
+}
+
+function collectCandidateHoldings(candidate = {}, kind = "equity") {
+  const holdings = candidate.holdings || {};
+  const source = kind === "bond"
+    ? holdings.bondTopHoldings || candidate.bondTopHoldings || []
+    : [
+      ...(holdings.equityTopHoldings || []),
+      ...(candidate.topStocks || []),
+      ...(candidate.seed?.topStocks || [])
+    ];
+  return normalizeHoldingItems(source);
+}
+
+function inferHoldingThemeTags(text) {
+  const value = String(text || "");
+  return HOLDING_THEME_PATTERNS
+    .filter((item) => item.pattern.test(value))
+    .map((item) => item.tag);
+}
+
+function getCandidateOutlookTerms(candidate = {}) {
+  const themeTerms = getCandidateThemeSignals(candidate).flatMap((theme) => [theme.name, theme.id]);
+  return [
+    candidate.name,
+    candidate.seed?.name,
+    candidate.seed?.productKey,
+    candidate.seed?.exposureKey,
+    ...(Array.isArray(candidate.seed?.keywords) ? candidate.seed.keywords : []),
+    ...(Array.isArray(candidate.keywords) ? candidate.keywords : []),
+    ...themeTerms
+  ].map((item) => String(item || "").trim()).filter(Boolean);
+}
+
+function isSpecificThemeTerm(term = "") {
+  const text = String(term || "");
+  return HOLDING_THEME_GROUPS.some((group) => group.some((keyword) => text.includes(keyword)))
+    || HOLDING_THEME_PATTERNS.some((item) => item.pattern.test(text));
+}
+
+function areThemeTermsRelated(left = "", right = "") {
+  const a = String(left || "").trim();
+  const b = String(right || "").trim();
+  if (!a || !b) return false;
+  if (a.includes(b) || b.includes(a)) return true;
+  return HOLDING_THEME_GROUPS.some((group) =>
+    group.some((term) => a.includes(term)) && group.some((term) => b.includes(term))
+  );
+}
+
+function sumFinitePct(items = []) {
+  const values = items.map((item) => item.pct).filter((value) => Number.isFinite(value));
+  if (!values.length) return null;
+  return round(values.reduce((sum, value) => sum + value, 0), 2);
+}
+
+function scoreHoldingsOutlookForCandidate(candidate = {}) {
+  return buildHoldingsOutlookProfile(candidate).score;
+}
+
+function formatHoldingsOutlookEvidence(candidate = {}) {
+  const profile = candidate.holdingsOutlook || buildHoldingsOutlookProfile(candidate);
+  return profile.evidence || "";
+}
+
+function hasSevereHoldingsOutlookRisk(candidate = {}) {
+  const profile = candidate.holdingsOutlook || buildHoldingsOutlookProfile(candidate);
+  return Boolean(profile.hasHoldings && profile.score <= -10 && profile.risks?.length);
 }
 
 function computeTrendProfile(points = []) {
@@ -10558,6 +10838,7 @@ function buildFundActionabilitySignals(digest) {
     : Array.isArray(feeImpact?.missingFeeData)
       ? feeImpact.missingFeeData
       : [];
+  const holdingsOutlook = buildHoldingsOutlookProfile(digest);
   let score = 50;
 
   if (trend.entryBias === "staged_buy") score += 14;
@@ -10596,7 +10877,7 @@ function buildFundActionabilitySignals(digest) {
   }
   if (feeImpact?.holdingPeriodFit === "short_term_only_high_long_holding_drag") score -= 4;
   if (missingFeeData.length) score -= Math.min(6, missingFeeData.length * 2);
-  if (digest.holdings?.ok) score += 3;
+  score += Math.round(holdingsOutlook.score * 0.45);
 
   const boundedScore = Math.max(0, Math.min(100, Math.round(score)));
   const action = boundedScore >= 78
@@ -10624,21 +10905,22 @@ function buildFundActionabilitySignals(digest) {
           ? "0%-3% watch/test only"
           : "0%";
   const feeEvidenceOk = feeType !== "unknown" && !missingFeeData.length;
-  const evidenceCount = [trend.ok, risk.ok, digest.holdings?.ok, feeEvidenceOk].filter(Boolean).length;
+  const evidenceCount = [trend.ok, risk.ok, holdingsOutlook.hasHoldings, feeEvidenceOk].filter(Boolean).length;
   const confidence = evidenceCount >= 4 ? "high" : evidenceCount >= 2 ? "medium" : "low";
   const decisiveEvidence = [
     trend.ok ? formatTrendActionabilityEvidence(trend) : "",
     trend.pullbackSetup?.signal && trend.pullbackSetup.signal !== "none" ? `回调启动信号=${trend.pullbackSetup.signalText}，评分=${trend.pullbackSetup.score}` : "",
     risk.ok ? `1yReturn=${risk.totalReturnPct}%, maxDrawdown=${risk.maxDrawdownPct}%, sharpe=${risk.sharpe}` : "",
+    holdingsOutlook.evidence,
     formatMoneyMarketEvidence(digest.moneyMarket),
     fees.shareClassFeeModel?.label || "",
-    formatFeeImpactForEvidence(fees),
-    digest.holdings?.equityTopHoldings?.length ? `topHolding=${digest.holdings.equityTopHoldings[0]}` : ""
-  ].filter(Boolean).slice(0, 4);
+    formatFeeImpactForEvidence(fees)
+  ].filter(Boolean).slice(0, 5);
   const decisionBlocker = [
     trend.invalidationHint || "",
     isMoneyMarket ? "货币基金主要用于现金管理，不适合作为权益进攻仓或追求高弹性的配置。" : "",
     trend.trendLabel === "extended_uptrend" ? "短期涨幅偏热，不符合回调完成后启动的买点。" : "",
+    ...holdingsOutlook.risks.slice(0, 2),
     feeType === "unknown" ? "费率/份额类别未确认前不做重仓。" : "",
     missingFeeData.length ? `费用数据缺口：${missingFeeData.slice(0, 3).join("/")}` : "",
     feeImpact?.feeDragLevel === "high" ? "持有期费用拖累偏高，买入强度需下调或改选低费率份额。" : "",
@@ -10654,7 +10936,8 @@ function buildFundActionabilitySignals(digest) {
     allocationBand,
     confidence,
     decisiveEvidence,
-    decisionBlocker
+    decisionBlocker,
+    holdingsOutlook
   };
 }
 
@@ -13764,6 +14047,8 @@ function timingSafeEqualString(a, b) {
 export {
   allowedSkillIdsForWorkflow,
   appendFundReportChartReadingGuide,
+  buildFundActionabilitySignals,
+  buildHoldingsOutlookProfile,
   buildSkillContextForIntent,
   buildMarketDeepDiveSummary,
   buildPortfolioHeldPositionReviewActions,

@@ -10,7 +10,7 @@ This skill decides whether a recommendation still has forward-looking payoff.
 
 ## Decision Formula
 
-`priority = theme payoff * catalyst freshness * vehicle purity - crowding penalty - product friction`
+`priority = theme payoff * catalyst freshness * vehicle purity * top-ten-holdings outlook - crowding penalty - product friction`
 
 ## Action Rules
 
@@ -19,6 +19,7 @@ This skill decides whether a recommendation still has forward-looking payoff.
 - Crowded theme + high 20/60-day fund gain: wait for pullback or use watchlist only.
 - Weak catalyst + strong fund NAV: do not chase; the move is already reflected.
 - Clean theme but poor fund vehicle: recommend the direction, not the fund.
+- Good trend but stale, crowded, mismatched, or over-concentrated top ten holdings: downgrade to watch/avoid until holdings outlook is verified.
 
 ## Output Contract
 

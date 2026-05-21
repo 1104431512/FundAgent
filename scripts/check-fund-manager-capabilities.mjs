@@ -656,6 +656,22 @@ const verifiedSeedProfile = {
     shareClassFeeModel: { label: "C类：通常无申购费，销售服务费按年计提" },
     feeImpact: { oneYearCostPer10000: 42 }
   },
+  holdings: {
+    ok: true,
+    equityDisclosureDate: "2099-03-31",
+    equityTopHoldings: [
+      "600519 贵州茅台 2.7%",
+      "300750 宁德时代 2.5%",
+      "600036 招商银行 2.3%",
+      "00700 腾讯控股 2.1%",
+      "000333 美的集团 1.9%",
+      "600900 长江电力 1.8%",
+      "601398 工商银行 1.7%",
+      "000858 五粮液 1.6%",
+      "600276 恒瑞医药 1.5%",
+      "601318 中国平安 1.4%"
+    ]
+  },
   sources: ["https://fund.eastmoney.com/000010.html"]
 };
 const weeklyWatchlistSeed = portfolioWatchlistSeeds.find((item) => item.code === "000010");
@@ -1221,6 +1237,81 @@ const rotationSummary = manager.buildMarketDeepDiveSummary({
 assert(rotationSummary.includes("mainCandidateCodes=000021"), "low-position rotation candidate should remain eligible for main pullback recommendations");
 assert(rotationSummary.includes("watchOrRejectCodes=000022"), "crowded/high-chase theme candidate should be demoted to watch/reject even if fund trend looks repaired");
 assert(rotationSummary.includes("题材=医药/低位轮动"), "deep-dive summary should expose sector rotation evidence for the manager");
+const holdingsSupportedDigest = {
+  ...setupDigest,
+  code: "000031",
+  name: "医药低位修复基金C",
+  seed: {
+    matchedThemes: [{
+      id: "medicine",
+      name: "医药",
+      stage: "low_position_rotation",
+      positionSignal: "low_position_rotation",
+      rotationScore: 58,
+      lowPositionScore: 62,
+      crowdingScore: 18,
+      forwardScore: 48
+    }]
+  },
+  holdings: {
+    ok: true,
+    equityTopHoldings: [
+      "600276 恒瑞医药 8.4%",
+      "300760 迈瑞医疗 6.7%",
+      "2269.HK 药明生物 5.2%",
+      "300015 爱尔眼科 4.1%",
+      "688235 百济神州 3.8%",
+      "300347 泰格医药 3.4%",
+      "000661 长春高新 2.8%",
+      "300122 智飞生物 2.5%",
+      "600436 片仔癀 2.1%",
+      "300558 贝达药业 1.9%"
+    ],
+    equityDisclosureDate: "2099-03-31"
+  }
+};
+const holdingsWeakDigest = {
+  ...setupDigest,
+  code: "000032",
+  name: "医药错配集中基金C",
+  seed: holdingsSupportedDigest.seed,
+  holdings: {
+    ok: true,
+    equityTopHoldings: [
+      "600519 贵州茅台 21.5%",
+      "000858 五粮液 15.2%",
+      "600036 招商银行 12.8%",
+      "601318 中国平安 8.4%",
+      "000333 美的集团 6.7%",
+      "600887 伊利股份 4.2%",
+      "601288 农业银行 3.8%",
+      "601398 工商银行 3.2%"
+    ],
+    equityDisclosureDate: "2000-01-01"
+  }
+};
+assert(
+  manager.scoreResearchDigestForPullbackSetup(holdingsSupportedDigest) >
+    manager.scoreResearchDigestForPullbackSetup(holdingsWeakDigest),
+  "deep-dive scoring must prefer pullback candidates whose top ten holdings support the forward-looking theme"
+);
+const holdingsSummary = manager.buildMarketDeepDiveSummary({
+  ok: true,
+  focus: "pullback_setup_discovery",
+  selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+  candidates: [holdingsSupportedDigest, holdingsWeakDigest]
+});
+assert(holdingsSummary.includes("mainCandidateCodes=000031"), "holdings-supported pullback candidate should remain eligible for main recommendations");
+assert(holdingsSummary.includes("watchOrRejectCodes=000032"), "stale or mismatched top-ten holdings must demote an otherwise repaired trend to watch/reject");
+assert(holdingsSummary.includes("持仓前景=支撑买点"), "deep-dive summary must expose top-ten holdings outlook");
+assert(holdingsSummary.includes("恒瑞医药"), "deep-dive summary must name representative top holdings instead of hiding them behind a generic score");
+assert(holdingsSummary.includes("前十大持仓与目标主题匹配度不足"), "deep-dive gaps must explain when holdings do not support the requested fund outlook");
+const holdingsActionability = manager.buildFundActionabilitySignals(holdingsSupportedDigest);
+assert(
+  holdingsActionability.decisiveEvidence.some((item) => item.includes("持仓前景") && item.includes("恒瑞医药")),
+  "actionability evidence must include top-ten holdings outlook, not only trend and fee signals"
+);
+assert.equal(holdingsActionability.holdingsOutlook.hasHoldings, true, "actionability must carry the structured holdings outlook profile");
 const earlyTurnTrend = manager.computeTrendProfile(buildEarlyTurnNavPoints());
 assert.equal(earlyTurnTrend.ok, true, "early-turn synthetic series should produce a trend profile");
 assert(
