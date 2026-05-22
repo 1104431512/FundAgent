@@ -2354,9 +2354,13 @@ function buildPortfolioWatchlistRecheckUpdates(watchlist = [], options = {}) {
       const freshness = evaluatePortfolioWatchlistFreshness({ ...item, status: inferredStatus }, profile, {
         ignoreReviewAge: Boolean(freshProfile)
       });
-      const status = inferredStatus === "ready" && !freshness.ok ? "waiting_pullback" : inferredStatus;
+      let status = inferredStatus === "ready" && !freshness.ok ? "waiting_pullback" : inferredStatus;
+      const readiness = evaluatePortfolioWatchReadiness({ ...item, status }, profile);
+      const readinessGuard = buildPortfolioReadyStatusReadinessGuard(status, readiness);
+      if (readinessGuard) status = readinessGuard.status;
       const trendEvidence = formatPortfolioSeedVerifiedTrendEvidence(profile);
       const freshnessNotes = freshness.issues.map((issue) => `系统时效复核：${issue}`);
+      const readinessNotes = readinessGuard ? [readinessGuard.reason] : [];
       return {
         operation: "UPSERT",
         code: item.code,
@@ -2370,16 +2374,22 @@ function buildPortfolioWatchlistRecheckUpdates(watchlist = [], options = {}) {
           `系统每日复核自选池：${formatPortfolioWatchStatus(item.status)} -> ${formatPortfolioWatchStatus(status)}。`,
           formatPortfolioSeedStatusReason(status, profile),
           ...freshnessNotes,
+          ...readinessNotes,
           trendEvidence,
           item.reason || ""
         ].filter(Boolean).join(" "),
         setupEvidence: mergeStringLists(item.setupEvidence, [trendEvidence]),
         buyTriggers: mergeStringLists(item.buyTriggers, buildAnswerWatchBuyTriggers(status, item.status === "waiting_pullback" ? "backup" : "buy_reference")),
-        riskNotes: mergeStringLists(item.riskNotes, buildAnswerWatchRiskNotes(status, profile), freshnessNotes),
+        riskNotes: mergeStringLists(item.riskNotes, buildAnswerWatchRiskNotes(status, profile), freshnessNotes, readinessNotes),
         feeNotes: item.feeNotes || [],
         positionPlan: item.positionPlan || formatAnswerWatchPositionPlan(status, item.status === "waiting_pullback" ? "backup" : "buy_reference"),
         reviewDate: freshness.ok ? "本次每日决策已复核，下一次盘前继续确认" : "需重新下钻刷新净值后再评估买入",
-        dataBasis: mergeStringLists(item.dataBasis, ["来源：decision_watchlist_recheck", "来源：watchlist_freshness_guard", trendEvidence]),
+        dataBasis: mergeStringLists(item.dataBasis, [
+          "来源：decision_watchlist_recheck",
+          "来源：watchlist_freshness_guard",
+          readinessGuard ? "来源：watchlist_readiness_guard" : "",
+          trendEvidence
+        ]),
         source: "decision_watchlist_recheck"
       };
     })
@@ -3232,14 +3242,8 @@ function evaluatePortfolioSellDiscipline(action = {}, profile = null, position =
       evidence: []
     };
   }
-  if (!profile) {
-    return {
-      ok: false,
-      reason: "系统卖出纪律拦截：缺少联网补全资料，不能提交虚拟赎回。",
-      evidence: [formatPortfolioPositionEvidence(position)]
-    };
-  }
-  const nav = getProfileNav(profile);
+  const fallbackProfile = profile || position.fundSnapshot || {};
+  const nav = getProfileNav(profile) || getPortfolioPositionFallbackNav(position);
   if (!nav) {
     return {
       ok: false,
@@ -3247,20 +3251,20 @@ function evaluatePortfolioSellDiscipline(action = {}, profile = null, position =
       evidence: [formatPortfolioPositionEvidence(position), profile.error || ""].filter(Boolean)
     };
   }
-  const trend = profile.trendProfile || {};
-  if (!trend.ok) {
+  const trend = fallbackProfile.trendProfile || {};
+  const evidence = [
+    formatPortfolioPositionEvidence(position),
+    formatPortfolioSeedVerifiedTrendEvidence(fallbackProfile),
+    formatPortfolioSellFallbackNavEvidence(profile, position)
+  ].filter(Boolean);
+  const signals = collectPortfolioSellDisciplineSignals(action, fallbackProfile, position);
+  if (!trend.ok && !signals.length) {
     return {
       ok: false,
       reason: "系统卖出纪律拦截：缺少可验证走势、破位、转弱或止盈证据，不能提交虚拟赎回。",
-      evidence: [formatPortfolioPositionEvidence(position), trend.note || profile.error || ""].filter(Boolean)
+      evidence: mergeStringLists(evidence, [trend.note || profile?.error || ""])
     };
   }
-
-  const evidence = [
-    formatPortfolioPositionEvidence(position),
-    formatPortfolioSeedVerifiedTrendEvidence(profile)
-  ].filter(Boolean);
-  const signals = collectPortfolioSellDisciplineSignals(action, profile, position);
   if (!signals.length) {
     return {
       ok: false,
@@ -3316,6 +3320,25 @@ function collectPortfolioSellDisciplineSignals(action = {}, profile = {}, positi
     signals.push(`持仓浮盈${formatFallbackPct(unrealized)}，模型给出止盈/减仓意图`);
   }
   return mergeStringLists(signals);
+}
+
+function getPortfolioPositionFallbackNav(position = {}) {
+  return toNumber(position.lastNav)
+    || toNumber(position.fundSnapshot?.nav)
+    || toNumber(position.fundSnapshot?.unitNav)
+    || null;
+}
+
+function formatPortfolioSellFallbackNavEvidence(profile = null, position = {}) {
+  if (getProfileNav(profile)) return "";
+  const nav = getPortfolioPositionFallbackNav(position);
+  if (!nav) return "";
+  const date = position.lastNavDate || position.fundSnapshot?.navDate || position.fundSnapshot?.snapshotDate || "";
+  return [
+    `持仓净值兜底：使用上次确认净值${round(nav, 4)}`,
+    date ? `日期${date}` : "",
+    "来源：portfolio_sell_last_confirmed_nav_guard"
+  ].filter(Boolean).join("，");
 }
 
 function formatPortfolioPositionEvidence(position = {}) {
@@ -3440,6 +3463,18 @@ function guardPortfolioWatchlistReadyUpdate(update = {}, profile = null, existin
         reason: [update.reason, guardReason].filter(Boolean).join(" "),
         riskNotes: mergeStringLists(update.riskNotes, [guardReason]),
         dataBasis: mergeStringLists(update.dataBasis, ["来源：watchlist_freshness_guard"])
+      };
+    }
+    const readiness = evaluatePortfolioWatchReadiness({ ...(existing || {}), ...update, status: "ready" }, profile);
+    const readinessGuard = buildPortfolioReadyStatusReadinessGuard("ready", readiness);
+    if (readinessGuard) {
+      return {
+        ...update,
+        status: readinessGuard.status,
+        priority: Math.max(Number(update.priority || 3), 3),
+        reason: [update.reason, readinessGuard.reason].filter(Boolean).join(" "),
+        riskNotes: mergeStringLists(update.riskNotes, [readinessGuard.reason]),
+        dataBasis: mergeStringLists(update.dataBasis, ["来源：watchlist_readiness_guard"])
       };
     }
     return update;
@@ -3762,6 +3797,30 @@ function summarizePortfolioWatchItem(item = {}) {
   };
 }
 
+function buildPortfolioReadyStatusReadinessGuard(status, readiness = {}) {
+  if (status !== "ready") return null;
+  const gaps = readiness.gaps || [];
+  const structuralGap = gaps.find(isPortfolioWatchStructuralReadinessGap);
+  if (structuralGap) {
+    return {
+      status: "watch",
+      reason: `系统买入准备验证降级：${structuralGap}`
+    };
+  }
+  if (Number(readiness.score || 0) < 85) {
+    const firstGap = gaps.find((gap) => !/条件已满足/.test(gap)) || "准备度不足，不能写入可买状态。";
+    return {
+      status: "waiting_pullback",
+      reason: `系统买入准备验证降级：${firstGap}`
+    };
+  }
+  return null;
+}
+
+function isPortfolioWatchStructuralReadinessGap(gap = "") {
+  return /基金规模|前十大集中度/.test(String(gap || ""));
+}
+
 function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
   const evidence = profile || item.lastSnapshot || null;
   const trend = evidence?.trendProfile || {};
@@ -3808,12 +3867,129 @@ function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
   if (!hasVerifiedPortfolioFeeEvidence(evidence)) {
     gaps.push("还差可验证费用/份额证据。");
   }
+  gaps.push(...buildPortfolioWatchStructuralReadinessGaps(item, evidence));
   const freshness = evaluatePortfolioWatchlistFreshness(item, evidence);
   gaps.push(...freshness.issues);
   if (!gaps.length && item.status === "ready") {
     return ["低位/启动/刚转强/不过热/费用条件已满足，下一次盘前确认后再分批评估。"];
   }
   return gaps;
+}
+
+function buildPortfolioWatchStructuralReadinessGaps(item = {}, evidence = null) {
+  const gaps = [];
+  const scaleYi = getPortfolioWatchFundScaleYi(item, evidence);
+  if (Number.isFinite(scaleYi)) {
+    if (scaleYi < 0.5) {
+      gaps.push(`基金规模${round(scaleYi, 2)}亿偏小，不能作为可直接买入候选。`);
+    } else if (scaleYi < 1) {
+      gaps.push(`基金规模${round(scaleYi, 2)}亿偏小，需先观察流动性和清盘风险。`);
+    }
+  }
+  const top10Pct = getPortfolioWatchTop10Pct(item, evidence);
+  if (Number.isFinite(top10Pct)) {
+    if (top10Pct >= 70) {
+      gaps.push(`前十大集中度${formatFallbackPlainPct(top10Pct)}过高，单一持仓波动可能放大回撤。`);
+    } else if (top10Pct >= 60) {
+      gaps.push(`前十大集中度${formatFallbackPlainPct(top10Pct)}偏高，只能观察或小仓复核。`);
+    }
+  }
+  return gaps;
+}
+
+function getPortfolioWatchFundScaleYi(item = {}, evidence = null) {
+  const values = [
+    evidence?.scale,
+    evidence?.fundScale,
+    evidence?.fundSize,
+    evidence?.size,
+    evidence?.seed?.scale,
+    evidence?.seed?.fundScale,
+    item.scale,
+    item.fundScale,
+    item.fundSize,
+    item.size,
+    item.lastSnapshot?.scale,
+    item.lastSnapshot?.seed?.scale
+  ];
+  for (const value of values) {
+    const parsed = parsePortfolioFundScaleYi(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  const text = [
+    evidence?.reason,
+    evidence?.fundOverview,
+    evidence?.profileText,
+    item.reason,
+    ...(evidence?.actionability?.decisiveEvidence || []),
+    ...(item.setupEvidence || []),
+    ...(item.riskNotes || [])
+  ].filter(Boolean).join(" ");
+  const match = text.match(/(?:规模|基金规模)[^\d-]{0,8}([0-9]+(?:\.[0-9]+)?)\s*(亿|亿元|万|万元)?/);
+  if (!match) return null;
+  return parsePortfolioFundScaleYi(`${match[1]}${match[2] || "亿"}`);
+}
+
+function parsePortfolioFundScaleYi(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "object") {
+    const values = [value.valueYi, value.y, value.value, value.scale, value.fundScale, value.fundSize, value.size];
+    for (const item of values) {
+      const parsed = parsePortfolioFundScaleYi(item);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return null;
+  }
+  const text = String(value || "").replace(/,/g, "").trim();
+  const match = text.match(/([0-9]+(?:\.[0-9]+)?)/);
+  if (!match) return null;
+  const numeric = Number(match[1]);
+  if (!Number.isFinite(numeric)) return null;
+  if (/万/.test(text) && !/亿/.test(text)) return round(numeric / 10000, 4);
+  return numeric;
+}
+
+function getPortfolioWatchTop10Pct(item = {}, evidence = null) {
+  const values = [
+    evidence?.holdingsOutlook?.concentration?.top10Pct,
+    evidence?.actionability?.holdingsOutlook?.concentration?.top10Pct,
+    evidence?.concentration?.top10Pct,
+    evidence?.fundSnapshot?.holdingsOutlook?.concentration?.top10Pct,
+    item.holdingsOutlook?.concentration?.top10Pct,
+    item.lastSnapshot?.holdingsOutlook?.concentration?.top10Pct,
+    item.lastSnapshot?.actionability?.holdingsOutlook?.concentration?.top10Pct
+  ];
+  for (const value of values) {
+    const parsed = parsePortfolioPctMetric(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  const text = [
+    evidence?.holdingsOutlook?.evidence,
+    evidence?.actionability?.holdingsOutlook?.evidence,
+    evidence?.reason,
+    item.reason,
+    ...(evidence?.holdingsOutlook?.risks || []),
+    ...(evidence?.actionability?.holdingsOutlook?.risks || []),
+    ...(evidence?.actionability?.decisiveEvidence || []),
+    ...(item.setupEvidence || []),
+    ...(item.riskNotes || [])
+  ].filter(Boolean).join(" ");
+  const match = text.match(/前十大(?:集中度|约)?[^\d+-]{0,12}([0-9]+(?:\.[0-9]+)?)\s*%/);
+  return match ? parsePortfolioPctMetric(`${match[1]}%`) : null;
+}
+
+function parsePortfolioPctMetric(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return null;
+    return value > 0 && value <= 1 ? round(value * 100, 2) : value;
+  }
+  const match = String(value || "").replace(/,/g, "").match(/([0-9]+(?:\.[0-9]+)?)/);
+  if (!match) return null;
+  const numeric = Number(match[1]);
+  if (!Number.isFinite(numeric)) return null;
+  return numeric > 0 && numeric <= 1 ? round(numeric * 100, 2) : numeric;
 }
 
 function evaluatePortfolioWatchReadiness(item = {}, profile = null) {
@@ -3837,6 +4013,8 @@ function evaluatePortfolioWatchReadiness(item = {}, profile = null) {
     removed: 0
   };
   score = Math.min(score, statusCaps[status] ?? 58);
+  const riskCap = getPortfolioWatchStructuralReadinessCap(gaps);
+  if (Number.isFinite(riskCap)) score = Math.min(score, riskCap);
   const bounded = Math.round(clampScore(score));
   return {
     score: bounded,
@@ -3845,9 +4023,20 @@ function evaluatePortfolioWatchReadiness(item = {}, profile = null) {
   };
 }
 
+function getPortfolioWatchStructuralReadinessCap(gaps = []) {
+  const text = (gaps || []).join(" ");
+  if (/基金规模.*不能作为可直接买入|前十大集中度.*过高/.test(text)) return 58;
+  if (/基金规模.*偏小|前十大集中度.*偏高/.test(text)) return 78;
+  return null;
+}
+
 function scorePortfolioWatchReadinessGapPenalty(gap = "") {
   const text = String(gap || "");
   if (/缺少可验证净值|走势下钻/.test(text)) return 70;
+  if (/基金规模.*不能作为可直接买入/.test(text)) return 30;
+  if (/前十大集中度.*过高/.test(text)) return 24;
+  if (/基金规模.*偏小/.test(text)) return 16;
+  if (/前十大集中度.*偏高/.test(text)) return 18;
   if (/回调完成|启动前夜/.test(text)) return 18;
   if (/120日低位|距高点回撤/.test(text)) return 16;
   if (/近20日.*需降温|近60日.*需消化/.test(text)) return 16;

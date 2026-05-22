@@ -708,6 +708,44 @@ assert.equal(readyWatchReadiness.label, "买入准备充分", "high-readiness wa
 const unverifiedWatchReadiness = manager.evaluatePortfolioWatchReadiness(portfolioSeedUpdates[0]);
 assert(unverifiedWatchReadiness.score < 35, "unverified watchlist seeds must show low readiness until NAV/trend evidence is available");
 assert.equal(unverifiedWatchReadiness.label, "暂不买入", "low-readiness watchlist seeds must not sound buyable");
+const tinyConcentratedReadyProfile = {
+  ...verifiedSeedProfile,
+  code: "000013",
+  name: "小规模高集中基金C",
+  scale: "0.24亿元",
+  holdingsOutlook: {
+    ok: true,
+    concentration: { top10Pct: 62.37 },
+    evidence: "持仓前景=需要复核（前十大约62.37%）",
+    risks: ["前十大集中度62.37%偏高"]
+  },
+  actionability: {
+    ...verifiedSeedProfile.actionability,
+    holdingsOutlook: {
+      ok: true,
+      concentration: { top10Pct: 62.37 },
+      evidence: "持仓前景=需要复核（前十大约62.37%）",
+      risks: ["前十大集中度62.37%偏高"]
+    }
+  }
+};
+const tinyConcentratedReadiness = manager.evaluatePortfolioWatchReadiness(
+  { code: "000013", name: "小规模高集中基金C", status: "ready", priority: 1, reason: "低位回调完成" },
+  tinyConcentratedReadyProfile
+);
+assert(tinyConcentratedReadiness.score < 85, "tiny and concentrated funds must not be labeled fully ready even when trend setup looks verified");
+assert.notEqual(tinyConcentratedReadiness.label, "买入准备充分", "structural fund risks must suppress the fully-ready client label");
+assert(tinyConcentratedReadiness.gaps.some((item) => item.includes("基金规模0.24亿偏小")), "readiness gaps must expose tiny fund scale");
+assert(tinyConcentratedReadiness.gaps.some((item) => item.includes("前十大集中度62.4%偏高")), "readiness gaps must expose high top-ten concentration");
+const guardedTinyConcentratedUpdate = manager.guardPortfolioWatchlistReadyUpdate({
+  code: "000013",
+  name: "小规模高集中基金C",
+  status: "ready",
+  priority: 1,
+  reason: "模型声称小规模基金也可以买"
+}, tinyConcentratedReadyProfile);
+assert.equal(guardedTinyConcentratedUpdate.status, "watch", "watchlist write path must downgrade tiny concentrated funds from ready to watch");
+assert(guardedTinyConcentratedUpdate.reason.includes("系统买入准备验证降级"), "structural readiness downgrades must explain the automatic guard");
 const hotVerifiedSeedProfile = {
   ok: true,
   code: "000011",
@@ -804,12 +842,13 @@ assert.equal(rejectedScreeningWatchlistUpdates[0].status, "blocked", "answer con
 assert(rejectedScreeningWatchlistUpdates[0].reason.includes("暂不买入/排除"), "rejected screening candidates must preserve the no-buy answer context");
 const dailyRecheckUpdates = manager.buildPortfolioWatchlistRecheckUpdates([
   { code: "000010", name: "中证A500ETF联接C", status: "waiting_pullback", priority: 3, reason: "等低位启动确认", buyTriggers: ["温和转强"] },
-  { code: "000011", name: "热门强势主题基金A", status: "ready", priority: 1, reason: "原本接近可买" }
-], { profiles: [verifiedSeedProfile, hotVerifiedSeedProfile] });
+  { code: "000011", name: "热门强势主题基金A", status: "ready", priority: 1, reason: "原本接近可买" },
+  { code: "000013", name: "小规模高集中基金C", status: "ready", priority: 1, reason: "原本接近可买" }
+], { profiles: [verifiedSeedProfile, hotVerifiedSeedProfile, tinyConcentratedReadyProfile] });
 assert.deepEqual(
   dailyRecheckUpdates.map((item) => [item.code, item.status]).sort((a, b) => a[0].localeCompare(b[0])),
-  [["000010", "ready"], ["000011", "blocked"]],
-  "daily decision recheck must upgrade verified low-position candidates and block newly hot ready candidates"
+  [["000010", "ready"], ["000011", "blocked"], ["000013", "watch"]],
+  "daily decision recheck must upgrade verified low-position candidates while blocking hot candidates and downgrading structurally fragile ready candidates"
 );
 assert(dailyRecheckUpdates[0].reason.includes("系统每日复核自选池"), "daily watchlist recheck must leave a traceable reason");
 const staleReadyProfile = {
@@ -1080,6 +1119,25 @@ const givebackSellGuard = manager.evaluatePortfolioSellDiscipline(
   { code: "000011", name: "热门强势主题基金A", currentValue: 6360, weightPct: 6.36, unrealizedPnlPct: 6, peakUnrealizedPnlPct: 12.5 }
 );
 assert.equal(givebackSellGuard.ok, true, "portfolio sell discipline must allow profit-giveback protection sells");
+const fallbackStopLossSellGuard = manager.evaluatePortfolioSellDiscipline(
+  { action: "SELL", code: "000010", amount: 3000, reason: "系统单仓回撤控制：浮亏-9.2%触及8%单仓止损线" },
+  null,
+  { code: "000010", name: "中证A500ETF联接C", currentValue: 5400, weightPct: 5.4, lastNav: 1.2345, lastNavDate: "2026-05-21", unrealizedPnlPct: -9.2, peakUnrealizedPnlPct: 1.2 }
+);
+assert.equal(fallbackStopLossSellGuard.ok, true, "held-position stop-loss sells must not be blocked just because enriched profile fetch temporarily failed");
+assert(fallbackStopLossSellGuard.evidence.some((item) => item.includes("portfolio_sell_last_confirmed_nav_guard")), "fallback sell confirmation must disclose last-confirmed NAV evidence");
+const fallbackNoRiskSellGuard = manager.evaluatePortfolioSellDiscipline(
+  { action: "SELL", code: "000010", amount: 3000, reason: "模型想卖出" },
+  null,
+  { code: "000010", name: "中证A500ETF联接C", currentValue: 6200, weightPct: 6.2, lastNav: 1.2345, lastNavDate: "2026-05-21", unrealizedPnlPct: 3.2 }
+);
+assert.equal(fallbackNoRiskSellGuard.ok, false, "last-confirmed NAV fallback must still block sells without risk or profit-control evidence");
+const missingNavGivebackSellGuard = manager.evaluatePortfolioSellDiscipline(
+  { action: "SELL", code: "000011", amount: 3000, reason: "浮盈回吐保护，先分批锁定利润" },
+  { ...hotVerifiedSeedProfile, unitNav: "", estimatedNav: "" },
+  { code: "000011", name: "热门强势主题基金A", currentValue: 6360, weightPct: 6.36, lastNav: 1.4567, lastNavDate: "2026-05-21", unrealizedPnlPct: 6, peakUnrealizedPnlPct: 12.5 }
+);
+assert.equal(missingNavGivebackSellGuard.ok, true, "profile NAV failures should use held-position last NAV when profit-giveback evidence is clear");
 
 const setupDigest = {
   ok: true,

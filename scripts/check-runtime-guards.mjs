@@ -476,6 +476,18 @@ const requiredPatterns = [
     message: "portfolio watchlist readiness scores and readable labels must be exposed to prompts, status answers, and UI."
   },
   {
+    pattern: /基金规模[\s\S]{0,80}不能作为可直接买入候选/,
+    message: "portfolio watchlist readiness must downgrade tiny funds before they are labeled buy-ready."
+  },
+  {
+    pattern: /前十大集中度[\s\S]{0,80}只能观察或小仓复核/,
+    message: "portfolio watchlist readiness must downgrade high-concentration funds before they are labeled buy-ready."
+  },
+  {
+    pattern: /watchlist_readiness_guard/,
+    message: "portfolio watchlist structural readiness downgrades must leave a traceable source."
+  },
+  {
     pattern: /准备度/,
     message: "portfolio watchlist readiness must be shown in user-readable Chinese."
   },
@@ -654,6 +666,10 @@ const requiredPatterns = [
   {
     pattern: /portfolio_sell_discipline_guard/,
     message: "portfolio SELL guard must leave traceable evidence when it blocks or confirms model-written sells."
+  },
+  {
+    pattern: /portfolio_sell_last_confirmed_nav_guard/,
+    message: "portfolio SELL guard must allow verified held-position risk reduction with last-confirmed NAV fallback."
   },
   {
     pattern: /capPortfolioSellAmountByDiscipline/,
