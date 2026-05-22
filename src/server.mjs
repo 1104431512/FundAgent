@@ -1250,15 +1250,33 @@ async function executePortfolioWeekly(db, run, config) {
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, `周度资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度总结。`);
   await yieldToEventLoop();
-  const raw = await buildPortfolioWeeklyWithModel({
-    account: summarizePortfolioAccount(db.account),
-    weeklyContext,
-    profiles,
-    watchlist: getActivePortfolioWatchlist(db),
-    lifecycle,
-    config,
-    profileContext
-  });
+  const accountAfter = summarizePortfolioAccount(db.account);
+  const activeWatchlist = getActivePortfolioWatchlist(db);
+  let raw = "";
+  try {
+    raw = await buildPortfolioWeeklyWithModel({
+      account: accountAfter,
+      weeklyContext,
+      profiles,
+      watchlist: activeWatchlist,
+      lifecycle,
+      config,
+      profileContext
+    });
+  } catch (error) {
+    if (!isRecoverablePortfolioWeeklyModelError(error)) {
+      throw error;
+    }
+    console.warn("[portfolio-weekly-model-fallback]", run.id, error.message);
+    updateStats({ counters: { portfolioWeeklyModelFallbacks: 1 } });
+    raw = buildFallbackPortfolioWeeklyRaw({
+      account: accountAfter,
+      weeklyContext,
+      watchlist: activeWatchlist,
+      lifecycle,
+      error
+    });
+  }
   assertPortfolioRunActive(run);
   const weekly = normalizePortfolioWeekly(raw);
   const watchlistUpdates = applyPortfolioWatchlistUpdates(db, weekly.watchlistUpdates, {
@@ -1270,7 +1288,7 @@ async function executePortfolioWeekly(db, run, config) {
 
   run.title = "周计划与总结";
   run.summary = weekly.summary;
-  run.accountAfter = summarizePortfolioAccount(db.account);
+  run.accountAfter = accountAfter;
   run.weeklyContext = weeklyContext;
   run.weekly = weekly;
   run.watchlistUpdates = watchlistUpdates;
@@ -1479,8 +1497,8 @@ function compactPortfolioReviewProfile(profile = {}) {
     unitNav: profile.unitNav || "",
     estimatedNav: profile.estimatedNav || "",
     estimatedChangePct: profile.estimatedChangePct || "",
-    trendProfile: profile.trendProfile || null,
-    actionability: profile.actionability || null,
+    trendProfile: compactPortfolioTrendProfile(profile.trendProfile),
+    actionability: compactPortfolioActionabilityProfile(profile.actionability),
     oneYearRisk: oneYear.ok ? pickRiskPeriod(oneYear) : null,
     returns: profile.returns || {},
     shareClass: profile.shareClass || "",
@@ -1490,6 +1508,56 @@ function compactPortfolioReviewProfile(profile = {}) {
     scale: profile.scale || null,
     topHoldings,
     sources: (profile.sources || []).slice(0, 4)
+  };
+}
+
+function compactPortfolioTrendProfile(trend = null) {
+  if (!trend || typeof trend !== "object") return null;
+  return {
+    ok: Boolean(trend.ok),
+    note: trend.note || "",
+    latestDate: trend.latestDate || "",
+    trendLabel: trend.trendLabel || "",
+    entryBias: trend.entryBias || "",
+    return5dPct: finiteMetricNumber(trend.return5dPct),
+    return10dPct: finiteMetricNumber(trend.return10dPct),
+    return20dPct: finiteMetricNumber(trend.return20dPct),
+    return60dPct: finiteMetricNumber(trend.return60dPct),
+    return120dPct: finiteMetricNumber(trend.return120dPct),
+    drawdownFromRecentHighPct: finiteMetricNumber(trend.drawdownFromRecentHighPct),
+    drawdownFrom120HighPct: finiteMetricNumber(trend.drawdownFrom120HighPct),
+    lowPositionPct120: finiteMetricNumber(trend.lowPositionPct120),
+    lowPositionPct250: finiteMetricNumber(trend.lowPositionPct250),
+    pullbackSetup: trend.pullbackSetup ? {
+      signal: trend.pullbackSetup.signal || "",
+      score: finiteMetricNumber(trend.pullbackSetup.score),
+      reason: String(trend.pullbackSetup.reason || "").slice(0, 240)
+    } : null
+  };
+}
+
+function compactPortfolioActionabilityProfile(actionability = null) {
+  if (!actionability || typeof actionability !== "object") return null;
+  const holdingsOutlook = actionability.holdingsOutlook || null;
+  return {
+    score: finiteMetricNumber(actionability.score),
+    fitLabel: actionability.fitLabel || "",
+    fitLabelText: actionability.fitLabelText || "",
+    action: actionability.action || "",
+    actionText: actionability.actionText || "",
+    allocationBand: actionability.allocationBand || "",
+    confidence: actionability.confidence || "",
+    decisiveEvidence: normalizeStringArray(actionability.decisiveEvidence).slice(0, 5),
+    decisionBlocker: normalizeStringArray(actionability.decisionBlocker).slice(0, 5),
+    holdingsOutlook: holdingsOutlook ? {
+      label: holdingsOutlook.label || "",
+      evidence: String(holdingsOutlook.evidence || "").slice(0, 320),
+      risks: normalizeStringArray(holdingsOutlook.risks).slice(0, 4),
+      positives: normalizeStringArray(holdingsOutlook.positives).slice(0, 4),
+      concentration: holdingsOutlook.concentration || null,
+      disclosureDate: holdingsOutlook.disclosureDate || "",
+      topHoldings: (holdingsOutlook.topHoldings || []).slice(0, 10)
+    } : null
   };
 }
 
@@ -1597,21 +1665,24 @@ async function buildPortfolioWeeklyWithModel({ account, weeklyContext, profiles,
     skillContext
   ].join("\n");
   const compactProfiles = (profiles || []).map(compactPortfolioReviewProfile);
+  const compactAccount = compactPortfolioWeeklyAccount(account);
+  const compactWeeklyContext = compactPortfolioWeeklyContext(weeklyContext);
+  const compactWatchlist = summarizePortfolioWatchlistForModel(watchlist);
   const userPrompt = [
     "基金经理画像与行为证据：",
     profileContext,
     "",
-    "当前账户：",
-    JSON.stringify(account, null, 2),
+    "当前账户（已压缩，持仓只保留周报所需字段）：",
+    JSON.stringify(compactAccount, null, 2),
     "",
-    "本周账本摘要：",
-    JSON.stringify(weeklyContext, null, 2),
+    "本周账本摘要（已压缩，只保留复盘、风控和下周计划所需字段）：",
+    JSON.stringify(compactWeeklyContext, null, 2),
     "",
     "持仓联网资料：",
     JSON.stringify(compactProfiles, null, 2),
     "",
     "当前自选基金池：",
-    JSON.stringify(summarizePortfolioWatchlistForModel(watchlist), null, 2),
+    JSON.stringify(compactWatchlist, null, 2),
     "",
     "订单生命周期更新：",
     JSON.stringify(lifecycle, null, 2),
@@ -1707,6 +1778,84 @@ function normalizePortfolioWeekly(raw) {
     sources: normalizeStringArray(parsed.sources).slice(0, 20),
     rawModelOutput: String(raw || "").slice(0, 12000)
   };
+}
+
+function buildFallbackPortfolioWeeklyRaw({ account = {}, weeklyContext = {}, watchlist = [], lifecycle = {}, error = null }) {
+  const compactContext = compactPortfolioWeeklyContext(weeklyContext);
+  const equity = compactContext.equity || [];
+  const firstEquity = equity[0] || {};
+  const lastEquity = equity[equity.length - 1] || {};
+  const assetChange = Number.isFinite(Number(firstEquity.totalAsset)) && Number.isFinite(Number(lastEquity.totalAsset))
+    ? round(Number(lastEquity.totalAsset) - Number(firstEquity.totalAsset), 2)
+    : null;
+  const positions = account.positions || [];
+  const weakPositions = [...positions]
+    .sort((a, b) => Number(a.unrealizedPnlPct || 0) - Number(b.unrealizedPnlPct || 0))
+    .slice(0, 3);
+  const givebackPositions = positions
+    .filter((item) => Number(item.profitGivebackPct || 0) >= Math.abs(finiteNumberOr(process.env.PORTFOLIO_PROFIT_GIVEBACK_PCT, 4)))
+    .slice(0, 3);
+  const readyWatchlist = normalizePortfolioWatchlist(watchlist).filter((item) => item.status === "ready").slice(0, 4);
+  const waitingWatchlist = normalizePortfolioWatchlist(watchlist).filter((item) => item.status === "waiting_pullback").slice(0, 4);
+  const failedRuns = compactContext.failedRuns || [];
+  const modelError = String(error?.message || "").slice(0, 240);
+
+  return JSON.stringify({
+    summary: [
+      "本周周报使用规则兜底生成",
+      Number.isFinite(assetChange) ? `总资产变化${formatSignedNumber(assetChange)}元` : "",
+      `当前仓位${account.positionWeightPct ?? 0}%`,
+      `按实际投入成本收益率${formatFallbackPct(account.cumulativePnlPct ?? 0)}`
+    ].filter(Boolean).join("，") + "。",
+    pnlAttribution: [
+      Number.isFinite(assetChange)
+        ? `本周账面资产从${firstEquity.totalAsset}元变为${lastEquity.totalAsset}元，变化${formatSignedNumber(assetChange)}元。`
+        : `当前总资产${account.totalAsset ?? 0}元，累计盈亏${formatSignedNumber(account.cumulativePnl || 0)}元。`,
+      `当前持仓市值${account.investedValue ?? 0}元，实际投入成本${account.investedCost ?? 0}元，收益率按投入成本为${formatFallbackPct(account.cumulativePnlPct ?? 0)}。`,
+      weakPositions.length
+        ? `拖累项优先复核：${weakPositions.map((item) => `${item.code} ${item.name || ""} ${formatFallbackPct(item.unrealizedPnlPct)}`).join("；")}。`
+        : "本周缺少足够持仓盈亏拆分，下一轮估值后继续归因。"
+    ],
+    operationReview: [
+      `本周运行${compactContext.runs.length}次任务、订单${compactContext.orders.length}张、流水${compactContext.transactions.length}笔。`,
+      lifecycle.orderUpdates?.length ? `本轮订单生命周期更新${lifecycle.orderUpdates.length}条。` : "本轮没有新增订单生命周期变化。",
+      failedRuns.length ? `存在失败任务：${failedRuns.map((run) => `${run.type} ${run.error || run.summary}`).join("；")}。` : "没有检测到周内失败任务。"
+    ],
+    disciplineReview: [
+      `账户回撤${formatFallbackPct(account.drawdownFromPeakPct || 0)}，风控等级${account.riskBudget?.label || account.riskBudget?.level || "未知"}。`,
+      givebackPositions.length
+        ? `浮盈回吐需要盯紧：${givebackPositions.map((item) => `${item.code} ${item.name || ""} 已回吐${item.profitGivebackPct}pct`).join("；")}。`
+        : "当前未出现需要规则兜底强制列出的浮盈回吐持仓。",
+      "下周仍坚持分批、低位、不过热和费用/份额复核，不用周报直接下单。"
+    ],
+    mistakes: [
+      modelError ? `模型周报生成异常，已用规则兜底：${modelError}` : "",
+      failedRuns.length ? "本周存在运行失败，客户侧会感到经理连续性不足，需要优先修复任务可靠性。" : "",
+      "规则兜底报告信息密度低于正常模型周报，下周正常任务需重新复盘。"
+    ].filter(Boolean),
+    nextWeekPlan: [
+      "先复核失败的决策/周报任务，确保经理有连续输出，而不是只留下进度文案。",
+      "持仓优先看回撤、浮盈回吐和同题材暴露，科技/通信/芯片方向不因短线新闻追涨。",
+      readyWatchlist.length
+        ? `接近买点候选只做盘前再确认：${readyWatchlist.map((item) => `${item.code} ${item.name || ""}`).join("；")}。`
+        : "暂无可直接升级的接近买点候选，继续等待回调完成和启动前夜证据。",
+      waitingWatchlist.length
+        ? `等待回调候选继续盯触发条件：${waitingWatchlist.map((item) => `${item.code} ${item.name || ""}`).join("；")}。`
+        : "没有足够等待回调候选时，优先补低位召回而不是硬凑推荐。"
+    ],
+    watchlist: buildPortfolioWatchlistStatusLines(watchlist, { limitPerStatus: 3 }).slice(0, 8),
+    watchlistUpdates: [],
+    riskNotes: [
+      `现金${account.cash ?? 0}元、仓位${account.positionWeightPct ?? 0}%，不能因为现金多就放松买入纪律。`,
+      `账户较峰值回撤${formatFallbackPct(account.drawdownFromPeakPct || 0)}，若扩大到预算线，下一轮决策应优先减风险。`,
+      "周报兜底不生成交易订单，具体申购/赎回仍需每日决策用最新净值复核。"
+    ],
+    sources: ["portfolio_weekly_deterministic_fallback", "portfolio_ledger", "portfolio_watchlist"]
+  });
+}
+
+function isRecoverablePortfolioWeeklyModelError(error) {
+  return isEmptyModelResponse(error) || isModelContextWindowError(error) || isTransientModelTransportError(error);
 }
 
 function normalizePortfolioTeam(value) {
@@ -5426,6 +5575,144 @@ function buildPortfolioWeeklyContext(db, endDate) {
   };
 }
 
+function compactPortfolioWeeklyContext(context = {}) {
+  return {
+    startDate: context.startDate || "",
+    endDate: context.endDate || "",
+    runs: (context.runs || []).slice(-14).map(compactPortfolioWeeklyRun),
+    failedRuns: (context.runs || []).filter((run) => run.status === "failed" || run.error).slice(-6).map(compactPortfolioWeeklyRun),
+    orders: (context.orders || []).slice(-20).map(compactPortfolioWeeklyOrder),
+    transactions: (context.transactions || []).slice(-30).map(compactPortfolioWeeklyTransaction),
+    settlements: (context.settlements || []).slice(-12).map(compactPortfolioWeeklySettlement),
+    equity: (context.equity || []).slice(-10).map(compactPortfolioWeeklyEquity),
+    account: compactPortfolioWeeklyAccount(context.account || {})
+  };
+}
+
+function compactPortfolioWeeklyRun(run = {}) {
+  return {
+    type: run.type || "",
+    title: run.title || "",
+    date: run.date || "",
+    status: run.status || "",
+    summary: String(run.summary || "").slice(0, 360),
+    error: String(run.error || "").slice(0, 240),
+    durationMs: run.durationMs || 0
+  };
+}
+
+function compactPortfolioWeeklyOrder(order = {}) {
+  return {
+    side: order.side || "",
+    status: order.status || "",
+    code: order.code || "",
+    name: order.name || "",
+    amount: round(Number(order.amount || 0), 2),
+    submitDate: order.submitDate || "",
+    priceDate: order.priceDate || "",
+    confirmDate: order.confirmDate || "",
+    settlementDate: order.settlementDate || ""
+  };
+}
+
+function compactPortfolioWeeklyTransaction(item = {}) {
+  return {
+    date: item.date || item.createdAt || "",
+    side: item.side || item.type || "",
+    code: item.code || "",
+    name: item.name || "",
+    amount: round(Number(item.amount || item.cashAmount || 0), 2),
+    nav: item.nav || item.unitNav || "",
+    units: item.units || ""
+  };
+}
+
+function compactPortfolioWeeklySettlement(item = {}) {
+  return {
+    date: item.date || item.createdAt || "",
+    status: item.status || "",
+    side: item.side || "",
+    code: item.code || "",
+    amount: round(Number(item.amount || 0), 2)
+  };
+}
+
+function compactPortfolioWeeklyEquity(item = {}) {
+  return {
+    date: item.date || "",
+    totalAsset: round(Number(item.totalAsset || 0), 2),
+    cash: round(Number(item.cash || 0), 2),
+    investedValue: round(Number(item.investedValue || 0), 2),
+    investedCost: round(Number(item.investedCost || 0), 2),
+    dayPnl: round(Number(item.dayPnl || 0), 2),
+    cumulativePnl: round(Number(item.cumulativePnl || 0), 2),
+    cumulativePnlPct: round(Number(item.cumulativePnlPct || 0), 2),
+    drawdownFromPeakPct: round(Number(item.drawdownFromPeakPct || 0), 2)
+  };
+}
+
+function compactPortfolioWeeklyAccount(account = {}) {
+  return {
+    initialCapital: round(Number(account.initialCapital || 0), 2),
+    cash: round(Number(account.cash || 0), 2),
+    availableCash: round(Number(account.availableCash || account.cash || 0), 2),
+    pendingBuyAmount: round(Number(account.pendingBuyAmount || 0), 2),
+    receivableCash: round(Number(account.receivableCash || 0), 2),
+    investedValue: round(Number(account.investedValue || 0), 2),
+    investedCost: round(Number(account.investedCost || 0), 2),
+    totalAsset: round(Number(account.totalAsset || 0), 2),
+    peakTotalAsset: round(Number(account.peakTotalAsset || account.totalAsset || 0), 2),
+    drawdownFromPeakPct: round(Number(account.drawdownFromPeakPct || 0), 2),
+    riskBudget: compactPortfolioWeeklyRiskBudget(account.riskBudget),
+    positionWeightPct: round(Number(account.positionWeightPct || 0), 2),
+    dayPnl: round(Number(account.dayPnl || 0), 2),
+    cumulativePnl: round(Number(account.cumulativePnl || 0), 2),
+    cumulativePnlPct: round(Number(account.cumulativePnlPct || 0), 2),
+    positions: (account.positions || []).map(compactPortfolioWeeklyPosition)
+  };
+}
+
+function compactPortfolioWeeklyPosition(position = {}) {
+  const snapshot = position.fundSnapshot || {};
+  return {
+    code: position.code || "",
+    name: position.name || "",
+    currentValue: round(Number(position.currentValue || 0), 2),
+    costAmount: round(Number(position.costAmount || 0), 2),
+    weightPct: round(Number(position.weightPct || 0), 2),
+    unrealizedPnl: round(Number(position.unrealizedPnl || 0), 2),
+    unrealizedPnlPct: round(Number(position.unrealizedPnlPct || 0), 2),
+    peakUnrealizedPnlPct: Number.isFinite(Number(position.peakUnrealizedPnlPct)) ? round(Number(position.peakUnrealizedPnlPct), 2) : null,
+    profitGivebackPct: round(Number(position.profitGivebackPct || 0), 2),
+    lastNav: position.lastNav || snapshot.nav || null,
+    lastNavDate: position.lastNavDate || snapshot.navDate || "",
+    riskBudget: compactPortfolioWeeklyRiskBudget(position.riskBudget),
+    trendSummary: snapshot.trendSummary || "",
+    trendProfile: compactPortfolioTrendProfile(snapshot.trendProfile),
+    actionability: compactPortfolioActionabilityProfile(snapshot.actionability),
+    fees: snapshot.fees ? {
+      shareClass: snapshot.fees.shareClass || "",
+      shareClassFeeModel: snapshot.fees.shareClassFeeModel || null,
+      feeImpact: snapshot.fees.feeImpact || null
+    } : null,
+    scale: snapshot.scale || null,
+    topHoldings: (snapshot.topHoldings || []).slice(0, 10)
+  };
+}
+
+function compactPortfolioWeeklyRiskBudget(riskBudget = null) {
+  if (!riskBudget || typeof riskBudget !== "object") return null;
+  return {
+    level: riskBudget.level || "",
+    label: riskBudget.label || "",
+    drawdownFromPeakPct: finiteMetricNumber(riskBudget.drawdownFromPeakPct),
+    blockNewBuys: Boolean(riskBudget.blockNewBuys),
+    reduceRisk: Boolean(riskBudget.reduceRisk),
+    throttleNewBuys: Boolean(riskBudget.throttleNewBuys),
+    triggers: normalizeStringArray(riskBudget.triggers).slice(0, 4)
+  };
+}
+
 function isDateStringInRange(value, startDate, endDate) {
   const date = extractDateOnly(value);
   return Boolean(date && date >= startDate && date <= endDate);
@@ -8532,6 +8819,14 @@ function createEmptyModelResponseError(source = "model") {
 
 function isEmptyModelResponse(error) {
   return error?.code === "MODEL_EMPTY_RESPONSE" || String(error?.message || "").includes("模型返回为空");
+}
+
+function isModelContextWindowError(error) {
+  return /context window|input exceeds|context length|too many tokens|maximum context/i.test(String(error?.message || ""));
+}
+
+function isTransientModelTransportError(error) {
+  return /stream error|INTERNAL_ERROR|fetch failed|terminated|aborted|ECONNRESET|socket hang up|UND_ERR|network/i.test(String(error?.message || ""));
 }
 
 async function downloadMessageImage(messageId, imageKey) {
@@ -12933,7 +13228,9 @@ function resolveModelTimeoutMs(config, override) {
 }
 
 function isResponsesStreamFallbackError(error) {
-  return [400, 404, 405, 415, 422].includes(Number(error?.httpStatus || 0));
+  if (isModelContextWindowError(error)) return false;
+  return [400, 404, 405, 415, 422].includes(Number(error?.httpStatus || 0))
+    || isTransientModelTransportError(error);
 }
 
 async function postJson(url, body, headers = {}, options = {}) {
@@ -14551,6 +14848,8 @@ export {
   appendFundReportChartReadingGuide,
   buildFundActionabilitySignals,
   buildHoldingsOutlookProfile,
+  compactPortfolioReviewProfile,
+  compactPortfolioWeeklyContext,
   buildSkillContextForIntent,
   buildMarketDeepDiveSummary,
   buildPortfolioHeldPositionReviewActions,

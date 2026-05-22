@@ -1989,6 +1989,91 @@ assert(enforcedNoMainFallback.includes("直接结论：这次先不买"), "quali
 assert(enforcedNoMainFallback.includes("暂时买入0元"), "quality enforcement fallback must keep rejected pullback candidates at zero buy amount");
 assert(!enforcedNoMainFallback.includes("推荐清单："), "quality enforcement fallback must not preserve a bad recommendation section when no main candidate exists");
 
+const noisyTrendProfile = {
+  ok: true,
+  latestDate: "2026-05-22",
+  trendLabel: "pullback_complete",
+  entryBias: "buyable_now",
+  return5dPct: 1.2,
+  return10dPct: 2.4,
+  return20dPct: 4.8,
+  return60dPct: 7.6,
+  lowPositionPct120: 38,
+  drawdownFromRecentHighPct: -11.2,
+  pullbackSetup: { signal: "pullback_complete", score: 82, reason: "回调完成" },
+  series: Array.from({ length: 220 }, (_, index) => ({ date: `2026-01-${String((index % 28) + 1).padStart(2, "0")}`, nav: 1 + index / 1000, dailyReturnPct: 0.1 }))
+};
+const noisyActionability = {
+  score: 88,
+  action: "staged_buy",
+  actionText: "分批",
+  decisiveEvidence: Array.from({ length: 8 }, (_, index) => `证据${index + 1}`),
+  decisionBlocker: Array.from({ length: 8 }, (_, index) => `缺口${index + 1}`),
+  holdingsOutlook: {
+    label: "支撑买点",
+    evidence: "前十大持仓/前景支持低位启动",
+    risks: ["集中度待复核"],
+    positives: ["行业线索清晰"],
+    concentration: { top10Pct: 42.6 },
+    disclosureDate: "2026-03-31",
+    topHoldings: Array.from({ length: 12 }, (_, index) => `${index + 1}号持仓 ${(index + 1) * 1.1}%`)
+  }
+};
+const compactReviewProfile = manager.compactPortfolioReviewProfile({
+  code: "000099",
+  name: "周报压缩测试基金C",
+  snapshotDate: "2026-05-22",
+  unitNav: 1.2345,
+  trendProfile: noisyTrendProfile,
+  actionability: noisyActionability,
+  holdings: {
+    equityTopHoldings: Array.from({ length: 12 }, (_, index) => `${index + 1}号持仓 ${(index + 1) * 1.1}%`)
+  },
+  riskMetrics: { periods: { "1y": { ok: true, totalReturnPct: 12, annualizedReturnPct: 12, annualizedVolatilityPct: 16, maxDrawdownPct: -8, sharpe: 0.7, startDate: "2025-05-22", endDate: "2026-05-22" } } }
+});
+assert(!Object.hasOwn(compactReviewProfile.trendProfile, "series"), "weekly/profile compact context must strip NAV series from trendProfile");
+assert.equal(compactReviewProfile.topHoldings.length, 10, "compact review profiles must still preserve top-ten holdings");
+assert.equal(compactReviewProfile.actionability.decisiveEvidence.length, 5, "compact actionability must cap evidence lists for context safety");
+assert.equal(compactReviewProfile.actionability.holdingsOutlook.topHoldings.length, 10, "compact actionability must preserve the full top-ten holdings view without extra overflow");
+const compactWeeklyContext = manager.compactPortfolioWeeklyContext({
+  startDate: "2026-05-16",
+  endDate: "2026-05-22",
+  runs: [
+    { type: "decision", status: "failed", date: "2026-05-22", summary: "资料已准备", error: "stream error: stream ID 1; INTERNAL_ERROR" }
+  ],
+  orders: [{ side: "BUY", status: "pending", code: "000099", name: "周报压缩测试基金C", amount: 1000, submitDate: "2026-05-22" }],
+  transactions: [{ date: "2026-05-22", side: "BUY", code: "000099", name: "周报压缩测试基金C", amount: 1000, nav: 1.23, units: 812.34 }],
+  settlements: [{ date: "2026-05-22", status: "pending", side: "BUY", code: "000099", amount: 1000 }],
+  equity: [{ date: "2026-05-22", totalAsset: 100100, cash: 90000, investedValue: 10100, investedCost: 10000, cumulativePnlPct: 1 }],
+  account: {
+    totalAsset: 100100,
+    cash: 90000,
+    investedValue: 10100,
+    investedCost: 10000,
+    positionWeightPct: 10.1,
+    cumulativePnlPct: 1,
+    positions: [{
+      code: "000099",
+      name: "周报压缩测试基金C",
+      currentValue: 10100,
+      costAmount: 10000,
+      weightPct: 10.1,
+      unrealizedPnlPct: 1,
+      fundSnapshot: {
+        trendSummary: "20日+4.8%，趋势回调完成",
+        trendProfile: noisyTrendProfile,
+        actionability: noisyActionability,
+        topHoldings: Array.from({ length: 10 }, (_, index) => `${index + 1}号持仓`)
+      }
+    }]
+  }
+});
+const compactWeeklyJson = JSON.stringify(compactWeeklyContext);
+assert(!compactWeeklyJson.includes("\"series\""), "weekly model context must not carry raw chart series");
+assert(!compactWeeklyJson.includes("dailyReturnPct"), "weekly model context must not carry per-day chart details");
+assert.equal(compactWeeklyContext.failedRuns.length, 1, "weekly compact context must preserve failed task evidence for reliability review");
+assert.equal(compactWeeklyContext.account.positions[0].topHoldings.length, 10, "weekly compact context must preserve top-ten holdings for position review");
+
 async function assertIntent({ userText, expectedWorkflow, expectedReason, expectedMode = null, requiredSkills = [] }) {
   const routed = await manager.classifyMessageIntent({
     userText,

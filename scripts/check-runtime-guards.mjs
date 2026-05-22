@@ -748,6 +748,34 @@ const requiredPatterns = [
     message: "portfolio weekly reports must send compact holding profiles to avoid context-window failures."
   },
   {
+    pattern: /function buildPortfolioWeeklyWithModel[\s\S]{0,900}compactAccount = compactPortfolioWeeklyAccount\(account\)[\s\S]{0,700}JSON\.stringify\(compactAccount/,
+    message: "portfolio weekly reports must compact the current account before sending it to the model."
+  },
+  {
+    pattern: /compactPortfolioWeeklyContext[\s\S]{0,900}account: compactPortfolioWeeklyAccount/,
+    message: "portfolio weekly reports must compact account positions instead of sending full fund snapshots."
+  },
+  {
+    pattern: /compactPortfolioWeeklyAccount[\s\S]{0,1200}positions: \(account\.positions \|\| \[\]\)\.map\(compactPortfolioWeeklyPosition\)/,
+    message: "portfolio weekly compact account must summarize positions through a dedicated compact position mapper."
+  },
+  {
+    pattern: /compactPortfolioTrendProfile[\s\S]{0,900}pullbackSetup[\s\S]{0,260}\}[\s\S]{0,120}\}/,
+    message: "portfolio weekly/profile compact context must strip raw NAV series while preserving trend setup evidence."
+  },
+  {
+    pattern: /buildFallbackPortfolioWeeklyRaw/,
+    message: "portfolio weekly reports must have a deterministic fallback instead of failing with no customer-facing report."
+  },
+  {
+    pattern: /isResponsesStreamFallbackError[\s\S]{0,260}isTransientModelTransportError/,
+    message: "Responses stream INTERNAL_ERROR must fall back to non-streaming model calls."
+  },
+  {
+    pattern: /isTransientModelTransportError[\s\S]{0,260}INTERNAL_ERROR/,
+    message: "model transport errors must recognize stream INTERNAL_ERROR as recoverable."
+  },
+  {
     pattern: /renderWatchlistActionQueue/,
     message: "admin portfolio watchlist must surface a buy-preparation queue above the detailed pool."
   },
