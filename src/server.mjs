@@ -1466,7 +1466,7 @@ async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, p
 
 function compactPortfolioReviewProfile(profile = {}) {
   const oneYear = profile.riskMetrics?.periods?.["1y"] || {};
-  const topHoldings = (profile.holdings?.equityTopHoldings || profile.topStocks || []).slice(0, 5).map((item) => {
+  const topHoldings = (profile.holdings?.equityTopHoldings || profile.topStocks || []).slice(0, 10).map((item) => {
     if (typeof item === "string") return item;
     return [item.code, item.name, item.netValuePct ? `${item.netValuePct}%` : ""].filter(Boolean).join(" ");
   });
@@ -4499,7 +4499,7 @@ function buildPortfolioFundSnapshot(profile, position = null) {
   const fiveYear = periods["5y"] || {};
   const trendProfile = profile.trendProfile || null;
   const actionability = profile.actionability || null;
-  const topHoldings = (profile.holdings?.equityTopHoldings || profile.topStocks || []).slice(0, 5).map((item) => {
+  const topHoldings = (profile.holdings?.equityTopHoldings || profile.topStocks || []).slice(0, 10).map((item) => {
     if (typeof item === "string") return item;
     return [item.code, item.name, item.netValuePct ? `${item.netValuePct}%` : ""].filter(Boolean).join(" ");
   });

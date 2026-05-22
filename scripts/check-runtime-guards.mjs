@@ -688,6 +688,18 @@ const requiredPatterns = [
     message: "admin portfolio watchlist must expose evidence blocks, not only fund names."
   },
   {
+    pattern: /function compactPortfolioReviewProfile[\s\S]{0,260}topHoldings = \(profile\.holdings\?\.equityTopHoldings \|\| profile\.topStocks \|\| \[\]\)\.slice\(0, 10\)/,
+    message: "portfolio model review context must preserve all ten top holdings instead of truncating to five."
+  },
+  {
+    pattern: /function buildPortfolioFundSnapshot[\s\S]{0,500}topHoldings = \(profile\.holdings\?\.equityTopHoldings \|\| profile\.topStocks \|\| \[\]\)\.slice\(0, 10\)/,
+    message: "portfolio fund snapshots must preserve all ten top holdings instead of truncating to five."
+  },
+  {
+    pattern: /TOP_HOLDINGS_DISPLAY_LIMIT = 10/,
+    message: "admin portfolio UI must display the full top-ten holdings list."
+  },
+  {
     pattern: /renderWatchlistActionQueue/,
     message: "admin portfolio watchlist must surface a buy-preparation queue above the detailed pool."
   },

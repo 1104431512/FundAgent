@@ -12,6 +12,7 @@ let portfolioPollTimer = null;
 let portfolioPollFailures = 0;
 
 const WATCHLIST_STATUS_ORDER = ["ready", "waiting_pullback", "watch", "blocked", "in_position", "removed"];
+const TOP_HOLDINGS_DISPLAY_LIMIT = 10;
 const WATCHLIST_STATUS_LABELS = {
   ready: "接近可买",
   waiting_pullback: "等待回调",
@@ -328,7 +329,7 @@ function buildHoldingInsightItems(account, positions) {
   const sorted = [...positions].sort((a, b) => Number(b.weightPct || 0) - Number(a.weightPct || 0));
   const biggest = sorted[0];
   const pnlSorted = [...positions].sort((a, b) => Number(b.unrealizedPnl || 0) - Number(a.unrealizedPnl || 0));
-  const topHoldings = collectPortfolioTopHoldings(positions).slice(0, 5);
+  const topHoldings = collectPortfolioTopHoldings(positions).slice(0, TOP_HOLDINGS_DISPLAY_LIMIT);
   return [
     {
       label: "仓位结构",
@@ -564,7 +565,7 @@ function formatHoldingText(item) {
 }
 
 function renderHoldingChips(holdings = [], title = "持仓") {
-  const values = [...new Set((holdings || []).map(formatHoldingText).filter(Boolean))].slice(0, 6);
+  const values = [...new Set((holdings || []).map(formatHoldingText).filter(Boolean))].slice(0, TOP_HOLDINGS_DISPLAY_LIMIT);
   if (!values.length) return "";
   return `
     <div class="holding-strip">
