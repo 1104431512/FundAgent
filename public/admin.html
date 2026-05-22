@@ -331,40 +331,46 @@
             </section>
           </div>
 
-          <div class="panel">
-            <div class="panel-head">
+          <details class="panel section-panel">
+            <summary class="section-summary">
               <h2>订单进度</h2>
-            </div>
+              <span>申购、赎回、确认与到账</span>
+            </summary>
             <div id="orderList" class="table-list"></div>
-          </div>
+          </details>
 
-          <div class="panel">
-            <div class="panel-head">
+          <details class="panel section-panel" open>
+            <summary class="section-summary">
               <h2>持仓</h2>
+              <span>点击基金卡片查看完整信息</span>
+            </summary>
+            <div class="section-actions">
               <button id="resetPortfolioBtn" type="button" class="secondary">重置组合</button>
             </div>
             <div id="positionList" class="table-list"></div>
-          </div>
+          </details>
 
-          <div class="panel">
-            <div class="panel-head">
+          <details class="panel section-panel" open>
+            <summary class="section-summary">
               <h2>自选基金池</h2>
               <span id="watchlistCount" class="badge">0</span>
-            </div>
+            </summary>
             <div id="watchlistList" class="watchlist-list"></div>
-          </div>
+          </details>
 
-          <div class="panel">
-            <div class="panel-head">
+          <details class="panel section-panel" open>
+            <summary class="section-summary">
               <h2>观察、决策与复盘</h2>
-            </div>
+              <span>按时间轴查看经理分析</span>
+            </summary>
             <div id="runList" class="run-list"></div>
-          </div>
+          </details>
 
-          <div class="panel">
-            <div class="panel-head">
+          <details class="panel section-panel">
+            <summary class="section-summary">
               <h2>流水与估值</h2>
-            </div>
+              <span>交易流水、估值记录和原始状态</span>
+            </summary>
             <div class="split-grid">
               <div>
                 <h3>交易流水</h3>
@@ -379,7 +385,7 @@
               <summary>原始数据</summary>
               <pre id="portfolioOutput" class="output compact"></pre>
             </details>
-          </div>
+          </details>
         </section>
 
         <section class="tab-panel" data-panel="tests">

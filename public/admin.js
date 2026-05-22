@@ -32,6 +32,11 @@ document.querySelectorAll("[data-tab]").forEach((button) => {
   button.addEventListener("click", () => activateTab(button.dataset.tab));
 });
 
+const initialTab = new URLSearchParams(location.search).get("tab") || location.hash.replace(/^#/, "");
+if (initialTab) {
+  activateTab(initialTab);
+}
+
 document.querySelector("#saveTokenBtn").addEventListener("click", () => {
   localStorage.setItem("fundagent_admin_token", adminTokenInput.value.trim());
   showToast("令牌已保存");
@@ -474,48 +479,53 @@ function renderPositions(positions) {
     list.innerHTML = `<div class="empty">暂无持仓。第一次手动触发“生成今日操作”后，这里会显示虚拟买入/卖出后的账户。</div>`;
     return;
   }
-  list.innerHTML = positions
-    .map(
-      (item) => {
-        const snapshot = item.fundSnapshot || {};
-        const nav = snapshot.nav || item.lastNav || "";
-        const navDate = snapshot.navDate || item.lastNavDate || "";
-        const trend = getFundSnapshotTrendText(snapshot);
-        const trendChart = renderTrendChart(snapshot);
-        const facts = renderSnapshotFactStrip(snapshot);
-        const riskLine = renderPositionRiskLine(item);
-        const holdings = renderHoldingChips(getSnapshotTopHoldings(snapshot), "前十大持仓");
-        const source = item.dataSource || snapshot.sources?.[0] || "";
-        return `
-        <article class="position-card">
-          <div class="position-main">
-            <div>
-              <strong>${escapeHtml(item.code)} ${escapeHtml(item.name)}</strong>
-              <p>${escapeHtml(item.lastReason || "暂无最近操作理由")}</p>
-            </div>
-            <span class="${Number(item.unrealizedPnl || 0) >= 0 ? "ok-text" : "bad-text"}">${formatSigned(item.unrealizedPnl)} / ${formatSigned(item.unrealizedPnlPct)}%</span>
+  list.innerHTML = `<div class="fund-card-grid">${positions.map(renderPositionCard).join("")}</div>`;
+}
+
+function renderPositionCard(item) {
+  const snapshot = item.fundSnapshot || {};
+  const nav = snapshot.nav || item.lastNav || "";
+  const navDate = snapshot.navDate || item.lastNavDate || "";
+  const trend = getFundSnapshotTrendText(snapshot);
+  const trendChart = renderTrendChart(snapshot);
+  const facts = renderSnapshotFactStrip(snapshot);
+  const riskLine = renderPositionRiskLine(item);
+  const holdings = renderHoldingChips(getSnapshotTopHoldings(snapshot), "前十大持仓");
+  const source = item.dataSource || snapshot.sources?.[0] || "";
+  const pnlClass = Number(item.unrealizedPnl || 0) >= 0 ? "ok-text" : "bad-text";
+  return `
+    <details class="fund-card holding-fund-card">
+      <summary class="fund-card-summary">
+        <div class="fund-card-title">
+          <strong>${escapeHtml(item.code)} ${escapeHtml(item.name)}</strong>
+          <span>持仓 ${escapeHtml(String(item.weightPct || 0))}%</span>
+        </div>
+        <div class="fund-card-kpis">
+          <span>${formatMoney(item.currentValue)}</span>
+          <span class="${pnlClass}">${formatSigned(item.unrealizedPnl)} / ${formatSigned(item.unrealizedPnlPct)}%</span>
+        </div>
+        <small>${escapeHtml(trend && trend !== "走势数据不足" ? trend : (item.lastReason || "点击查看持仓细节"))}</small>
+      </summary>
+      <div class="fund-card-detail">
+        <div class="position-body">
+          <div class="position-chart-block">
+            <p>${escapeHtml(item.lastReason || trend || "暂无最近操作理由")}</p>
+            ${trendChart}
+            ${facts}
+            ${source ? `<small>${escapeHtml(source)}</small>` : ""}
           </div>
-          <div class="position-body">
-            <div class="position-chart-block">
-              <p>${escapeHtml(trend)}</p>
-              ${trendChart}
-              ${facts}
-              ${source ? `<small>${escapeHtml(source)}</small>` : ""}
-            </div>
-            <div class="position-metrics">
-              <div><span>市值</span><strong>${formatMoney(item.currentValue)}</strong></div>
-              <div><span>仓位</span><strong>${item.weightPct || 0}%</strong></div>
-              <div><span>净值</span><strong>${nav ? formatNumber(nav, 4) : "-"}</strong><small>${escapeHtml(navDate || "无日期")}</small></div>
-              <div><span>份额</span><strong>${formatNumber(item.units, 2)}</strong><small>成本 ${item.averageCostNav ? formatNumber(item.averageCostNav, 4) : "-"}</small></div>
-            </div>
+          <div class="position-metrics">
+            <div><span>市值</span><strong>${formatMoney(item.currentValue)}</strong></div>
+            <div><span>仓位</span><strong>${item.weightPct || 0}%</strong></div>
+            <div><span>净值</span><strong>${nav ? formatNumber(nav, 4) : "-"}</strong><small>${escapeHtml(navDate || "无日期")}</small></div>
+            <div><span>份额</span><strong>${formatNumber(item.units, 2)}</strong><small>成本 ${item.averageCostNav ? formatNumber(item.averageCostNav, 4) : "-"}</small></div>
           </div>
-          ${riskLine}
-          ${holdings}
-        </article>
-      `;
-      }
-    )
-    .join("");
+        </div>
+        ${riskLine}
+        ${holdings}
+      </div>
+    </details>
+  `;
 }
 
 function renderPositionRiskLine(item = {}) {
@@ -586,12 +596,47 @@ function renderWatchlist(items) {
   const groups = groupWatchlistItems(items);
   list.innerHTML = [
     renderWatchlistSummary(items),
-    renderWatchlistSetupFocus(items),
-    renderWatchlistActionQueue(items),
-    ...WATCHLIST_STATUS_ORDER
-      .filter((status) => groups.get(status)?.length)
-      .map((status) => renderWatchlistGroup(status, groups.get(status)))
+    renderWatchlistCategoryDeck(groups)
   ].join("");
+}
+
+function renderWatchlistCategoryDeck(groups) {
+  const categories = [
+    { status: "ready", title: "接近买点", hint: "低位、费用和买入触发基本满足" },
+    { status: "waiting_pullback", title: "等待回调", hint: "方向可跟踪，但还没到执行价格或形态" },
+    { status: "watch", title: "观察中", hint: "有研究价值，继续补数据和等确认" },
+    { status: "blocked", title: "暂不买", hint: "偏热、数据缺口或风险约束未通过" },
+    { status: "in_position", title: "已持仓", hint: "与当前组合已有暴露相关" },
+    { status: "removed", title: "已移出", hint: "历史候选，暂不参与决策" }
+  ];
+  return `
+    <div class="watchlist-category-deck">
+      ${categories
+        .filter((category) => groups.get(category.status)?.length)
+        .map((category) => renderWatchlistCategory(category, groups.get(category.status)))
+        .join("")}
+    </div>
+  `;
+}
+
+function renderWatchlistCategory(category, items = []) {
+  const best = items[0];
+  const statusClass = getWatchlistStatusClass(category.status);
+  return `
+    <section class="watchlist-category">
+      <div class="watchlist-category-head">
+        <div>
+          <h3>${escapeHtml(category.title)}</h3>
+          <p>${escapeHtml(category.hint)}</p>
+        </div>
+        <span class="watchlist-pill ${statusClass}">${items.length} 只</span>
+      </div>
+      ${best ? `<small class="category-lead">优先看：${escapeHtml(best.code)} ${escapeHtml(best.name || "")} · ${escapeHtml(selectWatchlistPrimaryGap(best))}</small>` : ""}
+      <div class="fund-card-grid compact-fund-grid">
+        ${items.map(renderWatchlistItem).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function groupWatchlistItems(items) {
@@ -759,38 +804,40 @@ function renderWatchlistItem(item) {
   const facts = renderSnapshotFactStrip(snapshot);
   const holdings = renderHoldingChips(getSnapshotTopHoldings(snapshot), "持仓看点");
   return `
-    <div class="data-row watchlist-row">
-      <div>
-        <strong>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</strong>
-        ${setupBadge}
+    <details class="fund-card watchlist-fund-card">
+      <summary class="fund-card-summary">
+        <div class="fund-card-title">
+          <strong>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</strong>
+          <span class="${statusClass}">${escapeHtml(item.statusText || formatWatchlistStatus(item.status))}</span>
+        </div>
+        <div class="fund-card-kpis">
+          ${formatWatchlistReadiness(item) ? `<span>${formatWatchlistReadiness(item)}</span>` : `<span>优先级 ${escapeHtml(item.priority || 3)}</span>`}
+          ${setupBadge}
+        </div>
+        <small>${escapeHtml(selectWatchlistPrimaryGap(item) || item.reason || "点击查看候选细节")}</small>
+      </summary>
+      <div class="fund-card-detail">
         <p>${escapeHtml(item.reason || "暂无备选理由")}</p>
         ${trend && trend !== "走势数据不足" ? `<p>${escapeHtml(trend)}</p>` : ""}
         ${facts}
-        ${holdings}
         ${renderWatchlistObservationGapPanel(observationGaps)}
         ${trendChart}
-        <small>${escapeHtml([item.type, item.shareClass ? `${item.shareClass}类` : "", item.candidateRole].filter(Boolean).join(" · "))}</small>
+        ${holdings}
+        <small>${escapeHtml([item.type, item.shareClass ? `${item.shareClass}类` : "", item.candidateRole, item.reviewDate || "待复查"].filter(Boolean).join(" · "))}</small>
+        <div class="watchlist-evidence-grid">
+          ${renderWatchlistEvidenceBlock("备选证据", item.setupEvidence)}
+          ${renderWatchlistEvidenceBlock("买入触发", item.buyTriggers)}
+          ${renderWatchlistEvidenceBlock("买入缺口", item.readinessGaps)}
+          ${renderWatchlistEvidenceBlock("风险边界", item.riskNotes)}
+          ${renderWatchlistEvidenceBlock("费用/份额", item.feeNotes)}
+          ${renderWatchlistEvidenceBlock("替代份额", formatWatchlistAlternativeItems(item.alternativeShareClasses))}
+          ${renderWatchlistEvidenceBlock("同类替代", formatWatchlistAlternativeItems(item.sameExposureAlternatives))}
+          ${renderWatchlistEvidenceBlock("净值快照", snapshotEvidence)}
+          ${renderWatchlistEvidenceBlock("数据依据", [...(item.dataBasis || []), source].filter(Boolean))}
+          ${item.positionPlan ? renderWatchlistEvidenceBlock("仓位计划", [item.positionPlan]) : ""}
+        </div>
       </div>
-      <div>
-        <strong class="${statusClass}">${escapeHtml(item.statusText || formatWatchlistStatus(item.status))}</strong>
-        ${formatWatchlistReadiness(item) ? `<small>${formatWatchlistReadiness(item)}</small>` : ""}
-        <small>优先级 ${escapeHtml(item.priority || 3)}</small>
-        <small>${escapeHtml(item.reviewDate || "待复查")}</small>
-        ${item.updatedAt ? `<small>更新 ${escapeHtml(formatDateTime(item.updatedAt))}</small>` : ""}
-      </div>
-      <div class="watchlist-evidence-grid">
-        ${renderWatchlistEvidenceBlock("备选证据", item.setupEvidence)}
-        ${renderWatchlistEvidenceBlock("买入触发", item.buyTriggers)}
-        ${renderWatchlistEvidenceBlock("买入缺口", item.readinessGaps)}
-        ${renderWatchlistEvidenceBlock("风险边界", item.riskNotes)}
-        ${renderWatchlistEvidenceBlock("费用/份额", item.feeNotes)}
-        ${renderWatchlistEvidenceBlock("替代份额", formatWatchlistAlternativeItems(item.alternativeShareClasses))}
-        ${renderWatchlistEvidenceBlock("同类替代", formatWatchlistAlternativeItems(item.sameExposureAlternatives))}
-        ${renderWatchlistEvidenceBlock("净值快照", snapshotEvidence)}
-        ${renderWatchlistEvidenceBlock("数据依据", [...(item.dataBasis || []), source].filter(Boolean))}
-        ${item.positionPlan ? renderWatchlistEvidenceBlock("仓位计划", [item.positionPlan]) : ""}
-      </div>
-    </div>
+    </details>
   `;
 }
 
@@ -883,7 +930,6 @@ function formatWatchlistSnapshotEvidence(snapshot = {}) {
 
 function renderWatchlistTags(values = []) {
   return (values || [])
-    .slice(0, 4)
     .map((value) => `<small>${escapeHtml(value)}</small>`)
     .join("");
 }
@@ -894,7 +940,7 @@ function renderRuns(runs) {
     list.innerHTML = `<div class="empty">暂无决策记录。</div>`;
     return;
   }
-  list.innerHTML = runs
+  list.innerHTML = `<div class="manager-timeline">${runs
     .map((run) => {
       const statusClass = run.status === "failed" || run.status === "interrupted" ? "bad-text" : run.status === "running" ? "warn-text" : "ok-text";
       const orders = run.orders?.length ? run.orders.map((item) => `${item.side} ${item.code} ${item.status}`).join(" · ") : "";
@@ -906,14 +952,15 @@ function renderRuns(runs) {
           ? Math.max(0, Math.round((Date.now() - new Date(run.startedAt).getTime()) / 1000))
           : 0;
       return `
-        <details class="run-item">
+        <details class="run-item timeline-card">
           <summary>
+            <div class="timeline-marker"></div>
             <div>
-              <strong>${escapeHtml(run.date || "")} · ${escapeHtml(run.title || run.type || "")}</strong>
+              <strong>${escapeHtml(run.date || "")} · ${escapeHtml(run.title || formatRunTypeLabel(run.type))}</strong>
               <p>${escapeHtml(run.summary || "无摘要")}</p>
-              <small>${escapeHtml([orders, transactions, notes].filter(Boolean).join(" · "))}</small>
+              <small>${escapeHtml([orders, transactions, notes].filter(Boolean).join(" · ") || "点击查看经理分析、动作和原始日报")}</small>
             </div>
-            <strong class="${statusClass}">${escapeHtml(run.status || "")}</strong>
+            <strong class="${statusClass}">${escapeHtml(formatRunStatus(run.status))}</strong>
           </summary>
           <div class="run-detail">
             <div class="run-meta">
@@ -922,17 +969,88 @@ function renderRuns(runs) {
               <span>结束：${escapeHtml(formatDateTime(run.completedAt))}</span>
               <span>耗时：${durationSeconds}s</span>
             </div>
-            ${
-              run.error
-                ? `<p class="bad-text">${escapeHtml(run.error)}</p>`
-                : ""
-            }
-            <pre>${escapeHtml(run.card || run.summary || (run.status === "running" ? "任务仍在运行，刷新后查看最新状态。" : "无内容"))}</pre>
+            ${run.error ? `<p class="bad-text">${escapeHtml(run.error)}</p>` : ""}
+            ${renderRunThinkingCards(run)}
+            <details class="raw-run-card">
+              <summary>完整日报文本</summary>
+              <pre>${escapeHtml(run.card || run.summary || (run.status === "running" ? "任务仍在运行，刷新后查看最新状态。" : "无内容"))}</pre>
+            </details>
           </div>
         </details>
       `;
     })
-    .join("");
+    .join("")}</div>`;
+}
+
+function renderRunThinkingCards(run = {}) {
+  const team = Array.isArray(run.team) ? run.team : [];
+  const cardPreview = String(run.card || "").split("\n").slice(0, 3).join(" ");
+  const actionCards = (run.actions || []).map((action) => `
+    <article class="thought-card">
+      <span>${escapeHtml(action.action || "ACTION")}</span>
+      <strong>${escapeHtml([action.code, action.name].filter(Boolean).join(" ") || "组合动作")}</strong>
+      <p>${escapeHtml(action.reason || "暂无动作理由")}</p>
+      <small>${escapeHtml([action.rotationCheck, action.positionCheck, action.chaseRisk, action.riskControl].filter(Boolean).join("；"))}</small>
+    </article>
+  `);
+  const teamCards = team.map((item) => `
+    <article class="thought-card">
+      <span>${escapeHtml(item.agent || "投委会")}</span>
+      <strong>${escapeHtml(item.stance || "中")}</strong>
+      <p>${escapeHtml(item.reason || "暂无观点")}</p>
+      <small>${escapeHtml((item.dataBasis || []).join("；"))}</small>
+    </article>
+  `);
+  const operationalCards = [
+    ...(run.orders || []).map((order) => `
+      <article class="thought-card">
+        <span>订单</span>
+        <strong>${escapeHtml(order.side || "")} ${escapeHtml(order.code || "")}</strong>
+        <p>${escapeHtml(`${formatMoney(order.amount)} · ${order.status || ""}`)}</p>
+        <small>${escapeHtml(`估值日 ${order.priceDate || "-"}，确认日 ${order.confirmDate || "-"}`)}</small>
+      </article>
+    `),
+    ...(run.executionNotes || []).map((note) => `
+      <article class="thought-card">
+        <span>执行说明</span>
+        <strong>${escapeHtml([note.action, note.code].filter(Boolean).join(" ") || "说明")}</strong>
+        <p>${escapeHtml(note.reason || "")}</p>
+      </article>
+    `)
+  ];
+  const fallbackCards = !teamCards.length && !actionCards.length && !operationalCards.length
+    ? [`<article class="thought-card"><span>${escapeHtml(formatRunTypeLabel(run.type))}</span><strong>${escapeHtml(run.summary || "暂无摘要")}</strong><p>${escapeHtml(cardPreview || "暂无可展示分析")}</p></article>`]
+    : [];
+  return `
+    <div class="thought-section">
+      <div class="thought-section-head">
+        <h3>经理分析卡片</h3>
+        <span>展示投委会观点与执行依据，不展示隐藏思考链</span>
+      </div>
+      <div class="thought-grid">
+        ${[...teamCards, ...actionCards, ...operationalCards, ...fallbackCards].join("")}
+      </div>
+    </div>
+  `;
+}
+
+function formatRunTypeLabel(type) {
+  return {
+    premarket: "盘前观察",
+    decision: "今日操作",
+    valuation: "晚间估值",
+    weekly: "周总结"
+  }[type] || type || "组合任务";
+}
+
+function formatRunStatus(status) {
+  return {
+    running: "运行中",
+    completed: "完成",
+    failed: "异常",
+    interrupted: "中断",
+    cancelled: "结束"
+  }[status] || status || "";
 }
 
 function renderTransactions(transactions) {

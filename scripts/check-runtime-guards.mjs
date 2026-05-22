@@ -700,6 +700,26 @@ const requiredPatterns = [
     message: "admin portfolio UI must display the full top-ten holdings list."
   },
   {
+    pattern: /renderWatchlistCategoryDeck/,
+    message: "admin portfolio watchlist must use categorized card sections instead of one long mixed list."
+  },
+  {
+    pattern: /fund-card-summary/,
+    message: "admin portfolio fund rows must be click-to-expand cards so the page stays scannable."
+  },
+  {
+    pattern: /manager-timeline/,
+    message: "admin portfolio manager activity must be displayed as a timeline."
+  },
+  {
+    pattern: /renderRunThinkingCards/,
+    message: "admin portfolio run history must expose manager analysis as cards instead of only raw text."
+  },
+  {
+    pattern: /team: \(run\.team \|\| \[\]\)\.slice/,
+    message: "portfolio API must expose visible investment committee views for the manager timeline."
+  },
+  {
     pattern: /renderWatchlistActionQueue/,
     message: "admin portfolio watchlist must surface a buy-preparation queue above the detailed pool."
   },
