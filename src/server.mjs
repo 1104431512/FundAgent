@@ -958,8 +958,10 @@ async function executePortfolioDecision(db, run, config) {
   await yieldToEventLoop();
   const profileCodes = decision.actions.map((action) => action.code).filter(Boolean);
   const actionProfiles = profileCodes.length ? await enrichFunds(profileCodes) : [];
-  decision.actions = enforcePortfolioBuyDiscipline(decision.actions, actionProfiles, db.account.positions);
-  decision.actions = enforcePortfolioSellDiscipline(decision.actions, actionProfiles, db.account.positions);
+  const executionProfiles = mergePortfolioProfiles(heldProfiles, actionProfiles);
+  decision.actions = enforcePortfolioRiskBudget(decision.actions, db.account, executionProfiles);
+  decision.actions = enforcePortfolioBuyDiscipline(decision.actions, executionProfiles, db.account.positions, db.account);
+  decision.actions = enforcePortfolioSellDiscipline(decision.actions, executionProfiles, db.account.positions);
   const watchlistUpdates = applyPortfolioWatchlistUpdates(
     db,
     [
@@ -972,7 +974,7 @@ async function executePortfolioDecision(db, run, config) {
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "正在校验交易规则并生成虚拟订单。");
   await yieldToEventLoop();
-  const execution = await submitPortfolioOrders(db, decision.actions, actionProfiles, run, config);
+  const execution = await submitPortfolioOrders(db, decision.actions, executionProfiles, run, config);
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, `已生成 ${execution.orders.length} 张虚拟订单，正在生成决策日报。`);
   await yieldToEventLoop();
@@ -1077,6 +1079,10 @@ async function executePortfolioValuation(db, run, config) {
     receivableCash: db.account.receivableCash,
     investedValue: db.account.investedValue,
     investedCost: db.account.investedCost,
+    peakTotalAsset: db.account.peakTotalAsset,
+    peakTotalAssetDate: db.account.peakTotalAssetDate,
+    drawdownFromPeakPct: db.account.drawdownFromPeakPct,
+    riskBudget: db.account.riskBudget,
     dayPnl,
     cumulativePnl: db.account.cumulativePnl,
     cumulativePnlPct: db.account.cumulativePnlPct,
@@ -1300,6 +1306,8 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "如果 themeRadar.positionSignal 是 high_chase_risk，或 crowdingScore 高但 lowPositionScore/rotationScore 不支持，只能 WATCH、HOLD 或小额试探，不能重仓追涨。",
     "同一基金不同份额类别不能混着推荐；必须比较 A/C/D/I 等份额的申购费、销售服务费、赎回费、起购门槛和渠道可得性，并说明费用拖累是否适合本次持有期。",
     "交易建议应以 targetWeightPct 为主，amount 只是建议值；系统执行时会按公开净值、现金和已有持仓重新计算真实份额。",
+    "必须执行账户级回撤预算：账户回撤到预警线时缩小买入，到最大回撤预算时暂停新增买入并优先分批降风险；不能用加仓摊薄替代止损。",
+    "必须执行单仓风控：浮亏触及止损线、浮盈大幅回吐或趋势破位时，先给 SELL/减仓复核，不要只写 HOLD。",
     "如果候选基金缺少可验证净值或走势数据，倾向 WATCH，不要强行 BUY。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
     "",
@@ -2848,11 +2856,219 @@ function inferPortfolioWatchStatusFromAction(action = {}) {
   return "watch";
 }
 
-function enforcePortfolioBuyDiscipline(actions = [], profiles = [], positions = []) {
+function mergePortfolioProfiles(...groups) {
+  const byCode = new Map();
+  for (const profile of groups.flat().filter(Boolean)) {
+    if (profile.code) byCode.set(profile.code, profile);
+  }
+  return [...byCode.values()];
+}
+
+function enforcePortfolioRiskBudget(actions = [], account = {}, profiles = []) {
+  const normalized = normalizePortfolioActions(actions);
+  const riskActions = buildPortfolioRiskBudgetActions(account, profiles);
+  if (!riskActions.length) return normalized;
+
+  const merged = [...normalized];
+  for (const riskAction of riskActions) {
+    const index = merged.findIndex((action) => action.code && action.code === riskAction.code);
+    if (index < 0) {
+      merged.push(riskAction);
+      continue;
+    }
+    const current = merged[index];
+    const currentTarget = Number.isFinite(Number(current.targetWeightPct)) ? Number(current.targetWeightPct) : 0;
+    const riskTarget = Number.isFinite(Number(riskAction.targetWeightPct)) ? Number(riskAction.targetWeightPct) : 0;
+    merged[index] = {
+      ...current,
+      ...riskAction,
+      action: "SELL",
+      amount: Math.max(Number(current.amount || 0), Number(riskAction.amount || 0)),
+      targetWeightPct: Math.min(currentTarget, riskTarget),
+      reason: [riskAction.reason, current.reason].filter(Boolean).join(" "),
+      dataBasis: mergeStringLists(current.dataBasis, riskAction.dataBasis, ["来源：portfolio_risk_budget_guard"]),
+      rotationCheck: current.rotationCheck || riskAction.rotationCheck,
+      positionCheck: current.positionCheck || riskAction.positionCheck,
+      chaseRisk: [current.chaseRisk, riskAction.chaseRisk].filter(Boolean).join("；"),
+      feeCheck: current.feeCheck || riskAction.feeCheck,
+      riskControl: [riskAction.riskControl, current.riskControl].filter(Boolean).join(" ")
+    };
+  }
+  return merged.slice(0, 10);
+}
+
+function buildPortfolioRiskBudgetActions(account = {}, profiles = []) {
+  const positions = Array.isArray(account.positions) ? account.positions : [];
+  if (!positions.length) return [];
+  const accountBudget = buildPortfolioAccountRiskBudget(account);
+  const profileByCode = new Map((profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
+  const byCode = new Map();
+  const addRiskAction = (position, reason, dataBasis, options = {}) => {
+    if (!position?.code || Number(position.currentValue || 0) <= 0) return;
+    const existing = byCode.get(position.code);
+    const action = {
+      action: "SELL",
+      code: position.code,
+      name: position.name || profileByCode.get(position.code)?.name || "",
+      amount: round(Number(position.currentValue || 0), 2),
+      targetWeightPct: 0,
+      reason,
+      dataBasis: mergeStringLists(dataBasis, [`持仓市值 ${round(Number(position.currentValue || 0), 2)}元`], ["来源：portfolio_risk_budget_guard"]),
+      rotationCheck: "风控优先于轮动加仓，先降低回撤暴露。",
+      positionCheck: options.positionCheck || "触发组合风控复核",
+      chaseRisk: options.chaseRisk || "回撤预算触发，暂停追涨和新增风险。",
+      feeCheck: "赎回费按平台实际规则复核；系统只提交分批赎回计划。",
+      riskControl: options.riskControl || "先按系统卖出上限分批降风险，下一轮继续复核是否追加。"
+    };
+    if (!existing) {
+      byCode.set(position.code, action);
+      return;
+    }
+    byCode.set(position.code, {
+      ...existing,
+      reason: [existing.reason, reason].filter(Boolean).join(" "),
+      dataBasis: mergeStringLists(existing.dataBasis, action.dataBasis),
+      positionCheck: [existing.positionCheck, action.positionCheck].filter(Boolean).join("；"),
+      chaseRisk: [existing.chaseRisk, action.chaseRisk].filter(Boolean).join("；"),
+      riskControl: [existing.riskControl, action.riskControl].filter(Boolean).join(" ")
+    });
+  };
+
+  if (accountBudget.reduceRisk) {
+    const ordered = [...positions].sort((a, b) => Number(b.weightPct || 0) - Number(a.weightPct || 0));
+    for (const position of ordered.slice(0, 5)) {
+      addRiskAction(
+        position,
+        `系统账户回撤控制：组合距峰值回撤${formatFallbackPct(accountBudget.drawdownFromPeakPct)}，已超过${accountBudget.maxDrawdownPct}%预算，必须分批降风险。`,
+        [
+          `账户峰值 ${accountBudget.peakTotalAsset}元`,
+          `账户回撤 ${formatFallbackPct(accountBudget.drawdownFromPeakPct)}`,
+          `最大回撤预算 ${accountBudget.maxDrawdownPct}%`
+        ],
+        {
+          positionCheck: "账户级最大回撤预算触发",
+          chaseRisk: "账户回撤超预算，所有新增买入暂停，优先降低仓位。",
+          riskControl: "账户级回撤超预算，本轮只允许风控减仓或持有复核，不允许新增风险。"
+        }
+      );
+    }
+  }
+
+  for (const position of positions) {
+    const profile = profileByCode.get(position.code);
+    const positionBudget = buildPortfolioPositionRiskBudget(position, profile);
+    if (!positionBudget.reduceRisk) continue;
+    addRiskAction(
+      position,
+      `系统单仓回撤控制：${positionBudget.triggers.slice(0, 2).join("；")}。`,
+      [
+        `单仓浮盈亏 ${formatFallbackPct(positionBudget.unrealizedPnlPct)}`,
+        `历史浮盈峰值 ${formatFallbackPct(positionBudget.peakUnrealizedPnlPct)}`,
+        `浮盈回吐 ${formatFallbackPct(-positionBudget.profitGivebackPct)}`
+      ],
+      {
+        positionCheck: positionBudget.level === "severe" ? "单仓止损线触发" : "浮盈回吐保护触发",
+        chaseRisk: "单仓风险触发，禁止用加仓摊薄替代止损或止盈。",
+        riskControl: positionBudget.level === "severe"
+          ? "先按严重风险上限纪律性减仓；若下一次复核仍低于止损线，继续追加。"
+          : "先分批锁定部分利润；若重新转强再评估是否保留剩余仓位。"
+      }
+    );
+  }
+
+  return [...byCode.values()];
+}
+
+function buildPortfolioAccountRiskBudget(account = {}) {
+  const totalAsset = round(Number(account.totalAsset || 0), 2) || 0;
+  const peakTotalAsset = round(Number(account.peakTotalAsset || account.initialCapital || totalAsset), 2) || totalAsset;
+  const derivedDrawdownFromPeakPct = peakTotalAsset > 0 ? round((totalAsset / peakTotalAsset - 1) * 100, 2) : null;
+  const drawdownFromPeakPct = Number.isFinite(Number(derivedDrawdownFromPeakPct))
+    ? derivedDrawdownFromPeakPct
+    : (Number.isFinite(Number(account.drawdownFromPeakPct)) ? round(Number(account.drawdownFromPeakPct), 2) : 0);
+  const drawdownAbs = Math.abs(Math.min(0, Number(drawdownFromPeakPct || 0)));
+  const warningThresholdPct = Math.abs(finiteNumberOr(process.env.PORTFOLIO_ACCOUNT_DRAWDOWN_WARN_PCT, 3));
+  const maxDrawdownPct = Math.abs(finiteNumberOr(process.env.PORTFOLIO_MAX_ACCOUNT_DRAWDOWN_PCT, 6));
+  const severeDrawdownPct = Math.abs(finiteNumberOr(process.env.PORTFOLIO_SEVERE_ACCOUNT_DRAWDOWN_PCT, 9));
+  const level = drawdownAbs >= severeDrawdownPct
+    ? "severe"
+    : drawdownAbs >= maxDrawdownPct
+      ? "breached"
+      : drawdownAbs >= warningThresholdPct
+        ? "warning"
+        : "normal";
+  return {
+    level,
+    label: {
+      normal: "回撤正常",
+      warning: "回撤预警",
+      breached: "回撤超预算",
+      severe: "严重回撤"
+    }[level],
+    totalAsset,
+    peakTotalAsset,
+    drawdownFromPeakPct,
+    warningThresholdPct,
+    maxDrawdownPct,
+    severeDrawdownPct,
+    blockNewBuys: ["breached", "severe"].includes(level),
+    reduceRisk: ["breached", "severe"].includes(level),
+    throttleNewBuys: level === "warning"
+  };
+}
+
+function buildPortfolioPositionRiskBudget(position = {}, profile = null) {
+  const unrealizedPnlPct = finiteMetricNumber(position.unrealizedPnlPct);
+  const peakUnrealizedPnlPct = finiteMetricNumber(position.peakUnrealizedPnlPct);
+  const profitGivebackPct = Number.isFinite(peakUnrealizedPnlPct) && Number.isFinite(unrealizedPnlPct)
+    ? Math.max(0, round(peakUnrealizedPnlPct - unrealizedPnlPct, 2))
+    : 0;
+  const stopLossPct = Math.abs(finiteNumberOr(process.env.PORTFOLIO_POSITION_STOP_LOSS_PCT, 8));
+  const profitProtectionStartPct = Math.abs(finiteNumberOr(process.env.PORTFOLIO_PROFIT_PROTECTION_START_PCT, 8));
+  const profitGivebackLimitPct = Math.abs(finiteNumberOr(process.env.PORTFOLIO_PROFIT_GIVEBACK_PCT, 4));
+  const trend = profile?.trendProfile || position.fundSnapshot?.trendProfile || {};
+  const trendDrawdown = finiteMetricNumber(trend.drawdownFromRecentHighPct);
+  const triggers = [];
+
+  if (Number.isFinite(unrealizedPnlPct) && unrealizedPnlPct <= -stopLossPct) {
+    triggers.push(`浮亏${formatFallbackPct(unrealizedPnlPct)}触及${stopLossPct}%单仓止损线`);
+  }
+  if (
+    Number.isFinite(peakUnrealizedPnlPct)
+    && Number.isFinite(unrealizedPnlPct)
+    && peakUnrealizedPnlPct >= profitProtectionStartPct
+    && profitGivebackPct >= profitGivebackLimitPct
+  ) {
+    triggers.push(`曾浮盈${formatFallbackPct(peakUnrealizedPnlPct)}，已回吐${round(profitGivebackPct, 2)}个百分点`);
+  }
+  if (Number.isFinite(trendDrawdown) && trendDrawdown <= -12 && ["breakdown", "weakening"].includes(trend.trendLabel)) {
+    triggers.push(`走势${formatTrendLabel(trend.trendLabel)}且距高点${formatFallbackPct(trendDrawdown)}`);
+  }
+
+  const level = triggers.some((item) => /止损|破位/.test(item)) ? "severe" : triggers.length ? "warning" : "normal";
+  return {
+    level,
+    label: {
+      normal: "正常",
+      warning: "需减仓复核",
+      severe: "止损风险"
+    }[level],
+    reduceRisk: triggers.length > 0,
+    unrealizedPnlPct,
+    peakUnrealizedPnlPct,
+    profitGivebackPct,
+    stopLossPct,
+    profitProtectionStartPct,
+    profitGivebackLimitPct,
+    triggers
+  };
+}
+
+function enforcePortfolioBuyDiscipline(actions = [], profiles = [], positions = [], account = null) {
   const profileByCode = new Map((profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
   return normalizePortfolioActions(actions).map((action) => {
     if (action.action !== "BUY") return action;
-    const guard = evaluatePortfolioBuyDiscipline(action, profileByCode.get(action.code), positions);
+    const guard = evaluatePortfolioBuyDiscipline(action, profileByCode.get(action.code), positions, account);
     if (guard.ok) return action;
     return {
       ...action,
@@ -2867,13 +3083,27 @@ function enforcePortfolioBuyDiscipline(actions = [], profiles = [], positions = 
   });
 }
 
-function evaluatePortfolioBuyDiscipline(action = {}, profile = null, positions = []) {
+function evaluatePortfolioBuyDiscipline(action = {}, profile = null, positions = [], account = null) {
   if (!action.code) {
     return {
       ok: false,
       reason: "系统买入纪律拦截：缺少基金代码，不能提交虚拟申购。",
       evidence: []
     };
+  }
+  if (account) {
+    const accountBudget = buildPortfolioAccountRiskBudget(account);
+    if (accountBudget.blockNewBuys) {
+      return {
+        ok: false,
+        reason: `系统买入纪律拦截：账户距峰值回撤${formatFallbackPct(accountBudget.drawdownFromPeakPct)}，已超过${accountBudget.maxDrawdownPct}%最大回撤预算，暂停新增买入。`,
+        evidence: [
+          `账户峰值 ${accountBudget.peakTotalAsset}元`,
+          `账户回撤 ${formatFallbackPct(accountBudget.drawdownFromPeakPct)}`,
+          "来源：portfolio_account_drawdown_guard"
+        ]
+      };
+    }
   }
   if (!profile) {
     return {
@@ -3053,6 +3283,12 @@ function collectPortfolioSellDisciplineSignals(action = {}, profile = {}, positi
   const return60d = finiteMetricNumber(trend.return60dPct);
   const drawdown = finiteMetricNumber(trend.drawdownFromRecentHighPct);
   const unrealized = finiteMetricNumber(position.unrealizedPnlPct);
+  const peakUnrealized = finiteMetricNumber(position.peakUnrealizedPnlPct);
+  const profitGiveback = Number.isFinite(peakUnrealized) && Number.isFinite(unrealized)
+    ? Math.max(0, round(peakUnrealized - unrealized, 2))
+    : 0;
+  const stopLossPct = Math.abs(finiteNumberOr(process.env.PORTFOLIO_POSITION_STOP_LOSS_PCT, 8));
+  const givebackPct = Math.abs(finiteNumberOr(process.env.PORTFOLIO_PROFIT_GIVEBACK_PCT, 4));
   const actionText = [
     action.reason,
     action.rotationCheck,
@@ -3068,6 +3304,11 @@ function collectPortfolioSellDisciplineSignals(action = {}, profile = {}, positi
   if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback") signals.push("短期偏热或等待回撤，适合分批止盈");
   if (Number.isFinite(return20d) && return20d > 12) signals.push(`近20日${formatFallbackPct(return20d)}，需止盈防回吐`);
   if (Number.isFinite(return60d) && return60d > 24) signals.push(`近60日${formatFallbackPct(return60d)}，需降仓控制追涨暴露`);
+  if (/账户回撤|组合回撤|最大回撤预算/.test(actionText)) signals.push("账户级最大回撤预算触发，需要降低组合风险");
+  if (Number.isFinite(unrealized) && unrealized <= -stopLossPct) signals.push(`持仓浮亏${formatFallbackPct(unrealized)}，触及单仓止损线`);
+  if (/浮盈回吐|利润回吐|回吐保护/.test(actionText) && profitGiveback >= givebackPct) {
+    signals.push(`历史浮盈${formatFallbackPct(peakUnrealized)}，已回吐${round(profitGiveback, 2)}个百分点`);
+  }
   if (Number.isFinite(unrealized) && unrealized >= 8 && /(止盈|减仓|降仓|锁定|兑现)/.test(actionText)) {
     signals.push(`持仓浮盈${formatFallbackPct(unrealized)}，模型给出止盈/减仓意图`);
   }
@@ -4187,8 +4428,13 @@ function capPortfolioBuyAmountByDiscipline(account = {}, action = {}, amount = 0
   const maxSingleOrderWeightPct = finiteNumberOr(process.env.PORTFOLIO_BUY_MAX_SINGLE_ORDER_WEIGHT_PCT, 4);
   const maxSameExposureWeightPct = finiteNumberOr(process.env.PORTFOLIO_BUY_MAX_SAME_EXPOSURE_WEIGHT_PCT, 8);
   const minCashReservePct = finiteNumberOr(process.env.PORTFOLIO_BUY_MIN_CASH_RESERVE_PCT, 20);
+  const accountBudget = buildPortfolioAccountRiskBudget(account);
+  if (accountBudget.blockNewBuys) return 0;
+  const drawdownThrottleWeightPct = accountBudget.throttleNewBuys
+    ? Math.max(0, finiteNumberOr(process.env.PORTFOLIO_DRAWDOWN_BUY_MAX_SINGLE_ORDER_WEIGHT_PCT, 1))
+    : maxSingleOrderWeightPct;
   const maxSingleFundValue = Math.max(0, totalAsset * maxSingleFundWeightPct / 100);
-  const maxSingleOrderAmount = Math.max(0, totalAsset * maxSingleOrderWeightPct / 100);
+  const maxSingleOrderAmount = Math.max(0, totalAsset * Math.min(maxSingleOrderWeightPct, drawdownThrottleWeightPct) / 100);
   const maxSameExposureValue = Math.max(0, totalAsset * maxSameExposureWeightPct / 100);
   const minCashReserve = Math.max(0, totalAsset * minCashReservePct / 100);
   const availableAfterReserve = Math.max(0, cash - minCashReserve);
@@ -4662,6 +4908,7 @@ function buildPortfolioDecisionCard({ decision, watchlistUpdates = [], account, 
     ...watchlistLines,
     "",
     `当前资产：${account.totalAsset}元，可用现金 ${account.cash}元，待确认申购 ${account.pendingBuyAmount || 0}元，应收赎回 ${account.receivableCash || 0}元，仓位 ${account.positionWeightPct}%`,
+    `回撤预算：峰值 ${account.peakTotalAsset || account.totalAsset}元，当前距峰值 ${formatFallbackPct(account.drawdownFromPeakPct || 0)}，状态 ${account.riskBudget?.label || "回撤正常"}`,
     decision.riskNotes.length ? ["", "风险控制：", ...decision.riskNotes].join("\n") : "",
     decision.learningNotes.length ? ["", "回溯学习点：", ...decision.learningNotes].join("\n") : "",
     "",
@@ -4702,6 +4949,7 @@ function buildPortfolioValuationCard({ review, account, positionUpdates, lifecyc
     `今日盈亏：${formatSignedNumber(account.dayPnl)}元`,
     `累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（按实际投入成本 ${account.investedCost || 0} 元计 ${formatSignedNumber(account.cumulativePnlPct)}%）`,
     `可用现金：${account.cash}元，待确认申购：${account.pendingBuyAmount || 0}元，应收赎回：${account.receivableCash || 0}元，仓位：${account.positionWeightPct}%`,
+    `回撤预算：峰值 ${account.peakTotalAsset || account.totalAsset}元，当前距峰值 ${formatFallbackPct(account.drawdownFromPeakPct || 0)}，状态 ${account.riskBudget?.label || "回撤正常"}`,
     review.nextWatch.length ? ["", "明日观察：", ...review.nextWatch].join("\n") : "",
     review.learningNotes.length ? ["", "回溯学习点：", ...review.learningNotes].join("\n") : "",
     "",
@@ -4950,6 +5198,9 @@ function summarizePortfolioManagerBehavior(db) {
   return {
     currentPositionWeightPct: account.positionWeightPct,
     currentCash: account.cash,
+    accountDrawdownFromPeakPct: account.drawdownFromPeakPct,
+    accountRiskBudgetLevel: account.riskBudget?.level || "normal",
+    accountRiskBudgetLabel: account.riskBudget?.label || "回撤正常",
     watchlistCount: watchlist.length,
     readyWatchlistCount: watchlist.filter((item) => item.status === "ready").length,
     waitingWatchlistCount: watchlist.filter((item) => item.status === "waiting_pullback").length,
@@ -5566,6 +5817,10 @@ function createPortfolioAccount(config) {
     investedValue: 0,
     investedCost: 0,
     totalAsset: initialCapital,
+    peakTotalAsset: initialCapital,
+    peakTotalAssetDate: new Date().toISOString().slice(0, 10),
+    drawdownFromPeakPct: 0,
+    riskBudget: buildPortfolioAccountRiskBudget({ totalAsset: initialCapital, peakTotalAsset: initialCapital }),
     positionWeightPct: 0,
     dayPnl: 0,
     cumulativePnl: 0,
@@ -5589,24 +5844,43 @@ function normalizePortfolioPosition(position) {
     pendingSellUnits: round(Number(position.pendingSellUnits || 0), 6),
     pendingSellAmount: round(Number(position.pendingSellAmount || 0), 2),
     averageCostNav: position.averageCostNav ? round(Number(position.averageCostNav), 4) : null,
+    peakUnrealizedPnlPct: position.peakUnrealizedPnlPct === undefined || position.peakUnrealizedPnlPct === null
+      ? null
+      : round(Number(position.peakUnrealizedPnlPct), 2),
+    peakUnrealizedPnlPctDate: String(position.peakUnrealizedPnlPctDate || ""),
+    profitGivebackPct: round(Number(position.profitGivebackPct || 0), 2),
+    riskBudget: position.riskBudget || null,
     fundSnapshot: position.fundSnapshot || null,
     lastNav: position.lastNav ? Number(position.lastNav) : null
   };
 }
 
 function recalculatePortfolioAccount(account) {
+  const nowIso = new Date().toISOString();
   account.cash = round(Number(account.cash || 0), 2);
   account.pendingBuyAmount = round(Number(account.pendingBuyAmount || 0), 2);
   account.receivableCash = round(Number(account.receivableCash || 0), 2);
   account.investedValue = round(account.positions.reduce((sum, position) => sum + Number(position.currentValue || 0), 0), 2);
   account.investedCost = round(account.positions.reduce((sum, position) => sum + Number(position.costAmount || 0), 0), 2);
   account.totalAsset = round(account.cash + account.investedValue + account.pendingBuyAmount + account.receivableCash, 2);
-  account.availableCash = account.cash;
-  account.positionWeightPct = account.totalAsset > 0 ? round((account.investedValue / account.totalAsset) * 100, 2) : 0;
-  account.pendingWeightPct = account.totalAsset > 0 ? round(((account.pendingBuyAmount + account.receivableCash) / account.totalAsset) * 100, 2) : 0;
   account.cumulativePnl = round(account.totalAsset - Number(account.initialCapital || 0), 2);
   account.cumulativePnlPct = account.investedCost > 0 ? round((account.cumulativePnl / account.investedCost) * 100, 2) : 0;
   account.capitalPnlPct = account.initialCapital > 0 ? round((account.cumulativePnl / account.initialCapital) * 100, 2) : 0;
+  const previousPeak = Number(account.peakTotalAsset || account.initialCapital || account.totalAsset || 0);
+  if (!Number.isFinite(previousPeak) || previousPeak <= 0 || Number(account.totalAsset || 0) > previousPeak) {
+    account.peakTotalAsset = round(Number(account.totalAsset || 0), 2);
+    account.peakTotalAssetDate = nowIso.slice(0, 10);
+  } else {
+    account.peakTotalAsset = round(Math.max(previousPeak, Number(account.initialCapital || 0), Number(account.totalAsset || 0)), 2);
+    account.peakTotalAssetDate = account.peakTotalAssetDate || nowIso.slice(0, 10);
+  }
+  account.drawdownFromPeakPct = account.peakTotalAsset > 0
+    ? round((Number(account.totalAsset || 0) / account.peakTotalAsset - 1) * 100, 2)
+    : 0;
+  account.riskBudget = buildPortfolioAccountRiskBudget(account);
+  account.availableCash = account.cash;
+  account.positionWeightPct = account.totalAsset > 0 ? round((account.investedValue / account.totalAsset) * 100, 2) : 0;
+  account.pendingWeightPct = account.totalAsset > 0 ? round(((account.pendingBuyAmount + account.receivableCash) / account.totalAsset) * 100, 2) : 0;
   account.positions = account.positions.map((position) => ({
     ...position,
     weightPct: account.totalAsset > 0 ? round((Number(position.currentValue || 0) / account.totalAsset) * 100, 2) : 0,
@@ -5614,8 +5888,23 @@ function recalculatePortfolioAccount(account) {
     unrealizedPnlPct: position.costAmount > 0
       ? round(((Number(position.currentValue || 0) - Number(position.costAmount || 0)) / Number(position.costAmount || 1)) * 100, 2)
       : 0
-  }));
-  account.updatedAt = new Date().toISOString();
+  })).map((position) => {
+    const currentPct = Number(position.unrealizedPnlPct || 0);
+    const previousPeakPct = finiteMetricNumber(position.peakUnrealizedPnlPct);
+    const nextPeakPct = Number.isFinite(previousPeakPct) ? Math.max(previousPeakPct, currentPct) : currentPct;
+    const peakChanged = !Number.isFinite(previousPeakPct) || nextPeakPct > previousPeakPct;
+    const nextPosition = {
+      ...position,
+      peakUnrealizedPnlPct: round(nextPeakPct, 2),
+      peakUnrealizedPnlPctDate: peakChanged ? nowIso.slice(0, 10) : (position.peakUnrealizedPnlPctDate || nowIso.slice(0, 10)),
+      profitGivebackPct: round(Math.max(0, nextPeakPct - currentPct), 2)
+    };
+    return {
+      ...nextPosition,
+      riskBudget: buildPortfolioPositionRiskBudget(nextPosition)
+    };
+  });
+  account.updatedAt = nowIso;
 }
 
 function summarizePortfolioAccount(account) {
@@ -5628,6 +5917,10 @@ function summarizePortfolioAccount(account) {
     investedValue: round(Number(account.investedValue || 0), 2),
     investedCost: round(Number(account.investedCost || 0), 2),
     totalAsset: round(Number(account.totalAsset || 0), 2),
+    peakTotalAsset: round(Number(account.peakTotalAsset || account.totalAsset || 0), 2),
+    peakTotalAssetDate: account.peakTotalAssetDate || "",
+    drawdownFromPeakPct: round(Number(account.drawdownFromPeakPct || 0), 2),
+    riskBudget: account.riskBudget || buildPortfolioAccountRiskBudget(account),
     positionWeightPct: round(Number(account.positionWeightPct || 0), 2),
     pendingWeightPct: round(Number(account.pendingWeightPct || 0), 2),
     dayPnl: round(Number(account.dayPnl || 0), 2),
@@ -5657,6 +5950,12 @@ function summarizePortfolioPosition(position) {
     dataSource: position.dataSource || "",
     unrealizedPnl: round(Number(position.unrealizedPnl || 0), 2),
     unrealizedPnlPct: round(Number(position.unrealizedPnlPct || 0), 2),
+    peakUnrealizedPnlPct: position.peakUnrealizedPnlPct === null || position.peakUnrealizedPnlPct === undefined
+      ? null
+      : round(Number(position.peakUnrealizedPnlPct), 2),
+    peakUnrealizedPnlPctDate: position.peakUnrealizedPnlPctDate || "",
+    profitGivebackPct: round(Number(position.profitGivebackPct || 0), 2),
+    riskBudget: position.riskBudget || buildPortfolioPositionRiskBudget(position),
     lastReason: position.lastReason || "",
     lastRiskControl: position.lastRiskControl || ""
   };
@@ -14062,7 +14361,10 @@ export {
   buildPortfolioHeldPositionReviewActions,
   buildPortfolioHeldPositionReviewQueue,
   buildPortfolioDecisionReadinessQueue,
+  buildPortfolioAccountRiskBudget,
   buildPortfolioReadyWatchlistReviewActions,
+  buildPortfolioPositionRiskBudget,
+  buildPortfolioRiskBudgetActions,
   buildPortfolioWatchReadinessGaps,
   buildPortfolioWatchlistRecheckUpdates,
   buildPortfolioWatchlistStatusLines,
@@ -14075,6 +14377,7 @@ export {
   defaultSkillIdsForWorkflow,
   enforceFundAnswerQuality,
   enforcePortfolioBuyDiscipline,
+  enforcePortfolioRiskBudget,
   enforcePortfolioSellDiscipline,
   evaluatePortfolioBuyDiscipline,
   evaluatePortfolioSellDiscipline,

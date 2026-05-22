@@ -851,6 +851,38 @@ button:disabled {
   font-weight: 750;
 }
 
+.position-risk-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid #d7e4ef;
+  border-radius: 8px;
+  background: #f5faff;
+}
+
+.position-risk-line.warn {
+  border-color: #f2c9a2;
+  background: #fff7ed;
+}
+
+.position-risk-line span {
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #24445c;
+  background: #ffffff;
+  border: 1px solid #d7e4ef;
+  font-size: 12px;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.position-risk-line.warn span {
+  color: #8a3b13;
+  border-color: #f1cfaa;
+}
+
 .holding-strip {
   display: grid;
   gap: 7px;

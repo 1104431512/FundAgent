@@ -275,7 +275,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   ];
   setText("#portfolioBrief", briefParts.filter(Boolean).join(" · "));
   setText("#portfolioAssetFootnote", `初始本金 ${formatMoney(account.initialCapital)}，今日 ${formatSigned(account.dayPnl)}`);
-  setText("#portfolioExposureFootnote", `持仓市值 ${formatMoney(account.investedValue)}，成本 ${formatMoney(account.investedCost)}`);
+  setText("#portfolioExposureFootnote", `持仓市值 ${formatMoney(account.investedValue)}，成本 ${formatMoney(account.investedCost)}，距峰值 ${formatSigned(account.drawdownFromPeakPct || 0)}%`);
   setText("#portfolioPnlFootnote", `按实际投入成本 ${formatMoney(account.investedCost)} 计算`);
   setText("#portfolioPositionCount", `${positions.length} 只`);
   setText("#portfolioReadinessCount", `${ready.length + waiting.length} 只`);
@@ -336,6 +336,11 @@ function buildHoldingInsightItems(account, positions) {
       meta: biggest ? `第一大持仓 ${biggest.code} ${biggest.name || ""}，占 ${biggest.weightPct || 0}%` : "暂无集中持仓"
     },
     {
+      label: "回撤预算",
+      value: formatPortfolioRiskBudget(account),
+      meta: `账户峰值 ${formatMoney(account.peakTotalAsset || account.totalAsset)}，买入状态：${account.riskBudget?.blockNewBuys ? "暂停新增" : account.riskBudget?.throttleNewBuys ? "缩小试探" : "正常"}`
+    },
+    {
       label: "盈亏贡献",
       value: formatPortfolioPnl(account),
       meta: pnlSorted[0] ? `当前贡献最高：${pnlSorted[0].code} ${formatSigned(pnlSorted[0].unrealizedPnl)} / ${formatSigned(pnlSorted[0].unrealizedPnlPct)}%` : "等待估值更新"
@@ -346,6 +351,14 @@ function buildHoldingInsightItems(account, positions) {
       meta: topHoldings.length ? "来自持仓基金快照的代表性前十大持仓" : "下次净值下钻后补充"
     }
   ];
+}
+
+function formatPortfolioRiskBudget(account = {}) {
+  const budget = account.riskBudget || {};
+  const label = budget.label || "回撤正常";
+  const drawdown = formatSigned(account.drawdownFromPeakPct || budget.drawdownFromPeakPct || 0);
+  const limit = budget.maxDrawdownPct ?? 6;
+  return `${label} ${drawdown}% / ${limit}%`;
 }
 
 function buildReadinessInsightItems({ ready, waiting, launchEve, blocked }) {
@@ -469,6 +482,7 @@ function renderPositions(positions) {
         const trend = getFundSnapshotTrendText(snapshot);
         const trendChart = renderTrendChart(snapshot);
         const facts = renderSnapshotFactStrip(snapshot);
+        const riskLine = renderPositionRiskLine(item);
         const holdings = renderHoldingChips(getSnapshotTopHoldings(snapshot), "前十大持仓");
         const source = item.dataSource || snapshot.sources?.[0] || "";
         return `
@@ -494,12 +508,26 @@ function renderPositions(positions) {
               <div><span>份额</span><strong>${formatNumber(item.units, 2)}</strong><small>成本 ${item.averageCostNav ? formatNumber(item.averageCostNav, 4) : "-"}</small></div>
             </div>
           </div>
+          ${riskLine}
           ${holdings}
         </article>
       `;
       }
     )
     .join("");
+}
+
+function renderPositionRiskLine(item = {}) {
+  const budget = item.riskBudget || {};
+  const facts = [
+    Number.isFinite(Number(item.peakUnrealizedPnlPct)) ? `浮盈峰值 ${formatSigned(item.peakUnrealizedPnlPct)}%` : "",
+    Number.isFinite(Number(item.profitGivebackPct)) && Number(item.profitGivebackPct) > 0 ? `已回吐 ${formatNumber(item.profitGivebackPct, 2)}pct` : "",
+    budget.label || budget.level ? `风控 ${budget.label || budget.level}` : "",
+    Array.isArray(budget.triggers) && budget.triggers.length ? budget.triggers[0] : ""
+  ].filter(Boolean);
+  if (!facts.length) return "";
+  const severity = budget.level === "severe" || budget.level === "warning" ? " warn" : "";
+  return `<div class="position-risk-line${severity}">${facts.slice(0, 4).map((text) => `<span>${escapeHtml(text)}</span>`).join("")}</div>`;
 }
 
 function renderSnapshotFactStrip(snapshot = {}) {

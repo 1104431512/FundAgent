@@ -980,6 +980,43 @@ const sameExposureCapAmount = manager.resolvePortfolioTradeAmount({
   positions: [{ code: "000099", name: "南方中证A500ETF联接C", currentValue: 7000 }]
 }, { action: "BUY", code: "000010", amount: 5000, targetWeightPct: 5 }, "BUY", null, verifiedSeedProfile);
 assert.equal(sameExposureCapAmount, 1000, "portfolio buy sizing must cap the aggregate same-index exposure before creating orders");
+const accountRiskBudget = manager.buildPortfolioAccountRiskBudget({
+  totalAsset: 93500,
+  peakTotalAsset: 100000
+});
+assert.equal(accountRiskBudget.level, "breached", "portfolio account risk budget must detect drawdown budget breaches");
+assert.equal(accountRiskBudget.blockNewBuys, true, "portfolio drawdown budget breaches must block new buys");
+const accountDrawdownBuyGuard = manager.evaluatePortfolioBuyDiscipline(
+  { action: "BUY", code: "000010", amount: 1000, targetWeightPct: 3 },
+  verifiedSeedProfile,
+  [],
+  { totalAsset: 93500, peakTotalAsset: 100000 }
+);
+assert.equal(accountDrawdownBuyGuard.ok, false, "portfolio buy discipline must block buys while account drawdown exceeds budget");
+assert(accountDrawdownBuyGuard.reason.includes("最大回撤预算"), "account drawdown buy block must explain the portfolio risk budget");
+const drawdownBlockedBuyAmount = manager.resolvePortfolioTradeAmount({
+  totalAsset: 93500,
+  peakTotalAsset: 100000,
+  cash: 50000,
+  positions: []
+}, { action: "BUY", code: "000010", amount: 5000, targetWeightPct: 5 }, "BUY", null, verifiedSeedProfile);
+assert.equal(drawdownBlockedBuyAmount, 0, "portfolio buy sizing must return zero when account drawdown budget is breached");
+const drawdownRiskActions = manager.buildPortfolioRiskBudgetActions({
+  totalAsset: 93500,
+  peakTotalAsset: 100000,
+  positions: [{ code: "000010", name: "中证A500ETF联接C", currentValue: 7000, weightPct: 7, unrealizedPnlPct: -2 }]
+}, [verifiedSeedProfile]);
+assert.equal(drawdownRiskActions[0].action, "SELL", "account drawdown breach must create deterministic risk-reduction SELL actions");
+assert(drawdownRiskActions[0].dataBasis.includes("来源：portfolio_risk_budget_guard"), "portfolio risk budget actions must be traceable");
+const riskBudgetOverridesBuy = manager.enforcePortfolioRiskBudget([
+  { action: "BUY", code: "000010", name: "中证A500ETF联接C", amount: 1000, targetWeightPct: 3, reason: "模型想低吸" }
+], {
+  totalAsset: 93500,
+  peakTotalAsset: 100000,
+  positions: [{ code: "000010", name: "中证A500ETF联接C", currentValue: 7000, weightPct: 7, unrealizedPnlPct: -2 }]
+}, [verifiedSeedProfile]);
+assert.equal(riskBudgetOverridesBuy[0].action, "SELL", "portfolio risk budget must override model-written BUY actions on risky held positions");
+assert(riskBudgetOverridesBuy[0].reason.includes("系统账户回撤控制"), "risk-budget override must explain account drawdown control");
 const noRiskSellGuard = manager.evaluatePortfolioSellDiscipline(
   { action: "SELL", code: "000010", amount: 3000, reason: "模型想卖出" },
   verifiedSeedProfile,
@@ -1014,6 +1051,35 @@ const severeSellAmount = manager.resolvePortfolioTradeAmount({
   positions: [{ code: "000011", currentValue: 8000 }]
 }, { action: "SELL", code: "000011", amount: 8000, targetWeightPct: 0, reason: "趋势破位止损" }, "SELL", { code: "000011", currentValue: 8000 });
 assert.equal(severeSellAmount, 6400, "portfolio sell sizing may reduce more aggressively for verified severe risk while still avoiding blind full liquidation");
+const stopLossPositionRisk = manager.buildPortfolioPositionRiskBudget({
+  code: "000010",
+  currentValue: 5450,
+  costAmount: 6000,
+  unrealizedPnlPct: -9.17,
+  peakUnrealizedPnlPct: 2
+});
+assert.equal(stopLossPositionRisk.reduceRisk, true, "single-position stop loss must trigger deterministic risk reduction");
+assert.equal(stopLossPositionRisk.level, "severe", "single-position stop loss must be classified as severe risk");
+const stopLossSellGuard = manager.evaluatePortfolioSellDiscipline(
+  { action: "SELL", code: "000010", amount: 3000, reason: "系统单仓回撤控制：浮亏-9.17%触及8%单仓止损线" },
+  verifiedSeedProfile,
+  { code: "000010", name: "中证A500ETF联接C", currentValue: 5450, weightPct: 5.45, unrealizedPnlPct: -9.17, peakUnrealizedPnlPct: 2 }
+);
+assert.equal(stopLossSellGuard.ok, true, "portfolio sell discipline must allow deterministic single-position stop-loss sells");
+const givebackPositionRisk = manager.buildPortfolioPositionRiskBudget({
+  code: "000011",
+  currentValue: 6360,
+  costAmount: 6000,
+  unrealizedPnlPct: 6,
+  peakUnrealizedPnlPct: 12.5
+});
+assert.equal(givebackPositionRisk.reduceRisk, true, "profit giveback must trigger deterministic risk reduction");
+const givebackSellGuard = manager.evaluatePortfolioSellDiscipline(
+  { action: "SELL", code: "000011", amount: 3000, reason: "浮盈回吐保护，先分批锁定利润" },
+  hotVerifiedSeedProfile,
+  { code: "000011", name: "热门强势主题基金A", currentValue: 6360, weightPct: 6.36, unrealizedPnlPct: 6, peakUnrealizedPnlPct: 12.5 }
+);
+assert.equal(givebackSellGuard.ok, true, "portfolio sell discipline must allow profit-giveback protection sells");
 
 const setupDigest = {
   ok: true,

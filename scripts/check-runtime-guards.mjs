@@ -608,6 +608,34 @@ const requiredPatterns = [
     message: "portfolio BUY sizing must preserve a configurable cash reserve."
   },
   {
+    pattern: /buildPortfolioAccountRiskBudget/,
+    message: "portfolio manager must compute account-level drawdown budget state."
+  },
+  {
+    pattern: /PORTFOLIO_MAX_ACCOUNT_DRAWDOWN_PCT/,
+    message: "portfolio account drawdown budget must be configurable."
+  },
+  {
+    pattern: /portfolio_account_drawdown_guard/,
+    message: "portfolio BUY guard must leave traceable evidence when account drawdown blocks new buys."
+  },
+  {
+    pattern: /enforcePortfolioRiskBudget/,
+    message: "portfolio manager must deterministically override model actions when drawdown risk breaches."
+  },
+  {
+    pattern: /buildPortfolioPositionRiskBudget/,
+    message: "portfolio manager must compute single-position stop-loss and profit-giveback risk."
+  },
+  {
+    pattern: /PORTFOLIO_POSITION_STOP_LOSS_PCT/,
+    message: "single-position stop-loss budget must be configurable."
+  },
+  {
+    pattern: /PORTFOLIO_PROFIT_GIVEBACK_PCT/,
+    message: "profit giveback protection must be configurable."
+  },
+  {
     pattern: /系统买入纪律拦截/,
     message: "portfolio BUY guard must explain blocked buys in user-readable Chinese."
   },
