@@ -720,6 +720,18 @@ const requiredPatterns = [
     message: "portfolio API must expose visible investment committee views for the manager timeline."
   },
   {
+    pattern: /run\.summary = decision\.summary/,
+    message: "portfolio decision runs must persist the manager's actual conclusion instead of the last progress message."
+  },
+  {
+    pattern: /accountAfter\.cumulativePnlPct[\s\S]{0,260}investedCost[\s\S]{0,260}严禁把初始本金/,
+    message: "portfolio valuation prompt must force PnL percentages to use actual invested cost instead of initial capital."
+  },
+  {
+    pattern: /function buildPortfolioWeeklyWithModel[\s\S]{0,900}compactProfiles[\s\S]{0,700}JSON\.stringify\(compactProfiles/,
+    message: "portfolio weekly reports must send compact holding profiles to avoid context-window failures."
+  },
+  {
     pattern: /renderWatchlistActionQueue/,
     message: "admin portfolio watchlist must surface a buy-preparation queue above the detailed pool."
   },

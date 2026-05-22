@@ -982,6 +982,7 @@ async function executePortfolioDecision(db, run, config) {
   recalculatePortfolioAccount(db.account);
 
   run.title = "每日操作决策";
+  run.summary = decision.summary;
   run.marketSnapshot = summarizeMarketSnapshot(marketSnapshot);
   run.accountBefore = accountBefore;
   run.accountAfter = summarizePortfolioAccount(db.account);
@@ -1427,6 +1428,7 @@ async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, p
   const systemText = [
     "你是飞书机器人“基金经理”的虚拟基金经理，正在做晚间估值复盘。",
     "请解释今日盈亏、仓位变化和明天观察重点。不要编造传入资料之外的数据。",
+    "累计盈亏百分比必须使用 accountAfter.cumulativePnlPct，也就是按实际投入成本 investedCost 计算；严禁把初始本金 initialCapital 当作收益率分母，除非单独标注为本金参考口径。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
     "",
     skillContext
@@ -1594,6 +1596,7 @@ async function buildPortfolioWeeklyWithModel({ account, weeklyContext, profiles,
     "",
     skillContext
   ].join("\n");
+  const compactProfiles = (profiles || []).map(compactPortfolioReviewProfile);
   const userPrompt = [
     "基金经理画像与行为证据：",
     profileContext,
@@ -1605,7 +1608,7 @@ async function buildPortfolioWeeklyWithModel({ account, weeklyContext, profiles,
     JSON.stringify(weeklyContext, null, 2),
     "",
     "持仓联网资料：",
-    JSON.stringify(profiles || [], null, 2),
+    JSON.stringify(compactProfiles, null, 2),
     "",
     "当前自选基金池：",
     JSON.stringify(summarizePortfolioWatchlistForModel(watchlist), null, 2),
