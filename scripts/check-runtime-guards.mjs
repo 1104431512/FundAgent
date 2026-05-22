@@ -44,6 +44,14 @@ const requiredPatterns = [
     message: "fund answers need a final localization pass for internal labels."
   },
   {
+    pattern: /localizedEvaluation[\s\S]{0,260}fundAnswerQualityLocalizationFixes/,
+    message: "fund answer quality enforcement must accept deterministic localization fixes before spending a rewrite call."
+  },
+  {
+    pattern: /function appendFundReportChartReadingGuide[\s\S]{0,180}normalizeUserFacingFundAnswer\(text\)/,
+    message: "chart-reading finalization must sanitize user-facing fund answers even when no charts are appended."
+  },
+  {
     pattern: /extended_uptrend[\s\S]{0,120}短期涨幅偏热/,
     message: "internal trend labels must have Chinese user-facing translations."
   },

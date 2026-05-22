@@ -1533,6 +1533,22 @@ assert(localizedEnglishSections.includes("经理最终判断：等待"), "locali
 assert(localizedEnglishSections.includes("证据：120日位置38.5%"), "localized answer must translate Evidence headers");
 assert(localizedEnglishSections.includes("缺失数据：最新净值"), "localized answer must translate Missing data headers");
 assert(!/\b(?:Manager Decision|Evidence|Missing data|wait)\b/i.test(localizedEnglishSections), "localized answer must not keep raw English section headers");
+const localizationOnlyAnswer = await manager.enforceFundAnswerQuality({
+  text: "Verdict: staged buy. Confidence: high. Score: 82/100. 依据：净值近20日+4.5%，距高点回撤7%，120日位置38.5%。新资金先买1000元。",
+  workflow: "fund_qa",
+  userText: "黄金最近值得买吗",
+  intent: { workflow: "fund_qa" },
+  evidence: { marketDeepDive: { candidates: [setupDigest] } }
+});
+assert(localizationOnlyAnswer.includes("结论：分批买入"), "quality enforcement should accept deterministic localization when it fixes English labels");
+assert(localizationOnlyAnswer.includes("我对这条判断把握度较高"), "quality enforcement should rewrite stiff confidence labels before model rewrite");
+assert(!/\b(?:Verdict|Confidence|Score|staged buy)\b/i.test(localizationOnlyAnswer), "quality enforcement localization pass must remove raw English labels");
+const noChartGuideSanitized = manager.appendFundReportChartReadingGuide(
+  "Verdict: staged buy. Confidence: high. Score: 82/100.",
+  []
+);
+assert(noChartGuideSanitized.includes("结论：分批买入"), "chart guide finalizer must sanitize fund answers even when no charts are appended");
+assert(!/\b(?:Verdict|Confidence|Score|staged buy)\b/i.test(noChartGuideSanitized), "chart guide finalizer must not return raw English labels");
 
 const png = manager.renderFundReportSummaryPng({
   profile: buildChartProfile(),

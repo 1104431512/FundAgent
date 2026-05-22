@@ -6707,7 +6707,7 @@ function getFundReportProfileKey(profile) {
 }
 
 function appendFundReportChartReadingGuide(text, chartProfiles = []) {
-  const body = String(text || "").trim();
+  const body = normalizeUserFacingFundAnswer(text).trim();
   const snapshots = collectTrendSnapshotsFromProfiles(chartProfiles).slice(0, getFundReportChartLimit());
   if (!body || !snapshots.length || /配图阅读/.test(body)) return body;
   const lines = snapshots.map((item, index) => {
@@ -6717,7 +6717,9 @@ function appendFundReportChartReadingGuide(text, chartProfiles = []) {
   });
   const buyCount = snapshots.filter((item) => String(item.snapshot?.reportChartRole || inferSupplementalFundReportChartRole(item.snapshot)).includes("买入")).length;
   const backupCount = snapshots.length - buyCount;
-  return [body, "", "配图阅读：", `本次配图共 ${snapshots.length} 张：买入参考 ${buyCount} 张，备选观察 ${backupCount} 张。`, ...lines].join("\n");
+  return normalizeUserFacingFundAnswer(
+    [body, "", "配图阅读：", `本次配图共 ${snapshots.length} 张：买入参考 ${buyCount} 张，备选观察 ${backupCount} 张。`, ...lines].join("\n")
+  );
 }
 
 function formatFundReportChartGuideEvidence(profile = {}, role = "") {
@@ -8083,16 +8085,23 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
     updateStats({ counters: { fundAnswerQualityPasses: 1 } });
     return localizedText;
   }
+  const localizedEvaluation = localizedText === String(text || "")
+    ? evaluation
+    : evaluateFundAnswerQuality({ text: localizedText, workflow, userText, evidence });
+  if (localizedEvaluation.ok) {
+    updateStats({ counters: { fundAnswerQualityLocalizationFixes: 1 } });
+    return localizedText;
+  }
 
   updateStats({
     counters: { fundAnswerQualityFailures: 1 },
     last: {
       lastFundAnswerQualityFailureAt: new Date().toISOString(),
-      lastFundAnswerQualityIssues: evaluation.issues.join(",")
+      lastFundAnswerQualityIssues: localizedEvaluation.issues.join(",")
     }
   });
 
-  const deterministicFallback = buildPullbackQualityFallbackAnswer({ userText, evidence, issues: evaluation.issues });
+  const deterministicFallback = buildPullbackQualityFallbackAnswer({ userText, evidence, issues: localizedEvaluation.issues });
   if (deterministicFallback) {
     updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
     return deterministicFallback;
@@ -8134,7 +8143,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       JSON.stringify(intent || {}, null, 2),
       "",
       "qualityIssues:",
-      evaluation.issues.join(", "),
+      localizedEvaluation.issues.join(", "),
       "",
       "availableEvidence:",
       compactQualityEvidence(evidence),
@@ -8173,7 +8182,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
   } catch (error) {
     console.error("[fund-answer-quality-rewrite-error]", error);
     recordError(error, { fundAnswerQualityRewriteFailures: 1 });
-    const deterministicFallback = buildPullbackQualityFallbackAnswer({ userText, evidence, issues: evaluation.issues });
+    const deterministicFallback = buildPullbackQualityFallbackAnswer({ userText, evidence, issues: localizedEvaluation.issues });
     if (deterministicFallback) {
       updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
       return deterministicFallback;
@@ -8588,12 +8597,12 @@ function normalizeUserFacingFundAnswer(text) {
     .replace(/\bswitch\b/gi, "换基")
     .replace(/分批\s+买入/g, "分批买入")
     .replace(/(经理最终判断|证据整理|证据|投研分歧|配置方案|风控检查|委员会共识|执行复查|缺失数据|关键分歧|结论|把握度|评分)：\s+/g, "$1：")
-    .replace(/(^|[\n。；;])\s*把握度\s*[：:]\s*(?:高|high)\s*[。.]?/gi, "$1我对这条判断把握度较高。")
-    .replace(/(^|[\n。；;])\s*把握度\s*[：:]\s*(?:中|medium)\s*[。.]?/gi, "$1这条判断把握度中等，需要按条件执行。")
-    .replace(/(^|[\n。；;])\s*把握度\s*[：:]\s*(?:低|low)\s*[。.]?/gi, "$1这条判断把握度偏低，只适合先观察。")
-    .replace(/(^|[\n。；;])\s*信心\s*[：:]\s*高\s*[。.]?/g, "$1我对这条判断把握度较高。")
-    .replace(/(^|[\n。；;])\s*信心\s*[：:]\s*中\s*[。.]?/g, "$1这条判断把握度中等，需要按条件执行。")
-    .replace(/(^|[\n。；;])\s*信心\s*[：:]\s*低\s*[。.]?/g, "$1这条判断把握度偏低，只适合先观察。")
+    .replace(/(^|[\n。；;.])\s*把握度\s*[：:]\s*(?:高|high)\s*[。.]?/gi, "$1我对这条判断把握度较高。")
+    .replace(/(^|[\n。；;.])\s*把握度\s*[：:]\s*(?:中|medium)\s*[。.]?/gi, "$1这条判断把握度中等，需要按条件执行。")
+    .replace(/(^|[\n。；;.])\s*把握度\s*[：:]\s*(?:低|low)\s*[。.]?/gi, "$1这条判断把握度偏低，只适合先观察。")
+    .replace(/(^|[\n。；;.])\s*信心\s*[：:]\s*高\s*[。.]?/g, "$1我对这条判断把握度较高。")
+    .replace(/(^|[\n。；;.])\s*信心\s*[：:]\s*中\s*[。.]?/g, "$1这条判断把握度中等，需要按条件执行。")
+    .replace(/(^|[\n。；;.])\s*信心\s*[：:]\s*低\s*[。.]?/g, "$1这条判断把握度偏低，只适合先观察。")
     .replace(/\bConfidence\s*[：:]\s*high\b/gi, "把握度较高")
     .replace(/\bConfidence\s*[：:]\s*medium\b/gi, "把握度中等")
     .replace(/\bConfidence\s*[：:]\s*low\b/gi, "把握度偏低")
