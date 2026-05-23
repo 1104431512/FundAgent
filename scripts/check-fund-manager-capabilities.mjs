@@ -1726,6 +1726,10 @@ assert(serverSource.includes("CJK_CHART_FONT"), "summary chart renderer must car
 assert(serverSource.includes("drawChartTextFit"), "summary chart renderer must fit Chinese and numeric metric labels instead of shrinking them into QR-like bitmap text");
 assert(serverSource.includes("REPORT_CHART_MIN_TEXT_SCALE = 3"), "summary chart must keep thumbnail-safe minimum text scale");
 assert(serverSource.includes("showAxisLabels: false"), "summary chart must hide dense axis tick text in Feishu thumbnails");
+assert(serverSource.includes("drawFundReportLegendPanel"), "summary chart must include an in-image Chinese legend for chart terms");
+assert(serverSource.includes("图例说明 买点=可买/分批/等待/回避/观察"), "summary chart legend must explain buy-point states in Chinese");
+assert(serverSource.includes("越低越接近低位") && serverSource.includes("越高越接近高位"), "summary chart legend must explain 120/250-day position metrics in Chinese");
+assert(serverSource.includes("分批=不一次买完"), "summary chart legend must explain staged buying without exposing STAGE");
 assert(serverSource.includes("120日位") && serverSource.includes("250日位"), "summary chart must label low-position evidence with Chinese time-window position labels");
 assert(serverSource.includes("万元费"), "summary chart must label fee evidence as per-10k cost");
 assert(serverSource.includes("回撤风险") && serverSource.includes("阶段收益"), "legacy chart panels must use Chinese labels instead of RISK/RET");

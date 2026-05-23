@@ -316,6 +316,22 @@ const requiredPatterns = [
     message: "fund answers must tell users how to read the attached buy/reference and backup charts."
   },
   {
+    pattern: /drawFundReportLegendPanel/,
+    message: "fund report summary images must include an in-image Chinese legend instead of relying only on surrounding text."
+  },
+  {
+    pattern: /图例说明[\s\S]{0,160}买点=可买\/分批\/等待\/回避\/观察/,
+    message: "fund report images must explain buy-point states directly in Chinese."
+  },
+  {
+    pattern: /越低越接近低位[\s\S]{0,120}越高越接近高位/,
+    message: "fund report images must explain 120/250-day position metrics in plain Chinese."
+  },
+  {
+    pattern: /分批=不一次买完/,
+    message: "fund report images must explain staged buying without exposing STAGE."
+  },
+  {
     pattern: /DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE\s*=\s*4/,
     message: "fund report image cards should be split into readable chunks instead of crowding one card."
   },
