@@ -2687,21 +2687,56 @@ function buildPortfolioHeldPositionReviewActions(positions = [], existingActions
       const profile = profileByCode.get(position.code) || position.fundSnapshot || null;
       const trendEvidence = profile ? formatPortfolioSeedVerifiedTrendEvidence(profile) : position.fundSnapshot?.trendSummary || "";
       const riskReview = buildPortfolioHeldPositionRiskReview(position, profile);
+      const reduceGuard = evaluatePortfolioSellDiscipline(
+        {
+          action: "SELL",
+          code: position.code,
+          name: position.name || profile?.name || "",
+          amount: round(Number(position.currentValue || 0), 2),
+          targetWeightPct: 0,
+          reason: `系统持仓复查：${riskReview.slice(0, 2).join("；") || "持仓风险复核"}`,
+          riskControl: inferPortfolioHeldPositionReduceTrigger(riskReview)
+        },
+        profile,
+        position
+      );
+      const reduceByGuard = reduceGuard.ok && shouldReduceHeldPositionFromReview(riskReview, profile, position);
       return {
-        action: "HOLD",
+        action: reduceByGuard ? "SELL" : "HOLD",
         code: position.code,
         name: position.name || profile?.name || "",
-        amount: 0,
-        targetWeightPct: round(Number(position.weightPct || 0), 2),
-        reason: "系统补充持仓复查动作：已有持仓未被模型逐项评估，本轮先按纪律持有，不允许静默遗漏。",
-        dataBasis: ["来源：held_position_review_fallback", trendEvidence, ...riskReview.slice(0, 2)].filter(Boolean),
+        amount: reduceByGuard ? round(Number(position.currentValue || 0), 2) : 0,
+        targetWeightPct: reduceByGuard ? 0 : round(Number(position.weightPct || 0), 2),
+        reason: reduceByGuard
+          ? "系统补充分批减仓动作：已有持仓未被模型逐项评估，且持仓复查证据已触发降风险条件。"
+          : "系统补充持仓复查动作：已有持仓未被模型逐项评估，本轮先按纪律持有，不允许静默遗漏。",
+        dataBasis: [
+          "来源：held_position_review_fallback",
+          trendEvidence,
+          ...riskReview.slice(0, 2),
+          reduceByGuard ? reduceGuard.reason : ""
+        ].filter(Boolean),
         rotationCheck: riskReview[0] || "持仓轮动状态待复核。",
         positionCheck: trendEvidence || "等待净值复核。",
         chaseRisk: riskReview.find((item) => /偏热|回撤|破位|转弱|回避/.test(item)) || "未触发主要持仓风险警报。",
         feeCheck: profile ? formatPortfolioFeeVerificationEvidence(profile) : "份额和费用待复核。",
-        riskControl: inferPortfolioHeldPositionReduceTrigger(riskReview)
+        riskControl: reduceByGuard
+          ? (reduceGuard.riskControl || "只做系统限额内的分批减仓，下一轮继续复核是否追加。")
+          : inferPortfolioHeldPositionReduceTrigger(riskReview)
       };
     });
+}
+
+function shouldReduceHeldPositionFromReview(riskReview = [], profile = null, position = {}) {
+  const text = (riskReview || []).join("；");
+  const trend = profile?.trendProfile || position.fundSnapshot?.trendProfile || {};
+  const actionability = profile?.actionability || position.fundSnapshot?.actionability || {};
+  const return20d = finiteMetricNumber(trend.return20dPct);
+  const return60d = finiteMetricNumber(trend.return60dPct);
+  return /破位|转弱|回撤扩大|回避/.test(text)
+    || actionability.action === "avoid"
+    || (Number.isFinite(return20d) && return20d > 20 && Number.isFinite(return60d) && return60d > 24)
+    || (/偏热|等待回撤/.test(text) && Number.isFinite(return20d) && return20d > 12);
 }
 
 function ensurePortfolioReadyWatchlistReviewed(decision, watchlist = [], options = {}) {
@@ -15111,6 +15146,7 @@ export {
   normalizePortfolioWatchlist,
   normalizePortfolioWatchlistUpdates,
   renderFundReportSummaryPng,
+  shouldReduceHeldPositionFromReview,
   summarizePortfolioOrder,
   capPortfolioSellAmountByDiscipline,
   resolvePortfolioTradeAmount,

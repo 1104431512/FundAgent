@@ -572,6 +572,14 @@ const requiredPatterns = [
     message: "daily portfolio decisions must add a fallback review action when existing holdings are omitted."
   },
   {
+    pattern: /shouldReduceHeldPositionFromReview[\s\S]{0,900}return20d[\s\S]{0,260}return60d/,
+    message: "omitted held positions with verified hot/chase risk must be eligible for deterministic staged reduction."
+  },
+  {
+    pattern: /buildPortfolioHeldPositionReviewActions[\s\S]{0,1400}evaluatePortfolioSellDiscipline[\s\S]{0,900}系统补充分批减仓动作/,
+    message: "held-position fallback reductions must pass the sell-discipline guard before creating SELL actions."
+  },
+  {
     pattern: /held_position_review_fallback/,
     message: "held-position fallback actions must be traceable and not look like model-written trades."
   },

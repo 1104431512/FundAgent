@@ -941,9 +941,15 @@ const heldReviewQueue = manager.buildPortfolioHeldPositionReviewQueue([heldPosit
 assert.equal(heldReviewQueue[0].code, "000011", "portfolio decision prompt must expose held positions for mandatory review");
 assert(heldReviewQueue[0].riskReview.some((item) => item.includes("偏热") || item.includes("止盈")), "held position review queue must expose hot-position risk review");
 const heldFallbackActions = manager.buildPortfolioHeldPositionReviewActions([heldPosition], [], { profiles: [hotVerifiedSeedProfile] });
-assert.equal(heldFallbackActions[0].action, "HOLD", "held position fallback must review omitted holdings without forcing an automatic sell");
+assert.equal(heldFallbackActions[0].action, "SELL", "held position fallback must create a staged reduce action when omitted holdings have verified hot/chase risk");
+assert.equal(heldFallbackActions[0].targetWeightPct, 0, "held position reduce fallback must target lower risk exposure for omitted hot holdings");
 assert(heldFallbackActions[0].dataBasis.includes("来源：held_position_review_fallback"), "held position fallback must leave a traceable source");
+assert(heldFallbackActions[0].dataBasis.some((item) => item.includes("系统卖出纪律确认")), "held position reduce fallback must pass the sell-discipline guard before becoming a SELL");
 assert(/止盈|降仓|减仓/.test(heldFallbackActions[0].riskControl), "held position fallback must carry a concrete reduce/profit-control trigger");
+const quietHeldFallback = manager.buildPortfolioHeldPositionReviewActions([
+  { code: "000010", name: "中证A500ETF联接C", currentValue: 6000, weightPct: 6, unrealizedPnlPct: 2.1 }
+], [], { profiles: [verifiedSeedProfile] });
+assert.equal(quietHeldFallback[0].action, "HOLD", "held position fallback must not sell quiet verified holdings without reduce-risk evidence");
 const reviewedHeldDecision = manager.ensurePortfolioHeldPositionsReviewed({ actions: [], watchlistUpdates: [], learningNotes: [], sources: [] }, [
   heldPosition
 ], { profiles: [hotVerifiedSeedProfile] });
