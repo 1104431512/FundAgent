@@ -1654,7 +1654,7 @@ assert(
   hotButStrongActionability.decisionBlocker.some((item) => item.includes("系统动作降级") && item.includes("不能给买入或分批买入动作")),
   "actionability blocker must explain why a hot fund is downgraded instead of sounding inconsistent"
 );
-const staleButStrongActionability = manager.buildFundActionabilitySignals({
+const staleButStrongDigest = {
   ...holdingsSupportedDigest,
   code: "000034",
   name: "旧净值强势基金C",
@@ -1693,12 +1693,37 @@ const staleButStrongActionability = manager.buildFundActionabilitySignals({
     },
     missingFeeData: []
   }
-});
+};
+const staleButStrongActionability = manager.buildFundActionabilitySignals(staleButStrongDigest);
 assert.equal(staleButStrongActionability.action, "wait", "actionability must not say buy/staged-buy when NAV or trend evidence is stale");
 assert(staleButStrongActionability.score < 62, "stale-data discipline must cap actionability below staged-buy threshold");
 assert(
   staleButStrongActionability.decisionBlocker.some((item) => item.includes("系统数据时效降级") && item.includes("重新下钻复核") && item.includes("不能给买入或分批买入动作")),
   "actionability blocker must explain stale NAV/trend data instead of presenting stale evidence as buyable"
+);
+const staleBuyAnswerQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000034 旧净值强势基金C 可以分批买入1000元。依据是净值走势回调完成、120日位置38.5%。",
+  workflow: "fund_qa",
+  userText: "000034 现在能买吗",
+  evidence: { enrichments: [{ ...staleButStrongDigest, actionability: staleButStrongActionability }] }
+});
+assert(
+  staleBuyAnswerQuality.issues.includes("stale_data_candidate_given_buy_execution"),
+  "quality gate must reject buy amounts when the candidate's NAV/trend evidence is stale"
+);
+assert(
+  staleBuyAnswerQuality.issues.includes("stale_data_candidate_given_buy_signal"),
+  "quality gate must reject buy-intent language when the candidate's NAV/trend evidence is stale"
+);
+const staleWaitAnswerQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000034 旧净值强势基金C 先等待，1万元执行为0元。原因是净值/走势已过期，需要重新下钻复核后再判断买点。",
+  workflow: "fund_qa",
+  userText: "000034 现在能买吗",
+  evidence: { enrichments: [{ ...staleButStrongDigest, actionability: staleButStrongActionability }] }
+});
+assert(
+  !staleWaitAnswerQuality.issues.some((issue) => issue.startsWith("stale_data_candidate")),
+  "quality gate should allow stale candidates when the answer explicitly says 0 yuan and recheck first"
 );
 const earlyTurnTrend = manager.computeTrendProfile(buildEarlyTurnNavPoints());
 assert.equal(earlyTurnTrend.ok, true, "early-turn synthetic series should produce a trend profile");

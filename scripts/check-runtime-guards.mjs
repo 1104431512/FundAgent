@@ -104,6 +104,18 @@ const requiredPatterns = [
     message: "fund answer quality gate must require Chinese data-gap disclosure and conviction downgrade."
   },
   {
+    pattern: /function evaluateFundAnswerQuality[\s\S]{0,2400}evaluateStaleFundEvidenceActionDiscipline/,
+    message: "fund answer quality gate must reject buy language based on stale NAV/trend evidence."
+  },
+  {
+    pattern: /function evaluateStaleFundEvidenceActionDiscipline[\s\S]{0,1400}stale_data_candidate_given_buy_execution[\s\S]{0,600}stale_data_candidate_given_buy_signal/,
+    message: "stale evidence quality gate must distinguish stale-data buy execution and buy-signal leaks."
+  },
+  {
+    pattern: /function hasStaleFundEvidence[\s\S]{0,900}系统数据时效降级[\s\S]{0,500}evaluatePullbackTrendFreshness/,
+    message: "stale evidence quality gate must reuse structured freshness and actionability blockers."
+  },
+  {
     pattern: /buildMarketDataQualityDisclosureFallback[\s\S]{0,1400}降低把握度[\s\S]{0,900}数据缺口提示/,
     message: "fund answer quality enforcement must deterministically add data-gap disclosure when the model omits it."
   },

@@ -8988,6 +8988,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "禁止输出 Manager Decision、Evidence、Research debate、Allocation proposal、Risk committee、Missing data、Verdict、Confidence、Score、buy、staged、wait、avoid、hold、switch 等英文动作/栏目词；全部改成经理最终判断、证据、投研分歧、配置方案、风控检查、缺失数据、结论、把握度、评分、买入、分批买入、等待、回避、持有、换基。",
       "若质检问题包含 watch_candidate_promoted_to_recommendation、recommendation_not_from_pullback_main_candidates 或 recommends_without_qualified_pullback_candidate，必须按证据里的 mainCandidateCodes 重写主推荐；watchOrRejectCodes 只能写进观察/排除原因。",
       "若质检问题包含 watch_candidate_given_buy_execution 或 watch_candidate_given_buy_signal，观察/排除候选不能获得买入金额，也不能写“可以买、小仓位试探、少买一点、建仓”等买入暗示；只能写0元观察或等待条件。",
+      "若质检问题包含 stale_data_candidate_given_buy_execution 或 stale_data_candidate_given_buy_signal，说明该基金净值/走势证据已过期；必须把对应代码改为0元等待、重新下钻复核，不能给买入、分批、建仓或小仓位试探。",
       "若质检问题包含 missing_pullback_timing_evidence，主推荐每条必须写出5日/10日早期转强、120日区间低位或距高点回撤等数字证据；若包含 missing_pullback_three_tier_execution，必须给激进/均衡/保守三档金额。",
       "若质检问题包含 missing_pullback_share_class_fee，主推荐每条必须写份额类别和费用模型，例如 C类无前端申购费但有销售服务费，或 A类有申购费但长期持有持续费率较低。",
       "若质检问题包含 insufficient_chart_linked_candidates，必须补足 12 张左右可配图候选：主买入参考和备选观察分开写，每只都写代码、买入/备选角色、图上看的走势/回撤/低位/费用证据。",
@@ -9088,6 +9089,7 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   if (rawEnglishActionLeak) issues.push("raw_english_action_leak");
   if (rawEnglishSectionLeak) issues.push("raw_english_section_leak");
   issues.push(...evaluateMarketDataQualityDisclosure({ text, workflow, evidence }));
+  issues.push(...evaluateStaleFundEvidenceActionDiscipline({ text, evidence }));
   issues.push(...evaluatePullbackAnswerDiscipline({ text, userText, evidence }));
   issues.push(...evaluateFundAnswerChartCoverage({ text, workflow, userText, evidence }));
   if (actionSeeking && !hasAction) issues.push("missing_direct_action");
@@ -9119,6 +9121,61 @@ function shouldRequireExpandedFundReportCharts({ workflow, userText, evidence })
   if (!Array.isArray(profiles) || profiles.length < 2) return false;
   if (workflow === "fund_recommendation") return true;
   return workflow === "fund_qa" && (isActionSeekingFundQuestion(userText) || isPullbackSetupRequest(userText));
+}
+
+function evaluateStaleFundEvidenceActionDiscipline({ text, evidence }) {
+  const body = String(text || "");
+  if (!body.trim()) return [];
+  const staleCodes = collectStaleFundEvidenceCandidates(evidence)
+    .map((candidate) => candidate.code || candidate.seed?.code || "")
+    .filter((code, index, list) => /^\d{6}$/.test(code) && list.indexOf(code) === index);
+  if (!staleCodes.length) return [];
+  const issues = [];
+  if (staleCodes.some((code) => hasPositiveBuyExecutionForFundCode(body, code))) {
+    issues.push("stale_data_candidate_given_buy_execution");
+  }
+  if (staleCodes.some((code) => hasPositiveBuyIntentForFundCode(body, code))) {
+    issues.push("stale_data_candidate_given_buy_signal");
+  }
+  return issues;
+}
+
+function collectStaleFundEvidenceCandidates(evidence = {}) {
+  return collectFundEvidenceCandidates(evidence).filter(hasStaleFundEvidence);
+}
+
+function collectFundEvidenceCandidates(evidence = {}) {
+  const groups = [
+    evidence?.marketDeepDive?.candidates,
+    evidence?.enrichments,
+    evidence?.candidates,
+    evidence?.fundCandidates,
+    evidence?.marketSnapshot?.fundCandidates
+  ];
+  const list = [];
+  for (const group of groups) {
+    if (Array.isArray(group)) {
+      list.push(...group);
+    } else if (group && typeof group === "object") {
+      for (const value of Object.values(group)) {
+        if (Array.isArray(value)) list.push(...value);
+      }
+    }
+  }
+  return list.filter((item) => item && typeof item === "object" && (item.code || item.seed?.code));
+}
+
+function hasStaleFundEvidence(candidate = {}) {
+  const actionability = candidate.actionability || {};
+  const blockers = [
+    candidate.decisionBlocker,
+    actionability.decisionBlocker,
+    actionability.blocker
+  ].flat().filter(Boolean).join(" ");
+  if (/系统数据时效降级|净值\/走势已过期|净值走势已过期|净值快照已过期|重新下钻复核/.test(blockers)) {
+    return true;
+  }
+  return evaluatePullbackTrendFreshness(candidate).ok === false;
 }
 
 function evaluateMarketDataQualityDisclosure({ text, workflow, evidence }) {
