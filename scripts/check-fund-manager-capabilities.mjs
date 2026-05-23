@@ -1786,6 +1786,78 @@ const poorMarketQuality = manager.buildMarketDataQuality([
 assert.equal(poorMarketQuality.level, "poor", "market data quality must mark severe source loss as poor");
 assert(serverSource.includes("必须检查 marketSnapshot.dataQuality"), "fund and portfolio prompts must force market data-quality checks");
 assert(serverSource.includes("数据缺口") && serverSource.includes("降低把握度"), "prompts must require user-facing disclosure when market data is partial or poor");
+const noisyMarketSnapshot = {
+  fetchedAt: "2026-05-23T06:20:05.155Z",
+  note: "公开数据快照可能延迟。",
+  dataQuality: partialMarketQuality,
+  marketIndicators: {
+    preciousMetals: Array.from({ length: 12 }, (_, index) => ({
+      code: `PM${index}`,
+      name: `贵金属${index}`,
+      latest: 3000 + index,
+      changePct: index / 10,
+      fiveDayPct: index / 5,
+      quoteTime: "10:00",
+      noisyRawPayload: "NOISY_MARKET_PAYLOAD".repeat(300)
+    }))
+  },
+  themes: {
+    conceptBoards: Array.from({ length: 12 }, (_, index) => ({
+      boardCode: `BK${index}`,
+      name: `概念${index}`,
+      changePct: index,
+      mainNetInflowPct: index / 2,
+      leadStock: `龙头${index}`,
+      quoteTime: "10:00",
+      constituents: "NOISY_BOARD_PAYLOAD".repeat(300)
+    })),
+    industryBoards: []
+  },
+  themeRadar: [{
+    id: "gold",
+    name: "黄金",
+    stage: "crowded",
+    forwardScore: 62,
+    crowdingScore: 70,
+    rotationScore: 35,
+    lowPositionScore: 20,
+    positionSignal: "high_chase_risk",
+    actionBias: "wait_or_small_starter",
+    primaryCatalyst: "避险",
+    evidence: {
+      boards: [{ name: "贵金属", changePct: 1.2 }],
+      news: [{ title: "金价波动", body: "NOISY_NEWS_PAYLOAD".repeat(300) }]
+    }
+  }],
+  fastNews: [{ title: "政策催化", body: "NOISY_NEWS_PAYLOAD".repeat(300), time: "10:00" }],
+  fundCandidates: {
+    stockFunds: Array.from({ length: 18 }, (_, index) => ({
+      code: `0000${String(index).padStart(2, "0")}`,
+      name: `候选基金${index}`,
+      shareClass: index % 2 ? "A" : "C",
+      oneMonthPct: index,
+      dailyPct: index / 10,
+      rawRankingPage: "NOISY_FUND_PAYLOAD".repeat(300)
+    })),
+    hybridFunds: [],
+    indexFunds: [],
+    qdiiFunds: [],
+    preciousMetalFunds: []
+  },
+  errors: ["timeout"],
+  sources: ["https://example.com/noisy"]
+};
+const compactMarketSnapshot = manager.compactMarketSnapshotForModel(noisyMarketSnapshot);
+const compactMarketSnapshotJson = JSON.stringify(compactMarketSnapshot);
+assert(compactMarketSnapshot.dataQuality.level === "partial", "compact market snapshot must preserve data-quality level");
+assert.equal(compactMarketSnapshot.fundCandidates.stockFunds.length, 6, "compact market snapshot must cap fund ranking candidates before model prompts");
+assert.equal(compactMarketSnapshot.marketIndicators.preciousMetals.length, 6, "compact market snapshot must cap market quote candidates before model prompts");
+assert(compactMarketSnapshot.themeRadar[0].stageText === "交易拥挤", "compact market snapshot must carry Chinese theme-stage labels");
+assert(!compactMarketSnapshotJson.includes("NOISY_"), "compact market snapshot must strip raw payloads that cause context-window failures");
+assert(compactMarketSnapshotJson.length < 9000, "compact market snapshot must stay small enough for recommendation and QA prompts");
+assert(serverSource.includes("compactMarketSnapshotForModel(marketSnapshot)"), "fund recommendation, QA, and portfolio prompts must use compact market snapshots");
+assert(!serverSource.includes("JSON.stringify(marketSnapshot || {}, null, 2)"), "fund recommendation prompt must not send the raw market snapshot");
+assert(!serverSource.includes("JSON.stringify(marketSnapshot, null, 2)"), "fund QA prompt must not send the raw market snapshot");
 
 const selectedChartProfiles = manager.selectFundReportProfilesForAnswer([
   { code: "000001", name: "低位修复基金A", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.01 }] } },

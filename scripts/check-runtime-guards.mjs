@@ -324,6 +324,22 @@ const requiredPatterns = [
     message: "fund and portfolio prompts must force data-gap disclosure when public sources are partial or poor."
   },
   {
+    pattern: /function compactMarketSnapshotForModel[\s\S]{0,1400}compactMarketFundCandidates[\s\S]{0,900}errors/,
+    message: "model prompts must use a compact market snapshot that preserves key evidence without raw payload bloat."
+  },
+  {
+    pattern: /function recommendFundsWithModel[\s\S]{0,1800}marketSnapshotForModel = compactMarketSnapshotForModel\(marketSnapshot\)[\s\S]{0,2600}JSON\.stringify\(marketSnapshotForModel \|\| \{\}, null, 2\)/,
+    message: "fund recommendation prompts must send compact market snapshots instead of full raw snapshots."
+  },
+  {
+    pattern: /function answerFundQuestionWithModel[\s\S]{0,1800}marketSnapshotForModel = compactMarketSnapshotForModel\(marketSnapshot\)[\s\S]{0,2600}JSON\.stringify\(marketSnapshotForModel, null, 2\)/,
+    message: "fund QA prompts must send compact market snapshots instead of full raw snapshots."
+  },
+  {
+    pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,3600}JSON\.stringify\(compactMarketSnapshotForModel\(marketSnapshot\), null, 2\)/,
+    message: "portfolio decisions must use compact market snapshots to avoid model context-window failures."
+  },
+  {
     pattern: /用来确认是否适合分批买入[\s\S]{0,120}用来观察是否能从备选转入买点/,
     message: "fund chart reading guides must explain how each chart supports buy or backup decisions."
   },

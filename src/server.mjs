@@ -1351,7 +1351,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     profileContext,
     "",
     "今日公开市场/基金候选快照：",
-    JSON.stringify(summarizeMarketSnapshot(marketSnapshot), null, 2),
+    JSON.stringify(compactMarketSnapshotForModel(marketSnapshot), null, 2),
     "",
     "当前持仓联网资料：",
     JSON.stringify(heldProfiles || [], null, 2),
@@ -1632,7 +1632,7 @@ async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profi
     JSON.stringify(account, null, 2),
     "",
     "盘前市场快照：",
-    JSON.stringify(summarizeMarketSnapshot(marketSnapshot), null, 2),
+    JSON.stringify(compactMarketSnapshotForModel(marketSnapshot), null, 2),
     "",
     "当前持仓资料：",
     JSON.stringify(profiles || [], null, 2),
@@ -7079,6 +7079,34 @@ function summarizeMarketSnapshot(snapshot) {
   };
 }
 
+function compactMarketSnapshotForModel(snapshot = null) {
+  const summary = summarizeMarketSnapshot(snapshot);
+  if (!summary) return null;
+  return {
+    fetchedAt: summary.fetchedAt || "",
+    note: summary.note || "",
+    dataQuality: summary.dataQuality,
+    marketIndicators: {
+      preciousMetals: compactMarketQuoteItems(summary.marketIndicators?.preciousMetals || [], 6)
+    },
+    themes: {
+      conceptBoards: compactMarketBoardItems(summary.themes?.conceptBoards || [], 6),
+      industryBoards: compactMarketBoardItems(summary.themes?.industryBoards || [], 6)
+    },
+    themeRadar: (summary.themeRadar || []).slice(0, 6).map(compactThemeRadarForModel),
+    fastNews: (summary.fastNews || []).slice(0, 6).map(compactFastNewsForModel),
+    fundCandidates: {
+      stockFunds: compactMarketFundCandidates(summary.fundCandidates?.stockFunds || [], 6),
+      hybridFunds: compactMarketFundCandidates(summary.fundCandidates?.hybridFunds || [], 6),
+      indexFunds: compactMarketFundCandidates(summary.fundCandidates?.indexFunds || [], 6),
+      qdiiFunds: compactMarketFundCandidates(summary.fundCandidates?.qdiiFunds || [], 4),
+      preciousMetalFunds: compactMarketFundCandidates(summary.fundCandidates?.preciousMetalFunds || [], 8)
+    },
+    errors: (summary.errors || []).slice(0, 6),
+    sources: (summary.sources || []).slice(0, 6)
+  };
+}
+
 function compactMarketDataQuality(quality = null) {
   if (!quality || typeof quality !== "object") return null;
   return {
@@ -7099,6 +7127,77 @@ function compactMarketDataQuality(quality = null) {
     })),
     candidateCounts: quality.candidateCounts || {}
   };
+}
+
+function compactMarketQuoteItems(items = [], limit = 6) {
+  return (items || []).slice(0, limit).map((item) => ({
+    code: item.code || "",
+    name: item.name || "",
+    latest: finiteMetricNumber(item.latest),
+    changePct: finiteMetricNumber(item.changePct),
+    fiveDayPct: finiteMetricNumber(item.fiveDayPct),
+    quoteTime: item.quoteTime || ""
+  }));
+}
+
+function compactMarketBoardItems(items = [], limit = 6) {
+  return (items || []).slice(0, limit).map((item) => ({
+    boardCode: item.boardCode || "",
+    name: item.name || "",
+    changePct: finiteMetricNumber(item.changePct),
+    mainNetInflowPct: finiteMetricNumber(item.mainNetInflowPct),
+    leadStock: item.leadStock || "",
+    quoteTime: item.quoteTime || ""
+  }));
+}
+
+function compactThemeRadarForModel(theme = {}) {
+  return {
+    id: theme.id || "",
+    name: theme.name || "",
+    stage: theme.stage || "",
+    stageText: formatUserFacingFundLabel(theme.stage),
+    forwardScore: finiteMetricNumber(theme.forwardScore),
+    crowdingScore: finiteMetricNumber(theme.crowdingScore),
+    rotationScore: finiteMetricNumber(theme.rotationScore),
+    lowPositionScore: finiteMetricNumber(theme.lowPositionScore),
+    positionSignal: theme.positionSignal || "",
+    positionSignalText: formatUserFacingFundLabel(theme.positionSignal),
+    actionBias: theme.actionBias || "",
+    actionBiasText: formatUserFacingFundLabel(theme.actionBias),
+    primaryCatalyst: theme.primaryCatalyst || "",
+    boards: (theme.evidence?.boards || []).slice(0, 2).map((item) => ({
+      name: item.name || "",
+      changePct: finiteMetricNumber(item.changePct)
+    })),
+    news: (theme.evidence?.news || []).slice(0, 2).map((item) => item.title || "").filter(Boolean)
+  };
+}
+
+function compactFastNewsForModel(item = {}) {
+  return {
+    title: item.title || item.name || "",
+    time: item.time || item.showTime || item.publishTime || "",
+    source: item.source || ""
+  };
+}
+
+function compactMarketFundCandidates(items = [], limit = 6) {
+  return (items || []).slice(0, limit).map((item) => ({
+    code: item.code || "",
+    name: item.name || "",
+    shareClass: item.shareClass || "",
+    type: item.type || item.label || "",
+    oneWeekPct: finiteMetricNumber(item.oneWeekPct),
+    oneMonthPct: finiteMetricNumber(item.oneMonthPct),
+    threeMonthPct: finiteMetricNumber(item.threeMonthPct),
+    dailyPct: finiteMetricNumber(item.dailyPct),
+    unitNav: finiteMetricNumber(item.unitNav),
+    navDate: item.navDate || "",
+    feeModel: item.shareClassFeeModel?.label || item.shareClassFeeModel?.type || item.shareClassFeeModel || "",
+    keywords: normalizeStringArray(item.keywords).slice(0, 5),
+    source: item.source || ""
+  }));
 }
 
 async function buildFundReportCardImages(profiles, config) {
@@ -8592,6 +8691,7 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
 async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
   const skillContext = buildSkillContextForIntent(intent, getFundRecommendationSkillIds(), { userText });
   const marketEvidence = buildMarketEvidenceSummary(userText, marketSnapshot);
+  const marketSnapshotForModel = compactMarketSnapshotForModel(marketSnapshot);
   const portfolioWatchlistContext = await getFundWorkflowWatchlistContext(userText);
   const marketDeepDive = mergeFundWorkflowWatchlistIntoDeepDive(
     await fetchMarketDeepDive(userText, marketSnapshot, { forRecommendation: true }),
@@ -8630,8 +8730,8 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "路由判断：",
     JSON.stringify(intent || {}, null, 2),
     "",
-    "公开市场/基金候选快照：",
-    JSON.stringify(marketSnapshot || {}, null, 2),
+    "公开市场/基金候选快照（压缩，保留数据质量、题材雷达、候选代码和关键数值）：",
+    JSON.stringify(marketSnapshotForModel || {}, null, 2),
     "",
     "已提炼的市场证据摘要：",
     marketEvidence,
@@ -8688,6 +8788,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
 async function answerFundQuestionWithModel({ userText, intent, marketSnapshot }) {
   const skillContext = buildSkillContextForIntent(intent, getFundQaSkillIds(), { userText });
   const marketEvidence = buildMarketEvidenceSummary(userText, marketSnapshot);
+  const marketSnapshotForModel = compactMarketSnapshotForModel(marketSnapshot);
   const portfolioWatchlistContext = await getFundWorkflowWatchlistContext(userText);
   const marketDeepDive = mergeFundWorkflowWatchlistIntoDeepDive(
     await fetchMarketDeepDive(userText, marketSnapshot, { forRecommendation: false }),
@@ -8723,8 +8824,8 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "路由判断：",
     JSON.stringify(intent || {}, null, 2),
     "",
-    marketSnapshot ? "市场快照：" : "市场快照：未抓取，此问题按通用基金知识回答。",
-    marketSnapshot ? JSON.stringify(marketSnapshot, null, 2) : "",
+    marketSnapshot ? "市场快照（压缩，保留数据质量、题材雷达、候选代码和关键数值）：" : "市场快照：未抓取，此问题按通用基金知识回答。",
+    marketSnapshot ? JSON.stringify(marketSnapshotForModel, null, 2) : "",
     "",
     "已提炼的市场证据摘要：",
     marketEvidence,
@@ -16209,6 +16310,7 @@ export {
   buildFundWorkflowWatchlistSummary,
   classifyMessageIntent,
   compactModelInputForContext,
+  compactMarketSnapshotForModel,
   compactMarketDataQuality,
   compactPublicFundSnapshot,
   computeTrendProfile,
