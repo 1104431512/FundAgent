@@ -6414,13 +6414,13 @@ function summarizePortfolioRunBrief(run) {
     progressAt: run.progressAt || "",
     completedAt: run.completedAt,
     durationMs: run.durationMs,
-    summary: buildPortfolioRunSummary(run),
-    team: (run.team || []).slice(0, 6),
-    actions: (run.actions || []).slice(0, 8),
+    summary: normalizePortfolioUserFacingText(buildPortfolioRunSummary(run)),
+    team: sanitizePortfolioPublicReportValue((run.team || []).slice(0, 6)),
+    actions: sanitizePortfolioPublicReportValue((run.actions || []).slice(0, 8)),
     orders: (run.orders || []).slice(0, 8).map(summarizePortfolioOrder),
     transactions: (run.transactions || []).slice(0, 6).map(summarizePortfolioTransactionBrief),
-    executionNotes: (run.executionNotes || []).slice(0, 6),
-    settlementEvents: (run.settlementEvents || []).slice(0, 6),
+    executionNotes: sanitizePortfolioPublicReportValue((run.executionNotes || []).slice(0, 6)),
+    settlementEvents: sanitizePortfolioPublicReportValue((run.settlementEvents || []).slice(0, 6)),
     error: run.error || ""
   };
 }
@@ -6437,21 +6437,39 @@ function summarizePortfolioRun(run) {
     progressAt: run.progressAt || "",
     completedAt: run.completedAt,
     durationMs: run.durationMs,
-    summary: buildPortfolioRunSummary(run),
-    card: run.card || "",
-    team: (run.team || []).slice(0, 8),
-    observation: run.observation || null,
-    weekly: run.weekly || null,
-    actions: (run.actions || []).slice(0, 10),
+    summary: normalizePortfolioUserFacingText(buildPortfolioRunSummary(run)),
+    card: normalizePortfolioUserFacingText(run.card || ""),
+    team: sanitizePortfolioPublicReportValue((run.team || []).slice(0, 8)),
+    observation: sanitizePortfolioPublicReportValue(run.observation || null),
+    weekly: sanitizePortfolioPublicReportValue(run.weekly || null),
+    actions: sanitizePortfolioPublicReportValue((run.actions || []).slice(0, 10)),
     orders: (run.orders || []).slice(0, 10).map(summarizePortfolioOrder),
     transactions: (run.transactions || []).slice(0, 10),
     orderUpdates: (run.orderUpdates || []).slice(0, 10),
-    executionNotes: (run.executionNotes || []).slice(0, 10),
-    settlementEvents: (run.settlementEvents || []).slice(0, 10),
+    executionNotes: sanitizePortfolioPublicReportValue((run.executionNotes || []).slice(0, 10)),
+    settlementEvents: sanitizePortfolioPublicReportValue((run.settlementEvents || []).slice(0, 10)),
     sources: run.sources || [],
     push: run.push || null,
     error: run.error || ""
   };
+}
+
+function sanitizePortfolioPublicReportValue(value, key = "") {
+  if (typeof value === "string") {
+    return shouldPreservePortfolioPublicString(key) ? value : normalizePortfolioUserFacingText(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizePortfolioPublicReportValue(item, key));
+  }
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([entryKey, entryValue]) => [
+    entryKey,
+    sanitizePortfolioPublicReportValue(entryValue, entryKey)
+  ]));
+}
+
+function shouldPreservePortfolioPublicString(key = "") {
+  return /(?:^|_)(?:id|code|url|source|sources|receiveId|receiveIdMasked|imageKey|rawModelOutput)$/i.test(String(key || ""));
 }
 
 function buildPortfolioRunSummary(run) {
@@ -7325,22 +7343,16 @@ async function buildFundReportCardImages(profiles, config) {
     return [];
   }
   const limit = getFundReportChartLimit();
-  const chartMode = String(process.env.FEISHU_REPORT_CHART_MODE || "summary").toLowerCase();
+  const chartMode = "summary";
   const snapshots = collectTrendSnapshotsFromProfiles(profiles).slice(0, limit);
   const images = [];
   for (const item of snapshots) {
     try {
-      const png = chartMode === "trend"
-        ? renderTrendSeriesPng({
-            series: item.snapshot.trendProfile?.series || [],
-            width: 720,
-            height: 260
-          })
-        : renderFundReportSummaryPng({
-            profile: item.snapshot,
-            width: 1280,
-            height: 760
-          });
+      const png = renderFundReportSummaryPng({
+        profile: item.snapshot,
+        width: 1280,
+        height: 760
+      });
       if (!png) continue;
       const imageKey = await uploadFeishuImage(png, `fund-report-${chartMode}-${item.code || "fund"}.png`, config);
       images.push({
@@ -7566,6 +7578,7 @@ const FUND_REPORT_CHART_LEGEND_LINES = [
   "120日低位/250日低位=区间相对位置，越低越接近低位，越高越接近高位；每万成本=每1万元持有估算成本，分批=不一次买完。",
   "新图只使用中文短标签：买点=是否到了可买位置，信号=回调完成或启动迹象，120日低位/250日低位=区间低位判断，动作=经理建议。",
   "右侧六格：份额=A/C 等类别，每万成本=每1万元估算成本，近20日/近60日=短中期涨跌，回撤=距近期高点回落，规模=基金规模（单位约为亿元）。",
+  "题材阶段=板块从萌芽、确认到拥挤的位置判断；轮动/低位评分越高越好，拥挤度高要少追。",
   "常见状态：可买=可以小仓位执行，分批买=分几次买入，等待=等回撤或确认，回避=暂不碰，观察=放备选池，缺失=数据不足。",
   "看不懂指标时先看中文图例和逐张看图说明，不需要理解系统内部字段；旧版英文指标只按中文含义解释。",
   "旧版英文简称已从新图移除；如果客户拿旧图来问，直接解释为买点、信号、低位、动作、收益、回撤、规模和分批买入。"
@@ -7607,6 +7620,7 @@ function formatFundReportChartGuideEvidence(profile = {}, role = "") {
   const fields = [
     trend.pullbackSetup?.signalText || formatTrendLabel(trend.trendLabel),
     formatEntryBias(trend.entryBias),
+    formatFundReportThemeStageEvidence(profile),
     Number.isFinite(Number(trend.return5dPct)) ? `近5日${formatFallbackPct(trend.return5dPct)}` : "",
     Number.isFinite(Number(trend.return10dPct)) ? `近10日${formatFallbackPct(trend.return10dPct)}` : "",
     Number.isFinite(Number(trend.return20dPct)) ? `近20日${formatFallbackPct(trend.return20dPct)}` : "",
@@ -7619,6 +7633,22 @@ function formatFundReportChartGuideEvidence(profile = {}, role = "") {
   return compact
     ? `${actionLead}：图上看 ${compact.slice(0, 150)}。`
     : `${actionLead}：图上看净值趋势、回撤位置、阶段收益和费用栏，作为买入或备选的证据。`;
+}
+
+function formatFundReportThemeStageEvidence(profile = {}) {
+  const theme = getCandidateThemeSignals(profile)[0];
+  if (!theme) return "";
+  const stage = formatUserFacingFundLabel(theme.stage || "");
+  const position = formatUserFacingFundLabel(theme.positionSignal || "");
+  const parts = [
+    theme.name || "题材",
+    stage ? `题材阶段${stage}` : "",
+    position ? `位置${position}` : "",
+    Number.isFinite(Number(theme.rotationScore)) ? `轮动评分${round(Number(theme.rotationScore), 1)}` : "",
+    Number.isFinite(Number(theme.lowPositionScore)) ? `低位评分${round(Number(theme.lowPositionScore), 1)}` : "",
+    Number.isFinite(Number(theme.crowdingScore)) ? `拥挤度${round(Number(theme.crowdingScore), 1)}` : ""
+  ].filter(Boolean);
+  return parts.join("，");
 }
 
 function withFundReportChartMeta(profile, meta = {}) {
@@ -12534,7 +12564,7 @@ function drawFundReportLegendPanel(canvas, { x, y, width, height }) {
     "图例说明 买点=可买/分批买/等待/回避/观察 信号=回调完成/启动/无",
     "120日低位/250日低位=越低越接近低位 越高越接近高位",
     "分批=不一次买完 每万成本=每万元估算成本",
-    "动作=买入/等待/回避 回撤/规模=风险"
+    "动作=买入/等待/回避 题材阶段=板块位置 回撤/规模=风险"
   ];
   fillRect(canvas, x, y, width, height, [248, 250, 252, 255]);
   drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
@@ -14610,7 +14640,7 @@ function getFeishuCardImageChunkSize() {
   return Math.max(1, Math.min(6, Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE));
 }
 
-const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上中文短标签：买点=能否买，信号=回调/启动，120日低位/250日低位=是否真低位，动作=经理建议，每万成本/回撤/规模用于看成本和风险；分批=分几次买入，看不懂指标时先看中文图例，新图不再显示英文简称。";
+const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上中文短标签：买点=能否买，信号=回调/启动，120日低位/250日低位=是否真低位，题材阶段=板块位置，动作=经理建议，每万成本/回撤/规模用于看成本和风险；分批=分几次买入，看不懂指标时先看中文图例，新图不再显示英文简称。";
 
 function isFundReportCardImage(image = {}) {
   const alt = String(image?.alt || "");
@@ -16924,5 +16954,6 @@ export {
   summarizePortfolioWatchItem,
   scorePullbackSetupSeedCandidate,
   scoreResearchDigestForPullbackSetup,
+  sanitizePortfolioPublicReportValue,
   splitFeishuCardImages
 };

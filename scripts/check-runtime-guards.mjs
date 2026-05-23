@@ -136,6 +136,10 @@ const requiredPatterns = [
     message: "fund report charts must include a readable buy-point and cost evidence panel."
   },
   {
+    pattern: /function buildFundReportCardImages[\s\S]{0,700}const chartMode = "summary"[\s\S]{0,700}renderFundReportSummaryPng/,
+    message: "fund report images must always use Chinese summary evidence cards instead of sparse trend-only charts."
+  },
+  {
     pattern: /120日低位[\s\S]{0,140}250日低位/,
     message: "fund report charts must show low-position labels as plain Chinese time-window low-position evidence rather than opaque metric names."
   },
@@ -150,6 +154,10 @@ const requiredPatterns = [
   {
     pattern: /250日低位/,
     message: "fund report charts must show longer-window low-position evidence in a compact readable label."
+  },
+  {
+    pattern: /题材阶段=板块位置/,
+    message: "fund report charts must explain theme-stage signals in Chinese instead of exposing stage."
   },
   {
     pattern: /function renderFundReportSummaryPng\(\{\s*profile,\s*width\s*=\s*1280,\s*height\s*=\s*760\s*\}\s*=\s*\{\}\)/,
@@ -692,6 +700,14 @@ const requiredPatterns = [
     message: "portfolio decision cards must show Chinese action labels and run a final user-facing localization pass."
   },
   {
+    pattern: /function summarizePortfolioRun\(run\)[\s\S]{0,700}card:\s*normalizePortfolioUserFacingText\(run\.card \|\| ""\)[\s\S]{0,900}sanitizePortfolioPublicReportValue/,
+    message: "portfolio public API must sanitize stored historical run cards before the admin UI displays them."
+  },
+  {
+    pattern: /function sanitizePortfolioPublicReportValue[\s\S]{0,900}shouldPreservePortfolioPublicString/,
+    message: "portfolio public report sanitization must preserve source URLs while localizing user-facing report text."
+  },
+  {
     pattern: /function summarizePortfolioOrder[\s\S]{0,900}navQuality[\s\S]{0,220}navSource/,
     message: "confirmed portfolio orders must expose verified NAV, units, NAV date, and source in the public API."
   },
@@ -952,7 +968,7 @@ const requiredPatterns = [
     message: "admin portfolio run history must expose manager analysis as cards instead of only raw text."
   },
   {
-    pattern: /team: \(run\.team \|\| \[\]\)\.slice/,
+    pattern: /team:\s*sanitizePortfolioPublicReportValue\(\(run\.team \|\| \[\]\)\.slice/,
     message: "portfolio API must expose visible investment committee views for the manager timeline."
   },
   {

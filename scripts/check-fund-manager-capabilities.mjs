@@ -304,6 +304,23 @@ const decisionRunSummary = manager.buildPortfolioRunSummary({
 assert(decisionRunSummary.includes("今日决策：持有复核1、观察1，未提交申购/赎回"), "portfolio run summary must replace generic save-progress text with action counts");
 assert(decisionRunSummary.includes("风险重点：同题材暴露偏高"), "portfolio run summary must surface the main risk rather than a generic progress line");
 assert(!decisionRunSummary.includes("正在保存任务结果"), "portfolio run summary must not expose progress-only text after completion");
+const sanitizedHistoricalRun = manager.sanitizePortfolioPublicReportValue({
+  card: "持仓关注：趋势 extended_uptrend，entryBias=wait_pullback，actionability 为 weak_fit，建议 watch/test only。",
+  observation: {
+    summary: "盘前 marketTone=defensive，marketConfirmationScore=0。",
+    sources: ["https://example.com/watch/test"]
+  }
+});
+const sanitizedHistoricalRunText = JSON.stringify({
+  card: sanitizedHistoricalRun.card,
+  observationSummary: sanitizedHistoricalRun.observation.summary
+});
+assert(sanitizedHistoricalRun.card.includes("买点判断：等待回撤"), "public run cards must localize legacy entry-bias text before admin display");
+assert(sanitizedHistoricalRun.card.includes("买卖可行性评估：适配度偏弱"), "public run cards must localize legacy actionability text before admin display");
+assert(sanitizedHistoricalRun.card.includes("观察/小额试探"), "public run cards must localize watch/test shorthand before admin display");
+assert(sanitizedHistoricalRun.observation.summary.includes("市场姿态：防守") && sanitizedHistoricalRun.observation.summary.includes("市场确认度：0"), "public run observations must localize market-tone fields");
+assert.equal(sanitizedHistoricalRun.observation.sources[0], "https://example.com/watch/test", "public run sanitization must preserve source URLs");
+assert(!/\b(?:extended_uptrend|entryBias|actionability|weak_fit|watch\/test|marketTone|defensive|marketConfirmationScore)\b/i.test(sanitizedHistoricalRunText), "admin-facing historical run summaries must not keep raw internal fields");
 const normalizedInvestedCostText = manager.normalizePortfolioInvestedCostReturnText(
   "累计盈亏由+1291.65转为-328.07，按初始资金口径为-0.33%。",
   { investedCost: 30002.28, cumulativePnlPct: -1.09 }
@@ -1897,6 +1914,13 @@ const noChartGuideSanitized = manager.appendFundReportChartReadingGuide(
 );
 assert(noChartGuideSanitized.includes("结论：分批买入"), "chart guide finalizer must sanitize fund answers even when no charts are appended");
 assert(!/\b(?:Verdict|Confidence|Score|staged buy)\b/i.test(noChartGuideSanitized), "chart guide finalizer must not return raw English labels");
+const chartGuideWithThemeStage = manager.appendFundReportChartReadingGuide(
+  "推荐清单：000000 低位修复基金C，可以作为买入参考。",
+  [buildChartProfile()]
+);
+assert(chartGuideWithThemeStage.includes("题材阶段=板块从萌芽、确认到拥挤的位置判断"), "chart guide must explain theme-stage metrics in Chinese");
+assert(chartGuideWithThemeStage.includes("医药，题材阶段低位轮动"), "per-chart guide must translate theme stage evidence into Chinese");
+assert(!/\b(?:stage|low_position_rotation|crowdingScore|rotationScore)\b/i.test(chartGuideWithThemeStage), "chart guide must not leak raw theme-stage fields");
 
 const png = manager.renderFundReportSummaryPng({
   profile: buildChartProfile(),
@@ -1915,6 +1939,9 @@ assert(serverSource.includes("showAxisLabels: false"), "summary chart must hide 
 assert(serverSource.includes("drawFundReportLegendPanel"), "summary chart must include an in-image Chinese legend for chart terms");
 assert(serverSource.includes("图例说明 买点=可买/分批买/等待/回避/观察"), "summary chart legend must explain buy-point states in Chinese");
 assert(serverSource.includes("越低越接近低位") && serverSource.includes("越高越接近高位"), "summary chart legend must explain 120/250-day position metrics in Chinese");
+assert(serverSource.includes('const chartMode = "summary"'), "fund report image generation must force Chinese summary report cards");
+assert(!serverSource.includes('chartMode === "trend"'), "fund report image generation must not fall back to sparse trend-only images");
+assert(serverSource.includes("题材阶段=板块位置"), "summary chart legend must explain theme-stage signals in Chinese");
 assert(serverSource.includes("看不懂指标时先看中文图例"), "chart guide must reassure users that opaque metrics are explained in Chinese");
 assert(serverSource.includes("动作=买入/等待/回避"), "summary chart legend must explain manager action states without exposing STAGE");
 assert(serverSource.includes("分批=不一次买完 每万成本=每万元估算成本"), "summary chart legend must explain staged buying and per-10k cost inside the image");
@@ -2839,6 +2866,14 @@ function buildChartProfile() {
         oneYearCostPer10000: 42
       }
     },
+    matchedThemes: [{
+      name: "医药",
+      stage: "low_position_rotation",
+      positionSignal: "low_position_rotation",
+      rotationScore: 62,
+      lowPositionScore: 58,
+      crowdingScore: 22
+    }],
     scale: "42.6亿元",
     actionability: {
       action: "buy"
