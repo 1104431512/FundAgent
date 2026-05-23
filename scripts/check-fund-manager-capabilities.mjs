@@ -2020,8 +2020,10 @@ const chartGuideWithThemeStage = manager.appendFundReportChartReadingGuide(
   "推荐清单：000000 低位修复基金C，可以作为买入参考。",
   [buildChartProfile()]
 );
-assert(chartGuideWithThemeStage.includes("题材阶段=板块从萌芽、确认到拥挤的位置判断"), "chart guide must explain theme-stage metrics in Chinese");
-assert(chartGuideWithThemeStage.includes("医药，题材阶段低位轮动"), "per-chart guide must translate theme stage evidence into Chinese");
+assert(chartGuideWithThemeStage.includes("板块位置=这条赛道现在处在低位、确认、扩散还是拥挤"), "chart guide must explain theme-stage metrics as Chinese board-position wording");
+assert(chartGuideWithThemeStage.includes("指标速读：近20日/近60日看是否追涨"), "chart guide must include a plain metric quick-read");
+assert(chartGuideWithThemeStage.includes("医药，板块位置低位轮动"), "per-chart guide must translate theme stage evidence into Chinese");
+assert(!chartGuideWithThemeStage.includes("题材阶段"), "chart guide should avoid opaque theme-stage wording in customer-facing text");
 assert(!/\b(?:stage|low_position_rotation|crowdingScore|rotationScore)\b/i.test(chartGuideWithThemeStage), "chart guide must not leak raw theme-stage fields");
 
 const png = manager.renderFundReportSummaryPng({
@@ -2043,7 +2045,7 @@ assert(serverSource.includes("图例说明 买点=可买/分批买/等待/回避
 assert(serverSource.includes("越低越接近低位") && serverSource.includes("越高越接近高位"), "summary chart legend must explain 120/250-day position metrics in Chinese");
 assert(serverSource.includes('const chartMode = "summary"'), "fund report image generation must force Chinese summary report cards");
 assert(!serverSource.includes('chartMode === "trend"'), "fund report image generation must not fall back to sparse trend-only images");
-assert(serverSource.includes("题材阶段=板块位置"), "summary chart legend must explain theme-stage signals in Chinese");
+assert(serverSource.includes("低位=低/高"), "summary chart legend must use short Chinese low/high labels instead of opaque theme-stage wording");
 assert(serverSource.includes("看不懂指标时先看中文图例"), "chart guide must reassure users that opaque metrics are explained in Chinese");
 assert(serverSource.includes("动作=买入/等待/回避"), "summary chart legend must explain manager action states without exposing STAGE");
 assert(serverSource.includes("分批=不一次买完 每万成本=每万元估算成本"), "summary chart legend must explain staged buying and per-10k cost inside the image");
@@ -2071,7 +2073,7 @@ const tinyFontSource = serverSource.slice(serverSource.indexOf("const TINY_FONT"
 assert(!/[\u4e00-\u9fff]/.test(tinyFontSource), "tiny chart font must not keep Chinese bitmap glyphs that render like QR codes");
 assert(!/drawYAxisTickLabels\([^;\n]*["'][\u4e00-\u9fff]/.test(serverSource), "summary chart must not use Chinese axis labels in bitmap text");
 const localizedStageTerms = manager.normalizeUserFacingFundAnswer("stage=low_position_rotation，actionBias=early_staged_buy，positionSignal=high_chase_risk。");
-assert(localizedStageTerms.includes("题材阶段：低位轮动"), "localization must translate raw stage labels into natural Chinese");
+assert(localizedStageTerms.includes("板块位置：低位轮动"), "localization must translate raw stage labels into natural Chinese");
 assert(localizedStageTerms.includes("操作倾向：早期分批买入"), "localization must translate raw action-bias labels into natural Chinese");
 assert(!/\b(?:stage|actionBias|positionSignal|low_position_rotation|early_staged_buy|high_chase_risk)\b/i.test(localizedStageTerms), "localized stage text must not keep raw theme radar fields");
 const localizedLegacyChartTerms = manager.normalizeUserFacingFundAnswer("STAGE/BATCH，ENTRY=wait_pullback，score=68，FEEY=80。");
@@ -2341,7 +2343,7 @@ assert(guidedChartAnswer.includes("买入参考图"), "chart reading guide must 
 assert(guidedChartAnswer.includes("备选观察图"), "chart reading guide must distinguish backup/watch charts");
 assert(guidedChartAnswer.includes("新图只使用中文短标签"), "chart reading guide must tell users new images are Chinese-first");
 assert(guidedChartAnswer.includes("买点=是否到了可买位置"), "chart reading guide must explain the entry label for users");
-assert(guidedChartAnswer.includes("120日低位/250日低位=区间低位判断"), "chart reading guide must translate low-position chart labels");
+assert(guidedChartAnswer.includes("120日低位/250日低位=是不是还在低位"), "chart reading guide must translate low-position chart labels");
 assert(guidedChartAnswer.includes("规模=基金规模"), "chart reading guide must explain fund scale labels");
 assert(guidedChartAnswer.includes("分批买=分几次买入"), "chart reading guide must explain staged buying in Chinese");
 assert(guidedChartAnswer.includes("看不懂指标时先看中文图例"), "chart reading guide must tell users they do not need to understand raw system metrics");

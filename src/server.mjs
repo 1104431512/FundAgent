@@ -145,9 +145,9 @@ const USER_FACING_FUND_FIELD_LABELS = [
   ["trendProfile", "走势画像"],
   ["actionability", "买卖可行性评估"],
   ["action", "动作"],
-  ["stage", "题材阶段"],
-  ["stageText", "题材阶段"],
-  ["stageReason", "题材阶段理由"],
+  ["stage", "板块位置"],
+  ["stageText", "板块位置"],
+  ["stageReason", "板块位置理由"],
   ["entryBias", "买点判断"],
   ["entryBiasText", "买点判断"],
   ["fitLabel", "适配度"],
@@ -7786,9 +7786,10 @@ function getFundReportProfileKey(profile) {
 const FUND_REPORT_CHART_LEGEND_LINES = [
   "图上底部已经加了中文图例说明：买点=可买/分批买/等待/回避/观察，信号=回调完成/启动/无。",
   "120日低位/250日低位=区间相对位置，越低越接近低位，越高越接近高位；每万成本=每1万元持有估算成本，分批=不一次买完。",
-  "新图只使用中文短标签：买点=是否到了可买位置，信号=回调完成或启动迹象，120日低位/250日低位=区间低位判断，动作=经理建议。",
+  "新图只使用中文短标签：买点=是否到了可买位置，信号=回调完成或启动迹象，120日低位/250日低位=是不是还在低位，动作=经理建议。",
   "右侧六格：份额=A/C 等类别，每万成本=每1万元估算成本，近20日/近60日=短中期涨跌，回撤=距近期高点回落，规模=基金规模（单位约为亿元）。",
-  "题材阶段=板块从萌芽、确认到拥挤的位置判断；轮动/低位评分越高越好，拥挤度高要少追。",
+  "板块位置=这条赛道现在处在低位、确认、扩散还是拥挤；轮动/低位评分越高越好，拥挤度高要少追。",
+  "指标速读：近20日/近60日看是否追涨，回撤看离高点跌了多少，每万成本看费用拖累，规模看流动性和清盘风险。",
   "常见状态：可买=可以小仓位执行，分批买=分几次买入，等待=等回撤或确认，回避=暂不碰，观察=放备选池，缺失=数据不足。",
   "看不懂指标时先看中文图例和逐张看图说明，不需要理解系统内部字段；旧版英文指标只按中文含义解释。",
   "旧版英文简称已从新图移除；如果客户拿旧图来问，直接解释为买点、信号、低位、动作、收益、回撤、规模和分批买入。"
@@ -7852,7 +7853,7 @@ function formatFundReportThemeStageEvidence(profile = {}) {
   const position = formatUserFacingFundLabel(theme.positionSignal || "");
   const parts = [
     theme.name || "题材",
-    stage ? `题材阶段${stage}` : "",
+    stage ? `板块位置${stage}` : "",
     position ? `位置${position}` : "",
     Number.isFinite(Number(theme.rotationScore)) ? `轮动评分${round(Number(theme.rotationScore), 1)}` : "",
     Number.isFinite(Number(theme.lowPositionScore)) ? `低位评分${round(Number(theme.lowPositionScore), 1)}` : "",
@@ -8181,7 +8182,7 @@ function formatUserFacingFundLabel(value) {
 function formatThemeRadarEvidenceLine(theme = {}) {
   const fields = [
     theme.name || theme.id || "未知题材",
-    theme.stage ? `题材阶段：${formatUserFacingFundLabel(theme.stage)}` : "",
+    theme.stage ? `板块位置：${formatUserFacingFundLabel(theme.stage)}` : "",
     formatEvidenceField("forwardScore", theme.forwardScore),
     formatEvidenceField("crowdingScore", theme.crowdingScore),
     formatEvidenceField("rotationScore", theme.rotationScore),
@@ -9889,8 +9890,10 @@ function normalizeUserFacingFundAnswer(text) {
     .replace(/\bConfidence\s*[：:]\s*high\b/gi, "把握度较高")
     .replace(/\bConfidence\s*[：:]\s*medium\b/gi, "把握度中等")
     .replace(/\bConfidence\s*[：:]\s*low\b/gi, "把握度偏低")
-    .replace(/(走势画像|买卖可行性评估|动作|题材阶段|题材阶段理由|买点判断|适配度|趋势状态|前瞻评分|拥挤度|轮动评分|低位评分|市场确认度|市场姿态|位置判断|操作倾向|评分|仓位上限|买入限制|回调启动信号|120日区间位置|250日区间位置|近5日收益|近10日收益|近20日收益|近60日收益|近120日收益|近20日|近60日|近120日|近250日|距近期高点回撤|回撤|最大回撤|规模|份额类别|夏普比率|波动率|收益|每万成本)\s*(?:为|是)\s*/g, "$1：")
-    .replace(/(趋势|动作|买点|信号|买点判断|入场判断|适配度|题材阶段|阶段|题材阶段理由|操作倾向|位置判断|前瞻评分|拥挤度|轮动评分|低位评分|市场确认度|市场姿态|走势画像|买卖可行性评估|可操作性评估|趋势状态|回调启动信号|120日区间位置|250日区间位置|120日低位|250日低位|距近期高点回撤|近20日|近60日|近120日|近250日|回撤|最大回撤|规模|份额类别|夏普比率|波动率|收益|评分|仓位上限|买入限制|每万成本)\s*[:：=]\s*/g, "$1：")
+    .replace(/题材阶段理由/g, "板块位置理由")
+    .replace(/题材阶段/g, "板块位置")
+    .replace(/(走势画像|买卖可行性评估|动作|板块位置|板块位置理由|买点判断|适配度|趋势状态|前瞻评分|拥挤度|轮动评分|低位评分|市场确认度|市场姿态|位置判断|操作倾向|评分|仓位上限|买入限制|回调启动信号|120日区间位置|250日区间位置|近5日收益|近10日收益|近20日收益|近60日收益|近120日收益|近20日|近60日|近120日|近250日|距近期高点回撤|回撤|最大回撤|规模|份额类别|夏普比率|波动率|收益|每万成本)\s*(?:为|是)\s*/g, "$1：")
+    .replace(/(趋势|动作|买点|信号|买点判断|入场判断|适配度|板块位置|阶段|板块位置理由|操作倾向|位置判断|前瞻评分|拥挤度|轮动评分|低位评分|市场确认度|市场姿态|走势画像|买卖可行性评估|可操作性评估|趋势状态|回调启动信号|120日区间位置|250日区间位置|120日低位|250日低位|距近期高点回撤|近20日|近60日|近120日|近250日|回撤|最大回撤|规模|份额类别|夏普比率|波动率|收益|评分|仓位上限|买入限制|每万成本)\s*[:：=]\s*/g, "$1：")
     .trim();
 }
 
@@ -12774,7 +12777,7 @@ function drawFundReportLegendPanel(canvas, { x, y, width, height }) {
     "图例说明 买点=可买/分批买/等待/回避/观察 信号=回调完成/启动/无",
     "120日低位/250日低位=越低越接近低位 越高越接近高位",
     "分批=不一次买完 每万成本=每万元估算成本",
-    "动作=买入/等待/回避 题材阶段=板块位置 回撤/规模=风险"
+    "动作=买入/等待/回避 低位=低/高 回撤/规模=风险"
   ];
   fillRect(canvas, x, y, width, height, [248, 250, 252, 255]);
   drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
@@ -14850,7 +14853,7 @@ function getFeishuCardImageChunkSize() {
   return Math.max(1, Math.min(6, Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE));
 }
 
-const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上中文短标签：买点=能否买，信号=回调/启动，120日低位/250日低位=是否真低位，题材阶段=板块位置，动作=经理建议，每万成本/回撤/规模用于看成本和风险；分批=分几次买入，看不懂指标时先看中文图例，新图不再显示英文简称。";
+const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上中文短标签：买点=能否买，信号=回调/启动，120日低位/250日低位=是否真低位，板块位置=题材处在低位、确认还是拥挤，动作=经理建议，每万成本/回撤/规模用于看成本和风险；分批=分几次买入，看不懂指标时先看中文图例，新图不再显示英文简称。";
 
 function isFundReportCardImage(image = {}) {
   const alt = String(image?.alt || "");

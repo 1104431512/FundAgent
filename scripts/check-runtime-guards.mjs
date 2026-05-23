@@ -42,6 +42,10 @@ const forbiddenPatterns = [
     message: "Feishu image card legends must stay Chinese-first and avoid raw STAGE/BATCH labels."
   },
   {
+    pattern: /drawFundReportLegendPanel[\s\S]{0,420}题材阶段/,
+    message: "in-image fund chart legends must avoid opaque theme-stage wording; use shorter low/high labels."
+  },
+  {
     pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,2600}JSON\.stringify\(heldProfiles \|\| \[\], null, 2\)/,
     message: "portfolio decisions must not send full held profiles with raw NAV series to the model."
   },
@@ -157,8 +161,8 @@ const requiredPatterns = [
     message: "fund report charts must show longer-window low-position evidence in a compact readable label."
   },
   {
-    pattern: /题材阶段=板块位置/,
-    message: "fund report charts must explain theme-stage signals in Chinese instead of exposing stage."
+    pattern: /板块位置=这条赛道现在处在低位、确认、扩散还是拥挤/,
+    message: "fund report chart guides must explain theme-stage signals as plain Chinese board position."
   },
   {
     pattern: /function renderFundReportSummaryPng\(\{\s*profile,\s*width\s*=\s*1280,\s*height\s*=\s*760\s*\}\s*=\s*\{\}\)/,
@@ -349,8 +353,12 @@ const requiredPatterns = [
     message: "fund chart reading guides must tell users that report images are Chinese-first."
   },
   {
-    pattern: /买点=是否到了可买位置[\s\S]{0,260}120日低位\/250日低位=区间低位判断[\s\S]{0,260}规模=基金规模/,
+    pattern: /买点=是否到了可买位置[\s\S]{0,260}120日低位\/250日低位=是不是还在低位[\s\S]{0,260}规模=基金规模/,
     message: "fund chart reading guides must explain the key entry, low-position, and scale labels."
+  },
+  {
+    pattern: /指标速读：近20日\/近60日看是否追涨[\s\S]{0,160}每万成本看费用拖累/,
+    message: "fund chart reading guides must include a plain Chinese metric quick-read."
   },
   {
     pattern: /看不懂指标时先看中文图例/,
