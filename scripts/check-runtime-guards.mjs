@@ -276,6 +276,18 @@ const requiredPatterns = [
     message: "fund chart reading guides must summarize how many charts support buy and backup reasoning."
   },
   {
+    pattern: /图中英文缩写只是为了让图片排版清楚/,
+    message: "fund chart reading guides must translate image abbreviations into Chinese instead of leaving users to decode labels."
+  },
+  {
+    pattern: /ENTRY=入场判断[\s\S]{0,260}LOW=120日区间位置[\s\S]{0,260}SIZE=基金规模/,
+    message: "fund chart reading guides must explain the key entry, low-position, and scale labels."
+  },
+  {
+    pattern: /BATCH=分批买入[\s\S]{0,120}旧图里的 STAGE 也是/,
+    message: "fund report charts must avoid ambiguous STAGE in new images and explain it for users who saw older charts."
+  },
+  {
     pattern: /用来确认是否适合分批买入[\s\S]{0,120}用来观察是否能从备选转入买点/,
     message: "fund chart reading guides must explain how each chart supports buy or backup decisions."
   },

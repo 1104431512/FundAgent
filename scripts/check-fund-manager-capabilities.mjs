@@ -1564,6 +1564,8 @@ assert(serverSource.includes("sanitizeChartText"), "summary chart renderer must 
 assert(serverSource.includes("drawTextFit"), "summary chart renderer must fit large metric labels instead of shrinking them into QR-like bitmap text");
 assert(serverSource.includes("REPORT_CHART_MIN_TEXT_SCALE = 3"), "summary chart must keep thumbnail-safe minimum text scale");
 assert(serverSource.includes("showAxisLabels: false"), "summary chart must hide dense axis tick text in Feishu thumbnails");
+assert(serverSource.includes('staged_buy: "BATCH"'), "summary chart must render staged-buy states as BATCH instead of the ambiguous STAGE value");
+assert(!serverSource.includes('staged_buy: "STAGE"'), "summary chart must not show STAGE for staged-buy states in new images");
 for (const label of ["FUND", "NAV", "RANGE", "RET", "BUY/FEE", "ENTRY", "SIG", "LOW", "YLOW", "ACT", "CLASS", "FEE", "SHRP", "YRET", "SIZE"]) {
   assert(serverSource.includes(label), `summary chart must use readable compact label: ${label}`);
 }
@@ -1709,6 +1711,12 @@ assert(guidedChartAnswer.includes("配图阅读："), "final answer must append 
 assert(guidedChartAnswer.includes("本次配图共 12 张"), "chart reading guide must summarize how many charts support the answer");
 assert(guidedChartAnswer.includes("买入参考图"), "chart reading guide must distinguish buy-reference charts");
 assert(guidedChartAnswer.includes("备选观察图"), "chart reading guide must distinguish backup/watch charts");
+assert(guidedChartAnswer.includes("图中英文缩写只是为了让图片排版清楚"), "chart reading guide must explain that image abbreviations are only layout-safe labels");
+assert(guidedChartAnswer.includes("ENTRY=入场判断"), "chart reading guide must translate ENTRY for users");
+assert(guidedChartAnswer.includes("LOW=120日区间位置"), "chart reading guide must translate low-position chart labels");
+assert(guidedChartAnswer.includes("SIZE=基金规模"), "chart reading guide must translate fund scale labels");
+assert(guidedChartAnswer.includes("BATCH=分批买入"), "chart reading guide must translate the staged-buy chart value");
+assert(guidedChartAnswer.includes("旧图里的 STAGE 也是“分批买入”的意思"), "chart reading guide must clarify the old STAGE value users already saw");
 assert(guidedChartAnswer.includes("用来确认是否适合分批买入"), "buy-reference chart guide must say how the chart supports a buy decision");
 assert(guidedChartAnswer.includes("用来观察是否能从备选转入买点"), "backup chart guide must say how the chart supports a backup decision");
 const previousCardImageChunkSize = process.env.FEISHU_CARD_IMAGE_CHUNK_SIZE;

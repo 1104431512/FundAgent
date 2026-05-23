@@ -6706,6 +6706,17 @@ function getFundReportProfileKey(profile) {
   return profile?.code || profile?.seed?.code || profile?.name || profile?.seed?.name || "";
 }
 
+const FUND_REPORT_CHART_LEGEND_LINES = [
+  "图中英文缩写只是为了让图片排版清楚，含义如下：FUND=基金代码，NAV=最新净值，RANGE=本图区间涨跌，TREND=净值走势，BUY/FEE=买点和费用。",
+  "顶部五格：ENTRY=入场判断，SIG=回调或启动信号，LOW=120日区间位置，YLOW=250日区间位置，ACT=经理动作。",
+  "右侧六格：CLASS=份额类别，FEE=每万元估算费用，20/60=近20日/近60日涨跌，DROP=距高点回撤，SIZE=基金规模。",
+  "常见状态：BUY=可买，BATCH=分批买入，WAIT=等待回撤，AVOID=暂回避，OBS=观察，PULL=回调完成，LAUNCH=启动前夜，MISS/NA=暂无可靠数据。旧图里的 STAGE 也是“分批买入”的意思。"
+];
+
+function getFundReportChartLegendLines() {
+  return [...FUND_REPORT_CHART_LEGEND_LINES];
+}
+
 function appendFundReportChartReadingGuide(text, chartProfiles = []) {
   const body = normalizeUserFacingFundAnswer(text).trim();
   const snapshots = collectTrendSnapshotsFromProfiles(chartProfiles).slice(0, getFundReportChartLimit());
@@ -6717,9 +6728,16 @@ function appendFundReportChartReadingGuide(text, chartProfiles = []) {
   });
   const buyCount = snapshots.filter((item) => String(item.snapshot?.reportChartRole || inferSupplementalFundReportChartRole(item.snapshot)).includes("买入")).length;
   const backupCount = snapshots.length - buyCount;
-  return normalizeUserFacingFundAnswer(
-    [body, "", "配图阅读：", `本次配图共 ${snapshots.length} 张：买入参考 ${buyCount} 张，备选观察 ${backupCount} 张。`, ...lines].join("\n")
-  );
+  return [
+    body,
+    "",
+    "配图阅读：",
+    `本次配图共 ${snapshots.length} 张：买入参考 ${buyCount} 张，备选观察 ${backupCount} 张。`,
+    ...getFundReportChartLegendLines(),
+    "",
+    "逐张看图：",
+    ...lines
+  ].join("\n");
 }
 
 function formatFundReportChartGuideEvidence(profile = {}, role = "") {
@@ -11298,7 +11316,7 @@ function chartMetricColor(label, value) {
 }
 
 function chartDecisionColor(value) {
-  return ["buyable_now", "staged_buy", "BUY", "STAGE"].includes(String(value || ""))
+  return ["buyable_now", "staged_buy", "BUY", "BATCH", "STAGE"].includes(String(value || ""))
     ? [22, 130, 93, 255]
     : ["wait_pullback", "avoid_now", "WAIT", "AVOID"].includes(String(value || ""))
       ? [194, 65, 12, 255]
@@ -11320,7 +11338,7 @@ function chartLowPositionColor(value) {
 }
 
 function chartActionColor(value) {
-  return ["buy", "staged_buy", "BUY", "STAGE"].includes(String(value || ""))
+  return ["buy", "staged_buy", "BUY", "BATCH", "STAGE"].includes(String(value || ""))
     ? [22, 130, 93, 255]
     : ["wait", "avoid", "WAIT", "AVOID"].includes(String(value || ""))
       ? [194, 65, 12, 255]
@@ -11355,7 +11373,7 @@ function formatChartSetupSignal(value) {
 function formatChartEntryBias(value) {
   const labels = {
     buyable_now: "BUY",
-    staged_buy: "STAGE",
+    staged_buy: "BATCH",
     wait_pullback: "WAIT",
     hold_observe: "OBS",
     avoid_now: "AVOID"
@@ -11366,7 +11384,7 @@ function formatChartEntryBias(value) {
 function formatChartAction(value) {
   const labels = {
     buy: "BUY",
-    staged_buy: "STAGE",
+    staged_buy: "BATCH",
     wait: "WAIT",
     avoid: "AVOID",
     hold: "HOLD"
@@ -14889,6 +14907,7 @@ export {
   evaluateFundAnswerQuality,
   filterFocusedPullbackRankingCandidates,
   getFeishuCardImageChunkSize,
+  getFundReportChartLegendLines,
   getFundReportChartLimit,
   getFundReportChartMinCount,
   getPortfolioTrendImageLimit,
