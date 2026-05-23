@@ -955,6 +955,49 @@ const reviewedHeldDecision = manager.ensurePortfolioHeldPositionsReviewed({ acti
 ], { profiles: [hotVerifiedSeedProfile] });
 assert(reviewedHeldDecision.actions.some((item) => item.code === "000011"), "portfolio decision must not silently omit existing holdings");
 assert(reviewedHeldDecision.sources.includes("held_position_review_fallback"), "held position fallback must be traceable in decision sources");
+const overriddenHotHold = manager.enforcePortfolioHeldPositionRiskOverrides([
+  {
+    action: "HOLD",
+    code: "000011",
+    name: "热门强势主题基金A",
+    amount: 0,
+    reason: "模型看到偏热但仍想继续持有",
+    riskControl: "等下次回撤再处理"
+  }
+], [hotVerifiedSeedProfile], [heldPosition]);
+assert.equal(overriddenHotHold[0].action, "SELL", "held-position risk override must convert under-reactive HOLD on verified hot holdings into staged SELL");
+assert(overriddenHotHold[0].reason.includes("系统风控覆盖模型HOLD"), "held-position risk override must explain why it overrode model HOLD");
+assert(overriddenHotHold[0].dataBasis.includes("来源：portfolio_held_position_risk_override"), "held-position risk override must leave a traceable source");
+assert(overriddenHotHold[0].dataBasis.some((item) => item.includes("系统卖出纪律确认")), "held-position risk override must pass sell-discipline confirmation");
+const hotHoldFromModelText = manager.enforcePortfolioHeldPositionRiskOverrides([
+  {
+    action: "HOLD",
+    code: "000012",
+    name: "模型已识别高位基金C",
+    amount: 0,
+    reason: "已有持仓但最新趋势为高位强势，20日+19.64%、60日+61.10%、120日位置100%，不符合新增买入。",
+    riskControl: "若下次复核仍高位，降至6%-8%观察仓。"
+  }
+], [], [
+  {
+    code: "000012",
+    name: "模型已识别高位基金C",
+    currentValue: 8000,
+    weightPct: 8,
+    unrealizedPnlPct: -1.5,
+    lastNav: 1.2345,
+    lastNavDate: "2026-05-22",
+    fundSnapshot: { trendProfile: { ok: false, note: "fetch failed" } }
+  }
+]);
+assert.equal(hotHoldFromModelText[0].action, "SELL", "held-position risk override must use model-written hot-position evidence when structured trend fetch is temporarily missing");
+assert(hotHoldFromModelText[0].dataBasis.some((item) => item.includes("模型持仓理由显示近20日")), "model-text risk override must carry parsed hot-return evidence");
+const quietHoldOverride = manager.enforcePortfolioHeldPositionRiskOverrides([
+  { action: "HOLD", code: "000010", name: "中证A500ETF联接C", amount: 0, reason: "继续观察" }
+], [verifiedSeedProfile], [
+  { code: "000010", name: "中证A500ETF联接C", currentValue: 6000, weightPct: 6, unrealizedPnlPct: 2.1 }
+]);
+assert.equal(quietHoldOverride[0].action, "HOLD", "held-position risk override must not sell quiet verified holdings");
 assert.equal(
   manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, verifiedSeedProfile).ok,
   true,

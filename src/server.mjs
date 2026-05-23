@@ -964,6 +964,7 @@ async function executePortfolioDecision(db, run, config) {
   const executionProfiles = mergePortfolioProfiles(heldProfiles, actionProfiles);
   decision.actions = enforcePortfolioRiskBudget(decision.actions, db.account, executionProfiles);
   decision.actions = enforcePortfolioBuyDiscipline(decision.actions, executionProfiles, db.account.positions, db.account);
+  decision.actions = enforcePortfolioHeldPositionRiskOverrides(decision.actions, executionProfiles, db.account.positions);
   decision.actions = enforcePortfolioSellDiscipline(decision.actions, executionProfiles, db.account.positions);
   const watchlistUpdates = applyPortfolioWatchlistUpdates(
     db,
@@ -3436,6 +3437,57 @@ function enforcePortfolioSellDiscipline(actions = [], profiles = [], positions =
   });
 }
 
+function enforcePortfolioHeldPositionRiskOverrides(actions = [], profiles = [], positions = []) {
+  const profileByCode = new Map((profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
+  const positionByCode = new Map((positions || []).filter(Boolean).map((position) => [position.code, position]));
+  return normalizePortfolioActions(actions).map((action) => {
+    if (!action.code || !["HOLD", "WATCH"].includes(action.action)) return action;
+    const position = positionByCode.get(action.code);
+    if (!position || Number(position.currentValue || 0) <= 0) return action;
+    const profile = profileByCode.get(action.code) || position.fundSnapshot || null;
+    const riskReview = buildPortfolioHeldPositionRiskReview(position, profile);
+    if (!shouldReduceHeldPositionFromReview(riskReview, profile, position)
+      && !hasPortfolioHeldActionReduceEvidence(action, position)) {
+      return action;
+    }
+    const proposedSell = {
+      ...action,
+      action: "SELL",
+      amount: round(Number(position.currentValue || action.amount || 0), 2),
+      targetWeightPct: 0,
+      reason: [
+        `系统风控覆盖模型${action.action}：持仓已触发降风险条件，不能继续无条件持有。`,
+        action.reason,
+        riskReview.slice(0, 3).join("；")
+      ].filter(Boolean).join(" "),
+      dataBasis: mergeStringLists(action.dataBasis, [
+        "来源：portfolio_held_position_risk_override",
+        ...riskReview.slice(0, 3)
+      ]),
+      chaseRisk: [
+        action.chaseRisk,
+        riskReview.find((item) => /偏热|等待回撤|回撤|破位|转弱|回避|止盈/.test(item)) || ""
+      ].filter(Boolean).join("；"),
+      riskControl: action.riskControl || inferPortfolioHeldPositionReduceTrigger(riskReview)
+    };
+    const guard = evaluatePortfolioSellDiscipline(proposedSell, profile, position);
+    if (!guard.ok) {
+      return {
+        ...action,
+        dataBasis: mergeStringLists(action.dataBasis, guard.evidence, ["来源：portfolio_held_position_risk_override_blocked"]),
+        chaseRisk: [action.chaseRisk, guard.reason].filter(Boolean).join("；"),
+        riskControl: action.riskControl || "本轮暂不自动减仓，下一次复核需补足可验证卖出证据。"
+      };
+    }
+    return {
+      ...proposedSell,
+      reason: [proposedSell.reason, guard.reason].filter(Boolean).join(" "),
+      dataBasis: mergeStringLists(proposedSell.dataBasis, [guard.reason], guard.evidence),
+      riskControl: guard.riskControl || proposedSell.riskControl || "按系统限额先做分批降仓，下一轮继续复核是否追加。"
+    };
+  });
+}
+
 function evaluatePortfolioSellDiscipline(action = {}, profile = null, position = null) {
   if (!action.code) {
     return {
@@ -3492,6 +3544,26 @@ function evaluatePortfolioSellDiscipline(action = {}, profile = null, position =
   };
 }
 
+function hasPortfolioHeldActionReduceEvidence(action = {}, position = {}) {
+  const actionText = [
+    action.reason,
+    action.rotationCheck,
+    action.positionCheck,
+    action.chaseRisk,
+    action.riskControl
+  ].filter(Boolean).join(" ");
+  if (!actionText) return false;
+  const return20d = extractPctAfterLabel(actionText, "20日");
+  const return60d = extractPctAfterLabel(actionText, "60日");
+  const highPosition = /(?:120日位置|250日位置)\s*(?:=|为|约)?\s*(?:9\d(?:\.\d+)?|100(?:\.0+)?)%/.test(actionText);
+  const hotLanguage = /高位强势|高追风险|偏热|等待回撤|等回撤|追涨风险|不符合新增买入|利润回吐|浮盈回吐|降至|减仓|降仓|卖出/.test(actionText);
+  const giveback = finiteMetricNumber(position.profitGivebackPct);
+  return (hotLanguage && highPosition)
+    || (hotLanguage && Number.isFinite(return20d) && return20d > 12)
+    || (hotLanguage && Number.isFinite(return60d) && return60d > 24)
+    || (/利润回吐|浮盈回吐|减仓|降仓|卖出/.test(actionText) && Number.isFinite(giveback) && giveback >= Math.abs(finiteNumberOr(process.env.PORTFOLIO_PROFIT_GIVEBACK_PCT, 4)));
+}
+
 function collectPortfolioSellDisciplineSignals(action = {}, profile = {}, position = {}) {
   const trend = profile.trendProfile || {};
   const actionability = profile.actionability || {};
@@ -3520,6 +3592,13 @@ function collectPortfolioSellDisciplineSignals(action = {}, profile = {}, positi
   if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback") signals.push("短期偏热或等待回撤，适合分批止盈");
   if (Number.isFinite(return20d) && return20d > 12) signals.push(`近20日${formatFallbackPct(return20d)}，需止盈防回吐`);
   if (Number.isFinite(return60d) && return60d > 24) signals.push(`近60日${formatFallbackPct(return60d)}，需降仓控制追涨暴露`);
+  const actionReturn20d = extractPctAfterLabel(actionText, "20日");
+  const actionReturn60d = extractPctAfterLabel(actionText, "60日");
+  if (/高位强势|高追风险|偏热|等待回撤|等回撤|追涨风险|不符合新增买入/.test(actionText)) {
+    signals.push("模型持仓理由已识别高位/追涨风险，需要降仓观察");
+  }
+  if (Number.isFinite(actionReturn20d) && actionReturn20d > 12) signals.push(`模型持仓理由显示近20日${formatFallbackPct(actionReturn20d)}，需止盈防回吐`);
+  if (Number.isFinite(actionReturn60d) && actionReturn60d > 24) signals.push(`模型持仓理由显示近60日${formatFallbackPct(actionReturn60d)}，需降仓控制追涨暴露`);
   if (/账户回撤|组合回撤|最大回撤预算/.test(actionText)) signals.push("账户级最大回撤预算触发，需要降低组合风险");
   if (Number.isFinite(unrealized) && unrealized <= -stopLossPct) signals.push(`持仓浮亏${formatFallbackPct(unrealized)}，触及单仓止损线`);
   if (/浮盈回吐|利润回吐|回吐保护/.test(actionText) && profitGiveback >= givebackPct) {
@@ -3529,6 +3608,14 @@ function collectPortfolioSellDisciplineSignals(action = {}, profile = {}, positi
     signals.push(`持仓浮盈${formatFallbackPct(unrealized)}，模型给出止盈/减仓意图`);
   }
   return mergeStringLists(signals);
+}
+
+function extractPctAfterLabel(text, label) {
+  const escaped = String(label || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = String(text || "").match(new RegExp(`${escaped}\\s*(?:=|为|约)?\\s*([+-]?\\d+(?:\\.\\d+)?)%`));
+  if (!match) return NaN;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : NaN;
 }
 
 function getPortfolioPositionFallbackNav(position = {}) {
@@ -15304,6 +15391,7 @@ export {
   defaultSkillIdsForWorkflow,
   enforceFundAnswerQuality,
   enforcePortfolioBuyDiscipline,
+  enforcePortfolioHeldPositionRiskOverrides,
   enforcePortfolioRiskBudget,
   enforcePortfolioSellDiscipline,
   evaluatePortfolioBuyDiscipline,

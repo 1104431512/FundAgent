@@ -796,6 +796,18 @@ const requiredPatterns = [
     message: "portfolio decision runs must preserve the manager's actual conclusion instead of overwriting it with the last progress message."
   },
   {
+    pattern: /enforcePortfolioBuyDiscipline\(decision\.actions[\s\S]{0,260}enforcePortfolioHeldPositionRiskOverrides\(decision\.actions[\s\S]{0,260}enforcePortfolioSellDiscipline\(decision\.actions/,
+    message: "portfolio decisions must convert under-reactive HOLD/WATCH on verified hot holdings into sell-discipline-checked reductions before order submission."
+  },
+  {
+    pattern: /function enforcePortfolioHeldPositionRiskOverrides[\s\S]{0,1400}portfolio_held_position_risk_override/,
+    message: "held-position risk override must explain when it replaces a model HOLD/WATCH with risk reduction."
+  },
+  {
+    pattern: /hasPortfolioHeldActionReduceEvidence[\s\S]{0,900}extractPctAfterLabel[\s\S]{0,900}高位强势/,
+    message: "held-position risk override must use model-written hot-position evidence when structured trend fetch temporarily fails."
+  },
+  {
     pattern: /accountAfter\.cumulativePnlPct[\s\S]{0,260}investedCost[\s\S]{0,260}严禁把初始本金/,
     message: "portfolio valuation prompt must force PnL percentages to use actual invested cost instead of initial capital."
   },
