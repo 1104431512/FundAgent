@@ -120,15 +120,15 @@ const requiredPatterns = [
     message: "fund screening final prompt must use Chinese manager-decision wording instead of Manager Decision."
   },
   {
-    pattern: /买点费用/,
-    message: "fund report charts must include a readable buy-point and fee evidence panel."
+    pattern: /买点成本/,
+    message: "fund report charts must include a readable buy-point and cost evidence panel."
   },
   {
-    pattern: /120日位[\s\S]{0,140}250日位/,
-    message: "fund report charts must show low-position labels as Chinese time-window positions rather than opaque metric names."
+    pattern: /120日低位[\s\S]{0,140}250日低位/,
+    message: "fund report charts must show low-position labels as plain Chinese time-window low-position evidence rather than opaque metric names."
   },
   {
-    pattern: /万元费/,
+    pattern: /每万成本/,
     message: "fund report charts must label fee evidence as per-10k cost instead of an unexplained numeric metric."
   },
   {
@@ -136,7 +136,7 @@ const requiredPatterns = [
     message: "fund report charts must use Chinese panel names instead of RISK/RET abbreviations."
   },
   {
-    pattern: /250日位/,
+    pattern: /250日低位/,
     message: "fund report charts must show longer-window low-position evidence in a compact readable label."
   },
   {
@@ -320,8 +320,12 @@ const requiredPatterns = [
     message: "fund chart reading guides must tell users that report images are Chinese-first."
   },
   {
-    pattern: /买点=是否到了可买位置[\s\S]{0,260}120日位\/250日位=区间位置[\s\S]{0,260}规模=基金规模/,
+    pattern: /买点=是否到了可买位置[\s\S]{0,260}120日低位\/250日低位=区间低位判断[\s\S]{0,260}规模=基金规模/,
     message: "fund chart reading guides must explain the key entry, low-position, and scale labels."
+  },
+  {
+    pattern: /看不懂指标时先看中文图例/,
+    message: "fund chart reading guides must reassure users that opaque indicators are explained in Chinese."
   },
   {
     pattern: /分批买=分几次买入[\s\S]{0,220}旧版英文简称已从新图移除/,
@@ -432,11 +436,11 @@ const requiredPatterns = [
     message: "supplemental fund image cards must explain which buy or backup charts they contain."
   },
   {
-    pattern: /FEISHU_FUND_IMAGE_CARD_LEGEND[\s\S]{0,260}图上中文短标签[\s\S]{0,260}分批=分几次买入[\s\S]{0,120}新图不再显示英文简称/,
+    pattern: /FEISHU_FUND_IMAGE_CARD_LEGEND[\s\S]{0,300}图上中文短标签[\s\S]{0,260}分批=分几次买入[\s\S]{0,120}新图不再显示英文简称/,
     message: "fund image cards must show a Chinese legend next to report images, not only in the main text body."
   },
   {
-    pattern: /buildFeishuImageCaption[\s\S]{0,700}先看“买点\/动作”判断能否买[\s\S]{0,320}“费用\/回撤\/规模”控制成本和风险/,
+    pattern: /buildFeishuImageCaption[\s\S]{0,700}先看“买点\/动作”判断能否买[\s\S]{0,320}“每万成本\/回撤\/规模”控制成本和风险/,
     message: "fund image captions must tell users how to read buy, low-position, fee, drawdown, and scale evidence."
   },
   {

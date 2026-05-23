@@ -80,6 +80,13 @@ const DEFAULT_PORTFOLIO_MANAGER_PROFILE = [
   "沟通纪律：只展示专业阶段、结论、证据和约束，不展示模型隐藏思考链。"
 ].join("\n");
 const USER_FACING_FUND_LABELS = [
+  ["BATCH", "分批买入"],
+  ["ENTRY", "买点"],
+  ["SIG", "信号"],
+  ["LOW", "120日低位"],
+  ["YLOW", "250日低位"],
+  ["FEEY", "每万成本"],
+  ["PULLBK", "回调信号"],
   ["extended_uptrend", "短期涨幅偏热"],
   ["pullback_complete", "回调完成待启动"],
   ["launch_setup", "启动前夜"],
@@ -123,15 +130,24 @@ const USER_FACING_FUND_FIELD_LABELS = [
   ["actionability", "买卖可行性评估"],
   ["action", "动作"],
   ["stage", "题材阶段"],
+  ["stageText", "题材阶段"],
+  ["stageReason", "题材阶段理由"],
   ["entryBias", "买点判断"],
+  ["entryBiasText", "买点判断"],
   ["fitLabel", "适配度"],
   ["trendLabel", "趋势状态"],
+  ["trendLabelText", "趋势状态"],
   ["forwardScore", "前瞻评分"],
   ["crowdingScore", "拥挤度"],
   ["rotationScore", "轮动评分"],
   ["lowPositionScore", "低位评分"],
   ["positionSignal", "位置判断"],
   ["actionBias", "操作倾向"],
+  ["actionBiasText", "操作倾向"],
+  ["actionText", "动作"],
+  ["score", "评分"],
+  ["allocationBand", "仓位上限"],
+  ["decisionBlocker", "买入限制"],
   ["pullbackSetup", "回调启动信号"],
   ["lowPositionPct120", "120日区间位置"],
   ["lowPositionPct250", "250日区间位置"],
@@ -7266,7 +7282,7 @@ async function buildFundReportCardImages(profiles, config) {
         code: item.code || "",
         name: item.name || "",
         role: item.snapshot.reportChartRole || "",
-        alt: `${item.snapshot.reportChartRole ? `${item.snapshot.reportChartRole}：` : ""}${item.code} ${item.name} 走势 / 回撤 / 阶段收益 / 买点费用风险图`.trim() || "基金报告图"
+        alt: `${item.snapshot.reportChartRole ? `${item.snapshot.reportChartRole}：` : ""}${item.code} ${item.name} 走势 / 回撤 / 阶段收益 / 买点成本风险图`.trim() || "基金报告图"
       });
     } catch (error) {
       console.error("[fund-report-trend-image-error]", item.code || item.name || "unknown", error);
@@ -7480,10 +7496,11 @@ function getFundReportProfileKey(profile) {
 
 const FUND_REPORT_CHART_LEGEND_LINES = [
   "图上底部已经加了中文图例说明：买点=可买/分批买/等待/回避/观察，信号=回调完成/启动/无。",
-  "120日位/250日位=区间相对位置，越低越接近低位，越高越接近高位；万元费=每1万元持有估算成本，分批=不一次买完。",
-  "新图只使用中文短标签：买点=是否到了可买位置，信号=回调完成或启动迹象，120日位/250日位=区间位置，动作=经理建议。",
-  "右侧六格：份额=A/C 等类别，万元费=每1万元估算成本，近20日/近60日=短中期涨跌，回撤=距近期高点回落，规模=基金规模（单位约为亿元）。",
+  "120日低位/250日低位=区间相对位置，越低越接近低位，越高越接近高位；每万成本=每1万元持有估算成本，分批=不一次买完。",
+  "新图只使用中文短标签：买点=是否到了可买位置，信号=回调完成或启动迹象，120日低位/250日低位=区间低位判断，动作=经理建议。",
+  "右侧六格：份额=A/C 等类别，每万成本=每1万元估算成本，近20日/近60日=短中期涨跌，回撤=距近期高点回落，规模=基金规模（单位约为亿元）。",
   "常见状态：可买=可以小仓位执行，分批买=分几次买入，等待=等回撤或确认，回避=暂不碰，观察=放备选池，缺失=数据不足。",
+  "看不懂指标时先看中文图例和逐张看图说明，不需要理解系统内部字段。",
   "旧版英文简称已从新图移除；如果客户拿旧图来问，直接解释为买点、信号、低位、动作和分批买入。"
 ];
 
@@ -7526,8 +7543,8 @@ function formatFundReportChartGuideEvidence(profile = {}, role = "") {
     Number.isFinite(Number(trend.return5dPct)) ? `近5日${formatFallbackPct(trend.return5dPct)}` : "",
     Number.isFinite(Number(trend.return10dPct)) ? `近10日${formatFallbackPct(trend.return10dPct)}` : "",
     Number.isFinite(Number(trend.return20dPct)) ? `近20日${formatFallbackPct(trend.return20dPct)}` : "",
-    Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置${round(Number(trend.lowPositionPct120), 1)}%` : "",
-    Number.isFinite(Number(trend.lowPositionPct250)) ? `250日位置${round(Number(trend.lowPositionPct250), 1)}%` : "",
+    Number.isFinite(Number(trend.lowPositionPct120)) ? `120日低位${round(Number(trend.lowPositionPct120), 1)}%` : "",
+    Number.isFinite(Number(trend.lowPositionPct250)) ? `250日低位${round(Number(trend.lowPositionPct250), 1)}%` : "",
     formatHoldingsOutlookEvidence(profile),
     fees.shareClassFeeModel?.label || profile.shareClassFeeModel?.label || ""
   ].filter(Boolean);
@@ -7719,7 +7736,7 @@ async function buildPortfolioTrendCardImages(run, config) {
       code: item.code || "",
       name: item.name || "",
       role: item.role || "",
-      alt: `${item.role ? `${item.role}：` : ""}${item.code} ${item.name} 走势 / 回撤 / 买点 / 费用证据`.trim() || "基金走势证据图"
+      alt: `${item.role ? `${item.role}：` : ""}${item.code} ${item.name} 走势 / 回撤 / 买点 / 成本证据`.trim() || "基金走势证据图"
     });
   }
   if (images.length) {
@@ -9455,7 +9472,7 @@ function hasNoQualifiedPullbackMessage(text) {
 
 function hasInternalFundSignalLeak(text) {
   const body = String(text || "");
-  const tokenPattern = /\b(?:extended_uptrend|pullback_complete|launch_setup|rebound_repair|range_or_mixed|germination|confirmation|diffusion|crowded|buyable_now|staged_buy|wait_pullback|hold_observe|avoid_now|tactical_only|weak_fit|not_suitable|need_specific_fund|high_chase_risk|low_position_rotation|acceptable_position|neutral_or_wait|early_staged_buy|watch_confirm|avoid_chasing|wait_or_small_starter|rotation_starter|trendProfile|actionability|entryBias|fitLabel|trendLabel|forwardScore|crowdingScore|rotationScore|lowPositionScore|positionSignal|actionBias|pullbackSetup|drawdownFromRecentHighPct|drawdownFrom120HighPct|lowPositionPct120|lowPositionPct250|return5dPct|return10dPct|return20dPct|return60dPct|return120dPct)\b/i;
+  const tokenPattern = /\b(?:STAGE|BATCH|ENTRY|FEEY|PULLBK|extended_uptrend|pullback_complete|launch_setup|rebound_repair|range_or_mixed|germination|confirmation|diffusion|crowded|buyable_now|staged_buy|wait_pullback|hold_observe|avoid_now|tactical_only|weak_fit|not_suitable|need_specific_fund|high_chase_risk|low_position_rotation|acceptable_position|neutral_or_wait|early_staged_buy|watch_confirm|avoid_chasing|wait_or_small_starter|rotation_starter|trendProfile|actionability|entryBias|fitLabel|trendLabel|forwardScore|crowdingScore|rotationScore|lowPositionScore|positionSignal|actionBias|pullbackSetup|drawdownFromRecentHighPct|drawdownFrom120HighPct|lowPositionPct120|lowPositionPct250|return5dPct|return10dPct|return20dPct|return60dPct|return120dPct)\b/i;
   return tokenPattern.test(body)
     || /\b(?:tactical\s+only|staged\s+buy|wait\s+pullback)\b/i.test(body)
     || /\b(?:stage|trend|action|fit)\s*[=:：]\s*[a-z_ -]{3,}/i.test(body);
@@ -9467,6 +9484,7 @@ function hasRawEnglishFundSectionLeak(text) {
 
 function normalizeUserFacingFundAnswer(text) {
   let output = String(text || "");
+  output = output.replace(/\bSTAGE\b/g, "分批买入");
   for (const [raw, label] of [...USER_FACING_FUND_FIELD_LABELS, ...USER_FACING_FUND_LABELS]) {
     output = output.replace(new RegExp(`\\b${escapeRegExp(raw)}\\b`, "gi"), label);
   }
@@ -9503,7 +9521,7 @@ function normalizeUserFacingFundAnswer(text) {
     .replace(/\bConfidence\s*[：:]\s*high\b/gi, "把握度较高")
     .replace(/\bConfidence\s*[：:]\s*medium\b/gi, "把握度中等")
     .replace(/\bConfidence\s*[：:]\s*low\b/gi, "把握度偏低")
-    .replace(/(趋势|动作|买点判断|入场判断|适配度|题材阶段|阶段|操作倾向|位置判断|前瞻评分|拥挤度|轮动评分|低位评分|走势画像|买卖可行性评估|可操作性评估|趋势状态|回调启动信号|120日区间位置|250日区间位置|距近期高点回撤)\s*[:：=]\s*/g, "$1：")
+    .replace(/(趋势|动作|买点|信号|买点判断|入场判断|适配度|题材阶段|阶段|题材阶段理由|操作倾向|位置判断|前瞻评分|拥挤度|轮动评分|低位评分|走势画像|买卖可行性评估|可操作性评估|趋势状态|回调启动信号|120日区间位置|250日区间位置|120日低位|250日低位|距近期高点回撤|评分|仓位上限|买入限制|每万成本)\s*[:：=]\s*/g, "$1：")
     .trim();
 }
 
@@ -12314,8 +12332,8 @@ function drawDecisionEvidenceStrip(canvas, { x, y, width, profile = {}, trend = 
   const items = [
     ["买点", formatChartEntryBias(trend.entryBias), chartDecisionColor(trend.entryBias)],
     ["信号", formatChartSetupSignal(trend.pullbackSetup?.signal), chartSignalColor(trend.pullbackSetup?.signal)],
-    ["120日位", formatChartMetricValue("LOW", trend.lowPositionPct120), chartLowPositionColor(trend.lowPositionPct120)],
-    ["250日位", formatChartMetricValue("YLOW", trend.lowPositionPct250), chartLowPositionColor(trend.lowPositionPct250)],
+    ["120日低位", formatChartMetricValue("LOW", trend.lowPositionPct120), chartLowPositionColor(trend.lowPositionPct120)],
+    ["250日低位", formatChartMetricValue("YLOW", trend.lowPositionPct250), chartLowPositionColor(trend.lowPositionPct250)],
     ["动作", formatChartAction(actionability.action), chartActionColor(actionability.action)]
   ];
   const gap = 10;
@@ -12340,7 +12358,7 @@ function drawDecisionEvidenceStrip(canvas, { x, y, width, profile = {}, trend = 
 }
 
 function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, trend = {} }) {
-  drawChartText(canvas, x, y - 30, "买点费用", [51, 65, 85, 255], {
+  drawChartText(canvas, x, y - 30, "买点成本", [51, 65, 85, 255], {
     asciiScale: REPORT_CHART_MIN_TEXT_SCALE,
     cjkScale: 1
   });
@@ -12348,7 +12366,7 @@ function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, tre
   const shareClass = getChartShareClass(profile);
   const rows = [
     ["CLASS", "份额", shareClass ? `${shareClass}类` : "缺失"],
-    ["FEE", "万元费", feeImpact.oneYearCostPer10000],
+    ["FEE", "每万成本", feeImpact.oneYearCostPer10000],
     ["20", "近20日", trend.return20dPct],
     ["60", "近60日", trend.return60dPct],
     ["DROP", "回撤", trend.drawdownFromRecentHighPct],
@@ -12384,8 +12402,8 @@ function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, tre
 function drawFundReportLegendPanel(canvas, { x, y, width, height }) {
   const lines = [
     "图例说明 买点=可买/分批买/等待/回避/观察 信号=回调完成/启动/无",
-    "120日位/250日位=越低越接近低位 越高越接近高位",
-    "万元费=每万元持有估算成本 分批=不一次买完 回撤=风险"
+    "120日低位/250日低位=越低越接近低位 越高越接近高位",
+    "每万成本=每万元估算成本 动作=买入/等待/回避"
   ];
   fillRect(canvas, x, y, width, height, [248, 250, 252, 255]);
   drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
@@ -14419,12 +14437,12 @@ function getFeishuCardImageChunkSize() {
   return Math.max(1, Math.min(6, Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE));
 }
 
-const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上中文短标签：买点=能否买，信号=回调/启动，120日位/250日位=低位位置，动作=经理建议，万元费/回撤/规模用于看成本和风险；分批=分几次买入，新图不再显示英文简称。";
+const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上中文短标签：买点=能否买，信号=回调/启动，120日低位/250日低位=是否真低位，动作=经理建议，每万成本/回撤/规模用于看成本和风险；分批=分几次买入，新图不再显示英文简称。";
 
 function isFundReportCardImage(image = {}) {
   const alt = String(image?.alt || "");
   return Boolean(image?.fundReportChart)
-    || /(基金报告图|基金走势证据图|走势\s*\/\s*回撤|买点\s*\/\s*费用|买点费用风险图)/.test(alt);
+    || /(基金报告图|基金走势证据图|走势\s*\/\s*回撤|买点\s*\/\s*(?:费用|成本)|买点(?:费用|成本)风险图)/.test(alt);
 }
 
 function buildFeishuFundImageLegendNote(images = []) {
@@ -14439,7 +14457,7 @@ function buildFeishuImageCaption(image = {}) {
   const codeName = [image.code, image.name].filter(Boolean).join(" ");
   const prefix = [role, codeName].filter(Boolean).join("：");
   const focused = prefix || label;
-  return `${focused.slice(0, 80)}。看图顺序：先看“买点/动作”判断能否买，再看“120日位/250日位”是否真低位，最后看“费用/回撤/规模”控制成本和风险。`;
+  return `${focused.slice(0, 80)}。看图顺序：先看“买点/动作”判断能否买，再看“120日低位/250日低位”是否真低位，最后看“每万成本/回撤/规模”控制成本和风险。`;
 }
 
 function buildFeishuImageSupplementText(images = [], chunkIndex = 0, chunkTotal = 1) {
