@@ -31,6 +31,22 @@ const forbiddenPatterns = [
   {
     pattern: /相对初始本金/,
     message: "portfolio PnL UI must not use initial capital as the visible percentage denominator."
+  },
+  {
+    pattern: /FUND_REPORT_CHART_LEGEND_LINES[\s\S]{0,900}\b(?:ENTRY|SIG|LOW\/YLOW|BATCH|STAGE|stage)\b/,
+    message: "fund chart reading guides must not keep raw legacy English labels in the standard customer-facing legend."
+  },
+  {
+    pattern: /FEISHU_FUND_IMAGE_CARD_LEGEND[\s\S]{0,260}\b(?:BATCH|STAGE|stage)\b/,
+    message: "Feishu image card legends must stay Chinese-first and avoid raw STAGE/BATCH labels."
+  },
+  {
+    pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,2600}JSON\.stringify\(heldProfiles \|\| \[\], null, 2\)/,
+    message: "portfolio decisions must not send full held profiles with raw NAV series to the model."
+  },
+  {
+    pattern: /function buildPortfolioPremarketWithModel[\s\S]{0,1800}JSON\.stringify\(profiles \|\| \[\], null, 2\)/,
+    message: "portfolio premarket reports must not send full holding profiles with raw NAV series to the model."
   }
 ];
 
@@ -120,7 +136,7 @@ const requiredPatterns = [
     message: "fund report charts must use Chinese panel names instead of RISK/RET abbreviations."
   },
   {
-    pattern: /年低/,
+    pattern: /250日位/,
     message: "fund report charts must show longer-window low-position evidence in a compact readable label."
   },
   {
@@ -300,19 +316,19 @@ const requiredPatterns = [
     message: "fund chart reading guides must summarize how many charts support buy and backup reasoning."
   },
   {
-    pattern: /新图已经使用中文短标签/,
+    pattern: /新图只使用中文短标签/,
     message: "fund chart reading guides must tell users that report images are Chinese-first."
   },
   {
-    pattern: /入场=是否到了可买位置[\s\S]{0,260}低位\/年低=120日\/250日区间位置[\s\S]{0,260}规模=基金规模/,
+    pattern: /买点=是否到了可买位置[\s\S]{0,260}120日位\/250日位=区间位置[\s\S]{0,260}规模=基金规模/,
     message: "fund chart reading guides must explain the key entry, low-position, and scale labels."
   },
   {
-    pattern: /分批=分几次买入[\s\S]{0,220}BATCH 或 STAGE 都是/,
-    message: "fund report charts must avoid ambiguous STAGE in new images and explain it for users who saw older charts."
+    pattern: /分批买=分几次买入[\s\S]{0,220}旧版英文简称已从新图移除/,
+    message: "fund report charts must explain staged buying in Chinese without reintroducing raw STAGE text."
   },
   {
-    pattern: /STAGE:\s*"分批"/,
+    pattern: /STAGE:\s*"分批买"/,
     message: "fund report charts must translate legacy STAGE values into Chinese if upstream data still contains them."
   },
   {
@@ -352,6 +368,14 @@ const requiredPatterns = [
     message: "portfolio decisions must use compact market snapshots to avoid model context-window failures."
   },
   {
+    pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,1800}compactHeldProfiles = \(heldProfiles \|\| \[\]\)\.map\(compactPortfolioReviewProfile\)[\s\S]{0,2600}JSON\.stringify\(compactHeldProfiles, null, 2\)/,
+    message: "portfolio decisions must compact held fund profiles before model prompts."
+  },
+  {
+    pattern: /function buildPortfolioPremarketWithModel[\s\S]{0,1200}compactProfiles = \(profiles \|\| \[\]\)\.map\(compactPortfolioReviewProfile\)[\s\S]{0,1800}JSON\.stringify\(compactProfiles, null, 2\)/,
+    message: "portfolio premarket reports must compact holding fund profiles before model prompts."
+  },
+  {
     pattern: /用来确认是否适合分批买入[\s\S]{0,120}用来观察是否能从备选转入买点/,
     message: "fund chart reading guides must explain how each chart supports buy or backup decisions."
   },
@@ -364,7 +388,7 @@ const requiredPatterns = [
     message: "fund report summary images must include an in-image Chinese legend instead of relying only on surrounding text."
   },
   {
-    pattern: /图例说明[\s\S]{0,160}买点=可买\/分批\/等待\/回避\/观察/,
+    pattern: /图例说明[\s\S]{0,160}买点=可买\/分批买\/等待\/回避\/观察/,
     message: "fund report images must explain buy-point states directly in Chinese."
   },
   {
@@ -408,11 +432,11 @@ const requiredPatterns = [
     message: "supplemental fund image cards must explain which buy or backup charts they contain."
   },
   {
-    pattern: /FEISHU_FUND_IMAGE_CARD_LEGEND[\s\S]{0,260}图上中文短标签[\s\S]{0,260}BATCH\/STAGE 都是分批买入/,
+    pattern: /FEISHU_FUND_IMAGE_CARD_LEGEND[\s\S]{0,260}图上中文短标签[\s\S]{0,260}分批=分几次买入[\s\S]{0,120}新图不再显示英文简称/,
     message: "fund image cards must show a Chinese legend next to report images, not only in the main text body."
   },
   {
-    pattern: /buildFeishuImageCaption[\s\S]{0,700}先看“入场\/动作”判断能否买[\s\S]{0,320}“费用\/回撤\/规模”控制成本和风险/,
+    pattern: /buildFeishuImageCaption[\s\S]{0,700}先看“买点\/动作”判断能否买[\s\S]{0,320}“费用\/回撤\/规模”控制成本和风险/,
     message: "fund image captions must tell users how to read buy, low-position, fee, drawdown, and scale evidence."
   },
   {

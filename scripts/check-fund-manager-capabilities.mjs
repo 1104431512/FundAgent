@@ -1770,16 +1770,16 @@ assert(serverSource.includes("drawChartTextFit"), "summary chart renderer must f
 assert(serverSource.includes("REPORT_CHART_MIN_TEXT_SCALE = 3"), "summary chart must keep thumbnail-safe minimum text scale");
 assert(serverSource.includes("showAxisLabels: false"), "summary chart must hide dense axis tick text in Feishu thumbnails");
 assert(serverSource.includes("drawFundReportLegendPanel"), "summary chart must include an in-image Chinese legend for chart terms");
-assert(serverSource.includes("图例说明 买点=可买/分批/等待/回避/观察"), "summary chart legend must explain buy-point states in Chinese");
+assert(serverSource.includes("图例说明 买点=可买/分批买/等待/回避/观察"), "summary chart legend must explain buy-point states in Chinese");
 assert(serverSource.includes("越低越接近低位") && serverSource.includes("越高越接近高位"), "summary chart legend must explain 120/250-day position metrics in Chinese");
 assert(serverSource.includes("分批=不一次买完"), "summary chart legend must explain staged buying without exposing STAGE");
 assert(serverSource.includes("120日位") && serverSource.includes("250日位"), "summary chart must label low-position evidence with Chinese time-window position labels");
 assert(serverSource.includes("万元费"), "summary chart must label fee evidence as per-10k cost");
 assert(serverSource.includes("回撤风险") && serverSource.includes("阶段收益"), "legacy chart panels must use Chinese labels instead of RISK/RET");
-assert(serverSource.includes('staged_buy: "分批"'), "summary chart must render staged-buy states in Chinese instead of the ambiguous STAGE value");
-assert(serverSource.includes('STAGE: "分批"'), "summary chart must translate legacy STAGE/BATCH values if upstream evidence still uses them");
+assert(serverSource.includes('staged_buy: "分批买"'), "summary chart must render staged-buy states in Chinese instead of the ambiguous STAGE value");
+assert(serverSource.includes('STAGE: "分批买"'), "summary chart must translate legacy STAGE/BATCH values if upstream evidence still uses them");
 assert(!serverSource.includes('staged_buy: "STAGE"'), "summary chart must not show STAGE for staged-buy states in new images");
-for (const label of ["基金", "净值", "区间涨跌", "净值走势", "买点费用", "入场", "信号", "低位", "年低", "动作", "份额", "费用", "近20日", "近60日", "回撤", "规模"]) {
+for (const label of ["基金", "净值", "区间涨跌", "净值走势", "买点费用", "买点", "信号", "120日位", "250日位", "动作", "份额", "费用", "近20日", "近60日", "回撤", "规模"]) {
   assert(serverSource.includes(label), `summary chart must use readable compact label: ${label}`);
 }
 for (const staleLabel of ["FUND SETUP", "NAV TREND", "DRAWDOWN FROM HIGH", "STAGE RETURN", "SETUP / RISK", "PULLBK", "FEEY", "20D", "60D", "120D", "250D"]) {
@@ -1794,8 +1794,8 @@ const tinyFontSource = serverSource.slice(serverSource.indexOf("const TINY_FONT"
 assert(!/[\u4e00-\u9fff]/.test(tinyFontSource), "tiny chart font must not keep Chinese bitmap glyphs that render like QR codes");
 assert(!/drawYAxisTickLabels\([^;\n]*["'][\u4e00-\u9fff]/.test(serverSource), "summary chart must not use Chinese axis labels in bitmap text");
 const localizedStageTerms = manager.normalizeUserFacingFundAnswer("stage=low_position_rotation，actionBias=early_staged_buy，positionSignal=high_chase_risk。");
-assert(localizedStageTerms.includes("阶段=低位轮动"), "localization must translate raw stage labels into Chinese");
-assert(localizedStageTerms.includes("操作倾向=早期分批买入"), "localization must translate raw action-bias labels into Chinese");
+assert(localizedStageTerms.includes("题材阶段：低位轮动"), "localization must translate raw stage labels into natural Chinese");
+assert(localizedStageTerms.includes("操作倾向：早期分批买入"), "localization must translate raw action-bias labels into natural Chinese");
 assert(!/\b(?:stage|actionBias|positionSignal|low_position_rotation|early_staged_buy|high_chase_risk)\b/i.test(localizedStageTerms), "localized stage text must not keep raw theme radar fields");
 assert(serverSource.includes("题材雷达："), "market evidence summary must present theme radar evidence in Chinese");
 assert(!serverSource.includes("theme.stage ? `stage=${theme.stage}`"), "market evidence summary must not feed raw stage enums to the final answer path");
@@ -2035,12 +2035,12 @@ assert(guidedChartAnswer.includes("配图阅读："), "final answer must append 
 assert(guidedChartAnswer.includes("本次配图共 12 张"), "chart reading guide must summarize how many charts support the answer");
 assert(guidedChartAnswer.includes("买入参考图"), "chart reading guide must distinguish buy-reference charts");
 assert(guidedChartAnswer.includes("备选观察图"), "chart reading guide must distinguish backup/watch charts");
-assert(guidedChartAnswer.includes("新图已经使用中文短标签"), "chart reading guide must tell users new images are Chinese-first");
-assert(guidedChartAnswer.includes("入场=是否到了可买位置"), "chart reading guide must explain the entry label for users");
-assert(guidedChartAnswer.includes("低位/年低=120日/250日区间位置"), "chart reading guide must translate low-position chart labels");
+assert(guidedChartAnswer.includes("新图只使用中文短标签"), "chart reading guide must tell users new images are Chinese-first");
+assert(guidedChartAnswer.includes("买点=是否到了可买位置"), "chart reading guide must explain the entry label for users");
+assert(guidedChartAnswer.includes("120日位/250日位=区间位置"), "chart reading guide must translate low-position chart labels");
 assert(guidedChartAnswer.includes("规模=基金规模"), "chart reading guide must explain fund scale labels");
-assert(guidedChartAnswer.includes("分批=分几次买入"), "chart reading guide must explain staged buying in Chinese");
-assert(guidedChartAnswer.includes("BATCH 或 STAGE 都是“分批买入”的意思"), "chart reading guide must clarify the old STAGE value users already saw");
+assert(guidedChartAnswer.includes("分批买=分几次买入"), "chart reading guide must explain staged buying in Chinese");
+assert(!/\b(?:ENTRY|SIG|LOW\/YLOW|BATCH|STAGE|stage)\b/.test(guidedChartAnswer), "chart reading guide must not reintroduce raw legacy English labels");
 assert(guidedChartAnswer.includes("用来确认是否适合分批买入"), "buy-reference chart guide must say how the chart supports a buy decision");
 assert(guidedChartAnswer.includes("用来观察是否能从备选转入买点"), "backup chart guide must say how the chart supports a backup decision");
 const previousCardImageChunkSize = process.env.FEISHU_CARD_IMAGE_CHUNK_SIZE;
@@ -2057,11 +2057,12 @@ const fundImageCaption = manager.buildFeishuImageCaption({
   alt: "买入参考图：000001 低位修复基金A 走势 / 回撤 / 买点 / 费用证据"
 });
 assert(fundImageCaption.includes("买入参考图：000001 低位修复基金A"), "fund image captions must keep the fund and chart role next to the image");
-assert(fundImageCaption.includes("先看“入场/动作”判断能否买"), "fund image captions must tell users how to read the chart next to the image");
+assert(fundImageCaption.includes("先看“买点/动作”判断能否买"), "fund image captions must tell users how to read the chart next to the image");
 assert(fundImageCaption.includes("“费用/回撤/规模”控制成本和风险"), "fund image captions must explain the right-side risk evidence next to the image");
 const fundImageLegend = manager.buildFeishuFundImageLegendNote([{ imageKey: "img_legend", fundReportChart: true }]);
 assert(fundImageLegend.includes("图上中文短标签"), "fund image cards must carry a Chinese chart legend next to the images");
-assert(fundImageLegend.includes("BATCH/STAGE 都是分批买入"), "fund image card legend must translate the batch-buy label");
+assert(fundImageLegend.includes("分批=分几次买入"), "fund image card legend must explain the batch-buy label in Chinese");
+assert(!/\b(?:BATCH|STAGE|stage)\b/.test(fundImageLegend), "fund image card legend must not keep raw legacy English labels");
 const supplementText = manager.buildFeishuImageSupplementText([
   { imageKey: "img_supp", fundReportChart: true, role: "备选观察图", code: "000004", name: "备选回踩基金C" }
 ], 1, 3);
@@ -2530,6 +2531,20 @@ assert(!compactWeeklyJson.includes("\"series\""), "weekly model context must not
 assert(!compactWeeklyJson.includes("dailyReturnPct"), "weekly model context must not carry per-day chart details");
 assert.equal(compactWeeklyContext.failedRuns.length, 1, "weekly compact context must preserve failed task evidence for reliability review");
 assert.equal(compactWeeklyContext.account.positions[0].topHoldings.length, 10, "weekly compact context must preserve top-ten holdings for position review");
+const portfolioDecisionSource = serverSource.slice(
+  serverSource.indexOf("async function buildPortfolioDecisionWithModel"),
+  serverSource.indexOf("async function buildPortfolioValuationWithModel")
+);
+assert(portfolioDecisionSource.includes("const compactHeldProfiles = (heldProfiles || []).map(compactPortfolioReviewProfile);"), "portfolio decision prompts must compact held profiles before model calls");
+assert(portfolioDecisionSource.includes("JSON.stringify(compactHeldProfiles, null, 2)"), "portfolio decision prompts must stringify compact held profiles");
+assert(!portfolioDecisionSource.includes("JSON.stringify(heldProfiles || [], null, 2)"), "portfolio decision prompts must not send raw held profiles");
+const portfolioPremarketSource = serverSource.slice(
+  serverSource.indexOf("async function buildPortfolioPremarketWithModel"),
+  serverSource.indexOf("async function buildPortfolioWeeklyWithModel")
+);
+assert(portfolioPremarketSource.includes("const compactProfiles = (profiles || []).map(compactPortfolioReviewProfile);"), "portfolio premarket prompts must compact holding profiles before model calls");
+assert(portfolioPremarketSource.includes("JSON.stringify(compactProfiles, null, 2)"), "portfolio premarket prompts must stringify compact holding profiles");
+assert(!portfolioPremarketSource.includes("JSON.stringify(profiles || [], null, 2)"), "portfolio premarket prompts must not send raw holding profiles");
 const previousModelMaxInputChars = process.env.MODEL_MAX_INPUT_CHARS;
 process.env.MODEL_MAX_INPUT_CHARS = "24000";
 const compactedModelInput = manager.compactModelInputForContext({

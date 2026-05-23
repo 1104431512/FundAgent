@@ -120,10 +120,10 @@ const USER_FACING_FUND_LABELS = [
 ];
 const USER_FACING_FUND_FIELD_LABELS = [
   ["trendProfile", "走势画像"],
-  ["actionability", "可操作性评估"],
+  ["actionability", "买卖可行性评估"],
   ["action", "动作"],
-  ["stage", "阶段"],
-  ["entryBias", "入场判断"],
+  ["stage", "题材阶段"],
+  ["entryBias", "买点判断"],
   ["fitLabel", "适配度"],
   ["trendLabel", "趋势状态"],
   ["forwardScore", "前瞻评分"],
@@ -1318,6 +1318,9 @@ async function executePortfolioWeekly(db, run, config) {
 
 async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, watchlist = [], watchlistProfiles = [], watchlistSeedCandidates = [], seedProfiles = [], config, profileContext }) {
   const exposureSummary = buildPortfolioExposureSummary(account.positions || []);
+  const compactHeldProfiles = (heldProfiles || []).map(compactPortfolioReviewProfile);
+  const compactWatchlistProfiles = (watchlistProfiles || []).map(compactPortfolioReviewProfile);
+  const compactSeedProfiles = (seedProfiles || []).map(compactPortfolioReviewProfile);
   const skillContext = buildSkillContextForIntent(
     { workflow: "portfolio_status", skillIds: ["fund-portfolio-profile", "fund-portfolio-research", "fund-portfolio-decision", "fund-portfolio-execution"] },
     []
@@ -1354,7 +1357,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     JSON.stringify(compactMarketSnapshotForModel(marketSnapshot), null, 2),
     "",
     "当前持仓联网资料：",
-    JSON.stringify(heldProfiles || [], null, 2),
+    JSON.stringify(compactHeldProfiles, null, 2),
     "",
     "组合穿透暴露诊断（系统计算，必须进入组合经理/风控经理理由）：",
     JSON.stringify(exposureSummary, null, 2),
@@ -1368,7 +1371,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     JSON.stringify(summarizePortfolioWatchlistForModel(watchlist), null, 2),
     "",
     "自选基金池联网资料：",
-    JSON.stringify((watchlistProfiles || []).map(compactPortfolioReviewProfile), null, 2),
+    JSON.stringify(compactWatchlistProfiles, null, 2),
     "",
     "今日购买准备队列（系统复核后）：",
     JSON.stringify(buildPortfolioDecisionReadinessQueue(watchlist, watchlistProfiles), null, 2),
@@ -1378,7 +1381,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     JSON.stringify((watchlistSeedCandidates || []).map(compactPortfolioSeedCandidateForModel), null, 2),
     "",
     "低位/回调候选联网资料：",
-    JSON.stringify((seedProfiles || []).map(compactPortfolioReviewProfile), null, 2),
+    JSON.stringify(compactSeedProfiles, null, 2),
     "",
     "输出 JSON 结构：",
     JSON.stringify(
@@ -1610,6 +1613,9 @@ function buildFallbackPortfolioValuationRaw({ accountBefore, accountAfter, posit
 }
 
 async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profiles, watchlist = [], watchlistProfiles = [], watchlistSeedCandidates = [], seedProfiles = [], activeOrders, lifecycle, config, profileContext }) {
+  const compactProfiles = (profiles || []).map(compactPortfolioReviewProfile);
+  const compactWatchlistProfiles = (watchlistProfiles || []).map(compactPortfolioReviewProfile);
+  const compactSeedProfiles = (seedProfiles || []).map(compactPortfolioReviewProfile);
   const skillContext = buildSkillContextForIntent(
     { workflow: "portfolio_status", skillIds: ["fund-portfolio-profile", "fund-portfolio-premarket", "fund-portfolio-research", "fund-portfolio-execution"] },
     []
@@ -1635,19 +1641,19 @@ async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profi
     JSON.stringify(compactMarketSnapshotForModel(marketSnapshot), null, 2),
     "",
     "当前持仓资料：",
-    JSON.stringify(profiles || [], null, 2),
+    JSON.stringify(compactProfiles, null, 2),
     "",
     "当前自选基金池：",
     JSON.stringify(summarizePortfolioWatchlistForModel(watchlist), null, 2),
     "",
     "自选基金池联网资料：",
-    JSON.stringify((watchlistProfiles || []).map(compactPortfolioReviewProfile), null, 2),
+    JSON.stringify(compactWatchlistProfiles, null, 2),
     "",
     "系统确定性召回的低位/回调候选：",
     JSON.stringify((watchlistSeedCandidates || []).map(compactPortfolioSeedCandidateForModel), null, 2),
     "",
     "低位/回调候选联网资料：",
-    JSON.stringify((seedProfiles || []).map(compactPortfolioReviewProfile), null, 2),
+    JSON.stringify(compactSeedProfiles, null, 2),
     "",
     "活动订单与生命周期更新：",
     JSON.stringify({ activeOrders, lifecycle }, null, 2),
@@ -7473,12 +7479,12 @@ function getFundReportProfileKey(profile) {
 }
 
 const FUND_REPORT_CHART_LEGEND_LINES = [
-  "图上底部已经加了中文图例说明：买点=可买/分批/等待/回避/观察，信号=回调完成/启动/无。",
+  "图上底部已经加了中文图例说明：买点=可买/分批买/等待/回避/观察，信号=回调完成/启动/无。",
   "120日位/250日位=区间相对位置，越低越接近低位，越高越接近高位；万元费=每1万元持有估算成本，分批=不一次买完。",
-  "新图已经使用中文短标签：入场=是否到了可买位置（新图写买点），信号=回调完成或启动迹象，低位/年低=120日/250日区间位置（新图写120日位/250日位），动作=经理建议。",
+  "新图只使用中文短标签：买点=是否到了可买位置，信号=回调完成或启动迹象，120日位/250日位=区间位置，动作=经理建议。",
   "右侧六格：份额=A/C 等类别，万元费=每1万元估算成本，近20日/近60日=短中期涨跌，回撤=距近期高点回落，规模=基金规模（单位约为亿元）。",
-  "常见状态：可买=可以小仓位执行，分批=分几次买入，等待=等回撤或确认，回避=暂不碰，观察=放备选池，缺失=数据不足。",
-  "如果看到旧图：ENTRY=入场，SIG=信号，LOW/YLOW=低位/年低，ACT=动作，BATCH 或 STAGE 都是“分批买入”的意思；新图不再直接写 stage。"
+  "常见状态：可买=可以小仓位执行，分批买=分几次买入，等待=等回撤或确认，回避=暂不碰，观察=放备选池，缺失=数据不足。",
+  "旧版英文简称已从新图移除；如果客户拿旧图来问，直接解释为买点、信号、低位、动作和分批买入。"
 ];
 
 function getFundReportChartLegendLines() {
@@ -7832,7 +7838,7 @@ function formatEvidenceField(label, value, suffix = "") {
     oneMonthPct: "近1月",
     dailyPct: "当日涨跌"
   };
-  return `${labels[label] || label}${formatted}${suffix}`;
+  return `${labels[label] || label}：${formatted}${suffix}`;
 }
 
 function formatFeeModelLabel(feeModel) {
@@ -7851,16 +7857,16 @@ function formatUserFacingFundLabel(value) {
 function formatThemeRadarEvidenceLine(theme = {}) {
   const fields = [
     theme.name || theme.id || "未知题材",
-    theme.stage ? `阶段${formatUserFacingFundLabel(theme.stage)}` : "",
+    theme.stage ? `题材阶段：${formatUserFacingFundLabel(theme.stage)}` : "",
     formatEvidenceField("forwardScore", theme.forwardScore),
     formatEvidenceField("crowdingScore", theme.crowdingScore),
     formatEvidenceField("rotationScore", theme.rotationScore),
     formatEvidenceField("lowPositionScore", theme.lowPositionScore),
-    theme.positionSignal ? `位置${formatUserFacingFundLabel(theme.positionSignal)}` : "",
-    theme.actionBias ? `操作倾向${formatUserFacingFundLabel(theme.actionBias)}` : "",
-    theme.primaryCatalyst ? `主要催化${theme.primaryCatalyst}` : "",
-    theme.evidence?.boards?.length ? `板块${theme.evidence.boards.slice(0, 2).map((item) => `${item.name}${formatSignedNumber(item.changePct)}%`).join("/")}` : "",
-    theme.evidence?.news?.length ? `新闻${theme.evidence.news.slice(0, 2).map((item) => item.title).join(" / ")}` : ""
+    theme.positionSignal ? `位置：${formatUserFacingFundLabel(theme.positionSignal)}` : "",
+    theme.actionBias ? `操作倾向：${formatUserFacingFundLabel(theme.actionBias)}` : "",
+    theme.primaryCatalyst ? `主要催化：${theme.primaryCatalyst}` : "",
+    theme.evidence?.boards?.length ? `板块：${theme.evidence.boards.slice(0, 2).map((item) => `${item.name}${formatSignedNumber(item.changePct)}%`).join("/")}` : "",
+    theme.evidence?.news?.length ? `新闻：${theme.evidence.news.slice(0, 2).map((item) => item.title).join(" / ")}` : ""
   ].filter(Boolean);
   return `- ${fields.join("，")}`;
 }
@@ -9497,7 +9503,7 @@ function normalizeUserFacingFundAnswer(text) {
     .replace(/\bConfidence\s*[：:]\s*high\b/gi, "把握度较高")
     .replace(/\bConfidence\s*[：:]\s*medium\b/gi, "把握度中等")
     .replace(/\bConfidence\s*[：:]\s*low\b/gi, "把握度偏低")
-    .replace(/(趋势|动作|入场判断|适配度)[:：]\s*/g, "$1：")
+    .replace(/(趋势|动作|买点判断|入场判断|适配度|题材阶段|阶段|操作倾向|位置判断|前瞻评分|拥挤度|轮动评分|低位评分|走势画像|买卖可行性评估|可操作性评估|趋势状态|回调启动信号|120日区间位置|250日区间位置|距近期高点回撤)\s*[:：=]\s*/g, "$1：")
     .trim();
 }
 
@@ -12377,7 +12383,7 @@ function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, tre
 
 function drawFundReportLegendPanel(canvas, { x, y, width, height }) {
   const lines = [
-    "图例说明 买点=可买/分批/等待/回避/观察 信号=回调完成/启动/无",
+    "图例说明 买点=可买/分批买/等待/回避/观察 信号=回调完成/启动/无",
     "120日位/250日位=越低越接近低位 越高越接近高位",
     "万元费=每万元持有估算成本 分批=不一次买完 回撤=风险"
   ];
@@ -12550,10 +12556,10 @@ function formatChartSetupSignal(value) {
 function formatChartEntryBias(value) {
   const labels = {
     buyable_now: "可买",
-    staged_buy: "分批",
+    staged_buy: "分批买",
     BUY: "可买",
-    BATCH: "分批",
-    STAGE: "分批",
+    BATCH: "分批买",
+    STAGE: "分批买",
     WAIT: "等待",
     AVOID: "回避",
     wait_pullback: "等待",
@@ -12566,10 +12572,10 @@ function formatChartEntryBias(value) {
 function formatChartAction(value) {
   const labels = {
     buy: "买入",
-    staged_buy: "分批",
+    staged_buy: "分批买",
     BUY: "买入",
-    BATCH: "分批",
-    STAGE: "分批",
+    BATCH: "分批买",
+    STAGE: "分批买",
     WAIT: "等待",
     AVOID: "回避",
     wait: "等待",
@@ -14380,7 +14386,7 @@ function getFeishuCardImageChunkSize() {
   return Math.max(1, Math.min(6, Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE));
 }
 
-const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上中文短标签：买点=能否买，信号=回调/启动，120日位/250日位=低位位置，动作=经理建议，万元费/回撤/规模用于看成本和风险；旧图里的 BATCH/STAGE 都是分批买入。";
+const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上中文短标签：买点=能否买，信号=回调/启动，120日位/250日位=低位位置，动作=经理建议，万元费/回撤/规模用于看成本和风险；分批=分几次买入，新图不再显示英文简称。";
 
 function isFundReportCardImage(image = {}) {
   const alt = String(image?.alt || "");
@@ -14400,7 +14406,7 @@ function buildFeishuImageCaption(image = {}) {
   const codeName = [image.code, image.name].filter(Boolean).join(" ");
   const prefix = [role, codeName].filter(Boolean).join("：");
   const focused = prefix || label;
-  return `${focused.slice(0, 80)}。看图顺序：先看“入场/动作”判断能否买，再看“低位/年低”是否真低位，最后看“费用/回撤/规模”控制成本和风险。`;
+  return `${focused.slice(0, 80)}。看图顺序：先看“买点/动作”判断能否买，再看“120日位/250日位”是否真低位，最后看“费用/回撤/规模”控制成本和风险。`;
 }
 
 function buildFeishuImageSupplementText(images = [], chunkIndex = 0, chunkTotal = 1) {
