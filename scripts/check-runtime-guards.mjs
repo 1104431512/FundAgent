@@ -1136,6 +1136,18 @@ const requiredPatterns = [
     message: "runtime stats must expose release metadata for the admin UI."
   },
   {
+    pattern: /function getRuntimeStats\(\)[\s\S]{0,260}shouldPersistRuntimeStats\(\)[\s\S]{0,180}runtimeStatsMemoryCache/,
+    message: "capability checks must read in-memory runtime stats instead of polluted production stats."
+  },
+  {
+    pattern: /function updateStats[\s\S]{0,700}shouldPersistRuntimeStats\(\)[\s\S]{0,180}fs\.writeFileSync\(STATS_PATH[\s\S]{0,260}runtimeStatsMemoryCache/,
+    message: "capability checks must not write synthetic diagnostic counters into data/stats.json."
+  },
+  {
+    pattern: /function shouldPersistRuntimeStats[\s\S]{0,220}FUNDAGENT_SKIP_SERVER_START[\s\S]{0,220}FUNDAGENT_PERSIST_TEST_STATS/,
+    message: "runtime stats persistence must be disabled by default in test imports with an explicit opt-in override."
+  },
+  {
     pattern: /function getRuntimeStats\(\)[\s\S]{0,360}diagnostics:\s*buildRuntimeDiagnostics\(stats\)/,
     message: "runtime stats must expose diagnostics so manager degradation is visible."
   },

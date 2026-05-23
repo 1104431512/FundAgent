@@ -12,6 +12,8 @@ const adminSource = fs.readFileSync(path.join(process.cwd(), "public", "admin.js
 const adminHtmlSource = fs.readFileSync(path.join(process.cwd(), "public", "admin.html"), "utf8");
 const manager = await import(serverPath);
 
+assert.equal(manager.shouldPersistRuntimeStats(), false, "capability checks must not write synthetic failures into runtime stats");
+
 const setupQuery = "我想要找一个回调完成，到了低位，准备要启动的基金";
 const intent = await manager.classifyMessageIntent({
   userText: setupQuery,

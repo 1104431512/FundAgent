@@ -172,6 +172,7 @@ let portfolioDbFlushInFlight = false;
 let portfolioDbFlushPending = false;
 let portfolioDbLastFlushError = "";
 const portfolioProgressFlushTimes = new Map();
+let runtimeStatsMemoryCache = null;
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
@@ -15198,7 +15199,9 @@ function getDefaultStats() {
 }
 
 function getRuntimeStats() {
-  const stats = normalizeStats(safeReadJson(STATS_PATH));
+  const stats = normalizeStats(shouldPersistRuntimeStats()
+    ? safeReadJson(STATS_PATH)
+    : runtimeStatsMemoryCache || {});
   return {
     ...stats,
     diagnostics: buildRuntimeDiagnostics(stats),
@@ -15213,9 +15216,23 @@ function updateStats(patch = {}) {
   }
   stats.last = { ...stats.last, ...(patch.last || {}) };
   stats.updatedAt = new Date().toISOString();
-  ensureDir(path.dirname(STATS_PATH));
-  fs.writeFileSync(STATS_PATH, `${JSON.stringify(stats, null, 2)}\n`, "utf8");
+  if (shouldPersistRuntimeStats()) {
+    ensureDir(path.dirname(STATS_PATH));
+    fs.writeFileSync(STATS_PATH, `${JSON.stringify(stats, null, 2)}\n`, "utf8");
+  } else {
+    runtimeStatsMemoryCache = stripRuntimeStatsComputedFields(stats);
+  }
   return stats;
+}
+
+function shouldPersistRuntimeStats() {
+  return process.env.FUNDAGENT_SKIP_SERVER_START !== "1"
+    || parseBoolean(process.env.FUNDAGENT_PERSIST_TEST_STATS, false);
+}
+
+function stripRuntimeStatsComputedFields(stats = {}) {
+  const { diagnostics, release, ...raw } = stats || {};
+  return raw;
 }
 
 function normalizeStats(value) {
@@ -16775,6 +16792,7 @@ export {
   renderFundReportSummaryPng,
   parseDotEnvValue,
   shouldReduceHeldPositionFromReview,
+  shouldPersistRuntimeStats,
   summarizePortfolioOrder,
   capPortfolioSellAmountByDiscipline,
   resolvePortfolioTradeAmount,
