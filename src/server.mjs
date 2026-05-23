@@ -9578,6 +9578,7 @@ function normalizeUserFacingFundAnswer(text) {
     .replace(/\bConfidence\s*[：:]\s*high\b/gi, "把握度较高")
     .replace(/\bConfidence\s*[：:]\s*medium\b/gi, "把握度中等")
     .replace(/\bConfidence\s*[：:]\s*low\b/gi, "把握度偏低")
+    .replace(/(走势画像|买卖可行性评估|动作|题材阶段|题材阶段理由|买点判断|适配度|趋势状态|前瞻评分|拥挤度|轮动评分|低位评分|位置判断|操作倾向|评分|仓位上限|买入限制|回调启动信号|120日区间位置|250日区间位置|近5日收益|近10日收益|近20日收益|近60日收益|近120日收益|距近期高点回撤|每万成本)\s*(?:为|是)\s*/g, "$1：")
     .replace(/(趋势|动作|买点|信号|买点判断|入场判断|适配度|题材阶段|阶段|题材阶段理由|操作倾向|位置判断|前瞻评分|拥挤度|轮动评分|低位评分|走势画像|买卖可行性评估|可操作性评估|趋势状态|回调启动信号|120日区间位置|250日区间位置|120日低位|250日低位|距近期高点回撤|评分|仓位上限|买入限制|每万成本)\s*[:：=]\s*/g, "$1：")
     .trim();
 }
@@ -12529,15 +12530,27 @@ function formatChartPct(value) {
 
 function formatChartMetricValue(label, value) {
   if (value === null || value === undefined || value === "") return "缺失";
-  if (["SIG", "ENT", "ENTRY", "ACT", "CLS", "CLASS", "SIZE"].includes(label)) return String(value || "缺失").slice(0, 8);
+  if (["SIG", "ENT", "ENTRY", "ACT", "CLS", "CLASS", "SIZE"].includes(label)) return formatChartStringValue(value, 8);
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return String(value || "缺失").slice(0, 6).toUpperCase();
+  if (!Number.isFinite(numeric)) return formatChartStringValue(value, 8);
   if (label === "LOW") return `${round(numeric, 1)}%`;
   if (["DD", "YDD", "DROP", "MAX", "YRET", "5d", "10d", "5", "10", "20", "60", "120"].includes(label)) return formatChartPct(numeric);
   if (label === "YLOW") return `${round(numeric, 1)}%`;
   if (label === "FEE") return `${round(numeric, 0)}元`;
   if (label === "SHRP") return String(round(numeric, 2));
   return String(round(numeric, 0));
+}
+
+function formatChartStringValue(value, maxLength = 8) {
+  const raw = String(value || "").trim();
+  if (!raw) return "缺失";
+  const exactLabel = formatUserFacingFundLabel(raw);
+  const localized = exactLabel !== raw
+    ? exactLabel
+    : hasInternalFundSignalLeak(raw)
+      ? normalizeUserFacingFundAnswer(raw)
+      : raw;
+  return normalizeChartDisplayText(localized).slice(0, Math.max(2, maxLength)) || "缺失";
 }
 
 function getChartShareClass(profile = {}) {

@@ -156,6 +156,14 @@ const requiredPatterns = [
     message: "fund report chart defaults must remain large enough for dense evidence cards."
   },
   {
+    pattern: /function formatChartStringValue[\s\S]{0,520}hasInternalFundSignalLeak\(raw\)[\s\S]{0,220}normalizeUserFacingFundAnswer\(raw\)/,
+    message: "fund report chart string values must localize raw internal enums before rendering."
+  },
+  {
+    pattern: /function formatChartMetricValue[\s\S]{0,360}formatChartStringValue\(value,\s*8\)[\s\S]{0,180}formatChartStringValue\(value,\s*8\)/,
+    message: "fund report chart metric fallbacks must use Chinese string localization instead of uppercase raw labels."
+  },
+  {
     pattern: /REPORT_CHART_MIN_TEXT_SCALE\s*=\s*3/,
     message: "fund report chart text must stay thumbnail-readable instead of falling back to tiny bitmap blocks."
   },
