@@ -796,6 +796,18 @@ const requiredPatterns = [
     message: "portfolio weekly/profile compact context must strip raw NAV series while preserving trend setup evidence."
   },
   {
+    pattern: /DEFAULT_MODEL_MAX_INPUT_CHARS\s*=\s*120000/,
+    message: "model calls need a global input ceiling to prevent context-window failures on long portfolio reports."
+  },
+  {
+    pattern: /function compactModelInputForContext[\s\S]{0,900}getModelMaxInputChars[\s\S]{0,900}compactTextMiddle/,
+    message: "model calls must compact oversized prompts before sending them to the API."
+  },
+  {
+    pattern: /lastModelInputOriginalChars[\s\S]{0,220}lastModelInputCompacted/,
+    message: "model input compaction must be visible in runtime stats for diagnosing report failures."
+  },
+  {
     pattern: /buildFallbackPortfolioWeeklyRaw/,
     message: "portfolio weekly reports must have a deterministic fallback instead of failing with no customer-facing report."
   },

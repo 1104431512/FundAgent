@@ -2117,6 +2117,27 @@ assert(!compactWeeklyJson.includes("\"series\""), "weekly model context must not
 assert(!compactWeeklyJson.includes("dailyReturnPct"), "weekly model context must not carry per-day chart details");
 assert.equal(compactWeeklyContext.failedRuns.length, 1, "weekly compact context must preserve failed task evidence for reliability review");
 assert.equal(compactWeeklyContext.account.positions[0].topHoldings.length, 10, "weekly compact context must preserve top-ten holdings for position review");
+const previousModelMaxInputChars = process.env.MODEL_MAX_INPUT_CHARS;
+process.env.MODEL_MAX_INPUT_CHARS = "24000";
+const compactedModelInput = manager.compactModelInputForContext({
+  systemText: `系统头${"指令".repeat(4000)}系统尾`,
+  userPrompt: [
+    "用户任务开头：必须总结真实账本。",
+    "A".repeat(90000),
+    "用户任务末尾：最新失败原因 input exceeds the context window，必须保留。"
+  ].join("\n"),
+  maxTokens: 9600
+});
+assert(compactedModelInput.compacted, "model input guard must compact oversized prompts before sending them to the API");
+assert(compactedModelInput.finalChars <= compactedModelInput.maxInputChars, "model input guard must enforce the configured input character ceiling");
+assert(compactedModelInput.userPrompt.includes("用户任务开头：必须总结真实账本"), "model input guard must preserve the task opening");
+assert(compactedModelInput.userPrompt.includes("用户任务末尾：最新失败原因 input exceeds the context window，必须保留"), "model input guard must preserve the newest evidence at the prompt tail");
+assert(compactedModelInput.userPrompt.includes("用户上下文已压缩"), "model input guard must visibly mark automatic compaction for debugging");
+if (previousModelMaxInputChars === undefined) {
+  delete process.env.MODEL_MAX_INPUT_CHARS;
+} else {
+  process.env.MODEL_MAX_INPUT_CHARS = previousModelMaxInputChars;
+}
 
 async function assertIntent({ userText, expectedWorkflow, expectedReason, expectedMode = null, requiredSkills = [] }) {
   const routed = await manager.classifyMessageIntent({

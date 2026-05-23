@@ -21,6 +21,7 @@ const STARTED_AT = new Date();
 const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS || 120000);
 const DEFAULT_MODEL_HTTP_TIMEOUT_MS = Number(process.env.MODEL_HTTP_TIMEOUT_MS ?? 0);
 const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 9600;
+const DEFAULT_MODEL_MAX_INPUT_CHARS = 120000;
 const DEFAULT_REPLY_MAX_CHARS = 18000;
 const MIN_FUND_EXTRACTION_OUTPUT_TOKENS = 1800;
 const MIN_FUND_ANALYST_OUTPUT_TOKENS = 7200;
@@ -8746,18 +8747,107 @@ async function testFeishuConnection() {
 async function callModel({ systemText, userPrompt, images = [], maxTokens, timeoutMs }) {
   const config = getEffectiveConfig();
   validateModelConfig(config);
+  const compactedInput = compactModelInputForContext({ systemText, userPrompt, maxTokens });
 
-  updateStats({ counters: { modelCalls: 1 }, last: { lastModelCallAt: new Date().toISOString() } });
+  updateStats({
+    counters: {
+      modelCalls: 1,
+      modelInputCompactions: compactedInput.compacted ? 1 : 0
+    },
+    last: {
+      lastModelCallAt: new Date().toISOString(),
+      lastModelInputChars: compactedInput.finalChars,
+      lastModelInputOriginalChars: compactedInput.originalChars,
+      lastModelInputCompacted: compactedInput.compacted
+    }
+  });
 
   try {
     if (normalizeWireApi(config.modelWireApi) === "chat_completions") {
-      return await callChatCompletionsApi({ config, systemText, userPrompt, images, maxTokens, timeoutMs });
+      return await callChatCompletionsApi({
+        config,
+        systemText: compactedInput.systemText,
+        userPrompt: compactedInput.userPrompt,
+        images,
+        maxTokens,
+        timeoutMs
+      });
     }
-    return await callResponsesApi({ config, systemText, userPrompt, images, maxTokens, timeoutMs });
+    return await callResponsesApi({
+      config,
+      systemText: compactedInput.systemText,
+      userPrompt: compactedInput.userPrompt,
+      images,
+      maxTokens,
+      timeoutMs
+    });
   } catch (error) {
     updateStats({ counters: { modelFailures: 1 }, last: { lastModelFailureAt: new Date().toISOString() } });
     throw error;
   }
+}
+
+function compactModelInputForContext({ systemText = "", userPrompt = "", maxTokens = 0 } = {}) {
+  const input = {
+    systemText: String(systemText || ""),
+    userPrompt: String(userPrompt || "")
+  };
+  const originalChars = input.systemText.length + input.userPrompt.length;
+  const maxInputChars = getModelMaxInputChars(maxTokens);
+  if (originalChars <= maxInputChars) {
+    return { ...input, compacted: false, originalChars, finalChars: originalChars, maxInputChars };
+  }
+
+  let systemBudget = Math.min(input.systemText.length, Math.max(4000, Math.floor(maxInputChars * 0.16)));
+  let compactedSystem = compactTextMiddle(input.systemText, systemBudget, {
+    headRatio: 0.72,
+    marker: "系统提示已压缩"
+  });
+  let userBudget = Math.max(8000, maxInputChars - compactedSystem.length);
+  if (userBudget > maxInputChars - 1000) {
+    userBudget = Math.max(8000, maxInputChars - 1000);
+    systemBudget = Math.max(1000, maxInputChars - userBudget);
+    compactedSystem = compactTextMiddle(input.systemText, systemBudget, {
+      headRatio: 0.72,
+      marker: "系统提示已压缩"
+    });
+  }
+  const compactedUser = compactTextMiddle(input.userPrompt, userBudget, {
+    headRatio: 0.35,
+    marker: "用户上下文已压缩"
+  });
+  const finalChars = compactedSystem.length + compactedUser.length;
+  return {
+    systemText: compactedSystem,
+    userPrompt: compactedUser,
+    compacted: true,
+    originalChars,
+    finalChars,
+    maxInputChars
+  };
+}
+
+function getModelMaxInputChars(maxTokens = 0) {
+  const configured = Number(process.env.MODEL_MAX_INPUT_CHARS || DEFAULT_MODEL_MAX_INPUT_CHARS);
+  const outputReserve = Math.max(0, Number(maxTokens || 0) - DEFAULT_MODEL_MAX_OUTPUT_TOKENS);
+  const reserveChars = outputReserve > 0 ? Math.min(30000, outputReserve * 2) : 0;
+  const budget = Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_MODEL_MAX_INPUT_CHARS;
+  return Math.max(24000, Math.min(500000, Math.floor(budget - reserveChars)));
+}
+
+function compactTextMiddle(text, maxChars, options = {}) {
+  const value = String(text || "");
+  const limit = Math.floor(Number(maxChars || 0));
+  if (!value || value.length <= limit || limit <= 0) return value.slice(0, Math.max(0, limit));
+  const marker = `\n\n[${options.marker || "模型输入已压缩"}：中间省略 ${value.length - limit} 字，保留开头任务指令和末尾最新证据，避免超过模型上下文窗口。]\n\n`;
+  if (limit <= marker.length + 200) {
+    return `${value.slice(0, Math.max(0, limit - marker.length))}${marker}`.slice(0, limit);
+  }
+  const bodyBudget = limit - marker.length;
+  const headRatio = Number.isFinite(Number(options.headRatio)) ? Number(options.headRatio) : 0.4;
+  const headChars = Math.max(120, Math.floor(bodyBudget * Math.min(0.8, Math.max(0.2, headRatio))));
+  const tailChars = Math.max(120, bodyBudget - headChars);
+  return `${value.slice(0, headChars)}${marker}${value.slice(-tailChars)}`;
 }
 
 async function callResponsesApi({ config, systemText, userPrompt, images, maxTokens, timeoutMs }) {
@@ -14943,6 +15033,7 @@ export {
   buildPullbackQualityFallbackAnswer,
   buildFundWorkflowWatchlistSummary,
   classifyMessageIntent,
+  compactModelInputForContext,
   computeTrendProfile,
   defaultSkillIdsForWorkflow,
   enforceFundAnswerQuality,
