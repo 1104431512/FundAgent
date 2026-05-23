@@ -5,7 +5,8 @@ const root = process.cwd();
 const server = fs.readFileSync(path.join(root, "src", "server.mjs"), "utf8");
 const admin = fs.readFileSync(path.join(root, "public", "admin.js"), "utf8");
 const adminHtml = fs.readFileSync(path.join(root, "public", "admin.html"), "utf8");
-const allSource = [server, admin, adminHtml].join("\n");
+const adminCss = fs.readFileSync(path.join(root, "public", "styles.css"), "utf8");
+const allSource = [server, admin, adminHtml, adminCss].join("\n");
 
 const forbiddenPatterns = [
   {
@@ -818,6 +819,22 @@ const requiredPatterns = [
   {
     pattern: /exposureSummary/,
     message: "portfolio API must expose look-through exposure diagnostics for the admin UI."
+  },
+  {
+    pattern: /capabilityDiagnostics:\s*buildPortfolioCapabilityDiagnostics\(db\)/,
+    message: "portfolio API must expose manager capability diagnostics derived from the real ledger."
+  },
+  {
+    pattern: /function buildPortfolioCapabilityDiagnostics[\s\S]{0,4200}盈利能力承压[\s\S]{0,4200}追涨暴露待消化[\s\S]{0,4200}数据质量缺口/,
+    message: "portfolio capability diagnostics must cover profitability, chase-risk exposure, and data-quality gaps."
+  },
+  {
+    pattern: /portfolioCapabilitySummary[\s\S]{0,500}buildCapabilityInsightItems|buildCapabilityInsightItems[\s\S]{0,500}portfolioCapabilitySummary/,
+    message: "admin portfolio UI must show capability diagnostics instead of hiding manager weaknesses in raw JSON."
+  },
+  {
+    pattern: /portfolio-insight-grid[\s\S]{0,180}repeat\(auto-fit,\s*minmax\(250px,\s*1fr\)\)/,
+    message: "admin portfolio insight cards must remain responsive after adding capability diagnostics."
   },
   {
     pattern: /同题材暴露[\s\S]{0,600}底层重叠/,

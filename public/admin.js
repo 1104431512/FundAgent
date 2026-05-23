@@ -322,6 +322,8 @@ function renderPortfolioDashboard(portfolio = {}) {
   renderInsightList("#portfolioManagerSummary", buildManagerInsightItems(portfolio, latestRun, activeOrders), "暂无经理运行摘要。");
   renderInsightList("#portfolioHoldingSummary", buildHoldingInsightItems(account, positions, portfolio.exposureSummary || null), "暂无持仓暴露。");
   renderInsightList("#portfolioReadinessSummary", buildReadinessInsightItems({ ready, waiting, launchEve, blocked }), "暂无接近买点的候选。");
+  updatePortfolioCapabilityBadge(portfolio.capabilityDiagnostics || {});
+  renderInsightList("#portfolioCapabilitySummary", buildCapabilityInsightItems(portfolio.capabilityDiagnostics || {}), "暂无明显能力短板。");
 }
 
 function updateRunStateBadge(latestRun, scheduler = {}) {
@@ -450,6 +452,36 @@ function buildReadinessInsightItems({ ready, waiting, launchEve, blocked }) {
       meta: "启动前夜只做复核，偏热或证据不足不进入买入执行"
     }
   ];
+}
+
+function updatePortfolioCapabilityBadge(diagnostics = {}) {
+  const node = document.querySelector("#portfolioCapabilityState");
+  if (!node) return;
+  const level = diagnostics.level || "ok";
+  const label = {
+    critical: "严重",
+    warning: "预警",
+    info: "观察",
+    ok: "正常"
+  }[level] || "观察";
+  node.textContent = label;
+  node.className = `badge ${level === "critical" ? "bad" : level === "warning" ? "warn" : "ok"}`;
+}
+
+function buildCapabilityInsightItems(diagnostics = {}) {
+  const items = Array.isArray(diagnostics.items) ? diagnostics.items : [];
+  if (!items.length) {
+    return [{
+      label: "能力状态",
+      value: diagnostics.summary || "组合能力暂无明显短板",
+      meta: "继续跟踪盈利、回撤、召回质量、数据质量和交易确认"
+    }];
+  }
+  return items.slice(0, 4).map((item) => ({
+    label: item.label || "能力信号",
+    value: item.value || formatDiagnosticSeverity(item.severity),
+    meta: item.note || diagnostics.summary || ""
+  }));
 }
 
 function renderInsightList(selector, items, emptyText) {

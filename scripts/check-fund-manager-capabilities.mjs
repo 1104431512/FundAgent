@@ -71,6 +71,49 @@ assert.equal(runtimeDiagnostics.level, "critical", "runtime diagnostics must sur
 assert(runtimeDiagnostics.items.some((item) => item.label === "模型上下文超限"), "runtime diagnostics must flag context-window failures");
 assert(runtimeDiagnostics.items.some((item) => item.label === "市场快照失败"), "runtime diagnostics must flag market data source failures");
 assert(runtimeDiagnostics.items.some((item) => item.label === "持仓补全失败"), "runtime diagnostics must flag top-holdings data failures");
+const portfolioCapabilityDiagnostics = manager.buildPortfolioCapabilityDiagnostics({
+  account: {
+    cash: 70000,
+    totalAsset: 99671.93,
+    investedCost: 30002.28,
+    cumulativePnl: -328.07,
+    cumulativePnlPct: -1.09,
+    positions: [{
+      code: "006265",
+      name: "红土创新新科技股票A",
+      weightPct: 9.85,
+      lastNavDate: "2026-05-21",
+      profitGivebackPct: 4.82,
+      peakUnrealizedPnlPct: 3.24,
+      unrealizedPnlPct: -1.58,
+      fundSnapshot: {
+        trendProfile: { ok: true, trendLabel: "extended_uptrend", entryBias: "wait_pullback" },
+        actionability: { decisionBlocker: ["短期涨幅偏热，不符合回调完成后启动的买点。"] },
+        topHoldings: ["300308 中际旭创 8.54%", "300502 新易盛 8.36%"]
+      }
+    }, {
+      code: "008327",
+      name: "东财通信C",
+      weightPct: 11.85,
+      lastNavDate: "2000-01-01",
+      fundSnapshot: {
+        trendProfile: { ok: false, note: "fetch failed" },
+        actionability: { holdingsOutlook: { hasHoldings: false } },
+        topHoldings: []
+      }
+    }]
+  },
+  watchlist: [{ code: "001000", name: "低位候选", status: "waiting_pullback" }],
+  transactions: [{ side: "BUY", code: "006265", amount: 10000, nav: null, navDate: "" }],
+  runs: [{ date: "2026-05-22", type: "decision", status: "failed", error: "Your input exceeds the context window." }]
+});
+assert.equal(portfolioCapabilityDiagnostics.level, "critical", "portfolio capability diagnostics must flag severe ledger-derived weaknesses");
+assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "盈利能力承压"), "capability diagnostics must surface actual invested-cost profitability pressure");
+assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "追涨暴露待消化"), "capability diagnostics must surface hot-position chase risk");
+assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "数据质量缺口"), "capability diagnostics must surface stale or missing position evidence");
+assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "成交净值待核验"), "capability diagnostics must surface unverified virtual trade fills");
+assert(serverSource.includes("capabilityDiagnostics: buildPortfolioCapabilityDiagnostics(db)"), "portfolio API must expose capability diagnostics");
+assert(adminSource.includes("buildCapabilityInsightItems") && adminHtmlSource.includes("portfolioCapabilitySummary"), "admin UI must render portfolio capability diagnostics");
 const pollutedLocalStatsDiagnostics = manager.buildRuntimeDiagnostics({
   counters: {
     messageEvents: 0,

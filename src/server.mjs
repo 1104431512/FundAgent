@@ -6391,6 +6391,7 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
     })),
     account: summarizeAccount(db.account),
     exposureSummary: buildPortfolioExposureSummary(db.account.positions || []),
+    capabilityDiagnostics: buildPortfolioCapabilityDiagnostics(db),
     positions: db.account.positions.map(summarizePosition),
     watchlist: getActivePortfolioWatchlist(db).slice(0, lightweight ? 12 : 50).map(summarizeWatch),
     activeOrders: (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status)).map(summarizePortfolioOrder),
@@ -6470,6 +6471,161 @@ function sanitizePortfolioPublicReportValue(value, key = "") {
 
 function shouldPreservePortfolioPublicString(key = "") {
   return /(?:^|_)(?:id|code|url|source|sources|receiveId|receiveIdMasked|imageKey|rawModelOutput)$/i.test(String(key || ""));
+}
+
+function buildPortfolioCapabilityDiagnostics(db = {}) {
+  const account = db.account || {};
+  const positions = Array.isArray(account.positions) ? account.positions : [];
+  const watchlist = normalizePortfolioWatchlist(db.watchlist || []);
+  const runs = Array.isArray(db.runs) ? db.runs : [];
+  const transactions = Array.isArray(db.transactions) ? db.transactions : [];
+  const exposureSummary = buildPortfolioExposureSummary(positions);
+  const items = [];
+  const add = (severity, label, value, note) => {
+    if (!label || !value) return;
+    items.push({ severity, label, value, note: String(note || "") });
+  };
+
+  const cumulativePnlPct = Number(account.cumulativePnlPct);
+  if (Number.isFinite(cumulativePnlPct) && cumulativePnlPct < 0) {
+    add(
+      cumulativePnlPct <= -3 ? "critical" : "warning",
+      "盈利能力承压",
+      `${formatSignedNumber(Number(account.cumulativePnl || 0))}元 / ${formatFallbackPct(cumulativePnlPct)}`,
+      `收益率按实际投入成本${round(Number(account.investedCost || 0), 2)}元计算；下一轮要先解释亏损来源，再决定是否补仓。`
+    );
+  }
+
+  const hotPositions = positions.filter(isPortfolioHotChasePosition).slice(0, 4);
+  if (hotPositions.length) {
+    add(
+      "warning",
+      "追涨暴露待消化",
+      `${hotPositions.length} 只持仓偏热`,
+      `${hotPositions.map(formatPortfolioPositionLabel).join(" / ")} 已处于偏热或等待回撤状态，新增同线买入应暂停，只做回撤后复核。`
+    );
+  }
+
+  if (exposureSummary.riskNotes?.length) {
+    add(
+      exposureSummary.riskLevel === "high" ? "critical" : "warning",
+      "组合集中度风险",
+      exposureSummary.riskLevel === "high" ? "需要降温" : "需要复核",
+      exposureSummary.riskNotes[0]
+    );
+  }
+
+  const givebackPositions = positions.filter(isPortfolioProfitGivebackPosition).slice(0, 4);
+  if (givebackPositions.length) {
+    add(
+      "warning",
+      "浮盈回吐复核",
+      `${givebackPositions.length} 只需要盯防`,
+      `${givebackPositions.map((item) => `${formatPortfolioPositionLabel(item)}回吐${round(Number(item.profitGivebackPct || 0), 2)}pct`).join(" / ")}；回撤扩大时优先减风险而不是补仓。`
+    );
+  }
+
+  const dataGapPositions = positions.filter(hasPortfolioPositionDataGap).slice(0, 4);
+  if (dataGapPositions.length) {
+    add(
+      "warning",
+      "数据质量缺口",
+      `${dataGapPositions.length} 只持仓证据不足`,
+      `${dataGapPositions.map(formatPortfolioPositionLabel).join(" / ")} 的走势、净值或持仓前景不完整，相关结论必须降低把握度。`
+    );
+  }
+
+  const tradeTransactions = transactions.filter((item) => ["BUY", "SELL"].includes(String(item.side || "").toUpperCase()));
+  const unverifiedTransactions = tradeTransactions.filter((item) => !Number.isFinite(Number(item.nav)) || !item.navDate);
+  if (tradeTransactions.length && unverifiedTransactions.length) {
+    add(
+      unverifiedTransactions.length === tradeTransactions.length ? "critical" : "warning",
+      "成交净值待核验",
+      `${unverifiedTransactions.length}/${tradeTransactions.length} 笔缺净值`,
+      "虚拟交易要能回溯确认净值、份额和来源，否则盈亏归因和经理复盘都不可靠。"
+    );
+  }
+
+  const failedRuns = runs.slice(-12).filter((run) => run.status === "failed" || run.error).slice(0, 3);
+  if (failedRuns.length) {
+    add(
+      "warning",
+      "运行连续性不足",
+      `${failedRuns.length} 次近期失败`,
+      failedRuns.map((run) => `${run.date || ""}${run.type ? ` ${run.type}` : ""}：${run.error || run.summary || "任务失败"}`).join("；").slice(0, 220)
+    );
+  }
+
+  const cash = Number(account.cash || 0);
+  const totalAsset = Number(account.totalAsset || 0);
+  const readyCount = watchlist.filter((item) => item.status === "ready").length;
+  const waitingCount = watchlist.filter((item) => item.status === "waiting_pullback").length;
+  if (Number.isFinite(cash) && Number.isFinite(totalAsset) && totalAsset > 0 && cash / totalAsset >= 0.5 && !readyCount) {
+    add(
+      "info",
+      "现金等待买点",
+      `现金${formatFallbackPct(cash / totalAsset * 100)}`,
+      waitingCount ? `有 ${waitingCount} 只等待回调候选，仍需等低位启动证据。` : "现金充足但没有合格买点，下一步应加强低位召回而不是硬凑推荐。"
+    );
+  }
+
+  const severityRank = { ok: 0, info: 1, warning: 2, critical: 3 };
+  const level = items.reduce((current, item) =>
+    severityRank[item.severity] > severityRank[current] ? item.severity : current
+  , "ok");
+  return {
+    level,
+    summary: formatPortfolioCapabilityDiagnosticSummary(level, items),
+    items: items.slice(0, 8)
+  };
+}
+
+function isPortfolioHotChasePosition(position = {}) {
+  const trend = position.fundSnapshot?.trendProfile || {};
+  const actionability = position.fundSnapshot?.actionability || {};
+  const blockers = normalizeStringArray(actionability.decisionBlocker || actionability.blockers || []);
+  return trend.trendLabel === "extended_uptrend"
+    || trend.entryBias === "wait_pullback"
+    || blockers.some((item) => /涨幅偏热|等待.*回撤|追涨/.test(item));
+}
+
+function isPortfolioProfitGivebackPosition(position = {}) {
+  const giveback = Number(position.profitGivebackPct || 0);
+  const peak = Number(position.peakUnrealizedPnlPct || 0);
+  const current = Number(position.unrealizedPnlPct || 0);
+  const limit = Math.abs(finiteNumberOr(process.env.PORTFOLIO_PROFIT_GIVEBACK_PCT, 4));
+  return Number.isFinite(giveback) && giveback >= limit
+    || (Number.isFinite(peak) && peak > 2 && Number.isFinite(current) && current < 0);
+}
+
+function hasPortfolioPositionDataGap(position = {}) {
+  const snapshot = position.fundSnapshot || {};
+  const trend = snapshot.trendProfile || {};
+  const holdingsOutlook = snapshot.actionability?.holdingsOutlook || {};
+  const navAgeDays = estimateDateAgeDays(position.lastNavDate || snapshot.navDate || "");
+  return trend.ok === false
+    || !position.lastNavDate
+    || (Number.isFinite(navAgeDays) && navAgeDays > 7)
+    || (holdingsOutlook.hasHoldings === false && !normalizeStringArray(snapshot.topHoldings).length);
+}
+
+function estimateDateAgeDays(dateText) {
+  const time = Date.parse(String(dateText || ""));
+  if (!Number.isFinite(time)) return null;
+  return Math.floor((Date.now() - time) / 86400000);
+}
+
+function formatPortfolioPositionLabel(position = {}) {
+  return `${position.code || ""} ${position.name || ""}`.trim() || "未知持仓";
+}
+
+function formatPortfolioCapabilityDiagnosticSummary(level, items = []) {
+  if (!items.length || level === "ok") return "组合能力暂无明显短板，继续按纪律观察。";
+  const criticalCount = items.filter((item) => item.severity === "critical").length;
+  const warningCount = items.filter((item) => item.severity === "warning").length;
+  if (criticalCount) return `发现 ${criticalCount} 个严重能力缺口，先修复再扩大交易。`;
+  if (warningCount) return `发现 ${warningCount} 个能力预警，下一轮操作需要降速复核。`;
+  return "存在轻微信号，继续跟踪即可。";
 }
 
 function buildPortfolioRunSummary(run) {
@@ -16870,6 +17026,7 @@ export {
   buildMarketDeepDiveSummary,
   buildPortfolioHeldPositionReviewActions,
   buildPortfolioHeldPositionReviewQueue,
+  buildPortfolioCapabilityDiagnostics,
   buildPortfolioDecisionReadinessQueue,
   buildPortfolioExposureSummary,
   buildPortfolioRunSummary,
