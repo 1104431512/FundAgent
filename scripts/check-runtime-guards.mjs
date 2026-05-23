@@ -837,6 +837,10 @@ const requiredPatterns = [
     message: "portfolio model context must carry capability diagnostics into every manager run."
   },
   {
+    pattern: /const capabilityDiagnostics = buildPortfolioCapabilityDiagnostics\(db\)[\s\S]{0,160}const capabilityActionQueue = buildPortfolioCapabilityActionQueue\(db\)[\s\S]{0,2600}capabilityDiagnostics,[\s\S]{0,120}capabilityActionQueue/,
+    message: "portfolio decision runs must pass full-ledger capability diagnostics, including transactions and failed runs, into the model prompt."
+  },
+  {
     pattern: /组合能力诊断（系统计算，必须先处理，不能只写套话）[\s\S]{0,700}能力修复队列（必须进入 team\.主席、team\.风控经理、actions 或 learningNotes）/,
     message: "portfolio decision prompt must force capability repair before new buy decisions."
   },

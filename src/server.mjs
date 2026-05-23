@@ -942,6 +942,8 @@ async function executePortfolioDecision(db, run, config) {
   markPortfolioRunProgress(db, run, "正在抓取市场快照和近期题材线索。");
   await yieldToEventLoop();
   const accountBefore = summarizePortfolioAccount(db.account);
+  const capabilityDiagnostics = buildPortfolioCapabilityDiagnostics(db);
+  const capabilityActionQueue = buildPortfolioCapabilityActionQueue(db);
   const marketSnapshot = await fetchMarketSnapshot();
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "正在补全当前持仓和自选基金池资料。");
@@ -981,7 +983,9 @@ async function executePortfolioDecision(db, run, config) {
     watchlistSeedCandidates,
     seedProfiles,
     config,
-    profileContext
+    profileContext,
+    capabilityDiagnostics,
+    capabilityActionQueue
   });
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "模型已返回，正在解析投委会决策。");
@@ -1351,10 +1355,12 @@ async function executePortfolioWeekly(db, run, config) {
   });
 }
 
-async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, watchlist = [], watchlistProfiles = [], watchlistSeedCandidates = [], seedProfiles = [], config, profileContext }) {
+async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, watchlist = [], watchlistProfiles = [], watchlistSeedCandidates = [], seedProfiles = [], config, profileContext, capabilityDiagnostics = null, capabilityActionQueue = null }) {
   const exposureSummary = buildPortfolioExposureSummary(account.positions || []);
-  const capabilityDiagnostics = buildPortfolioCapabilityDiagnostics({ account, watchlist });
-  const capabilityActionQueue = buildPortfolioCapabilityActionQueue({ account, watchlist });
+  const decisionCapabilityDiagnostics = capabilityDiagnostics || buildPortfolioCapabilityDiagnostics({ account, watchlist });
+  const decisionCapabilityActionQueue = Array.isArray(capabilityActionQueue)
+    ? capabilityActionQueue
+    : buildPortfolioCapabilityActionQueue({ account, watchlist });
   const compactHeldProfiles = (heldProfiles || []).map(compactPortfolioReviewProfile);
   const compactWatchlistProfiles = (watchlistProfiles || []).map(compactPortfolioReviewProfile);
   const compactSeedProfiles = (seedProfiles || []).map(compactPortfolioReviewProfile);
@@ -1391,9 +1397,9 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     profileContext,
     "",
     "组合能力诊断（系统计算，必须先处理，不能只写套话）：",
-    JSON.stringify(capabilityDiagnostics, null, 2),
+    JSON.stringify(decisionCapabilityDiagnostics, null, 2),
     "能力修复队列（必须进入 team.主席、team.风控经理、actions 或 learningNotes）：",
-    JSON.stringify(capabilityActionQueue, null, 2),
+    JSON.stringify(decisionCapabilityActionQueue, null, 2),
     "要求：若能力诊断包含盈利承压、追涨暴露、数据质量缺口或成交净值待核验，必须先解释原因和修复动作；没有完成修复前，不得用现金多作为新增买入理由。",
     "",
     "今日公开市场/基金候选快照：",

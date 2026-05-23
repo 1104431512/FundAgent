@@ -166,6 +166,13 @@ const capabilityProfileContext = manager.buildPortfolioManagerProfileContext({
 });
 assert(capabilityProfileContext.includes("组合能力诊断") && capabilityProfileContext.includes("能力修复队列"), "manager profile context must carry capability diagnostics into every portfolio model call");
 assert(serverSource.includes("能力修复队列（必须进入 team.主席、team.风控经理、actions 或 learningNotes）"), "portfolio decision prompt must force capability repair tasks into decisions");
+const portfolioDecisionCapabilitySource = serverSource.slice(
+  serverSource.indexOf("async function executePortfolioDecision"),
+  serverSource.indexOf("async function executePortfolioValuation")
+);
+assert(portfolioDecisionCapabilitySource.includes("const capabilityDiagnostics = buildPortfolioCapabilityDiagnostics(db)"), "portfolio decision must compute full-ledger capability diagnostics after order lifecycle processing");
+assert(portfolioDecisionCapabilitySource.includes("const capabilityActionQueue = buildPortfolioCapabilityActionQueue(db)"), "portfolio decision must compute full-ledger capability repair tasks");
+assert(portfolioDecisionCapabilitySource.includes("capabilityDiagnostics,") && portfolioDecisionCapabilitySource.includes("capabilityActionQueue"), "portfolio decision must pass capability diagnostics and repair tasks into the model prompt");
 const pollutedLocalStatsDiagnostics = manager.buildRuntimeDiagnostics({
   counters: {
     messageEvents: 0,
