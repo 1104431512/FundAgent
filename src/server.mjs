@@ -3944,9 +3944,11 @@ function buildFundWorkflowWatchlistSummary(candidates = []) {
   return [
     "经理自选候选池（优先复核，不自动买入）：",
     ...candidates.map((item) => {
+      const effectiveAction = formatPortfolioWatchlistEffectiveAction(item.portfolioWatchlist?.status || item.status);
       const fields = [
         `${item.code} ${item.name || ""}`.trim(),
         `状态=${item.statusText || formatPortfolioWatchStatus(item.status)}`,
+        effectiveAction ? `执行结论=${effectiveAction}` : "",
         `准备度=${item.readinessScore}/${item.readinessLabel || ""}`,
         item.candidateRole ? `角色=${item.candidateRole}` : "",
         item.reason ? `备选理由=${item.reason}` : "",
@@ -3959,6 +3961,19 @@ function buildFundWorkflowWatchlistSummary(candidates = []) {
       return `- ${fields.join("，")}`;
     })
   ].join("\n");
+}
+
+function formatPortfolioWatchlistEffectiveAction(status = "") {
+  const normalized = normalizePortfolioWatchStatus(status || "watch");
+  const labels = {
+    ready: "可进入主推荐复核，仍需按金额分批",
+    waiting_pullback: "只能列入备选观察，等待触发条件",
+    watch: "只观察不买，不能作为主推荐",
+    blocked: "暂不买入，先修复数据或风险缺口",
+    in_position: "已有持仓，只做持仓复核",
+    removed: "已移出，不参与本轮推荐"
+  };
+  return labels[normalized] || labels.watch;
 }
 
 function mergeFundWorkflowWatchlistIntoDeepDive(deepDive, watchlistCandidates = [], userText = "") {
@@ -4048,7 +4063,7 @@ function mergePortfolioWatchCandidateDigest(watchCandidate = {}, marketCandidate
   const preferMarket = marketCandidate?.ok !== false && marketCandidate?.trendProfile?.ok;
   const primary = preferMarket ? marketCandidate : watchCandidate;
   const fallback = preferMarket ? watchCandidate : marketCandidate;
-  return {
+  return applyPortfolioWatchlistReadinessOverride({
     ...fallback,
     ...primary,
     portfolioWatchlist: watchCandidate.portfolioWatchlist || marketCandidate.portfolioWatchlist,
@@ -4058,7 +4073,42 @@ function mergePortfolioWatchCandidateDigest(watchCandidate = {}, marketCandidate
       keywords: [...new Set([...(watchCandidate.seed?.keywords || []), ...(marketCandidate.seed?.keywords || [])].filter(Boolean))]
     },
     sources: [...new Set([...(watchCandidate.sources || []), ...(marketCandidate.sources || [])].filter(Boolean))]
+  }, watchCandidate);
+}
+
+function applyPortfolioWatchlistReadinessOverride(candidate = {}, watchCandidate = {}) {
+  const blocker = getPortfolioWatchlistMainCandidateBlocker(candidate) || getPortfolioWatchlistMainCandidateBlocker(watchCandidate);
+  if (!blocker) return candidate;
+  const status = normalizePortfolioWatchStatus(candidate.portfolioWatchlist?.status || watchCandidate.portfolioWatchlist?.status || watchCandidate.status || "watch");
+  const action = status === "waiting_pullback" ? "wait" : "watch";
+  const actionability = candidate.actionability || {};
+  return {
+    ...candidate,
+    actionability: {
+      ...actionability,
+      action,
+      actionText: formatActionabilityAction(action),
+      score: Math.min(Number.isFinite(Number(actionability.score)) ? Number(actionability.score) : 60, status === "waiting_pullback" ? 58 : 45),
+      decisiveEvidence: mergeStringLists(actionability.decisiveEvidence, [
+        `自选池执行结论=${formatPortfolioWatchlistEffectiveAction(status)}`
+      ]).slice(0, 5),
+      decisionBlocker: mergeStringLists([blocker], actionability.decisionBlocker).slice(0, 5)
+    }
   };
+}
+
+function getPortfolioWatchlistMainCandidateBlocker(candidate = {}) {
+  const watch = candidate.portfolioWatchlist || {};
+  const rawStatus = watch.status || candidate.status || "";
+  if (!rawStatus) return "";
+  const status = normalizePortfolioWatchStatus(rawStatus);
+  if (status === "ready") return "";
+  if (status === "waiting_pullback") return "经理自选池状态为等待回调，只能列入备选观察，不能作为主推荐。";
+  if (status === "watch") return "经理自选池状态为观察中，说明仍有规模、费用、持仓或走势缺口，不能作为主推荐。";
+  if (status === "blocked") return "经理自选池状态为暂不买，数据或风险缺口未修复前不能推荐买入。";
+  if (status === "in_position") return "经理自选池状态为已持仓，只能做持仓复核，不能当作新增主推荐。";
+  if (status === "removed") return "经理自选池状态为已移出，不参与本轮推荐。";
+  return "";
 }
 
 function summarizePortfolioWatchItem(item = {}) {
@@ -5100,6 +5150,7 @@ function formatActionabilityAction(value) {
     AVOID: "回避",
     hold: "持有",
     wait: "等待",
+    watch: "观察",
     avoid: "回避",
     need_specific_fund: "需具体基金"
   };
@@ -7598,6 +7649,7 @@ function classifyPullbackSetupCandidateForSummary(candidate = {}) {
   if (!candidate?.ok) return "watch_or_reject";
   const trend = candidate.trendProfile || {};
   const signal = trend.pullbackSetup?.signal || "";
+  if (getPortfolioWatchlistMainCandidateBlocker(candidate)) return "watch_or_reject";
   if (hasHighChaseTheme(candidate)) return "watch_or_reject";
   if (hasSevereHoldingsOutlookRisk(candidate)) return "watch_or_reject";
   if (hasPullbackYearToDateChaseRisk(candidate)) return "watch_or_reject";
@@ -7668,6 +7720,10 @@ function formatPullbackSetupCandidateGaps(candidate = {}) {
 function buildPullbackSetupCandidateGaps(candidate = {}) {
   const trend = candidate.trendProfile || {};
   const gaps = [];
+  const watchlistBlocker = getPortfolioWatchlistMainCandidateBlocker(candidate);
+  if (watchlistBlocker) {
+    gaps.push(watchlistBlocker);
+  }
   if (candidate?.ok === false || trend.ok === false) {
     gaps.push("缺少可验证净值下钻");
     return gaps;

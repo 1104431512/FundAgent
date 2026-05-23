@@ -932,6 +932,14 @@ const requiredPatterns = [
     message: "manager-facing and admin-facing watchlist views must show what is still missing before buying."
   },
   {
+    pattern: /renderWatchlistFactStrip[\s\S]{0,260}includeAction:\s*false[\s\S]{0,220}池内状态/,
+    message: "admin watchlist cards must show pool status before raw deep-dive buy/watch actions."
+  },
+  {
+    pattern: /getPortfolioWatchlistMainCandidateBlocker[\s\S]{0,520}自选池状态为观察中/,
+    message: "pullback discovery must not promote watchlist observation candidates into main recommendations."
+  },
+  {
     pattern: /formatWatchlistSnapshotEvidence/,
     message: "admin portfolio watchlist must show NAV/trend snapshot evidence for candidates."
   },
@@ -1028,7 +1036,7 @@ const requiredPatterns = [
     message: "pullback/setup main candidates must require actual low-position evidence, not only a repaired trend label."
   },
   {
-    pattern: /hasPullbackLongPositionChaseRisk[\s\S]{0,420}classifyPullbackSetupCandidateForSummary|classifyPullbackSetupCandidateForSummary[\s\S]{0,420}hasPullbackLongPositionChaseRisk/,
+    pattern: /hasPullbackLongPositionChaseRisk[\s\S]{0,700}classifyPullbackSetupCandidateForSummary|classifyPullbackSetupCandidateForSummary[\s\S]{0,700}hasPullbackLongPositionChaseRisk/,
     message: "pullback/setup main-candidate classification must reject candidates that are high in the 250-day window."
   },
   {
@@ -1064,7 +1072,7 @@ const requiredPatterns = [
     message: "pullback/setup scoring must penalize year-to-date high candidates that only look mild in short windows."
   },
   {
-    pattern: /hasPullbackYearToDateChaseRisk[\s\S]{0,360}classifyPullbackSetupCandidateForSummary|classifyPullbackSetupCandidateForSummary[\s\S]{0,360}hasPullbackYearToDateChaseRisk/,
+    pattern: /hasPullbackYearToDateChaseRisk[\s\S]{0,700}classifyPullbackSetupCandidateForSummary|classifyPullbackSetupCandidateForSummary[\s\S]{0,700}hasPullbackYearToDateChaseRisk/,
     message: "pullback/setup main-candidate classification must reject year-to-date high pseudo-low candidates."
   },
   {

@@ -551,13 +551,16 @@ function renderPositionRiskLine(item = {}) {
   return `<div class="position-risk-line${severity}">${facts.slice(0, 4).map((text) => `<span>${escapeHtml(text)}</span>`).join("")}</div>`;
 }
 
-function renderSnapshotFactStrip(snapshot = {}) {
+function renderSnapshotFactStrip(snapshot = {}, options = {}) {
   const trend = snapshot.trendProfile || {};
   const actionability = snapshot.actionability || {};
   const fees = snapshot.fees || {};
   const oneYear = snapshot.risk?.oneYear || {};
+  const leadingFacts = Array.isArray(options.leadingFacts) ? options.leadingFacts : [];
+  const includeAction = options.includeAction !== false;
   const facts = [
-    actionability.action ? `动作 ${formatActionabilityAction(actionability.action)}` : "",
+    ...leadingFacts,
+    includeAction && actionability.action ? `动作 ${formatActionabilityAction(actionability.action)}` : "",
     Number.isFinite(Number(trend.return20dPct)) ? `20日 ${formatSigned(trend.return20dPct)}%` : "",
     Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置 ${formatNumber(trend.lowPositionPct120, 1)}%` : "",
     Number.isFinite(Number(trend.drawdownFromRecentHighPct)) ? `距高点 ${formatSigned(trend.drawdownFromRecentHighPct)}%` : "",
@@ -566,6 +569,17 @@ function renderSnapshotFactStrip(snapshot = {}) {
   ].filter(Boolean);
   if (!facts.length) return "";
   return `<div class="fact-strip">${facts.slice(0, 6).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>`;
+}
+
+function renderWatchlistFactStrip(item = {}, snapshot = item.lastSnapshot || {}) {
+  const rawAction = snapshot.actionability?.action ? `下钻倾向 ${formatActionabilityAction(snapshot.actionability.action)}` : "";
+  return renderSnapshotFactStrip(snapshot, {
+    includeAction: false,
+    leadingFacts: [
+      `池内状态 ${item.statusText || formatWatchlistStatus(item.status)}`,
+      rawAction
+    ].filter(Boolean)
+  });
 }
 
 function getSnapshotTopHoldings(snapshot = {}) {
@@ -767,7 +781,7 @@ function renderWatchlistActionCard(item) {
   const trend = getFundSnapshotTrendText(snapshot);
   const readiness = formatWatchlistReadiness(item);
   const setupBadge = isWatchlistLaunchEveCandidate(item) ? `<span class="watchlist-setup-badge">启动前夜</span>` : "";
-  const facts = renderSnapshotFactStrip(snapshot);
+  const facts = renderWatchlistFactStrip(item, snapshot);
   const holdings = renderHoldingChips(getSnapshotTopHoldings(snapshot), "持仓看点");
   return `
     <article class="watchlist-action-card">
@@ -811,7 +825,7 @@ function renderWatchlistItem(item) {
   const source = item.source || snapshot.sources?.[0] || "";
   const observationGaps = selectWatchlistObservationGaps(item);
   const setupBadge = isWatchlistLaunchEveCandidate(item) ? `<span class="watchlist-setup-badge">启动前夜</span>` : "";
-  const facts = renderSnapshotFactStrip(snapshot);
+  const facts = renderWatchlistFactStrip(item, snapshot);
   const holdings = renderHoldingChips(getSnapshotTopHoldings(snapshot), "持仓看点");
   return `
     <details class="fund-card watchlist-fund-card">
@@ -1165,6 +1179,11 @@ function formatEntryBias(value) {
   return {
     buyable_now: "可买",
     staged_buy: "分批",
+    BUY: "可买",
+    BATCH: "分批",
+    STAGE: "分批",
+    WAIT: "等回撤",
+    AVOID: "回避",
     wait_pullback: "等回撤",
     hold_observe: "持有观察",
     avoid_now: "回避"
@@ -1175,8 +1194,14 @@ function formatActionabilityAction(value) {
   return {
     buy: "买入",
     staged_buy: "分批",
+    BUY: "买入",
+    BATCH: "分批",
+    STAGE: "分批",
+    WAIT: "等待",
+    AVOID: "回避",
     hold: "持有",
     wait: "等待",
+    watch: "观察",
     avoid: "回避",
     need_specific_fund: "需具体基金"
   }[value] || value || "观察";

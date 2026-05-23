@@ -474,6 +474,53 @@ assert(mergedWatchSummary.includes("mainCandidateCodes=000001"), "ready watchlis
 assert(mergedWatchSummary.includes("watchOrRejectCodes=000002"), "launch-eve watchlist candidates that still wait for confirmation must stay out of main recommendations");
 assert(mergedWatchDeepDive.portfolioWatchlistCandidates?.length === 2, "merged deep-dive evidence must keep traceable watchlist context");
 assert(mergedWatchDeepDive.candidates.find((item) => item.code === "000001")?.seed?.alternativeShareClasses?.some((item) => item.code === "000101"), "merged watchlist candidates must carry share-class alternatives into deep-dive evidence");
+const watchlistedGapCandidate = {
+  code: "000006",
+  name: "观察缺口基金C",
+  status: "watch",
+  statusText: "继续观察",
+  reason: "走势像回调完成，但规模和费用缺口未修复。",
+  readinessScore: 58,
+  readinessLabel: "只观察",
+  readinessGaps: ["基金规模偏小，不能作为可直接买入", "费用关键字段缺失"],
+  lastSnapshot: {
+    snapshotDate: "2026-05-19",
+    navDate: "2026-05-19",
+    trendProfile: {
+      ok: true,
+      latestDate: "2026-05-19",
+      pullbackSetup: { signal: "pullback_complete", score: 80 },
+      trendLabel: "pullback_complete",
+      entryBias: "buyable_now",
+      return5dPct: 1.2,
+      return10dPct: 2.4,
+      return20dPct: 4.6,
+      return60dPct: 8.8,
+      lowPositionPct120: 42.1,
+      lowPositionPct250: 50.2,
+      drawdownFromRecentHighPct: -9.4
+    },
+    actionability: { action: "buy", score: 86 }
+  }
+};
+const watchOverrideDeepDive = manager.mergeFundWorkflowWatchlistIntoDeepDive({
+  ok: true,
+  focus: "pullback_setup_discovery",
+  selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+  candidates: [{
+    ok: true,
+    code: "000006",
+    name: "观察缺口基金C",
+    trendProfile: watchlistedGapCandidate.lastSnapshot.trendProfile,
+    actionability: { action: "buy", score: 88 }
+  }]
+}, [watchlistedGapCandidate], setupQuery);
+const watchOverrideSummary = manager.buildMarketDeepDiveSummary(watchOverrideDeepDive);
+const overriddenWatchCandidate = watchOverrideDeepDive.candidates.find((item) => item.code === "000006");
+assert.equal(overriddenWatchCandidate.actionability.action, "watch", "watchlist observation status must override a market deep-dive buy action");
+assert(watchOverrideSummary.includes("watchOrRejectCodes=000006"), "watchlist observation candidates must stay out of pullback main recommendations even when trend looks buyable");
+assert(!watchOverrideSummary.includes("mainCandidateCodes=000006"), "watchlist observation candidates must not be promoted to main candidate codes");
+assert(watchOverrideSummary.includes("自选池状态为观察中"), "deep-dive gaps must explain the watchlist status blocker");
 const mergedWatchWithFailedMarketFetch = manager.mergeFundWorkflowWatchlistIntoDeepDive({
   ok: true,
   focus: "pullback_setup_discovery",
