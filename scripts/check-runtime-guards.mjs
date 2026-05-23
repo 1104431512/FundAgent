@@ -848,6 +848,14 @@ const requiredPatterns = [
     message: "model calls must compact oversized prompts before sending them to the API."
   },
   {
+    pattern: /isModelContextWindowError\(error\)[\s\S]{0,900}getModelContextRetryInputChars[\s\S]{0,900}modelContextWindowRetries/,
+    message: "model calls must retry context-window failures with a smaller compacted prompt."
+  },
+  {
+    pattern: /maxInputCharsOverride[\s\S]{0,700}compressionMarker/,
+    message: "model input compaction must support an explicit lower retry budget and diagnostic marker."
+  },
+  {
     pattern: /lastModelInputOriginalChars[\s\S]{0,220}lastModelInputCompacted/,
     message: "model input compaction must be visible in runtime stats for diagnosing report failures."
   },

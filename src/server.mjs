@@ -9159,6 +9159,23 @@ async function callModel({ systemText, userPrompt, images = [], maxTokens, timeo
   const config = getEffectiveConfig();
   validateModelConfig(config);
   const compactedInput = compactModelInputForContext({ systemText, userPrompt, maxTokens });
+  const invoke = (input) => normalizeWireApi(config.modelWireApi) === "chat_completions"
+    ? callChatCompletionsApi({
+        config,
+        systemText: input.systemText,
+        userPrompt: input.userPrompt,
+        images,
+        maxTokens,
+        timeoutMs
+      })
+    : callResponsesApi({
+        config,
+        systemText: input.systemText,
+        userPrompt: input.userPrompt,
+        images,
+        maxTokens,
+        timeoutMs
+      });
 
   updateStats({
     counters: {
@@ -9174,37 +9191,63 @@ async function callModel({ systemText, userPrompt, images = [], maxTokens, timeo
   });
 
   try {
-    if (normalizeWireApi(config.modelWireApi) === "chat_completions") {
-      return await callChatCompletionsApi({
-        config,
-        systemText: compactedInput.systemText,
-        userPrompt: compactedInput.userPrompt,
-        images,
-        maxTokens,
-        timeoutMs
-      });
-    }
-    return await callResponsesApi({
-      config,
-      systemText: compactedInput.systemText,
-      userPrompt: compactedInput.userPrompt,
-      images,
-      maxTokens,
-      timeoutMs
-    });
+    return await invoke(compactedInput);
   } catch (error) {
+    if (isModelContextWindowError(error)) {
+      const retryInput = compactModelInputForContext({
+        systemText,
+        userPrompt,
+        maxTokens,
+        maxInputCharsOverride: getModelContextRetryInputChars(compactedInput),
+        compressionMarker: "模型上下文超限后已二次压缩"
+      });
+      updateStats({
+        counters: {
+          modelContextWindowRetries: 1,
+          modelInputCompactions: retryInput.compacted ? 1 : 0
+        },
+        last: {
+          lastModelContextRetryAt: new Date().toISOString(),
+          lastModelContextRetryChars: retryInput.finalChars,
+          lastModelContextRetryBudget: retryInput.maxInputChars,
+          lastModelContextRetryOriginalError: String(error.message || "").slice(0, 240)
+        }
+      });
+      try {
+        return await invoke(retryInput);
+      } catch (retryError) {
+        updateStats({
+          counters: {
+            modelFailures: 1,
+            modelContextWindowRetryFailures: isModelContextWindowError(retryError) ? 1 : 0
+          },
+          last: {
+            lastModelFailureAt: new Date().toISOString(),
+            lastModelContextRetryFailureAt: new Date().toISOString(),
+            lastModelContextRetryFailure: String(retryError.message || "").slice(0, 240)
+          }
+        });
+        throw retryError;
+      }
+    }
     updateStats({ counters: { modelFailures: 1 }, last: { lastModelFailureAt: new Date().toISOString() } });
     throw error;
   }
 }
 
-function compactModelInputForContext({ systemText = "", userPrompt = "", maxTokens = 0 } = {}) {
+function compactModelInputForContext({
+  systemText = "",
+  userPrompt = "",
+  maxTokens = 0,
+  maxInputCharsOverride = null,
+  compressionMarker = "用户上下文已压缩"
+} = {}) {
   const input = {
     systemText: String(systemText || ""),
     userPrompt: String(userPrompt || "")
   };
   const originalChars = input.systemText.length + input.userPrompt.length;
-  const maxInputChars = getModelMaxInputChars(maxTokens);
+  const maxInputChars = getModelMaxInputChars(maxTokens, maxInputCharsOverride);
   if (originalChars <= maxInputChars) {
     return { ...input, compacted: false, originalChars, finalChars: originalChars, maxInputChars };
   }
@@ -9225,7 +9268,7 @@ function compactModelInputForContext({ systemText = "", userPrompt = "", maxToke
   }
   const compactedUser = compactTextMiddle(input.userPrompt, userBudget, {
     headRatio: 0.35,
-    marker: "用户上下文已压缩"
+    marker: compressionMarker
   });
   const finalChars = compactedSystem.length + compactedUser.length;
   return {
@@ -9238,12 +9281,22 @@ function compactModelInputForContext({ systemText = "", userPrompt = "", maxToke
   };
 }
 
-function getModelMaxInputChars(maxTokens = 0) {
-  const configured = Number(process.env.MODEL_MAX_INPUT_CHARS || DEFAULT_MODEL_MAX_INPUT_CHARS);
+function getModelMaxInputChars(maxTokens = 0, override = null) {
+  const configured = override === null || override === undefined
+    ? Number(process.env.MODEL_MAX_INPUT_CHARS || DEFAULT_MODEL_MAX_INPUT_CHARS)
+    : Number(override);
   const outputReserve = Math.max(0, Number(maxTokens || 0) - DEFAULT_MODEL_MAX_OUTPUT_TOKENS);
   const reserveChars = outputReserve > 0 ? Math.min(30000, outputReserve * 2) : 0;
   const budget = Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_MODEL_MAX_INPUT_CHARS;
-  return Math.max(24000, Math.min(500000, Math.floor(budget - reserveChars)));
+  const minBudget = override === null || override === undefined ? 24000 : 12000;
+  return Math.max(minBudget, Math.min(500000, Math.floor(budget - reserveChars)));
+}
+
+function getModelContextRetryInputChars(compactedInput = {}) {
+  const currentBudget = Number(compactedInput.maxInputChars || DEFAULT_MODEL_MAX_INPUT_CHARS);
+  const currentChars = Number(compactedInput.finalChars || currentBudget);
+  const base = Math.min(currentBudget, currentChars || currentBudget);
+  return Math.max(12000, Math.floor(base * 0.52));
 }
 
 function compactTextMiddle(text, maxChars, options = {}) {
@@ -14342,6 +14395,9 @@ function getDefaultStats() {
       fundQaModelCalls: 0,
       modelCalls: 0,
       modelFailures: 0,
+      modelInputCompactions: 0,
+      modelContextWindowRetries: 0,
+      modelContextWindowRetryFailures: 0,
       repliesSent: 0,
       proactiveRepliesSent: 0,
       progressReplies: 0,

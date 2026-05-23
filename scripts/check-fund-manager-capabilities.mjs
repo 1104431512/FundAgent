@@ -2295,6 +2295,23 @@ assert(compactedModelInput.finalChars <= compactedModelInput.maxInputChars, "mod
 assert(compactedModelInput.userPrompt.includes("用户任务开头：必须总结真实账本"), "model input guard must preserve the task opening");
 assert(compactedModelInput.userPrompt.includes("用户任务末尾：最新失败原因 input exceeds the context window，必须保留"), "model input guard must preserve the newest evidence at the prompt tail");
 assert(compactedModelInput.userPrompt.includes("用户上下文已压缩"), "model input guard must visibly mark automatic compaction for debugging");
+const retryCompactedModelInput = manager.compactModelInputForContext({
+  systemText: `系统头${"指令".repeat(3000)}系统尾`,
+  userPrompt: [
+    "用户任务开头：周报必须总结真实账本。",
+    "B".repeat(70000),
+    "用户任务末尾：第一次模型报错 Your input exceeds the context window，二次压缩仍要保留。"
+  ].join("\n"),
+  maxTokens: 9600,
+  maxInputCharsOverride: 14000,
+  compressionMarker: "模型上下文超限后已二次压缩"
+});
+assert(retryCompactedModelInput.compacted, "model context retry must force a smaller second-pass compaction");
+assert(retryCompactedModelInput.finalChars <= 14000, "model context retry must honor the lower retry input budget");
+assert(retryCompactedModelInput.userPrompt.includes("模型上下文超限后已二次压缩"), "model context retry must mark second-pass compression for diagnostics");
+assert(retryCompactedModelInput.userPrompt.includes("用户任务末尾：第一次模型报错 Your input exceeds the context window，二次压缩仍要保留。"), "model context retry must preserve the newest failure evidence");
+assert(serverSource.includes("modelContextWindowRetries"), "model call layer must record context-window retry attempts");
+assert(serverSource.includes("getModelContextRetryInputChars"), "model call layer must compute a lower retry input budget after context-window errors");
 if (previousModelMaxInputChars === undefined) {
   delete process.env.MODEL_MAX_INPUT_CHARS;
 } else {
