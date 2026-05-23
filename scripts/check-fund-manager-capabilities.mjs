@@ -452,6 +452,41 @@ const normalizedReview = manager.normalizePortfolioReview(JSON.stringify({
 const normalizedReviewText = JSON.stringify(normalizedReview);
 assert(normalizedReview.summary.includes("按实际投入成本30002.28元计-1.09%"), "normalized valuation review summary must use invested-cost return");
 assert(!/相对初始本金|初始资金口径|初始本金口径|本金口径/.test(normalizedReviewText), "normalized valuation review must remove initial-capital denominator wording from user-facing fields");
+const historicalRunWithAccount = {
+  type: "valuation",
+  status: "completed",
+  summary: "累计盈亏由+1291.65转为-328.07，按初始资金口径为-0.33%。",
+  card: "估值复盘：相对初始本金 -0.33%，需要解释亏损来源。",
+  team: [{ role: "风控", reason: "按本金口径为-0.33%，但持仓投入成本回撤更明显。" }],
+  observation: {
+    summary: "盘前提示：按初始本金口径为-0.33%。",
+    sources: ["https://example.com/portfolio/report"]
+  },
+  accountAfter: { investedCost: 30002.28, cumulativePnlPct: -1.09, cumulativePnl: -328.07 }
+};
+const publicHistoricalRunBrief = manager.summarizePortfolioRunBrief(historicalRunWithAccount);
+const publicHistoricalRunFull = manager.summarizePortfolioRun(historicalRunWithAccount);
+const publicHistoricalRunText = JSON.stringify({
+  brief: publicHistoricalRunBrief,
+  full: publicHistoricalRunFull
+});
+assert(publicHistoricalRunBrief.summary.includes("按实际投入成本30002.28元计-1.09%"), "public brief run summaries must use the run's invested-cost denominator");
+assert(publicHistoricalRunFull.card.includes("按实际投入成本30002.28元计-1.09%"), "public full run cards must use the run's invested-cost denominator");
+assert(publicHistoricalRunFull.team[0].reason.includes("按实际投入成本30002.28元计-1.09%"), "public nested run team notes must use the run's invested-cost denominator");
+assert(publicHistoricalRunFull.observation.summary.includes("按实际投入成本30002.28元计-1.09%"), "public nested run reports must use the run's invested-cost denominator");
+assert.equal(publicHistoricalRunFull.observation.sources[0], "https://example.com/portfolio/report", "public run account-context sanitization must still preserve source URLs");
+assert(!/相对初始本金|初始资金口径|初始本金口径|本金口径/.test(publicHistoricalRunText), "public historical run output must not leak initial-capital denominator wording");
+const publicHistoricalRunWithFallback = manager.summarizePortfolioRunBrief(
+  {
+    type: "valuation",
+    status: "completed",
+    summary: "估值复盘：按初始资金口径为+0.20%。",
+    investedCost: 5000,
+    cumulativePnlPct: 4
+  },
+  { investedCost: 30002.28, cumulativePnlPct: -1.09 }
+);
+assert(publicHistoricalRunWithFallback.summary.includes("按实际投入成本5000元计+4%"), "public run summaries must prefer the run's own account fields over current fallback account fields");
 const summarizedConfirmedOrder = manager.summarizePortfolioOrder({
   id: "ord_test",
   side: "BUY",

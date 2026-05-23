@@ -741,12 +741,16 @@ const requiredPatterns = [
     message: "portfolio decision cards must show Chinese action labels and run a final user-facing localization pass."
   },
   {
-    pattern: /function summarizePortfolioRun\(run\)[\s\S]{0,700}card:\s*normalizePortfolioUserFacingText\(run\.card \|\| ""\)[\s\S]{0,900}sanitizePortfolioPublicReportValue/,
-    message: "portfolio public API must sanitize stored historical run cards before the admin UI displays them."
+    pattern: /function summarizePortfolioRun\(run,\s*fallbackAccount\s*=\s*\{\}\)[\s\S]{0,220}getPortfolioRunAccountContext\(run,\s*fallbackAccount\)[\s\S]{0,800}card:\s*normalizePortfolioUserFacingText\(run\.card \|\| "",\s*account\)[\s\S]{0,900}sanitizePortfolioPublicReportValue/,
+    message: "portfolio public API must sanitize stored historical run cards with the run account context before the admin UI displays them."
   },
   {
-    pattern: /function sanitizePortfolioPublicReportValue[\s\S]{0,900}shouldPreservePortfolioPublicString/,
-    message: "portfolio public report sanitization must preserve source URLs while localizing user-facing report text."
+    pattern: /const summarizeRun = lightweight[\s\S]{0,180}summarizePortfolioRunBrief\(run,\s*db\.account\)[\s\S]{0,180}summarizePortfolioRun\(run,\s*db\.account\)/,
+    message: "portfolio public state must pass account context into historical run summaries."
+  },
+  {
+    pattern: /function sanitizePortfolioPublicReportValue\(value,\s*key\s*=\s*"",\s*account\s*=\s*\{\}\)[\s\S]{0,900}normalizePortfolioUserFacingText\(value,\s*account\)[\s\S]{0,900}shouldPreservePortfolioPublicString/,
+    message: "portfolio public report sanitization must preserve source URLs while localizing user-facing report text with account context."
   },
   {
     pattern: /function summarizePortfolioOrder[\s\S]{0,900}navQuality[\s\S]{0,220}navSource/,

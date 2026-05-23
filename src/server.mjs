@@ -6403,7 +6403,9 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
   const summarizePosition = lightweight ? summarizePortfolioPositionBrief : summarizePortfolioPosition;
   const summarizeAccount = lightweight ? summarizePortfolioAccountBrief : summarizePortfolioAccount;
   const summarizeWatch = lightweight ? summarizePortfolioWatchItemBrief : summarizePortfolioWatchItem;
-  const summarizeRun = lightweight ? summarizePortfolioRunBrief : summarizePortfolioRun;
+  const summarizeRun = lightweight
+    ? (run) => summarizePortfolioRunBrief(run, db.account)
+    : (run) => summarizePortfolioRun(run, db.account);
   const summarizeTransaction = lightweight ? summarizePortfolioTransactionBrief : (item) => item;
   const summarizeEquity = lightweight ? summarizePortfolioEquityBrief : (item) => item;
   return {
@@ -6452,7 +6454,8 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
   };
 }
 
-function summarizePortfolioRunBrief(run) {
+function summarizePortfolioRunBrief(run, fallbackAccount = {}) {
+  const account = getPortfolioRunAccountContext(run, fallbackAccount);
   return {
     id: run.id,
     type: run.type,
@@ -6464,18 +6467,19 @@ function summarizePortfolioRunBrief(run) {
     progressAt: run.progressAt || "",
     completedAt: run.completedAt,
     durationMs: run.durationMs,
-    summary: normalizePortfolioUserFacingText(buildPortfolioRunSummary(run)),
-    team: sanitizePortfolioPublicReportValue((run.team || []).slice(0, 6)),
-    actions: sanitizePortfolioPublicReportValue((run.actions || []).slice(0, 8)),
+    summary: normalizePortfolioUserFacingText(buildPortfolioRunSummary(run), account),
+    team: sanitizePortfolioPublicReportValue((run.team || []).slice(0, 6), "", account),
+    actions: sanitizePortfolioPublicReportValue((run.actions || []).slice(0, 8), "", account),
     orders: (run.orders || []).slice(0, 8).map(summarizePortfolioOrder),
     transactions: (run.transactions || []).slice(0, 6).map(summarizePortfolioTransactionBrief),
-    executionNotes: sanitizePortfolioPublicReportValue((run.executionNotes || []).slice(0, 6)),
-    settlementEvents: sanitizePortfolioPublicReportValue((run.settlementEvents || []).slice(0, 6)),
+    executionNotes: sanitizePortfolioPublicReportValue((run.executionNotes || []).slice(0, 6), "", account),
+    settlementEvents: sanitizePortfolioPublicReportValue((run.settlementEvents || []).slice(0, 6), "", account),
     error: run.error || ""
   };
 }
 
-function summarizePortfolioRun(run) {
+function summarizePortfolioRun(run, fallbackAccount = {}) {
+  const account = getPortfolioRunAccountContext(run, fallbackAccount);
   return {
     id: run.id,
     type: run.type,
@@ -6487,34 +6491,77 @@ function summarizePortfolioRun(run) {
     progressAt: run.progressAt || "",
     completedAt: run.completedAt,
     durationMs: run.durationMs,
-    summary: normalizePortfolioUserFacingText(buildPortfolioRunSummary(run)),
-    card: normalizePortfolioUserFacingText(run.card || ""),
-    team: sanitizePortfolioPublicReportValue((run.team || []).slice(0, 8)),
-    observation: sanitizePortfolioPublicReportValue(run.observation || null),
-    weekly: sanitizePortfolioPublicReportValue(run.weekly || null),
-    actions: sanitizePortfolioPublicReportValue((run.actions || []).slice(0, 10)),
+    summary: normalizePortfolioUserFacingText(buildPortfolioRunSummary(run), account),
+    card: normalizePortfolioUserFacingText(run.card || "", account),
+    team: sanitizePortfolioPublicReportValue((run.team || []).slice(0, 8), "", account),
+    observation: sanitizePortfolioPublicReportValue(run.observation || null, "", account),
+    weekly: sanitizePortfolioPublicReportValue(run.weekly || null, "", account),
+    actions: sanitizePortfolioPublicReportValue((run.actions || []).slice(0, 10), "", account),
     orders: (run.orders || []).slice(0, 10).map(summarizePortfolioOrder),
     transactions: (run.transactions || []).slice(0, 10),
     orderUpdates: (run.orderUpdates || []).slice(0, 10),
-    executionNotes: sanitizePortfolioPublicReportValue((run.executionNotes || []).slice(0, 10)),
-    settlementEvents: sanitizePortfolioPublicReportValue((run.settlementEvents || []).slice(0, 10)),
+    executionNotes: sanitizePortfolioPublicReportValue((run.executionNotes || []).slice(0, 10), "", account),
+    settlementEvents: sanitizePortfolioPublicReportValue((run.settlementEvents || []).slice(0, 10), "", account),
     sources: run.sources || [],
     push: run.push || null,
     error: run.error || ""
   };
 }
 
-function sanitizePortfolioPublicReportValue(value, key = "") {
+function getPortfolioRunAccountContext(run = {}, fallbackAccount = {}) {
+  const account = {
+    ...(isPortfolioAccountLike(fallbackAccount) ? fallbackAccount : {}),
+    ...(isPortfolioAccountLike(run.accountBefore) ? run.accountBefore : {}),
+    ...(isPortfolioAccountLike(run.account) ? run.account : {})
+  };
+  for (const key of [
+    "initialCapital",
+    "cash",
+    "investedValue",
+    "investedCost",
+    "totalAsset",
+    "dayPnl",
+    "cumulativePnl",
+    "cumulativePnlPct",
+    "capitalPnlPct"
+  ]) {
+    if (run[key] !== undefined && run[key] !== null && run[key] !== "") {
+      account[key] = run[key];
+    }
+  }
+  if (isPortfolioAccountLike(run.accountAfter)) {
+    Object.assign(account, run.accountAfter);
+  }
+  if (!Array.isArray(account.positions) && Array.isArray(run.positions)) {
+    account.positions = run.positions;
+  }
+  const positionCost = Array.isArray(account.positions)
+    ? account.positions.reduce((sum, position) => sum + (Number(position?.costAmount || 0) || 0), 0)
+    : 0;
+  if ((!Number.isFinite(Number(account.investedCost)) || Number(account.investedCost) <= 0) && positionCost > 0) {
+    account.investedCost = round(positionCost, 2);
+  }
+  if ((!Number.isFinite(Number(account.cumulativePnlPct)) || account.cumulativePnlPct === "") && Number(account.investedCost) > 0 && Number.isFinite(Number(account.cumulativePnl))) {
+    account.cumulativePnlPct = round((Number(account.cumulativePnl) / Number(account.investedCost)) * 100, 2);
+  }
+  return account;
+}
+
+function isPortfolioAccountLike(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function sanitizePortfolioPublicReportValue(value, key = "", account = {}) {
   if (typeof value === "string") {
-    return shouldPreservePortfolioPublicString(key) ? value : normalizePortfolioUserFacingText(value);
+    return shouldPreservePortfolioPublicString(key) ? value : normalizePortfolioUserFacingText(value, account);
   }
   if (Array.isArray(value)) {
-    return value.map((item) => sanitizePortfolioPublicReportValue(item, key));
+    return value.map((item) => sanitizePortfolioPublicReportValue(item, key, account));
   }
   if (!value || typeof value !== "object") return value;
   return Object.fromEntries(Object.entries(value).map(([entryKey, entryValue]) => [
     entryKey,
-    sanitizePortfolioPublicReportValue(entryValue, entryKey)
+    sanitizePortfolioPublicReportValue(entryValue, entryKey, account)
   ]));
 }
 
@@ -17245,5 +17292,7 @@ export {
   scorePullbackSetupSeedCandidate,
   scoreResearchDigestForPullbackSetup,
   sanitizePortfolioPublicReportValue,
+  summarizePortfolioRun,
+  summarizePortfolioRunBrief,
   splitFeishuCardImages
 };
