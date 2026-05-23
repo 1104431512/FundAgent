@@ -18,6 +18,7 @@ const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
 const PUBLIC_DIR = path.join(ROOT, "public");
 const SKILLS_DIR = path.join(ROOT, "skills");
 const STARTED_AT = new Date();
+const APP_RELEASE = resolveAppRelease();
 const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS || 120000);
 const DEFAULT_MODEL_HTTP_TIMEOUT_MS = Number(process.env.MODEL_HTTP_TIMEOUT_MS ?? 0);
 const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 9600;
@@ -176,6 +177,7 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, {
         ok: true,
         service: "feishu-fund-assistant",
+        release: getRuntimeRelease(),
         configured: getConfigStatus(config),
         skills: listSkills(false).length,
         counters: {
@@ -7097,10 +7099,10 @@ function getFundReportProfileKey(profile) {
 }
 
 const FUND_REPORT_CHART_LEGEND_LINES = [
-  "新图已经使用中文短标签：入场=是否到了可买位置，信号=回调完成或启动迹象，低位/年低=120日/250日区间位置，动作=经理建议。",
-  "右侧六格：份额=A/C 等类别，费用=每万元估算成本，近20日/近60日=短中期涨跌，回撤=距近期高点回落，规模=基金规模。",
+  "新图已经使用中文短标签：入场=是否到了可买位置（新图写买点），信号=回调完成或启动迹象，低位/年低=120日/250日区间位置（新图写120日位/250日位），动作=经理建议。",
+  "右侧六格：份额=A/C 等类别，万元费=每1万元估算成本，近20日/近60日=短中期涨跌，回撤=距近期高点回落，规模=基金规模（单位约为亿元）。",
   "常见状态：可买=可以小仓位执行，分批=分几次买入，等待=等回撤或确认，回避=暂不碰，观察=放备选池，缺失=数据不足。",
-  "如果看到旧图：ENTRY=入场，SIG=信号，LOW/YLOW=低位/年低，ACT=动作，BATCH 或 STAGE 都是“分批买入”的意思。"
+  "如果看到旧图：ENTRY=入场，SIG=信号，LOW/YLOW=低位/年低，ACT=动作，BATCH 或 STAGE 都是“分批买入”的意思；新图不再直接写 stage。"
 ];
 
 function getFundReportChartLegendLines() {
@@ -11692,7 +11694,10 @@ function drawDrawdownPanel(canvas, { x, y, width, height, points }) {
   });
   const min = Math.min(...drawdowns, -1);
   const range = Math.abs(min) || 1;
-  drawText(canvas, x, y - 22, "RISK", [51, 65, 85, 255], 2);
+  drawChartText(canvas, x, y - 30, "回撤风险", [51, 65, 85, 255], {
+    asciiScale: REPORT_CHART_MIN_TEXT_SCALE,
+    cjkScale: 1
+  });
   drawChartFrame(canvas, x, y, width, height);
   drawYAxisTickLabels(canvas, x, y, height, [0, min], formatChartPct);
   drawXAxisDateLabels(canvas, x, y + height + 8, width, points);
@@ -11705,27 +11710,38 @@ function drawDrawdownPanel(canvas, { x, y, width, height, points }) {
   for (let i = 1; i < px.length; i += 1) {
     drawLine(canvas, px[i - 1].x, px[i - 1].y, px[i].x, px[i].y, [217, 119, 6, 255], 3);
   }
-  drawText(canvas, x + width - 118, y + height - 18, `MAX ${formatChartPct(min)}`, [217, 119, 6, 255], 2);
+  drawChartTextFit(canvas, x + width - 210, y + height - 24, `最大回撤 ${formatChartPct(min)}`, [217, 119, 6, 255], {
+    asciiScale: REPORT_CHART_MIN_TEXT_SCALE,
+    cjkScale: 1,
+    maxWidth: 190,
+    minAsciiScale: 2
+  });
 }
 
 function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
-  drawText(canvas, x, y - 28, "RET", [51, 65, 85, 255], 2);
+  drawChartText(canvas, x, y - 30, "阶段收益", [51, 65, 85, 255], {
+    asciiScale: REPORT_CHART_MIN_TEXT_SCALE,
+    cjkScale: 1
+  });
   drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
   const items = [
-    ["5", trend.return5dPct],
-    ["10", trend.return10dPct],
-    ["20", trend.return20dPct],
-    ["60", trend.return60dPct],
-    ["120", trend.return120dPct],
-    ["Y", trend.return250dPct]
+    ["近5日", trend.return5dPct],
+    ["近10日", trend.return10dPct],
+    ["近20日", trend.return20dPct],
+    ["近60日", trend.return60dPct],
+    ["近120日", trend.return120dPct],
+    ["近1年", trend.return250dPct]
   ].map(([label, value]) => ({ label, value: Number(value) })).filter((item) => Number.isFinite(item.value));
   if (!items.length) {
-    drawText(canvas, x + 18, y + 92, "NO DATA", [100, 116, 139, 255], 3);
+    drawChartText(canvas, x + 18, y + 92, "缺失", [100, 116, 139, 255], {
+      asciiScale: REPORT_CHART_MIN_TEXT_SCALE,
+      cjkScale: 1
+    });
     return;
   }
   const maxAbs = Math.max(5, ...items.map((item) => Math.abs(item.value)));
-  const barStart = x + 58;
-  const barMaxWidth = Math.max(36, width - 152);
+  const barStart = x + 112;
+  const barMaxWidth = Math.max(36, width - 206);
   drawLine(canvas, barStart, y + 26, barStart, y + height - 20, [203, 213, 225, 255], 1);
   drawText(canvas, barStart - 6, y + height - 16, "0", [100, 116, 139, 255], 2);
   drawText(canvas, x + width - 86, y + height - 16, formatChartPct(maxAbs), [100, 116, 139, 255], 2);
@@ -11734,7 +11750,10 @@ function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
     const rowY = y + 32 + index * rowGap;
     const barWidth = Math.round((Math.abs(item.value) / maxAbs) * barMaxWidth);
     const color = item.value >= 0 ? [22, 130, 93, 255] : [194, 65, 12, 255];
-    drawText(canvas, x + 10, rowY - 7, item.label, [71, 85, 105, 255], 2);
+    drawChartText(canvas, x + 10, rowY - 12, item.label, [71, 85, 105, 255], {
+      asciiScale: REPORT_CHART_MIN_TEXT_SCALE,
+      cjkScale: 1
+    });
     fillRect(canvas, barStart, rowY - 7, barWidth, 14, color);
     drawText(canvas, x + width - 86, rowY - 7, formatChartPct(item.value), color, 2);
   });
@@ -11743,10 +11762,10 @@ function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
 function drawDecisionEvidenceStrip(canvas, { x, y, width, profile = {}, trend = {} }) {
   const actionability = profile?.actionability || {};
   const items = [
-    ["入场", formatChartEntryBias(trend.entryBias), chartDecisionColor(trend.entryBias)],
+    ["买点", formatChartEntryBias(trend.entryBias), chartDecisionColor(trend.entryBias)],
     ["信号", formatChartSetupSignal(trend.pullbackSetup?.signal), chartSignalColor(trend.pullbackSetup?.signal)],
-    ["低位", formatChartMetricValue("LOW", trend.lowPositionPct120), chartLowPositionColor(trend.lowPositionPct120)],
-    ["年低", formatChartMetricValue("YLOW", trend.lowPositionPct250), chartLowPositionColor(trend.lowPositionPct250)],
+    ["120日位", formatChartMetricValue("LOW", trend.lowPositionPct120), chartLowPositionColor(trend.lowPositionPct120)],
+    ["250日位", formatChartMetricValue("YLOW", trend.lowPositionPct250), chartLowPositionColor(trend.lowPositionPct250)],
     ["动作", formatChartAction(actionability.action), chartActionColor(actionability.action)]
   ];
   const gap = 10;
@@ -11779,7 +11798,7 @@ function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, tre
   const shareClass = getChartShareClass(profile);
   const rows = [
     ["CLASS", "份额", shareClass ? `${shareClass}类` : "缺失"],
-    ["FEE", "费用", feeImpact.oneYearCostPer10000],
+    ["FEE", "万元费", feeImpact.oneYearCostPer10000],
     ["20", "近20日", trend.return20dPct],
     ["60", "近60日", trend.return60dPct],
     ["DROP", "回撤", trend.drawdownFromRecentHighPct],
@@ -11855,25 +11874,25 @@ function shortChartDate(value) {
 }
 
 function formatChartNumber(value) {
-  if (!Number.isFinite(value)) return "NA";
+  if (!Number.isFinite(value)) return "缺失";
   return String(round(value, value >= 10 ? 2 : 4));
 }
 
 function formatChartPct(value) {
-  if (!Number.isFinite(value)) return "NA";
+  if (!Number.isFinite(value)) return "缺失";
   const number = round(value, 1);
   return `${number > 0 ? "+" : ""}${number}%`;
 }
 
 function formatChartMetricValue(label, value) {
-  if (value === null || value === undefined || value === "") return "NA";
-  if (["SIG", "ENT", "ENTRY", "ACT", "CLS", "CLASS", "SIZE"].includes(label)) return String(value || "NA").slice(0, 8);
+  if (value === null || value === undefined || value === "") return "缺失";
+  if (["SIG", "ENT", "ENTRY", "ACT", "CLS", "CLASS", "SIZE"].includes(label)) return String(value || "缺失").slice(0, 8);
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return String(value || "NA").slice(0, 6).toUpperCase();
+  if (!Number.isFinite(numeric)) return String(value || "缺失").slice(0, 6).toUpperCase();
   if (label === "LOW") return `${round(numeric, 1)}%`;
   if (["DD", "YDD", "DROP", "MAX", "YRET", "5d", "10d", "5", "10", "20", "60", "120"].includes(label)) return formatChartPct(numeric);
   if (label === "YLOW") return `${round(numeric, 1)}%`;
-  if (label === "FEE") return `${round(numeric, 0)}`;
+  if (label === "FEE") return `${round(numeric, 0)}元`;
   if (label === "SHRP") return String(round(numeric, 2));
   return String(round(numeric, 0));
 }
@@ -11893,7 +11912,7 @@ function formatChartScale(value) {
   if (!text) return "";
   const number = toNumber(text) ?? Number(text.match(/-?\d+(?:\.\d+)?/)?.[0]);
   if (!Number.isFinite(number)) return sanitizeChartText(text).slice(0, 8);
-  return String(round(number, number >= 100 ? 0 : 1));
+  return `${round(number, number >= 100 ? 0 : 1)}亿`;
 }
 
 function chartMetricColor(label, value) {
@@ -12303,7 +12322,18 @@ const CJK_CHART_FONT = {
   "成": [0x000000, 0x000000, 0x000000, 0x000580, 0x0004C0, 0x000440, 0x0FFFF8, 0x080400, 0x080400, 0x080410, 0x0FF430, 0x082420, 0x082640, 0x0822C0, 0x082380, 0x082308, 0x102308, 0x13C788, 0x300CD0, 0x201870, 0x000000, 0x000000, 0x000000, 0x000000],
   "启": [0x000000, 0x000000, 0x000000, 0x002000, 0x001000, 0x0FFFF0, 0x080010, 0x080010, 0x080010, 0x0FFFF0, 0x080010, 0x080000, 0x080000, 0x09FFF0, 0x090010, 0x090010, 0x190010, 0x110010, 0x110010, 0x31FFF0, 0x210010, 0x000000, 0x000000, 0x000000],
   "无": [0x000000, 0x000000, 0x000000, 0x000000, 0x0FFFE0, 0x001000, 0x001000, 0x001000, 0x001000, 0x002000, 0x3FFFF8, 0x002000, 0x002400, 0x004400, 0x004400, 0x008400, 0x018408, 0x010408, 0x020408, 0x040408, 0x1803F0, 0x300000, 0x000000, 0x000000],
-  "类": [0x000000, 0x000000, 0x001000, 0x0C1060, 0x0710C0, 0x011080, 0x001000, 0x1FFFF8, 0x005000, 0x009C00, 0x031780, 0x0C10F0, 0x300018, 0x001000, 0x3FFFF8, 0x003000, 0x006800, 0x00CC00, 0x008600, 0x030300, 0x0E00E0, 0x380030, 0x000000, 0x000000]
+  "类": [0x000000, 0x000000, 0x001000, 0x0C1060, 0x0710C0, 0x011080, 0x001000, 0x1FFFF8, 0x005000, 0x009C00, 0x031780, 0x0C10F0, 0x300018, 0x001000, 0x3FFFF8, 0x003000, 0x006800, 0x00CC00, 0x008600, 0x030300, 0x0E00E0, 0x380030, 0x000000, 0x000000],
+  "风": [0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x1FFF80, 0x100080, 0x120480, 0x130C80, 0x118880, 0x109080, 0x10F080, 0x106080, 0x106080, 0x10F080, 0x109880, 0x119880, 0x130C90, 0x260690, 0x240290, 0x600050, 0x400060, 0x000000, 0x000000],
+  "险": [0x000000, 0x000000, 0x000000, 0x000000, 0x000C00, 0x3E0C00, 0x221A00, 0x243300, 0x246080, 0x258060, 0x2B0030, 0x287FC0, 0x2C0000, 0x240820, 0x248860, 0x244440, 0x2444C0, 0x246480, 0x3C2180, 0x200100, 0x21FFF0, 0x200000, 0x000000, 0x000000],
+  "阶": [0x000000, 0x000000, 0x000000, 0x000000, 0x000C00, 0x3E0C00, 0x221A00, 0x223300, 0x246180, 0x24C040, 0x258030, 0x242080, 0x222080, 0x222080, 0x212080, 0x212080, 0x222080, 0x3E6080, 0x204080, 0x20C080, 0x208080, 0x210080, 0x000000, 0x000000],
+  "段": [0x000000, 0x000000, 0x000000, 0x000000, 0x01C000, 0x1F0FC0, 0x100840, 0x100840, 0x100840, 0x1FC840, 0x101840, 0x101038, 0x103000, 0x1FDFE0, 0x101020, 0x101040, 0x100880, 0x17C500, 0x380700, 0x100F80, 0x1038E0, 0x10C038, 0x000000, 0x000000],
+  "收": [0x000000, 0x000000, 0x000000, 0x020800, 0x021800, 0x021800, 0x223000, 0x223FF0, 0x226040, 0x22E040, 0x22E040, 0x2390C0, 0x221080, 0x221080, 0x3E0900, 0x3A0D00, 0x620600, 0x020E00, 0x021B80, 0x0260E0, 0x038018, 0x000000, 0x000000, 0x000000],
+  "益": [0x000000, 0x000000, 0x000000, 0x040100, 0x060300, 0x030600, 0x020C00, 0x7FFFF0, 0x000000, 0x010C00, 0x078700, 0x1E01C0, 0x7800F0, 0x200020, 0x000000, 0x0FFF80, 0x088880, 0x088880, 0x088880, 0x088880, 0x7FFFF0, 0x000000, 0x000000, 0x000000],
+  "大": [0x000000, 0x000000, 0x000000, 0x000000, 0x002000, 0x002000, 0x002000, 0x002000, 0x002000, 0x002000, 0x7FFFF0, 0x002000, 0x002000, 0x007000, 0x005000, 0x00D800, 0x008800, 0x010400, 0x030600, 0x0C0300, 0x1800C0, 0x600060, 0x000000, 0x000000],
+  "万": [0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x7FFFE0, 0x010000, 0x010000, 0x010000, 0x010000, 0x01FF80, 0x010080, 0x020080, 0x020080, 0x020080, 0x020080, 0x040080, 0x040080, 0x080100, 0x180100, 0x303E00, 0x600000, 0x000000, 0x000000],
+  "元": [0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x1FFFC0, 0x000000, 0x000000, 0x000000, 0x000000, 0x7FFFF0, 0x010400, 0x010400, 0x010400, 0x010400, 0x010400, 0x020410, 0x020410, 0x040410, 0x0C0430, 0x3003E0, 0x600000, 0x000000, 0x000000],
+  "亿": [0x000000, 0x000000, 0x000000, 0x000000, 0x020000, 0x020000, 0x04FFC0, 0x0401C0, 0x080180, 0x080300, 0x180600, 0x180C00, 0x381800, 0x683000, 0x486000, 0x08E010, 0x08C030, 0x098030, 0x090030, 0x090060, 0x08FFC0, 0x080000, 0x000000, 0x000000],
+  "每": [0x000000, 0x000000, 0x000000, 0x030000, 0x060000, 0x0FFFF0, 0x080000, 0x100000, 0x27FF80, 0x644080, 0x0C2080, 0x081080, 0x080880, 0x7FFFF0, 0x084080, 0x182080, 0x101080, 0x100880, 0x1FFFE0, 0x000080, 0x000080, 0x001F00, 0x000000, 0x000000]
 };
 
 const TINY_FONT = {
@@ -13774,7 +13804,7 @@ function getFeishuCardImageChunkSize() {
   return Math.max(1, Math.min(6, Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE));
 }
 
-const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上中文短标签：入场=能否买，信号=回调/启动，低位/年低=120/250日位置，动作=经理建议，份额/费用/回撤/规模用于看成本和风险；旧图里的 BATCH/STAGE 都是分批买入。";
+const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上中文短标签：买点=能否买，信号=回调/启动，120日位/250日位=低位位置，动作=经理建议，万元费/回撤/规模用于看成本和风险；旧图里的 BATCH/STAGE 都是分批买入。";
 
 function isFundReportCardImage(image = {}) {
   const alt = String(image?.alt || "");
@@ -14436,7 +14466,10 @@ function getDefaultStats() {
 }
 
 function getRuntimeStats() {
-  return normalizeStats(safeReadJson(STATS_PATH));
+  return {
+    ...normalizeStats(safeReadJson(STATS_PATH)),
+    release: getRuntimeRelease()
+  };
 }
 
 function updateStats(patch = {}) {
@@ -14459,6 +14492,94 @@ function normalizeStats(value) {
     counters: { ...defaults.counters, ...(value?.counters || {}) },
     last: { ...defaults.last, ...(value?.last || {}) }
   };
+}
+
+function getRuntimeRelease() {
+  return { ...APP_RELEASE };
+}
+
+function resolveAppRelease() {
+  const pkg = safeReadJson(path.join(ROOT, "package.json"));
+  const envCommit = firstNonEmptyEnv([
+    "FUNDAGENT_COMMIT",
+    "GIT_COMMIT",
+    "COMMIT_SHA",
+    "VERCEL_GIT_COMMIT_SHA",
+    "RENDER_GIT_COMMIT",
+    "HEROKU_SLUG_COMMIT"
+  ]);
+  const envBranch = firstNonEmptyEnv([
+    "FUNDAGENT_BRANCH",
+    "GIT_BRANCH",
+    "BRANCH_NAME",
+    "VERCEL_GIT_COMMIT_REF",
+    "RENDER_GIT_BRANCH"
+  ]);
+  const git = readGitReleaseMetadata();
+  const commit = normalizeGitCommit(envCommit || git.commit || "");
+  const branch = String(envBranch || git.branch || "").replace(/^origin\//, "");
+  return {
+    name: pkg.name || "feishu-fund-assistant",
+    version: pkg.version || "0.0.0",
+    commit,
+    shortCommit: commit ? commit.slice(0, 7) : "",
+    branch,
+    source: envCommit ? "env" : git.source || "",
+    startedAt: STARTED_AT.toISOString()
+  };
+}
+
+function firstNonEmptyEnv(keys = []) {
+  for (const key of keys) {
+    const value = String(process.env[key] || "").trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function normalizeGitCommit(value) {
+  const match = String(value || "").trim().match(/[a-f0-9]{7,40}/i);
+  return match ? match[0] : "";
+}
+
+function readGitReleaseMetadata() {
+  const gitDir = resolveGitDir(path.join(ROOT, ".git"));
+  if (!gitDir) return {};
+  const head = safeReadText(path.join(gitDir, "HEAD")).trim();
+  if (!head) return {};
+  if (!head.startsWith("ref:")) {
+    const commit = normalizeGitCommit(head);
+    return commit ? { commit, branch: "", source: "git-head" } : {};
+  }
+  const ref = head.replace(/^ref:\s*/, "").trim();
+  const commit = normalizeGitCommit(safeReadText(path.join(gitDir, ref))) || normalizeGitCommit(readPackedGitRef(gitDir, ref));
+  const branch = ref.replace(/^refs\/heads\//, "");
+  return {
+    commit,
+    branch,
+    source: commit ? "git-ref" : "git-head"
+  };
+}
+
+function resolveGitDir(gitPath) {
+  try {
+    if (!fs.existsSync(gitPath)) return "";
+    const stat = fs.statSync(gitPath);
+    if (stat.isDirectory()) return gitPath;
+    const text = fs.readFileSync(gitPath, "utf8").trim();
+    const match = text.match(/^gitdir:\s*(.+)$/i);
+    if (!match) return "";
+    const target = match[1].trim();
+    return path.resolve(path.dirname(gitPath), target);
+  } catch {
+    return "";
+  }
+}
+
+function readPackedGitRef(gitDir, ref) {
+  const lines = safeReadText(path.join(gitDir, "packed-refs")).split(/\r?\n/);
+  const line = lines.find((item) => item.trim().endsWith(` ${ref}`));
+  return line ? line.split(/\s+/)[0] : "";
 }
 
 function recordError(error, extraCounters = {}) {
@@ -15722,6 +15843,7 @@ export {
   getFundAnalysisSkillIds,
   getFundQaSkillIds,
   getFundRecommendationSkillIds,
+  getRuntimeRelease,
   guardPortfolioWatchlistReadyUpdate,
   ensurePortfolioHeldPositionsReviewed,
   ensurePortfolioReadyWatchlistReviewed,

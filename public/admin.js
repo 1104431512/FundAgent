@@ -156,6 +156,7 @@ async function loadStats() {
   const result = await apiFetch("/api/stats");
   const stats = result.stats || {};
   const counters = stats.counters || {};
+  const release = stats.release || {};
   setText("#statConversations", counters.conversations || 0);
   setText("#statImages", counters.imagesReceived || 0);
   setText("#statAnswers", counters.answersSent || 0);
@@ -181,10 +182,15 @@ async function loadStats() {
   setText("#statPortfolioPushes", counters.portfolioPushes || 0);
   setText("#statErrors", counters.errors || 0);
   setText("#statEvents", counters.messageEvents || 0);
+  setText("#statReleaseVersion", formatReleaseVersion(release));
+  setText("#statReleaseCommit", formatReleaseCommit(release));
+  setText("#statReleaseBranch", release.branch || "-");
+  setText("#statReleaseStartedAt", formatDateTime(release.startedAt || stats.startedAt));
   document.querySelector("#statsOutput").textContent = JSON.stringify(
     {
       startedAt: stats.startedAt,
       updatedAt: stats.updatedAt,
+      release,
       last: stats.last,
       counters
     },
@@ -1456,6 +1462,16 @@ function formatDateTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function formatReleaseVersion(release = {}) {
+  const name = release.name || "FundAgent";
+  const version = release.version ? `v${release.version}` : "";
+  return [name, version].filter(Boolean).join(" ");
+}
+
+function formatReleaseCommit(release = {}) {
+  return release.shortCommit || (release.commit ? String(release.commit).slice(0, 7) : "-");
 }
 
 function formatNumber(value, digits = 2) {

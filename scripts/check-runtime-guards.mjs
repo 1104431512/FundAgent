@@ -96,6 +96,18 @@ const requiredPatterns = [
     message: "fund report charts must include a readable buy-point and fee evidence panel."
   },
   {
+    pattern: /120日位[\s\S]{0,140}250日位/,
+    message: "fund report charts must show low-position labels as Chinese time-window positions rather than opaque metric names."
+  },
+  {
+    pattern: /万元费/,
+    message: "fund report charts must label fee evidence as per-10k cost instead of an unexplained numeric metric."
+  },
+  {
+    pattern: /回撤风险[\s\S]{0,1400}阶段收益/,
+    message: "fund report charts must use Chinese panel names instead of RISK/RET abbreviations."
+  },
+  {
     pattern: /年低/,
     message: "fund report charts must show longer-window low-position evidence in a compact readable label."
   },
@@ -966,6 +978,18 @@ const requiredPatterns = [
   {
     pattern: /buildPortfolioWatchlistStatusLines/,
     message: "portfolio status replies must group the self-selected fund pool by readiness status."
+  },
+  {
+    pattern: /\/health[\s\S]{0,900}release:\s*getRuntimeRelease\(\)/,
+    message: "health checks must expose runtime release metadata so deployment drift is visible."
+  },
+  {
+    pattern: /function getRuntimeStats\(\)[\s\S]{0,240}release:\s*getRuntimeRelease\(\)/,
+    message: "runtime stats must expose release metadata for the admin UI."
+  },
+  {
+    pattern: /statReleaseCommit[\s\S]*formatReleaseCommit|formatReleaseCommit[\s\S]*statReleaseCommit/,
+    message: "admin runtime UI must show the currently deployed commit."
   },
   {
     pattern: /备选理由：/,

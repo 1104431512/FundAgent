@@ -8,6 +8,8 @@ process.env.FEISHU_REPORT_CHART_PIXEL_RATIO = "1";
 
 const serverPath = pathToFileURL(path.join(process.cwd(), "src", "server.mjs")).href;
 const serverSource = fs.readFileSync(path.join(process.cwd(), "src", "server.mjs"), "utf8");
+const adminSource = fs.readFileSync(path.join(process.cwd(), "public", "admin.js"), "utf8");
+const adminHtmlSource = fs.readFileSync(path.join(process.cwd(), "public", "admin.html"), "utf8");
 const manager = await import(serverPath);
 
 const setupQuery = "我想要找一个回调完成，到了低位，准备要启动的基金";
@@ -43,6 +45,11 @@ assert(
   setupSkillContext.indexOf("本次任务焦点：回调完成/低位启动") < setupSkillContext.indexOf("# Skill: fund-theme-radar"),
   "task focus directive must appear before loaded skill bodies"
 );
+const runtimeRelease = manager.getRuntimeRelease();
+assert(runtimeRelease && runtimeRelease.name && runtimeRelease.startedAt, "runtime release metadata must include app name and start time");
+assert(Object.prototype.hasOwnProperty.call(runtimeRelease, "shortCommit"), "runtime release metadata must expose the deployed short commit when available");
+assert(serverSource.includes("release: getRuntimeRelease()"), "health/stats APIs must expose runtime release metadata");
+assert(adminSource.includes("formatReleaseCommit") && adminHtmlSource.includes("statReleaseCommit"), "admin runtime UI must show the deployed commit");
 assert(
   setupSkillContext.indexOf("# Skill: fund-theme-radar") < setupSkillContext.indexOf("# Skill: fund-answer-quality"),
   "skill context must preserve requested workflow priority order"
@@ -1696,6 +1703,9 @@ assert(serverSource.includes("CJK_CHART_FONT"), "summary chart renderer must car
 assert(serverSource.includes("drawChartTextFit"), "summary chart renderer must fit Chinese and numeric metric labels instead of shrinking them into QR-like bitmap text");
 assert(serverSource.includes("REPORT_CHART_MIN_TEXT_SCALE = 3"), "summary chart must keep thumbnail-safe minimum text scale");
 assert(serverSource.includes("showAxisLabels: false"), "summary chart must hide dense axis tick text in Feishu thumbnails");
+assert(serverSource.includes("120日位") && serverSource.includes("250日位"), "summary chart must label low-position evidence with Chinese time-window position labels");
+assert(serverSource.includes("万元费"), "summary chart must label fee evidence as per-10k cost");
+assert(serverSource.includes("回撤风险") && serverSource.includes("阶段收益"), "legacy chart panels must use Chinese labels instead of RISK/RET");
 assert(serverSource.includes('staged_buy: "分批"'), "summary chart must render staged-buy states in Chinese instead of the ambiguous STAGE value");
 assert(serverSource.includes('STAGE: "分批"'), "summary chart must translate legacy STAGE/BATCH values if upstream evidence still uses them");
 assert(!serverSource.includes('staged_buy: "STAGE"'), "summary chart must not show STAGE for staged-buy states in new images");
@@ -1704,6 +1714,9 @@ for (const label of ["基金", "净值", "区间涨跌", "净值走势", "买点
 }
 for (const staleLabel of ["FUND SETUP", "NAV TREND", "DRAWDOWN FROM HIGH", "STAGE RETURN", "SETUP / RISK", "PULLBK", "FEEY", "20D", "60D", "120D", "250D"]) {
   assert(!serverSource.includes(staleLabel), `summary chart should not expose stale English label: ${staleLabel}`);
+}
+for (const staleLabel of ['"RISK"', '"RET"', '"NO DATA"']) {
+  assert(!serverSource.includes(staleLabel), `report chart should not expose unexplained English label: ${staleLabel}`);
 }
 assert(!/drawText\([^)]*[\u4e00-\u9fff]/.test(serverSource), "chart renderer must route Chinese text through the readable CJK glyph renderer");
 assert(!/drawText\([^;\n]*,\s*1\)/.test(serverSource), "summary chart must not use scale-1 bitmap text that becomes QR-like in Feishu thumbnails");
