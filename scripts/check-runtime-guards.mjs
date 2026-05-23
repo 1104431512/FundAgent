@@ -92,11 +92,11 @@ const requiredPatterns = [
     message: "fund screening final prompt must use Chinese manager-decision wording instead of Manager Decision."
   },
   {
-    pattern: /BUY\/FEE/,
+    pattern: /买点费用/,
     message: "fund report charts must include a readable buy-point and fee evidence panel."
   },
   {
-    pattern: /YLOW/,
+    pattern: /年低/,
     message: "fund report charts must show longer-window low-position evidence in a compact readable label."
   },
   {
@@ -112,15 +112,15 @@ const requiredPatterns = [
     message: "fund report chart thumbnails must hide dense axis tick text that looks like QR noise."
   },
   {
-    pattern: /sanitizeChartText/,
-    message: "fund report charts must sanitize non-ASCII text before drawing bitmap labels."
+    pattern: /CJK_CHART_FONT/,
+    message: "fund report charts must render fixed Chinese labels with readable glyphs instead of unreadable bitmap blocks."
   },
   {
     pattern: /drawDecisionEvidenceStrip/,
     message: "fund report charts must expose decision evidence above the trend line."
   },
   {
-    pattern: /drawTextFit/,
+    pattern: /drawChartTextFit/,
     message: "fund report charts must fit large labels instead of shrinking them into unreadable bitmap text."
   },
   {
@@ -276,15 +276,15 @@ const requiredPatterns = [
     message: "fund chart reading guides must summarize how many charts support buy and backup reasoning."
   },
   {
-    pattern: /图中英文缩写只是为了让图片排版清楚/,
-    message: "fund chart reading guides must translate image abbreviations into Chinese instead of leaving users to decode labels."
+    pattern: /新图已经使用中文短标签/,
+    message: "fund chart reading guides must tell users that report images are Chinese-first."
   },
   {
-    pattern: /ENTRY=入场判断[\s\S]{0,260}LOW=120日区间位置[\s\S]{0,260}SIZE=基金规模/,
+    pattern: /入场=是否到了可买位置[\s\S]{0,260}低位\/年低=120日\/250日区间位置[\s\S]{0,260}规模=基金规模/,
     message: "fund chart reading guides must explain the key entry, low-position, and scale labels."
   },
   {
-    pattern: /BATCH=分批买入[\s\S]{0,120}旧图里的 STAGE 也是/,
+    pattern: /分批=分几次买入[\s\S]{0,220}BATCH 或 STAGE 都是/,
     message: "fund report charts must avoid ambiguous STAGE in new images and explain it for users who saw older charts."
   },
   {
@@ -328,11 +328,11 @@ const requiredPatterns = [
     message: "supplemental fund image cards must explain which buy or backup charts they contain."
   },
   {
-    pattern: /FEISHU_FUND_IMAGE_CARD_LEGEND[\s\S]{0,260}ENTRY=入场判断[\s\S]{0,260}BATCH=分批买入/,
+    pattern: /FEISHU_FUND_IMAGE_CARD_LEGEND[\s\S]{0,260}图上中文短标签[\s\S]{0,260}BATCH\/STAGE 都是分批买入/,
     message: "fund image cards must show a Chinese legend next to report images, not only in the main text body."
   },
   {
-    pattern: /buildFeishuImageCaption[\s\S]{0,700}先看 ENTRY\/ACT 判断能否买[\s\S]{0,320}FEE\/DROP\/SIZE 控制费用、回撤和规模风险/,
+    pattern: /buildFeishuImageCaption[\s\S]{0,700}先看“入场\/动作”判断能否买[\s\S]{0,320}“费用\/回撤\/规模”控制成本和风险/,
     message: "fund image captions must tell users how to read buy, low-position, fee, drawdown, and scale evidence."
   },
   {
@@ -792,8 +792,8 @@ const requiredPatterns = [
     message: "portfolio API must expose visible investment committee views for the manager timeline."
   },
   {
-    pattern: /run\.summary = decision\.summary/,
-    message: "portfolio decision runs must persist the manager's actual conclusion instead of the last progress message."
+    pattern: /run\.summary = decision\.summary[\s\S]{0,1400}markPortfolioRunProgress\(db, run, "决策日报已生成，正在保存任务结果。", \{ preserveSummary: true \}\)/,
+    message: "portfolio decision runs must preserve the manager's actual conclusion instead of overwriting it with the last progress message."
   },
   {
     pattern: /accountAfter\.cumulativePnlPct[\s\S]{0,260}investedCost[\s\S]{0,260}严禁把初始本金/,

@@ -872,9 +872,11 @@ function finishCancelledPortfolioRun(run, error, startedAt) {
   return getPortfolioPublicState(currentDb);
 }
 
-function markPortfolioRunProgress(db, run, summary) {
+function markPortfolioRunProgress(db, run, summary, options = {}) {
   const now = new Date().toISOString();
-  run.summary = summary;
+  if (!options.preserveSummary) {
+    run.summary = summary;
+  }
   run.progressAt = now;
   db.updatedAt = now;
   console.log(`[portfolio-progress] ${run.id} ${run.type} ${summary}`);
@@ -1006,7 +1008,7 @@ async function executePortfolioDecision(db, run, config) {
     settlementEvents: lifecycleBefore.settlementEvents,
     run
   });
-  markPortfolioRunProgress(db, run, "决策日报已生成，正在保存任务结果。");
+  markPortfolioRunProgress(db, run, "决策日报已生成，正在保存任务结果。", { preserveSummary: true });
 
   updateStats({
     counters: {
@@ -6789,10 +6791,10 @@ function getFundReportProfileKey(profile) {
 }
 
 const FUND_REPORT_CHART_LEGEND_LINES = [
-  "图中英文缩写只是为了让图片排版清楚，含义如下：FUND=基金代码，NAV=最新净值，RANGE=本图区间涨跌，TREND=净值走势，BUY/FEE=买点和费用。",
-  "顶部五格：ENTRY=入场判断，SIG=回调或启动信号，LOW=120日区间位置，YLOW=250日区间位置，ACT=经理动作。",
-  "右侧六格：CLASS=份额类别，FEE=每万元估算费用，20/60=近20日/近60日涨跌，DROP=距高点回撤，SIZE=基金规模。",
-  "常见状态：BUY=可买，BATCH=分批买入，WAIT=等待回撤，AVOID=暂回避，OBS=观察，PULL=回调完成，LAUNCH=启动前夜，MISS/NA=暂无可靠数据。旧图里的 STAGE 也是“分批买入”的意思。"
+  "新图已经使用中文短标签：入场=是否到了可买位置，信号=回调完成或启动迹象，低位/年低=120日/250日区间位置，动作=经理建议。",
+  "右侧六格：份额=A/C 等类别，费用=每万元估算成本，近20日/近60日=短中期涨跌，回撤=距近期高点回落，规模=基金规模。",
+  "常见状态：可买=可以小仓位执行，分批=分几次买入，等待=等回撤或确认，回避=暂不碰，观察=放备选池，缺失=数据不足。",
+  "如果看到旧图：ENTRY=入场，SIG=信号，LOW/YLOW=低位/年低，ACT=动作，BATCH 或 STAGE 都是“分批买入”的意思。"
 ];
 
 function getFundReportChartLegendLines() {
@@ -11196,9 +11198,22 @@ function renderFundReportSummaryPng({ profile, width = 1280, height = 760 } = {}
   const muted = [100, 116, 139, 255];
   const ink = [15, 23, 42, 255];
 
-  drawTextFit(canvas, 32, 22, `${code}${shareClass ? ` ${shareClass}` : ""} FUND`, ink, 5, 560, 4);
-  drawText(canvas, 32, 72, `NAV ${formatChartNumber(last.nav)}  ${shortChartDate(first.date)}-${shortChartDate(last.date)}`, muted, REPORT_CHART_MIN_TEXT_SCALE);
-  drawTextFit(canvas, width - 416, 28, `RANGE ${formatChartPct(changePct)}`, lineColor, REPORT_CHART_VALUE_SCALE, 384, 4);
+  drawChartTextFit(canvas, 32, 22, `${code}${shareClass ? ` ${shareClass}类` : ""} 基金`, ink, {
+    asciiScale: 5,
+    cjkScale: 1,
+    maxWidth: 560,
+    minAsciiScale: 4
+  });
+  drawChartText(canvas, 32, 72, `净值 ${formatChartNumber(last.nav)}  ${shortChartDate(first.date)}-${shortChartDate(last.date)}`, muted, {
+    asciiScale: REPORT_CHART_MIN_TEXT_SCALE,
+    cjkScale: 1
+  });
+  drawChartTextFit(canvas, width - 416, 28, `区间涨跌 ${formatChartPct(changePct)}`, lineColor, {
+    asciiScale: REPORT_CHART_VALUE_SCALE,
+    cjkScale: 1,
+    maxWidth: 384,
+    minAsciiScale: 4
+  });
   drawDecisionEvidenceStrip(canvas, {
     x: 32,
     y: 108,
@@ -11214,7 +11229,7 @@ function renderFundReportSummaryPng({ profile, width = 1280, height = 760 } = {}
     height: 374,
     points,
     color: lineColor,
-    label: "NAV",
+    label: "净值走势",
     showAxisLabels: false,
     labelScale: REPORT_CHART_MIN_TEXT_SCALE,
     endpointScale: REPORT_CHART_MIN_TEXT_SCALE
@@ -11256,7 +11271,7 @@ function drawLineChartPanel(canvas, {
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
-  drawText(canvas, x, y - 30, label, [51, 65, 85, 255], labelScale);
+  drawChartText(canvas, x, y - 30, label, [51, 65, 85, 255], { asciiScale: labelScale, cjkScale: 1 });
   drawChartFrame(canvas, x, y, width, height);
   if (showAxisLabels) {
     drawYAxisTickLabels(canvas, x, y, height, [max, min + range / 2, min], formatChartNumber);
@@ -11343,11 +11358,11 @@ function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
 function drawDecisionEvidenceStrip(canvas, { x, y, width, profile = {}, trend = {} }) {
   const actionability = profile?.actionability || {};
   const items = [
-    ["ENTRY", formatChartEntryBias(trend.entryBias), chartDecisionColor(trend.entryBias)],
-    ["SIG", formatChartSetupSignal(trend.pullbackSetup?.signal), chartSignalColor(trend.pullbackSetup?.signal)],
-    ["LOW", formatChartMetricValue("LOW", trend.lowPositionPct120), chartLowPositionColor(trend.lowPositionPct120)],
-    ["YLOW", formatChartMetricValue("YLOW", trend.lowPositionPct250), chartLowPositionColor(trend.lowPositionPct250)],
-    ["ACT", formatChartAction(actionability.action), chartActionColor(actionability.action)]
+    ["入场", formatChartEntryBias(trend.entryBias), chartDecisionColor(trend.entryBias)],
+    ["信号", formatChartSetupSignal(trend.pullbackSetup?.signal), chartSignalColor(trend.pullbackSetup?.signal)],
+    ["低位", formatChartMetricValue("LOW", trend.lowPositionPct120), chartLowPositionColor(trend.lowPositionPct120)],
+    ["年低", formatChartMetricValue("YLOW", trend.lowPositionPct250), chartLowPositionColor(trend.lowPositionPct250)],
+    ["动作", formatChartAction(actionability.action), chartActionColor(actionability.action)]
   ];
   const gap = 10;
   const tileW = Math.floor((width - gap * (items.length - 1)) / items.length);
@@ -11357,39 +11372,58 @@ function drawDecisionEvidenceStrip(canvas, { x, y, width, profile = {}, trend = 
     const tileX = x + index * (tileW + gap);
     fillRect(canvas, tileX, y, tileW, tileH, [248, 250, 252, 255]);
     drawRect(canvas, tileX, y, tileW, tileH, [226, 232, 240, 255], 1);
-    drawText(canvas, tileX + 14, y + 12, label, [100, 116, 139, 255], REPORT_CHART_MIN_TEXT_SCALE);
-    drawTextFit(canvas, tileX + 14, y + 50, value, color, REPORT_CHART_VALUE_SCALE, tileW - 28, 4);
+    drawChartText(canvas, tileX + 14, y + 12, label, [100, 116, 139, 255], {
+      asciiScale: REPORT_CHART_MIN_TEXT_SCALE,
+      cjkScale: 1
+    });
+    drawChartTextFit(canvas, tileX + 14, y + 50, value, color, {
+      asciiScale: REPORT_CHART_VALUE_SCALE,
+      cjkScale: 1,
+      maxWidth: tileW - 28,
+      minAsciiScale: 4
+    });
   });
 }
 
 function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, trend = {} }) {
-  drawText(canvas, x, y - 30, "BUY/FEE", [51, 65, 85, 255], REPORT_CHART_MIN_TEXT_SCALE);
+  drawChartText(canvas, x, y - 30, "买点费用", [51, 65, 85, 255], {
+    asciiScale: REPORT_CHART_MIN_TEXT_SCALE,
+    cjkScale: 1
+  });
   const feeImpact = profile?.fees?.feeImpact || profile?.feeImpact || {};
   const shareClass = getChartShareClass(profile);
   const rows = [
-    ["CLASS", shareClass || "MISS"],
-    ["FEE", feeImpact.oneYearCostPer10000],
-    ["20", trend.return20dPct],
-    ["60", trend.return60dPct],
-    ["DROP", trend.drawdownFromRecentHighPct],
-    ["SIZE", formatChartScale(profile?.scale || profile?.seed?.scale)]
+    ["CLASS", "份额", shareClass ? `${shareClass}类` : "缺失"],
+    ["FEE", "费用", feeImpact.oneYearCostPer10000],
+    ["20", "近20日", trend.return20dPct],
+    ["60", "近60日", trend.return60dPct],
+    ["DROP", "回撤", trend.drawdownFromRecentHighPct],
+    ["SIZE", "规模", formatChartScale(profile?.scale || profile?.seed?.scale)]
   ];
   const gap = 10;
   const columns = 2;
   const tileW = Math.floor((width - gap * (columns - 1)) / columns);
   const tileH = Math.floor((height - gap * 2) / 3);
   drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
-  rows.forEach(([label, rawValue], index) => {
+  rows.forEach(([key, label, rawValue], index) => {
     const column = index % columns;
     const row = Math.floor(index / columns);
     const tileX = x + column * (tileW + gap);
     const tileY = y + row * (tileH + gap);
-    const value = formatChartMetricValue(label, rawValue);
-    const color = chartMetricColor(label, rawValue);
+    const value = formatChartMetricValue(key, rawValue);
+    const color = chartMetricColor(key, rawValue);
     fillRect(canvas, tileX, tileY, tileW, tileH, [248, 250, 252, 255]);
     drawRect(canvas, tileX, tileY, tileW, tileH, [226, 232, 240, 255], 1);
-    drawText(canvas, tileX + 12, tileY + 12, label, [100, 116, 139, 255], REPORT_CHART_MIN_TEXT_SCALE);
-    drawTextFit(canvas, tileX + 12, tileY + 58, value, color, REPORT_CHART_VALUE_SCALE, tileW - 24, 4);
+    drawChartText(canvas, tileX + 12, tileY + 12, label, [100, 116, 139, 255], {
+      asciiScale: REPORT_CHART_MIN_TEXT_SCALE,
+      cjkScale: 1
+    });
+    drawChartTextFit(canvas, tileX + 12, tileY + 58, value, color, {
+      asciiScale: REPORT_CHART_VALUE_SCALE,
+      cjkScale: 1,
+      maxWidth: tileW - 24,
+      minAsciiScale: 4
+    });
   });
 }
 
@@ -11538,33 +11572,33 @@ function chartSharpeColor(value) {
 
 function formatChartSetupSignal(value) {
   const labels = {
-    pullback_complete: "PULL",
-    launch_setup: "LAUNCH",
-    none: "NO"
+    pullback_complete: "回调完成",
+    launch_setup: "启动",
+    none: "无信号"
   };
-  return labels[value] || "MISS";
+  return labels[value] || "缺失";
 }
 
 function formatChartEntryBias(value) {
   const labels = {
-    buyable_now: "BUY",
-    staged_buy: "BATCH",
-    wait_pullback: "WAIT",
-    hold_observe: "OBS",
-    avoid_now: "AVOID"
+    buyable_now: "可买",
+    staged_buy: "分批",
+    wait_pullback: "等待",
+    hold_observe: "观察",
+    avoid_now: "回避"
   };
-  return labels[value] || "OBS";
+  return labels[value] || "观察";
 }
 
 function formatChartAction(value) {
   const labels = {
-    buy: "BUY",
-    staged_buy: "BATCH",
-    wait: "WAIT",
-    avoid: "AVOID",
-    hold: "HOLD"
+    buy: "买入",
+    staged_buy: "分批",
+    wait: "等待",
+    avoid: "回避",
+    hold: "持有"
   };
-  return labels[value] || "MISS";
+  return labels[value] || "缺失";
 }
 
 function getChartPixelRatio() {
@@ -11655,6 +11689,106 @@ function drawRect(canvas, x, y, width, height, color, strokeWidth = 1) {
   drawLine(canvas, x, y + height, x, y, color, strokeWidth);
 }
 
+function drawChartText(canvas, x, y, text, color = [15, 23, 42, 255], options = {}) {
+  const value = normalizeChartDisplayText(text);
+  if (!value) return;
+  const asciiScale = Math.max(1, Math.round(Number(options.asciiScale || 2)));
+  const cjkScale = Math.max(1, Math.round(Number(options.cjkScale || 1)));
+  let cursor = Math.round(x);
+  const top = Math.round(y);
+  for (const char of value) {
+    if (char === " ") {
+      cursor += 4 * asciiScale;
+      continue;
+    }
+    const cjkGlyph = CJK_CHART_FONT[char];
+    if (cjkGlyph) {
+      drawCjkChartGlyph(canvas, cursor, top, cjkGlyph, color, cjkScale);
+      cursor += (CJK_CHART_FONT_SIZE + 2) * cjkScale;
+      continue;
+    }
+    const rawChar = char.toUpperCase();
+    const glyph = TINY_FONT[rawChar] || TINY_FONT["?"];
+    for (let row = 0; row < glyph.length; row += 1) {
+      for (let col = 0; col < glyph[row].length; col += 1) {
+        if (glyph[row][col] !== "1") continue;
+        fillRect(canvas, cursor + col * asciiScale, top + row * asciiScale, asciiScale, asciiScale, color);
+      }
+    }
+    cursor += (glyph[0].length + 1) * asciiScale;
+  }
+}
+
+function drawChartTextFit(canvas, x, y, text, color = [15, 23, 42, 255], options = {}) {
+  const value = normalizeChartDisplayText(text);
+  if (!value) return;
+  const maxWidth = Number.isFinite(Number(options.maxWidth)) ? Number(options.maxWidth) : Infinity;
+  const cjkScale = Math.max(1, Math.round(Number(options.cjkScale || 1)));
+  const asciiScale = Math.max(1, Math.round(Number(options.asciiScale || 2)));
+  const minAsciiScale = Math.max(1, Math.round(Number(options.minAsciiScale || Math.min(2, asciiScale))));
+  for (let nextAsciiScale = asciiScale; nextAsciiScale >= minAsciiScale; nextAsciiScale -= 1) {
+    if (measureChartDisplayText(value, { asciiScale: nextAsciiScale, cjkScale }) <= maxWidth) {
+      drawChartText(canvas, x, y, value, color, { asciiScale: nextAsciiScale, cjkScale });
+      return;
+    }
+  }
+  drawChartText(canvas, x, y, truncateChartDisplayText(value, { asciiScale: minAsciiScale, cjkScale, maxWidth }), color, {
+    asciiScale: minAsciiScale,
+    cjkScale
+  });
+}
+
+function normalizeChartDisplayText(text) {
+  return String(text || "")
+    .normalize("NFKC")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split("")
+    .filter((char) => char === " " || CJK_CHART_FONT[char] || /^[\x21-\x7E]$/.test(char))
+    .join("");
+}
+
+function measureChartDisplayText(text, options = {}) {
+  const asciiScale = Math.max(1, Math.round(Number(options.asciiScale || 2)));
+  const cjkScale = Math.max(1, Math.round(Number(options.cjkScale || 1)));
+  let width = 0;
+  for (const char of normalizeChartDisplayText(text)) {
+    if (char === " ") {
+      width += 4 * asciiScale;
+      continue;
+    }
+    if (CJK_CHART_FONT[char]) {
+      width += (CJK_CHART_FONT_SIZE + 2) * cjkScale;
+      continue;
+    }
+    const glyph = TINY_FONT[char.toUpperCase()] || TINY_FONT["?"];
+    width += (glyph[0].length + 1) * asciiScale;
+  }
+  return width;
+}
+
+function truncateChartDisplayText(text, options = {}) {
+  const maxWidth = Number.isFinite(Number(options.maxWidth)) ? Number(options.maxWidth) : Infinity;
+  let output = "";
+  for (const char of normalizeChartDisplayText(text)) {
+    const next = `${output}${char}`;
+    if (measureChartDisplayText(next, options) > maxWidth) break;
+    output = next;
+  }
+  return output || "NA";
+}
+
+function drawCjkChartGlyph(canvas, x, y, rows, color, scale = 1) {
+  const glyphScale = Math.max(1, Math.round(Number(scale || 1)));
+  for (let row = 0; row < rows.length; row += 1) {
+    const bits = rows[row];
+    for (let col = 0; col < CJK_CHART_FONT_SIZE; col += 1) {
+      if (!(bits & (1 << (CJK_CHART_FONT_SIZE - 1 - col)))) continue;
+      fillRect(canvas, x + col * glyphScale, y + row * glyphScale, glyphScale, glyphScale, color);
+    }
+  }
+}
+
 function sanitizeChartText(text) {
   return String(text || "")
     .normalize("NFKC")
@@ -11719,6 +11853,61 @@ function truncateChartText(text, scale, maxWidth) {
   }
   return output || "NA";
 }
+
+const CJK_CHART_FONT_SIZE = 24;
+const CJK_CHART_FONT = {
+  "基": [0x000000, 0x000000, 0x000000, 0x020080, 0x020080, 0x1FFFF0, 0x020080, 0x03FF80, 0x020080, 0x03FF80, 0x020080, 0x020080, 0x3FFFF8, 0x010200, 0x021100, 0x0610C0, 0x1FFF60, 0x301018, 0x001000, 0x1FFFF0, 0x000000, 0x000000, 0x000000, 0x000000],
+  "金": [0x000000, 0x000000, 0x000C00, 0x001C00, 0x003200, 0x006300, 0x00C180, 0x0100C0, 0x060060, 0x1BFFD8, 0x30080C, 0x000800, 0x000800, 0x0FFFF0, 0x000800, 0x040820, 0x020840, 0x018880, 0x008900, 0x1FFFF8, 0x000000, 0x000000, 0x000000, 0x000000],
+  "最": [0x000000, 0x000000, 0x000000, 0x000000, 0x07FFE0, 0x040020, 0x07FFE0, 0x040020, 0x040020, 0x07FFE0, 0x000000, 0x3FFFF8, 0x082000, 0x0FEFF0, 0x082410, 0x0FE620, 0x082260, 0x0821C0, 0x09F980, 0x3E2660, 0x00381C, 0x000000, 0x000000, 0x000000],
+  "新": [0x000000, 0x000000, 0x020000, 0x030038, 0x0107C0, 0x1FF400, 0x082400, 0x0C4400, 0x048400, 0x3FF400, 0x0007F8, 0x010440, 0x010440, 0x1FE440, 0x010440, 0x094440, 0x114840, 0x112840, 0x213840, 0x011040, 0x1E2040, 0x000000, 0x000000, 0x000000],
+  "净": [0x000000, 0x000000, 0x000000, 0x001000, 0x003000, 0x103F80, 0x086180, 0x0CC300, 0x05C200, 0x00FFE0, 0x000420, 0x000420, 0x05FFF8, 0x040420, 0x080420, 0x08FFE0, 0x080420, 0x100400, 0x100400, 0x000400, 0x007800, 0x000000, 0x000000, 0x000000],
+  "值": [0x000000, 0x000000, 0x000000, 0x010200, 0x010200, 0x02FFF8, 0x020200, 0x047FE0, 0x044020, 0x044020, 0x0C7FE0, 0x144020, 0x144020, 0x047FE0, 0x044020, 0x044020, 0x047FE0, 0x044020, 0x044020, 0x05FFF8, 0x040000, 0x000000, 0x000000, 0x000000],
+  "区": [0x000000, 0x000000, 0x000000, 0x000000, 0x0FFFF8, 0x080000, 0x090020, 0x08C060, 0x0860C0, 0x083180, 0x081F00, 0x080E00, 0x080E00, 0x081B00, 0x087180, 0x08C0C0, 0x0B80E0, 0x090040, 0x080000, 0x0FFFF8, 0x000000, 0x000000, 0x000000, 0x000000],
+  "间": [0x000000, 0x000000, 0x000000, 0x080000, 0x067FF0, 0x020010, 0x100010, 0x100010, 0x10FF10, 0x108110, 0x108110, 0x108110, 0x10FF10, 0x108110, 0x108110, 0x108110, 0x10FF10, 0x108010, 0x100010, 0x100010, 0x1001E0, 0x000000, 0x000000, 0x000000],
+  "涨": [0x000000, 0x000000, 0x000000, 0x180200, 0x0DE208, 0x062210, 0x002230, 0x002260, 0x19E240, 0x0D2280, 0x070200, 0x010FFC, 0x010240, 0x01E240, 0x042240, 0x042220, 0x082220, 0x082230, 0x0822D0, 0x10238C, 0x13C604, 0x000000, 0x000000, 0x000000],
+  "跌": [0x000000, 0x000000, 0x000000, 0x000100, 0x1F8900, 0x108900, 0x109900, 0x109FF0, 0x109100, 0x1FB100, 0x122100, 0x020100, 0x123FF8, 0x13C300, 0x120300, 0x120280, 0x120480, 0x120C40, 0x17D860, 0x383030, 0x006018, 0x000000, 0x000000, 0x000000],
+  "走": [0x000000, 0x000000, 0x000800, 0x000800, 0x000800, 0x07FFF0, 0x000800, 0x000800, 0x000800, 0x000800, 0x1FFFF8, 0x000800, 0x010800, 0x010800, 0x030FF0, 0x020800, 0x030800, 0x058800, 0x04C800, 0x087FFC, 0x100000, 0x000000, 0x000000, 0x000000],
+  "势": [0x000000, 0x000000, 0x000000, 0x020400, 0x020400, 0x020400, 0x3FFFC0, 0x020440, 0x023440, 0x03CC48, 0x3E1E48, 0x023348, 0x1EC030, 0x002000, 0x002000, 0x1FFFC0, 0x002040, 0x004040, 0x008040, 0x070F80, 0x380000, 0x000000, 0x000000, 0x000000],
+  "买": [0x000000, 0x000000, 0x000000, 0x000000, 0x0FFFF8, 0x000008, 0x030810, 0x018810, 0x00C820, 0x0C2800, 0x060800, 0x030800, 0x000800, 0x000800, 0x1FFFFC, 0x001800, 0x003E00, 0x006380, 0x00C0E0, 0x030038, 0x1C000C, 0x000000, 0x000000, 0x000000],
+  "点": [0x000000, 0x000000, 0x000000, 0x001000, 0x001000, 0x001FF8, 0x001000, 0x001000, 0x07FFE0, 0x040020, 0x040020, 0x040020, 0x040020, 0x07FFE0, 0x040020, 0x000000, 0x088420, 0x18C430, 0x104610, 0x306208, 0x202208, 0x000000, 0x000000, 0x000000],
+  "费": [0x000000, 0x000000, 0x004200, 0x004200, 0x0FFFF0, 0x004210, 0x004210, 0x0FFFF0, 0x084210, 0x084200, 0x0FFFF8, 0x008208, 0x010208, 0x030070, 0x0FFFC0, 0x3A0040, 0x020840, 0x020840, 0x020C40, 0x003F00, 0x01E0E0, 0x1E0018, 0x000000, 0x000000],
+  "用": [0x000000, 0x000000, 0x000000, 0x000000, 0x07FFF0, 0x040810, 0x040810, 0x040810, 0x040810, 0x07FFF0, 0x040810, 0x040810, 0x040810, 0x040810, 0x07FFF0, 0x040810, 0x040810, 0x080810, 0x080810, 0x180810, 0x1009E0, 0x000000, 0x000000, 0x000000],
+  "入": [0x000000, 0x000000, 0x000000, 0x008000, 0x004000, 0x002000, 0x003000, 0x001000, 0x001800, 0x003800, 0x003C00, 0x002400, 0x006600, 0x004200, 0x00C300, 0x008100, 0x018180, 0x0300C0, 0x060060, 0x0C0030, 0x180018, 0x000000, 0x000000, 0x000000],
+  "场": [0x000000, 0x000000, 0x000000, 0x040000, 0x047FF0, 0x0400E0, 0x040180, 0x040700, 0x3F1C00, 0x043000, 0x047FF8, 0x040898, 0x040898, 0x041098, 0x05B110, 0x0E6110, 0x30C310, 0x018210, 0x000410, 0x000DE0, 0x001800, 0x000000, 0x000000, 0x000000],
+  "信": [0x000000, 0x000000, 0x010400, 0x010600, 0x020200, 0x02FFF8, 0x040000, 0x040000, 0x0C7FF0, 0x0C0000, 0x1C0000, 0x347FF0, 0x240000, 0x040000, 0x047FF0, 0x044010, 0x044010, 0x044010, 0x044010, 0x047FF0, 0x044010, 0x000000, 0x000000, 0x000000],
+  "号": [0x000000, 0x000000, 0x000000, 0x000000, 0x07FFE0, 0x040020, 0x040020, 0x040020, 0x07FFE0, 0x040020, 0x000000, 0x3FFFFC, 0x020000, 0x040000, 0x07FFE0, 0x000020, 0x000020, 0x000020, 0x000040, 0x007F80, 0x000000, 0x000000, 0x000000, 0x000000],
+  "低": [0x000000, 0x000000, 0x000000, 0x010000, 0x030078, 0x027FC0, 0x024100, 0x044100, 0x0C4100, 0x0C4100, 0x1C7FFC, 0x344100, 0x244100, 0x044080, 0x044080, 0x044084, 0x0446C4, 0x045C44, 0x047624, 0x04C318, 0x000000, 0x000000, 0x000000, 0x000000],
+  "位": [0x000000, 0x000000, 0x000000, 0x010400, 0x020200, 0x020100, 0x04FFFC, 0x040000, 0x0C4010, 0x0C6010, 0x1C2020, 0x342020, 0x241020, 0x041040, 0x041040, 0x040840, 0x040840, 0x040080, 0x040080, 0x05FFFC, 0x040000, 0x000000, 0x000000, 0x000000],
+  "年": [0x000000, 0x000000, 0x000000, 0x010000, 0x020000, 0x03FFF8, 0x040400, 0x040400, 0x080400, 0x180400, 0x13FFF8, 0x020400, 0x020400, 0x020400, 0x020400, 0x1FFFFC, 0x000400, 0x000400, 0x000400, 0x000400, 0x000400, 0x000000, 0x000000, 0x000000],
+  "动": [0x000000, 0x000000, 0x000000, 0x000200, 0x0FE200, 0x000200, 0x001FF8, 0x000218, 0x000218, 0x1FF218, 0x020218, 0x020210, 0x048210, 0x04C610, 0x044410, 0x084410, 0x09E410, 0x1E2810, 0x001810, 0x0011E0, 0x003000, 0x000000, 0x000000, 0x000000],
+  "作": [0x000000, 0x000000, 0x000000, 0x010800, 0x031800, 0x021000, 0x023FFC, 0x042400, 0x0C4400, 0x0CC400, 0x1C87F8, 0x340400, 0x240400, 0x040400, 0x040400, 0x0407F8, 0x040400, 0x040400, 0x040400, 0x040400, 0x040400, 0x000000, 0x000000, 0x000000],
+  "份": [0x000000, 0x000000, 0x000000, 0x010100, 0x010980, 0x021880, 0x0210C0, 0x042040, 0x046060, 0x0CC030, 0x0D8018, 0x157FC0, 0x141040, 0x041040, 0x041040, 0x041040, 0x042040, 0x042040, 0x044040, 0x04C0C0, 0x058F80, 0x000000, 0x000000, 0x000000],
+  "额": [0x000000, 0x000000, 0x000000, 0x020000, 0x010FFC, 0x1FF080, 0x121080, 0x161080, 0x07E7F8, 0x046408, 0x084488, 0x0EC488, 0x138488, 0x03E488, 0x043488, 0x180488, 0x2FE488, 0x082180, 0x082160, 0x082230, 0x0FEC18, 0x08380C, 0x000000, 0x000000],
+  "近": [0x000000, 0x000000, 0x100000, 0x0800F0, 0x0C3F00, 0x062000, 0x022000, 0x002000, 0x002000, 0x383FFC, 0x082080, 0x082080, 0x082080, 0x082080, 0x084080, 0x084080, 0x088080, 0x098080, 0x1D0080, 0x370000, 0x01FFFC, 0x000000, 0x000000, 0x000000],
+  "日": [0x000000, 0x000000, 0x000000, 0x000000, 0x07FFC0, 0x040040, 0x040040, 0x040040, 0x040040, 0x040040, 0x040040, 0x07FFC0, 0x040040, 0x040040, 0x040040, 0x040040, 0x040040, 0x040040, 0x040040, 0x07FFC0, 0x040040, 0x000000, 0x000000, 0x000000],
+  "回": [0x000000, 0x000000, 0x000000, 0x1FFFF0, 0x100010, 0x100010, 0x100010, 0x100010, 0x11FE10, 0x110210, 0x110210, 0x110210, 0x110210, 0x110210, 0x11FE10, 0x110210, 0x100010, 0x100010, 0x100010, 0x1FFFF0, 0x100010, 0x000000, 0x000000, 0x000000],
+  "撤": [0x000000, 0x000000, 0x000000, 0x083040, 0x081840, 0x09FCC0, 0x0828F8, 0x3E4890, 0x088590, 0x09FD90, 0x080390, 0x08FE90, 0x0E84E0, 0x3884E0, 0x08FC60, 0x088460, 0x088460, 0x08FCE0, 0x088490, 0x088510, 0x38BE08, 0x000000, 0x000000, 0x000000],
+  "规": [0x000000, 0x000000, 0x040000, 0x043FE0, 0x042020, 0x042020, 0x3FA220, 0x042220, 0x042220, 0x042220, 0x042220, 0x3FA220, 0x042220, 0x042220, 0x062320, 0x0F0700, 0x090700, 0x088508, 0x18CD08, 0x105908, 0x301108, 0x2030F0, 0x006000, 0x000000],
+  "模": [0x000000, 0x000000, 0x000000, 0x040840, 0x040840, 0x047FF8, 0x040840, 0x040840, 0x3FBFF0, 0x042010, 0x0C2010, 0x0E3FF0, 0x0D2010, 0x14A010, 0x143FF0, 0x342210, 0x240200, 0x04FFF8, 0x040700, 0x040980, 0x043040, 0x05C038, 0x000000, 0x000000],
+  "可": [0x000000, 0x000000, 0x000000, 0x000000, 0x1FFFF8, 0x000040, 0x000040, 0x000040, 0x07F840, 0x040840, 0x040840, 0x040840, 0x040840, 0x040840, 0x040840, 0x07F840, 0x040040, 0x000040, 0x000040, 0x000040, 0x000F80, 0x000000, 0x000000, 0x000000],
+  "分": [0x000000, 0x000000, 0x000000, 0x004400, 0x00C600, 0x008200, 0x018100, 0x010180, 0x0200C0, 0x040060, 0x0C0038, 0x18000C, 0x03FF80, 0x004080, 0x004080, 0x004080, 0x008080, 0x018080, 0x030180, 0x063F00, 0x180000, 0x000000, 0x000000, 0x000000],
+  "批": [0x000000, 0x000000, 0x000000, 0x042100, 0x042100, 0x042100, 0x042100, 0x3FA108, 0x042118, 0x043D20, 0x042140, 0x07A180, 0x0C2100, 0x342100, 0x042100, 0x042108, 0x042508, 0x042F08, 0x043118, 0x3860F0, 0x000000, 0x000000, 0x000000, 0x000000],
+  "等": [0x000000, 0x000000, 0x020180, 0x060300, 0x0FF7FC, 0x0A0480, 0x1108C0, 0x309040, 0x001000, 0x0FFFF8, 0x001000, 0x001000, 0x3FFFFC, 0x000080, 0x000080, 0x1FFFF8, 0x020080, 0x010080, 0x00C080, 0x004080, 0x001F00, 0x000000, 0x000000, 0x000000],
+  "待": [0x000000, 0x000000, 0x000000, 0x010200, 0x030200, 0x020200, 0x047FF0, 0x0C0200, 0x190200, 0x020200, 0x02FFF8, 0x040000, 0x0C0040, 0x1C0040, 0x14FFF8, 0x240040, 0x042040, 0x041040, 0x040840, 0x040040, 0x040780, 0x000000, 0x000000, 0x000000],
+  "避": [0x000000, 0x000000, 0x000000, 0x000040, 0x10FC20, 0x0885FC, 0x0C8400, 0x048508, 0x00FC88, 0x008490, 0x3C83FC, 0x048020, 0x05FC20, 0x05C420, 0x0545FC, 0x074420, 0x064420, 0x047C20, 0x0E4420, 0x130000, 0x20FFFC, 0x000000, 0x000000, 0x000000],
+  "观": [0x000000, 0x000000, 0x000000, 0x003FF0, 0x1FA010, 0x00A210, 0x00A210, 0x10A210, 0x19A210, 0x09A210, 0x052210, 0x072210, 0x032210, 0x032210, 0x032710, 0x078700, 0x048708, 0x0CCD08, 0x185908, 0x103108, 0x2060F0, 0x000000, 0x000000, 0x000000],
+  "察": [0x000000, 0x000000, 0x000000, 0x002000, 0x001000, 0x1FFFF0, 0x100010, 0x010800, 0x03EFE0, 0x046460, 0x0AC6C0, 0x118380, 0x2F0180, 0x06FEC0, 0x1C0060, 0x300018, 0x07FFC0, 0x011000, 0x061300, 0x0C10C0, 0x19E030, 0x000000, 0x000000, 0x000000],
+  "持": [0x000000, 0x000000, 0x000000, 0x040200, 0x040200, 0x040200, 0x047FF0, 0x3F8200, 0x040200, 0x040200, 0x04FFF8, 0x040000, 0x070040, 0x3C0040, 0x047FF8, 0x040040, 0x042040, 0x041040, 0x040840, 0x040040, 0x3807C0, 0x000000, 0x000000, 0x000000],
+  "有": [0x000000, 0x000000, 0x002000, 0x004000, 0x004000, 0x1FFFF8, 0x008000, 0x018000, 0x030000, 0x03FFE0, 0x060020, 0x0E0020, 0x1BFFE0, 0x320020, 0x020020, 0x020020, 0x03FFE0, 0x020020, 0x020020, 0x020020, 0x0207C0, 0x000000, 0x000000, 0x000000],
+  "缺": [0x000000, 0x000000, 0x040100, 0x080100, 0x0FE100, 0x120100, 0x120FF0, 0x120110, 0x220110, 0x020110, 0x3FF110, 0x020110, 0x020FF8, 0x122100, 0x122380, 0x122280, 0x1222C0, 0x122640, 0x122420, 0x1FE818, 0x00380C, 0x000000, 0x000000, 0x000000],
+  "失": [0x000000, 0x000000, 0x000000, 0x001000, 0x021000, 0x021000, 0x041000, 0x07FFF0, 0x081000, 0x181000, 0x101000, 0x001000, 0x1FFFF8, 0x001800, 0x003800, 0x006400, 0x004600, 0x018300, 0x030180, 0x0C0060, 0x300018, 0x000000, 0x000000, 0x000000],
+  "调": [0x000000, 0x000000, 0x000000, 0x080000, 0x047FF0, 0x034010, 0x014210, 0x004210, 0x005FD0, 0x1C4210, 0x044210, 0x045FD0, 0x044010, 0x044010, 0x044F90, 0x04C890, 0x074890, 0x0E8F90, 0x048810, 0x010010, 0x0201F0, 0x000000, 0x000000, 0x000000],
+  "完": [0x000000, 0x000000, 0x000000, 0x002000, 0x001000, 0x1FFFF0, 0x100010, 0x100010, 0x100010, 0x07FFE0, 0x000000, 0x000000, 0x000000, 0x1FFFF8, 0x008400, 0x008400, 0x010408, 0x030408, 0x0E0408, 0x3803F0, 0x000000, 0x000000, 0x000000, 0x000000],
+  "成": [0x000000, 0x000000, 0x000000, 0x000580, 0x0004C0, 0x000440, 0x0FFFF8, 0x080400, 0x080400, 0x080410, 0x0FF430, 0x082420, 0x082640, 0x0822C0, 0x082380, 0x082308, 0x102308, 0x13C788, 0x300CD0, 0x201870, 0x000000, 0x000000, 0x000000, 0x000000],
+  "启": [0x000000, 0x000000, 0x000000, 0x002000, 0x001000, 0x0FFFF0, 0x080010, 0x080010, 0x080010, 0x0FFFF0, 0x080010, 0x080000, 0x080000, 0x09FFF0, 0x090010, 0x090010, 0x190010, 0x110010, 0x110010, 0x31FFF0, 0x210010, 0x000000, 0x000000, 0x000000],
+  "无": [0x000000, 0x000000, 0x000000, 0x000000, 0x0FFFE0, 0x001000, 0x001000, 0x001000, 0x001000, 0x002000, 0x3FFFF8, 0x002000, 0x002400, 0x004400, 0x004400, 0x008400, 0x018408, 0x010408, 0x020408, 0x040408, 0x1803F0, 0x300000, 0x000000, 0x000000],
+  "类": [0x000000, 0x000000, 0x001000, 0x0C1060, 0x0710C0, 0x011080, 0x001000, 0x1FFFF8, 0x005000, 0x009C00, 0x031780, 0x0C10F0, 0x300018, 0x001000, 0x3FFFF8, 0x003000, 0x006800, 0x00CC00, 0x008600, 0x030300, 0x0E00E0, 0x380030, 0x000000, 0x000000]
+};
 
 const TINY_FONT = {
   "0": ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
@@ -13188,7 +13377,7 @@ function getFeishuCardImageChunkSize() {
   return Math.max(1, Math.min(6, Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE));
 }
 
-const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上缩写：ENTRY=入场判断，SIG=回调/启动信号，LOW/YLOW=120/250日低位，ACT=经理动作，CLASS=份额，FEE=每万元费用，DROP=距高点回撤，SIZE=规模；BATCH=分批买入，WAIT=等待回撤。";
+const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上中文短标签：入场=能否买，信号=回调/启动，低位/年低=120/250日位置，动作=经理建议，份额/费用/回撤/规模用于看成本和风险；旧图里的 BATCH/STAGE 都是分批买入。";
 
 function isFundReportCardImage(image = {}) {
   const alt = String(image?.alt || "");
@@ -13208,7 +13397,7 @@ function buildFeishuImageCaption(image = {}) {
   const codeName = [image.code, image.name].filter(Boolean).join(" ");
   const prefix = [role, codeName].filter(Boolean).join("：");
   const focused = prefix || label;
-  return `${focused.slice(0, 80)}。看图顺序：先看 ENTRY/ACT 判断能否买，再看 LOW/YLOW 是否低位，最后看 FEE/DROP/SIZE 控制费用、回撤和规模风险。`;
+  return `${focused.slice(0, 80)}。看图顺序：先看“入场/动作”判断能否买，再看“低位/年低”是否真低位，最后看“费用/回撤/规模”控制成本和风险。`;
 }
 
 function buildFeishuImageSupplementText(images = [], chunkIndex = 0, chunkTotal = 1) {
