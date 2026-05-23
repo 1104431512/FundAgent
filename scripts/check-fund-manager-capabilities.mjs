@@ -1695,6 +1695,49 @@ assert(localizedEnglishSections.includes("经理最终判断：等待"), "locali
 assert(localizedEnglishSections.includes("证据：120日位置38.5%"), "localized answer must translate Evidence headers");
 assert(localizedEnglishSections.includes("缺失数据：最新净值"), "localized answer must translate Missing data headers");
 assert(!/\b(?:Manager Decision|Evidence|Missing data|wait)\b/i.test(localizedEnglishSections), "localized answer must not keep raw English section headers");
+const partialDataQualityEvidence = {
+  marketSnapshot: {
+    dataQuality: {
+      level: "partial",
+      summary: "市场数据部分可用，但存在缺口。",
+      missing: [
+        { key: "preciousMetals", label: "贵金属行情", status: "missing", error: "timeout" },
+        { key: "industryBoards", label: "行业板块", status: "missing", error: "timeout" }
+      ],
+      notes: ["市场数据部分缺失：贵金属行情、行业板块，相关结论需要降低把握度。"]
+    },
+    fundCandidates: { preciousMetalFunds: [{ code: "000001", name: "黄金ETF联接C" }] }
+  }
+};
+const missingDataQualityDisclosure = manager.evaluateFundAnswerQuality({
+  text: "直接结论：分批买入1000元。依据是黄金ETF方向近20日+4.5%，120日位置38.5%。",
+  workflow: "fund_qa",
+  userText: "黄金最近值得买吗",
+  evidence: partialDataQualityEvidence
+});
+assert(
+  missingDataQualityDisclosure.issues.includes("missing_market_data_quality_disclosure"),
+  "quality gate must reject answers that ignore partial/poor market data quality"
+);
+const disclosedDataQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：先观察，1万元暂不重仓，只看0-500元试探。公开数据有缺口：贵金属行情和行业板块暂未抓到，因此这条判断把握度中等，待复核后再买。依据是黄金ETF方向近20日+4.5%，120日位置38.5%。",
+  workflow: "fund_qa",
+  userText: "黄金最近值得买吗",
+  evidence: partialDataQualityEvidence
+});
+assert(
+  !disclosedDataQuality.issues.includes("missing_market_data_quality_disclosure"),
+  "quality gate must pass answers that disclose data gaps and downgrade conviction"
+);
+const deterministicDataQualityFallback = await manager.enforceFundAnswerQuality({
+  text: "直接结论：分批买入1000元。依据是黄金ETF方向近20日+4.5%，120日位置38.5%。",
+  workflow: "fund_qa",
+  userText: "黄金最近值得买吗",
+  intent: { workflow: "fund_qa" },
+  evidence: partialDataQualityEvidence
+});
+assert(deterministicDataQualityFallback.includes("数据缺口提示"), "quality enforcement must deterministically add market data gap disclosure when model rewrite is unnecessary");
+assert(deterministicDataQualityFallback.includes("贵金属行情") && deterministicDataQualityFallback.includes("降低把握度"), "deterministic market data fallback must name missing modules and downgrade conviction");
 const localizationOnlyAnswer = await manager.enforceFundAnswerQuality({
   text: "Verdict: staged buy. Confidence: high. Score: 82/100. 依据：净值近20日+4.5%，距高点回撤7%，120日位置38.5%。新资金先买1000元。",
   workflow: "fund_qa",

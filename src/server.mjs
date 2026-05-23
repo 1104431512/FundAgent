@@ -8905,6 +8905,14 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
     updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
     return deterministicFallback;
   }
+  const dataQualityFallback = buildMarketDataQualityDisclosureFallback(localizedText, evidence, localizedEvaluation.issues);
+  if (dataQualityFallback) {
+    const dataQualityFallbackEvaluation = evaluateFundAnswerQuality({ text: dataQualityFallback, workflow, userText, evidence });
+    if (dataQualityFallbackEvaluation.ok) {
+      updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
+      return dataQualityFallback;
+    }
+  }
 
   if (String(process.env.FUND_ANSWER_QUALITY_REWRITE ?? "true") === "false") {
     return localizedText;
@@ -8929,6 +8937,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "若质检问题包含 missing_pullback_timing_evidence，主推荐每条必须写出5日/10日早期转强、120日区间低位或距高点回撤等数字证据；若包含 missing_pullback_three_tier_execution，必须给激进/均衡/保守三档金额。",
       "若质检问题包含 missing_pullback_share_class_fee，主推荐每条必须写份额类别和费用模型，例如 C类无前端申购费但有销售服务费，或 A类有申购费但长期持有持续费率较低。",
       "若质检问题包含 insufficient_chart_linked_candidates，必须补足 12 张左右可配图候选：主买入参考和备选观察分开写，每只都写代码、买入/备选角色、图上看的走势/回撤/低位/费用证据。",
+      "若质检问题包含 missing_market_data_quality_disclosure，必须在前两段用自然中文说明公开数据缺口、缺了哪些模块，并把结论降级为观察、待复核、少量试探或不重仓。",
       "若证据没有 mainCandidateCodes，必须直接说明暂未筛到合格的回调完成/低位启动主推荐，不能硬凑基金代码。",
       "保持适合飞书卡片阅读，不要 Markdown 表格或代码块。",
       "",
@@ -8986,6 +8995,11 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
       return deterministicFallback;
     }
+    const dataQualityFallback = buildMarketDataQualityDisclosureFallback(localizedText, evidence, localizedEvaluation.issues);
+    if (dataQualityFallback) {
+      updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
+      return dataQualityFallback;
+    }
     return localizedText;
   }
 }
@@ -9019,6 +9033,7 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   if (stiffConfidenceLabel) issues.push("stiff_confidence_label");
   if (rawEnglishActionLeak) issues.push("raw_english_action_leak");
   if (rawEnglishSectionLeak) issues.push("raw_english_section_leak");
+  issues.push(...evaluateMarketDataQualityDisclosure({ text, workflow, evidence }));
   issues.push(...evaluatePullbackAnswerDiscipline({ text, userText, evidence }));
   issues.push(...evaluateFundAnswerChartCoverage({ text, workflow, userText, evidence }));
   if (actionSeeking && !hasAction) issues.push("missing_direct_action");
@@ -9050,6 +9065,52 @@ function shouldRequireExpandedFundReportCharts({ workflow, userText, evidence })
   if (!Array.isArray(profiles) || profiles.length < 2) return false;
   if (workflow === "fund_recommendation") return true;
   return workflow === "fund_qa" && (isActionSeekingFundQuestion(userText) || isPullbackSetupRequest(userText));
+}
+
+function evaluateMarketDataQualityDisclosure({ text, workflow, evidence }) {
+  if (workflow === "conversation") return [];
+  const quality = getEvidenceMarketDataQuality(evidence);
+  if (!quality || !["partial", "poor"].includes(String(quality.level || "").toLowerCase())) return [];
+  const body = String(text || "");
+  const missingLabels = (quality.missing || [])
+    .map((item) => String(item.label || item.key || "").trim())
+    .filter(Boolean);
+  const hasGapDisclosure = /(数据|行情|板块|排行|新闻|贵金属|候选|来源|快照).{0,18}(缺口|缺失|不足|不完整|暂未抓到|暂未获取|暂不可用|失败|滞后|待复核)|公开数据源.{0,18}(失败|不可用|不完整)|市场数据.{0,18}(部分|不足|缺口)/.test(body)
+    || missingLabels.some((label) => label && body.includes(label) && /(缺|不足|失败|滞后|待复核|暂未)/.test(body));
+  const hasCautiousDowngrade = /(降低把握度|把握度.{0,12}(下降|中等|偏低|不高)|待复核|先观察|只能观察|暂不重仓|不重仓|不做重仓|不能重仓|不作为完整证据|不能当作完整联网|小仓位|少量试探|少买|暂停买入|先不买|不买|回避)/.test(body);
+  return hasGapDisclosure && hasCautiousDowngrade ? [] : ["missing_market_data_quality_disclosure"];
+}
+
+function getEvidenceMarketDataQuality(evidence = {}) {
+  const quality = evidence?.marketSnapshot?.dataQuality
+    || evidence?.marketDataQuality
+    || evidence?.dataQuality
+    || null;
+  if (!quality || typeof quality !== "object") return null;
+  return compactMarketDataQuality(quality);
+}
+
+function buildMarketDataQualityDisclosureFallback(text, evidence, issues = []) {
+  if (!(issues || []).includes("missing_market_data_quality_disclosure")) return "";
+  const quality = getEvidenceMarketDataQuality(evidence);
+  if (!quality || !["partial", "poor"].includes(String(quality.level || "").toLowerCase())) return "";
+  const missingLabels = (quality.missing || [])
+    .map((item) => String(item.label || item.key || "").trim())
+    .filter(Boolean)
+    .slice(0, 5);
+  const levelText = quality.level === "poor" ? "市场数据不足" : "市场数据部分缺失";
+  const missingText = missingLabels.length ? `，缺失模块包括${missingLabels.join("、")}` : "";
+  const caution = quality.level === "poor"
+    ? "因此这次只能做方向性观察或待复核，不能作为完整联网后的重仓买入依据。"
+    : "因此这条判断需要降低把握度，涉及缺失模块的结论先观察、待复核，不重仓。";
+  const note = `数据缺口提示：${levelText}${missingText}。${caution}`;
+  const lines = String(text || "").trim().split(/\r?\n/).filter((line) => line.trim());
+  if (!lines.length) return note;
+  return [
+    lines[0],
+    note,
+    ...lines.slice(1)
+  ].join("\n");
 }
 
 function countEligibleFundReportProfiles(profiles = []) {

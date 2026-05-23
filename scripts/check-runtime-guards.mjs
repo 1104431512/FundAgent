@@ -80,6 +80,18 @@ const requiredPatterns = [
     message: "fund answer quality gate must reject English section headers such as Manager Decision."
   },
   {
+    pattern: /missing_market_data_quality_disclosure/,
+    message: "fund answer quality gate must reject answers that ignore partial or poor market data quality."
+  },
+  {
+    pattern: /evaluateMarketDataQualityDisclosure[\s\S]{0,900}getEvidenceMarketDataQuality[\s\S]{0,900}降低把握度/,
+    message: "fund answer quality gate must require Chinese data-gap disclosure and conviction downgrade."
+  },
+  {
+    pattern: /buildMarketDataQualityDisclosureFallback[\s\S]{0,1400}降低把握度[\s\S]{0,900}数据缺口提示/,
+    message: "fund answer quality enforcement must deterministically add data-gap disclosure when the model omits it."
+  },
+  {
     pattern: /hasRawEnglishFundSectionLeak/,
     message: "fund answer quality gate must detect English committee-style headers separately from action enums."
   },
@@ -1292,7 +1304,7 @@ const requiredPatterns = [
     message: "no-main pullback fallback answers must expose missing setup, low-position, and overheat conditions."
   },
   {
-    pattern: /const deterministicFallback = buildPullbackQualityFallbackAnswer[\s\S]{0,420}FUND_ANSWER_QUALITY_REWRITE/,
+    pattern: /const deterministicFallback = buildPullbackQualityFallbackAnswer[\s\S]{0,1200}FUND_ANSWER_QUALITY_REWRITE/,
     message: "severe pullback/setup quality violations must use deterministic fallback before model rewrite."
   },
   {
