@@ -13076,7 +13076,11 @@ function buildFundActionabilitySignals(digest) {
   if (missingFeeData.length) score -= Math.min(6, missingFeeData.length * 2);
   score += Math.round(holdingsOutlook.score * 0.45);
 
-  const boundedScore = Math.max(0, Math.min(100, Math.round(score)));
+  const entryDiscipline = getActionabilityEntryDiscipline(trend, { isMoneyMarket });
+  let boundedScore = Math.max(0, Math.min(100, Math.round(score)));
+  if (Number.isFinite(entryDiscipline.scoreCap)) {
+    boundedScore = Math.min(boundedScore, entryDiscipline.scoreCap);
+  }
   const action = boundedScore >= 78
     ? "buy"
     : boundedScore >= 62
@@ -13114,6 +13118,7 @@ function buildFundActionabilitySignals(digest) {
     formatFeeImpactForEvidence(fees)
   ].filter(Boolean).slice(0, 5);
   const decisionBlocker = [
+    entryDiscipline.blocker || "",
     trend.invalidationHint || "",
     isMoneyMarket ? "货币基金主要用于现金管理，不适合作为权益进攻仓或追求高弹性的配置。" : "",
     trend.trendLabel === "extended_uptrend" ? "短期涨幅偏热，不符合回调完成后启动的买点。" : "",
@@ -13136,6 +13141,34 @@ function buildFundActionabilitySignals(digest) {
     decisionBlocker,
     holdingsOutlook
   };
+}
+
+function getActionabilityEntryDiscipline(trend = {}, { isMoneyMarket = false } = {}) {
+  if (isMoneyMarket || !trend || typeof trend !== "object") {
+    return { scoreCap: null, blocker: "" };
+  }
+  const setupSignal = trend.pullbackSetup?.signal || "";
+  const hasBuySetup = ["pullback_complete", "launch_setup"].includes(setupSignal)
+    && ["buyable_now", "staged_buy"].includes(trend.entryBias);
+  if (trend.entryBias === "avoid_now" || trend.trendLabel === "breakdown") {
+    return {
+      scoreCap: 44,
+      blocker: "系统动作降级：趋势破位或买点判断为回避，不能给买入或分批买入动作。"
+    };
+  }
+  if (!hasBuySetup && (trend.entryBias === "wait_pullback" || trend.trendLabel === "extended_uptrend")) {
+    const hotEvidence = [
+      Number.isFinite(Number(trend.return20dPct)) ? `近20日${formatFallbackPct(trend.return20dPct)}` : "",
+      Number.isFinite(Number(trend.return60dPct)) ? `近60日${formatFallbackPct(trend.return60dPct)}` : "",
+      Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置${formatFallbackPlainPct(trend.lowPositionPct120)}` : "",
+      Number.isFinite(Number(trend.lowPositionPct250)) ? `250日位置${formatFallbackPlainPct(trend.lowPositionPct250)}` : ""
+    ].filter(Boolean).join("，") || "当前位置偏热";
+    return {
+      scoreCap: 58,
+      blocker: `系统动作降级：${hotEvidence}，买点判断仍是等待回撤，不能给买入或分批买入动作。`
+    };
+  }
+  return { scoreCap: null, blocker: "" };
 }
 
 function formatTrendActionabilityEvidence(trend = {}) {

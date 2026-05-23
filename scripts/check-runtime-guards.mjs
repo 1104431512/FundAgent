@@ -1272,6 +1272,14 @@ const requiredPatterns = [
     message: "fund actionability must incorporate structured top-ten holdings outlook."
   },
   {
+    pattern: /buildFundActionabilitySignals[\s\S]{0,3600}getActionabilityEntryDiscipline\(trend[\s\S]{0,900}boundedScore = Math\.min\(boundedScore, entryDiscipline\.scoreCap\)/,
+    message: "fund actionability must cap buy/staged-buy scores when the trend says wait for pullback."
+  },
+  {
+    pattern: /function getActionabilityEntryDiscipline[\s\S]{0,1800}scoreCap:\s*58[\s\S]{0,600}不能给买入或分批买入动作/,
+    message: "fund actionability entry discipline must explain hot/wait-pullback downgrades in Chinese."
+  },
+  {
     pattern: /formatPullbackSetupCandidateLine[\s\S]{0,2400}formatHoldingsOutlookEvidence/,
     message: "pullback/setup summaries must expose top-ten holdings outlook next to timing evidence."
   },

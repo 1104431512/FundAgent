@@ -1617,6 +1617,43 @@ assert(
   "actionability evidence must include top-ten holdings outlook, not only trend and fee signals"
 );
 assert.equal(holdingsActionability.holdingsOutlook.hasHoldings, true, "actionability must carry the structured holdings outlook profile");
+const hotButStrongActionability = manager.buildFundActionabilitySignals({
+  ...holdingsSupportedDigest,
+  code: "000033",
+  name: "短期偏热强势基金A",
+  trendProfile: {
+    ...hotDigest.trendProfile,
+    ok: true,
+    latestDate: "2099-05-22",
+    lowPositionPct120: 96.9,
+    lowPositionPct250: 97.6
+  },
+  risk: {
+    oneYear: {
+      ok: true,
+      totalReturnPct: 264.88,
+      annualizedReturnPct: 265.2,
+      maxDrawdownPct: -10.38,
+      sharpe: 6.04
+    }
+  },
+  fees: {
+    shareClass: "A",
+    shareClassFeeModel: { type: "front_load_or_subscription_fee", label: "A类：偏前端申购费模型" },
+    feeImpact: {
+      oneYearCostPer10000: 14.98,
+      feeDragLevel: "low",
+      missingFeeData: []
+    },
+    missingFeeData: []
+  }
+});
+assert.equal(hotButStrongActionability.action, "wait", "actionability must not say staged-buy when trend says extended uptrend and wait pullback");
+assert(hotButStrongActionability.score < 62, "wait-pullback discipline must cap actionability below staged-buy threshold");
+assert(
+  hotButStrongActionability.decisionBlocker.some((item) => item.includes("系统动作降级") && item.includes("不能给买入或分批买入动作")),
+  "actionability blocker must explain why a hot fund is downgraded instead of sounding inconsistent"
+);
 const earlyTurnTrend = manager.computeTrendProfile(buildEarlyTurnNavPoints());
 assert.equal(earlyTurnTrend.ok, true, "early-turn synthetic series should produce a trend profile");
 assert(
