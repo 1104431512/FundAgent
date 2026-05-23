@@ -202,6 +202,20 @@ assert(
   "intermediate fund workflow stages must use explicit high token floors"
 );
 assert(!serverSource.includes("maxTokens: 900"), "fund screenshot extraction must not use the old 900-token cap");
+assert(
+  serverSource.includes("MIN_EFFECTIVE_MODEL_MAX_OUTPUT_TOKENS = DEFAULT_MODEL_MAX_OUTPUT_TOKENS") &&
+    serverSource.includes("next.modelMaxOutputTokens = Math.max(MIN_EFFECTIVE_MODEL_MAX_OUTPUT_TOKENS"),
+  "effective config must raise stale persisted model output caps instead of letting old 1800-token settings constrain answers"
+);
+assert(
+  serverSource.includes("MIN_EFFECTIVE_REPLY_MAX_CHARS = DEFAULT_REPLY_MAX_CHARS") &&
+    serverSource.includes("next.replyMaxChars = Math.max(MIN_EFFECTIVE_REPLY_MAX_CHARS"),
+  "effective config must raise stale persisted reply character caps instead of letting old 6000-char settings truncate answers"
+);
+assert(
+  capabilityProfileContext.includes("轮动纪律") && capabilityProfileContext.includes("板块轮动、低位修复、拥挤度"),
+  "stored manager profiles must be upgraded with the rotation/chase discipline even when config still contains an older profile"
+);
 
 await assertIntent({
   userText: "黄金里面找一个回调完成、低位、准备启动的基金",

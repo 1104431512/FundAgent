@@ -72,13 +72,34 @@ const DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS = [
   "电力",
   "公用事业"
 ];
-const DEFAULT_PORTFOLIO_MANAGER_PROFILE = [
+const MIN_EFFECTIVE_MODEL_MAX_OUTPUT_TOKENS = DEFAULT_MODEL_MAX_OUTPUT_TOKENS;
+const MIN_EFFECTIVE_REPLY_MAX_CHARS = DEFAULT_REPLY_MAX_CHARS;
+const DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES = [
   "定位：教育性虚拟基金经理，不进行真实交易；先保护本金，再在证据明确时参与基金主题轮动。",
   "买入纪律：优先选择净值、持仓、风险指标和数据来源可验证的基金；避免仅凭热点重仓追涨。",
   "轮动纪律：新闻只作为催化，买入前必须同时检查板块轮动、低位修复、拥挤度和回撤空间；高位热门主题优先等待回撤或小额试探。",
   "卖出纪律：当主题证据减弱、目标仓位下降、回撤超出风格承受范围，或复盘发现原假设失效时减仓。",
   "沟通纪律：只展示专业阶段、结论、证据和约束，不展示模型隐藏思考链。"
-].join("\n");
+];
+const DEFAULT_PORTFOLIO_MANAGER_PROFILE = DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES.join("\n");
+const REQUIRED_PORTFOLIO_MANAGER_PROFILE_LINES = [
+  {
+    pattern: /买入纪律|避免仅凭热点|净值、持仓、风险指标/,
+    line: DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES[1]
+  },
+  {
+    pattern: /轮动纪律|板块轮动|低位修复|拥挤度/,
+    line: DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES[2]
+  },
+  {
+    pattern: /卖出纪律|主题证据减弱|原假设失效/,
+    line: DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES[3]
+  },
+  {
+    pattern: /沟通纪律|隐藏思考链|专业阶段/,
+    line: DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES[4]
+  }
+];
 const USER_FACING_FUND_LABELS = [
   ["STAGE", "分批买入"],
   ["BATCH", "分批买入"],
@@ -5998,7 +6019,17 @@ function buildPortfolioManagerProfileContext(config, db = null) {
 
 function normalizePortfolioManagerProfile(value) {
   const text = String(value || "").trim();
-  return (text || DEFAULT_PORTFOLIO_MANAGER_PROFILE).slice(0, 4000);
+  const lines = [text || DEFAULT_PORTFOLIO_MANAGER_PROFILE];
+  const current = () => lines.join("\n");
+  for (const item of REQUIRED_PORTFOLIO_MANAGER_PROFILE_LINES) {
+    if (!item.pattern.test(current())) {
+      lines.push(item.line);
+    }
+  }
+  const output = lines.join("\n").trim();
+  if (output.length <= 4000) return output;
+  const requiredTail = REQUIRED_PORTFOLIO_MANAGER_PROFILE_LINES.map((item) => item.line).join("\n");
+  return `${output.slice(0, Math.max(0, 4000 - requiredTail.length - 2)).trim()}\n${requiredTail}`.slice(0, 4000);
 }
 
 function summarizePortfolioManagerBehavior(db) {
@@ -15275,10 +15306,10 @@ function normalizeEffectiveConfig(config) {
   next.modelApiKey = String(next.modelApiKey || "").trim();
   next.modelWireApi = normalizeWireApi(next.modelWireApi || "responses");
   next.modelReasoningEffort = normalizeReasoningEffort(next.modelReasoningEffort) || "high";
-  next.modelMaxOutputTokens = Number(next.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS);
+  next.modelMaxOutputTokens = Math.max(MIN_EFFECTIVE_MODEL_MAX_OUTPUT_TOKENS, Number(next.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS));
   next.modelHttpTimeoutMs = Math.max(0, Number(next.modelHttpTimeoutMs ?? DEFAULT_MODEL_HTTP_TIMEOUT_MS) || 0);
   next.modelResponsesStream = parseBoolean(next.modelResponsesStream, true);
-  next.replyMaxChars = Number(next.replyMaxChars || DEFAULT_REPLY_MAX_CHARS);
+  next.replyMaxChars = Math.max(MIN_EFFECTIVE_REPLY_MAX_CHARS, Number(next.replyMaxChars || DEFAULT_REPLY_MAX_CHARS));
   next.portfolioEnabled = parseBoolean(next.portfolioEnabled, false);
   next.portfolioInitialCapital = Math.max(1000, Number(next.portfolioInitialCapital || 100000));
   next.portfolioPremarketTime = normalizeClockTime(next.portfolioPremarketTime, "09:00");

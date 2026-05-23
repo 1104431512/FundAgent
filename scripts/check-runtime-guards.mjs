@@ -52,6 +52,14 @@ const forbiddenPatterns = [
   {
     pattern: /function buildPortfolioPremarketWithModel[\s\S]{0,1800}JSON\.stringify\(profiles \|\| \[\], null, 2\)/,
     message: "portfolio premarket reports must not send full holding profiles with raw NAV series to the model."
+  },
+  {
+    pattern: /next\.modelMaxOutputTokens\s*=\s*Number\(next\.modelMaxOutputTokens/,
+    message: "effective config must not honor stale low persisted model output caps."
+  },
+  {
+    pattern: /next\.replyMaxChars\s*=\s*Number\(next\.replyMaxChars/,
+    message: "effective config must not honor stale low persisted reply character caps."
   }
 ];
 
@@ -235,6 +243,30 @@ const requiredPatterns = [
   {
     pattern: /replyMaxChars\s*=\s*Number\(payload\.replyMaxChars\s*\|\|\s*18000\)/,
     message: "admin config must not silently save the obsolete 9000-character reply cap."
+  },
+  {
+    pattern: /MIN_EFFECTIVE_MODEL_MAX_OUTPUT_TOKENS\s*=\s*DEFAULT_MODEL_MAX_OUTPUT_TOKENS/,
+    message: "effective config must raise stale stored model output caps to the high default."
+  },
+  {
+    pattern: /next\.modelMaxOutputTokens\s*=\s*Math\.max\(MIN_EFFECTIVE_MODEL_MAX_OUTPUT_TOKENS/,
+    message: "effective config must raise stale stored model output caps to the high default."
+  },
+  {
+    pattern: /MIN_EFFECTIVE_REPLY_MAX_CHARS\s*=\s*DEFAULT_REPLY_MAX_CHARS/,
+    message: "effective config must raise stale stored reply character caps to the high default."
+  },
+  {
+    pattern: /next\.replyMaxChars\s*=\s*Math\.max\(MIN_EFFECTIVE_REPLY_MAX_CHARS/,
+    message: "effective config must raise stale stored reply character caps to the high default."
+  },
+  {
+    pattern: /REQUIRED_PORTFOLIO_MANAGER_PROFILE_LINES[\s\S]{0,1200}轮动纪律/,
+    message: "stored portfolio manager profiles must be upgraded with required rotation/chase discipline."
+  },
+  {
+    pattern: /function normalizePortfolioManagerProfile[\s\S]{0,900}REQUIRED_PORTFOLIO_MANAGER_PROFILE_LINES/,
+    message: "stored portfolio manager profiles must be upgraded with required rotation/chase discipline."
   },
   {
     pattern: /name="modelMaxOutputTokens"[\s\S]{0,80}max="32000"/,
