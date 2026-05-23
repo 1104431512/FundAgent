@@ -186,17 +186,43 @@ async function loadStats() {
   setText("#statReleaseCommit", formatReleaseCommit(release));
   setText("#statReleaseBranch", release.branch || "-");
   setText("#statReleaseStartedAt", formatDateTime(release.startedAt || stats.startedAt));
+  renderRuntimeDiagnostics(stats.diagnostics);
   document.querySelector("#statsOutput").textContent = JSON.stringify(
     {
       startedAt: stats.startedAt,
       updatedAt: stats.updatedAt,
       release,
+      diagnostics: stats.diagnostics,
       last: stats.last,
       counters
     },
     null,
     2
   );
+}
+
+function renderRuntimeDiagnostics(diagnostics = {}) {
+  const list = Array.isArray(diagnostics.items) ? diagnostics.items : [];
+  const target = document.querySelector("#runtimeDiagnostics");
+  setText("#runtimeDiagnosticSummary", diagnostics.summary || "运行状态暂无明显异常。");
+  if (!list.length) {
+    target.innerHTML = `
+      <div class="diagnostic-card ok">
+        <span>暂无明显异常</span>
+        <strong>运行正常</strong>
+        <p>错误、数据源和模型链路没有触发诊断阈值。</p>
+      </div>
+    `;
+    return;
+  }
+  target.innerHTML = list.map((item) => `
+    <div class="diagnostic-card ${escapeHtml(item.severity || "info")}">
+      <span>${escapeHtml(formatDiagnosticSeverity(item.severity))}</span>
+      <strong>${escapeHtml(item.label || "运行信号")}</strong>
+      <em>${escapeHtml(item.value || "-")}</em>
+      <p>${escapeHtml(item.note || "")}</p>
+    </div>
+  `).join("");
 }
 
 async function loadPortfolio() {
@@ -1503,6 +1529,16 @@ function formatReleaseVersion(release = {}) {
 
 function formatReleaseCommit(release = {}) {
   return release.shortCommit || (release.commit ? String(release.commit).slice(0, 7) : "-");
+}
+
+function formatDiagnosticSeverity(value) {
+  const labels = {
+    critical: "严重",
+    warning: "预警",
+    info: "观察",
+    ok: "正常"
+  };
+  return labels[value] || labels.info;
 }
 
 function formatNumber(value, digits = 2) {

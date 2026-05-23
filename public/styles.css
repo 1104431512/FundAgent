@@ -367,6 +367,77 @@ button:disabled {
   line-height: 1;
 }
 
+.runtime-diagnostics {
+  margin-top: 18px;
+}
+
+.section-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.section-title h3 {
+  margin-bottom: 0;
+}
+
+.diagnostic-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.diagnostic-card {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--blue);
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 13px 14px;
+  min-height: 126px;
+}
+
+.diagnostic-card.warning {
+  border-left-color: var(--warn);
+}
+
+.diagnostic-card.critical {
+  border-left-color: var(--danger);
+}
+
+.diagnostic-card.ok {
+  border-left-color: var(--ok);
+}
+
+.diagnostic-card span,
+.diagnostic-card p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.diagnostic-card strong,
+.diagnostic-card em {
+  display: block;
+}
+
+.diagnostic-card strong {
+  margin-top: 6px;
+  font-size: 15px;
+}
+
+.diagnostic-card em {
+  margin-top: 7px;
+  color: #24313d;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.diagnostic-card p {
+  margin-top: 8px;
+  line-height: 1.45;
+}
+
 .info-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1390,6 +1461,7 @@ button:disabled {
   .grid.two,
   .test-grid,
   .metric-grid,
+  .diagnostic-grid,
   .info-grid,
   .split-grid,
   .data-row,

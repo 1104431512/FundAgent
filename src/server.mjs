@@ -15180,8 +15180,10 @@ function getDefaultStats() {
 }
 
 function getRuntimeStats() {
+  const stats = normalizeStats(safeReadJson(STATS_PATH));
   return {
-    ...normalizeStats(safeReadJson(STATS_PATH)),
+    ...stats,
+    diagnostics: buildRuntimeDiagnostics(stats),
     release: getRuntimeRelease()
   };
 }
@@ -15206,6 +15208,106 @@ function normalizeStats(value) {
     counters: { ...defaults.counters, ...(value?.counters || {}) },
     last: { ...defaults.last, ...(value?.last || {}) }
   };
+}
+
+function buildRuntimeDiagnostics(stats = {}) {
+  const counters = stats.counters || {};
+  const last = stats.last || {};
+  const items = [
+    buildCounterRateDiagnostic({
+      label: "模型调用失败",
+      failures: counters.modelFailures,
+      total: counters.modelCalls,
+      warningRate: 0.03,
+      criticalRate: 0.08,
+      note: "影响回答稳定性，连续失败时优先检查模型服务、上下文长度和网络。"
+    }),
+    buildCounterRateDiagnostic({
+      label: "市场快照失败",
+      failures: counters.marketSnapshotFailures,
+      total: counters.marketSnapshotCalls,
+      warningRate: 0.12,
+      criticalRate: 0.25,
+      note: "影响题材、贵金属和候选池判断，失败率高时推荐结论需要降级。"
+    }),
+    buildCounterRateDiagnostic({
+      label: "持仓补全失败",
+      failures: counters.fundHoldingsFailures,
+      total: counters.fundHoldingsFetches,
+      warningRate: 0.06,
+      criticalRate: 0.14,
+      note: "影响前十大持仓和行业前景判断，失败率高时不能把持仓前景说满。"
+    }),
+    buildCounterRateDiagnostic({
+      label: "图表生成失败",
+      failures: counters.fundReportTrendImageFailures,
+      total: Number(counters.fundReportTrendImageFailures || 0) + Number(counters.fundReportTrendImagesUploaded || 0),
+      warningRate: 0.08,
+      criticalRate: 0.2,
+      note: "影响配图解释和买点证据展示，失败率高时客户会觉得图文割裂。"
+    }),
+    buildCounterRateDiagnostic({
+      label: "组合任务失败",
+      failures: counters.portfolioErrors,
+      total: counters.portfolioRuns,
+      warningRate: 0.04,
+      criticalRate: 0.12,
+      note: "影响每日复盘、估值和风控连续性，失败后应优先复核最近任务。"
+    }),
+    buildCounterRateDiagnostic({
+      label: "回答质检失败",
+      failures: counters.fundAnswerQualityFailures,
+      total: Number(counters.fundAnswerQualityFailures || 0) + Number(counters.fundAnswerQualityPasses || 0),
+      warningRate: 0.08,
+      criticalRate: 0.18,
+      note: "说明回答可能缺少动作、证据、费用或中文化，需要关注质检 issue。"
+    }),
+    buildContextWindowDiagnostic(last)
+  ].filter(Boolean);
+  const severityRank = { ok: 0, info: 1, warning: 2, critical: 3 };
+  const level = items.reduce((current, item) =>
+    severityRank[item.severity] > severityRank[current] ? item.severity : current
+  , "ok");
+  return {
+    level,
+    summary: formatRuntimeDiagnosticSummary(level, items),
+    items
+  };
+}
+
+function buildCounterRateDiagnostic({ label, failures, total, warningRate, criticalRate, note }) {
+  const failed = Number(failures || 0);
+  const count = Number(total || 0);
+  if (!Number.isFinite(count) || count <= 0 || !Number.isFinite(failed) || failed <= 0) return null;
+  const rate = failed / count;
+  const severity = rate >= criticalRate ? "critical" : rate >= warningRate ? "warning" : "info";
+  if (severity === "info" && failed < 3) return null;
+  return {
+    severity,
+    label,
+    value: `${failed}/${count} (${round(rate * 100, 1)}%)`,
+    note
+  };
+}
+
+function buildContextWindowDiagnostic(last = {}) {
+  const message = String(last.lastError || "");
+  if (!isModelContextWindowError({ message })) return null;
+  return {
+    severity: "critical",
+    label: "模型上下文超限",
+    value: "最近一次模型错误",
+    note: "模型输入仍可能过长，需要继续压缩历史账本、图表序列或候选池。"
+  };
+}
+
+function formatRuntimeDiagnosticSummary(level, items = []) {
+  if (!items.length || level === "ok") return "运行状态暂无明显异常。";
+  const criticalCount = items.filter((item) => item.severity === "critical").length;
+  const warningCount = items.filter((item) => item.severity === "warning").length;
+  if (criticalCount) return `发现 ${criticalCount} 个严重运行风险，需要优先处理。`;
+  if (warningCount) return `发现 ${warningCount} 个运行预警，建议复核数据源和模型链路。`;
+  return "存在轻微信号，继续观察即可。";
 }
 
 function getRuntimeRelease() {
@@ -16514,6 +16616,7 @@ export {
   buildHoldingsOutlookProfile,
   compactPortfolioReviewProfile,
   compactPortfolioWeeklyContext,
+  buildRuntimeDiagnostics,
   buildSkillContextForIntent,
   buildMarketDeepDiveSummary,
   buildPortfolioHeldPositionReviewActions,

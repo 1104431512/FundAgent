@@ -50,6 +50,26 @@ assert(runtimeRelease && runtimeRelease.name && runtimeRelease.startedAt, "runti
 assert(Object.prototype.hasOwnProperty.call(runtimeRelease, "shortCommit"), "runtime release metadata must expose the deployed short commit when available");
 assert(serverSource.includes("release: getRuntimeRelease()"), "health/stats APIs must expose runtime release metadata");
 assert(adminSource.includes("formatReleaseCommit") && adminHtmlSource.includes("statReleaseCommit"), "admin runtime UI must show the deployed commit");
+const runtimeDiagnostics = manager.buildRuntimeDiagnostics({
+  counters: {
+    modelCalls: 100,
+    modelFailures: 12,
+    marketSnapshotCalls: 20,
+    marketSnapshotFailures: 6,
+    fundHoldingsFetches: 40,
+    fundHoldingsFailures: 9,
+    fundReportTrendImagesUploaded: 8,
+    fundReportTrendImageFailures: 3
+  },
+  last: {
+    lastError: "Your input exceeds the context window of this model."
+  }
+});
+assert.equal(runtimeDiagnostics.level, "critical", "runtime diagnostics must surface severe reliability degradation");
+assert(runtimeDiagnostics.items.some((item) => item.label === "模型上下文超限"), "runtime diagnostics must flag context-window failures");
+assert(runtimeDiagnostics.items.some((item) => item.label === "市场快照失败"), "runtime diagnostics must flag market data source failures");
+assert(runtimeDiagnostics.items.some((item) => item.label === "持仓补全失败"), "runtime diagnostics must flag top-holdings data failures");
+assert(adminSource.includes("renderRuntimeDiagnostics") && adminHtmlSource.includes("runtimeDiagnostics"), "admin runtime UI must render diagnostics cards");
 assert(
   setupSkillContext.indexOf("# Skill: fund-theme-radar") < setupSkillContext.indexOf("# Skill: fund-answer-quality"),
   "skill context must preserve requested workflow priority order"

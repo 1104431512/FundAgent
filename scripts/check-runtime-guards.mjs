@@ -1116,8 +1116,20 @@ const requiredPatterns = [
     message: "runtime stats must expose release metadata for the admin UI."
   },
   {
+    pattern: /function getRuntimeStats\(\)[\s\S]{0,360}diagnostics:\s*buildRuntimeDiagnostics\(stats\)/,
+    message: "runtime stats must expose diagnostics so manager degradation is visible."
+  },
+  {
+    pattern: /function buildRuntimeDiagnostics[\s\S]{0,3600}市场快照失败[\s\S]{0,900}持仓补全失败[\s\S]{0,2600}模型上下文超限/,
+    message: "runtime diagnostics must highlight context-window, market snapshot, and holdings failures."
+  },
+  {
     pattern: /statReleaseCommit[\s\S]*formatReleaseCommit|formatReleaseCommit[\s\S]*statReleaseCommit/,
     message: "admin runtime UI must show the currently deployed commit."
+  },
+  {
+    pattern: /runtimeDiagnostics[\s\S]{0,260}renderRuntimeDiagnostics|renderRuntimeDiagnostics[\s\S]{0,260}runtimeDiagnostics/,
+    message: "admin runtime UI must render structured runtime diagnostics."
   },
   {
     pattern: /备选理由：/,
