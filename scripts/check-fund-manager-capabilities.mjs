@@ -239,6 +239,21 @@ assert.equal(investedReturnDb.account.investedCost, 10000, "portfolio account mu
 assert.equal(investedReturnDb.account.cumulativePnl, 739.77, "portfolio account PnL amount should still reflect total asset minus initial cash ledger");
 assert.equal(investedReturnDb.account.cumulativePnlPct, 7.4, "portfolio PnL percentage must use actual invested amount instead of initial capital");
 assert.equal(investedReturnDb.account.capitalPnlPct, 0.74, "portfolio account may still expose initial-capital return separately for reference");
+const normalizedInvestedCostText = manager.normalizePortfolioInvestedCostReturnText(
+  "累计盈亏由+1291.65转为-328.07，按初始资金口径为-0.33%。",
+  { investedCost: 30002.28, cumulativePnlPct: -1.09 }
+);
+assert(normalizedInvestedCostText.includes("按实际投入成本30002.28元计-1.09%"), "valuation text must rewrite initial-capital return wording to actual invested-cost return");
+assert(!/初始资金口径|初始本金口径|本金口径/.test(normalizedInvestedCostText), "valuation text must not keep initial-capital denominator wording");
+const normalizedReview = manager.normalizePortfolioReview(JSON.stringify({
+  summary: "今日回撤，按初始资金口径为-0.33%。",
+  reason: "相对初始本金-0.33%，但持仓投入成本回撤更明显。",
+  nextWatch: ["明天继续看，本金口径只是参考。"],
+  learningNotes: ["不能把初始本金作为收益率分母。"]
+}), { account: { investedCost: 30002.28, cumulativePnlPct: -1.09 } });
+const normalizedReviewText = JSON.stringify(normalizedReview);
+assert(normalizedReview.summary.includes("按实际投入成本30002.28元计-1.09%"), "normalized valuation review summary must use invested-cost return");
+assert(!/相对初始本金|初始资金口径|初始本金口径|本金口径/.test(normalizedReviewText), "normalized valuation review must remove initial-capital denominator wording from user-facing fields");
 const consolidatedWatchDb = manager.normalizePortfolioDb({
   watchlist: [
     {

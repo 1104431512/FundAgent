@@ -536,6 +536,14 @@ const requiredPatterns = [
     message: "admin portfolio UI must label PnL percentage as based on actual invested amount."
   },
   {
+    pattern: /normalizePortfolioInvestedCostReturnText[\s\S]{0,700}按实际投入成本[\s\S]{0,700}初始资金口径/,
+    message: "portfolio valuation text must rewrite initial-capital denominator wording to actual invested-cost wording."
+  },
+  {
+    pattern: /normalizePortfolioReview\(raw,\s*options\s*=\s*\{\}\)[\s\S]{0,900}normalizePortfolioInvestedCostReturnText/,
+    message: "portfolio valuation review normalization must sanitize summary/reason/watch notes before showing them to users."
+  },
+  {
     pattern: /renderPortfolioDashboard[\s\S]{0,5000}portfolioManagerSummary[\s\S]{0,5000}portfolioHoldingSummary[\s\S]{0,5000}portfolioReadinessSummary/,
     message: "admin portfolio UI must provide a manager dashboard with summary, holdings exposure, and buy-preparation panels."
   },

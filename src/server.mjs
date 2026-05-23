@@ -1120,7 +1120,7 @@ async function executePortfolioValuation(db, run, config) {
     });
   }
   assertPortfolioRunActive(run);
-  const review = normalizePortfolioReview(raw);
+  const review = normalizePortfolioReview(raw, { account: accountAfter });
   markPortfolioRunProgress(db, run, "估值复盘已生成，正在保存任务结果。");
 
   run.title = "晚间估值复盘";
@@ -1447,7 +1447,7 @@ async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, p
   const systemText = [
     "你是飞书机器人“基金经理”的虚拟基金经理，正在做晚间估值复盘。",
     "请解释今日盈亏、仓位变化和明天观察重点。不要编造传入资料之外的数据。",
-    "累计盈亏百分比必须使用 accountAfter.cumulativePnlPct，也就是按实际投入成本 investedCost 计算；严禁把初始本金 initialCapital 当作收益率分母，除非单独标注为本金参考口径。",
+    "累计盈亏百分比必须使用 accountAfter.cumulativePnlPct，也就是按实际投入成本 investedCost 计算；严禁把初始本金 initialCapital 当作收益率分母，也不要在客户可见复盘里写“初始资金口径/初始本金口径”。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
     "",
     skillContext
@@ -1722,21 +1722,43 @@ function normalizePortfolioDecision(raw) {
   };
 }
 
-function normalizePortfolioReview(raw) {
+function normalizePortfolioReview(raw, options = {}) {
   let parsed = null;
   try {
     parsed = parseJsonFromModel(raw);
   } catch {
     parsed = {};
   }
+  const account = options.account || {};
   return {
-    summary: String(parsed.summary || "今日估值已更新。").trim(),
-    reason: String(parsed.reason || "").trim(),
-    nextWatch: normalizeStringArray(parsed.nextWatch).slice(0, 5),
-    learningNotes: normalizeStringArray(parsed.learningNotes).slice(0, 5),
+    summary: normalizePortfolioInvestedCostReturnText(String(parsed.summary || "今日估值已更新。").trim(), account),
+    reason: normalizePortfolioInvestedCostReturnText(String(parsed.reason || "").trim(), account),
+    nextWatch: normalizeStringArray(parsed.nextWatch)
+      .slice(0, 5)
+      .map((item) => normalizePortfolioInvestedCostReturnText(item, account)),
+    learningNotes: normalizeStringArray(parsed.learningNotes)
+      .slice(0, 5)
+      .map((item) => normalizePortfolioInvestedCostReturnText(item, account)),
     sources: normalizeStringArray(parsed.sources).slice(0, 20),
-    rawModelOutput: String(raw || "").slice(0, 12000)
+    rawModelOutput: normalizePortfolioInvestedCostReturnText(String(raw || "").slice(0, 12000), account)
   };
+}
+
+function normalizePortfolioInvestedCostReturnText(text, account = {}) {
+  const body = String(text || "");
+  if (!body) return body;
+  const investedCost = Number(account.investedCost);
+  const investedPct = Number(account.cumulativePnlPct);
+  const pctText = Number.isFinite(investedPct) ? `${formatSignedNumber(investedPct)}%` : "实际投入成本口径";
+  const costText = Number.isFinite(investedCost) && investedCost > 0
+    ? `按实际投入成本${round(investedCost, 2)}元计${pctText}`
+    : `按实际投入成本口径计${pctText}`;
+  return body
+    .replace(/(?:不能|不要|严禁)把(?:初始本金|初始资金|本金)(?:作为|当作|当成)?收益率分母/g, "必须把实际投入成本作为收益率分母")
+    .replace(/按(?:初始本金|初始资金|本金)(?:口径|计算|收益率)?(?:为|计|约|是)?\s*[+-]?\d+(?:\.\d+)?%/g, costText)
+    .replace(/(?:相对|较)(?:初始本金|初始资金|本金)\s*[+-]?\d+(?:\.\d+)?%/g, costText)
+    .replace(/(?:初始本金|初始资金|本金)(?:作为|当作|当成)?收益率分母/g, "实际投入成本作为收益率分母")
+    .replace(/初始资金口径|初始本金口径|本金口径/g, "实际投入成本口径");
 }
 
 function normalizePortfolioPremarket(raw) {
@@ -15064,6 +15086,8 @@ export {
   mergeCandidateFunds,
   normalizeUserFacingFundAnswer,
   normalizePortfolioDb,
+  normalizePortfolioInvestedCostReturnText,
+  normalizePortfolioReview,
   normalizePortfolioWatchlist,
   normalizePortfolioWatchlistUpdates,
   renderFundReportSummaryPng,
