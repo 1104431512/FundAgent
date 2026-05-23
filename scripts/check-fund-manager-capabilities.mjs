@@ -1724,6 +1724,26 @@ delete process.env.FEISHU_CARD_IMAGE_CHUNK_SIZE;
 assert.equal(manager.getFeishuCardImageChunkSize(), 4, "fund report image card chunks should keep each Feishu card readable");
 const imageChunks = manager.splitFeishuCardImages(Array.from({ length: 12 }, (_, index) => ({ imageKey: `img_${index}` })));
 assert.deepEqual(imageChunks.map((chunk) => chunk.length), [4, 4, 4], "fund report images should be split into supplemental cards instead of crowding one card");
+const fundImageCaption = manager.buildFeishuImageCaption({
+  imageKey: "img_caption",
+  fundReportChart: true,
+  role: "买入参考图",
+  code: "000001",
+  name: "低位修复基金A",
+  alt: "买入参考图：000001 低位修复基金A 走势 / 回撤 / 买点 / 费用证据"
+});
+assert(fundImageCaption.includes("买入参考图：000001 低位修复基金A"), "fund image captions must keep the fund and chart role next to the image");
+assert(fundImageCaption.includes("先看 ENTRY/ACT 判断能否买"), "fund image captions must tell users how to read the chart next to the image");
+assert(fundImageCaption.includes("FEE/DROP/SIZE 控制费用、回撤和规模风险"), "fund image captions must explain the right-side risk evidence next to the image");
+const fundImageLegend = manager.buildFeishuFundImageLegendNote([{ imageKey: "img_legend", fundReportChart: true }]);
+assert(fundImageLegend.includes("ENTRY=入场判断"), "fund image cards must carry a Chinese abbreviation legend next to the images");
+assert(fundImageLegend.includes("BATCH=分批买入"), "fund image card legend must translate the batch-buy label");
+const supplementText = manager.buildFeishuImageSupplementText([
+  { imageKey: "img_supp", fundReportChart: true, role: "备选观察图", code: "000004", name: "备选回踩基金C" }
+], 1, 3);
+assert(supplementText.includes("配图补充（第 2/3 组）"), "supplemental image cards must keep their group index");
+assert(supplementText.includes("图上缩写：ENTRY=入场判断"), "supplemental image cards must include the Chinese chart legend without relying on the first answer body");
+assert(supplementText.includes("备选观察图：000004 备选回踩基金C"), "supplemental image card captions must preserve backup/watch chart context");
 if (previousCardImageChunkSize === undefined) {
   delete process.env.FEISHU_CARD_IMAGE_CHUNK_SIZE;
 } else {

@@ -328,6 +328,18 @@ const requiredPatterns = [
     message: "supplemental fund image cards must explain which buy or backup charts they contain."
   },
   {
+    pattern: /FEISHU_FUND_IMAGE_CARD_LEGEND[\s\S]{0,260}ENTRY=入场判断[\s\S]{0,260}BATCH=分批买入/,
+    message: "fund image cards must show a Chinese legend next to report images, not only in the main text body."
+  },
+  {
+    pattern: /buildFeishuImageCaption[\s\S]{0,700}先看 ENTRY\/ACT 判断能否买[\s\S]{0,320}FEE\/DROP\/SIZE 控制费用、回撤和规模风险/,
+    message: "fund image captions must tell users how to read buy, low-position, fee, drawdown, and scale evidence."
+  },
+  {
+    pattern: /fundReportChart:\s*true/,
+    message: "generated fund report images must be tagged so Feishu cards can attach Chinese chart legends."
+  },
+  {
     pattern: /preferPullbackSetup\s*\?\s*24\s*:\s*precious\s*\?\s*10\s*:\s*options\.forRecommendation\s*\?\s*14\s*:\s*10/,
     message: "market deep dive defaults must fetch enough candidates to support a broad chart set."
   },

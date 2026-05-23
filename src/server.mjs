@@ -6494,6 +6494,10 @@ async function buildFundReportCardImages(profiles, config) {
       const imageKey = await uploadFeishuImage(png, `fund-report-${chartMode}-${item.code || "fund"}.png`, config);
       images.push({
         imageKey,
+        fundReportChart: true,
+        code: item.code || "",
+        name: item.name || "",
+        role: item.snapshot.reportChartRole || "",
         alt: `${item.snapshot.reportChartRole ? `${item.snapshot.reportChartRole}：` : ""}${item.code} ${item.name} 走势 / 回撤 / 阶段收益 / 买点费用风险图`.trim() || "基金报告图"
       });
     } catch (error) {
@@ -6941,6 +6945,10 @@ async function buildPortfolioTrendCardImages(run, config) {
     const imageKey = await uploadFeishuImage(png, `portfolio-report-${item.code || "fund"}.png`, config);
     images.push({
       imageKey,
+      fundReportChart: true,
+      code: item.code || "",
+      name: item.name || "",
+      role: item.role || "",
       alt: `${item.role ? `${item.role}：` : ""}${item.code} ${item.name} 走势 / 回撤 / 买点 / 费用证据`.trim() || "基金走势证据图"
     });
   }
@@ -13013,14 +13021,37 @@ function getFeishuCardImageChunkSize() {
   return Math.max(1, Math.min(6, Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE));
 }
 
+const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上缩写：ENTRY=入场判断，SIG=回调/启动信号，LOW/YLOW=120/250日低位，ACT=经理动作，CLASS=份额，FEE=每万元费用，DROP=距高点回撤，SIZE=规模；BATCH=分批买入，WAIT=等待回撤。";
+
+function isFundReportCardImage(image = {}) {
+  const alt = String(image?.alt || "");
+  return Boolean(image?.fundReportChart)
+    || /(基金报告图|基金走势证据图|走势\s*\/\s*回撤|买点\s*\/\s*费用|买点费用风险图)/.test(alt);
+}
+
+function buildFeishuFundImageLegendNote(images = []) {
+  const list = Array.isArray(images) ? images : [];
+  return list.some(isFundReportCardImage) ? FEISHU_FUND_IMAGE_CARD_LEGEND : "";
+}
+
+function buildFeishuImageCaption(image = {}) {
+  const label = String(image?.alt || "基金报告图").replace(/\s+/g, " ").trim();
+  if (!isFundReportCardImage(image)) return label.slice(0, 120);
+  const role = String(image.role || "").trim();
+  const codeName = [image.code, image.name].filter(Boolean).join(" ");
+  const prefix = [role, codeName].filter(Boolean).join("：");
+  const focused = prefix || label;
+  return `${focused.slice(0, 80)}。看图顺序：先看 ENTRY/ACT 判断能否买，再看 LOW/YLOW 是否低位，最后看 FEE/DROP/SIZE 控制费用、回撤和规模风险。`;
+}
+
 function buildFeishuImageSupplementText(images = [], chunkIndex = 0, chunkTotal = 1) {
   const lines = (images || []).map((image, index) => {
-    const label = String(image?.alt || "基金报告图").replace(/\s+/g, " ").trim();
-    return `${index + 1}. ${label.slice(0, 120)}`;
+    return `${index + 1}. ${buildFeishuImageCaption(image)}`;
   });
+  const legend = buildFeishuFundImageLegendNote(images);
   return [
     `配图补充（第 ${chunkIndex + 1}/${chunkTotal} 组）：`,
-    "这组继续对应上一条的买入参考和备选观察，请对照正文里的配图阅读。",
+    legend || "这组继续对应上一条的图片证据，请对照正文阅读。",
     ...lines
   ].filter(Boolean).join("\n");
 }
@@ -13057,6 +13088,21 @@ function buildFeishuCard(text, kind, options = {}) {
   ];
 
   const cardImages = Array.isArray(options.images) ? options.images : [];
+  const imageLegend = buildFeishuFundImageLegendNote(cardImages);
+  if (imageLegend) {
+    elements.push(
+      { tag: "hr" },
+      {
+        tag: "note",
+        elements: [
+          {
+            tag: "plain_text",
+            content: imageLegend
+          }
+        ]
+      }
+    );
+  }
   for (const image of cardImages) {
     if (!image?.imageKey) continue;
     elements.push(
@@ -13066,7 +13112,7 @@ function buildFeishuCard(text, kind, options = {}) {
         elements: [
           {
             tag: "plain_text",
-            content: image.alt || "走势曲线"
+            content: buildFeishuImageCaption(image)
           }
         ]
       },
@@ -13075,7 +13121,7 @@ function buildFeishuCard(text, kind, options = {}) {
         img_key: image.imageKey,
         alt: {
           tag: "plain_text",
-          content: image.alt || "走势曲线"
+          content: buildFeishuImageCaption(image)
         },
         mode: "fit_horizontal"
       }
@@ -14891,6 +14937,9 @@ export {
   buildPortfolioWatchlistStatusLines,
   buildPortfolioWatchlistLaunchEveLines,
   buildPortfolioWatchlistUpdatesFromAnswerProfiles,
+  buildFeishuFundImageLegendNote,
+  buildFeishuImageCaption,
+  buildFeishuImageSupplementText,
   buildPullbackQualityFallbackAnswer,
   buildFundWorkflowWatchlistSummary,
   classifyMessageIntent,
