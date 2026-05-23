@@ -7815,9 +7815,9 @@ function getFundReportProfileKey(profile) {
 }
 
 const FUND_REPORT_CHART_LEGEND_LINES = [
-  "图上底部已经加了中文图例说明：买点=可买/分批买/等待/回避/观察，信号=回调完成/启动/无。",
-  "120日低位/250日低位=区间相对位置，越低越接近低位，越高越接近高位；每万成本=每1万元持有估算成本，分批=不一次买完。",
-  "新图只使用中文短标签：买点=是否到了可买位置，信号=回调完成或启动迹象，120日低位/250日低位=是不是还在低位，动作=经理建议。",
+  "图上底部已经加了中文图例说明：买点=可买/分批买/等待/回避/观察，回调启动=回调完成/启动/无。",
+  "120日位置/250日位置=区间相对位置，越低越接近低位，越高越接近高位；每万成本=每1万元持有估算成本，分批=不一次买完。",
+  "新图只使用中文短标签：买点=是否到了可买位置，回调启动=回调完成或启动迹象，板块位置=是否低位轮动或已经拥挤，经理动作=经理建议。",
   "右侧六格：份额=A/C 等类别，每万成本=每1万元估算成本，近20日/近60日=短中期涨跌，回撤=距近期高点回落，规模=基金规模（单位约为亿元）。",
   "板块位置=这条赛道现在处在低位、确认、扩散还是拥挤；轮动/低位评分越高越好，拥挤度高要少追。",
   "指标速读：近20日/近60日看是否追涨，回撤看离高点跌了多少，每万成本看费用拖累，规模看流动性和清盘风险。",
@@ -7866,8 +7866,8 @@ function formatFundReportChartGuideEvidence(profile = {}, role = "") {
     Number.isFinite(Number(trend.return5dPct)) ? `近5日${formatFallbackPct(trend.return5dPct)}` : "",
     Number.isFinite(Number(trend.return10dPct)) ? `近10日${formatFallbackPct(trend.return10dPct)}` : "",
     Number.isFinite(Number(trend.return20dPct)) ? `近20日${formatFallbackPct(trend.return20dPct)}` : "",
-    Number.isFinite(Number(trend.lowPositionPct120)) ? `120日低位${round(Number(trend.lowPositionPct120), 1)}%` : "",
-    Number.isFinite(Number(trend.lowPositionPct250)) ? `250日低位${round(Number(trend.lowPositionPct250), 1)}%` : "",
+    Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置${round(Number(trend.lowPositionPct120), 1)}%` : "",
+    Number.isFinite(Number(trend.lowPositionPct250)) ? `250日位置${round(Number(trend.lowPositionPct250), 1)}%` : "",
     formatHoldingsOutlookEvidence(profile),
     fees.shareClassFeeModel?.label || profile.shareClassFeeModel?.label || ""
   ].filter(Boolean);
@@ -12733,12 +12733,14 @@ function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
 
 function drawDecisionEvidenceStrip(canvas, { x, y, width, profile = {}, trend = {} }) {
   const actionability = profile?.actionability || {};
+  const theme = getChartThemePosition(profile);
   const items = [
     ["买点", formatChartEntryBias(trend.entryBias), chartDecisionColor(trend.entryBias)],
-    ["信号", formatChartSetupSignal(trend.pullbackSetup?.signal), chartSignalColor(trend.pullbackSetup?.signal)],
-    ["120日低位", formatChartMetricValue("LOW", trend.lowPositionPct120), chartLowPositionColor(trend.lowPositionPct120)],
-    ["250日低位", formatChartMetricValue("YLOW", trend.lowPositionPct250), chartLowPositionColor(trend.lowPositionPct250)],
-    ["动作", formatChartAction(actionability.action), chartActionColor(actionability.action)]
+    ["回调启动", formatChartSetupSignal(trend.pullbackSetup?.signal), chartSignalColor(trend.pullbackSetup?.signal)],
+    ["板块位置", theme.label, chartThemePositionColor(theme.raw)],
+    ["120日位置", formatChartMetricValue("LOW", trend.lowPositionPct120), chartLowPositionColor(trend.lowPositionPct120)],
+    ["250日位置", formatChartMetricValue("YLOW", trend.lowPositionPct250), chartLowPositionColor(trend.lowPositionPct250)],
+    ["经理动作", formatChartAction(actionability.action), chartActionColor(actionability.action)]
   ];
   const gap = 10;
   const tileW = Math.floor((width - gap * (items.length - 1)) / items.length);
@@ -12805,15 +12807,16 @@ function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, tre
 
 function drawFundReportLegendPanel(canvas, { x, y, width, height }) {
   const lines = [
-    "图例说明 买点=可买/分批买/等待/回避/观察 信号=回调完成/启动/无",
-    "120日低位/250日低位=越低越接近低位 越高越接近高位",
+    "图例说明 买点=可买/分批买/等待/回避/观察 回调启动=回调完成/启动/无",
+    "板块位置=低位/确认/扩散/拥挤 拥挤高位少追涨",
+    "120日位置/250日位置=越低越接近低位 越高越接近高位",
     "分批=不一次买完 每万成本=每万元估算成本",
-    "动作=买入/等待/回避 低位=低/高 回撤/规模=风险"
+    "经理动作=买入/分批/等待/回避 回撤/规模=风险"
   ];
   fillRect(canvas, x, y, width, height, [248, 250, 252, 255]);
   drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
   lines.forEach((line, index) => {
-    drawChartTextFit(canvas, x + 16, y + 10 + index * 24, line, [51, 65, 85, 255], {
+    drawChartTextFit(canvas, x + 16, y + 8 + index * 20, line, [51, 65, 85, 255], {
       asciiScale: REPORT_CHART_MIN_TEXT_SCALE,
       cjkScale: 1,
       maxWidth: width - 32,
@@ -12994,6 +12997,32 @@ function formatChartSetupSignal(value) {
     none: "无信号"
   };
   return labels[value] || formatChartStringValue(value, 6);
+}
+
+function getChartThemePosition(profile = {}) {
+  const theme = getCandidateThemeSignals(profile)[0] || {};
+  const raw = theme.positionSignal || theme.stage || "";
+  return { raw, label: formatChartThemePosition(raw) };
+}
+
+function formatChartThemePosition(value) {
+  const labels = {
+    low_position_rotation: "低位轮动",
+    acceptable_position: "观察",
+    neutral_or_wait: "观察",
+    high_chase_risk: "拥挤",
+    germination: "观察",
+    confirmation: "确认",
+    diffusion: "扩散",
+    crowded: "拥挤"
+  };
+  return labels[value] || formatChartStringValue(value, 6) || "观察";
+}
+
+function chartThemePositionColor(value) {
+  if (["low_position_rotation", "confirmation"].includes(String(value || ""))) return [22, 130, 93, 255];
+  if (["high_chase_risk", "crowded", "diffusion"].includes(String(value || ""))) return [194, 65, 12, 255];
+  return [15, 23, 42, 255];
 }
 
 function formatChartEntryBias(value) {
@@ -13344,6 +13373,20 @@ const CJK_CHART_FONT = {
   "万": [0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x7FFFE0, 0x010000, 0x010000, 0x010000, 0x010000, 0x01FF80, 0x010080, 0x020080, 0x020080, 0x020080, 0x020080, 0x040080, 0x040080, 0x080100, 0x180100, 0x303E00, 0x600000, 0x000000, 0x000000],
   "元": [0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x1FFFC0, 0x000000, 0x000000, 0x000000, 0x000000, 0x7FFFF0, 0x010400, 0x010400, 0x010400, 0x010400, 0x010400, 0x020410, 0x020410, 0x040410, 0x0C0430, 0x3003E0, 0x600000, 0x000000, 0x000000],
   "亿": [0x000000, 0x000000, 0x000000, 0x000000, 0x020000, 0x020000, 0x04FFC0, 0x0401C0, 0x080180, 0x080300, 0x180600, 0x180C00, 0x381800, 0x683000, 0x486000, 0x08E010, 0x08C030, 0x098030, 0x090030, 0x090060, 0x08FFC0, 0x080000, 0x000000, 0x000000],
+  "板": [0x000000, 0x000000, 0x000000, 0x080060, 0x087FC0, 0x084000, 0x7F4000, 0x084000, 0x187FC0, 0x1E5040, 0x1B5040, 0x29D080, 0x684880, 0x484900, 0x084700, 0x08C600, 0x088D00, 0x08B0C0, 0x09C060, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000],
+  "块": [0x000000, 0x000000, 0x081000, 0x081000, 0x081000, 0x08FF00, 0x7E1100, 0x081100, 0x081100, 0x081100, 0x081100, 0x09FFC0, 0x083000, 0x082800, 0x0E6800, 0x70C400, 0x018200, 0x030180, 0x0600C0, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000],
+  "置": [0x000000, 0x000000, 0x000000, 0x1FFF80, 0x110880, 0x1FFF80, 0x004000, 0x3FFFC0, 0x004000, 0x0FFF00, 0x080100, 0x0FFF00, 0x080100, 0x0FFF00, 0x080100, 0x0FFF00, 0x080100, 0x7FFFE0, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000],
+  "轮": [0x000000, 0x000000, 0x040C00, 0x041C00, 0x081600, 0x3FB300, 0x086180, 0x14C0C0, 0x158060, 0x142000, 0x242080, 0x3F2300, 0x042C00, 0x043800, 0x07A040, 0x3C2040, 0x042040, 0x0420C0, 0x041F80, 0x040000, 0x000000, 0x000000, 0x000000, 0x000000],
+  "确": [0x000000, 0x001000, 0x003000, 0x3F7F00, 0x084300, 0x088200, 0x197FC0, 0x104440, 0x1E4440, 0x327FC0, 0x324440, 0x524440, 0x124440, 0x127FC0, 0x124440, 0x1EC440, 0x108440, 0x0085C0, 0x010000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000],
+  "认": [0x000000, 0x000000, 0x100800, 0x080800, 0x0C0800, 0x060800, 0x020800, 0x000800, 0x780800, 0x080800, 0x080C00, 0x081400, 0x081400, 0x093200, 0x0B2200, 0x0E4100, 0x08C180, 0x0180C0, 0x030060, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000],
+  "扩": [0x000000, 0x000000, 0x080800, 0x080C00, 0x080400, 0x08FFE0, 0x7E8000, 0x088000, 0x088000, 0x0E8000, 0x188000, 0x688000, 0x088000, 0x088000, 0x090000, 0x090000, 0x0B0000, 0x7A0000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000],
+  "散": [0x000000, 0x000000, 0x110400, 0x110C00, 0x7FC800, 0x111FC0, 0x113880, 0x7FE880, 0x004880, 0x3F8980, 0x208900, 0x3F8500, 0x208700, 0x208600, 0x3F8E00, 0x209900, 0x20B080, 0x27E0C0, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000],
+  "拥": [0x000000, 0x000000, 0x080000, 0x09FF80, 0x090880, 0x090880, 0x3F0880, 0x09FF80, 0x090880, 0x0F0880, 0x190880, 0x290880, 0x09FF80, 0x090880, 0x0B0880, 0x0A0880, 0x0E0880, 0x380B80, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000],
+  "挤": [0x000000, 0x000000, 0x080800, 0x080400, 0x08FFE0, 0x3E4080, 0x082100, 0x082300, 0x081600, 0x0A1C00, 0x1C7300, 0x2980E0, 0x082100, 0x082100, 0x082100, 0x082100, 0x084100, 0x08C100, 0x398100, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000],
+  "经": [0x000000, 0x000000, 0x080000, 0x11FF80, 0x100180, 0x200300, 0x220600, 0x440E00, 0x7C3300, 0x08C0C0, 0x130060, 0x200000, 0x7FFF80, 0x600800, 0x000800, 0x0E0800, 0x700800, 0x01FFE0, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000],
+  "理": [0x000000, 0x000000, 0x000000, 0x7EFF80, 0x088880, 0x088880, 0x08FF80, 0x088880, 0x088880, 0x7EFF80, 0x088880, 0x080800, 0x080800, 0x08FF80, 0x0A0800, 0x1C0800, 0x600800, 0x01FFC0, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000],
+  "少": [0x000000, 0x000000, 0x002000, 0x002000, 0x022400, 0x062200, 0x042100, 0x0820C0, 0x082060, 0x102120, 0x302200, 0x202600, 0x000C00, 0x001800, 0x006000, 0x01C000, 0x070000, 0x380000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000],
+  "追": [0x000000, 0x000000, 0x202000, 0x102000, 0x19FF80, 0x090080, 0x010080, 0x010080, 0x71FF80, 0x110080, 0x110000, 0x11FF80, 0x110080, 0x110080, 0x110080, 0x11FF80, 0x390080, 0x6C0000, 0x43FFE0, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000],
   "图": [0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x1FFFE0, 0x1FFFE0, 0x18E0E0, 0x19FFE0, 0x1FFFE0, 0x1BCCE0, 0x18FCE0, 0x1FFFE0, 0x1BC7E0, 0x18FEE0, 0x181CE0, 0x19E0E0, 0x1BFEE0, 0x181EE0, 0x1FFFE0, 0x1FFFE0, 0x1800E0, 0x000000, 0x000000],
   "例": [0x000000, 0x000000, 0x000000, 0x000000, 0x060060, 0x07F860, 0x0DFB60, 0x0CC360, 0x0CC360, 0x1CFB60, 0x1DFB60, 0x1D9B60, 0x3D9B60, 0x3FDB60, 0x1FFB60, 0x0C7360, 0x0C7360, 0x0C7360, 0x0CE060, 0x0DC060, 0x0FC3E0, 0x0C83C0, 0x000000, 0x000000],
   "说": [0x000000, 0x000000, 0x000000, 0x000000, 0x082180, 0x1C71C0, 0x0E7380, 0x0E3300, 0x04FFC0, 0x00FFC0, 0x3CC0C0, 0x3CC0C0, 0x0CC0C0, 0x0CFFC0, 0x0CFFC0, 0x0C3300, 0x0D3300, 0x0F3320, 0x0F7370, 0x0CF370, 0x09E3E0, 0x0083E0, 0x000000, 0x000000],
@@ -14884,7 +14927,7 @@ function getFeishuCardImageChunkSize() {
   return Math.max(1, Math.min(6, Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE));
 }
 
-const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上中文短标签：买点=能否买，信号=回调/启动，120日低位/250日低位=是否真低位，板块位置=题材处在低位、确认还是拥挤，动作=经理建议，每万成本/回撤/规模用于看成本和风险；分批=分几次买入，看不懂指标时先看中文图例，新图不再显示英文简称。";
+const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上中文短标签：买点=能否买，回调启动=有没有回调完成或启动迹象，板块位置=题材处在低位、确认、扩散还是拥挤，120日位置/250日位置=数值越低越接近低位，经理动作=经理建议，每万成本/回撤/规模用于看成本和风险；分批=分几次买入，新图不再显示英文简称。";
 
 function isFundReportCardImage(image = {}) {
   const alt = String(image?.alt || "");
@@ -14904,7 +14947,7 @@ function buildFeishuImageCaption(image = {}) {
   const codeName = [image.code, image.name].filter(Boolean).join(" ");
   const prefix = [role, codeName].filter(Boolean).join("：");
   const focused = prefix || label;
-  return `${focused.slice(0, 80)}。看图顺序：先看“买点/动作”判断能否买，再看“120日低位/250日低位”是否真低位，最后看“每万成本/回撤/规模”控制成本和风险。`;
+  return `${focused.slice(0, 80)}。看图顺序：先看“买点/经理动作”判断能否买，再看“板块位置/120日位置/250日位置”是否真低位，最后看“每万成本/回撤/规模”控制成本和风险。`;
 }
 
 function buildFeishuImageSupplementText(images = [], chunkIndex = 0, chunkTotal = 1) {

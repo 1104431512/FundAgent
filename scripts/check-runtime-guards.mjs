@@ -153,8 +153,8 @@ const requiredPatterns = [
     message: "fund report images must always use Chinese summary evidence cards instead of sparse trend-only charts."
   },
   {
-    pattern: /120日低位[\s\S]{0,140}250日低位/,
-    message: "fund report charts must show low-position labels as plain Chinese time-window low-position evidence rather than opaque metric names."
+    pattern: /120日位置[\s\S]{0,140}250日位置/,
+    message: "fund report charts must show low-position labels as plain Chinese time-window position evidence rather than opaque metric names."
   },
   {
     pattern: /每万成本/,
@@ -165,7 +165,7 @@ const requiredPatterns = [
     message: "fund report charts must use Chinese panel names instead of RISK/RET abbreviations."
   },
   {
-    pattern: /250日低位/,
+    pattern: /250日位置/,
     message: "fund report charts must show longer-window low-position evidence in a compact readable label."
   },
   {
@@ -385,8 +385,8 @@ const requiredPatterns = [
     message: "fund chart reading guides must tell users that report images are Chinese-first."
   },
   {
-    pattern: /买点=是否到了可买位置[\s\S]{0,260}120日低位\/250日低位=是不是还在低位[\s\S]{0,260}规模=基金规模/,
-    message: "fund chart reading guides must explain the key entry, low-position, and scale labels."
+    pattern: /买点=是否到了可买位置[\s\S]{0,260}板块位置=是否低位轮动或已经拥挤[\s\S]{0,260}规模=基金规模/,
+    message: "fund chart reading guides must explain the key entry, theme-position, low-position, and scale labels."
   },
   {
     pattern: /指标速读：近20日\/近60日看是否追涨[\s\S]{0,160}每万成本看费用拖累/,
@@ -517,8 +517,8 @@ const requiredPatterns = [
     message: "fund image cards must show a Chinese legend next to report images, not only in the main text body."
   },
   {
-    pattern: /buildFeishuImageCaption[\s\S]{0,700}先看“买点\/动作”判断能否买[\s\S]{0,320}“每万成本\/回撤\/规模”控制成本和风险/,
-    message: "fund image captions must tell users how to read buy, low-position, fee, drawdown, and scale evidence."
+    pattern: /buildFeishuImageCaption[\s\S]{0,700}先看“买点\/经理动作”判断能否买[\s\S]{0,260}是否真低位[\s\S]{0,260}“每万成本\/回撤\/规模”控制成本和风险/,
+    message: "fund image captions must tell users how to read buy, theme-position, low-position, fee, drawdown, and scale evidence."
   },
   {
     pattern: /fundReportChart:\s*true/,
