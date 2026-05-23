@@ -1633,24 +1633,51 @@ function compactPortfolioActionabilityProfile(actionability = null) {
   const holdingsOutlook = actionability.holdingsOutlook || null;
   return {
     score: finiteMetricNumber(actionability.score),
-    fitLabel: actionability.fitLabel || "",
-    fitLabelText: actionability.fitLabelText || "",
+    fitLabel: normalizePortfolioActionabilityText(actionability.fitLabelText || formatFitLabel(actionability.fitLabel) || actionability.fitLabel || ""),
+    fitLabelText: normalizePortfolioActionabilityText(actionability.fitLabelText || formatFitLabel(actionability.fitLabel) || ""),
     action: actionability.action || "",
-    actionText: actionability.actionText || "",
-    allocationBand: actionability.allocationBand || "",
-    confidence: actionability.confidence || "",
-    decisiveEvidence: normalizeStringArray(actionability.decisiveEvidence).slice(0, 5),
-    decisionBlocker: normalizeStringArray(actionability.decisionBlocker).slice(0, 5),
+    actionText: normalizePortfolioActionabilityText(actionability.actionText || formatActionabilityAction(actionability.action)),
+    allocationBand: normalizePortfolioActionabilityText(actionability.allocationBand || ""),
+    confidence: formatActionabilityConfidence(actionability.confidence),
+    decisiveEvidence: normalizePortfolioActionabilityList(actionability.decisiveEvidence, 5),
+    decisionBlocker: normalizePortfolioActionabilityList(actionability.decisionBlocker, 5),
     holdingsOutlook: holdingsOutlook ? {
-      label: holdingsOutlook.label || "",
-      evidence: String(holdingsOutlook.evidence || "").slice(0, 320),
-      risks: normalizeStringArray(holdingsOutlook.risks).slice(0, 4),
-      positives: normalizeStringArray(holdingsOutlook.positives).slice(0, 4),
+      label: normalizePortfolioActionabilityText(holdingsOutlook.label || ""),
+      evidence: normalizePortfolioActionabilityText(holdingsOutlook.evidence || "").slice(0, 320),
+      risks: normalizePortfolioActionabilityList(holdingsOutlook.risks, 4),
+      positives: normalizePortfolioActionabilityList(holdingsOutlook.positives, 4),
       concentration: holdingsOutlook.concentration || null,
       disclosureDate: holdingsOutlook.disclosureDate || "",
       topHoldings: (holdingsOutlook.topHoldings || []).slice(0, 10)
     } : null
   };
+}
+
+function normalizePortfolioActionabilityList(value, limit = 5) {
+  return normalizeStringArray(value)
+    .slice(0, limit)
+    .map(normalizePortfolioActionabilityText)
+    .filter(Boolean);
+}
+
+function normalizePortfolioActionabilityText(value) {
+  return normalizePortfolioUserFacingText(String(value || ""))
+    .replace(/\bhigh\b/gi, "较高")
+    .replace(/\bmedium\b/gi, "中等")
+    .replace(/\blow\b/gi, "偏低")
+    .replace(/\bwatch\s*\/\s*test(?:\s+only)?\b/gi, "观察/小额试探")
+    .replace(/\btest\s+only\b/gi, "仅小额试探")
+    .trim();
+}
+
+function formatActionabilityConfidence(value) {
+  const text = normalizePortfolioActionabilityText(value);
+  const labels = {
+    high: "较高",
+    medium: "中等",
+    low: "偏低"
+  };
+  return labels[String(value || "").trim().toLowerCase()] || text;
 }
 
 function buildFallbackPortfolioValuationRaw({ accountBefore, accountAfter, positionUpdates, lifecycle = {}, profiles = [] }) {

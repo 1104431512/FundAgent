@@ -2825,8 +2825,18 @@ const noisyActionability = {
   score: 88,
   action: "staged_buy",
   actionText: "分批",
-  decisiveEvidence: Array.from({ length: 8 }, (_, index) => `证据${index + 1}`),
-  decisionBlocker: Array.from({ length: 8 }, (_, index) => `缺口${index + 1}`),
+  fitLabel: "tactical_only",
+  confidence: "high",
+  allocationBand: "0%-3% watch/test only",
+  decisiveEvidence: [
+    "trend=extended_uptrend, entryBias=wait_pullback, 20d=31.9%, 60d=56.02%",
+    "actionability 为 tactical only / staged_buy",
+    ...Array.from({ length: 6 }, (_, index) => `证据${index + 1}`)
+  ],
+  decisionBlocker: [
+    "entryBias 是 wait_pullback，等待20日涨幅降温。",
+    ...Array.from({ length: 7 }, (_, index) => `缺口${index + 1}`)
+  ],
   holdingsOutlook: {
     label: "支撑买点",
     evidence: "前十大持仓/前景支持低位启动",
@@ -2853,6 +2863,10 @@ assert(!Object.hasOwn(compactReviewProfile.trendProfile, "series"), "weekly/prof
 assert.equal(compactReviewProfile.topHoldings.length, 10, "compact review profiles must still preserve top-ten holdings");
 assert.equal(compactReviewProfile.actionability.decisiveEvidence.length, 5, "compact actionability must cap evidence lists for context safety");
 assert.equal(compactReviewProfile.actionability.holdingsOutlook.topHoldings.length, 10, "compact actionability must preserve the full top-ten holdings view without extra overflow");
+assert(compactReviewProfile.actionability.fitLabel.includes("只适合战术小仓位"), "compact actionability must localize raw fit labels");
+assert(compactReviewProfile.actionability.allocationBand.includes("观察/小额试探"), "compact actionability must localize watch/test allocation bands");
+assert.equal(compactReviewProfile.actionability.confidence, "较高", "compact actionability must localize confidence labels");
+assert(!/\b(?:extended_uptrend|entryBias|actionability|tactical_only|staged_buy|wait_pullback|watch\/test)\b/i.test(compactReviewProfile.actionability.decisiveEvidence.join("\n")), "compact actionability evidence must not leak raw internal labels to prompts");
 const compactPublicSnapshot = manager.compactPublicFundSnapshot({
   code: "000098",
   name: "后台轻量接口测试基金C",
@@ -2876,6 +2890,13 @@ assert(!JSON.stringify(compactPublicSnapshot).includes("dailyReturnPct"), "portf
 assert.equal(compactPublicSnapshot.topHoldings.length, 10, "portfolio summary API snapshots must preserve top-ten holdings");
 assert.equal(compactPublicSnapshot.actionability.holdingsOutlook.topHoldings.length, 10, "portfolio summary API snapshots must preserve actionability holding outlook");
 assert.equal(compactPublicSnapshot.fees.feeImpact.oneYearCostPer10000, 42, "portfolio summary API snapshots must preserve share-class fee impact");
+assert(!/\b(?:extended_uptrend|entryBias|actionability|tactical_only|wait_pullback|watch\/test)\b/i.test([
+  compactPublicSnapshot.actionability.fitLabel,
+  compactPublicSnapshot.actionability.allocationBand,
+  compactPublicSnapshot.actionability.confidence,
+  ...compactPublicSnapshot.actionability.decisiveEvidence,
+  ...compactPublicSnapshot.actionability.decisionBlocker
+].join("\n")), "portfolio summary API actionability text must be localized for admin/customer-facing views");
 const storedDb = manager.compactPortfolioDbForStorage({
   account: {
     positions: [{

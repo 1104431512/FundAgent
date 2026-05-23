@@ -1645,6 +1645,14 @@ const requiredPatterns = [
   {
     pattern: /compactStoredPortfolioSnapshotFields[\s\S]{0,360}fundSnapshot:\s*compactPublicFundSnapshot[\s\S]{0,180}lastSnapshot:\s*compactPublicFundSnapshot/,
     message: "portfolio storage compaction must cover both held/order snapshots and watchlist snapshots."
+  },
+  {
+    pattern: /function compactPortfolioActionabilityProfile[\s\S]{0,1100}normalizePortfolioActionabilityText[\s\S]{0,500}decisiveEvidence:\s*normalizePortfolioActionabilityList[\s\S]{0,260}decisionBlocker:\s*normalizePortfolioActionabilityList/,
+    message: "public compact actionability evidence must localize legacy internal labels before admin display."
+  },
+  {
+    pattern: /function normalizePortfolioActionabilityText[\s\S]{0,520}normalizePortfolioUserFacingText[\s\S]{0,520}watch\\s\*\\\/\\s\*test/,
+    message: "portfolio actionability sanitizer must translate watch/test and internal fund labels."
   }
 ];
 
