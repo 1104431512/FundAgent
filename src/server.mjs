@@ -15249,6 +15249,7 @@ function buildRuntimeDiagnostics(stats = {}) {
   const counters = stats.counters || {};
   const last = stats.last || {};
   const items = [
+    buildStatsIntegrityDiagnostic(stats),
     buildCounterRateDiagnostic({
       label: "模型调用失败",
       failures: counters.modelFailures,
@@ -15324,6 +15325,37 @@ function buildCounterRateDiagnostic({ label, failures, total, warningRate, criti
     label,
     value: `${failed}/${count} (${round(rate * 100, 1)}%)`,
     note
+  };
+}
+
+function buildStatsIntegrityDiagnostic(stats = {}) {
+  const counters = stats.counters || {};
+  const customerActivity = [
+    counters.messageEvents,
+    counters.conversations,
+    counters.routedMessages,
+    counters.answersSent,
+    counters.repliesSent,
+    counters.portfolioRuns,
+    counters.portfolioTransactions,
+    counters.portfolioStatusRequests
+  ].reduce((sum, value) => sum + Number(value || 0), 0);
+  const syntheticSignals = [
+    counters.fundAnswerQualityFailures,
+    counters.fundAnswerQualityPasses,
+    counters.fundAnswerQualityDeterministicFallbacks,
+    counters.fundAnswerQualityLocalizationFixes,
+    counters.modelCalls,
+    counters.modelFailures,
+    counters.intentRouterFailures,
+    counters.errors
+  ].reduce((sum, value) => sum + Number(value || 0), 0);
+  if (customerActivity > 0 || syntheticSignals < 10) return null;
+  return {
+    severity: "warning",
+    label: "统计样本疑似测试噪音",
+    value: `客户活动 ${customerActivity} / 诊断信号 ${syntheticSignals}`,
+    note: "当前统计几乎没有真实消息、回复或组合任务，却有大量质检/模型失败；评估经理能力时先看线上真实 stats 或重置本地测试统计。"
   };
 }
 

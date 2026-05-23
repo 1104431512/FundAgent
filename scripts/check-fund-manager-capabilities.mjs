@@ -71,6 +71,19 @@ assert.equal(runtimeDiagnostics.level, "critical", "runtime diagnostics must sur
 assert(runtimeDiagnostics.items.some((item) => item.label === "模型上下文超限"), "runtime diagnostics must flag context-window failures");
 assert(runtimeDiagnostics.items.some((item) => item.label === "市场快照失败"), "runtime diagnostics must flag market data source failures");
 assert(runtimeDiagnostics.items.some((item) => item.label === "持仓补全失败"), "runtime diagnostics must flag top-holdings data failures");
+const pollutedLocalStatsDiagnostics = manager.buildRuntimeDiagnostics({
+  counters: {
+    messageEvents: 0,
+    conversations: 0,
+    answersSent: 0,
+    portfolioRuns: 0,
+    fundAnswerQualityFailures: 132,
+    fundAnswerQualityDeterministicFallbacks: 131,
+    modelCalls: 7,
+    modelFailures: 7
+  }
+});
+assert(pollutedLocalStatsDiagnostics.items.some((item) => item.label === "统计样本疑似测试噪音"), "runtime diagnostics must flag stats with failures but no real customer activity as likely test noise");
 assert(adminSource.includes("renderRuntimeDiagnostics") && adminHtmlSource.includes("runtimeDiagnostics"), "admin runtime UI must render diagnostics cards");
 assert(
   setupSkillContext.indexOf("# Skill: fund-theme-radar") < setupSkillContext.indexOf("# Skill: fund-answer-quality"),

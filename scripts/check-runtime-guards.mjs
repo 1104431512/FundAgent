@@ -1152,6 +1152,14 @@ const requiredPatterns = [
     message: "runtime stats must expose diagnostics so manager degradation is visible."
   },
   {
+    pattern: /buildStatsIntegrityDiagnostic\(stats\)/,
+    message: "runtime diagnostics must detect stats that look like test noise rather than customer activity."
+  },
+  {
+    pattern: /统计样本疑似测试噪音[\s\S]{0,360}没有真实消息、回复或组合任务/,
+    message: "stats integrity diagnostics must explain when local counters should not be treated as real manager history."
+  },
+  {
     pattern: /buildFundAnswerQualityIssueDiagnostic\(last\)/,
     message: "runtime diagnostics must translate recent answer-quality issue codes into actionable Chinese notes."
   },
@@ -1164,8 +1172,16 @@ const requiredPatterns = [
     message: "answer-quality diagnostics must explain missing share-class fee evidence."
   },
   {
-    pattern: /function buildRuntimeDiagnostics[\s\S]{0,6200}市场快照失败[\s\S]{0,1400}持仓补全失败[\s\S]{0,5200}模型上下文超限/,
-    message: "runtime diagnostics must highlight context-window, market snapshot, and holdings failures."
+    pattern: /市场快照失败/,
+    message: "runtime diagnostics must highlight market snapshot failures."
+  },
+  {
+    pattern: /持仓补全失败/,
+    message: "runtime diagnostics must highlight top-holdings enrichment failures."
+  },
+  {
+    pattern: /模型上下文超限/,
+    message: "runtime diagnostics must highlight context-window failures."
   },
   {
     pattern: /statReleaseCommit[\s\S]*formatReleaseCommit|formatReleaseCommit[\s\S]*statReleaseCommit/,
