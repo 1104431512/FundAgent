@@ -2426,6 +2426,72 @@ assert(!JSON.stringify(compactPublicSnapshot).includes("dailyReturnPct"), "portf
 assert.equal(compactPublicSnapshot.topHoldings.length, 10, "portfolio summary API snapshots must preserve top-ten holdings");
 assert.equal(compactPublicSnapshot.actionability.holdingsOutlook.topHoldings.length, 10, "portfolio summary API snapshots must preserve actionability holding outlook");
 assert.equal(compactPublicSnapshot.fees.feeImpact.oneYearCostPer10000, 42, "portfolio summary API snapshots must preserve share-class fee impact");
+const storedDb = manager.compactPortfolioDbForStorage({
+  account: {
+    positions: [{
+      code: "000098",
+      name: "后台轻量接口测试基金C",
+      fundSnapshot: {
+        code: "000098",
+        name: "后台轻量接口测试基金C",
+        trendProfile: noisyTrendProfile,
+        actionability: noisyActionability,
+        holdings: { equityTopHoldings: Array.from({ length: 12 }, (_, index) => `${index + 1}号持仓`) },
+        rawPayload: "RAW_POSITION_SNAPSHOT".repeat(2000)
+      }
+    }]
+  },
+  watchlist: [{
+    code: "000099",
+    name: "自选轻量接口测试基金C",
+    lastSnapshot: {
+      code: "000099",
+      name: "自选轻量接口测试基金C",
+      trendProfile: noisyTrendProfile,
+      actionability: noisyActionability,
+      rawPayload: "RAW_WATCH_SNAPSHOT".repeat(2000)
+    }
+  }],
+  orders: [{
+    code: "000100",
+    name: "订单轻量接口测试基金C",
+    fundSnapshot: {
+      code: "000100",
+      name: "订单轻量接口测试基金C",
+      trendProfile: noisyTrendProfile,
+      rawPayload: "RAW_ORDER_SNAPSHOT".repeat(2000)
+    }
+  }],
+  transactions: [],
+  settlements: [],
+  dailyEquity: [],
+  runs: [{
+    accountAfter: {
+      positions: [{
+        code: "000101",
+        name: "运行轻量接口测试基金C",
+        fundSnapshot: {
+          code: "000101",
+          name: "运行轻量接口测试基金C",
+          trendProfile: noisyTrendProfile,
+          rawPayload: "RAW_RUN_SNAPSHOT".repeat(2000)
+        }
+      }]
+    },
+    orders: [],
+    transactions: [],
+    watchlistUpdates: [],
+    positionUpdates: [],
+    rawModelOutput: "R".repeat(5000),
+    card: "C".repeat(13000)
+  }]
+});
+const storedDbJson = JSON.stringify(storedDb);
+assert(!storedDbJson.includes("dailyReturnPct"), "portfolio storage compaction must strip per-day chart fields before writing DB");
+assert(!storedDbJson.includes("RAW_POSITION_SNAPSHOT") && !storedDbJson.includes("RAW_ORDER_SNAPSHOT") && !storedDbJson.includes("RAW_RUN_SNAPSHOT"), "portfolio storage compaction must remove raw oversized snapshots");
+assert(storedDb.account.positions[0].fundSnapshot.trendProfile.series.length <= 32, "stored position snapshots must keep only thinned NAV series");
+assert(storedDb.watchlist[0].lastSnapshot.actionability.holdingsOutlook.topHoldings.length === 10, "stored watchlist snapshots must preserve top-ten holding outlook");
+assert(storedDb.runs[0].rawModelOutput.length < 4100 && storedDb.runs[0].card.length < 12150, "portfolio storage compaction must truncate long run text fields");
 const compactWeeklyContext = manager.compactPortfolioWeeklyContext({
   startDate: "2026-05-16",
   endDate: "2026-05-22",

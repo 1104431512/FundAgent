@@ -6645,11 +6645,19 @@ function compactPortfolioDbForStorage(db) {
     db.runs = db.runs.slice(-maxRuns);
   }
   if (Array.isArray(db.watchlist)) {
-    db.watchlist = normalizePortfolioWatchlist(db.watchlist).slice(0, maxWatchlist);
+    db.watchlist = normalizePortfolioWatchlist(db.watchlist)
+      .slice(0, maxWatchlist)
+      .map(compactStoredPortfolioSnapshotFields);
+  }
+  if (db.account?.positions) {
+    db.account = compactStoredPortfolioAccount(db.account);
   }
   for (const key of ["orders", "transactions", "settlements", "dailyEquity"]) {
     if (Array.isArray(db[key]) && db[key].length > maxList) {
       db[key] = db[key].slice(-maxList);
+    }
+    if (["orders", "transactions", "settlements"].includes(key) && Array.isArray(db[key])) {
+      db[key] = db[key].map(compactStoredPortfolioSnapshotFields);
     }
   }
   for (const run of db.runs || []) {
@@ -6661,11 +6669,34 @@ function compactPortfolioDbForStorage(db) {
     }
     if (Array.isArray(run.sources)) run.sources = run.sources.slice(0, 30);
     if (Array.isArray(run.actions)) run.actions = run.actions.slice(0, 20);
-    if (Array.isArray(run.orders)) run.orders = run.orders.slice(0, 20);
-    if (Array.isArray(run.transactions)) run.transactions = run.transactions.slice(0, 20);
+    if (run.accountBefore?.positions) run.accountBefore = compactStoredPortfolioAccount(run.accountBefore);
+    if (run.accountAfter?.positions) run.accountAfter = compactStoredPortfolioAccount(run.accountAfter);
+    if (Array.isArray(run.orders)) run.orders = run.orders.slice(0, 20).map(compactStoredPortfolioSnapshotFields);
+    if (Array.isArray(run.transactions)) run.transactions = run.transactions.slice(0, 20).map(compactStoredPortfolioSnapshotFields);
+    if (Array.isArray(run.watchlistUpdates)) run.watchlistUpdates = run.watchlistUpdates.slice(0, 40).map(compactStoredPortfolioSnapshotFields);
+    if (Array.isArray(run.positionUpdates)) run.positionUpdates = run.positionUpdates.slice(0, 30).map(compactStoredPortfolioSnapshotFields);
     if (Array.isArray(run.executionNotes)) run.executionNotes = run.executionNotes.slice(0, 30);
   }
   return db;
+}
+
+function compactStoredPortfolioAccount(account = {}) {
+  return {
+    ...account,
+    positions: (account.positions || []).map((position) => ({
+      ...position,
+      fundSnapshot: compactPublicFundSnapshot(position.fundSnapshot)
+    }))
+  };
+}
+
+function compactStoredPortfolioSnapshotFields(item = {}) {
+  if (!item || typeof item !== "object") return item;
+  return {
+    ...item,
+    fundSnapshot: compactPublicFundSnapshot(item.fundSnapshot),
+    lastSnapshot: compactPublicFundSnapshot(item.lastSnapshot)
+  };
 }
 
 function normalizePortfolioDb(value) {
@@ -16370,6 +16401,7 @@ export {
   buildPullbackQualityFallbackAnswer,
   buildFundWorkflowWatchlistSummary,
   classifyMessageIntent,
+  compactPortfolioDbForStorage,
   compactModelInputForContext,
   compactMarketSnapshotForModel,
   compactMarketDataQuality,

@@ -1330,6 +1330,14 @@ const requiredPatterns = [
   {
     pattern: /summarizePortfolioPositionBrief[\s\S]{0,180}compactPublicFundSnapshot/,
     message: "portfolio summary API must compact held-position fund snapshots."
+  },
+  {
+    pattern: /function compactPortfolioDbForStorage[\s\S]{0,900}compactStoredPortfolioAccount[\s\S]{0,900}compactStoredPortfolioSnapshotFields/,
+    message: "portfolio storage writes must compact stored fund snapshots before the DB grows too large."
+  },
+  {
+    pattern: /compactStoredPortfolioSnapshotFields[\s\S]{0,360}fundSnapshot:\s*compactPublicFundSnapshot[\s\S]{0,180}lastSnapshot:\s*compactPublicFundSnapshot/,
+    message: "portfolio storage compaction must cover both held/order snapshots and watchlist snapshots."
   }
 ];
 
