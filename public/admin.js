@@ -324,6 +324,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   renderInsightList("#portfolioReadinessSummary", buildReadinessInsightItems({ ready, waiting, launchEve, blocked }), "暂无接近买点的候选。");
   updatePortfolioCapabilityBadge(portfolio.capabilityDiagnostics || {});
   renderInsightList("#portfolioCapabilitySummary", buildCapabilityInsightItems(portfolio.capabilityDiagnostics || {}), "暂无明显能力短板。");
+  renderCapabilityActionQueue(portfolio.capabilityActionQueue || []);
 }
 
 function updateRunStateBadge(latestRun, scheduler = {}) {
@@ -482,6 +483,29 @@ function buildCapabilityInsightItems(diagnostics = {}) {
     value: item.value || formatDiagnosticSeverity(item.severity),
     meta: item.note || diagnostics.summary || ""
   }));
+}
+
+function renderCapabilityActionQueue(tasks = []) {
+  const list = document.querySelector("#portfolioCapabilityActionQueue");
+  if (!list) return;
+  const items = Array.isArray(tasks) ? tasks.slice(0, 6) : [];
+  if (!items.length) {
+    list.innerHTML = `<div class="empty compact-empty">暂无待执行修复动作。</div>`;
+    return;
+  }
+  list.innerHTML = `
+    <div class="capability-action-title">修复队列</div>
+    ${items.map((item) => `
+      <div class="capability-action ${escapeHtml(item.severity || "info")}">
+        <div>
+          <span>${escapeHtml(item.owner || "经理")}</span>
+          <strong>${escapeHtml(item.label || "能力修复")}</strong>
+        </div>
+        <p>${escapeHtml(item.action || "")}</p>
+        <small>${escapeHtml(item.evidence || item.note || "")}</small>
+      </div>
+    `).join("")}
+  `;
 }
 
 function renderInsightList(selector, items, emptyText) {

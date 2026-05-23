@@ -46,6 +46,18 @@ const forbiddenPatterns = [
     message: "in-image fund chart legends must avoid opaque theme-stage wording; use shorter low/high labels."
   },
   {
+    pattern: /function compactThemeRadarForModel[\s\S]{0,900}\n\s*(?:stage|positionSignal|actionBias|stageText|positionSignalText|actionBiasText)\s*:/,
+    message: "compact market snapshots sent to the model must not expose raw theme-radar field names."
+  },
+  {
+    pattern: /themeRadar\.positionSignal/,
+    message: "portfolio prompts must describe theme-radar chase risk in Chinese instead of raw field names."
+  },
+  {
+    pattern: /不要输出 stage\/forwardScore\/crowdingScore/,
+    message: "fund prompts must not seed the model with raw field names when asking it not to leak them."
+  },
+  {
     pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,2600}JSON\.stringify\(heldProfiles \|\| \[\], null, 2\)/,
     message: "portfolio decisions must not send full held profiles with raw NAV series to the model."
   },
@@ -79,6 +91,18 @@ const requiredPatterns = [
   {
     pattern: /function appendFundReportChartReadingGuide[\s\S]{0,180}normalizeUserFacingFundAnswer\(text\)/,
     message: "chart-reading finalization must sanitize user-facing fund answers even when no charts are appended."
+  },
+  {
+    pattern: /function isFundChartGlossaryQuestion[\s\S]{0,360}stage[\s\S]{0,360}buildFundReportChartGlossaryAnswer/,
+    message: "fund QA must have a deterministic Chinese glossary path when users ask what chart metrics mean."
+  },
+  {
+    pattern: /function buildFundReportChartGlossaryAnswer[\s\S]{0,900}先看能不能买，再看是不是低位，最后看成本和风险/,
+    message: "fund chart glossary must explain the reading order in natural Chinese."
+  },
+  {
+    pattern: /function compactThemeRadarForModel[\s\S]{0,900}板块位置[\s\S]{0,900}位置判断[\s\S]{0,900}操作倾向/,
+    message: "compact market snapshots must present theme-radar fields with Chinese labels before model calls."
   },
   {
     pattern: /extended_uptrend[\s\S]{0,120}短期涨幅偏热/,
@@ -881,6 +905,10 @@ const requiredPatterns = [
     message: "portfolio API must expose manager capability diagnostics derived from the real ledger."
   },
   {
+    pattern: /capabilityActionQueue:\s*buildPortfolioCapabilityActionQueue\(db\)/,
+    message: "portfolio API must expose concrete capability repair tasks, not only diagnostics."
+  },
+  {
     pattern: /function buildPortfolioCapabilityDiagnostics[\s\S]{0,4200}盈利能力承压[\s\S]{0,4200}追涨暴露待消化[\s\S]{0,4200}数据质量缺口/,
     message: "portfolio capability diagnostics must cover profitability, chase-risk exposure, and data-quality gaps."
   },
@@ -903,6 +931,10 @@ const requiredPatterns = [
   {
     pattern: /portfolioCapabilitySummary[\s\S]{0,500}buildCapabilityInsightItems|buildCapabilityInsightItems[\s\S]{0,500}portfolioCapabilitySummary/,
     message: "admin portfolio UI must show capability diagnostics instead of hiding manager weaknesses in raw JSON."
+  },
+  {
+    pattern: /portfolioCapabilityActionQueue[\s\S]{0,600}renderCapabilityActionQueue|renderCapabilityActionQueue[\s\S]{0,600}portfolioCapabilityActionQueue/,
+    message: "admin portfolio UI must show the manager's concrete capability repair queue."
   },
   {
     pattern: /portfolio-insight-grid[\s\S]{0,180}repeat\(auto-fit,\s*minmax\(250px,\s*1fr\)\)/,

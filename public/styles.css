@@ -438,6 +438,62 @@ button:disabled {
   line-height: 1.45;
 }
 
+.capability-action-list {
+  display: grid;
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.capability-action-title {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.capability-action {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--blue);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 11px 12px;
+}
+
+.capability-action.warning {
+  border-left-color: var(--warn);
+}
+
+.capability-action.critical {
+  border-left-color: var(--danger);
+}
+
+.capability-action div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.capability-action span,
+.capability-action small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.capability-action strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.capability-action p {
+  margin: 0;
+  color: #24313d;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .info-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

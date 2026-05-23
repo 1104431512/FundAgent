@@ -113,7 +113,9 @@ assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "追�
 assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "数据质量缺口"), "capability diagnostics must surface stale or missing position evidence");
 assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "成交净值待核验"), "capability diagnostics must surface unverified virtual trade fills");
 assert(serverSource.includes("capabilityDiagnostics: buildPortfolioCapabilityDiagnostics(db)"), "portfolio API must expose capability diagnostics");
+assert(serverSource.includes("capabilityActionQueue: buildPortfolioCapabilityActionQueue(db)"), "portfolio API must expose capability repair action queue");
 assert(adminSource.includes("buildCapabilityInsightItems") && adminHtmlSource.includes("portfolioCapabilitySummary"), "admin UI must render portfolio capability diagnostics");
+assert(adminSource.includes("renderCapabilityActionQueue") && adminHtmlSource.includes("portfolioCapabilityActionQueue"), "admin UI must render concrete capability repair tasks");
 const capabilityActionQueue = manager.buildPortfolioCapabilityActionQueue({
   account: {
     cash: 70000,
@@ -2144,10 +2146,16 @@ const noChartGuideSanitized = manager.appendFundReportChartReadingGuide(
 );
 assert(noChartGuideSanitized.includes("结论：分批买入"), "chart guide finalizer must sanitize fund answers even when no charts are appended");
 assert(!/\b(?:Verdict|Confidence|Score|staged buy)\b/i.test(noChartGuideSanitized), "chart guide finalizer must not return raw English labels");
+assert(manager.isFundChartGlossaryQuestion("这些基金图里的 stage 和 120日位置都是什么意思？"), "fund QA must detect chart metric glossary questions");
+const chartGlossaryAnswer = manager.buildFundReportChartGlossaryAnswer();
+assert(chartGlossaryAnswer.includes("后续新图会直接显示中文短标签"), "chart glossary answer must promise Chinese-first chart labels");
+assert(chartGlossaryAnswer.includes("本质上就是这个"), "chart glossary answer must explain the old stage wording in natural Chinese");
+assert(chartGlossaryAnswer.includes("先看能不能买，再看是不是低位，最后看成本和风险"), "chart glossary answer must give a simple chart reading order");
 const chartGuideWithThemeStage = manager.appendFundReportChartReadingGuide(
   "推荐清单：000000 低位修复基金C，可以作为买入参考。",
   [buildChartProfile()]
 );
+assert(chartGuideWithThemeStage.includes("读图顺序：先看“买点/经理动作”"), "chart guide must give users a plain reading order before metric details");
 assert(chartGuideWithThemeStage.includes("板块位置=这条赛道现在处在低位、确认、扩散还是拥挤"), "chart guide must explain theme-stage metrics as Chinese board-position wording");
 assert(chartGuideWithThemeStage.includes("指标速读：近20日/近60日看是否追涨"), "chart guide must include a plain metric quick-read");
 assert(chartGuideWithThemeStage.includes("医药，板块位置低位轮动"), "per-chart guide must translate theme stage evidence into Chinese");
@@ -2332,7 +2340,9 @@ const compactMarketSnapshotJson = JSON.stringify(compactMarketSnapshot);
 assert(compactMarketSnapshot.dataQuality.level === "partial", "compact market snapshot must preserve data-quality level");
 assert.equal(compactMarketSnapshot.fundCandidates.stockFunds.length, 6, "compact market snapshot must cap fund ranking candidates before model prompts");
 assert.equal(compactMarketSnapshot.marketIndicators.preciousMetals.length, 6, "compact market snapshot must cap market quote candidates before model prompts");
-assert(compactMarketSnapshot.themeRadar[0].stageText === "交易拥挤", "compact market snapshot must carry Chinese theme-stage labels");
+assert(compactMarketSnapshot.themeRadar[0]["板块位置"] === "交易拥挤", "compact market snapshot must carry Chinese theme-stage labels");
+assert(compactMarketSnapshot.themeRadar[0]["操作倾向"] === "等待或小额试探", "compact market snapshot must carry Chinese action-bias labels");
+assert(!/"(?:stage|positionSignal|actionBias|stageText|positionSignalText|actionBiasText)"\s*:/.test(compactMarketSnapshotJson), "compact market snapshot must not expose raw theme-radar field names to the model");
 assert(!compactMarketSnapshotJson.includes("NOISY_"), "compact market snapshot must strip raw payloads that cause context-window failures");
 assert(compactMarketSnapshotJson.length < 9000, "compact market snapshot must stay small enough for recommendation and QA prompts");
 assert(serverSource.includes("compactMarketSnapshotForModel(marketSnapshot)"), "fund recommendation, QA, and portfolio prompts must use compact market snapshots");

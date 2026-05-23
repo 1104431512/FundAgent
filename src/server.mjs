@@ -698,6 +698,11 @@ async function handleFundRecommendationWorkflow({ message, userText, intent }) {
 }
 
 async function handleFundQaWorkflow({ message, userText, intent }) {
+  if (isFundChartGlossaryQuestion(userText)) {
+    await replyToMessage(message.message_id, buildFundReportChartGlossaryAnswer(), { kind: "answer" });
+    return;
+  }
+
   const needsMarketSnapshot = shouldFetchMarketSnapshotForQuestion(userText);
   await replyToMessage(
     message.message_id,
@@ -1397,7 +1402,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "你必须维护自己的自选基金池：暂时不买但值得盯的基金要写入 watchlistUpdates，已有候选要复核是否 ready、waiting_pullback、watch 或 blocked，不能只围绕已有持仓转。",
     "自选基金池是未来随时准备购入的候选账本，每只候选都必须有备选理由、买入触发条件、风险备注和费用/份额说明。",
     "新闻只能作为催化证据，不能单独触发 BUY。每次买入前必须通过“轮动/低位/拥挤度”检查：优先低位轮动、回撤修复和早期确认，回避仅因新闻热度和短期涨幅追高。",
-    "如果 themeRadar.positionSignal 是 high_chase_risk，或 crowdingScore 高但 lowPositionScore/rotationScore 不支持，只能 WATCH、HOLD 或小额试探，不能重仓追涨。",
+    "如果题材雷达显示位置判断为追高风险偏高，或拥挤度高但低位/轮动评分不支持，只能 WATCH、HOLD 或小额试探，不能重仓追涨。",
     "同一基金不同份额类别不能混着推荐；必须比较 A/C/D/I 等份额的申购费、销售服务费、赎回费、起购门槛和渠道可得性，并说明费用拖累是否适合本次持有期。",
     "交易建议应以 targetWeightPct 为主，amount 只是建议值；系统执行时会按公开净值、现金和已有持仓重新计算真实份额。",
     "必须执行账户级回撤预算：账户回撤到预警线时缩小买入，到最大回撤预算时暂停新增买入并优先分批降风险；不能用加仓摊薄替代止损。",
@@ -6557,6 +6562,7 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
     account: summarizeAccount(db.account),
     exposureSummary: buildPortfolioExposureSummary(db.account.positions || []),
     capabilityDiagnostics: buildPortfolioCapabilityDiagnostics(db),
+    capabilityActionQueue: buildPortfolioCapabilityActionQueue(db),
     positions: db.account.positions.map(summarizePosition),
     watchlist: getActivePortfolioWatchlist(db).slice(0, lightweight ? 12 : 50).map(summarizeWatch),
     activeOrders: (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status)).map(summarizePortfolioOrder),
@@ -7695,22 +7701,19 @@ function compactThemeRadarForModel(theme = {}) {
   return {
     id: theme.id || "",
     name: theme.name || "",
-    stage: theme.stage || "",
-    stageText: formatUserFacingFundLabel(theme.stage),
-    forwardScore: finiteMetricNumber(theme.forwardScore),
-    crowdingScore: finiteMetricNumber(theme.crowdingScore),
-    rotationScore: finiteMetricNumber(theme.rotationScore),
-    lowPositionScore: finiteMetricNumber(theme.lowPositionScore),
-    positionSignal: theme.positionSignal || "",
-    positionSignalText: formatUserFacingFundLabel(theme.positionSignal),
-    actionBias: theme.actionBias || "",
-    actionBiasText: formatUserFacingFundLabel(theme.actionBias),
-    primaryCatalyst: theme.primaryCatalyst || "",
-    boards: (theme.evidence?.boards || []).slice(0, 2).map((item) => ({
+    板块位置: formatUserFacingFundLabel(theme.stage),
+    位置判断: formatUserFacingFundLabel(theme.positionSignal),
+    操作倾向: formatUserFacingFundLabel(theme.actionBias),
+    前瞻评分: finiteMetricNumber(theme.forwardScore),
+    拥挤度: finiteMetricNumber(theme.crowdingScore),
+    轮动评分: finiteMetricNumber(theme.rotationScore),
+    低位评分: finiteMetricNumber(theme.lowPositionScore),
+    主要催化: theme.primaryCatalyst || "",
+    相关板块: (theme.evidence?.boards || []).slice(0, 2).map((item) => ({
       name: item.name || "",
       changePct: finiteMetricNumber(item.changePct)
     })),
-    news: (theme.evidence?.news || []).slice(0, 2).map((item) => item.title || "").filter(Boolean)
+    相关新闻: (theme.evidence?.news || []).slice(0, 2).map((item) => item.title || "").filter(Boolean)
   };
 }
 
@@ -7976,6 +7979,7 @@ function getFundReportProfileKey(profile) {
 }
 
 const FUND_REPORT_CHART_LEGEND_LINES = [
+  "读图顺序：先看“买点/经理动作”决定能不能买，再看“回调启动/120日位置/250日位置”确认是不是低位，最后看“每万成本/回撤/规模”控制成本和风险。",
   "图上底部已经加了中文图例说明：买点=可买/分批买/等待/回避/观察，回调启动=回调完成/启动/无。",
   "120日位置/250日位置=区间相对位置，越低越接近低位，越高越接近高位；每万成本=每1万元持有估算成本，分批=不一次买完。",
   "新图只使用中文短标签：买点=是否到了可买位置，回调启动=回调完成或启动迹象，板块位置=是否低位轮动或已经拥挤，经理动作=经理建议。",
@@ -8052,6 +8056,31 @@ function formatFundReportThemeStageEvidence(profile = {}) {
     Number.isFinite(Number(theme.crowdingScore)) ? `拥挤度${round(Number(theme.crowdingScore), 1)}` : ""
   ].filter(Boolean);
   return parts.join("，");
+}
+
+function isFundChartGlossaryQuestion(text = "") {
+  const body = String(text || "").trim();
+  if (!body) return false;
+  const asksChart = /(图|图片|配图|走势图|报告图|指标|术语|图例|stage|entry|actionability|entryBias|买点|板块位置|120日位置|250日位置|每万成本)/i.test(body);
+  const asksExplain = /(什么意思|看不懂|怎么读|如何看|解释|中文|翻译|含义|读图|指标)/i.test(body);
+  return asksChart && asksExplain;
+}
+
+function buildFundReportChartGlossaryAnswer() {
+  return [
+    "可以，这块应该中文优先。后续新图会直接显示中文短标签，不再把内部字段摆给你看。",
+    "",
+    "你可以按这个顺序读：",
+    "1. 买点/经理动作：先判断能不能买。常见结果是买入、分批买入、等待、回避、观察。",
+    "2. 回调启动：看是不是已经从回调里修复，还是只是在涨了一段之后等回落。",
+    "3. 板块位置：看这条赛道处在低位轮动、确认、扩散，还是交易拥挤。你看到的英文 stage，本质上就是这个。",
+    "4. 120日位置/250日位置：越低越接近区间低位；越高越容易是追涨位置。",
+    "5. 近20日/近60日：用来判断短中期是不是已经涨太多。",
+    "6. 每万成本：持有1万元大概会被费率拖累多少；A/C类份额要结合持有期看。",
+    "7. 回撤/规模：回撤看风险承受，规模看流动性和清盘风险。",
+    "",
+    "简单说：先看能不能买，再看是不是低位，最后看成本和风险。图里的数字不是越多越好，关键是它们能不能支持“现在买、分批买、等待还是回避”这个动作。"
+  ].join("\n");
 }
 
 function withFundReportChartMeta(profile, meta = {}) {
@@ -9298,7 +9327,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "",
     "请输出：",
     "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
-    "2. 题材雷达：先列 1-3 个相关题材的中文阶段、前瞻评分、拥挤度、为什么现在值得/不值得看；不要输出 stage/forwardScore/crowdingScore 这些字段名。",
+    "2. 题材雷达：先列 1-3 个相关题材的中文板块位置、前瞻评分、拥挤度、为什么现在值得/不值得看；不要输出任何内部字段名。",
     "3. 自评估：这类需求是否适合现在做、把握度如何、适合激进/均衡/保守哪类。",
     "4. 推荐清单：优先 3-4 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号、5日/10日早期转强、120日区间低位、趋势/自评估动作、为什么入选，以及“配图看什么”。只能使用快照、下钻或经理自选候选池中的候选代码；如果没有足够代码，就写“待复核方向”。",
     "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
@@ -17336,6 +17365,7 @@ export {
   buildFeishuFundImageLegendNote,
   buildFeishuImageCaption,
   buildFeishuImageSupplementText,
+  buildFundReportChartGlossaryAnswer,
   buildMarketDataQuality,
   buildPullbackQualityFallbackAnswer,
   buildFundWorkflowWatchlistSummary,
@@ -17374,6 +17404,7 @@ export {
   inferPullbackSetupSearchKeywords,
   isGenericPullbackSetupRequest,
   isPullbackSetupRequest,
+  isFundChartGlossaryQuestion,
   mergeCandidateFunds,
   normalizeUserFacingFundAnswer,
   normalizePortfolioDb,
