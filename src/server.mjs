@@ -1336,6 +1336,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "必须执行账户级回撤预算：账户回撤到预警线时缩小买入，到最大回撤预算时暂停新增买入并优先分批降风险；不能用加仓摊薄替代止损。",
     "必须执行单仓风控：浮亏触及止损线、浮盈大幅回吐或趋势破位时，先给 SELL/减仓复核，不要只写 HOLD。",
     "必须执行组合穿透暴露检查：同题材仓位、同一底层前十大持仓重叠、单一风格过热时，组合经理和风控经理必须写清不加仓或减风险条件。",
+    "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，marketView、team 和 actions.dataBasis 必须写清数据缺口；缺少关键板块、排行、新闻或贵金属模块时，只能 WATCH、HOLD 或小额试探，不能当作完整联网证据下重仓 BUY。",
     "如果候选基金缺少可验证净值或走势数据，倾向 WATCH，不要强行 BUY。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
     "",
@@ -1618,6 +1619,7 @@ async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profi
     "盘前观察只给观察清单和下午决策偏向，不生成 BUY/SELL 订单。",
     "请基于传入的市场快照、持仓资料、自选基金池、订单生命周期和经理画像输出 JSON，不要编造资料之外的数据。",
     "盘前必须复核自选基金池：哪些已经接近可买、哪些还要等回调、哪些因为追高/费用/数据不足应降级。",
+    "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，summary、riskAlerts 和 todayPlan 必须写清数据缺口；缺少关键板块、排行、新闻或贵金属模块时，盘前只做观察计划，不把它包装成买点确认。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
     "",
     skillContext
@@ -7055,6 +7057,7 @@ function summarizeMarketSnapshot(snapshot) {
   return {
     fetchedAt: snapshot.fetchedAt,
     note: snapshot.note,
+    dataQuality: compactMarketDataQuality(snapshot.dataQuality),
     marketIndicators: {
       preciousMetals: (snapshot.marketIndicators?.preciousMetals || []).slice(0, 10)
     },
@@ -7073,6 +7076,28 @@ function summarizeMarketSnapshot(snapshot) {
     },
     errors: snapshot.errors || [],
     sources: snapshot.sources || []
+  };
+}
+
+function compactMarketDataQuality(quality = null) {
+  if (!quality || typeof quality !== "object") return null;
+  return {
+    ok: Boolean(quality.ok),
+    level: quality.level || "unknown",
+    summary: quality.summary || "",
+    notes: normalizeStringArray(quality.notes).slice(0, 6),
+    available: (quality.available || []).slice(0, 12).map((item) => ({
+      key: item.key || "",
+      label: item.label || "",
+      count: Number(item.count || 0)
+    })),
+    missing: (quality.missing || []).slice(0, 12).map((item) => ({
+      key: item.key || "",
+      label: item.label || "",
+      status: item.status || "missing",
+      error: String(item.error || "").slice(0, 160)
+    })),
+    candidateCounts: quality.candidateCounts || {}
   };
 }
 
@@ -7719,6 +7744,16 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
     `快照时间：${marketSnapshot.fetchedAt || "未知"}`,
     marketSnapshot.note ? `快照说明：${marketSnapshot.note}` : ""
   ].filter(Boolean);
+  const quality = compactMarketDataQuality(marketSnapshot.dataQuality);
+  if (quality) {
+    lines.push(`数据质量：${quality.summary || quality.level}`);
+    if (quality.notes?.length) {
+      lines.push(...quality.notes.slice(0, 4).map((item) => `- ${item}`));
+    }
+    if (quality.level !== "good") {
+      lines.push("质量要求：必须主动披露数据缺口，涉及缺失模块的结论只能写观察、待复核或降低把握度，不能装作已经完整联网验证。");
+    }
+  }
   const themeRadar = selectRelevantThemeRadar(userText, marketSnapshot).slice(0, 5);
   if (themeRadar.length) {
     lines.push("题材雷达：");
@@ -8572,6 +8607,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
     "如果提供了候选基金下钻摘要，必须使用走势画像、风险、费用、持仓和可操作性评估来筛掉不适合的候选；不要只复述市场快照。",
     "如果提供了经理自选候选池，必须先复核这些已经沉淀的 ready/waiting/启动前夜候选；ready 可以进入主推荐评估，waiting 或启动前夜只能写备选观察和触发条件，不能当成自动买入。",
+    "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，最终回答要用自然中文说明数据缺口、降低把握度；缺少贵金属/板块/排行/新闻模块时，不得声称已完整联网或给重仓买入。",
     "marketDeepDive 中的 trendProfile、actionability、entryBias、fitLabel 等是内部字段；最终回答必须翻译成中文用户话术，不要原样输出字段名或 extended_uptrend/staged_buy/wait_pullback 这类枚举。",
     "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先选择 pullbackSetup.signal 为 pullback_complete 或 launch_setup 的候选；同时检查5日/10日是否刚转强、120日区间位置是否偏低。短期涨幅偏热、20日/60日大涨且 entryBias 为 wait_pullback 的候选只能列入观察，不得作为主推荐。",
     "不要编造 marketSnapshot 里没有的基金代码、涨跌幅、排名、金价或新闻。",
@@ -8667,6 +8703,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "如果市场快照或下钻摘要里有题材雷达，优先引用中文题材阶段、前瞻评分、拥挤度和操作倾向，避免只按历史涨幅回答。",
     "如果提供了候选基金下钻摘要，必须使用下钻候选的走势画像、风险、费用、持仓和可操作性评估来形成买/等/回避判断。",
     "如果提供了经理自选候选池，必须把它当成已经沉淀的备选来源先复核；ready 可以进入买入参考，waiting 或启动前夜只能说明等待条件。",
+    "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，最终回答要用自然中文说明数据缺口、降低把握度；缺少贵金属/板块/排行/新闻模块时，不得声称已完整联网或给重仓买入。",
     "marketDeepDive 中的 trendProfile、actionability、entryBias、fitLabel 等是内部字段；最终回答必须翻译成中文用户话术，不要原样输出字段名或 extended_uptrend/staged_buy/wait_pullback 这类枚举。",
     "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先判断 pullbackSetup.signal、5日/10日早期转强和120日区间低位；短期涨幅偏热、20日/60日大涨且等待回撤的候选不能被包装成启动机会。",
     "如果没有抓到对应行情数据，要说明是公开数据源暂时不可用或滞后，不要简单说自己没有实时数据能力。",
@@ -9755,15 +9792,15 @@ async function fetchMarketSnapshot() {
   ]);
 
   const snapshotParts = [
-    conceptBoards,
-    industryBoards,
-    stockFunds,
-    hybridFunds,
-    indexFunds,
-    qdiiFunds,
-    preciousMetals,
-    preciousMetalFunds,
-    fastNews
+    { key: "conceptBoards", label: "概念板块", critical: true, result: conceptBoards },
+    { key: "industryBoards", label: "行业板块", critical: true, result: industryBoards },
+    { key: "stockFunds", label: "股票型基金排行", critical: true, result: stockFunds },
+    { key: "hybridFunds", label: "混合型基金排行", critical: true, result: hybridFunds },
+    { key: "indexFunds", label: "指数型基金排行", critical: true, result: indexFunds },
+    { key: "qdiiFunds", label: "QDII基金排行", critical: false, result: qdiiFunds },
+    { key: "preciousMetals", label: "贵金属行情", critical: false, result: preciousMetals },
+    { key: "preciousMetalFunds", label: "贵金属基金候选", critical: false, result: preciousMetalFunds },
+    { key: "fastNews", label: "实时财经新闻", critical: true, result: fastNews }
   ];
   const fundCandidates = {
     stockFunds: stockFunds.items || [],
@@ -9779,21 +9816,25 @@ async function fetchMarketSnapshot() {
     fastNews: fastNews.items || [],
     fundCandidates
   });
+  const dataQuality = buildMarketDataQuality(snapshotParts, { fundCandidates, fetchedAt });
   const failures = snapshotParts.filter(
-    (item) => item && item.ok === false
+    (item) => item?.result && item.result.ok === false
   ).length;
   updateStats({
     counters: {
       marketSnapshotCalls: 1,
-      marketSnapshotFailures: failures ? 1 : 0
+      marketSnapshotFailures: failures ? 1 : 0,
+      marketSnapshotPartialQuality: dataQuality.level === "partial" ? 1 : 0,
+      marketSnapshotPoorQuality: dataQuality.level === "poor" ? 1 : 0
     },
     last: { lastMarketSnapshotAt: fetchedAt }
   });
 
   return {
-    ok: failures < snapshotParts.length,
+    ok: dataQuality.ok,
     fetchedAt,
     note: "公开数据快照可能有延迟；贵金属行情为公开报价，基金排行更偏近期动量，不等于长期质量。",
+    dataQuality,
     marketIndicators: {
       preciousMetals: preciousMetals.items || []
     },
@@ -9805,8 +9846,8 @@ async function fetchMarketSnapshot() {
     fastNews: fastNews.items || [],
     fundCandidates,
     errors: snapshotParts
-      .filter((item) => item && item.ok === false)
-      .map((item) => item.error),
+      .filter((item) => item?.result && item.result.ok === false)
+      .map((item) => item.result.error),
     sources: [
       "https://push2.eastmoney.com/api/qt/clist/get",
       "https://push2.eastmoney.com/api/qt/ulist.np/get",
@@ -9814,6 +9855,88 @@ async function fetchMarketSnapshot() {
       "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx",
       "https://np-listapi.eastmoney.com/comm/web/getFastNews"
     ]
+  };
+}
+
+function buildMarketDataQuality(components = [], options = {}) {
+  const normalized = components
+    .map(normalizeMarketDataQualityComponent)
+    .filter((item) => item.key || item.label);
+  const available = normalized
+    .filter((item) => item.status === "available")
+    .map(({ key, label, count }) => ({ key, label, count }));
+  const missing = normalized
+    .filter((item) => item.status !== "available")
+    .map(({ key, label, status, error }) => ({ key, label, status, error }));
+  const criticalMissing = normalized.filter((item) => item.critical && item.status !== "available");
+  const candidateCounts = buildMarketCandidateCounts(options.fundCandidates || {});
+  const level = !normalized.length
+    ? "poor"
+    : !missing.length
+      ? "good"
+      : available.length >= 4 && criticalMissing.length <= 2
+        ? "partial"
+        : "poor";
+  const notes = [];
+  if (level === "good") {
+    notes.push("市场快照较完整，可以做题材轮动、基金候选和新闻催化的综合判断。");
+  } else if (level === "partial") {
+    notes.push(`市场数据部分缺失：${missing.slice(0, 5).map((item) => item.label).join("、")}，相关结论需要降低把握度。`);
+  } else {
+    notes.push("市场数据严重不足，只能做方向性观察，不能给具体买点或重仓建议。");
+  }
+  if (criticalMissing.length) {
+    notes.push(`关键模块缺口：${criticalMissing.slice(0, 5).map((item) => item.label).join("、")}。`);
+  }
+  const totalFundCandidates = Object.values(candidateCounts).reduce((sum, value) => sum + Number(value || 0), 0);
+  if (totalFundCandidates < 12) {
+    notes.push("基金候选池偏少，推荐具体代码前需要更多下钻或标注待复核。");
+  }
+  if (missing.some((item) => item.key === "preciousMetals" || item.key === "preciousMetalFunds")) {
+    notes.push("贵金属相关模块不完整，回答黄金/白银问题时必须说明行情或基金候选缺口。");
+  }
+
+  return {
+    ok: level !== "poor",
+    level,
+    summary: level === "good"
+      ? "市场数据较完整。"
+      : level === "partial"
+        ? "市场数据部分可用，但存在缺口。"
+        : "市场数据不足，可靠性偏低。",
+    generatedAt: options.fetchedAt || new Date().toISOString(),
+    available,
+    missing,
+    candidateCounts,
+    notes
+  };
+}
+
+function normalizeMarketDataQualityComponent(component = {}) {
+  const result = component.result || component.data || component;
+  const items = Array.isArray(result?.items) ? result.items : [];
+  const count = items.length;
+  const error = result?.ok === false
+    ? String(result?.error || component.error || "抓取失败")
+    : "";
+  const status = error ? "missing" : count > 0 ? "available" : "empty";
+  return {
+    key: component.key || result?.key || "",
+    label: component.label || result?.label || component.key || result?.key || "未知数据",
+    critical: Boolean(component.critical),
+    count,
+    status,
+    error: error || (status === "empty" ? "返回为空" : "")
+  };
+}
+
+function buildMarketCandidateCounts(fundCandidates = {}) {
+  return {
+    stockFunds: (fundCandidates.stockFunds || []).length,
+    hybridFunds: (fundCandidates.hybridFunds || []).length,
+    indexFunds: (fundCandidates.indexFunds || []).length,
+    qdiiFunds: (fundCandidates.qdiiFunds || []).length,
+    preciousMetalFunds: (fundCandidates.preciousMetalFunds || []).length
   };
 }
 
@@ -14664,6 +14787,8 @@ function getDefaultStats() {
       fundHoldingsFailures: 0,
       marketSnapshotCalls: 0,
       marketSnapshotFailures: 0,
+      marketSnapshotPartialQuality: 0,
+      marketSnapshotPoorQuality: 0,
       marketBoardFetches: 0,
       preciousMetalQuoteFetches: 0,
       preciousMetalFundSearches: 0,
@@ -16079,10 +16204,12 @@ export {
   buildFeishuFundImageLegendNote,
   buildFeishuImageCaption,
   buildFeishuImageSupplementText,
+  buildMarketDataQuality,
   buildPullbackQualityFallbackAnswer,
   buildFundWorkflowWatchlistSummary,
   classifyMessageIntent,
   compactModelInputForContext,
+  compactMarketDataQuality,
   compactPublicFundSnapshot,
   computeTrendProfile,
   defaultSkillIdsForWorkflow,

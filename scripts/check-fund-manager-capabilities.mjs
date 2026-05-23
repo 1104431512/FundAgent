@@ -1756,6 +1756,36 @@ assert(localizedStageTerms.includes("操作倾向=早期分批买入"), "localiz
 assert(!/\b(?:stage|actionBias|positionSignal|low_position_rotation|early_staged_buy|high_chase_risk)\b/i.test(localizedStageTerms), "localized stage text must not keep raw theme radar fields");
 assert(serverSource.includes("题材雷达："), "market evidence summary must present theme radar evidence in Chinese");
 assert(!serverSource.includes("theme.stage ? `stage=${theme.stage}`"), "market evidence summary must not feed raw stage enums to the final answer path");
+const partialMarketQuality = manager.buildMarketDataQuality([
+  { key: "conceptBoards", label: "概念板块", critical: true, result: { ok: true, items: [{ name: "机器人" }] } },
+  { key: "industryBoards", label: "行业板块", critical: true, result: { ok: false, error: "timeout", items: [] } },
+  { key: "stockFunds", label: "股票型基金排行", critical: true, result: { ok: true, items: [{ code: "000001" }, { code: "000002" }] } },
+  { key: "hybridFunds", label: "混合型基金排行", critical: true, result: { ok: true, items: [{ code: "000003" }] } },
+  { key: "indexFunds", label: "指数型基金排行", critical: true, result: { ok: true, items: [{ code: "000004" }] } },
+  { key: "preciousMetals", label: "贵金属行情", critical: false, result: { ok: true, items: [{ name: "COMEX黄金" }] } },
+  { key: "fastNews", label: "实时财经新闻", critical: true, result: { ok: true, items: [{ title: "政策催化" }] } }
+], {
+  fetchedAt: "2026-05-23T06:20:05.155Z",
+  fundCandidates: {
+    stockFunds: [{ code: "000001" }, { code: "000002" }],
+    hybridFunds: [{ code: "000003" }],
+    indexFunds: [{ code: "000004" }],
+    qdiiFunds: [],
+    preciousMetalFunds: []
+  }
+});
+assert.equal(partialMarketQuality.level, "partial", "market data quality must classify recoverable source failures as partial");
+assert(partialMarketQuality.notes.some((item) => item.includes("行业板块") && item.includes("降低把握度")), "partial market data quality must explain missing modules in Chinese");
+assert.equal(manager.compactMarketDataQuality(partialMarketQuality).missing[0].label, "行业板块", "summarized market snapshots must preserve data-quality gaps");
+const poorMarketQuality = manager.buildMarketDataQuality([
+  { key: "conceptBoards", label: "概念板块", critical: true, result: { ok: false, error: "blocked", items: [] } },
+  { key: "industryBoards", label: "行业板块", critical: true, result: { ok: false, error: "blocked", items: [] } },
+  { key: "stockFunds", label: "股票型基金排行", critical: true, result: { ok: true, items: [{ code: "000001" }] } },
+  { key: "fastNews", label: "实时财经新闻", critical: true, result: { ok: false, error: "blocked", items: [] } }
+], { fundCandidates: { stockFunds: [{ code: "000001" }] } });
+assert.equal(poorMarketQuality.level, "poor", "market data quality must mark severe source loss as poor");
+assert(serverSource.includes("必须检查 marketSnapshot.dataQuality"), "fund and portfolio prompts must force market data-quality checks");
+assert(serverSource.includes("数据缺口") && serverSource.includes("降低把握度"), "prompts must require user-facing disclosure when market data is partial or poor");
 
 const selectedChartProfiles = manager.selectFundReportProfilesForAnswer([
   { code: "000001", name: "低位修复基金A", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.01 }] } },

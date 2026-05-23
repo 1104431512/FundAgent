@@ -308,6 +308,22 @@ const requiredPatterns = [
     message: "market evidence summaries must feed Chinese theme-radar labels instead of raw stage/actionBias fields."
   },
   {
+    pattern: /buildMarketDataQuality/,
+    message: "market snapshots must expose structured data-quality diagnostics instead of only raw errors."
+  },
+  {
+    pattern: /dataQuality:\s*compactMarketDataQuality\(snapshot\.dataQuality\)/,
+    message: "summarized market snapshots must preserve data quality for prompts, reports, and admin debugging."
+  },
+  {
+    pattern: /市场数据部分缺失[\s\S]{0,180}降低把握度/,
+    message: "market data quality notes must explain partial source failures in natural Chinese."
+  },
+  {
+    pattern: /必须检查 marketSnapshot\.dataQuality[\s\S]{0,220}数据缺口[\s\S]{0,220}降低把握度/,
+    message: "fund and portfolio prompts must force data-gap disclosure when public sources are partial or poor."
+  },
+  {
     pattern: /用来确认是否适合分批买入[\s\S]{0,120}用来观察是否能从备选转入买点/,
     message: "fund chart reading guides must explain how each chart supports buy or backup decisions."
   },
