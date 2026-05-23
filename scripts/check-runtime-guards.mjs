@@ -832,6 +832,18 @@ const requiredPatterns = [
     message: "portfolio decision runs must preserve the manager's actual conclusion instead of overwriting it with the last progress message."
   },
   {
+    pattern: /run\.summary = buildPortfolioRunSummary\(run\)[\s\S]{0,220}run\.status = "completed"/,
+    message: "completed portfolio runs must derive a meaningful summary before being shown in admin history."
+  },
+  {
+    pattern: /isGenericPortfolioProgressSummary[\s\S]{0,800}保存任务结果/,
+    message: "portfolio run summaries must treat save-progress text as non-user-facing."
+  },
+  {
+    pattern: /buildDecisionRunSummary[\s\S]{0,900}今日决策：/,
+    message: "portfolio decision summaries must expose action counts and order status instead of generic progress."
+  },
+  {
     pattern: /enforcePortfolioBuyDiscipline\(decision\.actions[\s\S]{0,260}enforcePortfolioHeldPositionRiskOverrides\(decision\.actions[\s\S]{0,260}enforcePortfolioSellDiscipline\(decision\.actions/,
     message: "portfolio decisions must convert under-reactive HOLD/WATCH on verified hot holdings into sell-discipline-checked reductions before order submission."
   },

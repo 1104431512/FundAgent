@@ -823,6 +823,7 @@ async function runPortfolioTask(type, options = {}) {
     }
 
     assertPortfolioRunActive(run);
+    run.summary = buildPortfolioRunSummary(run);
     run.status = "completed";
     run.completedAt = new Date().toISOString();
     run.durationMs = Date.parse(run.completedAt) - Date.parse(startedAt);
@@ -6363,26 +6364,94 @@ function summarizePortfolioRun(run) {
 }
 
 function buildPortfolioRunSummary(run) {
-  if (run.summary) return run.summary;
+  const existing = String(run?.summary || "").trim();
+  if (existing && !isGenericPortfolioProgressSummary(existing)) return existing;
+  const derived = buildMeaningfulPortfolioRunSummary(run);
+  if (derived) return derived;
+  if (existing) return existing;
   if (run.status === "running") return "任务运行中，等待模型或公开数据源返回。";
   if (run.status === "cancelled") return run.error || "任务已手动结束。";
   if (run.error) return run.error;
-  if (run.type === "decision") {
-    const orders = run?.orders?.map((item) => `${item.side} ${item.code || ""} ${item.name || ""}`).filter(Boolean);
-    if (orders?.length) return `提交订单：${orders.join("；")}`;
-    const actions = run?.actions?.map((item) => `${item.action} ${item.code || ""} ${item.name || ""}`).filter(Boolean);
-    if (actions?.length) return actions.join("；");
-  }
-  if (run.type === "valuation" && run?.positionUpdates?.length) {
-    return `估值更新 ${run.positionUpdates.length} 个持仓`;
-  }
-  if (run.type === "premarket" && run?.observation?.summary) {
-    return run.observation.summary;
-  }
-  if (run.type === "weekly" && run?.weekly?.summary) {
-    return run.weekly.summary;
-  }
   return run?.card?.split("\n")?.find((line) => line.trim()) || "无摘要";
+}
+
+function isGenericPortfolioProgressSummary(value) {
+  const text = String(value || "").trim();
+  if (!text) return true;
+  return /(正在|已生成.*正在保存|保存任务结果|资料已准备|模型已返回|任务运行中|决策日报已生成|估值复盘已生成|盘前观察已生成|周总结已生成)/.test(text);
+}
+
+function buildMeaningfulPortfolioRunSummary(run = {}) {
+  if (!run || typeof run !== "object") return "";
+  if (run.type === "decision") return buildDecisionRunSummary(run);
+  if (run.type === "valuation") return buildValuationRunSummary(run);
+  if (run.type === "premarket") return buildPremarketRunSummary(run);
+  if (run.type === "weekly") return buildWeeklyRunSummary(run);
+  return "";
+}
+
+function buildDecisionRunSummary(run = {}) {
+  const actions = Array.isArray(run.actions) ? run.actions : [];
+  const orders = Array.isArray(run.orders) ? run.orders : [];
+  const watchlistUpdates = Array.isArray(run.watchlistUpdates) ? run.watchlistUpdates : [];
+  const counts = countPortfolioActions(actions);
+  const actionText = [
+    counts.BUY ? `买入${counts.BUY}` : "",
+    counts.SELL ? `卖出${counts.SELL}` : "",
+    counts.HOLD ? `持有复核${counts.HOLD}` : "",
+    counts.WATCH ? `观察${counts.WATCH}` : ""
+  ].filter(Boolean).join("、") || "无动作";
+  const orderText = orders.length ? `提交${orders.length}张虚拟订单` : "未提交申购/赎回";
+  const riskLine = selectPortfolioRunRiskLine(run);
+  const watchText = watchlistUpdates.length ? `自选池更新${watchlistUpdates.length}条` : "";
+  return [`今日决策：${actionText}，${orderText}`, watchText, riskLine].filter(Boolean).join("；").slice(0, 360);
+}
+
+function countPortfolioActions(actions = []) {
+  return actions.reduce((counts, action) => {
+    const key = String(action?.action || "WATCH").toUpperCase();
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, { BUY: 0, SELL: 0, HOLD: 0, WATCH: 0 });
+}
+
+function selectPortfolioRunRiskLine(run = {}) {
+  const actionRisk = (run.actions || [])
+    .map((item) => item.riskControl || item.chaseRisk || item.rotationCheck || item.reason || "")
+    .find((text) => /(回撤|追涨|减仓|风险|同题材|集中|等待|暂停|止损)/.test(String(text || "")));
+  if (actionRisk) return `风险重点：${String(actionRisk).slice(0, 120)}`;
+  const cardRisk = String(run.card || "").match(/风险控制：\s*([\s\S]{1,180})/);
+  if (cardRisk) return `风险重点：${cardRisk[1].split(/\r?\n/)[0].slice(0, 120)}`;
+  return "";
+}
+
+function buildValuationRunSummary(run = {}) {
+  const updates = Array.isArray(run.positionUpdates) ? run.positionUpdates : [];
+  const account = run.accountAfter || {};
+  const biggest = [...updates].sort((a, b) => Math.abs(Number(b.dayPnl || 0)) - Math.abs(Number(a.dayPnl || 0)))[0];
+  const pnl = Number.isFinite(Number(account.dayPnl)) ? `今日${formatSignedNumber(account.dayPnl)}元` : "";
+  const biggestText = biggest ? `主要影响 ${biggest.code} ${biggest.name || ""} ${formatSignedNumber(biggest.dayPnl)}元` : "";
+  const positionText = Number.isFinite(Number(account.positionWeightPct)) ? `仓位${account.positionWeightPct}%` : "";
+  return [`估值复盘：${updates.length}只持仓更新`, pnl, biggestText, positionText].filter(Boolean).join("；").slice(0, 360);
+}
+
+function buildPremarketRunSummary(run = {}) {
+  const observation = run.observation || {};
+  const summary = String(observation.summary || "").trim();
+  if (summary && !isGenericPortfolioProgressSummary(summary)) return summary.slice(0, 360);
+  const tone = observation.marketTone ? `市场=${observation.marketTone}` : "";
+  const risks = normalizeStringArray(observation.riskAlerts).slice(0, 2).join("；");
+  const plan = normalizeStringArray(observation.todayPlan).slice(0, 2).join("；");
+  return ["盘前观察", tone, risks ? `风险=${risks}` : "", plan ? `计划=${plan}` : ""].filter(Boolean).join("；").slice(0, 360);
+}
+
+function buildWeeklyRunSummary(run = {}) {
+  const weekly = run.weekly || {};
+  const summary = String(weekly.summary || "").trim();
+  if (summary && !isGenericPortfolioProgressSummary(summary)) return summary.slice(0, 360);
+  const mistakes = normalizeStringArray(weekly.mistakes).slice(0, 2).join("；");
+  const next = normalizeStringArray(weekly.nextWeekPlan).slice(0, 2).join("；");
+  return ["周总结", mistakes ? `不足=${mistakes}` : "", next ? `下周=${next}` : ""].filter(Boolean).join("；").slice(0, 360);
 }
 
 function summarizePortfolioOrder(order) {
@@ -15956,6 +16025,7 @@ export {
   buildPortfolioHeldPositionReviewQueue,
   buildPortfolioDecisionReadinessQueue,
   buildPortfolioExposureSummary,
+  buildPortfolioRunSummary,
   buildPortfolioAccountRiskBudget,
   buildPortfolioReadyWatchlistReviewActions,
   buildPortfolioPositionRiskBudget,

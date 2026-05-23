@@ -255,6 +255,20 @@ assert.equal(exposureSummary.riskLevel, "high", "portfolio exposure summary must
 assert(exposureSummary.themeClusters.some((item) => item.theme === "科技" && item.positionWeightPct >= 30), "portfolio exposure summary must aggregate same-theme fund weights");
 assert(exposureSummary.overlappingHoldings.some((item) => item.name === "新易盛" && item.fundCount === 3), "portfolio exposure summary must catch repeated underlying top holdings");
 assert(exposureSummary.riskNotes.some((item) => item.includes("同题材暴露过度集中")), "portfolio exposure summary must produce user-readable concentration risk notes");
+const decisionRunSummary = manager.buildPortfolioRunSummary({
+  type: "decision",
+  status: "completed",
+  summary: "决策日报已生成，正在保存任务结果。",
+  actions: [
+    { action: "HOLD", code: "008327", name: "东财通信C", riskControl: "同题材暴露偏高，等待回撤后再评估。" },
+    { action: "WATCH", code: "021958", name: "南方黄金股A", reason: "等待金价确认。" }
+  ],
+  orders: [],
+  watchlistUpdates: [{ code: "021958", name: "南方黄金股A" }]
+});
+assert(decisionRunSummary.includes("今日决策：持有复核1、观察1，未提交申购/赎回"), "portfolio run summary must replace generic save-progress text with action counts");
+assert(decisionRunSummary.includes("风险重点：同题材暴露偏高"), "portfolio run summary must surface the main risk rather than a generic progress line");
+assert(!decisionRunSummary.includes("正在保存任务结果"), "portfolio run summary must not expose progress-only text after completion");
 const normalizedInvestedCostText = manager.normalizePortfolioInvestedCostReturnText(
   "累计盈亏由+1291.65转为-328.07，按初始资金口径为-0.33%。",
   { investedCost: 30002.28, cumulativePnlPct: -1.09 }
