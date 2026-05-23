@@ -80,6 +80,7 @@ const DEFAULT_PORTFOLIO_MANAGER_PROFILE = [
   "沟通纪律：只展示专业阶段、结论、证据和约束，不展示模型隐藏思考链。"
 ].join("\n");
 const USER_FACING_FUND_LABELS = [
+  ["STAGE", "分批买入"],
   ["BATCH", "分批买入"],
   ["ENTRY", "买点"],
   ["SIG", "信号"],
@@ -87,6 +88,21 @@ const USER_FACING_FUND_LABELS = [
   ["YLOW", "250日低位"],
   ["FEEY", "每万成本"],
   ["PULLBK", "回调信号"],
+  ["ACT", "动作"],
+  ["CLASS", "份额类别"],
+  ["CLS", "份额类别"],
+  ["SIZE", "规模"],
+  ["DROP", "回撤"],
+  ["DD", "回撤"],
+  ["MDD", "最大回撤"],
+  ["MAX", "最大回撤"],
+  ["ret", "收益"],
+  ["SHRP", "夏普比率"],
+  ["VOL", "波动率"],
+  ["20d", "近20日"],
+  ["60d", "近60日"],
+  ["120d", "近120日"],
+  ["250d", "近250日"],
   ["extended_uptrend", "短期涨幅偏热"],
   ["pullback_complete", "回调完成待启动"],
   ["launch_setup", "启动前夜"],
@@ -7501,8 +7517,8 @@ const FUND_REPORT_CHART_LEGEND_LINES = [
   "新图只使用中文短标签：买点=是否到了可买位置，信号=回调完成或启动迹象，120日低位/250日低位=区间低位判断，动作=经理建议。",
   "右侧六格：份额=A/C 等类别，每万成本=每1万元估算成本，近20日/近60日=短中期涨跌，回撤=距近期高点回落，规模=基金规模（单位约为亿元）。",
   "常见状态：可买=可以小仓位执行，分批买=分几次买入，等待=等回撤或确认，回避=暂不碰，观察=放备选池，缺失=数据不足。",
-  "看不懂指标时先看中文图例和逐张看图说明，不需要理解系统内部字段。",
-  "旧版英文简称已从新图移除；如果客户拿旧图来问，直接解释为买点、信号、低位、动作和分批买入。"
+  "看不懂指标时先看中文图例和逐张看图说明，不需要理解系统内部字段；旧版英文指标只按中文含义解释。",
+  "旧版英文简称已从新图移除；如果客户拿旧图来问，直接解释为买点、信号、低位、动作、收益、回撤、规模和分批买入。"
 ];
 
 function getFundReportChartLegendLines() {
@@ -9530,7 +9546,7 @@ function hasNoQualifiedPullbackMessage(text) {
 
 function hasInternalFundSignalLeak(text) {
   const body = String(text || "");
-  const tokenPattern = /\b(?:STAGE|BATCH|ENTRY|FEEY|PULLBK|extended_uptrend|pullback_complete|launch_setup|rebound_repair|range_or_mixed|germination|confirmation|diffusion|crowded|buyable_now|staged_buy|wait_pullback|hold_observe|avoid_now|tactical_only|weak_fit|not_suitable|need_specific_fund|high_chase_risk|low_position_rotation|acceptable_position|neutral_or_wait|early_staged_buy|watch_confirm|avoid_chasing|wait_or_small_starter|rotation_starter|trendProfile|actionability|entryBias|fitLabel|trendLabel|forwardScore|crowdingScore|rotationScore|lowPositionScore|positionSignal|actionBias|pullbackSetup|drawdownFromRecentHighPct|drawdownFrom120HighPct|lowPositionPct120|lowPositionPct250|return5dPct|return10dPct|return20dPct|return60dPct|return120dPct)\b/i;
+  const tokenPattern = /\b(?:STAGE|BATCH|ENTRY|FEEY|PULLBK|ACT|CLASS|CLS|SIZE|DROP|DD|MDD|MAX|RET|SHRP|VOL|20d|60d|120d|250d|extended_uptrend|pullback_complete|launch_setup|rebound_repair|range_or_mixed|germination|confirmation|diffusion|crowded|buyable_now|staged_buy|wait_pullback|hold_observe|avoid_now|tactical_only|weak_fit|not_suitable|need_specific_fund|high_chase_risk|low_position_rotation|acceptable_position|neutral_or_wait|early_staged_buy|watch_confirm|avoid_chasing|wait_or_small_starter|rotation_starter|trendProfile|actionability|entryBias|fitLabel|trendLabel|forwardScore|crowdingScore|rotationScore|lowPositionScore|positionSignal|actionBias|pullbackSetup|drawdownFromRecentHighPct|drawdownFrom120HighPct|lowPositionPct120|lowPositionPct250|return5dPct|return10dPct|return20dPct|return60dPct|return120dPct)\b/i;
   return tokenPattern.test(body)
     || /\b(?:tactical\s+only|staged\s+buy|wait\s+pullback)\b/i.test(body)
     || /\b(?:stage|trend|action|fit)\s*[=:：]\s*[a-z_ -]{3,}/i.test(body);
@@ -9579,8 +9595,8 @@ function normalizeUserFacingFundAnswer(text) {
     .replace(/\bConfidence\s*[：:]\s*high\b/gi, "把握度较高")
     .replace(/\bConfidence\s*[：:]\s*medium\b/gi, "把握度中等")
     .replace(/\bConfidence\s*[：:]\s*low\b/gi, "把握度偏低")
-    .replace(/(走势画像|买卖可行性评估|动作|题材阶段|题材阶段理由|买点判断|适配度|趋势状态|前瞻评分|拥挤度|轮动评分|低位评分|位置判断|操作倾向|评分|仓位上限|买入限制|回调启动信号|120日区间位置|250日区间位置|近5日收益|近10日收益|近20日收益|近60日收益|近120日收益|距近期高点回撤|每万成本)\s*(?:为|是)\s*/g, "$1：")
-    .replace(/(趋势|动作|买点|信号|买点判断|入场判断|适配度|题材阶段|阶段|题材阶段理由|操作倾向|位置判断|前瞻评分|拥挤度|轮动评分|低位评分|走势画像|买卖可行性评估|可操作性评估|趋势状态|回调启动信号|120日区间位置|250日区间位置|120日低位|250日低位|距近期高点回撤|评分|仓位上限|买入限制|每万成本)\s*[:：=]\s*/g, "$1：")
+    .replace(/(走势画像|买卖可行性评估|动作|题材阶段|题材阶段理由|买点判断|适配度|趋势状态|前瞻评分|拥挤度|轮动评分|低位评分|位置判断|操作倾向|评分|仓位上限|买入限制|回调启动信号|120日区间位置|250日区间位置|近5日收益|近10日收益|近20日收益|近60日收益|近120日收益|近20日|近60日|近120日|近250日|距近期高点回撤|回撤|最大回撤|规模|份额类别|夏普比率|波动率|收益|每万成本)\s*(?:为|是)\s*/g, "$1：")
+    .replace(/(趋势|动作|买点|信号|买点判断|入场判断|适配度|题材阶段|阶段|题材阶段理由|操作倾向|位置判断|前瞻评分|拥挤度|轮动评分|低位评分|走势画像|买卖可行性评估|可操作性评估|趋势状态|回调启动信号|120日区间位置|250日区间位置|120日低位|250日低位|距近期高点回撤|近20日|近60日|近120日|近250日|回撤|最大回撤|规模|份额类别|夏普比率|波动率|收益|评分|仓位上限|买入限制|每万成本)\s*[:：=]\s*/g, "$1：")
     .trim();
 }
 
@@ -12196,7 +12212,7 @@ function renderFundReportSummaryPng({ profile, width = 1280, height = 760 } = {}
   if (points.length < 2) return null;
 
   const canvas = createRgbaCanvas(width, height, [255, 255, 255, 255], getChartPixelRatio());
-  const code = String(profile?.code || "").slice(0, 12) || "FUND";
+  const code = String(profile?.code || "").slice(0, 12);
   const shareClass = getChartShareClass(profile);
   const first = points[0];
   const last = points[points.length - 1];
@@ -12205,7 +12221,8 @@ function renderFundReportSummaryPng({ profile, width = 1280, height = 760 } = {}
   const muted = [100, 116, 139, 255];
   const ink = [15, 23, 42, 255];
 
-  drawChartTextFit(canvas, 32, 22, `${code}${shareClass ? ` ${shareClass}类` : ""} 基金`, ink, {
+  const title = [code || "基金", code ? "基金" : "", shareClass ? `${shareClass}类` : ""].filter(Boolean).join(" ");
+  drawChartTextFit(canvas, 32, 22, title, ink, {
     asciiScale: 5,
     cjkScale: 1,
     maxWidth: 560,
@@ -12253,9 +12270,9 @@ function renderFundReportSummaryPng({ profile, width = 1280, height = 760 } = {}
 
   drawFundReportLegendPanel(canvas, {
     x: 32,
-    y: 642,
+    y: 626,
     width: width - 64,
-    height: 90
+    height: 110
   });
 
   drawRect(canvas, 16, 12, width - 32, height - 24, [226, 232, 240, 255], 1);
@@ -12462,12 +12479,13 @@ function drawFundReportLegendPanel(canvas, { x, y, width, height }) {
   const lines = [
     "图例说明 买点=可买/分批买/等待/回避/观察 信号=回调完成/启动/无",
     "120日低位/250日低位=越低越接近低位 越高越接近高位",
-    "每万成本=每万元估算成本 动作=买入/等待/回避"
+    "分批=不一次买完 每万成本=每万元估算成本",
+    "动作=买入/等待/回避 回撤/规模=风险"
   ];
   fillRect(canvas, x, y, width, height, [248, 250, 252, 255]);
   drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
   lines.forEach((line, index) => {
-    drawChartTextFit(canvas, x + 16, y + 12 + index * 26, line, [51, 65, 85, 255], {
+    drawChartTextFit(canvas, x + 16, y + 10 + index * 24, line, [51, 65, 85, 255], {
       asciiScale: REPORT_CHART_MIN_TEXT_SCALE,
       cjkScale: 1,
       maxWidth: width - 32,
@@ -12515,7 +12533,7 @@ function drawXAxisDateLabels(canvas, x, y, width, points) {
 function shortChartDate(value) {
   const text = String(value || "");
   const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return match ? `${match[2]}/${match[3]}` : text.slice(-5) || "NA";
+  return match ? `${match[2]}/${match[3]}` : text.slice(-5) || "--";
 }
 
 function formatChartNumber(value) {
@@ -12596,7 +12614,9 @@ function chartDecisionColor(value) {
 function chartSignalColor(value) {
   return ["pullback_complete", "launch_setup", "PULL", "LAUNCH"].includes(String(value || ""))
     ? [22, 130, 93, 255]
-    : [15, 23, 42, 255];
+    : ["extended_uptrend", "breakdown", "weakening"].includes(String(value || ""))
+      ? [194, 65, 12, 255]
+      : [15, 23, 42, 255];
 }
 
 function chartLowPositionColor(value) {
@@ -12635,11 +12655,17 @@ function formatChartSetupSignal(value) {
   const labels = {
     pullback_complete: "回调完成",
     launch_setup: "启动",
+    extended_uptrend: "高位",
+    rebound_repair: "回调",
+    range_or_mixed: "观察",
+    breakdown: "回避",
+    weakening: "等待",
+    uptrend: "观察",
     PULL: "回调完成",
     LAUNCH: "启动",
     none: "无信号"
   };
-  return labels[value] || "缺失";
+  return labels[value] || formatChartStringValue(value, 6);
 }
 
 function formatChartEntryBias(value) {
@@ -14530,7 +14556,7 @@ function getFeishuCardImageChunkSize() {
   return Math.max(1, Math.min(6, Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE));
 }
 
-const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上中文短标签：买点=能否买，信号=回调/启动，120日低位/250日低位=是否真低位，动作=经理建议，每万成本/回撤/规模用于看成本和风险；分批=分几次买入，新图不再显示英文简称。";
+const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上中文短标签：买点=能否买，信号=回调/启动，120日低位/250日低位=是否真低位，动作=经理建议，每万成本/回撤/规模用于看成本和风险；分批=分几次买入，看不懂指标时先看中文图例，新图不再显示英文简称。";
 
 function isFundReportCardImage(image = {}) {
   const alt = String(image?.alt || "");

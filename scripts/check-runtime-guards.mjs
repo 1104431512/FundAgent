@@ -424,6 +424,14 @@ const requiredPatterns = [
     message: "fund report images must explain staged buying without exposing STAGE."
   },
   {
+    pattern: /分批=不一次买完[\s\S]{0,120}每万成本=每万元估算成本[\s\S]{0,120}回撤\/规模=风险/,
+    message: "fund report images must explain cost, drawdown, and scale metrics directly inside the image."
+  },
+  {
+    pattern: /\["SHRP",\s*"夏普比率"\][\s\S]{0,260}\["20d",\s*"近20日"\]/,
+    message: "fund answer localization must translate legacy chart metric abbreviations into Chinese."
+  },
+  {
     pattern: /DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE\s*=\s*4/,
     message: "fund report image cards should be split into readable chunks instead of crowding one card."
   },

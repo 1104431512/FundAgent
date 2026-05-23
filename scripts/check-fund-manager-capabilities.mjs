@@ -1917,12 +1917,16 @@ assert(serverSource.includes("图例说明 买点=可买/分批买/等待/回避
 assert(serverSource.includes("越低越接近低位") && serverSource.includes("越高越接近高位"), "summary chart legend must explain 120/250-day position metrics in Chinese");
 assert(serverSource.includes("看不懂指标时先看中文图例"), "chart guide must reassure users that opaque metrics are explained in Chinese");
 assert(serverSource.includes("动作=买入/等待/回避"), "summary chart legend must explain manager action states without exposing STAGE");
+assert(serverSource.includes("分批=不一次买完 每万成本=每万元估算成本"), "summary chart legend must explain staged buying and per-10k cost inside the image");
+assert(serverSource.includes("回撤/规模=风险"), "summary chart legend must explain the right-side risk evidence inside the image");
+assert(serverSource.includes('const title = [code || "基金"'), "summary chart title should use a Chinese fallback instead of an English title");
 assert(serverSource.includes("120日低位") && serverSource.includes("250日低位"), "summary chart must label low-position evidence with plain Chinese time-window labels");
 assert(serverSource.includes("每万成本"), "summary chart must label fee evidence as per-10k cost");
 assert(serverSource.includes("回撤风险") && serverSource.includes("阶段收益"), "legacy chart panels must use Chinese labels instead of RISK/RET");
 assert(serverSource.includes('staged_buy: "分批买"'), "summary chart must render staged-buy states in Chinese instead of the ambiguous STAGE value");
 assert(serverSource.includes('STAGE: "分批买"'), "summary chart must translate legacy STAGE/BATCH values if upstream evidence still uses them");
 assert(!serverSource.includes('staged_buy: "STAGE"'), "summary chart must not show STAGE for staged-buy states in new images");
+assert(serverSource.includes('extended_uptrend: "高位"') && serverSource.includes('range_or_mixed: "观察"'), "summary chart signal renderer must translate non-buyable trend states into readable Chinese chart values");
 for (const label of ["基金", "净值", "区间涨跌", "净值走势", "买点成本", "买点", "信号", "120日低位", "250日低位", "动作", "份额", "每万成本", "近20日", "近60日", "回撤", "规模"]) {
   assert(serverSource.includes(label), `summary chart must use readable compact label: ${label}`);
 }
@@ -1947,6 +1951,12 @@ assert(localizedLegacyChartTerms.includes("买点：等待回撤"), "localizatio
 assert(localizedLegacyChartTerms.includes("评分：68"), "localization must translate raw score fields");
 assert(localizedLegacyChartTerms.includes("每万成本：80"), "localization must translate raw fee chart fields");
 assert(!/\b(?:STAGE|BATCH|ENTRY|FEEY|score|wait_pullback)\b/i.test(localizedLegacyChartTerms), "localized chart terms must not keep raw legacy metric labels");
+const localizedLegacyMetricTerms = manager.normalizeUserFacingFundAnswer("ACT=staged_buy，SIZE=42亿，SHRP=0.8，20D=4%，DROP=-7%。");
+assert(localizedLegacyMetricTerms.includes("动作：分批买入"), "localization must translate raw action metric labels");
+assert(localizedLegacyMetricTerms.includes("规模：42亿"), "localization must translate raw scale metric labels");
+assert(localizedLegacyMetricTerms.includes("夏普比率：0.8"), "localization must translate raw Sharpe metric labels");
+assert(localizedLegacyMetricTerms.includes("近20日：4%") && localizedLegacyMetricTerms.includes("回撤：-7%"), "localization must translate raw return and drawdown metric labels");
+assert(!/\b(?:ACT|SIZE|SHRP|20D|DROP|staged_buy)\b/i.test(localizedLegacyMetricTerms), "localized chart metrics must not keep raw metric labels");
 const localizedInternalRelationText = manager.normalizeUserFacingFundAnswer("actionability 为 tactical only / staged_buy，但 entryBias 是 wait_pullback。");
 assert(localizedInternalRelationText.includes("买卖可行性评估：只适合战术小仓位 / 分批买入"), "localization must clean mixed Chinese-English actionability relation text");
 assert(localizedInternalRelationText.includes("买点判断：等待回撤"), "localization must clean mixed Chinese-English entry-bias relation text");
