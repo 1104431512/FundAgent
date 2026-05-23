@@ -865,6 +865,10 @@ const requiredPatterns = [
     message: "portfolio manager must compute portfolio-level look-through exposure and overlap diagnostics."
   },
   {
+    pattern: /function buildPortfolioRiskBudgetActions[\s\S]{0,2600}buildPortfolioExposureSummary\(positions\)[\s\S]{0,3600}portfolio_exposure_concentration_guard/,
+    message: "portfolio risk budget must create deterministic reductions for excessive same-theme or underlying overlap exposure."
+  },
+  {
     pattern: /组合穿透暴露诊断/,
     message: "portfolio decision prompts must force model review of theme and underlying holding concentration."
   },
@@ -1083,6 +1087,10 @@ const requiredPatterns = [
   {
     pattern: /function collectPortfolioSellDisciplineSignals[\s\S]{0,4000}effectiveProfitGiveback[\s\S]{0,4000}actionability\.action === "wait"[\s\S]{0,300}缺少当前净值/,
     message: "sell discipline must accept stale wait-position giveback evidence before reducing a holding."
+  },
+  {
+    pattern: /function collectPortfolioSellDisciplineSignals[\s\S]{0,5200}同题材暴露[\s\S]{0,260}底层重叠[\s\S]{0,260}降低集中风险/,
+    message: "sell discipline must accept portfolio exposure concentration as a valid staged reduction signal."
   },
   {
     pattern: /hasPortfolioHeldActionReduceEvidence[\s\S]{0,900}extractPctAfterLabel[\s\S]{0,900}高位强势/,

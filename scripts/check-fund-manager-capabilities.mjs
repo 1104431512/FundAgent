@@ -406,6 +406,55 @@ assert.equal(exposureSummary.riskLevel, "high", "portfolio exposure summary must
 assert(exposureSummary.themeClusters.some((item) => item.theme === "科技" && item.positionWeightPct >= 30), "portfolio exposure summary must aggregate same-theme fund weights");
 assert(exposureSummary.overlappingHoldings.some((item) => item.name === "新易盛" && item.fundCount === 3), "portfolio exposure summary must catch repeated underlying top holdings");
 assert(exposureSummary.riskNotes.some((item) => item.includes("同题材暴露过度集中")), "portfolio exposure summary must produce user-readable concentration risk notes");
+const exposureRiskPositions = [
+  {
+    code: "008327",
+    name: "东财通信C",
+    currentValue: 12000,
+    weightPct: 12,
+    unrealizedPnlPct: 1.2,
+    profitGivebackPct: 2.1,
+    lastNav: 4.4512,
+    lastNavDate: "2026-05-21",
+    fundSnapshot: { topHoldings: ["300502 新易盛 8.74%", "300308 中际旭创 7.98%"], actionability: { action: "wait" } }
+  },
+  {
+    code: "006265",
+    name: "红土创新新科技股票A",
+    currentValue: 10000,
+    weightPct: 10,
+    unrealizedPnlPct: 0.8,
+    profitGivebackPct: 1.3,
+    lastNav: 9.0233,
+    lastNavDate: "2026-05-21",
+    fundSnapshot: { topHoldings: ["300308 中际旭创 8.54%", "300502 新易盛 8.36%"], actionability: { action: "wait" } }
+  },
+  {
+    code: "001986",
+    name: "前海开源人工智能主题混合A",
+    currentValue: 8000,
+    weightPct: 8,
+    unrealizedPnlPct: 0.4,
+    profitGivebackPct: 1.1,
+    lastNav: 1.9374,
+    lastNavDate: "2026-05-21",
+    fundSnapshot: { topHoldings: ["300502 新易盛 9.3%", "002222 福晶科技 8.57%"], actionability: { action: "wait" } }
+  }
+];
+const exposureRiskActions = manager.buildPortfolioRiskBudgetActions({
+  totalAsset: 100000,
+  peakTotalAsset: 100000,
+  positions: exposureRiskPositions
+}, []);
+assert(exposureRiskActions.some((item) => item.dataBasis.includes("来源：portfolio_exposure_concentration_guard")), "portfolio risk budget must create deterministic reduce actions for high same-theme exposure");
+assert(exposureRiskActions[0].reason.includes("系统组合集中度控制"), "exposure reduce action must explain portfolio-level concentration control");
+const exposureSellGuard = manager.evaluatePortfolioSellDiscipline(
+  exposureRiskActions[0],
+  null,
+  exposureRiskPositions.find((item) => item.code === exposureRiskActions[0].code)
+);
+assert.equal(exposureSellGuard.ok, true, "portfolio sell discipline must allow exposure-concentration reduction when position NAV is available");
+assert(exposureSellGuard.reason.includes("组合同题材"), "exposure sell confirmation must explain same-theme or underlying overlap risk");
 const decisionRunSummary = manager.buildPortfolioRunSummary({
   type: "decision",
   status: "completed",

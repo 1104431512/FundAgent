@@ -2030,12 +2030,7 @@ function buildPortfolioExposureSummary(positions = []) {
     totalPositionWeightPct += positionWeightPct;
     const fundLabel = `${position.code || ""} ${position.name || ""}`.trim();
     const holdings = collectPortfolioPositionHoldingItems(position);
-    const explicitTags = normalizeStringArray(position.fundSnapshot?.actionability?.holdingsOutlook?.holdingTags);
-    const tags = new Set([
-      ...explicitTags,
-      ...holdings.flatMap((holding) => inferHoldingThemeTags(`${holding.code || ""} ${holding.name || ""}`)),
-      ...inferHoldingThemeTags(`${position.name || ""} ${position.fundSnapshot?.name || ""}`)
-    ].filter(Boolean));
+    const tags = new Set(collectPortfolioPositionThemeTags(position));
     for (const tag of tags) {
       const current = themeMap.get(tag) || { theme: tag, positionWeightPct: 0, funds: [] };
       current.positionWeightPct += positionWeightPct;
@@ -2140,6 +2135,16 @@ function buildPortfolioExposureRiskNotes({ themeClusters = [], overlappingHoldin
     notes.push(`组合仓位${formatFallbackPlainPct(totalPositionWeightPct)}偏高，新增买入必须受账户回撤预算约束。`);
   }
   return notes.slice(0, 4);
+}
+
+function collectPortfolioPositionThemeTags(position = {}) {
+  const holdings = collectPortfolioPositionHoldingItems(position);
+  const explicitTags = normalizeStringArray(position.fundSnapshot?.actionability?.holdingsOutlook?.holdingTags);
+  return [...new Set([
+    ...explicitTags,
+    ...holdings.flatMap((holding) => inferHoldingThemeTags(`${holding.code || ""} ${holding.name || ""}`)),
+    ...inferHoldingThemeTags(`${position.name || ""} ${position.fundSnapshot?.name || ""}`)
+  ].filter(Boolean))];
 }
 
 function formatPortfolioExposureSummaryLines(summary = {}) {
@@ -3423,6 +3428,21 @@ function buildPortfolioRiskBudgetActions(account = {}, profiles = []) {
     }
   }
 
+  const exposureSummary = buildPortfolioExposureSummary(positions);
+  const exposureCandidates = selectPortfolioExposureRiskReductionCandidates(positions, profileByCode, exposureSummary);
+  for (const candidate of exposureCandidates) {
+    addRiskAction(
+      candidate.position,
+      `系统组合集中度控制：${candidate.reason}，先分批降低同题材暴露。`,
+      candidate.dataBasis,
+      {
+        positionCheck: "组合穿透暴露过高",
+        chaseRisk: "同题材和底层持仓重叠偏高，不能继续把新闻热度当成持有理由。",
+        riskControl: "先按系统卖出上限分批降温；若下一次复核低位轮动证据恢复，再评估保留剩余仓位。"
+      }
+    );
+  }
+
   for (const position of positions) {
     const profile = profileByCode.get(position.code);
     const positionBudget = buildPortfolioPositionRiskBudget(position, profile);
@@ -3446,6 +3466,66 @@ function buildPortfolioRiskBudgetActions(account = {}, profiles = []) {
   }
 
   return [...byCode.values()];
+}
+
+function selectPortfolioExposureRiskReductionCandidates(positions = [], profileByCode = new Map(), exposureSummary = {}) {
+  const topTheme = exposureSummary.themeClusters?.[0] || null;
+  const repeated = exposureSummary.overlappingHoldings?.[0] || null;
+  const severeTheme = topTheme && Number(topTheme.positionWeightPct || 0) >= 25;
+  const severeOverlap = repeated && Number(repeated.fundCount || 0) >= 3;
+  if (exposureSummary.riskLevel !== "high" || (!severeTheme && !severeOverlap)) return [];
+  const riskNote = normalizeStringArray(exposureSummary.riskNotes)[0] || "同题材暴露过度集中";
+  return (positions || [])
+    .filter((position) => position?.code && Number(position.currentValue || 0) > 0)
+    .map((position) => {
+      const profile = profileByCode.get(position.code) || position.fundSnapshot || {};
+      const themeHit = severeTheme && doesPortfolioPositionMatchTheme(position, topTheme.theme);
+      const overlapHit = severeOverlap && doesPortfolioPositionHoldRepeatedUnderlying(position, repeated);
+      if (!themeHit && !overlapHit) return null;
+      const trend = profile.trendProfile || position.fundSnapshot?.trendProfile || {};
+      const actionability = profile.actionability || position.fundSnapshot?.actionability || {};
+      const hotScore = trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback" ? 10 : 0;
+      const actionScore = ["wait", "avoid"].includes(actionability.action) ? 10 : 0;
+      const givebackScore = Math.min(10, Math.max(0, Number(position.profitGivebackPct || 0)));
+      const lossScore = Number(position.unrealizedPnlPct || 0) < 0 ? 4 : 0;
+      const weightScore = Number(position.weightPct || 0);
+      const repeatedLabel = repeated ? [repeated.code, repeated.name].filter(Boolean).join(" ") : "";
+      return {
+        position,
+        score: weightScore + hotScore + actionScore + givebackScore + lossScore,
+        reason: [
+          severeTheme ? `同题材暴露${topTheme.theme}约${formatFallbackPlainPct(topTheme.positionWeightPct)}` : "",
+          severeOverlap ? `底层重叠${repeatedLabel || "重复持仓"}涉及${repeated.fundCount}只基金` : "",
+          riskNote
+        ].filter(Boolean).join("；"),
+        dataBasis: [
+          "来源：portfolio_exposure_concentration_guard",
+          severeTheme ? `同题材暴露 ${topTheme.theme} ${formatFallbackPlainPct(topTheme.positionWeightPct)}` : "",
+          severeOverlap ? `底层重叠 ${repeatedLabel || "重复持仓"} ${repeated.fundCount}只基金` : "",
+          `持仓标签 ${collectPortfolioPositionThemeTags(position).join("/") || "未识别"}`,
+          Number.isFinite(Number(position.profitGivebackPct)) ? `浮盈回吐 ${round(Number(position.profitGivebackPct), 2)}pct` : ""
+        ].filter(Boolean)
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
+    .slice(0, 2);
+}
+
+function doesPortfolioPositionMatchTheme(position = {}, theme = "") {
+  const target = String(theme || "").trim();
+  if (!target) return false;
+  return collectPortfolioPositionThemeTags(position).some((tag) => areThemeTermsRelated(tag, target));
+}
+
+function doesPortfolioPositionHoldRepeatedUnderlying(position = {}, repeated = {}) {
+  const targetCode = String(repeated?.code || "").trim();
+  const targetName = String(repeated?.name || "").trim();
+  if (!targetCode && !targetName) return false;
+  return collectPortfolioPositionHoldingItems(position).some((holding) => {
+    return (targetCode && String(holding.code || "").trim() === targetCode)
+      || (targetName && String(holding.name || "").trim() === targetName);
+  });
 }
 
 function buildPortfolioAccountRiskBudget(account = {}) {
@@ -3862,6 +3942,9 @@ function collectPortfolioSellDisciplineSignals(action = {}, profile = {}, positi
   if (Number.isFinite(actionReturn20d) && actionReturn20d > 12) signals.push(`模型持仓理由显示近20日${formatFallbackPct(actionReturn20d)}，需止盈防回吐`);
   if (Number.isFinite(actionReturn60d) && actionReturn60d > 24) signals.push(`模型持仓理由显示近60日${formatFallbackPct(actionReturn60d)}，需降仓控制追涨暴露`);
   if (/账户回撤|组合回撤|最大回撤预算/.test(actionText)) signals.push("账户级最大回撤预算触发，需要降低组合风险");
+  if (/同题材暴露|底层重叠|组合集中度|穿透暴露/.test(actionText)) {
+    signals.push("组合同题材或底层持仓重叠偏高，需要分批降低集中风险");
+  }
   if (Number.isFinite(unrealized) && unrealized <= -stopLossPct) signals.push(`持仓浮亏${formatFallbackPct(unrealized)}，触及单仓止损线`);
   if (/浮盈回吐|利润回吐|回吐保护|浮盈已回吐|当前转亏/.test(actionText) && effectiveProfitGiveback >= givebackPct) {
     signals.push(`历史浮盈${Number.isFinite(peakUnrealized) ? formatFallbackPct(peakUnrealized) : "曾转正"}，已回吐${round(effectiveProfitGiveback, 2)}个百分点`);
