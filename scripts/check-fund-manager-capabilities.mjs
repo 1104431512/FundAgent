@@ -1272,6 +1272,36 @@ const hotHoldFromModelText = manager.enforcePortfolioHeldPositionRiskOverrides([
 ]);
 assert.equal(hotHoldFromModelText[0].action, "SELL", "held-position risk override must use model-written hot-position evidence when structured trend fetch is temporarily missing");
 assert(hotHoldFromModelText[0].dataBasis.some((item) => item.includes("模型持仓理由显示近20日")), "model-text risk override must carry parsed hot-return evidence");
+const staleWaitGivebackPosition = {
+  code: "008327",
+  name: "东财通信C",
+  currentValue: 11810.03,
+  weightPct: 11.85,
+  unrealizedPnlPct: -1.58,
+  peakUnrealizedPnlPct: 3.24,
+  profitGivebackPct: 4.82,
+  lastNav: 4.4512,
+  lastNavDate: "2026-05-21",
+  fundSnapshot: {
+    trendProfile: { ok: false, note: "fetch failed" },
+    actionability: { action: "wait", actionText: "等待" }
+  }
+};
+const staleWaitGivebackRisk = manager.buildPortfolioPositionRiskBudget(staleWaitGivebackPosition);
+assert.equal(staleWaitGivebackRisk.reduceRisk, true, "profit giveback turning a stale/waiting holding negative must trigger deterministic risk reduction");
+assert(staleWaitGivebackRisk.triggers.some((item) => item.includes("当前转亏")), "stale/waiting giveback risk must explain that a prior gain has turned negative");
+const staleWaitGivebackOverride = manager.enforcePortfolioHeldPositionRiskOverrides([
+  {
+    action: "HOLD",
+    code: "008327",
+    name: "东财通信C",
+    amount: 0,
+    reason: "走势下钻失败，模型倾向继续观察。"
+  }
+], [], [staleWaitGivebackPosition]);
+assert.equal(staleWaitGivebackOverride[0].action, "SELL", "held-position risk override must not let stale trend data hide wait/giveback risk");
+assert(staleWaitGivebackOverride[0].dataBasis.some((item) => /缺少当前净值\/走势复核|浮盈已回吐|当前转亏/.test(item)), "stale wait/giveback override must carry the missing-data and giveback evidence");
+assert(staleWaitGivebackOverride[0].dataBasis.some((item) => item.includes("系统卖出纪律确认")), "stale wait/giveback override must still pass sell discipline before becoming SELL");
 const quietHoldOverride = manager.enforcePortfolioHeldPositionRiskOverrides([
   { action: "HOLD", code: "000010", name: "中证A500ETF联接C", amount: 0, reason: "继续观察" }
 ], [verifiedSeedProfile], [

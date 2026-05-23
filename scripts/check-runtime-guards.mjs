@@ -785,6 +785,14 @@ const requiredPatterns = [
     message: "omitted held positions with verified hot/chase risk must be eligible for deterministic staged reduction."
   },
   {
+    pattern: /function buildPortfolioHeldPositionRiskReview[\s\S]{0,3200}缺少当前净值\/走势复核[\s\S]{0,3200}浮盈已回吐[\s\S]{0,1200}可操作性偏等待/,
+    message: "held-position risk review must not let stale trend data hide wait/giveback risk."
+  },
+  {
+    pattern: /function buildPortfolioPositionRiskBudget[\s\S]{0,2600}当前转亏[\s\S]{0,500}回吐保护/,
+    message: "position risk budget must reduce stale holdings whose prior gains have turned negative."
+  },
+  {
     pattern: /buildPortfolioHeldPositionReviewActions[\s\S]{0,1400}evaluatePortfolioSellDiscipline[\s\S]{0,900}系统补充分批减仓动作/,
     message: "held-position fallback reductions must pass the sell-discipline guard before creating SELL actions."
   },
@@ -1071,6 +1079,10 @@ const requiredPatterns = [
   {
     pattern: /function enforcePortfolioHeldPositionRiskOverrides[\s\S]{0,1400}portfolio_held_position_risk_override/,
     message: "held-position risk override must explain when it replaces a model HOLD/WATCH with risk reduction."
+  },
+  {
+    pattern: /function collectPortfolioSellDisciplineSignals[\s\S]{0,4000}effectiveProfitGiveback[\s\S]{0,4000}actionability\.action === "wait"[\s\S]{0,300}缺少当前净值/,
+    message: "sell discipline must accept stale wait-position giveback evidence before reducing a holding."
   },
   {
     pattern: /hasPortfolioHeldActionReduceEvidence[\s\S]{0,900}extractPctAfterLabel[\s\S]{0,900}高位强势/,

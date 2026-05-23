@@ -2860,15 +2860,28 @@ function buildPortfolioHeldPositionRiskReview(position = {}, profile = null) {
   const review = [];
   if (!profile || !trend.ok) {
     review.push("缺少当前净值/走势复核，不能默认放任持仓。");
-    return review;
   }
   if (trend.trendLabel === "breakdown") review.push("趋势破位，需评估减仓或止损。");
   if (trend.trendLabel === "weakening") review.push("趋势转弱，需降低仓位或收紧复查。");
   if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback") review.push("短期偏热或等待回撤，需防止利润回吐。");
   const return20d = finiteMetricNumber(trend.return20dPct);
   const drawdown = finiteMetricNumber(trend.drawdownFromRecentHighPct);
+  const unrealized = finiteMetricNumber(position.unrealizedPnlPct);
+  const peakUnrealized = finiteMetricNumber(position.peakUnrealizedPnlPct);
+  const storedGiveback = finiteMetricNumber(position.profitGivebackPct);
+  const computedGiveback = Number.isFinite(peakUnrealized) && Number.isFinite(unrealized)
+    ? Math.max(0, round(peakUnrealized - unrealized, 2))
+    : 0;
+  const profitGiveback = Number.isFinite(storedGiveback) ? Math.max(storedGiveback, computedGiveback) : computedGiveback;
+  const givebackLimit = Math.abs(finiteNumberOr(process.env.PORTFOLIO_PROFIT_GIVEBACK_PCT, 4));
   if (Number.isFinite(return20d) && return20d > 12) review.push(`近20日${formatFallbackPct(return20d)}，需要止盈/减仓边界。`);
   if (Number.isFinite(drawdown) && drawdown <= -10) review.push(`距高点${formatFallbackPct(drawdown)}，回撤扩大需复核止损。`);
+  if (Number.isFinite(profitGiveback) && profitGiveback >= givebackLimit) {
+    review.push(`浮盈已回吐${round(profitGiveback, 2)}个百分点，需启动回吐保护。`);
+  }
+  if (Number.isFinite(peakUnrealized) && peakUnrealized > 2 && Number.isFinite(unrealized) && unrealized < 0) {
+    review.push(`曾浮盈${formatFallbackPct(peakUnrealized)}但当前转亏${formatFallbackPct(unrealized)}，需减仓复核。`);
+  }
   if (actionability.action === "avoid") review.push("可操作性已转为回避，不能继续无条件持有。");
   if (actionability.action === "wait") review.push("可操作性偏等待，暂不加仓并设置复查。");
   if (!review.length) review.push("持仓走势未触发减仓警报，继续按纪律持有。");
@@ -2969,6 +2982,8 @@ function shouldReduceHeldPositionFromReview(riskReview = [], profile = null, pos
   const return60d = finiteMetricNumber(trend.return60dPct);
   return /破位|转弱|回撤扩大|回避/.test(text)
     || actionability.action === "avoid"
+    || /回吐保护|当前转亏/.test(text)
+    || (actionability.action === "wait" && /缺少当前净值\/走势复核|浮盈已回吐|当前转亏/.test(text))
     || (Number.isFinite(return20d) && return20d > 20 && Number.isFinite(return60d) && return60d > 24)
     || (/偏热|等待回撤/.test(text) && Number.isFinite(return20d) && return20d > 12);
 }
@@ -3495,6 +3510,15 @@ function buildPortfolioPositionRiskBudget(position = {}, profile = null) {
   ) {
     triggers.push(`曾浮盈${formatFallbackPct(peakUnrealizedPnlPct)}，已回吐${round(profitGivebackPct, 2)}个百分点`);
   }
+  if (
+    Number.isFinite(peakUnrealizedPnlPct)
+    && Number.isFinite(unrealizedPnlPct)
+    && peakUnrealizedPnlPct > 2
+    && unrealizedPnlPct < 0
+    && profitGivebackPct >= profitGivebackLimitPct
+  ) {
+    triggers.push(`曾浮盈${formatFallbackPct(peakUnrealizedPnlPct)}但当前转亏${formatFallbackPct(unrealizedPnlPct)}，需要回吐保护`);
+  }
   if (Number.isFinite(trendDrawdown) && trendDrawdown <= -12 && ["breakdown", "weakening"].includes(trend.trendLabel)) {
     triggers.push(`走势${formatTrendLabel(trend.trendLabel)}且距高点${formatFallbackPct(trendDrawdown)}`);
   }
@@ -3806,6 +3830,10 @@ function collectPortfolioSellDisciplineSignals(action = {}, profile = {}, positi
   const profitGiveback = Number.isFinite(peakUnrealized) && Number.isFinite(unrealized)
     ? Math.max(0, round(peakUnrealized - unrealized, 2))
     : 0;
+  const storedProfitGiveback = finiteMetricNumber(position.profitGivebackPct);
+  const effectiveProfitGiveback = Number.isFinite(storedProfitGiveback)
+    ? Math.max(storedProfitGiveback, profitGiveback)
+    : profitGiveback;
   const stopLossPct = Math.abs(finiteNumberOr(process.env.PORTFOLIO_POSITION_STOP_LOSS_PCT, 8));
   const givebackPct = Math.abs(finiteNumberOr(process.env.PORTFOLIO_PROFIT_GIVEBACK_PCT, 4));
   const actionText = [
@@ -3819,6 +3847,9 @@ function collectPortfolioSellDisciplineSignals(action = {}, profile = {}, positi
   if (trend.trendLabel === "breakdown") signals.push("趋势破位，需要止损或降低风险敞口");
   if (trend.trendLabel === "weakening") signals.push("趋势转弱，需要减仓观察");
   if (actionability.action === "avoid" || trend.entryBias === "avoid_now") signals.push("可操作性已转为回避");
+  if (actionability.action === "wait" && /缺少当前净值\/走势复核|浮盈已回吐|当前转亏|回吐保护/.test(actionText)) {
+    signals.push("可操作性偏等待且持仓复查提示数据缺口或回吐风险");
+  }
   if (Number.isFinite(drawdown) && drawdown <= -10) signals.push(`距高点${formatFallbackPct(drawdown)}，回撤扩大`);
   if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback") signals.push("短期偏热或等待回撤，适合分批止盈");
   if (Number.isFinite(return20d) && return20d > 12) signals.push(`近20日${formatFallbackPct(return20d)}，需止盈防回吐`);
@@ -3832,8 +3863,8 @@ function collectPortfolioSellDisciplineSignals(action = {}, profile = {}, positi
   if (Number.isFinite(actionReturn60d) && actionReturn60d > 24) signals.push(`模型持仓理由显示近60日${formatFallbackPct(actionReturn60d)}，需降仓控制追涨暴露`);
   if (/账户回撤|组合回撤|最大回撤预算/.test(actionText)) signals.push("账户级最大回撤预算触发，需要降低组合风险");
   if (Number.isFinite(unrealized) && unrealized <= -stopLossPct) signals.push(`持仓浮亏${formatFallbackPct(unrealized)}，触及单仓止损线`);
-  if (/浮盈回吐|利润回吐|回吐保护/.test(actionText) && profitGiveback >= givebackPct) {
-    signals.push(`历史浮盈${formatFallbackPct(peakUnrealized)}，已回吐${round(profitGiveback, 2)}个百分点`);
+  if (/浮盈回吐|利润回吐|回吐保护|浮盈已回吐|当前转亏/.test(actionText) && effectiveProfitGiveback >= givebackPct) {
+    signals.push(`历史浮盈${Number.isFinite(peakUnrealized) ? formatFallbackPct(peakUnrealized) : "曾转正"}，已回吐${round(effectiveProfitGiveback, 2)}个百分点`);
   }
   if (Number.isFinite(unrealized) && unrealized >= 8 && /(止盈|减仓|降仓|锁定|兑现)/.test(actionText)) {
     signals.push(`持仓浮盈${formatFallbackPct(unrealized)}，模型给出止盈/减仓意图`);
