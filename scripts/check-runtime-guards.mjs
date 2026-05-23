@@ -680,6 +680,18 @@ const requiredPatterns = [
     message: "portfolio valuation review normalization must sanitize summary/reason/watch notes before showing them to users."
   },
   {
+    pattern: /function normalizePortfolioPremarket\(raw\)[\s\S]{0,900}normalizePortfolioUserFacingText[\s\S]{0,900}formatPortfolioMarketTone/,
+    message: "portfolio premarket reports must localize internal model fields and English market tones before display."
+  },
+  {
+    pattern: /function normalizePortfolioWeekly\(raw\)[\s\S]{0,900}normalizePortfolioUserFacingArray/,
+    message: "portfolio weekly reports must localize internal model fields before display."
+  },
+  {
+    pattern: /function buildPortfolioDecisionCard[\s\S]{0,2600}formatPortfolioActionLabel[\s\S]{0,1600}return normalizePortfolioUserFacingText\(card, account\)/,
+    message: "portfolio decision cards must show Chinese action labels and run a final user-facing localization pass."
+  },
+  {
     pattern: /function summarizePortfolioOrder[\s\S]{0,900}navQuality[\s\S]{0,220}navSource/,
     message: "confirmed portfolio orders must expose verified NAV, units, NAV date, and source in the public API."
   },

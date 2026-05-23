@@ -1961,6 +1961,12 @@ const localizedInternalRelationText = manager.normalizeUserFacingFundAnswer("act
 assert(localizedInternalRelationText.includes("买卖可行性评估：只适合战术小仓位 / 分批买入"), "localization must clean mixed Chinese-English actionability relation text");
 assert(localizedInternalRelationText.includes("买点判断：等待回撤"), "localization must clean mixed Chinese-English entry-bias relation text");
 assert(!/\b(?:actionability|entryBias|tactical only|staged_buy|wait_pullback)\b/i.test(localizedInternalRelationText), "mixed internal relation text must not keep raw fund fields or enums");
+const localizedPortfolioReportText = manager.normalizePortfolioUserFacingText("盘前为 defensive，趋势 extended_uptrend，entryBias=wait_pullback，actionability 为 weak_fit，marketConfirmationScore=0，建议 watch/test only。");
+assert(localizedPortfolioReportText.includes("买点判断：等待回撤"), "portfolio report localization must translate raw entry-bias fields");
+assert(localizedPortfolioReportText.includes("买卖可行性评估：适配度偏弱"), "portfolio report localization must translate raw actionability fields");
+assert(localizedPortfolioReportText.includes("市场确认度：0"), "portfolio report localization must translate market confirmation fields");
+assert(localizedPortfolioReportText.includes("观察/小额试探"), "portfolio report localization must translate watch/test shorthand");
+assert(!/\b(?:defensive|extended_uptrend|entryBias|actionability|weak_fit|marketConfirmationScore|watch\/test)\b/i.test(localizedPortfolioReportText), "portfolio reports must not keep raw internal fields or English shorthand");
 const chartMetricSource = serverSource.slice(serverSource.indexOf("function formatChartMetricValue"), serverSource.indexOf("function getChartShareClass"));
 assert(chartMetricSource.includes("formatChartStringValue(value, 8)"), "chart metric formatter must localize string values before rendering");
 assert(!chartMetricSource.includes(".toUpperCase()"), "chart metric formatter must not uppercase raw unknown labels into English-looking chart text");
