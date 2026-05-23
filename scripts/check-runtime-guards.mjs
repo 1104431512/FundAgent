@@ -6,7 +6,9 @@ const server = fs.readFileSync(path.join(root, "src", "server.mjs"), "utf8");
 const admin = fs.readFileSync(path.join(root, "public", "admin.js"), "utf8");
 const adminHtml = fs.readFileSync(path.join(root, "public", "admin.html"), "utf8");
 const adminCss = fs.readFileSync(path.join(root, "public", "styles.css"), "utf8");
-const allSource = [server, admin, adminHtml, adminCss].join("\n");
+const packageJson = fs.readFileSync(path.join(root, "package.json"), "utf8");
+const deploymentCheck = fs.readFileSync(path.join(root, "scripts", "check-deployment-state.mjs"), "utf8");
+const allSource = [server, admin, adminHtml, adminCss, packageJson, deploymentCheck].join("\n");
 
 const forbiddenPatterns = [
   {
@@ -103,6 +105,18 @@ const requiredPatterns = [
   {
     pattern: /function compactThemeRadarForModel[\s\S]{0,900}板块位置[\s\S]{0,900}位置判断[\s\S]{0,900}操作倾向/,
     message: "compact market snapshots must present theme-radar fields with Chinese labels before model calls."
+  },
+  {
+    pattern: /"check:deployment":\s*"node scripts\/check-deployment-state\.mjs"/,
+    message: "deployment freshness must be checkable after code is pushed."
+  },
+  {
+    pattern: /check-deployment-state\.mjs[\s\S]{0,2600}\/health[\s\S]{0,1800}release[\s\S]{0,1800}deployed commit matches local HEAD/,
+    message: "deployment checker must verify online release metadata against the current local commit."
+  },
+  {
+    pattern: /check-deployment-state\.mjs[\s\S]{0,3600}portfolioCapabilityActionQueue[\s\S]{0,1800}capabilityDiagnostics[\s\S]{0,1800}capabilityActionQueue/,
+    message: "deployment checker must prove online admin and portfolio APIs expose capability repair features."
   },
   {
     pattern: /extended_uptrend[\s\S]{0,120}短期涨幅偏热/,

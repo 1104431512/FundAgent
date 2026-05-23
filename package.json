@@ -6,7 +6,8 @@
   "description": "Feishu bot that routes fund requests through modular skills.",
   "scripts": {
     "start": "node src/server.mjs",
-    "check": "node --check src/server.mjs && node --check public/admin.js && node scripts/check-runtime-guards.mjs && node scripts/check-fund-manager-capabilities.mjs"
+    "check": "node --check src/server.mjs && node --check public/admin.js && node --check scripts/check-deployment-state.mjs && node scripts/check-runtime-guards.mjs && node scripts/check-fund-manager-capabilities.mjs",
+    "check:deployment": "node scripts/check-deployment-state.mjs"
   },
   "engines": {
     "node": ">=18"

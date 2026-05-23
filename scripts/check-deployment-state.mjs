@@ -1,0 +1,166 @@
+import fs from "node:fs";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+
+const root = process.cwd();
+const targetBase = normalizeBaseUrl(process.argv[2] || process.env.FUNDAGENT_DEPLOY_URL || "http://107.148.181.68:30001");
+const adminToken = process.env.FUNDAGENT_ADMIN_TOKEN || process.env.ADMIN_TOKEN || "";
+const timeoutMs = Number(process.env.FUNDAGENT_DEPLOY_CHECK_TIMEOUT_MS || 20000);
+
+const localRelease = resolveLocalRelease();
+const checks = [];
+
+await main();
+
+async function main() {
+  const health = await fetchJson("/health", { required: true, label: "health endpoint" });
+  if (health) {
+    assertCheck(Boolean(health.release), "/health exposes release metadata", "critical", "Current online build is too old to prove which code is serving users.");
+    if (health.release) {
+      const remoteCommit = String(health.release.commit || health.release.shortCommit || "");
+      assertCheck(Boolean(remoteCommit), "/health release includes commit", "critical", "Deployment must expose a commit so stale builds are visible.");
+      if (localRelease.commit && remoteCommit) {
+        const matches = localRelease.commit.startsWith(remoteCommit) || remoteCommit.startsWith(localRelease.shortCommit);
+        assertCheck(matches, "deployed commit matches local HEAD", "critical", `local=${localRelease.shortCommit}, remote=${remoteCommit.slice(0, 12)}`);
+      }
+    }
+  }
+
+  const adminHtml = await fetchText("/admin", { required: true, label: "admin page" });
+  const adminJs = await fetchText("/public/admin.js", { required: true, label: "admin JavaScript" });
+  if (adminHtml) {
+    assertCheck(adminHtml.includes('data-tab="portfolio"'), "admin page exposes portfolio tab", "critical", "Managers need the portfolio dashboard to inspect holdings and actions.");
+    assertCheck(adminHtml.includes("portfolioCapabilityActionQueue"), "admin page contains capability repair queue node", "critical", "The online UI is missing the concrete manager repair queue.");
+  }
+  if (adminJs) {
+    assertCheck(adminJs.includes("renderCapabilityActionQueue"), "admin JavaScript renders capability repair queue", "critical", "The online client cannot show the repair queue even if the API returns it.");
+    assertCheck(adminJs.includes("TOP_HOLDINGS_DISPLAY_LIMIT = 10"), "admin JavaScript preserves top-ten holdings display", "critical", "The UI must show all top-ten holdings, not only five.");
+    assertCheck(adminJs.includes("按实际投入成本"), "admin JavaScript labels PnL denominator as actual invested cost", "critical", "PnL percentages must not use initial capital as denominator.");
+  }
+
+  const portfolio = await fetchJson("/api/portfolio?summary=1", { required: true, label: "portfolio summary API", admin: true });
+  if (portfolio?.portfolio) {
+    const body = portfolio.portfolio;
+    assertCheck(Boolean(body.exposureSummary), "portfolio API exposes exposure summary", "critical", "Exposure and overlap risk must be visible online.");
+    assertCheck(Boolean(body.capabilityDiagnostics), "portfolio API exposes capability diagnostics", "critical", "The online manager must surface profitability, chase-risk, and data-quality weaknesses.");
+    assertCheck(Array.isArray(body.capabilityActionQueue), "portfolio API exposes capability repair queue", "critical", "Diagnostics need concrete next actions.");
+    assertCheck(Boolean(body.account?.investedCost), "portfolio API exposes invested cost", "critical", "Return percentages must be based on actual invested amount.");
+  }
+
+  printReport();
+  if (checks.some((item) => item.status === "fail" && item.severity === "critical")) {
+    process.exit(1);
+  }
+}
+
+function normalizeBaseUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) throw new Error("Missing deployment URL.");
+  return text.replace(/\/+$/, "");
+}
+
+async function fetchJson(route, options = {}) {
+  const text = await fetchText(route, options);
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    checks.push({
+      status: "fail",
+      severity: options.required ? "critical" : "warning",
+      label: `${options.label || route} returns JSON`,
+      detail: error.message
+    });
+    return null;
+  }
+}
+
+async function fetchText(route, options = {}) {
+  const url = `${targetBase}${route}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const headers = {};
+    if (options.admin && adminToken) headers["x-admin-token"] = adminToken;
+    const response = await fetch(url, { headers, signal: controller.signal });
+    const text = await response.text();
+    if (!response.ok) {
+      const authHint = response.status === 401 && options.admin
+        ? "Set FUNDAGENT_ADMIN_TOKEN when the deployment protects admin APIs."
+        : text.slice(0, 180);
+      checks.push({
+        status: "fail",
+        severity: options.required ? "critical" : "warning",
+        label: `${options.label || route} reachable`,
+        detail: `HTTP ${response.status}. ${authHint}`.trim()
+      });
+      return null;
+    }
+    checks.push({ status: "pass", severity: "info", label: `${options.label || route} reachable`, detail: url });
+    return text;
+  } catch (error) {
+    checks.push({
+      status: "fail",
+      severity: options.required ? "critical" : "warning",
+      label: `${options.label || route} reachable`,
+      detail: error.message
+    });
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function assertCheck(ok, label, severity = "critical", detail = "") {
+  checks.push({
+    status: ok ? "pass" : "fail",
+    severity,
+    label,
+    detail
+  });
+}
+
+function resolveLocalRelease() {
+  const pkg = safeReadJson(path.join(root, "package.json"));
+  const commit = runGit(["rev-parse", "HEAD"]);
+  const branch = runGit(["rev-parse", "--abbrev-ref", "HEAD"]);
+  return {
+    name: pkg.name || "feishu-fund-assistant",
+    version: pkg.version || "0.0.0",
+    commit,
+    shortCommit: commit ? commit.slice(0, 7) : "",
+    branch
+  };
+}
+
+function safeReadJson(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function runGit(args) {
+  try {
+    return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return "";
+  }
+}
+
+function printReport() {
+  const failed = checks.filter((item) => item.status === "fail");
+  console.log(`Deployment check: ${targetBase}`);
+  console.log(`Local release: ${localRelease.shortCommit || "-"} ${localRelease.branch || ""}`.trim());
+  for (const item of checks) {
+    const mark = item.status === "pass" ? "OK" : "FAIL";
+    const detail = item.detail ? ` - ${item.detail}` : "";
+    console.log(`[${mark}] ${item.label}${detail}`);
+  }
+  if (failed.length) {
+    console.log(`Result: ${failed.length} deployment check(s) failed.`);
+  } else {
+    console.log("Result: deployment matches the current capability baseline.");
+  }
+}
