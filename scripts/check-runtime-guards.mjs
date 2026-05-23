@@ -544,6 +544,14 @@ const requiredPatterns = [
     message: "portfolio valuation review normalization must sanitize summary/reason/watch notes before showing them to users."
   },
   {
+    pattern: /function summarizePortfolioOrder[\s\S]{0,900}navQuality[\s\S]{0,220}navSource/,
+    message: "confirmed portfolio orders must expose verified NAV, units, NAV date, and source in the public API."
+  },
+  {
+    pattern: /function formatOrderNavLine[\s\S]{0,700}确认净值[\s\S]{0,180}份额/,
+    message: "admin order rows must show confirmed NAV and units so orders and transaction ledger are not disconnected."
+  },
+  {
     pattern: /renderPortfolioDashboard[\s\S]{0,5000}portfolioManagerSummary[\s\S]{0,5000}portfolioHoldingSummary[\s\S]{0,5000}portfolioReadinessSummary/,
     message: "admin portfolio UI must provide a manager dashboard with summary, holdings exposure, and buy-preparation panels."
   },

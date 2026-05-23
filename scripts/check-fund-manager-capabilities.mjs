@@ -254,6 +254,27 @@ const normalizedReview = manager.normalizePortfolioReview(JSON.stringify({
 const normalizedReviewText = JSON.stringify(normalizedReview);
 assert(normalizedReview.summary.includes("按实际投入成本30002.28元计-1.09%"), "normalized valuation review summary must use invested-cost return");
 assert(!/相对初始本金|初始资金口径|初始本金口径|本金口径/.test(normalizedReviewText), "normalized valuation review must remove initial-capital denominator wording from user-facing fields");
+const summarizedConfirmedOrder = manager.summarizePortfolioOrder({
+  id: "ord_test",
+  side: "BUY",
+  status: "confirmed",
+  code: "000010",
+  name: "中证A500ETF联接C",
+  amount: 1000,
+  navSnapshot: {
+    date: "2026-05-22",
+    nav: 1.23456,
+    quality: "exact_nav_history",
+    source: "https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=000010"
+  },
+  confirmedUnits: 810.044552,
+  priceDate: "2026-05-22",
+  confirmDate: "2026-05-23"
+});
+assert.equal(summarizedConfirmedOrder.nav, 1.2346, "confirmed portfolio order summaries must expose the verified transaction NAV");
+assert.equal(summarizedConfirmedOrder.navDate, "2026-05-22", "confirmed portfolio order summaries must expose the NAV date");
+assert.equal(summarizedConfirmedOrder.units, 810.044552, "confirmed portfolio order summaries must expose confirmed units");
+assert.equal(summarizedConfirmedOrder.navQuality, "exact_nav_history", "confirmed portfolio order summaries must expose NAV verification quality");
 const consolidatedWatchDb = manager.normalizePortfolioDb({
   watchlist: [
     {

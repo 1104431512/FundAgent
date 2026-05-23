@@ -4647,6 +4647,12 @@ function confirmPortfolioBuyOrder(db, order, profile, run) {
   db.account.pendingBuyAmount = round(Math.max(0, Number(db.account.pendingBuyAmount || 0) - Number(order.amount || 0)), 2);
   order.status = "confirmed";
   order.confirmedAt = new Date().toISOString();
+  order.actualAmount = round(Number(order.amount || 0), 2);
+  order.confirmedNav = nav;
+  order.confirmedNavDate = order.navSnapshot.date;
+  order.confirmedUnits = round(boughtUnits, 6);
+  order.navQuality = order.navSnapshot.quality || "";
+  order.navSource = order.navSnapshot.source || "";
   addOrderTimeline(order, "confirmed", `申购确认：${order.amount}元 / ${nav} = ${round(boughtUnits, 6)}份。`);
 
   return recordPortfolioTransaction(db, run, order, order.amount, "BUY", profile, {
@@ -4705,6 +4711,11 @@ function confirmPortfolioSellOrder(db, order, profile, run) {
   order.status = "confirmed";
   order.confirmedAt = new Date().toISOString();
   order.actualAmount = amount;
+  order.confirmedNav = nav;
+  order.confirmedNavDate = order.navSnapshot.date;
+  order.confirmedUnits = round(requestedUnits, 6);
+  order.navQuality = order.navSnapshot.quality || "";
+  order.navSource = order.navSnapshot.source || "";
   addOrderTimeline(order, "confirmed", `赎回确认：${requestedUnits}份 * ${nav} = ${amount}元，预计 ${order.settlementDate} 到账。`);
 
   return recordPortfolioTransaction(db, run, order, amount, "SELL", profile, {
@@ -6026,6 +6037,9 @@ function buildPortfolioRunSummary(run) {
 }
 
 function summarizePortfolioOrder(order) {
+  const navSnapshot = order.navSnapshot || {};
+  const confirmedNav = Number(order.confirmedNav || navSnapshot.nav);
+  const confirmedUnits = Number(order.confirmedUnits || order.requestedUnits || 0);
   return {
     id: order.id,
     side: order.side,
@@ -6033,7 +6047,13 @@ function summarizePortfolioOrder(order) {
     code: order.code,
     name: order.name,
     amount: order.amount,
+    actualAmount: order.actualAmount ?? order.amount,
     requestedUnits: order.requestedUnits || 0,
+    units: Number.isFinite(confirmedUnits) && confirmedUnits > 0 ? round(confirmedUnits, 6) : 0,
+    nav: Number.isFinite(confirmedNav) && confirmedNav > 0 ? round(confirmedNav, 4) : null,
+    navDate: order.confirmedNavDate || navSnapshot.date || "",
+    navQuality: order.navQuality || navSnapshot.quality || "",
+    navSource: order.navSource || navSnapshot.source || "",
     submittedAt: order.submittedAt,
     submitDate: order.submitDate,
     acceptedDate: order.acceptedDate,
@@ -15091,6 +15111,7 @@ export {
   normalizePortfolioWatchlist,
   normalizePortfolioWatchlistUpdates,
   renderFundReportSummaryPng,
+  summarizePortfolioOrder,
   capPortfolioSellAmountByDiscipline,
   resolvePortfolioTradeAmount,
   buildPortfolioWatchlistUpdatesFromSeedCandidates,

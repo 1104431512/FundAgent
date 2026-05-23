@@ -457,7 +457,7 @@ function renderOrders(orders) {
           <div>${formatMoney(item.amount)}</div>
           <div>
             <strong>${escapeHtml(item.status || "")}</strong>
-            <small>${escapeHtml(item.tradingProfile?.kind || "")}</small>
+            <small>${escapeHtml([item.tradingProfile?.kind || "", formatOrderNavLine(item)].filter(Boolean).join(" · "))}</small>
           </div>
           <div>
             <strong>${escapeHtml(item.priceDate || "-")}</strong>
@@ -471,6 +471,16 @@ function renderOrders(orders) {
       `
     )
     .join("");
+}
+
+function formatOrderNavLine(item = {}) {
+  const nav = Number(item.nav);
+  const units = Number(item.units);
+  const navLine = Number.isFinite(nav) && nav > 0
+    ? `确认净值 ${formatNumber(nav, 4)}${item.navDate ? `（${item.navDate}）` : ""}`
+    : "";
+  const unitsLine = Number.isFinite(units) && units > 0 ? `份额 ${formatNumber(units, 2)}` : "";
+  return [navLine, unitsLine, item.navQuality ? String(item.navQuality) : ""].filter(Boolean).join("，");
 }
 
 function renderPositions(positions) {
