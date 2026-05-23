@@ -114,6 +114,58 @@ assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "数�
 assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "成交净值待核验"), "capability diagnostics must surface unverified virtual trade fills");
 assert(serverSource.includes("capabilityDiagnostics: buildPortfolioCapabilityDiagnostics(db)"), "portfolio API must expose capability diagnostics");
 assert(adminSource.includes("buildCapabilityInsightItems") && adminHtmlSource.includes("portfolioCapabilitySummary"), "admin UI must render portfolio capability diagnostics");
+const capabilityActionQueue = manager.buildPortfolioCapabilityActionQueue({
+  account: {
+    cash: 70000,
+    totalAsset: 99671.93,
+    investedCost: 30002.28,
+    cumulativePnl: -328.07,
+    cumulativePnlPct: -1.09,
+    positions: [{
+      code: "006265",
+      name: "红土创新新科技股票A",
+      weightPct: 9.85,
+      profitGivebackPct: 4.82,
+      fundSnapshot: {
+        trendProfile: { ok: true, trendLabel: "extended_uptrend", entryBias: "wait_pullback" },
+        actionability: { decisionBlocker: ["短期涨幅偏热，不符合回调完成后启动的买点。"] },
+        topHoldings: ["300308 中际旭创 8.54%"]
+      }
+    }]
+  },
+  transactions: [{ side: "BUY", code: "006265", amount: 10000, nav: null, navDate: "" }]
+});
+assert(capabilityActionQueue.some((item) => item.action.includes("先解释亏损来源")), "capability action queue must turn profitability pressure into a required review task");
+assert(capabilityActionQueue.some((item) => item.action.includes("暂停新增同线买入")), "capability action queue must turn chase-risk exposure into a buy-discipline task");
+const capabilityProfileContext = manager.buildPortfolioManagerProfileContext({
+  portfolioPremarketTime: "09:00",
+  portfolioDecisionTime: "14:20",
+  portfolioReviewTime: "21:30",
+  portfolioWeeklyReviewDay: 5,
+  portfolioWeeklyReviewTime: "16:30",
+  portfolioRiskProfile: "balanced",
+  portfolioManagerProfile: "测试经理画像"
+}, {
+  account: {
+    cash: 70000,
+    totalAsset: 99671.93,
+    investedCost: 30002.28,
+    cumulativePnl: -328.07,
+    cumulativePnlPct: -1.09,
+    positions: [{
+      code: "006265",
+      name: "红土创新新科技股票A",
+      weightPct: 9.85,
+      fundSnapshot: { trendProfile: { ok: true, trendLabel: "extended_uptrend", entryBias: "wait_pullback" } }
+    }]
+  },
+  watchlist: [],
+  runs: [],
+  orders: [],
+  transactions: []
+});
+assert(capabilityProfileContext.includes("组合能力诊断") && capabilityProfileContext.includes("能力修复队列"), "manager profile context must carry capability diagnostics into every portfolio model call");
+assert(serverSource.includes("能力修复队列（必须进入 team.主席、team.风控经理、actions 或 learningNotes）"), "portfolio decision prompt must force capability repair tasks into decisions");
 const pollutedLocalStatsDiagnostics = manager.buildRuntimeDiagnostics({
   counters: {
     messageEvents: 0,

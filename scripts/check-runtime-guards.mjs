@@ -829,6 +829,18 @@ const requiredPatterns = [
     message: "portfolio capability diagnostics must cover profitability, chase-risk exposure, and data-quality gaps."
   },
   {
+    pattern: /function buildPortfolioCapabilityActionQueue[\s\S]{0,2200}先解释亏损来源[\s\S]{0,2200}暂停新增同线买入/,
+    message: "portfolio capability diagnostics must become required repair tasks before the next decision."
+  },
+  {
+    pattern: /function buildPortfolioManagerProfileContext[\s\S]{0,900}组合能力诊断[\s\S]{0,900}能力修复队列/,
+    message: "portfolio model context must carry capability diagnostics into every manager run."
+  },
+  {
+    pattern: /组合能力诊断（系统计算，必须先处理，不能只写套话）[\s\S]{0,700}能力修复队列（必须进入 team\.主席、team\.风控经理、actions 或 learningNotes）/,
+    message: "portfolio decision prompt must force capability repair before new buy decisions."
+  },
+  {
     pattern: /portfolioCapabilitySummary[\s\S]{0,500}buildCapabilityInsightItems|buildCapabilityInsightItems[\s\S]{0,500}portfolioCapabilitySummary/,
     message: "admin portfolio UI must show capability diagnostics instead of hiding manager weaknesses in raw JSON."
   },

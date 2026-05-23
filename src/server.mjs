@@ -1353,6 +1353,8 @@ async function executePortfolioWeekly(db, run, config) {
 
 async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, watchlist = [], watchlistProfiles = [], watchlistSeedCandidates = [], seedProfiles = [], config, profileContext }) {
   const exposureSummary = buildPortfolioExposureSummary(account.positions || []);
+  const capabilityDiagnostics = buildPortfolioCapabilityDiagnostics({ account, watchlist });
+  const capabilityActionQueue = buildPortfolioCapabilityActionQueue({ account, watchlist });
   const compactHeldProfiles = (heldProfiles || []).map(compactPortfolioReviewProfile);
   const compactWatchlistProfiles = (watchlistProfiles || []).map(compactPortfolioReviewProfile);
   const compactSeedProfiles = (seedProfiles || []).map(compactPortfolioReviewProfile);
@@ -1387,6 +1389,12 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "基金经理画像与行为证据：",
     profileContext,
+    "",
+    "组合能力诊断（系统计算，必须先处理，不能只写套话）：",
+    JSON.stringify(capabilityDiagnostics, null, 2),
+    "能力修复队列（必须进入 team.主席、team.风控经理、actions 或 learningNotes）：",
+    JSON.stringify(capabilityActionQueue, null, 2),
+    "要求：若能力诊断包含盈利承压、追涨暴露、数据质量缺口或成交净值待核验，必须先解释原因和修复动作；没有完成修复前，不得用现金多作为新增买入理由。",
     "",
     "今日公开市场/基金候选快照：",
     JSON.stringify(compactMarketSnapshotForModel(marketSnapshot), null, 2),
@@ -5968,11 +5976,15 @@ function buildPortfolioManagerProfileContext(config, db = null) {
     `周计划与总结：每${formatWeekdayLabel(config.portfolioWeeklyReviewDay)} ${config.portfolioWeeklyReviewTime || "16:30"}`
   ].join("；");
   const behavior = db ? summarizePortfolioManagerBehavior(db) : null;
+  const capabilityDiagnostics = db ? buildPortfolioCapabilityDiagnostics(db) : null;
+  const capabilityActionQueue = db ? buildPortfolioCapabilityActionQueue(db) : [];
   return [
     `规定性画像：${normalizePortfolioManagerProfile(config.portfolioManagerProfile)}`,
     `风险风格：${config.portfolioRiskProfile || "balanced"}`,
     `自动汇报节奏：${schedule}`,
-    behavior ? `账本行为画像：${JSON.stringify(behavior, null, 2)}` : ""
+    behavior ? `账本行为画像：${JSON.stringify(behavior, null, 2)}` : "",
+    capabilityDiagnostics ? `组合能力诊断：${JSON.stringify(capabilityDiagnostics, null, 2)}` : "",
+    capabilityActionQueue.length ? `能力修复队列：${JSON.stringify(capabilityActionQueue, null, 2)}` : ""
   ]
     .filter(Boolean)
     .join("\n");
@@ -6626,6 +6638,42 @@ function formatPortfolioCapabilityDiagnosticSummary(level, items = []) {
   if (criticalCount) return `发现 ${criticalCount} 个严重能力缺口，先修复再扩大交易。`;
   if (warningCount) return `发现 ${warningCount} 个能力预警，下一轮操作需要降速复核。`;
   return "存在轻微信号，继续跟踪即可。";
+}
+
+function buildPortfolioCapabilityActionQueue(db = {}) {
+  const diagnostics = buildPortfolioCapabilityDiagnostics(db);
+  const tasks = [];
+  const addTask = (item, action, owner = "主席") => {
+    if (!item) return;
+    tasks.push({
+      label: item.label,
+      severity: item.severity || "info",
+      owner,
+      action,
+      evidence: item.value || "",
+      note: item.note || ""
+    });
+  };
+  for (const item of diagnostics.items || []) {
+    if (item.label === "盈利能力承压") {
+      addTask(item, "先解释亏损来源和拖累基金，再决定是否补仓；不能用现金多掩盖实际投入成本亏损。", "主席");
+    } else if (item.label === "追涨暴露待消化") {
+      addTask(item, "暂停新增同线买入，逐只给持有、减仓或等待回撤触发条件。", "风控经理");
+    } else if (item.label === "组合集中度风险") {
+      addTask(item, "检查同题材和底层重叠，若没有低位轮动证据，限制新增同主题仓位。", "组合经理");
+    } else if (item.label === "浮盈回吐复核") {
+      addTask(item, "把浮盈回吐列入减仓复核，给出止盈保护或继续持有的失效条件。", "风控经理");
+    } else if (item.label === "数据质量缺口") {
+      addTask(item, "补净值、走势、前十大持仓或费用证据；证据补齐前只能观察或降低把握度。", "基金研究员");
+    } else if (item.label === "成交净值待核验") {
+      addTask(item, "优先补齐成交净值、份额和来源，否则不要把交易盈亏归因说满。", "基金研究员");
+    } else if (item.label === "运行连续性不足") {
+      addTask(item, "在 learningNotes 写清失败原因和恢复动作，避免客户只看到进度文案。", "主席");
+    } else if (item.label === "现金等待买点") {
+      addTask(item, "继续增强低位召回；没有合格买点时明确0元等待，不硬凑推荐。", "组合经理");
+    }
+  }
+  return tasks.slice(0, 8);
 }
 
 function buildPortfolioRunSummary(run) {
@@ -17027,8 +17075,10 @@ export {
   buildPortfolioHeldPositionReviewActions,
   buildPortfolioHeldPositionReviewQueue,
   buildPortfolioCapabilityDiagnostics,
+  buildPortfolioCapabilityActionQueue,
   buildPortfolioDecisionReadinessQueue,
   buildPortfolioExposureSummary,
+  buildPortfolioManagerProfileContext,
   buildPortfolioRunSummary,
   buildPortfolioAccountRiskBudget,
   buildPortfolioReadyWatchlistReviewActions,
