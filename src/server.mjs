@@ -5077,6 +5077,11 @@ function formatEntryBias(value) {
   const labels = {
     buyable_now: "可买",
     staged_buy: "分批",
+    BUY: "可买",
+    BATCH: "分批",
+    STAGE: "分批",
+    WAIT: "等回撤",
+    AVOID: "回避",
     wait_pullback: "等回撤",
     hold_observe: "持有观察",
     avoid_now: "回避"
@@ -5088,6 +5093,11 @@ function formatActionabilityAction(value) {
   const labels = {
     buy: "买入",
     staged_buy: "分批",
+    BUY: "买入",
+    BATCH: "分批",
+    STAGE: "分批",
+    WAIT: "等待",
+    AVOID: "回避",
     hold: "持有",
     wait: "等待",
     avoid: "回避",
@@ -6047,6 +6057,12 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
   const target = resolvePortfolioPushTarget(config, db);
   const recentRunLimit = lightweight ? 6 : 20;
   const recentItemLimit = lightweight ? 10 : 30;
+  const summarizePosition = lightweight ? summarizePortfolioPositionBrief : summarizePortfolioPosition;
+  const summarizeAccount = lightweight ? summarizePortfolioAccountBrief : summarizePortfolioAccount;
+  const summarizeWatch = lightweight ? summarizePortfolioWatchItemBrief : summarizePortfolioWatchItem;
+  const summarizeRun = lightweight ? summarizePortfolioRunBrief : summarizePortfolioRun;
+  const summarizeTransaction = lightweight ? summarizePortfolioTransactionBrief : (item) => item;
+  const summarizeEquity = lightweight ? summarizePortfolioEquityBrief : (item) => item;
   return {
     dbPath: PORTFOLIO_DB_PATH,
     enabled: Boolean(config.portfolioEnabled),
@@ -6079,15 +6095,15 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
       firstSeenAt: target.firstSeenAt,
       lastSeenAt: target.lastSeenAt
     })),
-    account: summarizePortfolioAccount(db.account),
-    positions: db.account.positions.map(summarizePortfolioPosition),
-    watchlist: getActivePortfolioWatchlist(db).slice(0, lightweight ? 12 : 50).map(summarizePortfolioWatchItem),
+    account: summarizeAccount(db.account),
+    positions: db.account.positions.map(summarizePosition),
+    watchlist: getActivePortfolioWatchlist(db).slice(0, lightweight ? 12 : 50).map(summarizeWatch),
     activeOrders: (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status)).map(summarizePortfolioOrder),
-    recentRuns: (db.runs || []).slice(-recentRunLimit).reverse().map(lightweight ? summarizePortfolioRunBrief : summarizePortfolioRun),
+    recentRuns: (db.runs || []).slice(-recentRunLimit).reverse().map(summarizeRun),
     recentOrders: (db.orders || []).slice(-recentItemLimit).reverse().map(summarizePortfolioOrder),
-    recentTransactions: (db.transactions || []).slice(-recentItemLimit).reverse(),
+    recentTransactions: (db.transactions || []).slice(-recentItemLimit).reverse().map(summarizeTransaction),
     pendingSettlements: (db.settlements || []).filter((item) => item.status === "pending").slice(-20).reverse(),
-    recentEquity: (db.dailyEquity || []).slice(-recentItemLimit).reverse()
+    recentEquity: (db.dailyEquity || []).slice(-recentItemLimit).reverse().map(summarizeEquity)
   };
 }
 
@@ -6104,6 +6120,12 @@ function summarizePortfolioRunBrief(run) {
     completedAt: run.completedAt,
     durationMs: run.durationMs,
     summary: buildPortfolioRunSummary(run),
+    team: (run.team || []).slice(0, 6),
+    actions: (run.actions || []).slice(0, 8),
+    orders: (run.orders || []).slice(0, 8).map(summarizePortfolioOrder),
+    transactions: (run.transactions || []).slice(0, 6).map(summarizePortfolioTransactionBrief),
+    executionNotes: (run.executionNotes || []).slice(0, 6),
+    settlementEvents: (run.settlementEvents || []).slice(0, 6),
     error: run.error || ""
   };
 }
@@ -6580,6 +6602,13 @@ function summarizePortfolioAccount(account) {
   };
 }
 
+function summarizePortfolioAccountBrief(account) {
+  return {
+    ...summarizePortfolioAccount(account),
+    positions: (account.positions || []).map(summarizePortfolioPositionBrief)
+  };
+}
+
 function summarizePortfolioPosition(position) {
   return {
     code: position.code,
@@ -6607,6 +6636,145 @@ function summarizePortfolioPosition(position) {
     riskBudget: position.riskBudget || buildPortfolioPositionRiskBudget(position),
     lastReason: position.lastReason || "",
     lastRiskControl: position.lastRiskControl || ""
+  };
+}
+
+function summarizePortfolioPositionBrief(position) {
+  const summary = summarizePortfolioPosition(position);
+  return {
+    ...summary,
+    fundSnapshot: compactPublicFundSnapshot(summary.fundSnapshot)
+  };
+}
+
+function summarizePortfolioWatchItemBrief(item = {}) {
+  const summary = summarizePortfolioWatchItem(item);
+  return {
+    ...summary,
+    lastSnapshot: compactPublicFundSnapshot(summary.lastSnapshot)
+  };
+}
+
+function summarizePortfolioTransactionBrief(item = {}) {
+  return {
+    ...item,
+    fundSnapshot: compactPublicFundSnapshot(item.fundSnapshot)
+  };
+}
+
+function summarizePortfolioEquityBrief(item = {}) {
+  return {
+    date: item.date || "",
+    totalAsset: round(Number(item.totalAsset || 0), 2),
+    cash: round(Number(item.cash || 0), 2),
+    investedValue: round(Number(item.investedValue || 0), 2),
+    investedCost: round(Number(item.investedCost || 0), 2),
+    dayPnl: round(Number(item.dayPnl || 0), 2),
+    cumulativePnl: round(Number(item.cumulativePnl || 0), 2),
+    cumulativePnlPct: round(Number(item.cumulativePnlPct || 0), 2),
+    positionWeightPct: round(Number(item.positionWeightPct || 0), 2)
+  };
+}
+
+function compactPublicFundSnapshot(snapshot = null) {
+  if (!snapshot || typeof snapshot !== "object") return null;
+  const trend = snapshot.trendProfile || null;
+  const compactTrend = compactPortfolioTrendProfile(trend);
+  if (compactTrend && Array.isArray(trend?.series)) {
+    compactTrend.series = compactPublicTrendSeries(trend.series);
+  }
+  const topHoldingsSource = Array.isArray(snapshot.topHoldings) && snapshot.topHoldings.length
+    ? snapshot.topHoldings
+    : snapshot.holdings?.equityTopHoldings?.length
+      ? snapshot.holdings.equityTopHoldings
+      : snapshot.holdings?.bondTopHoldings?.length
+        ? snapshot.holdings.bondTopHoldings
+        : snapshot.actionability?.holdingsOutlook?.topHoldings || [];
+  return {
+    code: snapshot.code || "",
+    name: snapshot.name || "",
+    nav: snapshot.nav || snapshot.unitNav || null,
+    navDate: snapshot.navDate || snapshot.snapshotDate || "",
+    navBasis: snapshot.navBasis || "",
+    estimatedNav: snapshot.estimatedNav || null,
+    estimatedChangePct: snapshot.estimatedChangePct || null,
+    estimateTime: snapshot.estimateTime || "",
+    returns: snapshot.returns || {},
+    risk: compactPublicRisk(snapshot.risk),
+    trendProfile: compactTrend,
+    actionability: compactPortfolioActionabilityProfile(snapshot.actionability),
+    fees: compactPublicFees(snapshot.fees),
+    scale: snapshot.scale || null,
+    topHoldings: normalizeHoldingItems(topHoldingsSource).slice(0, 10).map(formatNormalizedHoldingItem),
+    trendSummary: snapshot.trendSummary || "",
+    sources: (snapshot.sources || []).slice(0, 4)
+  };
+}
+
+function compactPublicTrendSeries(series = [], limit = 32) {
+  const points = (series || [])
+    .map((item) => ({
+      date: item.date || "",
+      nav: finiteMetricNumber(item.nav ?? item.cumulativeNav ?? item.unitNav)
+    }))
+    .filter((item) => item.date && Number.isFinite(item.nav));
+  if (points.length <= limit) return points;
+  const selected = [];
+  const lastIndex = points.length - 1;
+  for (let index = 0; index < limit; index += 1) {
+    selected.push(points[Math.round((index / Math.max(1, limit - 1)) * lastIndex)]);
+  }
+  const seen = new Set();
+  return selected.filter((item) => {
+    const key = `${item.date}|${item.nav}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function compactPublicRisk(risk = null) {
+  if (!risk || typeof risk !== "object") return null;
+  const compactPeriod = (period = null) => period && typeof period === "object"
+    ? {
+        ok: Boolean(period.ok),
+        note: period.note || "",
+        totalReturnPct: finiteMetricNumber(period.totalReturnPct),
+        annualizedReturnPct: finiteMetricNumber(period.annualizedReturnPct),
+        annualizedVolatilityPct: finiteMetricNumber(period.annualizedVolatilityPct),
+        maxDrawdownPct: finiteMetricNumber(period.maxDrawdownPct),
+        sharpe: finiteMetricNumber(period.sharpe),
+        startDate: period.startDate || "",
+        endDate: period.endDate || ""
+      }
+    : null;
+  return {
+    oneYear: compactPeriod(risk.oneYear),
+    threeYear: compactPeriod(risk.threeYear),
+    fiveYear: compactPeriod(risk.fiveYear)
+  };
+}
+
+function compactPublicFees(fees = null) {
+  if (!fees || typeof fees !== "object") return null;
+  return {
+    shareClass: fees.shareClass || "",
+    shareClassFeeModel: fees.shareClassFeeModel || null,
+    currentRatePct: fees.currentRatePct || "",
+    salesServiceFeePct: fees.salesServiceFeePct || "",
+    feeImpact: fees.feeImpact ? {
+      costBase: fees.feeImpact.costBase || "",
+      frontLoadRatePct: finiteMetricNumber(fees.feeImpact.frontLoadRatePct),
+      frontLoadCostPer10000: finiteMetricNumber(fees.feeImpact.frontLoadCostPer10000),
+      salesServiceFeePct: finiteMetricNumber(fees.feeImpact.salesServiceFeePct),
+      salesServiceCostPer10000PerYear: finiteMetricNumber(fees.feeImpact.salesServiceCostPer10000PerYear),
+      oneYearCostPer10000: finiteMetricNumber(fees.feeImpact.oneYearCostPer10000),
+      twoYearCostPer10000: finiteMetricNumber(fees.feeImpact.twoYearCostPer10000),
+      holdingPeriodFit: fees.feeImpact.holdingPeriodFit || "",
+      feeDragLevel: fees.feeImpact.feeDragLevel || ""
+    } : null,
+    feeDecisionRule: fees.feeDecisionRule || "",
+    missingFeeData: normalizeStringArray(fees.missingFeeData).slice(0, 4)
   };
 }
 
@@ -7223,13 +7391,49 @@ function formatEvidenceField(label, value, suffix = "") {
   if (value === null || value === undefined || value === "") return "";
   const numeric = Number(value);
   const formatted = Number.isFinite(numeric) ? round(numeric, 2) : String(value);
-  return `${label}=${formatted}${suffix}`;
+  const labels = {
+    forwardScore: "前瞻评分",
+    crowdingScore: "拥挤度",
+    rotationScore: "轮动评分",
+    lowPositionScore: "低位评分",
+    latest: "最新价",
+    changePct: "涨跌幅",
+    fiveDayPct: "近5日",
+    unitNav: "单位净值",
+    oneMonthPct: "近1月",
+    dailyPct: "当日涨跌"
+  };
+  return `${labels[label] || label}${formatted}${suffix}`;
 }
 
 function formatFeeModelLabel(feeModel) {
-  if (!feeModel) return "feeModel=unknown";
-  if (typeof feeModel === "string") return `feeModel=${feeModel}`;
-  return `feeModel=${feeModel.label || feeModel.type || "unknown"}`;
+  if (!feeModel) return "费用模型未知";
+  if (typeof feeModel === "string") return `费用模型${feeModel}`;
+  return `费用模型${feeModel.label || feeModel.type || "未知"}`;
+}
+
+function formatUserFacingFundLabel(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const matched = USER_FACING_FUND_LABELS.find(([raw]) => raw.toLowerCase() === text.toLowerCase());
+  return matched?.[1] || text;
+}
+
+function formatThemeRadarEvidenceLine(theme = {}) {
+  const fields = [
+    theme.name || theme.id || "未知题材",
+    theme.stage ? `阶段${formatUserFacingFundLabel(theme.stage)}` : "",
+    formatEvidenceField("forwardScore", theme.forwardScore),
+    formatEvidenceField("crowdingScore", theme.crowdingScore),
+    formatEvidenceField("rotationScore", theme.rotationScore),
+    formatEvidenceField("lowPositionScore", theme.lowPositionScore),
+    theme.positionSignal ? `位置${formatUserFacingFundLabel(theme.positionSignal)}` : "",
+    theme.actionBias ? `操作倾向${formatUserFacingFundLabel(theme.actionBias)}` : "",
+    theme.primaryCatalyst ? `主要催化${theme.primaryCatalyst}` : "",
+    theme.evidence?.boards?.length ? `板块${theme.evidence.boards.slice(0, 2).map((item) => `${item.name}${formatSignedNumber(item.changePct)}%`).join("/")}` : "",
+    theme.evidence?.news?.length ? `新闻${theme.evidence.news.slice(0, 2).map((item) => item.title).join(" / ")}` : ""
+  ].filter(Boolean);
+  return `- ${fields.join("，")}`;
 }
 
 function buildMarketEvidenceSummary(userText, marketSnapshot) {
@@ -7238,75 +7442,60 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
   }
 
   const lines = [
-    `snapshot.fetchedAt=${marketSnapshot.fetchedAt || "unknown"}`,
-    marketSnapshot.note ? `snapshot.note=${marketSnapshot.note}` : ""
+    `快照时间：${marketSnapshot.fetchedAt || "未知"}`,
+    marketSnapshot.note ? `快照说明：${marketSnapshot.note}` : ""
   ].filter(Boolean);
   const themeRadar = selectRelevantThemeRadar(userText, marketSnapshot).slice(0, 5);
   if (themeRadar.length) {
-    lines.push("themeRadar:");
-    lines.push(...themeRadar.map((theme) => {
-      const fields = [
-        theme.name || theme.id || "unknown",
-        theme.stage ? `stage=${theme.stage}` : "",
-        formatEvidenceField("forwardScore", theme.forwardScore),
-        formatEvidenceField("crowdingScore", theme.crowdingScore),
-        formatEvidenceField("rotationScore", theme.rotationScore),
-        formatEvidenceField("lowPositionScore", theme.lowPositionScore),
-        theme.positionSignal ? `positionSignal=${theme.positionSignal}` : "",
-        theme.actionBias ? `actionBias=${theme.actionBias}` : "",
-        theme.primaryCatalyst ? `primaryCatalyst=${theme.primaryCatalyst}` : "",
-        theme.evidence?.boards?.length ? `boards=${theme.evidence.boards.slice(0, 2).map((item) => `${item.name}:${formatSignedNumber(item.changePct)}%`).join("/")}` : "",
-        theme.evidence?.news?.length ? `news=${theme.evidence.news.slice(0, 2).map((item) => item.title).join(" / ")}` : ""
-      ].filter(Boolean);
-      return `- ${fields.join(", ")}`;
-    }));
-    lines.push("qualityInstruction=themeRadar exists; first judge theme stage, rotationScore, lowPositionScore, crowdingScore, and forward payoff before recommending funds. Do not chase high_chase_risk themes just because news is hot.");
+    lines.push("题材雷达：");
+    lines.push(...themeRadar.map(formatThemeRadarEvidenceLine));
+    lines.push("质量要求：题材雷达已提供，推荐前先判断题材阶段、轮动评分、低位评分、拥挤度和后续赔率；不要因为新闻热就追高。");
   }
 
   if (isPreciousMetalQuestion(userText)) {
     const metals = marketSnapshot.marketIndicators?.preciousMetals || [];
     const funds = marketSnapshot.fundCandidates?.preciousMetalFunds || [];
-    lines.push("questionFocus=precious_metals");
+    lines.push("问题焦点：贵金属");
 
     if (metals.length) {
-      lines.push("preciousMetals:");
+      lines.push("贵金属行情：");
       lines.push(...metals.slice(0, 8).map((item) => {
         const fields = [
-          item.name || item.code || "unknown",
-          item.code ? `code=${item.code}` : "",
-          item.secid ? `secid=${item.secid}` : "",
+          item.name || item.code || "未知品种",
+          item.code ? `代码${item.code}` : "",
+          item.secid ? `市场代码${item.secid}` : "",
           formatEvidenceField("latest", item.latest),
           formatEvidenceField("changePct", item.changePct, "%"),
           formatEvidenceField("fiveDayPct", item.fiveDayPct, "%"),
-          item.quoteTime ? `quoteTime=${item.quoteTime}` : ""
+          item.quoteTime ? `报价时间${item.quoteTime}` : ""
         ].filter(Boolean);
-        return `- ${fields.join(", ")}`;
+        return `- ${fields.join("，")}`;
       }));
-      lines.push("qualityInstruction=precious metal quote data exists; do not say there is no gold/precious-metal market data.");
+      lines.push("质量要求：公开数据已包含贵金属行情，不要回答“没有实时数据”。");
     } else {
-      lines.push("preciousMetals=empty");
+      lines.push("贵金属行情：暂未抓到。");
     }
 
     if (funds.length) {
-      lines.push("preciousMetalFundCandidates:");
+      lines.push("贵金属基金候选：");
       lines.push(...funds.slice(0, 8).map((item) => {
         const fields = [
-          `${item.code || "unknown"} ${item.name || ""}`.trim(),
-          item.shareClass ? `shareClass=${item.shareClass}` : "",
+          `${item.code || "未知代码"} ${item.name || ""}`.trim(),
+          item.shareClass ? `份额${item.shareClass}类` : "",
           formatFeeModelLabel(item.shareClassFeeModel),
-          item.type ? `type=${item.type}` : "",
+          item.type ? `类型${item.type}` : "",
           formatEvidenceField("unitNav", item.unitNav),
-          item.navDate ? `navDate=${item.navDate}` : "",
-          Array.isArray(item.keywords) && item.keywords.length ? `keywords=${item.keywords.join("/")}` : ""
+          item.navDate ? `净值日期${item.navDate}` : "",
+          Array.isArray(item.keywords) && item.keywords.length ? `线索${item.keywords.join("/")}` : ""
         ].filter(Boolean);
-        return `- ${fields.join(", ")}`;
+        return `- ${fields.join("，")}`;
       }));
     } else {
-      lines.push("preciousMetalFundCandidates=empty");
+      lines.push("贵金属基金候选：暂未抓到。");
     }
 
     if (marketSnapshot.errors?.length) {
-      lines.push(`snapshot.errors=${marketSnapshot.errors.slice(0, 5).join(" | ")}`);
+      lines.push(`数据异常：${marketSnapshot.errors.slice(0, 5).join(" | ")}`);
     }
     return lines.join("\n");
   }
@@ -7321,48 +7510,48 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
   ];
 
   if (concepts.length) {
-    lines.push("topConceptBoards:");
+    lines.push("热门概念板块：");
     lines.push(...concepts.slice(0, 5).map((item) => {
       const fields = [
-        item.name || item.boardCode || "unknown",
+        item.name || item.boardCode || "未知板块",
         formatEvidenceField("changePct", item.changePct, "%"),
-        item.leadStock ? `leadStock=${item.leadStock}` : "",
-        item.quoteTime ? `quoteTime=${item.quoteTime}` : ""
+        item.leadStock ? `领涨股${item.leadStock}` : "",
+        item.quoteTime ? `报价时间${item.quoteTime}` : ""
       ].filter(Boolean);
-      return `- ${fields.join(", ")}`;
+      return `- ${fields.join("，")}`;
     }));
   }
 
   if (industries.length) {
-    lines.push("topIndustryBoards:");
+    lines.push("热门行业板块：");
     lines.push(...industries.slice(0, 5).map((item) => {
       const fields = [
-        item.name || item.boardCode || "unknown",
+        item.name || item.boardCode || "未知板块",
         formatEvidenceField("changePct", item.changePct, "%"),
-        item.leadStock ? `leadStock=${item.leadStock}` : "",
-        item.quoteTime ? `quoteTime=${item.quoteTime}` : ""
+        item.leadStock ? `领涨股${item.leadStock}` : "",
+        item.quoteTime ? `报价时间${item.quoteTime}` : ""
       ].filter(Boolean);
-      return `- ${fields.join(", ")}`;
+      return `- ${fields.join("，")}`;
     }));
   }
 
   if (fundCandidates.length) {
-    lines.push("fundCandidates:");
+    lines.push("基金候选：");
     lines.push(...fundCandidates.slice(0, 8).map((item) => {
       const fields = [
-        `${item.code || "unknown"} ${item.name || ""}`.trim(),
-        item.shareClass ? `shareClass=${item.shareClass}` : "",
+        `${item.code || "未知代码"} ${item.name || ""}`.trim(),
+        item.shareClass ? `份额${item.shareClass}类` : "",
         formatFeeModelLabel(item.shareClassFeeModel),
-        item.type ? `type=${item.type}` : "",
+        item.type ? `类型${item.type}` : "",
         formatEvidenceField("oneMonthPct", item.oneMonthPct, "%"),
         formatEvidenceField("dailyPct", item.dailyPct, "%")
       ].filter(Boolean);
-      return `- ${fields.join(", ")}`;
+      return `- ${fields.join("，")}`;
     }));
   }
 
   if (marketSnapshot.errors?.length) {
-    lines.push(`snapshot.errors=${marketSnapshot.errors.slice(0, 5).join(" | ")}`);
+    lines.push(`数据异常：${marketSnapshot.errors.slice(0, 5).join(" | ")}`);
   }
 
   return lines.join("\n");
@@ -8100,9 +8289,9 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "你是飞书机器人“基金经理”的基金发现与配置工作流。",
     "当前任务不是分析用户已经给出的某一只基金，也不是截图 screening；当前任务是根据用户文字、公开市场快照和基金候选池，给出教育性的基金方向与候选清单。",
     "推荐顺序必须是：先判断题材/事件/催化阶段，再判断基金承载工具；基金净值走势只能作为确认信号，不能作为第一推荐理由。",
-    "如果 marketSnapshot.themeRadar 或 marketDeepDive.themeRadar 存在，必须先使用其中的 stage、forwardScore、crowdingScore、actionBias 判断题材赔率，再筛选基金。",
+    "如果市场快照或下钻摘要里有题材雷达，必须先用题材阶段、前瞻评分、拥挤度和操作倾向判断赔率，再筛选基金。",
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
-    "如果提供了 marketDeepDive，必须使用其中的 trendProfile、risk、fees、holdings 和 actionability 来筛掉不适合的候选；不要只复述市场快照。",
+    "如果提供了候选基金下钻摘要，必须使用走势画像、风险、费用、持仓和可操作性评估来筛掉不适合的候选；不要只复述市场快照。",
     "如果提供了经理自选候选池，必须先复核这些已经沉淀的 ready/waiting/启动前夜候选；ready 可以进入主推荐评估，waiting 或启动前夜只能写备选观察和触发条件，不能当成自动买入。",
     "marketDeepDive 中的 trendProfile、actionability、entryBias、fitLabel 等是内部字段；最终回答必须翻译成中文用户话术，不要原样输出字段名或 extended_uptrend/staged_buy/wait_pullback 这类枚举。",
     "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先选择 pullbackSetup.signal 为 pullback_complete 或 launch_setup 的候选；同时检查5日/10日是否刚转强、120日区间位置是否偏低。短期涨幅偏热、20日/60日大涨且 entryBias 为 wait_pullback 的候选只能列入观察，不得作为主推荐。",
@@ -8196,8 +8385,8 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "当前任务是回答用户问题，不是单只基金 screening；除非用户给出明确基金代码或截图，否则不要强行输出 Verdict/Score/8 角色评审。",
     "遇到“某主题最近值不值得买”时，必须先判断题材/新闻/市场阶段，再判断基金或 ETF 工具；基金净值走势只是确认信号。",
     "如果传入 marketSnapshot，可用它回答近期市场/题材问题；涉及黄金、白银或贵金属时，优先引用 marketIndicators.preciousMetals 和相关基金候选。",
-    "如果 marketSnapshot.themeRadar 或 marketDeepDive.themeRadar 存在，优先引用 stage、forwardScore、crowdingScore、actionBias，避免只按历史涨幅回答。",
-    "如果提供了 marketDeepDive，必须使用下钻候选的 trendProfile、risk、fees、holdings 和 actionability 来形成买/等/回避判断。",
+    "如果市场快照或下钻摘要里有题材雷达，优先引用中文题材阶段、前瞻评分、拥挤度和操作倾向，避免只按历史涨幅回答。",
+    "如果提供了候选基金下钻摘要，必须使用下钻候选的走势画像、风险、费用、持仓和可操作性评估来形成买/等/回避判断。",
     "如果提供了经理自选候选池，必须把它当成已经沉淀的备选来源先复核；ready 可以进入买入参考，waiting 或启动前夜只能说明等待条件。",
     "marketDeepDive 中的 trendProfile、actionability、entryBias、fitLabel 等是内部字段；最终回答必须翻译成中文用户话术，不要原样输出字段名或 extended_uptrend/staged_buy/wait_pullback 这类枚举。",
     "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先判断 pullbackSetup.signal、5日/10日早期转强和120日区间低位；短期涨幅偏热、20日/60日大涨且等待回撤的候选不能被包装成启动机会。",
@@ -11661,6 +11850,8 @@ function formatChartSetupSignal(value) {
   const labels = {
     pullback_complete: "回调完成",
     launch_setup: "启动",
+    PULL: "回调完成",
+    LAUNCH: "启动",
     none: "无信号"
   };
   return labels[value] || "缺失";
@@ -11670,6 +11861,11 @@ function formatChartEntryBias(value) {
   const labels = {
     buyable_now: "可买",
     staged_buy: "分批",
+    BUY: "可买",
+    BATCH: "分批",
+    STAGE: "分批",
+    WAIT: "等待",
+    AVOID: "回避",
     wait_pullback: "等待",
     hold_observe: "观察",
     avoid_now: "回避"
@@ -11681,6 +11877,11 @@ function formatChartAction(value) {
   const labels = {
     buy: "买入",
     staged_buy: "分批",
+    BUY: "买入",
+    BATCH: "分批",
+    STAGE: "分批",
+    WAIT: "等待",
+    AVOID: "回避",
     wait: "等待",
     avoid: "回避",
     hold: "持有"
@@ -12177,7 +12378,7 @@ function buildFundActionabilitySignals(digest) {
       : action === "staged_buy"
         ? (highDrawdown ? "3%-8%" : "5%-15%")
         : action === "wait"
-          ? "0%-3% watch/test only"
+          ? "0%-3% 观察/试探"
           : "0%";
   const feeEvidenceOk = feeType !== "unknown" && !missingFeeData.length;
   const evidenceCount = [trend.ok, risk.ok, holdingsOutlook.hasHoldings, feeEvidenceOk].filter(Boolean).length;
@@ -12185,7 +12386,7 @@ function buildFundActionabilitySignals(digest) {
   const decisiveEvidence = [
     trend.ok ? formatTrendActionabilityEvidence(trend) : "",
     trend.pullbackSetup?.signal && trend.pullbackSetup.signal !== "none" ? `回调启动信号=${trend.pullbackSetup.signalText}，评分=${trend.pullbackSetup.score}` : "",
-    risk.ok ? `1yReturn=${risk.totalReturnPct}%, maxDrawdown=${risk.maxDrawdownPct}%, sharpe=${risk.sharpe}` : "",
+    risk.ok ? `近一年收益${risk.totalReturnPct}%，最大回撤${risk.maxDrawdownPct}%，夏普${risk.sharpe}` : "",
     holdingsOutlook.evidence,
     formatMoneyMarketEvidence(digest.moneyMarket),
     fees.shareClassFeeModel?.label || "",
@@ -15387,6 +15588,7 @@ export {
   buildFundWorkflowWatchlistSummary,
   classifyMessageIntent,
   compactModelInputForContext,
+  compactPublicFundSnapshot,
   computeTrendProfile,
   defaultSkillIdsForWorkflow,
   enforceFundAnswerQuality,

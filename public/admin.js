@@ -194,7 +194,7 @@ async function loadStats() {
 }
 
 async function loadPortfolio() {
-  const result = await apiFetch("/api/portfolio", { timeoutMs: 45000 });
+  const result = await apiFetch("/api/portfolio?summary=1", { timeoutMs: 45000 });
   const portfolio = result.portfolio || {};
   const account = portfolio.account || {};
   setText("#portfolioTotalAsset", formatMoney(account.totalAsset));

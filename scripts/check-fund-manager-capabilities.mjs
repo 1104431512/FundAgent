@@ -1650,6 +1650,7 @@ assert(serverSource.includes("drawChartTextFit"), "summary chart renderer must f
 assert(serverSource.includes("REPORT_CHART_MIN_TEXT_SCALE = 3"), "summary chart must keep thumbnail-safe minimum text scale");
 assert(serverSource.includes("showAxisLabels: false"), "summary chart must hide dense axis tick text in Feishu thumbnails");
 assert(serverSource.includes('staged_buy: "分批"'), "summary chart must render staged-buy states in Chinese instead of the ambiguous STAGE value");
+assert(serverSource.includes('STAGE: "分批"'), "summary chart must translate legacy STAGE/BATCH values if upstream evidence still uses them");
 assert(!serverSource.includes('staged_buy: "STAGE"'), "summary chart must not show STAGE for staged-buy states in new images");
 for (const label of ["基金", "净值", "区间涨跌", "净值走势", "买点费用", "入场", "信号", "低位", "年低", "动作", "份额", "费用", "近20日", "近60日", "回撤", "规模"]) {
   assert(serverSource.includes(label), `summary chart must use readable compact label: ${label}`);
@@ -1662,6 +1663,12 @@ assert(!/drawText\([^;\n]*,\s*1\)/.test(serverSource), "summary chart must not u
 const tinyFontSource = serverSource.slice(serverSource.indexOf("const TINY_FONT"), serverSource.indexOf("function encodePngRgba"));
 assert(!/[\u4e00-\u9fff]/.test(tinyFontSource), "tiny chart font must not keep Chinese bitmap glyphs that render like QR codes");
 assert(!/drawYAxisTickLabels\([^;\n]*["'][\u4e00-\u9fff]/.test(serverSource), "summary chart must not use Chinese axis labels in bitmap text");
+const localizedStageTerms = manager.normalizeUserFacingFundAnswer("stage=low_position_rotation，actionBias=early_staged_buy，positionSignal=high_chase_risk。");
+assert(localizedStageTerms.includes("阶段=低位轮动"), "localization must translate raw stage labels into Chinese");
+assert(localizedStageTerms.includes("操作倾向=早期分批买入"), "localization must translate raw action-bias labels into Chinese");
+assert(!/\b(?:stage|actionBias|positionSignal|low_position_rotation|early_staged_buy|high_chase_risk)\b/i.test(localizedStageTerms), "localized stage text must not keep raw theme radar fields");
+assert(serverSource.includes("题材雷达："), "market evidence summary must present theme radar evidence in Chinese");
+assert(!serverSource.includes("theme.stage ? `stage=${theme.stage}`"), "market evidence summary must not feed raw stage enums to the final answer path");
 
 const selectedChartProfiles = manager.selectFundReportProfilesForAnswer([
   { code: "000001", name: "低位修复基金A", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.01 }] } },
@@ -2164,6 +2171,29 @@ assert(!Object.hasOwn(compactReviewProfile.trendProfile, "series"), "weekly/prof
 assert.equal(compactReviewProfile.topHoldings.length, 10, "compact review profiles must still preserve top-ten holdings");
 assert.equal(compactReviewProfile.actionability.decisiveEvidence.length, 5, "compact actionability must cap evidence lists for context safety");
 assert.equal(compactReviewProfile.actionability.holdingsOutlook.topHoldings.length, 10, "compact actionability must preserve the full top-ten holdings view without extra overflow");
+const compactPublicSnapshot = manager.compactPublicFundSnapshot({
+  code: "000098",
+  name: "后台轻量接口测试基金C",
+  nav: 1.2345,
+  navDate: "2026-05-22",
+  trendProfile: noisyTrendProfile,
+  actionability: noisyActionability,
+  fees: {
+    shareClass: "C",
+    feeImpact: {
+      oneYearCostPer10000: 42,
+      twoYearCostPer10000: 84
+    }
+  },
+  holdings: {
+    equityTopHoldings: Array.from({ length: 12 }, (_, index) => `${index + 1}号持仓 ${(index + 1) * 1.1}%`)
+  }
+});
+assert(compactPublicSnapshot.trendProfile.series.length <= 32, "portfolio summary API snapshots must thin NAV series for fast admin rendering");
+assert(!JSON.stringify(compactPublicSnapshot).includes("dailyReturnPct"), "portfolio summary API snapshots must strip per-day chart fields");
+assert.equal(compactPublicSnapshot.topHoldings.length, 10, "portfolio summary API snapshots must preserve top-ten holdings");
+assert.equal(compactPublicSnapshot.actionability.holdingsOutlook.topHoldings.length, 10, "portfolio summary API snapshots must preserve actionability holding outlook");
+assert.equal(compactPublicSnapshot.fees.feeImpact.oneYearCostPer10000, 42, "portfolio summary API snapshots must preserve share-class fee impact");
 const compactWeeklyContext = manager.compactPortfolioWeeklyContext({
   startDate: "2026-05-16",
   endDate: "2026-05-22",

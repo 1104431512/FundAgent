@@ -288,6 +288,14 @@ const requiredPatterns = [
     message: "fund report charts must avoid ambiguous STAGE in new images and explain it for users who saw older charts."
   },
   {
+    pattern: /STAGE:\s*"分批"/,
+    message: "fund report charts must translate legacy STAGE values into Chinese if upstream data still contains them."
+  },
+  {
+    pattern: /题材雷达：[\s\S]{0,300}formatThemeRadarEvidenceLine/,
+    message: "market evidence summaries must feed Chinese theme-radar labels instead of raw stage/actionBias fields."
+  },
+  {
     pattern: /用来确认是否适合分批买入[\s\S]{0,120}用来观察是否能从备选转入买点/,
     message: "fund chart reading guides must explain how each chart supports buy or backup decisions."
   },
@@ -1182,6 +1190,18 @@ const requiredPatterns = [
   {
     pattern: /Data_sevenDaysYearIncome/,
     message: "money-market funds must parse seven-day annualized yield from public data."
+  },
+  {
+    pattern: /apiFetch\("\/api\/portfolio\?summary=1"/,
+    message: "admin initial portfolio load must use the lightweight summary API."
+  },
+  {
+    pattern: /function compactPublicTrendSeries[\s\S]{0,260}date: item\.date[\s\S]{0,180}nav: finiteMetricNumber/,
+    message: "portfolio summary API must compact chart series to date and NAV only."
+  },
+  {
+    pattern: /summarizePortfolioPositionBrief[\s\S]{0,180}compactPublicFundSnapshot/,
+    message: "portfolio summary API must compact held-position fund snapshots."
   }
 ];
 
