@@ -246,6 +246,15 @@ assert.equal(investedReturnDb.account.investedCost, 10000, "portfolio account mu
 assert.equal(investedReturnDb.account.cumulativePnl, 739.77, "portfolio account PnL amount should still reflect total asset minus initial cash ledger");
 assert.equal(investedReturnDb.account.cumulativePnlPct, 7.4, "portfolio PnL percentage must use actual invested amount instead of initial capital");
 assert.equal(investedReturnDb.account.capitalPnlPct, 0.74, "portfolio account may still expose initial-capital return separately for reference");
+const exposureSummary = manager.buildPortfolioExposureSummary([
+  { code: "008327", name: "东财通信C", currentValue: 12000, weightPct: 12, fundSnapshot: { topHoldings: ["300502 新易盛 8.74%", "300308 中际旭创 7.98%"] } },
+  { code: "006265", name: "红土创新新科技股票A", currentValue: 10000, weightPct: 10, fundSnapshot: { topHoldings: ["300308 中际旭创 8.54%", "300502 新易盛 8.36%"] } },
+  { code: "001986", name: "前海开源人工智能主题混合A", currentValue: 8000, weightPct: 8, fundSnapshot: { topHoldings: ["300502 新易盛 9.3%", "002222 福晶科技 8.57%"] } }
+]);
+assert.equal(exposureSummary.riskLevel, "high", "portfolio exposure summary must flag concentrated same-theme holdings as high risk");
+assert(exposureSummary.themeClusters.some((item) => item.theme === "科技" && item.positionWeightPct >= 30), "portfolio exposure summary must aggregate same-theme fund weights");
+assert(exposureSummary.overlappingHoldings.some((item) => item.name === "新易盛" && item.fundCount === 3), "portfolio exposure summary must catch repeated underlying top holdings");
+assert(exposureSummary.riskNotes.some((item) => item.includes("同题材暴露过度集中")), "portfolio exposure summary must produce user-readable concentration risk notes");
 const normalizedInvestedCostText = manager.normalizePortfolioInvestedCostReturnText(
   "累计盈亏由+1291.65转为-328.07，按初始资金口径为-0.33%。",
   { investedCost: 30002.28, cumulativePnlPct: -1.09 }

@@ -1316,6 +1316,7 @@ async function executePortfolioWeekly(db, run, config) {
 }
 
 async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, watchlist = [], watchlistProfiles = [], watchlistSeedCandidates = [], seedProfiles = [], config, profileContext }) {
+  const exposureSummary = buildPortfolioExposureSummary(account.positions || []);
   const skillContext = buildSkillContextForIntent(
     { workflow: "portfolio_status", skillIds: ["fund-portfolio-profile", "fund-portfolio-research", "fund-portfolio-decision", "fund-portfolio-execution"] },
     []
@@ -1333,6 +1334,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "交易建议应以 targetWeightPct 为主，amount 只是建议值；系统执行时会按公开净值、现金和已有持仓重新计算真实份额。",
     "必须执行账户级回撤预算：账户回撤到预警线时缩小买入，到最大回撤预算时暂停新增买入并优先分批降风险；不能用加仓摊薄替代止损。",
     "必须执行单仓风控：浮亏触及止损线、浮盈大幅回吐或趋势破位时，先给 SELL/减仓复核，不要只写 HOLD。",
+    "必须执行组合穿透暴露检查：同题材仓位、同一底层前十大持仓重叠、单一风格过热时，组合经理和风控经理必须写清不加仓或减风险条件。",
     "如果候选基金缺少可验证净值或走势数据，倾向 WATCH，不要强行 BUY。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
     "",
@@ -1351,6 +1353,10 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "当前持仓联网资料：",
     JSON.stringify(heldProfiles || [], null, 2),
+    "",
+    "组合穿透暴露诊断（系统计算，必须进入组合经理/风控经理理由）：",
+    JSON.stringify(exposureSummary, null, 2),
+    "要求：如果 riskLevel 为 high 或 warning，riskNotes、team.风控经理、actions.riskControl 必须说明是否需要暂停新增同题材买入、等待回撤，或对已有持仓设置减仓触发。",
     "",
     "当前持仓复核队列（系统复核后）：",
     JSON.stringify(buildPortfolioHeldPositionReviewQueue(account.positions || [], heldProfiles), null, 2),
@@ -1925,6 +1931,142 @@ function normalizePortfolioActions(value) {
     })
     .filter((item) => item.action === "HOLD" || item.action === "WATCH" || item.code)
     .slice(0, 10);
+}
+
+function buildPortfolioExposureSummary(positions = []) {
+  const activePositions = (positions || []).filter((position) => Number(position?.currentValue || 0) > 0);
+  const themeMap = new Map();
+  const holdingMap = new Map();
+  let totalPositionWeightPct = 0;
+  for (const position of activePositions) {
+    const positionWeightPct = finiteMetricNumber(position.weightPct) || 0;
+    totalPositionWeightPct += positionWeightPct;
+    const fundLabel = `${position.code || ""} ${position.name || ""}`.trim();
+    const holdings = collectPortfolioPositionHoldingItems(position);
+    const explicitTags = normalizeStringArray(position.fundSnapshot?.actionability?.holdingsOutlook?.holdingTags);
+    const tags = new Set([
+      ...explicitTags,
+      ...holdings.flatMap((holding) => inferHoldingThemeTags(`${holding.code || ""} ${holding.name || ""}`)),
+      ...inferHoldingThemeTags(`${position.name || ""} ${position.fundSnapshot?.name || ""}`)
+    ].filter(Boolean));
+    for (const tag of tags) {
+      const current = themeMap.get(tag) || { theme: tag, positionWeightPct: 0, funds: [] };
+      current.positionWeightPct += positionWeightPct;
+      current.funds = mergeStringLists(current.funds, [fundLabel].filter(Boolean)).slice(0, 8);
+      themeMap.set(tag, current);
+    }
+    for (const holding of holdings) {
+      const key = holding.code || holding.name;
+      if (!key) continue;
+      const current = holdingMap.get(key) || {
+        code: holding.code || "",
+        name: holding.name || "",
+        fundCount: 0,
+        fundEnvelopePct: 0,
+        estimatedAccountPct: 0,
+        funds: []
+      };
+      current.fundCount += 1;
+      current.fundEnvelopePct += positionWeightPct;
+      if (Number.isFinite(holding.pct)) {
+        current.estimatedAccountPct += positionWeightPct * holding.pct / 100;
+      }
+      current.funds = mergeStringLists(
+        current.funds,
+        [`${fundLabel}${Number.isFinite(holding.pct) ? ` ${round(holding.pct, 2)}%` : ""}`.trim()]
+      ).slice(0, 8);
+      holdingMap.set(key, current);
+    }
+  }
+
+  const themeClusters = [...themeMap.values()]
+    .map((item) => ({
+      theme: item.theme,
+      positionWeightPct: round(item.positionWeightPct, 2),
+      fundCount: item.funds.length,
+      funds: item.funds
+    }))
+    .filter((item) => item.positionWeightPct > 0)
+    .sort((a, b) => Number(b.positionWeightPct || 0) - Number(a.positionWeightPct || 0))
+    .slice(0, 8);
+
+  const overlappingHoldings = [...holdingMap.values()]
+    .map((item) => ({
+      code: item.code,
+      name: item.name,
+      fundCount: item.fundCount,
+      fundEnvelopePct: round(item.fundEnvelopePct, 2),
+      estimatedAccountPct: round(item.estimatedAccountPct, 2),
+      funds: item.funds
+    }))
+    .filter((item) => item.fundCount >= 2)
+    .sort((a, b) =>
+      Number(b.fundCount || 0) - Number(a.fundCount || 0)
+      || Number(b.estimatedAccountPct || 0) - Number(a.estimatedAccountPct || 0)
+    )
+    .slice(0, 10);
+
+  const largestPosition = [...activePositions]
+    .sort((a, b) => Number(b.weightPct || 0) - Number(a.weightPct || 0))[0] || null;
+  const riskNotes = buildPortfolioExposureRiskNotes({ themeClusters, overlappingHoldings, totalPositionWeightPct });
+  return {
+    totalPositionWeightPct: round(totalPositionWeightPct, 2),
+    riskLevel: riskNotes.some((item) => /过度集中|重复持有/.test(item)) ? "high" : riskNotes.length ? "warning" : "normal",
+    largestPosition: largestPosition ? {
+      code: largestPosition.code || "",
+      name: largestPosition.name || "",
+      weightPct: round(Number(largestPosition.weightPct || 0), 2)
+    } : null,
+    themeClusters,
+    overlappingHoldings,
+    riskNotes
+  };
+}
+
+function collectPortfolioPositionHoldingItems(position = {}) {
+  const snapshot = position.fundSnapshot || {};
+  const source = Array.isArray(snapshot.topHoldings) && snapshot.topHoldings.length
+    ? snapshot.topHoldings
+    : snapshot.holdings?.equityTopHoldings?.length
+      ? snapshot.holdings.equityTopHoldings
+      : snapshot.holdings?.bondTopHoldings?.length
+        ? snapshot.holdings.bondTopHoldings
+        : snapshot.actionability?.holdingsOutlook?.topHoldings || [];
+  return normalizeHoldingItems(source).slice(0, 10);
+}
+
+function buildPortfolioExposureRiskNotes({ themeClusters = [], overlappingHoldings = [], totalPositionWeightPct = 0 } = {}) {
+  const notes = [];
+  const topTheme = themeClusters[0];
+  if (topTheme && Number(topTheme.positionWeightPct) >= 25) {
+    notes.push(`同题材暴露过度集中：${topTheme.theme}相关基金约${formatFallbackPlainPct(topTheme.positionWeightPct)}，新增同线买入应暂停或等回撤。`);
+  } else if (topTheme && Number(topTheme.positionWeightPct) >= 18) {
+    notes.push(`同题材暴露偏高：${topTheme.theme}相关基金约${formatFallbackPlainPct(topTheme.positionWeightPct)}，加仓前需证明低位轮动而非追涨。`);
+  }
+  const repeated = overlappingHoldings.find((item) => Number(item.fundCount) >= 3) || overlappingHoldings[0];
+  if (repeated) {
+    const holdingName = [repeated.code, repeated.name].filter(Boolean).join(" ") || "同一底层持仓";
+    const severity = Number(repeated.fundCount) >= 3 ? "重复持有明显" : "存在重复持有";
+    notes.push(`${severity}：${holdingName} 出现在${repeated.fundCount}只持仓基金前十大中，穿透估算约${formatFallbackPlainPct(repeated.estimatedAccountPct)}。`);
+  }
+  if (Number(totalPositionWeightPct) >= 70) {
+    notes.push(`组合仓位${formatFallbackPlainPct(totalPositionWeightPct)}偏高，新增买入必须受账户回撤预算约束。`);
+  }
+  return notes.slice(0, 4);
+}
+
+function formatPortfolioExposureSummaryLines(summary = {}) {
+  const lines = [];
+  const topTheme = summary.themeClusters?.[0];
+  if (topTheme) {
+    lines.push(`同题材暴露：${topTheme.theme}约${formatFallbackPlainPct(topTheme.positionWeightPct)}，涉及 ${topTheme.fundCount} 只基金。`);
+  }
+  if (summary.overlappingHoldings?.length) {
+    const repeated = summary.overlappingHoldings[0];
+    lines.push(`底层重叠：${[repeated.code, repeated.name].filter(Boolean).join(" ") || "重复持仓"} 出现在 ${repeated.fundCount} 只基金前十大中，穿透估算约${formatFallbackPlainPct(repeated.estimatedAccountPct)}。`);
+  }
+  lines.push(...normalizeStringArray(summary.riskNotes).slice(0, 3));
+  return lines;
 }
 
 function getActivePortfolioWatchlist(db) {
@@ -6032,6 +6174,13 @@ function buildPortfolioStatusAnswer(userText, intent) {
     }
   }
 
+  const exposureSummary = buildPortfolioExposureSummary(account.positions || []);
+  if ((wantsPosition || wantsOperation || (!wantsOnlyProfileOrSchedule && !wantsWatchlist)) && exposureSummary.riskNotes.length) {
+    lines.push("");
+    lines.push("组合穿透暴露：");
+    lines.push(...formatPortfolioExposureSummaryLines(exposureSummary));
+  }
+
   if (wantsWatchlist || (!wantsOperation && !wantsOnlyProfileOrSchedule)) {
     const watchlist = getActivePortfolioWatchlist(db);
     lines.push("");
@@ -6149,6 +6298,7 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
       lastSeenAt: target.lastSeenAt
     })),
     account: summarizeAccount(db.account),
+    exposureSummary: buildPortfolioExposureSummary(db.account.positions || []),
     positions: db.account.positions.map(summarizePosition),
     watchlist: getActivePortfolioWatchlist(db).slice(0, lightweight ? 12 : 50).map(summarizeWatch),
     activeOrders: (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status)).map(summarizePortfolioOrder),
@@ -15805,6 +15955,7 @@ export {
   buildPortfolioHeldPositionReviewActions,
   buildPortfolioHeldPositionReviewQueue,
   buildPortfolioDecisionReadinessQueue,
+  buildPortfolioExposureSummary,
   buildPortfolioAccountRiskBudget,
   buildPortfolioReadyWatchlistReviewActions,
   buildPortfolioPositionRiskBudget,

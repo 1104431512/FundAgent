@@ -664,6 +664,22 @@ const requiredPatterns = [
     message: "portfolio BUY exposure guard must explain duplicate exposure blocks in user-readable Chinese."
   },
   {
+    pattern: /buildPortfolioExposureSummary/,
+    message: "portfolio manager must compute portfolio-level look-through exposure and overlap diagnostics."
+  },
+  {
+    pattern: /组合穿透暴露诊断/,
+    message: "portfolio decision prompts must force model review of theme and underlying holding concentration."
+  },
+  {
+    pattern: /exposureSummary/,
+    message: "portfolio API must expose look-through exposure diagnostics for the admin UI."
+  },
+  {
+    pattern: /同题材暴露[\s\S]{0,600}底层重叠/,
+    message: "admin portfolio holdings summary must display same-theme exposure and repeated underlying holdings."
+  },
+  {
     pattern: /缺少可验证费用\/份额证据/,
     message: "portfolio BUY guard must explain when share-class fee evidence is missing."
   },

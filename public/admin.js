@@ -294,7 +294,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   updateRunStateBadge(latestRun, portfolio.scheduler || {});
 
   renderInsightList("#portfolioManagerSummary", buildManagerInsightItems(portfolio, latestRun, activeOrders), "暂无经理运行摘要。");
-  renderInsightList("#portfolioHoldingSummary", buildHoldingInsightItems(account, positions), "暂无持仓暴露。");
+  renderInsightList("#portfolioHoldingSummary", buildHoldingInsightItems(account, positions, portfolio.exposureSummary || null), "暂无持仓暴露。");
   renderInsightList("#portfolioReadinessSummary", buildReadinessInsightItems({ ready, waiting, launchEve, blocked }), "暂无接近买点的候选。");
 }
 
@@ -335,12 +335,13 @@ function buildManagerInsightItems(portfolio, latestRun, activeOrders) {
   ];
 }
 
-function buildHoldingInsightItems(account, positions) {
+function buildHoldingInsightItems(account, positions, exposureSummary = null) {
   if (!positions.length) return [];
   const sorted = [...positions].sort((a, b) => Number(b.weightPct || 0) - Number(a.weightPct || 0));
   const biggest = sorted[0];
   const pnlSorted = [...positions].sort((a, b) => Number(b.unrealizedPnl || 0) - Number(a.unrealizedPnl || 0));
   const topHoldings = collectPortfolioTopHoldings(positions).slice(0, TOP_HOLDINGS_DISPLAY_LIMIT);
+  const exposureItems = buildExposureInsightItems(exposureSummary);
   return [
     {
       label: "仓位结构",
@@ -361,8 +362,38 @@ function buildHoldingInsightItems(account, positions) {
       label: "持仓穿透",
       value: topHoldings.length ? topHoldings.join(" / ") : "暂无前十大持仓",
       meta: topHoldings.length ? "来自持仓基金快照的代表性前十大持仓" : "下次净值下钻后补充"
-    }
+    },
+    ...exposureItems
   ];
+}
+
+function buildExposureInsightItems(summary = null) {
+  if (!summary || typeof summary !== "object") return [];
+  const items = [];
+  const topTheme = (summary.themeClusters || [])[0];
+  if (topTheme) {
+    items.push({
+      label: "同题材暴露",
+      value: `${topTheme.theme} ${formatNumber(topTheme.positionWeightPct, 1)}%`,
+      meta: topTheme.funds?.length ? `涉及 ${topTheme.fundCount || topTheme.funds.length} 只：${topTheme.funds.slice(0, 3).join(" / ")}` : "按底层持仓和基金名称估算"
+    });
+  }
+  const repeated = (summary.overlappingHoldings || [])[0];
+  if (repeated) {
+    items.push({
+      label: "底层重叠",
+      value: `${[repeated.code, repeated.name].filter(Boolean).join(" ")} · ${repeated.fundCount} 只`,
+      meta: `穿透估算 ${formatNumber(repeated.estimatedAccountPct, 2)}%，基金壳暴露 ${formatNumber(repeated.fundEnvelopePct, 1)}%`
+    });
+  }
+  if (summary.riskNotes?.length) {
+    items.push({
+      label: "集中风险",
+      value: summary.riskLevel === "high" ? "需要降温" : "需要复核",
+      meta: summary.riskNotes[0]
+    });
+  }
+  return items;
 }
 
 function formatPortfolioRiskBudget(account = {}) {
