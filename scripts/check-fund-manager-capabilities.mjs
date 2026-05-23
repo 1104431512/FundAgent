@@ -2698,6 +2698,16 @@ const dirtyModelNameDiagnostics = manager.buildRuntimeDiagnostics({
   last: { lastError: 'HTTP 502: {"error":{"message":"unknown provider for model \\"gpt-5.5 # 改成你的服务商支持的模型\\""}}' }
 });
 assert(dirtyModelNameDiagnostics.items.some((item) => item.label === "模型名称疑似带注释"), "runtime diagnostics must explicitly flag model names polluted by inline comments");
+const answerQualityIssueDiagnostics = manager.buildRuntimeDiagnostics({
+  counters: { fundAnswerQualityFailures: 9, fundAnswerQualityPasses: 1 },
+  last: {
+    lastFundAnswerQualityIssues: "missing_no_qualified_pullback_message,recommends_without_qualified_pullback_candidate,missing_pullback_share_class_fee"
+  }
+});
+const answerIssueDiagnostic = answerQualityIssueDiagnostics.items.find((item) => item.label === "最近质检问题");
+assert(answerIssueDiagnostic, "runtime diagnostics must translate recent answer-quality issue codes into a visible diagnostic");
+assert(answerIssueDiagnostic.note.includes("回调/低位启动请求存在硬凑或错推风险"), "answer-quality diagnostic must explain pullback/setup hard-pick failures in Chinese");
+assert(answerIssueDiagnostic.note.includes("主推荐缺少A/C份额和费用依据"), "answer-quality diagnostic must explain missing share-class fee evidence");
 const previousModelMaxInputChars = process.env.MODEL_MAX_INPUT_CHARS;
 process.env.MODEL_MAX_INPUT_CHARS = "24000";
 const compactedModelInput = manager.compactModelInputForContext({

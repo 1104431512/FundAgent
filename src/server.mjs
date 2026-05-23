@@ -15280,6 +15280,7 @@ function buildRuntimeDiagnostics(stats = {}) {
       criticalRate: 0.18,
       note: "说明回答可能缺少动作、证据、费用或中文化，需要关注质检 issue。"
     }),
+    buildFundAnswerQualityIssueDiagnostic(last),
     buildModelConfigCommentDiagnostic(last),
     buildContextWindowDiagnostic(last)
   ].filter(Boolean);
@@ -15307,6 +15308,46 @@ function buildCounterRateDiagnostic({ label, failures, total, warningRate, criti
     value: `${failed}/${count} (${round(rate * 100, 1)}%)`,
     note
   };
+}
+
+function buildFundAnswerQualityIssueDiagnostic(last = {}) {
+  const issues = parseFundAnswerQualityIssues(last.lastFundAnswerQualityIssues);
+  if (!issues.length) return null;
+  const categories = summarizeFundAnswerQualityIssueCategories(issues);
+  if (!categories.length) return null;
+  const severe = issues.some((issue) => /watch_candidate|recommendation_not_from|recommends_without|stale_data|missing_no_qualified|missing_pullback_main_candidate_code/.test(issue));
+  return {
+    severity: severe ? "critical" : "warning",
+    label: "最近质检问题",
+    value: `${issues.length} 个 issue`,
+    note: categories.slice(0, 3).join("；")
+  };
+}
+
+function parseFundAnswerQualityIssues(value) {
+  return String(value || "")
+    .split(/[,，\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function summarizeFundAnswerQualityIssueCategories(issues = []) {
+  const text = issues.join(",");
+  const categories = [];
+  const add = (pattern, note) => {
+    if (pattern.test(text)) categories.push(note);
+  };
+  add(/watch_candidate_promoted_to_recommendation|recommendation_not_from_pullback_main_candidates|recommends_without_qualified_pullback_candidate|missing_no_qualified_pullback_message|missing_pullback_main_candidate_code/, "回调/低位启动请求存在硬凑或错推风险：没有合格主候选时必须明确先不买");
+  add(/watch_candidate_given_buy_execution|watch_candidate_given_buy_signal/, "观察池候选被写成可买：备选只能给等待条件和0元观察");
+  add(/stale_data_candidate_given_buy_execution|stale_data_candidate_given_buy_signal/, "过期净值/走势仍给买入：必须重新下钻复核后再谈金额");
+  add(/missing_pullback_timing_evidence/, "主推荐缺少回调、低位、5日/10日转强或近20/60日不过热证据");
+  add(/missing_pullback_share_class_fee/, "主推荐缺少A/C份额和费用依据，无法支撑执行金额");
+  add(/missing_pullback_three_tier_execution/, "缺少激进/均衡/保守三档执行方案");
+  add(/missing_market_data_quality_disclosure/, "公开数据源不完整但没有主动降级说明");
+  add(/insufficient_chart_linked_candidates/, "图文覆盖不足：有候选却没有补足买入参考和备选观察配图");
+  add(/internal_signal_leak|raw_english_section_leak|stiff_confidence_label/, "表达仍有内部字段、英文栏目或生硬把握度，需要中文自然化");
+  add(/generic_cliche_answer|risk_dump_without_decision_boundary|missing_actionable_decision/, "回答偏套话或只堆风险，缺少动作边界");
+  return [...new Set(categories)];
 }
 
 function buildModelConfigCommentDiagnostic(last = {}) {

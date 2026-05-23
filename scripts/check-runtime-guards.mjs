@@ -1140,7 +1140,19 @@ const requiredPatterns = [
     message: "runtime stats must expose diagnostics so manager degradation is visible."
   },
   {
-    pattern: /function buildRuntimeDiagnostics[\s\S]{0,4200}市场快照失败[\s\S]{0,1200}持仓补全失败[\s\S]{0,3400}模型上下文超限/,
+    pattern: /buildFundAnswerQualityIssueDiagnostic\(last\)/,
+    message: "runtime diagnostics must translate recent answer-quality issue codes into actionable Chinese notes."
+  },
+  {
+    pattern: /回调\/低位启动请求存在硬凑或错推风险/,
+    message: "answer-quality diagnostics must explain pullback hard-pick and share-class fee failures."
+  },
+  {
+    pattern: /主推荐缺少A\/C份额和费用依据/,
+    message: "answer-quality diagnostics must explain missing share-class fee evidence."
+  },
+  {
+    pattern: /function buildRuntimeDiagnostics[\s\S]{0,6200}市场快照失败[\s\S]{0,1400}持仓补全失败[\s\S]{0,5200}模型上下文超限/,
     message: "runtime diagnostics must highlight context-window, market snapshot, and holdings failures."
   },
   {
