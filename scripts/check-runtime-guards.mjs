@@ -992,6 +992,18 @@ const requiredPatterns = [
     message: "model calls need a global input ceiling to prevent context-window failures on long portfolio reports."
   },
   {
+    pattern: /function parseDotEnvValue[\s\S]{0,520}replace\(\/\\s\+#\.\*\$\/g/,
+    message: "dotenv parser must strip unquoted inline comments so model names do not include human notes."
+  },
+  {
+    pattern: /next\.modelName\s*=\s*normalizeModelName\(next\.modelName \|\| "gpt-5\.5"\)/,
+    message: "effective config must sanitize model names polluted by inline comments."
+  },
+  {
+    pattern: /buildModelConfigCommentDiagnostic\(last\)/,
+    message: "runtime diagnostics must explicitly flag model names polluted by inline comments."
+  },
+  {
     pattern: /function compactModelInputForContext[\s\S]{0,900}getModelMaxInputChars[\s\S]{0,900}compactTextMiddle/,
     message: "model calls must compact oversized prompts before sending them to the API."
   },
@@ -1128,7 +1140,7 @@ const requiredPatterns = [
     message: "runtime stats must expose diagnostics so manager degradation is visible."
   },
   {
-    pattern: /function buildRuntimeDiagnostics[\s\S]{0,3600}市场快照失败[\s\S]{0,900}持仓补全失败[\s\S]{0,2600}模型上下文超限/,
+    pattern: /function buildRuntimeDiagnostics[\s\S]{0,4200}市场快照失败[\s\S]{0,1200}持仓补全失败[\s\S]{0,3400}模型上下文超限/,
     message: "runtime diagnostics must highlight context-window, market snapshot, and holdings failures."
   },
   {

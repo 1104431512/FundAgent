@@ -2690,6 +2690,14 @@ const portfolioPremarketSource = serverSource.slice(
 assert(portfolioPremarketSource.includes("const compactProfiles = (profiles || []).map(compactPortfolioReviewProfile);"), "portfolio premarket prompts must compact holding profiles before model calls");
 assert(portfolioPremarketSource.includes("JSON.stringify(compactProfiles, null, 2)"), "portfolio premarket prompts must stringify compact holding profiles");
 assert(!portfolioPremarketSource.includes("JSON.stringify(profiles || [], null, 2)"), "portfolio premarket prompts must not send raw holding profiles");
+assert.equal(manager.parseDotEnvValue("gpt-5.5 # 改成你的服务商支持的模型"), "gpt-5.5", "dotenv parser must strip unquoted inline comments from model names");
+assert.equal(manager.parseDotEnvValue('"gpt-5.5 # quoted model" # comment'), "gpt-5.5 # quoted model", "dotenv parser must preserve quoted hash characters while ignoring trailing comments");
+assert.equal(manager.normalizeModelName("gpt-5.5 # 改成你的服务商支持的模型"), "gpt-5.5", "effective config must sanitize model names polluted by inline comments");
+const dirtyModelNameDiagnostics = manager.buildRuntimeDiagnostics({
+  counters: { modelCalls: 7, modelFailures: 7 },
+  last: { lastError: 'HTTP 502: {"error":{"message":"unknown provider for model \\"gpt-5.5 # 改成你的服务商支持的模型\\""}}' }
+});
+assert(dirtyModelNameDiagnostics.items.some((item) => item.label === "模型名称疑似带注释"), "runtime diagnostics must explicitly flag model names polluted by inline comments");
 const previousModelMaxInputChars = process.env.MODEL_MAX_INPUT_CHARS;
 process.env.MODEL_MAX_INPUT_CHARS = "24000";
 const compactedModelInput = manager.compactModelInputForContext({

@@ -14946,6 +14946,9 @@ function getEffectiveConfig() {
 
 function normalizeEffectiveConfig(config) {
   const next = { ...config };
+  next.modelBaseUrl = String(next.modelBaseUrl || "").trim();
+  next.modelName = normalizeModelName(next.modelName || "gpt-5.5");
+  next.modelApiKey = String(next.modelApiKey || "").trim();
   next.modelWireApi = normalizeWireApi(next.modelWireApi || "responses");
   next.modelReasoningEffort = normalizeReasoningEffort(next.modelReasoningEffort) || "high";
   next.modelMaxOutputTokens = Number(next.modelMaxOutputTokens || DEFAULT_MODEL_MAX_OUTPUT_TOKENS);
@@ -15043,7 +15046,9 @@ function saveConfigPatch(patch) {
 
   for (const field of textFields) {
     if (Object.hasOwn(patch, field)) {
-      next[field] = String(patch[field] ?? "").trim();
+      next[field] = field === "modelName"
+        ? normalizeModelName(patch[field])
+        : String(patch[field] ?? "").trim();
     }
   }
 
@@ -15275,6 +15280,7 @@ function buildRuntimeDiagnostics(stats = {}) {
       criticalRate: 0.18,
       note: "说明回答可能缺少动作、证据、费用或中文化，需要关注质检 issue。"
     }),
+    buildModelConfigCommentDiagnostic(last),
     buildContextWindowDiagnostic(last)
   ].filter(Boolean);
   const severityRank = { ok: 0, info: 1, warning: 2, critical: 3 };
@@ -15300,6 +15306,17 @@ function buildCounterRateDiagnostic({ label, failures, total, warningRate, criti
     label,
     value: `${failed}/${count} (${round(rate * 100, 1)}%)`,
     note
+  };
+}
+
+function buildModelConfigCommentDiagnostic(last = {}) {
+  const message = String(last.lastError || "");
+  if (!/(unknown provider|model|模型).{0,120}#|#.{0,80}(模型|model|provider)/i.test(message)) return null;
+  return {
+    severity: "critical",
+    label: "模型名称疑似带注释",
+    value: "最近一次模型错误",
+    note: "模型名里像是混入了 # 后面的注释文字；系统会清洗新配置，但已保存的配置需要重新打开保存或重启后复核。"
   };
 }
 
@@ -15422,6 +15439,9 @@ function recordError(error, extraCounters = {}) {
 }
 
 function validateModelConfig(config) {
+  if (config && typeof config === "object") {
+    config.modelName = normalizeModelName(config.modelName);
+  }
   if (!config.modelBaseUrl || !config.modelName || !config.modelApiKey) {
     throw new Error("模型配置不完整，请在管理界面填写 Base URL、模型名和 API Key。");
   }
@@ -16497,14 +16517,30 @@ function loadDotEnv(filePath) {
     const eq = line.indexOf("=");
     if (eq <= 0) continue;
     const key = line.slice(0, eq).trim();
-    let value = line.slice(eq + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
+    const value = parseDotEnvValue(line.slice(eq + 1));
     if (!process.env[key]) {
       process.env[key] = value;
     }
   }
+}
+
+function parseDotEnvValue(rawValue) {
+  const text = String(rawValue ?? "").trim();
+  if (!text) return "";
+  const quote = text[0];
+  if (quote === '"' || quote === "'") {
+    for (let index = 1; index < text.length; index += 1) {
+      if (text[index] === quote && text[index - 1] !== "\\") {
+        return text.slice(1, index);
+      }
+    }
+    return text.slice(1).trim();
+  }
+  return text.replace(/\s+#.*$/g, "").trim();
+}
+
+function normalizeModelName(value) {
+  return parseDotEnvValue(value).replace(/[\r\n]/g, "").trim();
 }
 
 function safeReadText(filePath) {
@@ -16694,7 +16730,9 @@ export {
   normalizePortfolioReview,
   normalizePortfolioWatchlist,
   normalizePortfolioWatchlistUpdates,
+  normalizeModelName,
   renderFundReportSummaryPng,
+  parseDotEnvValue,
   shouldReduceHeldPositionFromReview,
   summarizePortfolioOrder,
   capPortfolioSellAmountByDiscipline,
