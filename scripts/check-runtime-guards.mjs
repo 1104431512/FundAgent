@@ -1280,8 +1280,16 @@ const requiredPatterns = [
     message: "fund actionability must cap buy/staged-buy scores when the trend says wait for pullback."
   },
   {
+    pattern: /buildFundActionabilitySignals[\s\S]{0,3800}getActionabilityFreshnessDiscipline\(digest[\s\S]{0,900}boundedScore = Math\.min\(boundedScore, freshnessDiscipline\.scoreCap\)/,
+    message: "fund actionability must cap buy/staged-buy scores when NAV or trend evidence is stale."
+  },
+  {
     pattern: /function getActionabilityEntryDiscipline[\s\S]{0,1800}scoreCap:\s*58[\s\S]{0,600}不能给买入或分批买入动作/,
     message: "fund actionability entry discipline must explain hot/wait-pullback downgrades in Chinese."
+  },
+  {
+    pattern: /function getActionabilityFreshnessDiscipline[\s\S]{0,1800}系统数据时效降级[\s\S]{0,600}不能给买入或分批买入动作/,
+    message: "fund actionability freshness discipline must explain stale-data downgrades in Chinese."
   },
   {
     pattern: /formatPullbackSetupCandidateLine[\s\S]{0,2400}formatHoldingsOutlookEvidence/,

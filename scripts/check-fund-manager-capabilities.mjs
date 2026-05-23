@@ -1654,6 +1654,52 @@ assert(
   hotButStrongActionability.decisionBlocker.some((item) => item.includes("系统动作降级") && item.includes("不能给买入或分批买入动作")),
   "actionability blocker must explain why a hot fund is downgraded instead of sounding inconsistent"
 );
+const staleButStrongActionability = manager.buildFundActionabilitySignals({
+  ...holdingsSupportedDigest,
+  code: "000034",
+  name: "旧净值强势基金C",
+  snapshotDate: "2000-01-01",
+  nav: { navDate: "2000-01-01", nav: 1.2345 },
+  trendProfile: {
+    ...holdingsSupportedDigest.trendProfile,
+    ok: true,
+    latestDate: "2000-01-01",
+    entryBias: "buyable_now",
+    trendLabel: "uptrend",
+    pullbackSetup: { signal: "pullback_complete", signalText: "回调完成", score: 82 },
+    lowPositionPct120: 38.5,
+    lowPositionPct250: 46.2,
+    return5dPct: 1.4,
+    return10dPct: 2.8,
+    return20dPct: 4.5,
+    return60dPct: 7.2
+  },
+  risk: {
+    oneYear: {
+      ok: true,
+      totalReturnPct: 18.4,
+      annualizedReturnPct: 18.6,
+      maxDrawdownPct: -10.2,
+      sharpe: 1.12
+    }
+  },
+  fees: {
+    shareClass: "C",
+    shareClassFeeModel: { type: "sales_service_fee", label: "C类：偏销售服务费模型" },
+    feeImpact: {
+      oneYearCostPer10000: 42,
+      feeDragLevel: "low",
+      missingFeeData: []
+    },
+    missingFeeData: []
+  }
+});
+assert.equal(staleButStrongActionability.action, "wait", "actionability must not say buy/staged-buy when NAV or trend evidence is stale");
+assert(staleButStrongActionability.score < 62, "stale-data discipline must cap actionability below staged-buy threshold");
+assert(
+  staleButStrongActionability.decisionBlocker.some((item) => item.includes("系统数据时效降级") && item.includes("重新下钻复核") && item.includes("不能给买入或分批买入动作")),
+  "actionability blocker must explain stale NAV/trend data instead of presenting stale evidence as buyable"
+);
 const earlyTurnTrend = manager.computeTrendProfile(buildEarlyTurnNavPoints());
 assert.equal(earlyTurnTrend.ok, true, "early-turn synthetic series should produce a trend profile");
 assert(

@@ -13095,9 +13095,13 @@ function buildFundActionabilitySignals(digest) {
   score += Math.round(holdingsOutlook.score * 0.45);
 
   const entryDiscipline = getActionabilityEntryDiscipline(trend, { isMoneyMarket });
+  const freshnessDiscipline = getActionabilityFreshnessDiscipline(digest, { isMoneyMarket });
   let boundedScore = Math.max(0, Math.min(100, Math.round(score)));
   if (Number.isFinite(entryDiscipline.scoreCap)) {
     boundedScore = Math.min(boundedScore, entryDiscipline.scoreCap);
+  }
+  if (Number.isFinite(freshnessDiscipline.scoreCap)) {
+    boundedScore = Math.min(boundedScore, freshnessDiscipline.scoreCap);
   }
   const action = boundedScore >= 78
     ? "buy"
@@ -13137,6 +13141,7 @@ function buildFundActionabilitySignals(digest) {
   ].filter(Boolean).slice(0, 5);
   const decisionBlocker = [
     entryDiscipline.blocker || "",
+    freshnessDiscipline.blocker || "",
     trend.invalidationHint || "",
     isMoneyMarket ? "货币基金主要用于现金管理，不适合作为权益进攻仓或追求高弹性的配置。" : "",
     trend.trendLabel === "extended_uptrend" ? "短期涨幅偏热，不符合回调完成后启动的买点。" : "",
@@ -13184,6 +13189,23 @@ function getActionabilityEntryDiscipline(trend = {}, { isMoneyMarket = false } =
     return {
       scoreCap: 58,
       blocker: `系统动作降级：${hotEvidence}，买点判断仍是等待回撤，不能给买入或分批买入动作。`
+    };
+  }
+  return { scoreCap: null, blocker: "" };
+}
+
+function getActionabilityFreshnessDiscipline(digest = {}, { isMoneyMarket = false } = {}) {
+  if (isMoneyMarket || !digest || typeof digest !== "object") {
+    return { scoreCap: null, blocker: "" };
+  }
+  const evidenceDate = getPullbackTrendEvidenceDate(digest);
+  if (!evidenceDate) return { scoreCap: null, blocker: "" };
+  const age = daysSincePortfolioDate(evidenceDate);
+  const maxAge = finiteNumberOr(process.env.FUND_ACTIONABILITY_MAX_DATA_AGE_DAYS, 7);
+  if (Number.isFinite(age) && age > maxAge) {
+    return {
+      scoreCap: 58,
+      blocker: `系统数据时效降级：净值/走势已过期${age}天，需要重新下钻复核，不能给买入或分批买入动作。`
     };
   }
   return { scoreCap: null, blocker: "" };
