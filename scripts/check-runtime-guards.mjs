@@ -603,6 +603,22 @@ const requiredPatterns = [
     message: "virtual fund manager must persist a self-selected fund watchlist instead of only ad hoc weekly text."
   },
   {
+    pattern: /function getPortfolioDecisionSkillIds[\s\S]{0,700}fund-market-timing[\s\S]{0,260}fund-answer-quality/,
+    message: "portfolio decisions must load market-timing and answer-quality skills, not only portfolio bookkeeping skills."
+  },
+  {
+    pattern: /function hasPortfolioStarterBuySetup[\s\S]{0,900}return5dPct[\s\S]{0,260}return10dPct/,
+    message: "portfolio buy discipline must support small starter probes for low-position pullback setups that are starting to turn."
+  },
+  {
+    pattern: /function cancelDuplicatePortfolioActiveOrders[\s\S]{0,900}同一基金同方向已有未完成订单/,
+    message: "portfolio order lifecycle must cancel duplicate same-fund active orders before they double-execute."
+  },
+  {
+    pattern: /现金闲置风险[\s\S]{0,360}不能只说等待机会/,
+    message: "portfolio capability diagnostics must flag high-cash over-waiting as an actionable manager weakness."
+  },
+  {
     pattern: /consolidatePortfolioWatchlistAlternatives/,
     message: "portfolio watchlist must consolidate duplicate share classes and same-exposure alternatives."
   },

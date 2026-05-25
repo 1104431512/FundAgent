@@ -113,6 +113,7 @@ assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "盈�
 assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "追涨暴露待消化"), "capability diagnostics must surface hot-position chase risk");
 assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "数据质量缺口"), "capability diagnostics must surface stale or missing position evidence");
 assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "成交净值待核验"), "capability diagnostics must surface unverified virtual trade fills");
+assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "现金闲置风险"), "capability diagnostics must flag high-cash portfolios that have stopped deploying for too long");
 assert(serverSource.includes("capabilityDiagnostics: buildPortfolioCapabilityDiagnostics(db)"), "portfolio API must expose capability diagnostics");
 assert(serverSource.includes("capabilityActionQueue: buildPortfolioCapabilityActionQueue(db)"), "portfolio API must expose capability repair action queue");
 assert(adminSource.includes("buildCapabilityInsightItems") && adminHtmlSource.includes("portfolioCapabilitySummary"), "admin UI must render portfolio capability diagnostics");
@@ -140,6 +141,7 @@ const capabilityActionQueue = manager.buildPortfolioCapabilityActionQueue({
 });
 assert(capabilityActionQueue.some((item) => item.action.includes("先解释亏损来源")), "capability action queue must turn profitability pressure into a required review task");
 assert(capabilityActionQueue.some((item) => item.action.includes("暂停新增同线买入")), "capability action queue must turn chase-risk exposure into a buy-discipline task");
+assert(capabilityActionQueue.some((item) => item.action.includes("不能只说等待机会")), "capability action queue must force concrete work when high cash becomes idle");
 const capabilityProfileContext = manager.buildPortfolioManagerProfileContext({
   portfolioPremarketTime: "09:00",
   portfolioDecisionTime: "14:20",
@@ -219,6 +221,26 @@ assert(
   capabilityProfileContext.includes("轮动纪律") && capabilityProfileContext.includes("板块轮动、低位修复、拥挤度"),
   "stored manager profiles must be upgraded with the rotation/chase discipline even when config still contains an older profile"
 );
+assertSkillCoverage(manager.defaultSkillIdsForWorkflow("portfolio_status"), [
+  "fund-portfolio-profile",
+  "fund-portfolio-research",
+  "fund-theme-radar",
+  "theme-stage-analysis",
+  "forward-looking-actionability",
+  "fund-market-timing",
+  "fund-fee-share-class",
+  "fund-actionability-evaluation",
+  "fund-answer-quality",
+  "fund-portfolio-decision",
+  "fund-portfolio-execution"
+], "portfolio status default workflow");
+assertSkillCoverage(manager.allowedSkillIdsForWorkflow("portfolio_status"), [
+  "fund-portfolio-premarket",
+  "fund-portfolio-weekly",
+  "fund-portfolio-review",
+  "fund-market-timing",
+  "fund-answer-quality"
+], "portfolio status allowed workflow");
 
 await assertIntent({
   userText: "黄金里面找一个回调完成、低位、准备启动的基金",
@@ -1443,6 +1465,31 @@ assert(
   manager.buildPortfolioWatchReadinessGaps({ code: "000010", status: "ready" }, noEarlyTurnProfile).some((item) => item.includes("5日/10日刚转强")),
   "watchlist readiness gaps must expose missing early-turn evidence before buying"
 );
+const starterSetupProfile = {
+  ...verifiedSeedProfile,
+  code: "000020",
+  name: "低位启动试探基金C",
+  trendProfile: {
+    ...verifiedSeedProfile.trendProfile,
+    pullbackSetup: { signal: "pullback_complete", score: 74, reason: "回调完成但10日仍轻微修复中" },
+    entryBias: "buyable_now",
+    return5dPct: 0.8,
+    return10dPct: -0.6,
+    return20dPct: -2.1,
+    return60dPct: -8.4,
+    lowPositionPct120: 22.5,
+    drawdownFromRecentHighPct: -13.2
+  },
+  actionability: { ...verifiedSeedProfile.actionability, action: "staged_buy", score: 78 }
+};
+assert.equal(manager.hasPortfolioStarterBuySetup(starterSetupProfile), true, "portfolio buy discipline must recognize low-position pullback setups that merit a small starter probe");
+assert.equal(manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000020" }, starterSetupProfile).ok, true, "portfolio buy discipline should allow small starter buys before every trend metric is perfect");
+const starterBuyAmount = manager.resolvePortfolioTradeAmount({
+  totalAsset: 100000,
+  cash: 90000,
+  positions: []
+}, { action: "BUY", code: "000020", amount: 50000, targetWeightPct: 20 }, "BUY", null, starterSetupProfile);
+assert.equal(starterBuyAmount, 2500, "starter buy sizing must cap imperfect low-position setups to a smaller probing order");
 const missingFeeProfile = {
   ...verifiedSeedProfile,
   fees: {
@@ -1494,6 +1541,30 @@ const sameExposureCapAmount = manager.resolvePortfolioTradeAmount({
   positions: [{ code: "000099", name: "南方中证A500ETF联接C", currentValue: 7000 }]
 }, { action: "BUY", code: "000010", amount: 5000, targetWeightPct: 5 }, "BUY", null, verifiedSeedProfile);
 assert.equal(sameExposureCapAmount, 1000, "portfolio buy sizing must cap the aggregate same-index exposure before creating orders");
+const duplicateOrderDb = manager.normalizePortfolioDb({
+  account: {
+    initialCapital: 100000,
+    cash: 70000,
+    positions: [{
+      code: "008327",
+      name: "东财通信C",
+      units: 1000,
+      currentValue: 10000,
+      costAmount: 9000
+    }]
+  },
+  orders: [
+    { id: "older", side: "SELL", code: "008327", name: "东财通信C", amount: 3000, requestedUnits: 300, status: "priced", acceptedDate: "2026-05-25", priceDate: "2026-05-25", submittedAt: "2026-05-25T06:00:00.000Z" },
+    { id: "newer", side: "SELL", code: "008327", name: "东财通信C", amount: 3000, requestedUnits: 300, status: "submitted", acceptedDate: "2026-05-25", priceDate: "2026-05-25", submittedAt: "2026-05-25T06:05:00.000Z" }
+  ]
+});
+assert.equal(manager.hasActivePortfolioOrderForAction(duplicateOrderDb.orders, { action: "SELL", code: "008327" }, "SELL"), true, "portfolio order guard must detect active same-fund sell orders");
+const cancelledDuplicates = manager.cancelDuplicatePortfolioActiveOrders(duplicateOrderDb);
+assert.equal(cancelledDuplicates.length, 1, "duplicate active same-fund orders must be automatically cancelled before lifecycle confirmation");
+assert.equal(duplicateOrderDb.orders.find((order) => order.id === "older").status, "priced", "duplicate order dedupe must keep the earliest active order");
+assert.equal(duplicateOrderDb.orders.find((order) => order.id === "newer").status, "cancelled", "duplicate order dedupe must cancel later duplicate orders");
+manager.syncPortfolioActiveOrderReservations(duplicateOrderDb);
+assert.equal(duplicateOrderDb.account.positions[0].pendingSellUnits, 300, "active sell reservations must reflect only the surviving pending order");
 const accountRiskBudget = manager.buildPortfolioAccountRiskBudget({
   totalAsset: 93500,
   peakTotalAsset: 100000

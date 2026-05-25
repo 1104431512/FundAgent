@@ -82,6 +82,7 @@ const DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES = [
   "沟通纪律：只展示专业阶段、结论、证据和约束，不展示模型隐藏思考链。"
 ];
 const DEFAULT_PORTFOLIO_MANAGER_PROFILE = DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES.join("\n");
+const PORTFOLIO_ACTIVE_ORDER_FINAL_STATUSES = new Set(["confirmed", "cancelled", "rejected", "settled"]);
 const REQUIRED_PORTFOLIO_MANAGER_PROFILE_LINES = [
   {
     pattern: /买入纪律|避免仅凭热点|净值、持仓、风险指标/,
@@ -1391,7 +1392,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
   const compactWatchlistProfiles = (watchlistProfiles || []).map(compactPortfolioReviewProfile);
   const compactSeedProfiles = (seedProfiles || []).map(compactPortfolioReviewProfile);
   const skillContext = buildSkillContextForIntent(
-    { workflow: "portfolio_status", skillIds: ["fund-portfolio-profile", "fund-portfolio-research", "fund-portfolio-decision", "fund-portfolio-execution"] },
+    { workflow: "portfolio_status", skillIds: getPortfolioDecisionSkillIds() },
     []
   );
   const systemText = [
@@ -1403,6 +1404,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "自选基金池是未来随时准备购入的候选账本，每只候选都必须有备选理由、买入触发条件、风险备注和费用/份额说明。",
     "新闻只能作为催化证据，不能单独触发 BUY。每次买入前必须通过“轮动/低位/拥挤度”检查：优先低位轮动、回撤修复和早期确认，回避仅因新闻热度和短期涨幅追高。",
     "如果题材雷达显示位置判断为追高风险偏高，或拥挤度高但低位/轮动评分不支持，只能 WATCH、HOLD 或小额试探，不能重仓追涨。",
+    "如果账户回撤正常、现金超过60%、且候选满足低位/回调完成/费用可核验但10日趋势只差轻微确认，必须评估0.5%-2.5%的启动试探；不能用“继续等待”替代具体触发价位、复核日期和小仓试错计划。",
     "同一基金不同份额类别不能混着推荐；必须比较 A/C/D/I 等份额的申购费、销售服务费、赎回费、起购门槛和渠道可得性，并说明费用拖累是否适合本次持有期。",
     "交易建议应以 targetWeightPct 为主，amount 只是建议值；系统执行时会按公开净值、现金和已有持仓重新计算真实份额。",
     "必须执行账户级回撤预算：账户回撤到预警线时缩小买入，到最大回撤预算时暂停新增买入并优先分批降风险；不能用加仓摊薄替代止损。",
@@ -1531,7 +1533,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
 
 async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, positionUpdates, profiles, config, profileContext }) {
   const skillContext = buildSkillContextForIntent(
-    { workflow: "portfolio_status", skillIds: ["fund-portfolio-profile", "fund-portfolio-review", "fund-portfolio-execution"] },
+    { workflow: "portfolio_status", skillIds: getPortfolioReviewSkillIds() },
     []
   );
   const compactProfiles = (profiles || []).map(compactPortfolioReviewProfile);
@@ -1719,7 +1721,7 @@ async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profi
   const compactWatchlistProfiles = (watchlistProfiles || []).map(compactPortfolioReviewProfile);
   const compactSeedProfiles = (seedProfiles || []).map(compactPortfolioReviewProfile);
   const skillContext = buildSkillContextForIntent(
-    { workflow: "portfolio_status", skillIds: ["fund-portfolio-profile", "fund-portfolio-premarket", "fund-portfolio-research", "fund-portfolio-execution"] },
+    { workflow: "portfolio_status", skillIds: getPortfolioPremarketSkillIds() },
     []
   );
   const systemText = [
@@ -1775,7 +1777,7 @@ async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profi
 
 async function buildPortfolioWeeklyWithModel({ account, weeklyContext, profiles, watchlist = [], lifecycle, config, profileContext }) {
   const skillContext = buildSkillContextForIntent(
-    { workflow: "portfolio_status", skillIds: ["fund-portfolio-profile", "fund-portfolio-weekly", "fund-portfolio-review", "fund-portfolio-execution"] },
+    { workflow: "portfolio_status", skillIds: getPortfolioWeeklySkillIds() },
     []
   );
   const systemText = [
@@ -3218,6 +3220,33 @@ function hasVerifiedPortfolioBuySetup(profile = {}) {
     && return60d <= 24;
 }
 
+function hasPortfolioStarterBuySetup(profile = {}) {
+  const trend = profile?.trendProfile || {};
+  if (!trend.ok || hasVerifiedPortfolioBuySetup(profile)) return false;
+  const signal = trend.pullbackSetup?.signal || "";
+  if (!["pullback_complete", "launch_setup"].includes(signal)) return false;
+  if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback" || trend.entryBias === "avoid_now") return false;
+  if (["wait", "avoid"].includes(profile?.actionability?.action)) return false;
+  if (!hasPullbackLowPositionEvidence(trend)) return false;
+
+  const r5 = finiteMetricNumber(trend.return5dPct);
+  const r10 = finiteMetricNumber(trend.return10dPct);
+  const r20 = finiteMetricNumber(trend.return20dPct);
+  const r60 = finiteMetricNumber(trend.return60dPct);
+  return Number.isFinite(r5)
+    && r5 > 0
+    && r5 <= 4.5
+    && Number.isFinite(r10)
+    && r10 >= -2
+    && r10 <= 7
+    && Number.isFinite(r20)
+    && r20 >= -6
+    && r20 <= 10
+    && Number.isFinite(r60)
+    && r60 <= 24
+    && !hasHighChaseTheme(profile);
+}
+
 function hasVerifiedPortfolioFeeEvidence(profile = {}) {
   const fees = profile?.fees || {};
   const shareClass = String(fees.shareClass || profile.shareClass || "").toUpperCase();
@@ -3731,11 +3760,13 @@ function evaluatePortfolioBuyDiscipline(action = {}, profile = null, positions =
     };
   }
   if (!hasVerifiedPortfolioBuySetup(profile)) {
-    return {
-      ok: false,
-      reason: "系统买入纪律拦截：缺少回调完成/启动前夜、5日/10日刚转强和低位证据，不能提交虚拟申购。",
-      evidence: [trendEvidence]
-    };
+    if (!hasPortfolioStarterBuySetup(profile)) {
+      return {
+        ok: false,
+        reason: "系统买入纪律拦截：缺少回调完成/启动前夜、5日/10日刚转强和低位证据，不能提交虚拟申购。",
+        evidence: [trendEvidence]
+      };
+    }
   }
   const feeEvidence = formatPortfolioFeeVerificationEvidence(profile);
   if (!hasVerifiedPortfolioFeeEvidence(profile)) {
@@ -3751,6 +3782,13 @@ function evaluatePortfolioBuyDiscipline(action = {}, profile = null, positions =
       ok: false,
       reason: exposureGuard.reason,
       evidence: [trendEvidence, feeEvidence, ...exposureGuard.evidence].filter(Boolean)
+    };
+  }
+  if (hasPortfolioStarterBuySetup(profile)) {
+    return {
+      ok: true,
+      reason: "系统买入纪律确认：低位回调已满足，小仓启动试探可执行，但仍需控制在卫星仓。",
+      evidence: [trendEvidence, feeEvidence, "来源：portfolio_starter_buy_guard"].filter(Boolean)
     };
   }
   return { ok: true, reason: "", evidence: [trendEvidence, feeEvidence].filter(Boolean) };
@@ -4792,6 +4830,129 @@ function getPortfolioWatchReadinessScore(item = {}) {
   return Number.isFinite(score) ? score : evaluatePortfolioWatchReadiness(item).score;
 }
 
+function isPortfolioActiveOrder(order = {}) {
+  return Boolean(order)
+    && !PORTFOLIO_ACTIVE_ORDER_FINAL_STATUSES.has(String(order.status || "").toLowerCase());
+}
+
+function getPortfolioActiveOrders(orders = []) {
+  return (orders || []).filter(isPortfolioActiveOrder);
+}
+
+function getPortfolioOrderDedupeKey(order = {}) {
+  const side = String(order.side || order.action || "").toUpperCase();
+  const code = String(order.code || "").trim();
+  return side && code ? `${side}:${code}` : "";
+}
+
+function hasActivePortfolioOrderForAction(orders = [], action = {}, side = "") {
+  const actionSide = String(side || action.side || action.action || "").toUpperCase();
+  const code = String(action.code || "").trim();
+  if (!actionSide || !code) return false;
+  return getPortfolioActiveOrders(orders).some((order) =>
+    String(order.side || "").toUpperCase() === actionSide
+    && String(order.code || "").trim() === code
+  );
+}
+
+function cancelDuplicatePortfolioActiveOrders(db = {}, result = null) {
+  const activeOrders = getPortfolioActiveOrders(db.orders || []);
+  const byKey = new Map();
+  const cancelled = [];
+
+  for (const order of activeOrders) {
+    const key = getPortfolioOrderDedupeKey(order);
+    if (!key) continue;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(order);
+  }
+
+  for (const group of byKey.values()) {
+    if (group.length <= 1) continue;
+    const sorted = [...group].sort(comparePortfolioOrderPriorityForDedupe);
+    const keep = sorted[0];
+    for (const duplicate of sorted.slice(1)) {
+      const beforeStatus = duplicate.status || "";
+      duplicate.status = "cancelled";
+      duplicate.cancelledAt = new Date().toISOString();
+      duplicate.cancelReason = `同一基金同方向已有未完成订单 ${keep.id || ""}，为避免重复提交已自动取消。`;
+      addOrderTimeline(duplicate, "cancelled", duplicate.cancelReason);
+      cancelled.push({ order: duplicate, beforeStatus, keep });
+      if (result) {
+        result.orderUpdates.push({
+          id: duplicate.id,
+          code: duplicate.code,
+          name: duplicate.name,
+          side: duplicate.side,
+          beforeStatus,
+          afterStatus: duplicate.status,
+          priceDate: duplicate.priceDate,
+          confirmDate: duplicate.confirmDate
+        });
+        result.notes.push({
+          action: duplicate.side,
+          code: duplicate.code,
+          name: duplicate.name,
+          status: "cancelled",
+          reason: duplicate.cancelReason
+        });
+      }
+    }
+  }
+
+  if (cancelled.length) {
+    syncPortfolioActiveOrderReservations(db);
+  }
+  return cancelled;
+}
+
+function comparePortfolioOrderPriorityForDedupe(a = {}, b = {}) {
+  return String(a.acceptedDate || a.priceDate || "").localeCompare(String(b.acceptedDate || b.priceDate || ""))
+    || String(a.submittedAt || a.createdAt || "").localeCompare(String(b.submittedAt || b.createdAt || ""))
+    || String(a.id || "").localeCompare(String(b.id || ""));
+}
+
+function syncPortfolioActiveOrderReservations(db = {}) {
+  if (!db.account || !Array.isArray(db.account.positions)) return;
+  for (const position of db.account.positions) {
+    position.pendingSellUnits = 0;
+    position.pendingSellAmount = 0;
+  }
+
+  const activeOrders = getPortfolioActiveOrders(db.orders || []);
+  db.account.pendingBuyAmount = round(activeOrders
+    .filter((order) => String(order.side || "").toUpperCase() === "BUY")
+    .reduce((sum, order) => sum + Number(order.amount || 0), 0), 2);
+
+  const sellOrdersByCode = new Map();
+  for (const order of activeOrders) {
+    if (String(order.side || "").toUpperCase() !== "SELL" || !order.code) continue;
+    if (!sellOrdersByCode.has(order.code)) sellOrdersByCode.set(order.code, []);
+    sellOrdersByCode.get(order.code).push(order);
+  }
+
+  for (const position of db.account.positions) {
+    const orders = sellOrdersByCode.get(position.code) || [];
+    if (!orders.length) continue;
+    let remainingUnits = Math.max(0, Number(position.units || 0));
+    let pendingUnits = 0;
+    let pendingAmount = 0;
+    for (const order of orders.sort(comparePortfolioOrderPriorityForDedupe)) {
+      const requestedUnits = Number(order.requestedUnits || 0);
+      const fallbackUnits = Number(position.currentValue || 0) > 0
+        ? Number(position.units || 0) * (Number(order.amount || 0) / Number(position.currentValue || 1))
+        : 0;
+      const units = Math.min(remainingUnits, Math.max(0, requestedUnits || fallbackUnits));
+      if (units <= 0) continue;
+      pendingUnits += units;
+      pendingAmount += Number(order.amount || 0);
+      remainingUnits = Math.max(0, remainingUnits - units);
+    }
+    position.pendingSellUnits = round(pendingUnits, 6);
+    position.pendingSellAmount = round(pendingAmount, 2);
+  }
+}
+
 function evaluatePortfolioWatchlistFreshness(item = {}, profile = null, options = {}) {
   const status = normalizePortfolioWatchStatus(item.status || "watch");
   if (!["ready", "waiting_pullback"].includes(status)) {
@@ -4859,6 +5020,7 @@ async function submitPortfolioOrders(db, actions, profiles, run, config = getEff
   const profileByCode = new Map((profiles || []).map((profile) => [profile.code, profile]));
   const orders = [];
   const notes = [];
+  cancelDuplicatePortfolioActiveOrders(db);
   recalculatePortfolioAccount(db.account);
 
   for (const [index, action] of actions.entries()) {
@@ -4873,6 +5035,17 @@ async function submitPortfolioOrders(db, actions, profiles, run, config = getEff
     );
     await yieldToEventLoop();
     if (action.action === "BUY") {
+      if (hasActivePortfolioOrderForAction(db.orders, action, "BUY")) {
+        notes.push({
+          action: "BUY",
+          code: action.code,
+          name: action.name,
+          status: "skipped",
+          reason: "已有同一基金未完成申购订单，本轮不重复提交。",
+          originalAction: action
+        });
+        continue;
+      }
       const profile = profileByCode.get(action.code);
       const nav = getProfileNav(profile);
       if (!action.code) {
@@ -4925,6 +5098,17 @@ async function submitPortfolioOrders(db, actions, profiles, run, config = getEff
     }
 
     if (action.action === "SELL") {
+      if (hasActivePortfolioOrderForAction(db.orders, action, "SELL")) {
+        notes.push({
+          action: "SELL",
+          code: action.code,
+          name: action.name,
+          status: "skipped",
+          reason: "已有同一基金未完成赎回订单，本轮不重复提交。",
+          originalAction: action
+        });
+        continue;
+      }
       const position = db.account.positions.find((item) => item.code === action.code);
       if (!position || Number(position.currentValue || 0) <= 0) {
         notes.push({
@@ -5064,8 +5248,10 @@ async function processPortfolioOrderLifecycle(db, run, config = getEffectiveConf
     }
   }
 
+  cancelDuplicatePortfolioActiveOrders(db, result);
   const activeOrders = db.orders.filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status));
   if (!activeOrders.length) {
+    syncPortfolioActiveOrderReservations(db);
     recalculatePortfolioAccount(db.account);
     return result;
   }
@@ -5130,6 +5316,7 @@ async function processPortfolioOrderLifecycle(db, run, config = getEffectiveConf
     }
   }
 
+  syncPortfolioActiveOrderReservations(db);
   recalculatePortfolioAccount(db.account);
   return result;
 }
@@ -5352,6 +5539,7 @@ function capPortfolioBuyAmountByDiscipline(account = {}, action = {}, amount = 0
   if (!Number.isFinite(totalAsset) || totalAsset <= 0 || !Number.isFinite(cash) || cash <= 0) return 0;
   const maxSingleFundWeightPct = finiteNumberOr(process.env.PORTFOLIO_BUY_MAX_SINGLE_FUND_WEIGHT_PCT, 6);
   const maxSingleOrderWeightPct = finiteNumberOr(process.env.PORTFOLIO_BUY_MAX_SINGLE_ORDER_WEIGHT_PCT, 4);
+  const starterMaxSingleOrderWeightPct = finiteNumberOr(process.env.PORTFOLIO_STARTER_BUY_MAX_SINGLE_ORDER_WEIGHT_PCT, 2.5);
   const maxSameExposureWeightPct = finiteNumberOr(process.env.PORTFOLIO_BUY_MAX_SAME_EXPOSURE_WEIGHT_PCT, 8);
   const minCashReservePct = finiteNumberOr(process.env.PORTFOLIO_BUY_MIN_CASH_RESERVE_PCT, 20);
   const accountBudget = buildPortfolioAccountRiskBudget(account);
@@ -5359,8 +5547,11 @@ function capPortfolioBuyAmountByDiscipline(account = {}, action = {}, amount = 0
   const drawdownThrottleWeightPct = accountBudget.throttleNewBuys
     ? Math.max(0, finiteNumberOr(process.env.PORTFOLIO_DRAWDOWN_BUY_MAX_SINGLE_ORDER_WEIGHT_PCT, 1))
     : maxSingleOrderWeightPct;
+  const setupMaxSingleOrderWeightPct = hasPortfolioStarterBuySetup(profile) && !hasVerifiedPortfolioBuySetup(profile)
+    ? Math.min(maxSingleOrderWeightPct, starterMaxSingleOrderWeightPct)
+    : maxSingleOrderWeightPct;
   const maxSingleFundValue = Math.max(0, totalAsset * maxSingleFundWeightPct / 100);
-  const maxSingleOrderAmount = Math.max(0, totalAsset * Math.min(maxSingleOrderWeightPct, drawdownThrottleWeightPct) / 100);
+  const maxSingleOrderAmount = Math.max(0, totalAsset * Math.min(setupMaxSingleOrderWeightPct, drawdownThrottleWeightPct) / 100);
   const maxSameExposureValue = Math.max(0, totalAsset * maxSameExposureWeightPct / 100);
   const minCashReserve = Math.max(0, totalAsset * minCashReservePct / 100);
   const availableAfterReserve = Math.max(0, cash - minCashReserve);
@@ -6803,6 +6994,26 @@ function buildPortfolioCapabilityDiagnostics(db = {}) {
   const totalAsset = Number(account.totalAsset || 0);
   const readyCount = watchlist.filter((item) => item.status === "ready").length;
   const waitingCount = watchlist.filter((item) => item.status === "waiting_pullback").length;
+  const recentBuy = findMostRecentPortfolioTransaction(transactions, "BUY");
+  const daysSinceBuy = recentBuy?.date ? estimateDateAgeDays(recentBuy.date) : null;
+  const accountBudget = buildPortfolioAccountRiskBudget(account);
+  if (
+    Number.isFinite(cash)
+    && Number.isFinite(totalAsset)
+    && totalAsset > 0
+    && cash / totalAsset >= 0.6
+    && !accountBudget.blockNewBuys
+    && (!Number.isFinite(daysSinceBuy) || daysSinceBuy >= 7)
+  ) {
+    add(
+      "warning",
+      "现金闲置风险",
+      `现金${formatFallbackPct(cash / totalAsset * 100)}`,
+      Number.isFinite(daysSinceBuy)
+        ? `最近一次买入距今约${daysSinceBuy}天；若不是回撤预算触发，下一轮必须刷新低位启动候选，并评估小仓试探或写清前三个近合买点还差什么。`
+        : "现金占比长期偏高且没有可追踪买入记录；下一轮必须刷新低位启动候选，并评估小仓试探或写清前三个近合买点还差什么。"
+    );
+  }
   if (Number.isFinite(cash) && Number.isFinite(totalAsset) && totalAsset > 0 && cash / totalAsset >= 0.5 && !readyCount) {
     add(
       "info",
@@ -6850,6 +7061,13 @@ function hasPortfolioPositionDataGap(position = {}) {
     || !position.lastNavDate
     || (Number.isFinite(navAgeDays) && navAgeDays > 7)
     || (holdingsOutlook.hasHoldings === false && !normalizeStringArray(snapshot.topHoldings).length);
+}
+
+function findMostRecentPortfolioTransaction(transactions = [], side = "") {
+  const targetSide = String(side || "").toUpperCase();
+  return [...(transactions || [])]
+    .filter((item) => !targetSide || String(item.side || "").toUpperCase() === targetSide)
+    .sort((a, b) => Date.parse(b.date || b.createdAt || "") - Date.parse(a.date || a.createdAt || ""))[0] || null;
 }
 
 function estimateDateAgeDays(dateText) {
@@ -6900,6 +7118,8 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "优先补齐成交净值、份额和来源，否则不要把交易盈亏归因说满。", "基金研究员");
     } else if (item.label === "运行连续性不足") {
       addTask(item, "在 learningNotes 写清失败原因和恢复动作，避免客户只看到进度文案。", "主席");
+    } else if (item.label === "现金闲置风险") {
+      addTask(item, "不能只说等待机会；下一轮必须刷新低位启动候选，给出小仓试探方案或列明前三个近合买点的具体缺口。", "组合经理");
     } else if (item.label === "现金等待买点") {
       addTask(item, "继续增强低位召回；没有合格买点时明确0元等待，不硬凑推荐。", "组合经理");
     }
@@ -7320,6 +7540,7 @@ function ensurePortfolioAccount(db, config = getEffectiveConfig()) {
   db.account.pendingBuyAmount = round(Number(db.account.pendingBuyAmount || 0), 2);
   db.account.receivableCash = round(Number(db.account.receivableCash || 0), 2);
   db.account.positions = Array.isArray(db.account.positions) ? db.account.positions.map(normalizePortfolioPosition).filter(Boolean) : [];
+  syncPortfolioActiveOrderReservations(db);
   recalculatePortfolioAccount(db.account);
   return db.account;
 }
@@ -9117,6 +9338,74 @@ function getFundQaSkillIds(extra = []) {
     "fund-answer-quality",
     "fund-synthesis"
   ];
+}
+
+function uniqueSkillIds(ids = []) {
+  return [...new Set(ids.map(String).filter(Boolean))];
+}
+
+function getPortfolioDecisionSkillIds(extra = []) {
+  return uniqueSkillIds([
+    "fund-portfolio-profile",
+    "fund-portfolio-research",
+    "fund-theme-radar",
+    "theme-stage-analysis",
+    "theme-to-fund-mapping",
+    "forward-looking-actionability",
+    "fund-market-timing",
+    "fund-holdings-style",
+    "fund-fee-share-class",
+    "fund-actionability-evaluation",
+    "fund-answer-quality",
+    "fund-portfolio-decision",
+    "fund-portfolio-execution",
+    ...extra
+  ]);
+}
+
+function getPortfolioPremarketSkillIds(extra = []) {
+  return uniqueSkillIds([
+    "fund-portfolio-profile",
+    "fund-portfolio-premarket",
+    "fund-portfolio-research",
+    "fund-theme-radar",
+    "theme-stage-analysis",
+    "forward-looking-actionability",
+    "fund-market-timing",
+    "fund-fee-share-class",
+    "fund-actionability-evaluation",
+    "fund-answer-quality",
+    "fund-portfolio-execution",
+    ...extra
+  ]);
+}
+
+function getPortfolioReviewSkillIds(extra = []) {
+  return uniqueSkillIds([
+    "fund-portfolio-profile",
+    "fund-portfolio-review",
+    "fund-holdings-style",
+    "fund-fee-share-class",
+    "fund-actionability-evaluation",
+    "fund-answer-quality",
+    "fund-portfolio-execution",
+    ...extra
+  ]);
+}
+
+function getPortfolioWeeklySkillIds(extra = []) {
+  return uniqueSkillIds([
+    "fund-portfolio-profile",
+    "fund-portfolio-weekly",
+    "fund-portfolio-review",
+    "fund-theme-radar",
+    "theme-stage-analysis",
+    "forward-looking-actionability",
+    "fund-market-timing",
+    "fund-answer-quality",
+    "fund-portfolio-execution",
+    ...extra
+  ]);
 }
 
 function buildFundCommitteeSystemText(skillIds = getFundAnalysisSkillIds(), { userText = "" } = {}) {
@@ -17161,7 +17450,7 @@ function normalizeIntentResult(intent, defaults = {}) {
 }
 
 function defaultSkillIdsForWorkflow(workflow) {
-  if (workflow === "portfolio_status") return [];
+  if (workflow === "portfolio_status") return getPortfolioDecisionSkillIds();
   if (workflow === "fund_recommendation") return getFundRecommendationSkillIds();
   if (workflow === "fund_screening") return getFundAnalysisSkillIds(["fund-synthesis"]);
   if (workflow === "fund_qa") return getFundQaSkillIds();
@@ -17171,7 +17460,12 @@ function defaultSkillIdsForWorkflow(workflow) {
 function allowedSkillIdsForWorkflow(workflow) {
   const byWorkflow = {
     conversation: [],
-    portfolio_status: [],
+    portfolio_status: uniqueSkillIds([
+      ...getPortfolioDecisionSkillIds(),
+      ...getPortfolioPremarketSkillIds(),
+      ...getPortfolioReviewSkillIds(),
+      ...getPortfolioWeeklySkillIds()
+    ]),
     fund_recommendation: [...getFundRecommendationSkillIds(), "fund-data-enrichment"],
     fund_screening: [
       "fund-vision",
@@ -17929,8 +18223,15 @@ export {
   getFundAnalysisSkillIds,
   getFundQaSkillIds,
   getFundRecommendationSkillIds,
+  getPortfolioDecisionSkillIds,
+  getPortfolioPremarketSkillIds,
+  getPortfolioReviewSkillIds,
+  getPortfolioWeeklySkillIds,
   getRuntimeRelease,
   guardPortfolioWatchlistReadyUpdate,
+  cancelDuplicatePortfolioActiveOrders,
+  hasActivePortfolioOrderForAction,
+  hasPortfolioStarterBuySetup,
   ensurePortfolioHeldPositionsReviewed,
   ensurePortfolioReadyWatchlistReviewed,
   mergeFundWorkflowWatchlistIntoDeepDive,
@@ -17972,5 +18273,6 @@ export {
   sanitizePortfolioPublicReportValue,
   summarizePortfolioRun,
   summarizePortfolioRunBrief,
+  syncPortfolioActiveOrderReservations,
   splitFeishuCardImages
 };
