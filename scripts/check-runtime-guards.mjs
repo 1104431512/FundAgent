@@ -419,8 +419,8 @@ const requiredPatterns = [
     message: "fund chart reading guides must summarize how many charts support buy and backup reasoning."
   },
   {
-    pattern: /新图只使用中文短标签/,
-    message: "fund chart reading guides must tell users that report images are Chinese-first."
+    pattern: /新图只使用中文短标签和决策理由/,
+    message: "fund chart reading guides must tell users that report images are Chinese-first and decision-first."
   },
   {
     pattern: /买点=是否到了可买位置[\s\S]{0,260}板块位置=是否低位轮动或已经拥挤[\s\S]{0,260}规模=基金规模/,
@@ -431,8 +431,8 @@ const requiredPatterns = [
     message: "fund chart reading guides must include a plain Chinese metric quick-read."
   },
   {
-    pattern: /看不懂指标时先看中文图例/,
-    message: "fund chart reading guides must reassure users that opaque indicators are explained in Chinese."
+    pattern: /看不懂指标时先看底部决策理由/,
+    message: "fund chart reading guides must reassure users that opaque indicators are explained through decision reasons."
   },
   {
     pattern: /分批买=分几次买入[\s\S]{0,220}旧版英文简称已从新图移除/,
@@ -495,12 +495,12 @@ const requiredPatterns = [
     message: "fund answers must tell users how to read the attached buy/reference and backup charts."
   },
   {
-    pattern: /drawFundReportLegendPanel/,
-    message: "fund report summary images must include an in-image Chinese legend instead of relying only on surrounding text."
+    pattern: /drawFundReportDecisionReasonPanel/,
+    message: "fund report summary images must include in-image buy/watch decision reasons instead of only a legend."
   },
   {
-    pattern: /图例说明[\s\S]{0,160}买点=可买\/分批买\/等待\/回避\/观察/,
-    message: "fund report images must explain buy-point states directly in Chinese."
+    pattern: /本次动作[\s\S]{0,160}买点[\s\S]{0,160}风险[\s\S]{0,160}待确认/,
+    message: "fund report images must show the customer why to buy or add to watchlist."
   },
   {
     pattern: /越低越接近低位[\s\S]{0,120}越高越接近高位/,
@@ -511,8 +511,12 @@ const requiredPatterns = [
     message: "fund report images must explain staged buying without exposing STAGE."
   },
   {
-    pattern: /分批=不一次买完[\s\S]{0,120}每万成本=每万元估算成本[\s\S]{0,120}回撤\/规模=风险/,
-    message: "fund report images must explain cost, drawdown, and scale metrics directly inside the image."
+    pattern: /每万成本=每1万元持有估算成本[\s\S]{0,120}分批=不一次买完/,
+    message: "fund report chart guides must explain cost and staged buying in plain Chinese."
+  },
+  {
+    pattern: /风险边界/,
+    message: "fund report images must connect chart evidence to risk boundaries."
   },
   {
     pattern: /\["SHRP",\s*"夏普比率"\][\s\S]{0,260}\["20d",\s*"近20日"\]/,
@@ -551,12 +555,12 @@ const requiredPatterns = [
     message: "supplemental fund image cards must explain which buy or backup charts they contain."
   },
   {
-    pattern: /FEISHU_FUND_IMAGE_CARD_LEGEND[\s\S]{0,300}图上中文短标签[\s\S]{0,260}分批=分几次买入[\s\S]{0,120}新图不再显示英文简称/,
-    message: "fund image cards must show a Chinese legend next to report images, not only in the main text body."
+    pattern: /FEISHU_FUND_IMAGE_CARD_LEGEND[\s\S]{0,300}图上底部会直接写[\s\S]{0,260}结论、支持证据、风险边界和下一步[\s\S]{0,180}新图不再显示英文简称/,
+    message: "fund image cards must show decision reasons next to report images, not only in the main text body."
   },
   {
-    pattern: /buildFeishuImageCaption[\s\S]{0,700}先看“买点\/经理动作”判断能否买[\s\S]{0,260}是否真低位[\s\S]{0,260}“每万成本\/回撤\/规模”控制成本和风险/,
-    message: "fund image captions must tell users how to read buy, theme-position, low-position, fee, drawdown, and scale evidence."
+    pattern: /buildFeishuImageCaption[\s\S]{0,700}先看底部“为什么买或备选”[\s\S]{0,260}“买点\/经理动作”判断能否买[\s\S]{0,260}“每万成本\/回撤\/规模”控制成本和风险/,
+    message: "fund image captions must tell users how chart evidence supports buy or backup decisions."
   },
   {
     pattern: /fundReportChart:\s*true/,

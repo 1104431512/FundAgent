@@ -8006,15 +8006,15 @@ function getFundReportProfileKey(profile) {
 }
 
 const FUND_REPORT_CHART_LEGEND_LINES = [
-  "读图顺序：先看“买点/经理动作”决定能不能买，再看“回调启动/120日位置/250日位置”确认是不是低位，最后看“每万成本/回撤/规模”控制成本和风险。",
-  "图上底部已经加了中文图例说明：买点=可买/分批买/等待/回避/观察，回调启动=回调完成/启动/无。",
+  "读图顺序：先看底部“为什么买或备选”，再看“买点/经理动作”决定能不能买，最后看“每万成本/回撤/规模”控制成本和风险。",
+  "图上底部现在直接写买入或备选理由、支持证据、风险边界和下一步，不再让客户读一堆指标解释。",
   "120日位置/250日位置=区间相对位置，越低越接近低位，越高越接近高位；每万成本=每1万元持有估算成本，分批=不一次买完。",
-  "新图只使用中文短标签：买点=是否到了可买位置，回调启动=回调完成或启动迹象，板块位置=是否低位轮动或已经拥挤，经理动作=经理建议。",
+  "新图只使用中文短标签和决策理由：买点=是否到了可买位置，回调启动=回调完成或启动迹象，板块位置=是否低位轮动或已经拥挤，经理动作=经理建议。",
   "右侧六格：份额=A/C 等类别，每万成本=每1万元估算成本，近20日/近60日=短中期涨跌，回撤=距近期高点回落，规模=基金规模（单位约为亿元）。",
   "板块位置=这条赛道现在处在低位、确认、扩散还是拥挤；轮动/低位评分越高越好，拥挤度高要少追。",
   "指标速读：近20日/近60日看是否追涨，回撤看离高点跌了多少，每万成本看费用拖累，规模看流动性和清盘风险。",
-  "常见状态：可买=可以小仓位执行，分批买=分几次买入，等待=等回撤或确认，回避=暂不碰，观察=放备选池，缺失=数据不足。",
-  "看不懂指标时先看中文图例和逐张看图说明，不需要理解系统内部字段；旧版英文指标只按中文含义解释。",
+  "常见状态：可买=可以小仓位执行，分批买=分几次买入，等待=等回撤或确认，回避=暂不碰，观察=放备选池，待确认=数据不足。",
+  "看不懂指标时先看底部决策理由和逐张看图说明，不需要理解系统内部字段；旧版英文指标只按中文含义解释。",
   "旧版英文简称已从新图移除；如果客户拿旧图来问，直接解释为买点、信号、低位、动作、收益、回撤、规模和分批买入。"
 ];
 
@@ -8095,7 +8095,7 @@ function isFundChartGlossaryQuestion(text = "") {
 
 function buildFundReportChartGlossaryAnswer() {
   return [
-    "可以，这块应该中文优先。后续新图会直接显示中文短标签，不再把内部字段摆给你看。",
+    "可以，这块应该中文优先。后续新图会直接显示中文短标签和决策理由，不再把内部字段摆给你看。",
     "",
     "你可以按这个顺序读：",
     "1. 买点/经理动作：先判断能不能买。常见结果是买入、分批买入、等待、回避、观察。",
@@ -12813,11 +12813,13 @@ function renderFundReportSummaryPng({ profile, width = 1280, height = 760 } = {}
     trend
   });
 
-  drawFundReportLegendPanel(canvas, {
+  drawFundReportDecisionReasonPanel(canvas, {
     x: 32,
     y: 626,
     width: width - 64,
-    height: 110
+    height: 110,
+    profile,
+    trend
   });
 
   drawRect(canvas, 16, 12, width - 32, height - 24, [226, 232, 240, 255], 1);
@@ -12922,7 +12924,7 @@ function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
     ["近1年", trend.return250dPct]
   ].map(([label, value]) => ({ label, value: Number(value) })).filter((item) => Number.isFinite(item.value));
   if (!items.length) {
-    drawChartText(canvas, x + 18, y + 92, "缺失", [100, 116, 139, 255], {
+    drawChartText(canvas, x + 18, y + 92, "待确认", [100, 116, 139, 255], {
       asciiScale: REPORT_CHART_MIN_TEXT_SCALE,
       cjkScale: 1
     });
@@ -12988,7 +12990,7 @@ function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, tre
   const feeImpact = profile?.fees?.feeImpact || profile?.feeImpact || {};
   const shareClass = getChartShareClass(profile);
   const rows = [
-    ["CLASS", "份额", shareClass ? `${shareClass}类` : "缺失"],
+    ["CLASS", "份额", shareClass ? `${shareClass}类` : "待确认"],
     ["FEE", "每万成本", feeImpact.oneYearCostPer10000],
     ["20", "近20日", trend.return20dPct],
     ["60", "近60日", trend.return60dPct],
@@ -13022,24 +13024,130 @@ function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, tre
   });
 }
 
-function drawFundReportLegendPanel(canvas, { x, y, width, height }) {
-  const lines = [
-    "图例说明 买点=可买/分批买/等待/回避/观察 回调启动=回调完成/启动/无",
-    "板块位置=低位/确认/扩散/拥挤 拥挤高位少追涨",
-    "120日位置/250日位置=越低越接近低位 越高越接近高位",
-    "分批=不一次买完 每万成本=每万元估算成本",
-    "经理动作=买入/分批/等待/回避 回撤/规模=风险"
-  ];
+function drawFundReportDecisionReasonPanel(canvas, { x, y, width, height, profile = {}, trend = {} }) {
+  const lines = buildFundReportDecisionReasonLines(profile, trend);
   fillRect(canvas, x, y, width, height, [248, 250, 252, 255]);
   drawRect(canvas, x, y, width, height, [226, 232, 240, 255], 1);
   lines.forEach((line, index) => {
-    drawChartTextFit(canvas, x + 16, y + 8 + index * 20, line, [51, 65, 85, 255], {
+    drawChartTextFit(canvas, x + 16, y + 8 + index * 26, line, [51, 65, 85, 255], {
       asciiScale: REPORT_CHART_MIN_TEXT_SCALE,
       cjkScale: 1,
       maxWidth: width - 32,
       minAsciiScale: 2
     });
   });
+}
+
+function buildFundReportDecisionReasonLines(profile = {}, trend = {}) {
+  const role = formatFundReportDecisionRole(profile, trend);
+  const support = formatFundReportSupportEvidence(profile, trend);
+  const risk = formatFundReportRiskEvidence(profile, trend);
+  const next = formatFundReportNextEvidence(profile, trend);
+  return [
+    `本次动作 ${role}`,
+    `买点 ${support}`,
+    `风险 ${risk}`,
+    `待确认 ${next}`
+  ];
+}
+
+function formatFundReportDecisionRole(profile = {}, trend = {}) {
+  const explicitRole = String(profile.reportChartRole || "");
+  const action = String(profile?.actionability?.action || "");
+  const entryBias = String(trend.entryBias || "");
+  if (explicitRole.includes("备选")) return "观察 等待";
+  if (explicitRole.includes("买入")) return "买入 可分批";
+  if (["buy", "BUY"].includes(action) || entryBias === "buyable_now") return "买入 可分批";
+  if (["staged_buy", "BATCH", "STAGE"].includes(action) || entryBias === "staged_buy") return "分批 买入";
+  if (["wait", "avoid"].includes(action) || ["wait_pullback", "avoid_now"].includes(entryBias)) return "等待 回调";
+  if (String(inferSupplementalFundReportChartRole(profile) || "").includes("备选")) return "观察 等待";
+  return "观察 待确认";
+}
+
+function formatFundReportSupportEvidence(profile = {}, trend = {}) {
+  const theme = getChartThemePosition(profile);
+  const signal = formatChartSetupSignal(trend.pullbackSetup?.signal);
+  const pieces = [
+    theme.label && theme.label !== "观察" ? theme.label : "",
+    signal && !["等待", "观察", "待确认"].includes(signal) ? signal : "",
+    Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置${round(Number(trend.lowPositionPct120), 1)}%` : "",
+    Number.isFinite(Number(trend.return20dPct)) ? `近20日${formatChartPct(trend.return20dPct)}` : ""
+  ].filter(Boolean);
+  if (pieces.length) return pieces.slice(0, 4).join(" ");
+  return "净值走势待复核";
+}
+
+function formatFundReportRiskEvidence(profile = {}, trend = {}) {
+  const feeImpact = profile?.fees?.feeImpact || profile?.feeImpact || {};
+  const pieces = [];
+  const return20 = Number(trend.return20dPct);
+  const return60 = Number(trend.return60dPct);
+  const drawdown = Number(trend.drawdownFromRecentHighPct);
+  if ((Number.isFinite(return20) && return20 > 10) || (Number.isFinite(return60) && return60 > 24)) {
+    pieces.push("短期偏热少追");
+  } else if (Number.isFinite(drawdown)) {
+    pieces.push(`距高点${formatChartPct(drawdown)}`);
+  }
+  if (Number.isFinite(Number(feeImpact.oneYearCostPer10000))) {
+    pieces.push(`每万成本${formatChartMetricValue("FEE", feeImpact.oneYearCostPer10000)}`);
+  }
+  const scale = formatChartScale(profile?.scale || profile?.seed?.scale);
+  if (scale) pieces.push(`规模${scale}`);
+  return pieces.length ? pieces.slice(0, 3).join(" ") : "回撤费用规模";
+}
+
+function formatFundReportNextEvidence(profile = {}, trend = {}) {
+  const gaps = collectFundReportDecisionDataGaps(profile, trend);
+  if (gaps.length) return gaps.slice(0, 3).join("/");
+  if (trend.entryBias === "wait_pullback") return "等回撤完成再买";
+  if (trend.pullbackSetup?.signal === "none" || !trend.pullbackSetup?.signal) return "启动确认";
+  return "无";
+}
+
+function collectFundReportDecisionDataGaps(profile = {}, trend = {}) {
+  const gaps = [];
+  const feeImpact = profile?.fees?.feeImpact || profile?.feeImpact || {};
+  if (!getChartShareClass(profile)) gaps.push("份额");
+  if (!Number.isFinite(Number(feeImpact.oneYearCostPer10000))) gaps.push("费用");
+  if (!Number.isFinite(Number(trend.lowPositionPct120)) && !Number.isFinite(Number(trend.lowPositionPct250))) gaps.push("低位");
+  if (!formatChartScale(profile?.scale || profile?.seed?.scale)) gaps.push("规模");
+  if (!hasFundReportHoldingsEvidence(profile)) gaps.push("TOP10");
+  if (isOverseasFundReportProfile(profile) && !hasOverseasFundReportEvidence(profile)) gaps.push("QDII");
+  return [...new Set(gaps)];
+}
+
+function hasFundReportHoldingsEvidence(profile = {}) {
+  const actionabilityHoldings = profile?.actionability?.holdingsOutlook?.topHoldings;
+  const holdings = profile?.holdings || profile?.equityTopHoldings || profile?.topHoldings || profile?.seed?.holdings;
+  if (Array.isArray(actionabilityHoldings) && actionabilityHoldings.length) return true;
+  if (Array.isArray(holdings) && holdings.length) return true;
+  if (holdings && typeof holdings === "object") {
+    return Object.values(holdings).some((value) => Array.isArray(value) && value.length);
+  }
+  return false;
+}
+
+function isOverseasFundReportProfile(profile = {}) {
+  const text = [
+    profile?.code,
+    profile?.name,
+    profile?.type,
+    profile?.seed?.name,
+    profile?.seed?.type,
+    profile?.category
+  ].filter(Boolean).join(" ");
+  return /qdii|海外|全球|美股|纳斯达克|标普|恒生|港股|香港|日经|越南|印度/i.test(text);
+}
+
+function hasOverseasFundReportEvidence(profile = {}) {
+  return Boolean(
+    profile?.overseasQuote
+      || profile?.overseasMarket
+      || profile?.marketContext?.overseas
+      || profile?.marketIndicators?.overseas
+      || profile?.dataBasis?.some?.((item) => /海外|QDII|美股|港股|汇率|溢价|折价|外盘/i.test(String(item || "")))
+      || profile?.sources?.some?.((item) => /nasdaq|spglobal|marketwatch|investing|yahoo|hkex|海外|QDII/i.test(String(item || "")))
+  );
 }
 
 function drawChartFrame(canvas, x, y, width, height) {
@@ -13085,18 +13193,18 @@ function shortChartDate(value) {
 }
 
 function formatChartNumber(value) {
-  if (!Number.isFinite(value)) return "缺失";
+  if (!Number.isFinite(value)) return "待确认";
   return String(round(value, value >= 10 ? 2 : 4));
 }
 
 function formatChartPct(value) {
-  if (!Number.isFinite(value)) return "缺失";
+  if (!Number.isFinite(value)) return "待确认";
   const number = round(value, 1);
   return `${number > 0 ? "+" : ""}${number}%`;
 }
 
 function formatChartMetricValue(label, value) {
-  if (value === null || value === undefined || value === "") return "缺失";
+  if (value === null || value === undefined || value === "") return "待确认";
   if (["SIG", "ENT", "ENTRY", "ACT", "CLS", "CLASS", "SIZE"].includes(label)) return formatChartStringValue(value, 8);
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return formatChartStringValue(value, 8);
@@ -13109,15 +13217,16 @@ function formatChartMetricValue(label, value) {
 }
 
 function formatChartStringValue(value, maxLength = 8) {
+  if (value && typeof value === "object") return "待确认";
   const raw = String(value || "").trim();
-  if (!raw) return "缺失";
+  if (!raw || raw === "[object Object]") return "待确认";
   const exactLabel = formatUserFacingFundLabel(raw);
   const localized = exactLabel !== raw
     ? exactLabel
     : hasInternalFundSignalLeak(raw)
       ? normalizeUserFacingFundAnswer(raw)
       : raw;
-  return normalizeChartDisplayText(localized).slice(0, Math.max(2, maxLength)) || "缺失";
+  return normalizeChartDisplayText(localized).slice(0, Math.max(2, maxLength)) || "待确认";
 }
 
 function getChartShareClass(profile = {}) {
@@ -13131,8 +13240,25 @@ function getChartShareClass(profile = {}) {
 }
 
 function formatChartScale(value) {
+  if (value && typeof value === "object") {
+    const candidates = [
+      value.scale,
+      value.fundScale,
+      value.netAsset,
+      value.asset,
+      value.totalAsset,
+      value.value,
+      value.text,
+      value.label
+    ];
+    for (const candidate of candidates) {
+      const formatted = formatChartScale(candidate);
+      if (formatted) return formatted;
+    }
+    return "";
+  }
   const text = String(value || "").trim();
-  if (!text) return "";
+  if (!text || text === "[object Object]") return "";
   const number = toNumber(text) ?? Number(text.match(/-?\d+(?:\.\d+)?/)?.[0]);
   if (!Number.isFinite(number)) return sanitizeChartText(text).slice(0, 8);
   return `${round(number, number >= 100 ? 0 : 1)}亿`;
@@ -13211,7 +13337,7 @@ function formatChartSetupSignal(value) {
     uptrend: "观察",
     PULL: "回调完成",
     LAUNCH: "启动",
-    none: "无信号"
+    none: "等待"
   };
   return labels[value] || formatChartStringValue(value, 6);
 }
@@ -13271,7 +13397,7 @@ function formatChartAction(value) {
     avoid: "回避",
     hold: "持有"
   };
-  return labels[value] || "缺失";
+  return labels[value] || "观察";
 }
 
 function getChartPixelRatio() {
@@ -15144,7 +15270,7 @@ function getFeishuCardImageChunkSize() {
   return Math.max(1, Math.min(6, Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE));
 }
 
-const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上中文短标签：买点=能否买，回调启动=有没有回调完成或启动迹象，板块位置=题材处在低位、确认、扩散还是拥挤，120日位置/250日位置=数值越低越接近低位，经理动作=经理建议，每万成本/回撤/规模用于看成本和风险；分批=分几次买入，新图不再显示英文简称。";
+const FEISHU_FUND_IMAGE_CARD_LEGEND = "图上底部会直接写“为什么买或备选”：包括结论、支持证据、风险边界和下一步；上方中文短标签用于辅助确认买点、板块位置、低位程度、费用、回撤和规模，新图不再显示英文简称。";
 
 function isFundReportCardImage(image = {}) {
   const alt = String(image?.alt || "");
@@ -15164,7 +15290,7 @@ function buildFeishuImageCaption(image = {}) {
   const codeName = [image.code, image.name].filter(Boolean).join(" ");
   const prefix = [role, codeName].filter(Boolean).join("：");
   const focused = prefix || label;
-  return `${focused.slice(0, 80)}。看图顺序：先看“买点/经理动作”判断能否买，再看“板块位置/120日位置/250日位置”是否真低位，最后看“每万成本/回撤/规模”控制成本和风险。`;
+  return `${focused.slice(0, 80)}。看图顺序：先看底部“为什么买或备选”，再看“买点/经理动作”判断能否买，最后看“每万成本/回撤/规模”控制成本和风险。`;
 }
 
 function buildFeishuImageSupplementText(images = [], chunkIndex = 0, chunkTotal = 1) {

@@ -11,6 +11,7 @@ const serverSource = fs.readFileSync(path.join(process.cwd(), "src", "server.mjs
 const adminSource = fs.readFileSync(path.join(process.cwd(), "public", "admin.js"), "utf8");
 const adminHtmlSource = fs.readFileSync(path.join(process.cwd(), "public", "admin.html"), "utf8");
 const manager = await import(serverPath);
+const todayIso = new Date().toISOString().slice(0, 10);
 
 assert.equal(manager.shouldPersistRuntimeStats(), false, "capability checks must not write synthetic failures into runtime stats");
 
@@ -602,7 +603,7 @@ const watchlistStatusLines = manager.buildPortfolioWatchlistStatusLines([
     ...normalizedWatchDb.watchlist[0],
     lastSnapshot: {
       nav: 1.2345,
-      navDate: "2026-05-19",
+      navDate: todayIso,
       trendSummary: "20日+4.8%，60日+7.6%，趋势回调完成，入场可买",
       trendProfile: {
         ok: true,
@@ -1022,7 +1023,7 @@ const verifiedSeedProfile = {
   ok: true,
   code: "000010",
   name: "中证A500ETF联接C",
-  snapshotDate: "2026-05-19",
+  snapshotDate: todayIso,
   unitNav: 1.234,
   trendProfile: {
     ok: true,
@@ -1069,7 +1070,7 @@ assert.equal(verifiedSeedUpdates[0].status, "ready", "verified low-position pull
 assert(verifiedSeedUpdates[0].reason.includes("已用净值下钻验证"), "ready seed must explain that NAV trend verification passed");
 assert(verifiedSeedUpdates[0].setupEvidence.some((item) => item.includes("净值验证")), "ready seed must include verified trend evidence");
 assert(verifiedSeedUpdates[0].feeNotes.some((item) => item.includes("42")), "ready seed must keep fee impact evidence");
-const readyWatchReadiness = manager.evaluatePortfolioWatchReadiness({ ...verifiedSeedUpdates[0], updatedAt: "2026-05-20" }, verifiedSeedProfile);
+const readyWatchReadiness = manager.evaluatePortfolioWatchReadiness({ ...verifiedSeedUpdates[0], updatedAt: todayIso }, verifiedSeedProfile);
 assert(readyWatchReadiness.score >= 85, "verified low-position ready watchlist candidates must show high buy-preparation readiness");
 assert.equal(readyWatchReadiness.label, "买入准备充分", "high-readiness watchlist candidates must have a client-readable readiness label");
 const unverifiedWatchReadiness = manager.evaluatePortfolioWatchReadiness(portfolioSeedUpdates[0]);
@@ -2148,14 +2149,14 @@ assert(noChartGuideSanitized.includes("结论：分批买入"), "chart guide fin
 assert(!/\b(?:Verdict|Confidence|Score|staged buy)\b/i.test(noChartGuideSanitized), "chart guide finalizer must not return raw English labels");
 assert(manager.isFundChartGlossaryQuestion("这些基金图里的 stage 和 120日位置都是什么意思？"), "fund QA must detect chart metric glossary questions");
 const chartGlossaryAnswer = manager.buildFundReportChartGlossaryAnswer();
-assert(chartGlossaryAnswer.includes("后续新图会直接显示中文短标签"), "chart glossary answer must promise Chinese-first chart labels");
+assert(chartGlossaryAnswer.includes("后续新图会直接显示中文短标签和决策理由"), "chart glossary answer must promise Chinese-first decision labels");
 assert(chartGlossaryAnswer.includes("本质上就是这个"), "chart glossary answer must explain the old stage wording in natural Chinese");
 assert(chartGlossaryAnswer.includes("先看能不能买，再看是不是低位，最后看成本和风险"), "chart glossary answer must give a simple chart reading order");
 const chartGuideWithThemeStage = manager.appendFundReportChartReadingGuide(
   "推荐清单：000000 低位修复基金C，可以作为买入参考。",
   [buildChartProfile()]
 );
-assert(chartGuideWithThemeStage.includes("读图顺序：先看“买点/经理动作”"), "chart guide must give users a plain reading order before metric details");
+assert(chartGuideWithThemeStage.includes("读图顺序：先看底部“为什么买或备选”"), "chart guide must give users a plain decision-first reading order");
 assert(chartGuideWithThemeStage.includes("板块位置=这条赛道现在处在低位、确认、扩散还是拥挤"), "chart guide must explain theme-stage metrics as Chinese board-position wording");
 assert(chartGuideWithThemeStage.includes("指标速读：近20日/近60日看是否追涨"), "chart guide must include a plain metric quick-read");
 assert(chartGuideWithThemeStage.includes("医药，板块位置低位轮动"), "per-chart guide must translate theme stage evidence into Chinese");
@@ -2176,16 +2177,16 @@ assert(serverSource.includes("CJK_CHART_FONT"), "summary chart renderer must car
 assert(serverSource.includes("drawChartTextFit"), "summary chart renderer must fit Chinese and numeric metric labels instead of shrinking them into QR-like bitmap text");
 assert(serverSource.includes("REPORT_CHART_MIN_TEXT_SCALE = 3"), "summary chart must keep thumbnail-safe minimum text scale");
 assert(serverSource.includes("showAxisLabels: false"), "summary chart must hide dense axis tick text in Feishu thumbnails");
-assert(serverSource.includes("drawFundReportLegendPanel"), "summary chart must include an in-image Chinese legend for chart terms");
-assert(serverSource.includes("图例说明 买点=可买/分批买/等待/回避/观察"), "summary chart legend must explain buy-point states in Chinese");
+assert(serverSource.includes("drawFundReportDecisionReasonPanel"), "summary chart must include in-image buy/watch decision reasons");
+assert(serverSource.includes("本次动作") && serverSource.includes("待确认"), "summary chart must show buy/watch reasons and data confirmation needs");
 assert(serverSource.includes("越低越接近低位") && serverSource.includes("越高越接近高位"), "summary chart legend must explain 120/250-day position metrics in Chinese");
 assert(serverSource.includes('const chartMode = "summary"'), "fund report image generation must force Chinese summary report cards");
 assert(!serverSource.includes('chartMode === "trend"'), "fund report image generation must not fall back to sparse trend-only images");
-assert(serverSource.includes("板块位置=低位/确认/扩散/拥挤"), "summary chart legend must explain theme position instead of opaque stage wording");
-assert(serverSource.includes("看不懂指标时先看中文图例"), "chart guide must reassure users that opaque metrics are explained in Chinese");
-assert(serverSource.includes("经理动作=买入/分批/等待/回避"), "summary chart legend must explain manager action states without exposing STAGE");
-assert(serverSource.includes("分批=不一次买完 每万成本=每万元估算成本"), "summary chart legend must explain staged buying and per-10k cost inside the image");
-assert(serverSource.includes("回撤/规模=风险"), "summary chart legend must explain the right-side risk evidence inside the image");
+assert(serverSource.includes("板块位置=这条赛道现在处在低位、确认、扩散还是拥挤"), "summary chart guide must explain theme position instead of opaque stage wording");
+assert(serverSource.includes("看不懂指标时先看底部决策理由"), "chart guide must reassure users that opaque metrics are explained through decision reasons");
+assert(serverSource.includes("经理动作=经理建议"), "summary chart guide must explain manager action states without exposing STAGE");
+assert(serverSource.includes("每万成本=每1万元持有估算成本") && serverSource.includes("分批=不一次买完"), "summary chart guide must explain staged buying and per-10k cost");
+assert(serverSource.includes("风险边界"), "summary chart must explain risk evidence inside the image");
 assert(serverSource.includes('const title = [code || "基金"'), "summary chart title should use a Chinese fallback instead of an English title");
 assert(serverSource.includes("120日位置") && serverSource.includes("250日位置"), "summary chart must label low-position evidence with plain Chinese time-window labels");
 assert(serverSource.includes("每万成本"), "summary chart must label fee evidence as per-10k cost");
@@ -2194,6 +2195,9 @@ assert(serverSource.includes('staged_buy: "分批买"'), "summary chart must ren
 assert(serverSource.includes('STAGE: "分批买"'), "summary chart must translate legacy STAGE/BATCH values if upstream evidence still uses them");
 assert(!serverSource.includes('staged_buy: "STAGE"'), "summary chart must not show STAGE for staged-buy states in new images");
 assert(serverSource.includes('extended_uptrend: "高位"') && serverSource.includes('range_or_mixed: "观察"'), "summary chart signal renderer must translate non-buyable trend states into readable Chinese chart values");
+assert(serverSource.includes('none: "等待"'), "summary chart must translate no setup signal into a readable Chinese waiting state");
+assert(!serverSource.includes('none: "无信号"'), "summary chart must not show no-signal wording to customers");
+assert(serverSource.includes('raw === "[object Object]"'), "summary chart must sanitize object-valued metrics instead of drawing [object Object]");
 for (const label of ["基金", "净值", "区间涨跌", "净值走势", "买点成本", "买点", "回调启动", "板块位置", "120日位置", "250日位置", "经理动作", "份额", "每万成本", "近20日", "近60日", "回撤", "规模"]) {
   assert(serverSource.includes(label), `summary chart must use readable compact label: ${label}`);
 }
@@ -2482,12 +2486,12 @@ assert(guidedChartAnswer.includes("配图阅读："), "final answer must append 
 assert(guidedChartAnswer.includes("本次配图共 12 张"), "chart reading guide must summarize how many charts support the answer");
 assert(guidedChartAnswer.includes("买入参考图"), "chart reading guide must distinguish buy-reference charts");
 assert(guidedChartAnswer.includes("备选观察图"), "chart reading guide must distinguish backup/watch charts");
-assert(guidedChartAnswer.includes("新图只使用中文短标签"), "chart reading guide must tell users new images are Chinese-first");
+assert(guidedChartAnswer.includes("新图只使用中文短标签和决策理由"), "chart reading guide must tell users new images are Chinese-first and decision-first");
 assert(guidedChartAnswer.includes("买点=是否到了可买位置"), "chart reading guide must explain the entry label for users");
 assert(guidedChartAnswer.includes("120日位置/250日位置=区间相对位置"), "chart reading guide must translate low-position chart labels");
 assert(guidedChartAnswer.includes("规模=基金规模"), "chart reading guide must explain fund scale labels");
 assert(guidedChartAnswer.includes("分批买=分几次买入"), "chart reading guide must explain staged buying in Chinese");
-assert(guidedChartAnswer.includes("看不懂指标时先看中文图例"), "chart reading guide must tell users they do not need to understand raw system metrics");
+assert(guidedChartAnswer.includes("看不懂指标时先看底部决策理由"), "chart reading guide must tell users they do not need to understand raw system metrics");
 assert(!/\b(?:ENTRY|SIG|LOW\/YLOW|BATCH|STAGE|stage)\b/.test(guidedChartAnswer), "chart reading guide must not reintroduce raw legacy English labels");
 assert(guidedChartAnswer.includes("用来确认是否适合分批买入"), "buy-reference chart guide must say how the chart supports a buy decision");
 assert(guidedChartAnswer.includes("用来观察是否能从备选转入买点"), "backup chart guide must say how the chart supports a backup decision");
@@ -2505,18 +2509,17 @@ const fundImageCaption = manager.buildFeishuImageCaption({
   alt: "买入参考图：000001 低位修复基金A 走势 / 回撤 / 买点 / 成本证据"
 });
 assert(fundImageCaption.includes("买入参考图：000001 低位修复基金A"), "fund image captions must keep the fund and chart role next to the image");
-assert(fundImageCaption.includes("先看“买点/经理动作”判断能否买"), "fund image captions must tell users how to read the chart next to the image");
-assert(fundImageCaption.includes("板块位置/120日位置/250日位置"), "fund image captions must explain theme and low-position labels next to the image");
+assert(fundImageCaption.includes("先看底部“为什么买或备选”"), "fund image captions must tell users how to read the chart next to the image");
 assert(fundImageCaption.includes("“每万成本/回撤/规模”控制成本和风险"), "fund image captions must explain the right-side risk evidence next to the image");
 const fundImageLegend = manager.buildFeishuFundImageLegendNote([{ imageKey: "img_legend", fundReportChart: true }]);
-assert(fundImageLegend.includes("图上中文短标签"), "fund image cards must carry a Chinese chart legend next to the images");
-assert(fundImageLegend.includes("分批=分几次买入"), "fund image card legend must explain the batch-buy label in Chinese");
+assert(fundImageLegend.includes("图上底部会直接写“为什么买或备选”"), "fund image cards must carry decision reasons next to the images");
+assert(fundImageLegend.includes("结论、支持证据、风险边界和下一步"), "fund image card guide must explain the decision panel in Chinese");
 assert(!/\b(?:BATCH|STAGE|stage)\b/.test(fundImageLegend), "fund image card legend must not keep raw legacy English labels");
 const supplementText = manager.buildFeishuImageSupplementText([
   { imageKey: "img_supp", fundReportChart: true, role: "备选观察图", code: "000004", name: "备选回踩基金C" }
 ], 1, 3);
 assert(supplementText.includes("配图补充（第 2/3 组）"), "supplemental image cards must keep their group index");
-assert(supplementText.includes("图上中文短标签"), "supplemental image cards must include the Chinese chart legend without relying on the first answer body");
+assert(supplementText.includes("图上底部会直接写“为什么买或备选”"), "supplemental image cards must include the decision reason guide without relying on the first answer body");
 assert(supplementText.includes("备选观察图：000004 备选回踩基金C"), "supplemental image card captions must preserve backup/watch chart context");
 if (previousCardImageChunkSize === undefined) {
   delete process.env.FEISHU_CARD_IMAGE_CHUNK_SIZE;
