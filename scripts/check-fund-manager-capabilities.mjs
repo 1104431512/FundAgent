@@ -285,6 +285,13 @@ assert.deepEqual(
   ["000010", "000012"],
   "focused pullback ranking scan must keep precious-metal candidates and drop unrelated themes"
 );
+assert.deepEqual(
+  manager.inferPullbackSetupSearchKeywords("黄金里面找一个回调完成、低位、准备启动的基金", [
+    { id: "precious_metals", name: "黄金/贵金属", positionSignal: "low_position_rotation", lowPositionScore: 58, fundKeywords: ["黄金", "贵金属", "白银"] }
+  ]),
+  ["黄金", "贵金属"],
+  "explicit precious-metal setup requests must still search precious-metal funds"
+);
 
 await assertIntent({
   userText: "按最近题材推荐几个基金",
@@ -962,7 +969,28 @@ const genericSetupKeywords = manager.inferPullbackSetupSearchKeywords(setupQuery
 for (const keyword of ["中证2000", "科创100", "央企", "国企", "基建", "房地产", "有色金属", "电力", "公用事业"]) {
   assert(genericSetupKeywords.includes(keyword), `generic pullback setup recall must include low-position rotation keyword: ${keyword}`);
 }
+for (const keyword of ["黄金", "贵金属", "白银"]) {
+  assert(!genericSetupKeywords.includes(keyword), `generic pullback setup recall must not default to precious-metal keyword: ${keyword}`);
+}
+const genericKeywordsWithPreciousRadar = manager.inferPullbackSetupSearchKeywords(setupQuery, [
+  { id: "precious_metals", name: "黄金/贵金属", positionSignal: "low_position_rotation", lowPositionScore: 62, fundKeywords: ["黄金", "贵金属", "白银"] },
+  { id: "medicine", name: "医药/创新药", positionSignal: "low_position_rotation", lowPositionScore: 58, fundKeywords: ["医药", "创新药"] }
+]);
+assert(genericKeywordsWithPreciousRadar.includes("医药"), "generic pullback setup recall may use non-precious low-position radar keywords");
+for (const keyword of ["黄金", "贵金属", "白银"]) {
+  assert(!genericKeywordsWithPreciousRadar.includes(keyword), "generic pullback setup recall must suppress precious-metal radar keywords unless explicitly requested");
+}
 assert(genericSetupKeywords.length > 24, "generic pullback setup recall must expand beyond the old narrow 24-keyword pool");
+assert(
+  manager.scorePullbackSetupSeedCandidate(lowSetupSeed, [], setupQuery) >
+    manager.scorePullbackSetupSeedCandidate({ ...weeklyTurnSeed, name: "博时黄金ETF联接C", keywords: ["低位启动前夜候选"] }, [], setupQuery),
+  "generic pullback setup scoring must not let gold funds outrank broad low-position candidates unless the user asks for gold"
+);
+assert(
+  manager.scorePullbackSetupSeedCandidate({ ...weeklyTurnSeed, name: "博时黄金ETF联接C", keywords: ["黄金", "低位启动前夜候选"] }, [], "黄金里面找一个回调完成、低位、准备启动的基金") >
+    -100,
+  "explicit gold setup requests must not suppress precious-metal candidates"
+);
 assert.deepEqual(
   manager.inferPullbackSetupSearchKeywords("小盘低位刚要启动", []),
   ["中证2000", "中证1000"],

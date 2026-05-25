@@ -1443,6 +1443,26 @@ const requiredPatterns = [
     message: "pullback/setup discovery must route correctly even when the user omits the word 基金."
   },
   {
+    pattern: /id:\s*"precious_metals"[\s\S]{0,260}fundKeywords:\s*\["黄金",\s*"贵金属",\s*"白银"\]/,
+    message: "precious-metal theme matching must not treat broad 有色 funds as gold by default."
+  },
+  {
+    pattern: /function inferPullbackSetupSearchKeywords[\s\S]{0,1200}\.filter\(\(keyword\)\s*=>\s*allowPrecious\s*\|\|\s*!isPreciousMetalKeyword\(keyword\)\)/,
+    message: "generic pullback/setup discovery must suppress precious-metal search keywords unless explicitly requested."
+  },
+  {
+    pattern: /function fetchPullbackSetupCandidates[\s\S]{0,1600}\.filter\(\(item\)\s*=>\s*!shouldSuppressPreciousMetalCandidate\(userText,\s*item\)\)/,
+    message: "generic pullback/setup discovery must not seed gold candidates unless the user asks for gold."
+  },
+  {
+    pattern: /function scorePullbackSetupSeedCandidate[\s\S]{0,120}shouldSuppressPreciousMetalCandidate\(userText,\s*item\)[\s\S]{0,80}return -1000/,
+    message: "generic pullback/setup scoring must strongly suppress gold candidates unless explicitly requested."
+  },
+  {
+    pattern: /function fetchMarketDeepDive[\s\S]{0,1800}\.filter\(\(item\)\s*=>\s*!shouldSuppressPreciousMetalCandidate\(userText,\s*item\)\)/,
+    message: "generic recommendation deep dives must not let gold candidates crowd out other sectors."
+  },
+  {
     pattern: /产品类型焦点：货币基金按现金管理评估/,
     message: "money-market screening must not use equity pullback/chase framing."
   },

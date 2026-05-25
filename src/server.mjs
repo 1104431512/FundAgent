@@ -10817,7 +10817,7 @@ const THEME_RADAR_RULES = [
     id: "precious_metals",
     name: "黄金/贵金属",
     keywords: ["黄金", "贵金属", "白银", "金价", "美联储", "降息", "美元", "美债", "COMEX"],
-    fundKeywords: ["黄金", "贵金属", "白银", "有色"]
+    fundKeywords: ["黄金", "贵金属", "白银"]
   },
   {
     id: "new_energy",
@@ -11001,13 +11001,17 @@ function selectRelevantThemeRadar(userText, marketSnapshot) {
   const radar = Array.isArray(marketSnapshot?.themeRadar) ? marketSnapshot.themeRadar : [];
   if (!radar.length) return [];
   const text = normalizeIntentText(userText);
+  const scopedRadar = isPreciousMetalQuestion(userText)
+    ? radar
+    : radar.filter((theme) => theme.id !== "precious_metals");
   const matched = radar
+    .filter((theme) => isPreciousMetalQuestion(userText) || theme.id !== "precious_metals")
     .map((theme) => ({
       ...theme,
       relevance: textMatchesKeywords(text, [...(theme.keywords || []), ...(theme.fundKeywords || []), theme.name || ""]) ? 20 : 0
     }))
     .filter((theme) => theme.relevance > 0);
-  return (matched.length ? matched : radar)
+  return (matched.length ? matched : scopedRadar)
     .sort((a, b) => (b.relevance || 0) + Number(b.forwardScore || 0) - ((a.relevance || 0) + Number(a.forwardScore || 0)))
     .slice(0, 6);
 }
@@ -11228,7 +11232,9 @@ function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
   const explicit = inferFocusedFundSearchKeywords(userText);
   if (explicit.length) return explicit;
 
+  const allowPrecious = isPreciousMetalQuestion(userText);
   const radarKeywords = (themeRadar || [])
+    .filter((theme) => allowPrecious || theme.id !== "precious_metals")
     .filter((theme) => Number(theme.lowPositionScore || 0) >= 35 || ["low_position_rotation", "acceptable_position"].includes(theme.positionSignal))
     .flatMap((theme) => [theme.name, ...(theme.fundKeywords || []), ...(theme.keywords || [])])
     .filter(Boolean);
@@ -11237,6 +11243,7 @@ function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
     .map((item) => item.trim())
     .filter(Boolean);
   return [...new Set([...(configured.length ? configured : DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS), ...radarKeywords])]
+    .filter((keyword) => allowPrecious || !isPreciousMetalKeyword(keyword))
     .slice(0, Number(process.env.PULLBACK_SETUP_KEYWORD_LIMIT || 32));
 }
 
@@ -11268,6 +11275,7 @@ async function fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar
   const scopedSnapshotItems = filterFocusedPullbackRankingCandidates(snapshotItems, focusedKeywords);
 
   return mergeCandidateFunds(keywordItems, rankingItems, scopedSnapshotItems)
+    .filter((item) => !shouldSuppressPreciousMetalCandidate(userText, item))
     .sort((a, b) => scorePullbackSetupSeedCandidate(b, themeRadar, userText) - scorePullbackSetupSeedCandidate(a, themeRadar, userText))
     .slice(0, Number(process.env.PULLBACK_SETUP_SEED_LIMIT || 80));
 }
@@ -11519,6 +11527,7 @@ function isMissingCandidateValue(value) {
 }
 
 function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
+  if (shouldSuppressPreciousMetalCandidate(userText, item)) return -1000;
   const text = `${item.name || ""} ${item.type || ""} ${(item.keywords || []).join(" ")}`;
   const oneMonth = toNumber(item?.oneMonthPct);
   const oneWeek = toNumber(item?.oneWeekPct);
@@ -11575,8 +11584,33 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
     if (theme.stage === "crowded") score -= 10;
   }
 
-  if (isGenericPullbackSetupRequest(userText) && /黄金|贵金属|白银/.test(text)) score -= 18;
+  if (!isPreciousMetalQuestion(userText) && isPreciousMetalCandidate(item)) score -= 80;
   return score;
+}
+
+function isPreciousMetalKeyword(value = "") {
+  return /黄金|贵金属|白银|金价|沪金|沪银|COMEX/i.test(String(value || ""));
+}
+
+function isPreciousMetalCandidate(candidate = {}) {
+  const text = normalizeIntentText([
+    candidate?.name,
+    candidate?.type,
+    candidate?.company,
+    ...(Array.isArray(candidate?.keywords) ? candidate.keywords : []),
+    candidate?.seed?.name,
+    candidate?.seed?.type,
+    ...(Array.isArray(candidate?.seed?.keywords) ? candidate.seed.keywords : [])
+  ].filter(Boolean).join(" "));
+  if (/(黄金|贵金属|白银|沪金|沪银|金价|黄金ETF|白银ETF)/i.test(text)) return true;
+  return getCandidateThemeSignals(candidate).some((theme) =>
+    theme.id === "precious_metals" || /黄金|贵金属|白银/.test(`${theme.name || ""} ${theme.id || ""}`)
+  );
+}
+
+function shouldSuppressPreciousMetalCandidate(userText = "", candidate = {}) {
+  if (isPreciousMetalQuestion(userText)) return false;
+  return isPreciousMetalCandidate(candidate);
 }
 
 function scoreDeepDiveCandidate(item, themeRadar = []) {
@@ -11788,6 +11822,7 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
     ? filterFocusedPullbackRankingCandidates(snapshotCandidates, focusedKeywords)
     : snapshotCandidates;
   const merged = mergeCandidateFunds(focusedCandidates, pullbackSetupCandidates, scopedSnapshotCandidates)
+    .filter((item) => !shouldSuppressPreciousMetalCandidate(userText, item))
     .map((item) => ({ ...item, matchedThemes: matchCandidateThemes(item, relevantThemeRadar) }))
     .sort((a, b) => {
       if (preferPullbackSetup) {
