@@ -2515,6 +2515,21 @@ const fundImageLegend = manager.buildFeishuFundImageLegendNote([{ imageKey: "img
 assert(fundImageLegend.includes("图上底部会直接写“为什么买或备选”"), "fund image cards must carry decision reasons next to the images");
 assert(fundImageLegend.includes("结论、支持证据、风险边界和下一步"), "fund image card guide must explain the decision panel in Chinese");
 assert(!/\b(?:BATCH|STAGE|stage)\b/.test(fundImageLegend), "fund image card legend must not keep raw legacy English labels");
+const decisionFeishuCard = manager.buildFeishuCard([
+  "直接结论：等待回调，不追涨，暂不买入。",
+  "关键证据：近20日+18%，120日位置86%，已经偏热。",
+  "风险边界：若没有回撤到低位，不给买入金额。",
+  "执行：放入备选观察，等回调完成后复核。"
+].join("\n"), "answer");
+const decisionCardText = JSON.stringify(decisionFeishuCard);
+assert.equal(decisionFeishuCard.header.template, "red", "risk-first Feishu cards must use a warning header color");
+assert(decisionFeishuCard.header.title.content.includes("风险优先"), "Feishu card headers must expose the decision tone");
+assert(decisionCardText.includes("<font color='red'>"), "Feishu card summaries must color the key conclusion");
+assert(decisionCardText.includes("**关键证据**"), "Feishu cards must split key evidence away from the full text body");
+assert(decisionCardText.includes("**风险/待确认**"), "Feishu cards must split risk and confirmation needs away from the full text body");
+assert(decisionCardText.includes("**详细分析**"), "Feishu cards must keep the original analysis below the highlighted summary");
+const buyFeishuCard = manager.buildFeishuCard("直接结论：可以分批买入，小仓验证。\n买点依据：回调完成，120日位置38%。", "answer");
+assert.equal(buyFeishuCard.header.template, "green", "buyable Feishu cards must use a positive header color");
 const supplementText = manager.buildFeishuImageSupplementText([
   { imageKey: "img_supp", fundReportChart: true, role: "备选观察图", code: "000004", name: "备选回踩基金C" }
 ], 1, 3);

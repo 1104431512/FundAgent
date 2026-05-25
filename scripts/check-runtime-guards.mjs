@@ -563,6 +563,22 @@ const requiredPatterns = [
     message: "fund image captions must tell users how chart evidence supports buy or backup decisions."
   },
   {
+    pattern: /function buildFeishuCardTextElements[\s\S]{0,900}\*\*详细分析\*\*/,
+    message: "Feishu cards must split highlighted summary from detailed analysis instead of putting everything in one text block."
+  },
+  {
+    pattern: /function buildFeishuDecisionDigest[\s\S]{0,1200}\*\*关键证据\*\*[\s\S]{0,520}\*\*风险\/待确认\*\*/,
+    message: "Feishu cards must expose key evidence and risk sections as scannable blocks."
+  },
+  {
+    pattern: /function formatFeishuColoredText[\s\S]{0,260}<font color='/,
+    message: "Feishu card summaries must use supported lark_md color markup for important text."
+  },
+  {
+    pattern: /function getCardMeta[\s\S]{0,900}inferFeishuCardTone[\s\S]{0,260}template:\s*tone\.template/,
+    message: "Feishu card headers must change color template according to the decision tone."
+  },
+  {
     pattern: /fundReportChart:\s*true/,
     message: "generated fund report images must be tagged so Feishu cards can attach Chinese chart legends."
   },

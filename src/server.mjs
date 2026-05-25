@@ -15324,17 +15324,9 @@ function buildFeishuReplyPayload(text, options = {}) {
 }
 
 function buildFeishuCard(text, kind, options = {}) {
-  const meta = getCardMeta(kind);
   const content = normalizeFeishuCardMarkdown(text, kind);
-  const elements = [
-    {
-      tag: "div",
-      text: {
-        tag: "lark_md",
-        content
-      }
-    }
-  ];
+  const meta = getCardMeta(kind, content);
+  const elements = buildFeishuCardTextElements(content, kind);
 
   const cardImages = Array.isArray(options.images) ? options.images : [];
   const imageLegend = buildFeishuFundImageLegendNote(cardImages);
@@ -15408,7 +15400,143 @@ function buildFeishuCard(text, kind, options = {}) {
   };
 }
 
-function getCardMeta(kind) {
+function buildFeishuCardTextElements(content, kind) {
+  const normalized = String(content || "").trim();
+  if (!shouldUseFeishuDecisionLayout(kind, normalized)) {
+    return [{
+      tag: "div",
+      text: {
+        tag: "lark_md",
+        content: normalized || "已收到。"
+      }
+    }];
+  }
+
+  const digest = buildFeishuDecisionDigest(normalized, kind);
+  const elements = [{
+    tag: "div",
+    text: {
+      tag: "lark_md",
+      content: digest.summary
+    }
+  }];
+  if (digest.detail) {
+    elements.push(
+      { tag: "hr" },
+      {
+        tag: "div",
+        text: {
+          tag: "lark_md",
+          content: `**详细分析**\n${digest.detail}`
+        }
+      }
+    );
+  }
+  return elements;
+}
+
+function shouldUseFeishuDecisionLayout(kind, content = "") {
+  if (!content.trim()) return false;
+  if (["progress", "error", "noContent", "chart"].includes(kind)) return false;
+  return ["answer", "portfolio", "reply"].includes(kind)
+    || /(?:结论|直接结论|经理最终判断|买入|分批|等待|回避|风险|持仓|自选|备选|组合|复盘|盘前)/.test(content);
+}
+
+function buildFeishuDecisionDigest(content, kind) {
+  const tone = inferFeishuCardTone(content, kind);
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const headline = selectFeishuHeadlineLine(lines) || lines[0] || "先看结论、证据和风险边界。";
+  const evidence = selectFeishuHighlightLines(lines, "evidence", headline).slice(0, 3);
+  const risk = selectFeishuHighlightLines(lines, "risk", headline).slice(0, 3);
+  const summary = [
+    `**${tone.icon} ${tone.label}**  ${formatFeishuColoredText(shortenFeishuLine(headline, 180), tone.markdownColor)}`,
+    evidence.length
+      ? `**关键证据**\n${evidence.map((line) => formatFeishuBullet(line, "green")).join("\n")}`
+      : "",
+    risk.length
+      ? `**风险/待确认**\n${risk.map((line) => formatFeishuBullet(line, tone.riskColor)).join("\n")}`
+      : ""
+  ].filter(Boolean).join("\n\n");
+  return {
+    summary,
+    detail: content
+  };
+}
+
+function selectFeishuHeadlineLine(lines = []) {
+  return lines.find((line) => /^(?:直接结论|结论|经理最终判断|最终动作|今日操作|盘前一句话|今日盈亏|本次|建议|经理动作|组合复盘|周总结|周计划)\s*[：:]/.test(line))
+    || lines.find((line) => /(?:买入|分批|等待|回避|观察|持有|减仓|暂不买|不追涨)/.test(line));
+}
+
+function selectFeishuHighlightLines(lines = [], type, headline = "") {
+  const strongPattern = type === "risk"
+    ? /^(?:风险|风险边界|待确认|待复核|缺失数据|执行|触发|纪律|下一步)\s*[：:]/
+    : /^(?:关键证据|证据|依据|买点依据|原因|为什么)\s*[：:]/;
+  const fallbackPattern = type === "risk"
+    ? /(?:风险|待确认|待复核|缺失|缺口|等待|回避|暂不|不买|追涨|偏热|过热|回撤|止损|减仓|触发|边界|数据)/
+    : /(?:证据|依据|原因|买点|回调|低位|轮动|板块|近\d+日|120日|250日|费用|份额|持仓|前十大|规模|成本|为什么)/;
+  const excluded = new Set([headline]);
+  const candidates = lines
+    .filter((line) => !excluded.has(line))
+    .filter((line) => strongPattern.test(line));
+  const source = candidates.length ? candidates : lines
+    .filter((line) => !excluded.has(line))
+    .filter((line) => fallbackPattern.test(line));
+  return source
+    .map((line) => shortenFeishuLine(cleanFeishuHighlightLine(line), 160));
+}
+
+function cleanFeishuHighlightLine(line = "") {
+  return String(line || "")
+    .replace(/^\s*(?:[-*•]|\d+[.、])\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function shortenFeishuLine(line = "", maxLength = 160) {
+  const text = cleanFeishuHighlightLine(line);
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+function formatFeishuBullet(line, color) {
+  return formatFeishuColoredText(`• ${line}`, color);
+}
+
+function formatFeishuColoredText(text, color) {
+  const safe = escapeFeishuInlineText(text);
+  return color ? `<font color='${color}'>${safe}</font>` : safe;
+}
+
+function escapeFeishuInlineText(text = "") {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function inferFeishuCardTone(content = "", kind = "reply") {
+  if (kind === "error") return { label: "异常", template: "red", markdownColor: "red", riskColor: "red", icon: "!" };
+  const body = String(content || "");
+  if (/(?:回避|暂不买|暂不加仓|不买|暂停买入|风险偏高|追涨风险|偏热|过热|止损|减仓|卖出|SELL)/i.test(body)) {
+    return { label: "风险优先", template: "red", markdownColor: "red", riskColor: "red", icon: "!" };
+  }
+  if (/(?:等待|等回调|待确认|待复核|观察|备选|暂缓|只观察|WATCH)/i.test(body)) {
+    return { label: "等待确认", template: "yellow", markdownColor: "orange", riskColor: "orange", icon: "!" };
+  }
+  if (/(?:分批买入|分批|小仓|可买|买入|BUY)/i.test(body)) {
+    return { label: "可执行", template: "green", markdownColor: "green", riskColor: "orange", icon: "OK" };
+  }
+  if (/(?:持有|复盘|组合|盘前|周总结|周计划)/.test(body)) {
+    return { label: "组合观察", template: "blue", markdownColor: "blue", riskColor: "orange", icon: "i" };
+  }
+  return { label: "分析完成", template: "turquoise", markdownColor: "blue", riskColor: "orange", icon: "i" };
+}
+
+function getCardMeta(kind, content = "") {
   const meta = {
     progress: { template: "blue", title: "🔎 基金经理正在处理" },
     answer: { template: "turquoise", title: "📊 基金分析完成" },
@@ -15418,7 +15546,14 @@ function getCardMeta(kind) {
     noContent: { template: "yellow", title: "📷 请发送基金截图" },
     reply: { template: "wathet", title: "基金经理" }
   };
-  return meta[kind] || meta.reply;
+  const base = meta[kind] || meta.reply;
+  if (!shouldUseFeishuDecisionLayout(kind, content)) return base;
+  const tone = inferFeishuCardTone(content, kind);
+  return {
+    ...base,
+    template: tone.template,
+    title: `${base.title}｜${tone.label}`
+  };
 }
 
 async function getTenantAccessToken(config = getEffectiveConfig()) {
@@ -17515,6 +17650,7 @@ export {
   buildPortfolioWatchlistStatusLines,
   buildPortfolioWatchlistLaunchEveLines,
   buildPortfolioWatchlistUpdatesFromAnswerProfiles,
+  buildFeishuCard,
   buildFeishuFundImageLegendNote,
   buildFeishuImageCaption,
   buildFeishuImageSupplementText,
