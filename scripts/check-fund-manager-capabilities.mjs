@@ -2556,6 +2556,39 @@ assert(decisionCardText.includes("<font color='red'>"), "Feishu card summaries m
 assert(decisionCardText.includes("**关键证据**"), "Feishu cards must split key evidence away from the full text body");
 assert(decisionCardText.includes("**风险/待确认**"), "Feishu cards must split risk and confirmation needs away from the full text body");
 assert(decisionCardText.includes("**详细分析**"), "Feishu cards must keep the original analysis below the highlighted summary");
+const portfolioFeishuCard = manager.buildFeishuCard([
+  "虚拟基金经理日报 2026-05-25",
+  "今日手法：高位科技减仓复核 + 低位医药小额试探，不做重仓追涨。",
+  "市场判断：账户回撤正常但缺少完整指数、板块资金和新闻模块，只允许小额试探。",
+  "投委会意见：",
+  "市场分析师 中：账户回撤正常且现金充足，但缺少完整市场指数和板块资金，不能把当前数据当成完整联网市场证据。",
+  "风控经理 负：008327、006265、001986底层持仓重叠较高，不能用加仓摊薄替代止损或止盈。",
+  "主席 中：批准执行高位科技减仓复核，低位医药只做小仓试探。",
+  "今日操作：",
+  "卖出 008327 东财通信C 建议11810.03元：系统组合集中度控制，同题材暴露过度集中，先分批降低同题材暴露。近20日+19.64%、近60日+61.1%，120日和250日位置均为100%，属于高位趋势延伸，不是低位轮动。",
+  "观察 012046 大成医药健康股票C：作为低位医药卫星仓小额试探。5日+0.34%、20日-3.41%、60日-7.19%，120日位置25.3、250日位置13.1，但规模0.17亿偏小，只能小仓。",
+  "申购/赎回申请：",
+  "卖出 008327 东财通信C 8024.95元：已提交，估值日 2026-05-25，确认日 2026-05-26，到账日 2026-05-29。",
+  "已确认成交：",
+  "无实际账本变动。",
+  "自选基金池：",
+  "010802 长江量化消费精选股票C（等待回调，优先级3）：净值验证：趋势回调完成，5日+0.47%，10日-0.89%，20日+0.45%，60日-7.74%，120日位置6.1%，距高点-14.21%；观察缺口：规模、费用和集中度风险仍需复核。",
+  "风险控制：",
+  "科技仓穿透重叠较高，多只处于高位短期涨幅偏热，今日以降风险为先。",
+  "回溯学习点：",
+  "账户级回撤正常并不代表可以忽略单仓回吐保护；当浮盈回吐和底层重叠同时出现时，先做减仓复核。"
+].join("\n"), "portfolio");
+const portfolioTextBlocks = portfolioFeishuCard.elements
+  .map((element) => element?.text?.content)
+  .filter(Boolean);
+const portfolioCardText = JSON.stringify(portfolioFeishuCard);
+assert(portfolioTextBlocks.length >= 10, "portfolio Feishu reports must split daily reports into multiple readable card blocks");
+assert(portfolioCardText.includes("<font color='blue'>**投委会意见**</font>"), "portfolio Feishu reports must color committee sections");
+assert(portfolioCardText.includes("<font color='orange'>**今日操作**</font>"), "portfolio Feishu reports must color action sections");
+assert(portfolioCardText.includes("<font color='green'>**自选基金池**</font>"), "portfolio Feishu reports must color watchlist sections");
+assert(portfolioCardText.includes("<font color='red'>**风险控制**</font>"), "portfolio Feishu reports must color risk sections");
+assert(portfolioTextBlocks.some((block) => block.includes("\n\n<font color='red'>**卖出**</font> 008327")), "portfolio Feishu reports must separate sell actions with blank space and colored action words");
+assert(portfolioTextBlocks.every((block) => block.length < 1800), "portfolio Feishu detail blocks must stay short enough to scan in Feishu");
 const buyFeishuCard = manager.buildFeishuCard("直接结论：可以分批买入，小仓验证。\n买点依据：回调完成，120日位置38%。", "answer");
 assert.equal(buyFeishuCard.header.template, "green", "buyable Feishu cards must use a positive header color");
 const supplementText = manager.buildFeishuImageSupplementText([

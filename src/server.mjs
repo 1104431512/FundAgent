@@ -15435,6 +15435,9 @@ function buildFeishuCard(text, kind, options = {}) {
   };
 }
 
+const FEISHU_DETAIL_SECTION_MAX_CHARS = 1500;
+const FEISHU_DETAIL_SECTION_PATTERN = /^(?:\*\*)?(虚拟基金经理日报(?:\s+\d{4}-\d{2}-\d{2})?|今日手法|市场判断|投委会意见|今日操作|申购\/赎回申请|已确认成交|自选基金池|当前资产|回撤预算|风险控制|回溯学习点|风险边界|执行记录|下一步|组合复盘|周总结|周计划)(?:\*\*)?\s*(?:[：:]\s*(.*))?$/;
+
 function buildFeishuCardTextElements(content, kind) {
   const normalized = String(content || "").trim();
   if (!shouldUseFeishuDecisionLayout(kind, normalized)) {
@@ -15456,18 +15459,224 @@ function buildFeishuCardTextElements(content, kind) {
     }
   }];
   if (digest.detail) {
-    elements.push(
-      { tag: "hr" },
-      {
+    elements.push(...buildFeishuDetailedAnalysisElements(digest.detail));
+  }
+  return elements;
+}
+
+function buildFeishuDetailedAnalysisElements(detail) {
+  const sections = splitFeishuDetailSections(detail);
+  if (!sections.length) return [];
+  const elements = [
+    { tag: "hr" },
+    {
+      tag: "div",
+      text: {
+        tag: "lark_md",
+        content: "**详细分析**"
+      }
+    }
+  ];
+
+  for (const section of sections) {
+    for (const block of buildFeishuSectionBlocks(section)) {
+      elements.push({
         tag: "div",
         text: {
           tag: "lark_md",
-          content: `**详细分析**\n${digest.detail}`
+          content: block
         }
-      }
-    );
+      });
+    }
   }
   return elements;
+}
+
+function splitFeishuDetailSections(detail) {
+  const text = expandFeishuDetailSectionBreaks(detail);
+  const sections = [];
+  let current = null;
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const heading = parseFeishuDetailSectionHeading(line);
+    if (heading) {
+      if (current) sections.push(current);
+      current = {
+        title: heading.title,
+        lines: heading.body ? [heading.body] : []
+      };
+      continue;
+    }
+
+    if (!current) {
+      current = { title: "详细原文", lines: [] };
+    }
+    current.lines.push(line);
+  }
+
+  if (current) sections.push(current);
+  return sections.filter((section) => section.title || section.lines.length);
+}
+
+function expandFeishuDetailSectionBreaks(detail = "") {
+  return String(detail || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/([。；;）)])\s*(?=(?:今日手法|市场判断|投委会意见|今日操作|申购\/赎回申请|已确认成交|自选基金池|当前资产|回撤预算|风险控制|回溯学习点)\s*[：:])/g, "$1\n")
+    .replace(/([。；;）)])\s*(?=(?:卖出|买入|观察|持有|申购|赎回)\s+\d{6})/g, "$1\n");
+}
+
+function parseFeishuDetailSectionHeading(line = "") {
+  const trimmed = String(line || "").trim();
+  const match = trimmed.match(FEISHU_DETAIL_SECTION_PATTERN);
+  if (!match) return null;
+  return {
+    title: match[1].replace(/\*\*/g, "").trim(),
+    body: String(match[2] || "").trim()
+  };
+}
+
+function buildFeishuSectionBlocks(section) {
+  const paragraphs = normalizeFeishuSectionParagraphs(section.lines, section.title);
+  const chunks = chunkFeishuSectionParagraphs(paragraphs);
+  if (!chunks.length) {
+    return [formatFeishuSectionTitle(section.title, 0)];
+  }
+  return chunks.map((chunk, index) => [
+    formatFeishuSectionTitle(section.title, index),
+    chunk
+  ].filter(Boolean).join("\n\n"));
+}
+
+function normalizeFeishuSectionParagraphs(lines = [], sectionTitle = "") {
+  return lines
+    .map((line) => formatFeishuSectionParagraph(line, sectionTitle))
+    .filter(Boolean);
+}
+
+function formatFeishuSectionParagraph(line = "", sectionTitle = "") {
+  const text = String(line || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+
+  const action = formatFeishuActionParagraph(text);
+  if (action) return action;
+
+  const committee = text.match(/^(市场分析师|题材分析师|基金研究员|组合经理|风控经理|主席)\s*([正中负]?)\s*[：:]\s*(.+)$/);
+  if (committee) {
+    const role = formatFeishuColoredText(`**${committee[1]}**`, committee[1] === "风控经理" ? "red" : "blue");
+    const stance = committee[2] ? ` ${committee[2]}` : "";
+    return [`${role}${stance}`, ...splitFeishuReadableLine(committee[3])].join("\n");
+  }
+
+  const watch = text.match(/^(\d{6}\s+[^：:]{0,120})[：:]\s*(.+)$/);
+  if (watch || sectionTitle === "自选基金池") {
+    if (watch) {
+      return [`**${watch[1].trim()}**`, ...splitFeishuReadableLine(watch[2])].join("\n");
+    }
+  }
+
+  return splitFeishuReadableLine(text).join("\n");
+}
+
+function formatFeishuActionParagraph(text = "") {
+  const match = String(text || "").trim().match(/^(卖出|买入|申购|赎回|观察|持有)\s+([^：:]*?)(?:[：:]\s*(.*))?$/);
+  if (!match) return "";
+  const [, action, target, body = ""] = match;
+  const lead = [formatFeishuColoredText(`**${action}**`, getFeishuActionColor(action)), target.trim()]
+    .filter(Boolean)
+    .join(" ");
+  const bodyLines = splitFeishuReadableLine(body);
+  return [lead, ...bodyLines].filter(Boolean).join("\n");
+}
+
+function splitFeishuReadableLine(line = "", maxLength = 96) {
+  const text = String(line || "").replace(/\s+/g, " ").trim();
+  if (!text) return [];
+  const expanded = text
+    .replace(/([。；;])\s*/g, "$1\n")
+    .replace(/([）)])\s*(?=(?:系统|本次|该基金|由于|今日|当前|若|等待|费用|净值|观察缺口|触发|风险|用户原始需求|同题材|低位|高位))/g, "$1\n")
+    .replace(/\s+(?=(?:系统|本次|该基金|由于|今日|当前|若|等待|费用|净值|观察缺口|触发|风险|用户原始需求)[：:])/g, "\n");
+  return expanded
+    .split("\n")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .flatMap((part) => chunkFeishuLongText(part, maxLength));
+}
+
+function chunkFeishuLongText(text = "", maxLength = 96) {
+  const chunks = [];
+  let rest = String(text || "").trim();
+  while (rest.length > maxLength) {
+    const window = rest.slice(0, maxLength + 1);
+    const cut = Math.max(
+      window.lastIndexOf("，"),
+      window.lastIndexOf("、"),
+      window.lastIndexOf("；"),
+      window.lastIndexOf(";"),
+      window.lastIndexOf(" ")
+    );
+    const index = cut >= Math.floor(maxLength * 0.55) ? cut + 1 : maxLength;
+    chunks.push(rest.slice(0, index).trim());
+    rest = rest.slice(index).trim();
+  }
+  if (rest) chunks.push(rest);
+  return chunks;
+}
+
+function chunkFeishuSectionParagraphs(paragraphs = [], maxLength = FEISHU_DETAIL_SECTION_MAX_CHARS) {
+  const chunks = [];
+  let current = "";
+
+  for (const paragraph of paragraphs) {
+    if (!paragraph) continue;
+    const next = current ? `${current}\n\n${paragraph}` : paragraph;
+    if (next.length <= maxLength) {
+      current = next;
+      continue;
+    }
+    if (current) chunks.push(current);
+    if (paragraph.length <= maxLength) {
+      current = paragraph;
+    } else {
+      const lines = paragraph.split("\n").filter(Boolean);
+      current = "";
+      for (const line of lines) {
+        const candidate = current ? `${current}\n${line}` : line;
+        if (candidate.length <= maxLength) {
+          current = candidate;
+        } else {
+          if (current) chunks.push(current);
+          current = line;
+        }
+      }
+    }
+  }
+
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+function formatFeishuSectionTitle(title = "", chunkIndex = 0) {
+  const suffix = chunkIndex > 0 ? "（续）" : "";
+  return formatFeishuColoredText(`**${String(title || "详细原文").trim()}${suffix}**`, getFeishuSectionColor(title));
+}
+
+function getFeishuSectionColor(title = "") {
+  const value = String(title || "");
+  if (/(?:风险|回撤|风控|赎回|卖出)/.test(value)) return "red";
+  if (/(?:今日操作|申购|执行|下一步)/.test(value)) return "orange";
+  if (/(?:自选|备选|观察|回溯|学习)/.test(value)) return "green";
+  if (/(?:资产|现金|持仓|预算)/.test(value)) return "blue";
+  if (/(?:市场|投委会|手法|复盘|日报|周总结|周计划)/.test(value)) return "blue";
+  return "grey";
+}
+
+function getFeishuActionColor(action = "") {
+  if (/(?:卖出|赎回)/.test(action)) return "red";
+  if (/(?:买入|申购)/.test(action)) return "green";
+  if (/(?:观察)/.test(action)) return "orange";
+  return "blue";
 }
 
 function shouldUseFeishuDecisionLayout(kind, content = "") {

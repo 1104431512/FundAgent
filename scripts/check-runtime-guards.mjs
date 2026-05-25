@@ -563,8 +563,20 @@ const requiredPatterns = [
     message: "fund image captions must tell users how chart evidence supports buy or backup decisions."
   },
   {
-    pattern: /function buildFeishuCardTextElements[\s\S]{0,900}\*\*详细分析\*\*/,
-    message: "Feishu cards must split highlighted summary from detailed analysis instead of putting everything in one text block."
+    pattern: /function buildFeishuCardTextElements[\s\S]{0,700}buildFeishuDetailedAnalysisElements/,
+    message: "Feishu cards must route detailed analysis through the sectioned detail renderer."
+  },
+  {
+    pattern: /function buildFeishuDetailedAnalysisElements[\s\S]{0,900}\*\*详细分析\*\*/,
+    message: "Feishu cards must keep a detailed analysis heading below the highlighted summary."
+  },
+  {
+    pattern: /FEISHU_DETAIL_SECTION_PATTERN[\s\S]{0,260}今日操作[\s\S]{0,260}自选基金池[\s\S]{0,260}风险控制/,
+    message: "Feishu portfolio reports must recognize major daily report sections for readable card splitting."
+  },
+  {
+    pattern: /function formatFeishuSectionTitle[\s\S]{0,260}formatFeishuColoredText/,
+    message: "Feishu portfolio report sections must use colored headings rather than plain long text."
   },
   {
     pattern: /function buildFeishuDecisionDigest[\s\S]{0,1200}\*\*关键证据\*\*[\s\S]{0,520}\*\*风险\/待确认\*\*/,
