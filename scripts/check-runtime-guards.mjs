@@ -1197,6 +1197,14 @@ const requiredPatterns = [
     message: "portfolio equity history summaries must derive missing or stale 0% historical weights instead of displaying 0%."
   },
   {
+    pattern: /function summarizePortfolioEquityBrief[\s\S]{0,1100}repairPortfolioSnapshotCumulativePnlPct[\s\S]{0,1800}function resolvePortfolioSnapshotInvestedCostBasis[\s\S]{0,1200}function repairPortfolioSnapshotCumulativePnlPct/,
+    message: "portfolio equity history must repair stale zero invested-cost return percentages after liquidation."
+  },
+  {
+    pattern: /function compactPortfolioWeeklyEquity[\s\S]{0,1100}repairPortfolioSnapshotCumulativePnlPct[\s\S]{0,1600}function compactPortfolioWeeklyAccount[\s\S]{0,1400}repairPortfolioSnapshotCumulativePnlPct/,
+    message: "weekly backtest context must not carry stale zero invested-cost return percentages."
+  },
+  {
     pattern: /function resolvePortfolioStoredWeightPct[\s\S]{0,500}stored > 0[\s\S]{0,500}numerator \/ basis \* 100/,
     message: "portfolio stored weight recovery must recompute stale zero weights from ledger amounts."
   },
@@ -1469,7 +1477,7 @@ const requiredPatterns = [
     message: "portfolio weekly reports must compact account positions instead of sending full fund snapshots."
   },
   {
-    pattern: /compactPortfolioWeeklyAccount[\s\S]{0,1200}positions: \(account\.positions \|\| \[\]\)\.map\(compactPortfolioWeeklyPosition\)/,
+    pattern: /compactPortfolioWeeklyAccount[\s\S]{0,1800}positions: \(account\.positions \|\| \[\]\)\.map\(compactPortfolioWeeklyPosition\)/,
     message: "portfolio weekly compact account must summarize positions through a dedicated compact position mapper."
   },
   {

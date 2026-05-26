@@ -6995,21 +6995,25 @@ function compactPortfolioWeeklySettlement(item = {}) {
 }
 
 function compactPortfolioWeeklyEquity(item = {}) {
+  const investedCostBasis = resolvePortfolioSnapshotInvestedCostBasis(item);
+  const cumulativePnl = round(Number(item.cumulativePnl || 0), 2);
   return {
     date: item.date || "",
     totalAsset: round(Number(item.totalAsset || 0), 2),
     cash: round(Number(item.cash || 0), 2),
     investedValue: round(Number(item.investedValue || 0), 2),
     investedCost: round(Number(item.investedCost || 0), 2),
-    investedCostBasis: round(Number(item.investedCostBasis || item.investedCost || 0), 2),
+    investedCostBasis,
     dayPnl: round(Number(item.dayPnl || 0), 2),
-    cumulativePnl: round(Number(item.cumulativePnl || 0), 2),
-    cumulativePnlPct: round(Number(item.cumulativePnlPct || 0), 2),
+    cumulativePnl,
+    cumulativePnlPct: repairPortfolioSnapshotCumulativePnlPct(item, { cumulativePnl, investedCostBasis }),
     drawdownFromPeakPct: round(Number(item.drawdownFromPeakPct || 0), 2)
   };
 }
 
 function compactPortfolioWeeklyAccount(account = {}) {
+  const investedCostBasis = resolvePortfolioSnapshotInvestedCostBasis(account);
+  const cumulativePnl = round(Number(account.cumulativePnl || 0), 2);
   return {
     initialCapital: round(Number(account.initialCapital || 0), 2),
     cash: round(Number(account.cash || 0), 2),
@@ -7018,15 +7022,15 @@ function compactPortfolioWeeklyAccount(account = {}) {
     receivableCash: round(Number(account.receivableCash || 0), 2),
     investedValue: round(Number(account.investedValue || 0), 2),
     investedCost: round(Number(account.investedCost || 0), 2),
-    investedCostBasis: round(Number(account.investedCostBasis || account.investedCost || 0), 2),
+    investedCostBasis,
     totalAsset: round(Number(account.totalAsset || 0), 2),
     peakTotalAsset: round(Number(account.peakTotalAsset || account.totalAsset || 0), 2),
     drawdownFromPeakPct: round(Number(account.drawdownFromPeakPct || 0), 2),
     riskBudget: compactPortfolioWeeklyRiskBudget(account.riskBudget),
     positionWeightPct: round(Number(account.positionWeightPct || 0), 2),
     dayPnl: round(Number(account.dayPnl || 0), 2),
-    cumulativePnl: round(Number(account.cumulativePnl || 0), 2),
-    cumulativePnlPct: round(Number(account.cumulativePnlPct || 0), 2),
+    cumulativePnl,
+    cumulativePnlPct: repairPortfolioSnapshotCumulativePnlPct(account, { cumulativePnl, investedCostBasis }),
     positions: (account.positions || []).map(compactPortfolioWeeklyPosition)
   };
 }
@@ -9102,6 +9106,8 @@ function summarizePortfolioEquityBrief(item = {}) {
   const receivableCash = Number(item.receivableCash || 0);
   const positionWeightPct = resolvePortfolioStoredWeightPct(item.positionWeightPct, investedValue, totalAsset);
   const pendingWeightPct = resolvePortfolioStoredWeightPct(item.pendingWeightPct, pendingBuyAmount + receivableCash, totalAsset);
+  const investedCostBasis = resolvePortfolioSnapshotInvestedCostBasis(item);
+  const cumulativePnl = round(Number(item.cumulativePnl || 0), 2);
   return {
     date: item.date || "",
     totalAsset: round(totalAsset, 2),
@@ -9110,12 +9116,45 @@ function summarizePortfolioEquityBrief(item = {}) {
     receivableCash: round(receivableCash, 2),
     investedValue: round(investedValue, 2),
     investedCost: round(Number(item.investedCost || 0), 2),
+    investedCostBasis,
     dayPnl: round(Number(item.dayPnl || 0), 2),
-    cumulativePnl: round(Number(item.cumulativePnl || 0), 2),
-    cumulativePnlPct: round(Number(item.cumulativePnlPct || 0), 2),
+    cumulativePnl,
+    cumulativePnlPct: repairPortfolioSnapshotCumulativePnlPct(item, { cumulativePnl, investedCostBasis }),
     positionWeightPct: round(positionWeightPct, 2),
     pendingWeightPct: round(pendingWeightPct, 2)
   };
+}
+
+function resolvePortfolioSnapshotInvestedCostBasis(snapshot = {}) {
+  const currentCost = Number(snapshot.investedCost || 0);
+  const candidates = [
+    snapshot.investedCostBasis,
+    snapshot.actualInvestedCostBasis,
+    snapshot.historicalInvestedCost,
+    snapshot.maxInvestedCost,
+    snapshot.deployedCapitalBasis,
+    currentCost
+  ]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  return candidates.length ? round(Math.max(...candidates), 2) : 0;
+}
+
+function repairPortfolioSnapshotCumulativePnlPct(snapshot = {}, options = {}) {
+  const currentPct = Number(snapshot.cumulativePnlPct);
+  const cumulativePnl = Number(options.cumulativePnl ?? snapshot.cumulativePnl);
+  const investedCostBasis = Number(options.investedCostBasis ?? resolvePortfolioSnapshotInvestedCostBasis(snapshot));
+  const staleZeroPctAfterLiquidation = Number(snapshot.investedCost || 0) <= 0
+    && investedCostBasis > 0
+    && Number.isFinite(cumulativePnl)
+    && Math.abs(cumulativePnl) > 0.01
+    && Number(currentPct || 0) === 0;
+  if ((!Number.isFinite(currentPct) || snapshot.cumulativePnlPct === "" || staleZeroPctAfterLiquidation)
+    && investedCostBasis > 0
+    && Number.isFinite(cumulativePnl)) {
+    return round((cumulativePnl / investedCostBasis) * 100, 2);
+  }
+  return Number.isFinite(currentPct) ? round(currentPct, 2) : 0;
 }
 
 function resolvePortfolioStoredWeightPct(storedPct, amount, totalAsset) {

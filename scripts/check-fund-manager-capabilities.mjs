@@ -179,6 +179,18 @@ assert.equal(
   31.5,
   "equity history summaries must recover stale 0% pending weights when orders or receivables are present"
 );
+const staleLiquidatedEquityBrief = manager.summarizePortfolioEquityBrief({
+  date: "2026-05-26",
+  totalAsset: 102230.85,
+  cash: 102230.85,
+  investedValue: 0,
+  investedCost: 0,
+  investedCostBasis: 30002.28,
+  cumulativePnl: 2230.85,
+  cumulativePnlPct: 0
+});
+assert.equal(staleLiquidatedEquityBrief.investedCostBasis, 30002.28, "equity history summaries must retain the actual invested denominator after full liquidation");
+assert.equal(staleLiquidatedEquityBrief.cumulativePnlPct, 7.44, "equity history summaries must repair stale 0% invested-cost returns after full liquidation");
 assert.equal(
   manager.buildPortfolioRedeploymentPlan(
     { totalAsset: 100000, cash: 70000, investedValue: 30000, positionWeightPct: 0, riskBudget: { blockNewBuys: false } },
