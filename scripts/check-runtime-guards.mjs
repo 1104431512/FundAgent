@@ -121,12 +121,20 @@ const requiredPatterns = [
     message: "fund valuation must include HaoETF realtime QDII valuation before falling back to official NAV only."
   },
   {
+    pattern: /async function fetchFundValuation[\s\S]{0,900}YANGJIBAO_PLUGIN_TOKEN[\s\S]{0,900}fetchFundValuationFromYangjibaoSearch[\s\S]{0,1200}shouldPreferYangjibaoFundValuation/,
+    message: "fund valuation must optionally use Yangjibao browser-plugin realtime fund data when a token is configured."
+  },
+  {
+    pattern: /function normalizeYangjibaoFundSearchValuation[\s\S]{0,2400}yangjibao_search_fund_realtime[\s\S]{0,500}盘中估算（养基宝实时源）/,
+    message: "Yangjibao fund search rows must be normalized into traceable realtime valuation evidence."
+  },
+  {
     pattern: /function parseHaoetfQdiiValuationRows[\s\S]{0,2400}realtimePremiumPct[\s\S]{0,2400}benchmarkName[\s\S]{0,1800}function normalizeHaoetfQdiiValuationRow/,
     message: "HaoETF QDII source must parse realtime valuation, premium, and benchmark evidence."
   },
   {
-    pattern: /if \(!isStaleFundValuation\(primary\)\) \{[\s\S]{0,120}augmentFundValuationWithSinaIntraday\(primary,\s*code\)/,
-    message: "fresh Tiantian/FundGZ valuations must still be supplemented with Sina intraday trend evidence."
+    pattern: /if \(!isStaleFundValuation\(primary\)\) \{[\s\S]{0,260}augmentFundValuationWithSinaIntraday\([\s\S]{0,260}mergeYangjibaoFundValuation\(primary,\s*yangjibaoRealtime\)/,
+    message: "fresh Tiantian/FundGZ valuations must still be supplemented with Yangjibao and Sina intraday trend evidence."
   },
   {
     pattern: /function mergeFundValuationIntradaySupplement[\s\S]{0,900}supplementalIntradaySourceKind[\s\S]{0,500}supplementalEstimatedChangePct/,

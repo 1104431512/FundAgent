@@ -124,6 +124,24 @@ assert.equal(haoetfValuation.realtimePremiumPct, 6.92, "HaoETF valuation must ca
 assert.equal(haoetfValuation.gztime, "2026-05-27 05:02:20", "HaoETF valuation must preserve the page update time for freshness checks");
 const yangjibaoHeaders = manager.buildYangjibaoPluginHeaders("/index_data", { requestTime: 1779831567 });
 assert.equal(yangjibaoHeaders["Request-Sign"], "58f2e965e9bdc1e14ea1d5f5dcab9384", "Yangjibao plugin request signing must match the public browser-plugin protocol");
+const yangjibaoFundRows = manager.normalizeYangjibaoFundSearchRows({
+  list: [{
+    fund_id: "004877",
+    short_name: "汇添富全球医疗混合(QDII)人民币",
+    content: {
+      curr_rate: { gsz: "2.4336", gszzl: "0.40" },
+      last_nv: { dwjz: "2.4240", rzzl: "1.72", net_time: "2026-05-22", true_valuation_date: "05-26 14:58" }
+    },
+    nv_info: { true_valuation_date: "05-26 14:58" }
+  }]
+});
+const yangjibaoFundValuation = manager.normalizeYangjibaoFundSearchValuation(yangjibaoFundRows[0], "004877");
+assert.equal(yangjibaoFundValuation.fundcode, "004877", "Yangjibao fund parser must recover the fund code from search_fund rows");
+assert.equal(yangjibaoFundValuation.gsz, 2.4336, "Yangjibao fund parser must recover realtime estimated NAV");
+assert.equal(yangjibaoFundValuation.gszzl, 0.4, "Yangjibao fund parser must recover realtime estimated change");
+assert.equal(yangjibaoFundValuation.dwjz, 2.424, "Yangjibao fund parser must recover official unit NAV");
+assert.equal(yangjibaoFundValuation.sourceKind, "yangjibao_search_fund_realtime", "Yangjibao fund valuation must leave a traceable realtime source kind");
+assert(yangjibaoFundValuation.valuationBasis.includes("养基宝实时源"), "Yangjibao fund valuation must explain its realtime source in Chinese");
 const yangjibaoIndexItems = manager.normalizeYangjibaoIndexData({
   "0.399006": { code: "0.399006", v: "4043.07", dir: "0.54", div: "21.91", date: "2026-05-26 16:30:02", show_code: "399006", name: "创业板指" },
   "1.000001": { code: "1.000001", v: "4145.37", dir: "-0.17", div: "-7.2", date: "2026-05-26 16:30:02", show_code: "000001", name: "上证指数" }

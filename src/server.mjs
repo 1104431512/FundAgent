@@ -13361,6 +13361,7 @@ async function fetchMarketSnapshot() {
       "https://stock.finance.sina.com.cn/fundInfo/api/openapi.php/FdFundService.getEstimateNetworthPic?symbol={code}",
       "https://www.haoetf.com/",
       "http://browser-plug-api.yangjibao.com/index_data",
+      "http://browser-plug-api.yangjibao.com/search_fund?keyword={code}",
       "https://push2.eastmoney.com/api/qt/ulist.np/get?secids=1.000001,1.000300,0.399001,0.399006",
       "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx",
       "https://np-listapi.eastmoney.com/comm/web/getFastNews"
@@ -13550,6 +13551,9 @@ function normalizeRealtimeFundValuation(valuation = {}, seed = {}, fetchedAt = n
     valuationSourceAgreement,
     supplementalIntradaySource: valuation.supplementalIntradaySource || "",
     supplementalIntradaySourceKind: valuation.supplementalIntradaySourceKind || "",
+    yangjibaoEstimatedNav: toNumber(valuation.yangjibaoEstimatedNav),
+    yangjibaoEstimatedChangePct: toNumber(valuation.yangjibaoEstimatedChangePct),
+    yangjibaoEstimateTime: valuation.yangjibaoEstimateTime || "",
     realtimePremiumPct: toNumber(valuation.realtimePremiumPct),
     latestPremiumPct: toNumber(valuation.latestPremiumPct),
     marketPrice: toNumber(valuation.marketPrice),
@@ -17874,20 +17878,32 @@ async function fetchFundProfile(code) {
       `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=zqcc&code=${code}`,
       `https://fundf10.eastmoney.com/jjfl_${code}.html`,
       `https://fund.eastmoney.com/${code}.html`,
+      ...(valuation.sourceKind === "yangjibao_search_fund_realtime" || valuation.supplementalIntradaySourceKind === "yangjibao_search_fund_realtime"
+        ? [valuation.source || valuation.supplementalIntradaySource].filter(Boolean)
+        : []),
       ...(holdingRealtimePulse.sources || [])
     ]
   };
 }
 
 async function fetchFundValuation(code) {
+  const yangjibaoRealtime = process.env.YANGJIBAO_PLUGIN_TOKEN
+    ? await fetchFundValuationFromYangjibaoSearch(code).catch(() => null)
+    : null;
   const primary = await fetchFundGzValuation(code).catch((error) => ({
     ok: false,
     error: error.message,
     source: `https://fundgz.1234567.com.cn/js/${code}.js`
   }));
+  if (yangjibaoRealtime?.ok && !isStaleFundValuation(yangjibaoRealtime) && shouldPreferYangjibaoFundValuation(yangjibaoRealtime, primary)) {
+    return mergeYangjibaoFundValuation(primary, yangjibaoRealtime, { preferYangjibao: true });
+  }
   if (isUsableFundValuation(primary)) {
     if (!isStaleFundValuation(primary)) {
-      return augmentFundValuationWithSinaIntraday(primary, code);
+      return augmentFundValuationWithSinaIntraday(
+        mergeYangjibaoFundValuation(primary, yangjibaoRealtime),
+        code
+      );
     }
     const realtimeFallback = await fetchFundValuationFromSinaEstimate(code).catch(() => null);
     if (realtimeFallback?.ok && !isStaleFundValuation(realtimeFallback)) {
@@ -17956,6 +17972,156 @@ async function fetchFundValuation(code) {
     };
   }
   return primary.ok ? primary : fallback;
+}
+
+function shouldPreferYangjibaoFundValuation(candidate = {}, reference = {}) {
+  if (!candidate?.ok) return false;
+  if (!isUsableFundValuation(reference) || isStaleFundValuation(reference)) return true;
+  const candidateMs = parseChinaDateTimeMs(candidate.gztime || candidate.estimateTime || "");
+  const referenceMs = parseChinaDateTimeMs(reference.gztime || reference.estimateTime || "");
+  if (Number.isFinite(candidateMs) && Number.isFinite(referenceMs)) {
+    return candidateMs > referenceMs + 60_000;
+  }
+  return isFundValuationDateNewer(candidate, reference);
+}
+
+function mergeYangjibaoFundValuation(primary = {}, yangjibao = null, options = {}) {
+  if (!yangjibao?.ok) return primary;
+  if (options.preferYangjibao) {
+    return {
+      ...primary,
+      ...yangjibao,
+      backupPrimarySource: primary.source || "",
+      backupPrimarySourceKind: primary.sourceKind || "",
+      backupPrimaryEstimateTime: primary.gztime || ""
+    };
+  }
+  return {
+    ...primary,
+    yangjibaoEstimatedNav: yangjibao.gsz ?? "",
+    yangjibaoEstimatedChangePct: yangjibao.gszzl ?? "",
+    yangjibaoEstimateTime: yangjibao.gztime || "",
+    supplementalEstimatedNav: primary.supplementalEstimatedNav ?? yangjibao.gsz ?? "",
+    supplementalEstimatedChangePct: primary.supplementalEstimatedChangePct ?? yangjibao.gszzl ?? "",
+    supplementalIntradaySource: primary.supplementalIntradaySource || yangjibao.source || "",
+    supplementalIntradaySourceKind: primary.supplementalIntradaySourceKind || yangjibao.sourceKind || ""
+  };
+}
+
+async function fetchFundValuationFromYangjibaoSearch(code) {
+  if (!process.env.YANGJIBAO_PLUGIN_TOKEN) {
+    return {
+      ok: false,
+      error: "Yangjibao plugin token not configured",
+      source: "http://browser-plug-api.yangjibao.com/search_fund"
+    };
+  }
+  const fundCode = String(code || "").match(/\d{6}/)?.[0] || "";
+  if (!fundCode) {
+    return { ok: false, error: "invalid fund code", source: "http://browser-plug-api.yangjibao.com/search_fund" };
+  }
+  const json = await fetchYangjibaoPluginJson(`/search_fund?keyword=${encodeURIComponent(fundCode)}`);
+  const rows = normalizeYangjibaoFundSearchRows(json?.data);
+  const valuation = normalizeYangjibaoFundSearchValuation(
+    rows.find((item) => String(item.code || item.fund_id || item.fund_code || "").includes(fundCode)) || rows[0],
+    fundCode
+  );
+  if (!valuation?.ok) {
+    return {
+      ok: false,
+      error: "Yangjibao search_fund returned no valuation row",
+      source: `http://browser-plug-api.yangjibao.com/search_fund?keyword=${fundCode}`
+    };
+  }
+  updateStats({ counters: { yangjibaoFundSearchValuationFetches: 1 } });
+  return valuation;
+}
+
+function normalizeYangjibaoFundSearchRows(data = null) {
+  if (!data) return [];
+  if (Array.isArray(data)) return data.filter(Boolean);
+  const direct = [data.list, data.fundList, data.funds, data.data, data.items, data.result]
+    .find((value) => Array.isArray(value));
+  if (direct) return direct.filter(Boolean);
+  if (typeof data === "object") {
+    return Object.values(data).flatMap((value) => {
+      if (Array.isArray(value)) return value;
+      if (value && typeof value === "object" && (value.code || value.fund_id || value.fund_code)) return [value];
+      return [];
+    });
+  }
+  return [];
+}
+
+function normalizeYangjibaoFundSearchValuation(row = {}, fallbackCode = "") {
+  if (!row || typeof row !== "object") return null;
+  const code = String(row.code || row.fund_id || row.fund_code || row.fundcode || fallbackCode || "").match(/\d{6}/)?.[0] || "";
+  if (!code) return null;
+  const content = row.content || {};
+  const current = content.curr_rate || row.curr_rate || {};
+  const lastNav = content.last_nv || row.last_nv || row.nv_info || {};
+  const nvInfo = row.nv_info || {};
+  const estimatedNav = firstFiniteNumber(
+    current.gsz,
+    row.gsz,
+    row.valuation,
+    nvInfo.gsz,
+    nvInfo.true_valuation,
+    nvInfo.valuation
+  );
+  const estimatedChangePct = firstFiniteNumber(
+    current.gszzl,
+    row.gszzl,
+    row.valuation_rate,
+    row.estimate_rate,
+    nvInfo.gszzl,
+    nvInfo.valuation_rate,
+    nvInfo.true_valuation_rate
+  );
+  const unitNav = firstFiniteNumber(
+    lastNav.dwjz,
+    row.dwjz,
+    row.unit_nav,
+    nvInfo.dwjz,
+    nvInfo.net_value
+  );
+  const navDate = normalizePortfolioEventDate(lastNav.net_time || row.net_time || row.navDate || nvInfo.net_time || nvInfo.nav_date || "");
+  const estimateTime = normalizeYangjibaoEstimateTime(
+    row.vv_time || row.valuation_time || row.update_time || nvInfo.true_valuation_date || nvInfo.valuation_date || lastNav.true_valuation_date || ""
+  );
+  if (!Number.isFinite(estimatedNav) && !Number.isFinite(estimatedChangePct) && !Number.isFinite(unitNav)) return null;
+  return {
+    ok: true,
+    fundcode: code,
+    name: row.short_name || row.name || row.fund_name || "",
+    dwjz: Number.isFinite(unitNav) ? unitNav : "",
+    gsz: Number.isFinite(estimatedNav) ? estimatedNav : "",
+    gszzl: Number.isFinite(estimatedChangePct) ? estimatedChangePct : "",
+    jzrq: navDate,
+    gztime: estimateTime,
+    sourceKind: "yangjibao_search_fund_realtime",
+    valuationBasis: "盘中估算（养基宝实时源）",
+    source: `http://browser-plug-api.yangjibao.com/search_fund?keyword=${code}`
+  };
+}
+
+function normalizeYangjibaoEstimateTime(value = "") {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.replace(/\//g, "-");
+  const monthDay = text.match(/(\d{1,2})[-/月](\d{1,2})(?:日)?(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!monthDay) return text;
+  const year = new Date().getFullYear();
+  const [, month, day, hour = "15", minute = "00", second = "00"] = monthDay;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")} ${String(hour).padStart(2, "0")}:${minute}:${second}`;
+}
+
+function firstFiniteNumber(...values) {
+  for (const value of values) {
+    const number = toNumber(value);
+    if (Number.isFinite(number)) return number;
+  }
+  return null;
 }
 
 async function augmentFundValuationWithSinaIntraday(valuation = {}, code = "") {
@@ -22083,6 +22249,8 @@ export {
   summarizeFundIntradayValuationTrend,
   mergeFundValuationIntradaySupplement,
   normalizeHaoetfQdiiValuationRow,
+  normalizeYangjibaoFundSearchRows,
+  normalizeYangjibaoFundSearchValuation,
   normalizeYangjibaoIndexData,
   normalizePortfolioDb,
   normalizeEastmoneyChinaIndexQuote,
