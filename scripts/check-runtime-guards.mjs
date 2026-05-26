@@ -725,6 +725,14 @@ const requiredPatterns = [
     message: "portfolio capability diagnostics must flag high-cash over-waiting as an actionable manager weakness."
   },
   {
+    pattern: /function findMostRecentPortfolioBuyActivity[\s\S]{0,1200}cancelled[\s\S]{0,260}rejected[\s\S]{0,260}status/,
+    message: "portfolio capability diagnostics must treat fresh pending buy orders as recent buy activity."
+  },
+  {
+    pattern: /试探仓跟踪[\s\S]{0,700}加到3%-5%[\s\S]{0,260}继续观察[\s\S]{0,260}退出/,
+    message: "portfolio capability diagnostics must require explicit follow-through after starter buy orders."
+  },
+  {
     pattern: /consolidatePortfolioWatchlistAlternatives/,
     message: "portfolio watchlist must consolidate duplicate share classes and same-exposure alternatives."
   },

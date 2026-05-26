@@ -7447,6 +7447,7 @@ function buildPortfolioCapabilityDiagnostics(db = {}) {
   const watchlist = normalizePortfolioWatchlist(db.watchlist || []);
   const runs = Array.isArray(db.runs) ? db.runs : [];
   const transactions = Array.isArray(db.transactions) ? db.transactions : [];
+  const orders = Array.isArray(db.orders) ? db.orders : [];
   const exposureSummary = buildPortfolioExposureSummary(positions);
   const items = [];
   const add = (severity, label, value, note) => {
@@ -7536,11 +7537,34 @@ function buildPortfolioCapabilityDiagnostics(db = {}) {
 
   const cash = Number(account.cash || 0);
   const totalAsset = Number(account.totalAsset || 0);
+  const pendingBuyAmount = Number(account.pendingBuyAmount || 0);
+  const pendingBuyPct = totalAsset > 0 ? pendingBuyAmount / totalAsset * 100 : null;
   const readyCount = watchlist.filter((item) => item.status === "ready").length;
   const waitingCount = watchlist.filter((item) => item.status === "waiting_pullback").length;
-  const recentBuy = findMostRecentPortfolioTransaction(transactions, "BUY");
-  const daysSinceBuy = recentBuy?.date ? estimateDateAgeDays(recentBuy.date) : null;
+  const recentBuyActivity = findMostRecentPortfolioBuyActivity({ transactions, orders });
+  const daysSinceBuy = recentBuyActivity?.date ? estimateDateAgeDays(recentBuyActivity.date) : null;
   const accountBudget = buildPortfolioAccountRiskBudget(account);
+  if (
+    Number.isFinite(cash)
+    && Number.isFinite(totalAsset)
+    && totalAsset > 0
+    && cash / totalAsset >= 0.6
+    && Number.isFinite(pendingBuyPct)
+    && pendingBuyPct > 0
+    && pendingBuyPct <= 2.5
+    && Number.isFinite(daysSinceBuy)
+    && daysSinceBuy < 7
+    && !accountBudget.blockNewBuys
+  ) {
+    add(
+      "info",
+      "试探仓跟踪",
+      `待确认买入${formatFallbackPct(pendingBuyPct)}`,
+      `${recentBuyActivity.code || ""} ${recentBuyActivity.name || ""}`.trim()
+        ? `已在${recentBuyActivity.date}提交或确认小仓试探，不能再误判为长期未买；下一轮必须给“加到3%-5%、继续观察或退出”的触发条件。`
+        : `已有${formatFallbackPct(pendingBuyPct)}小仓试探，不能再误判为长期未买；下一轮必须给“加到3%-5%、继续观察或退出”的触发条件。`
+    );
+  }
   if (
     Number.isFinite(cash)
     && Number.isFinite(totalAsset)
@@ -7612,6 +7636,27 @@ function findMostRecentPortfolioTransaction(transactions = [], side = "") {
   return [...(transactions || [])]
     .filter((item) => !targetSide || String(item.side || "").toUpperCase() === targetSide)
     .sort((a, b) => Date.parse(b.date || b.createdAt || "") - Date.parse(a.date || a.createdAt || ""))[0] || null;
+}
+
+function findMostRecentPortfolioBuyActivity({ transactions = [], orders = [] } = {}) {
+  const transactionActivities = (transactions || [])
+    .filter((item) => String(item.side || "").toUpperCase() === "BUY")
+    .map((item) => ({
+      ...item,
+      source: "transaction",
+      date: normalizePortfolioEventDate(item.date || item.confirmedAt || item.createdAt || item.updatedAt)
+    }));
+  const orderActivities = (orders || [])
+    .filter((item) => String(item.side || "").toUpperCase() === "BUY")
+    .filter((item) => !["cancelled", "rejected"].includes(String(item.status || "").toLowerCase()))
+    .map((item) => ({
+      ...item,
+      source: "order",
+      date: normalizePortfolioEventDate(item.submittedAt || item.submitDate || item.acceptedDate || item.createdAt || item.updatedAt)
+    }));
+  return [...transactionActivities, ...orderActivities]
+    .filter((item) => item.date)
+    .sort((a, b) => Date.parse(b.date || "") - Date.parse(a.date || ""))[0] || null;
 }
 
 function estimateDateAgeDays(dateText) {
@@ -8341,6 +8386,8 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "在 learningNotes 写清失败原因和恢复动作，避免客户只看到进度文案。", "主席");
     } else if (item.label === "现金闲置风险") {
       addTask(item, "不能只说等待机会；下一轮必须刷新低位启动候选，给出小仓试探方案或列明前三个近合买点的具体缺口。", "组合经理");
+    } else if (item.label === "试探仓跟踪") {
+      addTask(item, "已经有小仓试探时，下一轮重点不是继续喊等待，而是给出加到3%-5%、继续观察或退出的触发条件。", "组合经理");
     } else if (item.label === "现金等待买点") {
       addTask(item, "继续增强低位召回；没有合格买点时明确0元等待，不硬凑推荐。", "组合经理");
     } else if (item.label === "重复成交回测") {

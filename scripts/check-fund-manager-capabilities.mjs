@@ -249,6 +249,49 @@ assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "追�
 assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "数据质量缺口"), "capability diagnostics must surface stale or missing position evidence");
 assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "成交净值待核验"), "capability diagnostics must surface unverified virtual trade fills");
 assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "现金闲置风险"), "capability diagnostics must flag high-cash portfolios that have stopped deploying for too long");
+const pendingProbeDiagnostics = manager.buildPortfolioCapabilityDiagnostics({
+  account: {
+    cash: 68599.17,
+    totalAsset: 102230.85,
+    pendingBuyAmount: 1533,
+    investedValue: 0,
+    riskBudget: { blockNewBuys: false }
+  },
+  watchlist: [{ code: "004877", name: "汇添富全球医疗混合(QDII)人民币", status: "ready" }],
+  transactions: [{ side: "BUY", code: "000001", name: "旧买入", date: "2000-01-01" }],
+  orders: [{
+    side: "BUY",
+    code: "004877",
+    name: "汇添富全球医疗混合(QDII)人民币",
+    status: "submitted",
+    submittedAt: `${todayIso}T06:29:00.000Z`
+  }],
+  runs: []
+});
+assert(!pendingProbeDiagnostics.items.some((item) => item.label === "现金闲置风险"), "capability diagnostics must not call a portfolio idle when a fresh starter buy is pending confirmation");
+assert(pendingProbeDiagnostics.items.some((item) => item.label === "试探仓跟踪"), "capability diagnostics must require follow-through after a pending starter buy");
+assert(
+  manager.buildPortfolioCapabilityActionQueue({
+    account: {
+      cash: 68599.17,
+      totalAsset: 102230.85,
+      pendingBuyAmount: 1533,
+      investedValue: 0,
+      riskBudget: { blockNewBuys: false }
+    },
+    watchlist: [{ code: "004877", name: "汇添富全球医疗混合(QDII)人民币", status: "ready" }],
+    transactions: [{ side: "BUY", code: "000001", name: "旧买入", date: "2000-01-01" }],
+    orders: [{
+      side: "BUY",
+      code: "004877",
+      name: "汇添富全球医疗混合(QDII)人民币",
+      status: "submitted",
+      submittedAt: `${todayIso}T06:29:00.000Z`
+    }],
+    runs: []
+  }).some((item) => item.action.includes("加到3%-5%")),
+  "capability action queue must turn a pending starter buy into explicit scale/hold/exit triggers"
+);
 assert(serverSource.includes("capabilityDiagnostics: buildPortfolioCapabilityDiagnostics(db)"), "portfolio API must expose capability diagnostics");
 assert(serverSource.includes("capabilityActionQueue: buildPortfolioCapabilityActionQueue(db)"), "portfolio API must expose capability repair action queue");
 assert(serverSource.includes("backtestDiagnostics: buildPortfolioBacktestDiagnostics(db)"), "portfolio API must expose historical backtest diagnostics");
