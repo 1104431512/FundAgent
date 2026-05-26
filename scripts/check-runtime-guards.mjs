@@ -1085,6 +1085,14 @@ const requiredPatterns = [
     message: "portfolio backtest diagnostics must replay duplicate trades, chase entries, delayed sells, and idle-cash redeployment failures."
   },
   {
+    pattern: /findPortfolioBacktestUnprotectedGivebackPositions[\s\S]{0,1600}PORTFOLIO_BACKTEST_PROFIT_PROTECTION_TRIM_PCT[\s\S]{0,2200}estimatedProtectedProfitLoss/,
+    message: "portfolio backtests must estimate money lost by not protecting profits after giveback."
+  },
+  {
+    pattern: /利润回吐放任回测[\s\S]{0,1400}少保住约[\s\S]{0,800}止盈减仓/,
+    message: "portfolio backtest diagnostics must explain unprotected profit giveback in user-readable yuan terms."
+  },
+  {
     pattern: /function buildPortfolioBacktestDiagnostics[\s\S]{0,2600}订单卡滞回测/,
     message: "portfolio backtest diagnostics must flag stale active orders that can distort cash, receivables, and deployment capacity."
   },
@@ -1097,7 +1105,7 @@ const requiredPatterns = [
     message: "portfolio backtest diagnostics must flag duplicated settlement receivables that overstate deployable cash."
   },
   {
-    pattern: /function buildPortfolioBacktestDiagnostics[\s\S]{0,5200}试探仓后续回测[\s\S]{0,900}加到3%-5%/,
+    pattern: /function buildPortfolioBacktestDiagnostics[\s\S]{0,7600}试探仓后续回测[\s\S]{0,1200}加到3%-5%/,
     message: "portfolio backtest diagnostics must force a scale-or-exit plan after tiny starter buys when cash remains excessive."
   },
   {
@@ -1127,6 +1135,10 @@ const requiredPatterns = [
   {
     pattern: /机会成本回测[\s\S]{0,700}等待后继续走强要被追责/,
     message: "portfolio capability queue must turn missed follow-through into a concrete repair task."
+  },
+  {
+    pattern: /利润回吐放任回测[\s\S]{0,700}浮盈回吐不是纸面波动/,
+    message: "portfolio capability queue must turn unprotected profit giveback into a concrete sell-discipline repair task."
   },
   {
     pattern: /过度保守回测[\s\S]{0,700}连续等待不能算完成工作/,

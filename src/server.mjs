@@ -7598,6 +7598,18 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
       "卖出纪律"
     );
   }
+  const unprotectedGivebackPositions = findPortfolioBacktestUnprotectedGivebackPositions({ positions, transactions, orders });
+  if (unprotectedGivebackPositions.length) {
+    const first = unprotectedGivebackPositions[0];
+    const names = unprotectedGivebackPositions.slice(0, 3).map((item) => `${item.code} ${item.name || ""}`.trim()).join(" / ");
+    add(
+      "warning",
+      "利润回吐放任回测",
+      `${first.code} 已回吐${round(first.profitGivebackPct, 2)}pct`,
+      `${names} 曾浮盈${formatFallbackPct(first.peakUnrealizedPnlPct)}、当前${formatFallbackPct(first.unrealizedPnlPct)}，按${round(first.protectionTrimPct, 1)}%保护性减仓估算少保住约${round(first.estimatedProtectedProfitLoss, 2)}元；下一轮必须给止盈减仓、继续持有失效条件，或说明为何不保护利润。`,
+      "卖出纪律"
+    );
+  }
 
   const failedRuns = runs.filter((run) => run.status === "failed" || run.error);
   if (failedRuns.length) {
@@ -8018,6 +8030,82 @@ function hasRecentPortfolioBuyForCode(code, { transactions = [], orders = [] } =
   );
 }
 
+function hasRecentPortfolioSellForCode(code, { transactions = [], orders = [] } = {}, maxAgeDays = 7) {
+  const targetCode = String(code || "").trim();
+  if (!targetCode) return false;
+  const cutoffMs = Date.now() - Math.max(0, Number(maxAgeDays || 0)) * 86400000;
+  return [
+    ...transactions.map((item) => ({
+      side: String(item.side || "").toUpperCase(),
+      code: String(item.code || "").trim(),
+      date: Date.parse(item.date || item.navDate || item.createdAt || "")
+    })),
+    ...orders.map((item) => ({
+      side: String(item.side || "").toUpperCase(),
+      code: String(item.code || "").trim(),
+      date: Date.parse(item.date || item.submittedAt || item.createdAt || item.updatedAt || ""),
+      status: String(item.status || "")
+    }))
+  ].some((item) =>
+    item.side === "SELL"
+    && item.code === targetCode
+    && Number.isFinite(item.date)
+    && item.date >= cutoffMs
+    && !["cancelled", "rejected"].includes(item.status)
+  );
+}
+
+function findPortfolioBacktestUnprotectedGivebackPositions({
+  positions = [],
+  transactions = [],
+  orders = []
+} = {}) {
+  const protectionStartPct = Math.abs(finiteNumberOr(process.env.PORTFOLIO_PROFIT_PROTECTION_START_PCT, 8));
+  const givebackLimitPct = Math.abs(finiteNumberOr(process.env.PORTFOLIO_PROFIT_GIVEBACK_PCT, 4));
+  const protectionTrimPct = Math.max(0, finiteNumberOr(process.env.PORTFOLIO_BACKTEST_PROFIT_PROTECTION_TRIM_PCT, 25));
+  return (positions || [])
+    .map((position) => {
+      const code = String(position?.code || "").trim();
+      const currentValue = Number(position?.currentValue || 0);
+      const peakUnrealizedPnlPct = finiteMetricNumber(position?.peakUnrealizedPnlPct);
+      const unrealizedPnlPct = finiteMetricNumber(position?.unrealizedPnlPct);
+      const storedGivebackPct = finiteMetricNumber(position?.profitGivebackPct);
+      const computedGivebackPct = Number.isFinite(peakUnrealizedPnlPct) && Number.isFinite(unrealizedPnlPct)
+        ? Math.max(0, round(peakUnrealizedPnlPct - unrealizedPnlPct, 2))
+        : null;
+      const profitGivebackPct = Number.isFinite(storedGivebackPct) && Number.isFinite(computedGivebackPct)
+        ? Math.max(storedGivebackPct, computedGivebackPct)
+        : Number.isFinite(storedGivebackPct)
+          ? storedGivebackPct
+          : computedGivebackPct;
+      if (
+        !code
+        || !Number.isFinite(currentValue)
+        || currentValue <= 0
+        || !Number.isFinite(peakUnrealizedPnlPct)
+        || !Number.isFinite(unrealizedPnlPct)
+        || !Number.isFinite(profitGivebackPct)
+        || peakUnrealizedPnlPct < protectionStartPct
+        || profitGivebackPct < givebackLimitPct
+        || hasRecentPortfolioSellForCode(code, { transactions, orders }, 7)
+      ) {
+        return null;
+      }
+      return {
+        code,
+        name: position.name || "",
+        currentValue,
+        peakUnrealizedPnlPct,
+        unrealizedPnlPct,
+        profitGivebackPct,
+        protectionTrimPct,
+        estimatedProtectedProfitLoss: round(currentValue * protectionTrimPct / 100 * profitGivebackPct / 100, 2)
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(b.estimatedProtectedProfitLoss || 0) - Number(a.estimatedProtectedProfitLoss || 0));
+}
+
 function findPortfolioBacktestMissedFollowThroughCandidates({
   watchlist = [],
   transactions = [],
@@ -8156,6 +8244,8 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "复盘买入当日是否处于高位延伸；后续同类基金必须等回调完成和5日/10日温和转强后才小仓试探。", "基金研究员");
     } else if (item.label === "卖出滞后回测") {
       addTask(item, "连续两次出现偏热、回吐或集中预警时，必须提交减仓复核，不能继续用HOLD拖延风险处理。", "风控经理");
+    } else if (item.label === "利润回吐放任回测") {
+      addTask(item, "浮盈回吐不是纸面波动；下一轮必须给止盈减仓、继续持有失效条件，或说明为何不保护利润。", "风控经理");
     } else if (item.label === "运行中断回测") {
       addTask(item, "压缩历史上下文并保留关键账本字段，失败后的下一次运行必须先补回中断期间的订单和风险复核。", "主席");
     } else if (item.label === "空仓等待回测") {

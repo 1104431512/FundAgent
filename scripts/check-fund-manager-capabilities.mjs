@@ -256,6 +256,39 @@ assert(backtestActionQueue.some((item) => item.action.includes("卡滞订单")),
 assert(backtestActionQueue.some((item) => item.action.includes("重复pending应收")), "capability action queue must turn duplicated settlements into a receivable repair task");
 assert(backtestActionQueue.some((item) => item.action.includes("0.5%-2.5%试探仓")), "capability action queue must turn idle-cash replay into a redeployment task");
 assert(backtestActionQueue.some((item) => item.action.includes("加到3%-5%")), "capability action queue must turn starter-buy underdeployment into a scale-or-exit task");
+const givebackLossBacktestFixture = {
+  account: {
+    cash: 30000,
+    totalAsset: 100000,
+    positionWeightPct: 10,
+    investedValue: 10000,
+    positions: [{
+      code: "000011",
+      name: "热门强势主题基金A",
+      currentValue: 10000,
+      weightPct: 10,
+      unrealizedPnlPct: 6,
+      peakUnrealizedPnlPct: 12,
+      profitGivebackPct: 6
+    }],
+    riskBudget: { blockNewBuys: false }
+  },
+  watchlist: [],
+  transactions: [],
+  orders: [],
+  settlements: [],
+  runs: []
+};
+const givebackLossBacktest = manager.buildPortfolioBacktestDiagnostics(givebackLossBacktestFixture);
+assert(givebackLossBacktest.items.some((item) => item.label === "利润回吐放任回测"), "backtest diagnostics must quantify unprotected profit giveback on still-held positions");
+assert(
+  givebackLossBacktest.items.find((item) => item.label === "利润回吐放任回测")?.note.includes("少保住约150元"),
+  "profit-giveback diagnostics must translate missed protective trimming into an estimated yuan impact"
+);
+assert(
+  manager.buildPortfolioCapabilityActionQueue(givebackLossBacktestFixture).some((item) => item.action.includes("浮盈回吐不是纸面波动")),
+  "capability action queue must turn unprotected profit giveback into a concrete sell-discipline repair task"
+);
 const conservativeBacktestFixture = {
   account: {
     cash: 82000,
