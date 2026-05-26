@@ -1426,7 +1426,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "必须执行单仓风控：浮亏触及止损线、浮盈大幅回吐或趋势破位时，先给 SELL/减仓复核，不要只写 HOLD。",
     "必须执行组合穿透暴露检查：同题材仓位、同一底层前十大持仓重叠、单一风格过热时，组合经理和风控经理必须写清不加仓或减风险条件。",
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，marketView、team 和 actions.dataBasis 必须写清数据缺口；缺少关键板块、排行、新闻或贵金属模块时，只能 WATCH、HOLD 或小额试探，不能当作完整联网证据下重仓 BUY。",
-    "必须使用 marketSnapshot.marketIndicators.realtimeFundValuations 复核候选当下温度和数据新鲜度；实时估算只能辅助判断追涨/止跌，成交和盈亏仍以确认净值为准。",
+    "必须使用 marketSnapshot.marketIndicators.realtimeFundValuations 复核候选当下温度、盘中走势和数据新鲜度；若盘中走势显示冲高回落或尾盘转弱，不能把最新估算涨幅当作追买理由；成交和盈亏仍以确认净值为准。",
     "若操作或候选涉及 QDII/海外基金，必须使用 marketSnapshot.marketIndicators.globalMarkets 复核外盘和人民币汇率温度，并写清净值披露时差。",
     "若现金再部署纪律提示 pressureActive=true 且存在 verified_buy 或 starter_buy 候选，actions 必须逐只给 BUY 或明确 WATCH 拦截理由；符合小仓启动条件时优先 0.5%-2.5% 试探，不要继续空泛观望。",
     "给用户看的 summary、reason 和 riskControl 要先讲走势、轮动和操作边界，再放必要数字；不要把每个动作写成一长串指标。",
@@ -8917,6 +8917,9 @@ function compactRealtimeFundValuations(items = [], limit = 12) {
     estimatedChangePct: finiteMetricNumber(item.estimatedChangePct),
     estimateTime: item.estimateTime || "",
     freshness: item.freshnessLabel || "",
+    盘中走势: item.intradayTrend?.label || item.intradayTrendLabel || "",
+    盘中变化: finiteMetricNumber(item.intradayTrend?.changeFromOpenPct),
+    尾盘变化: finiteMetricNumber(item.intradayTrend?.recentSlopePct),
     isFresh: item.isFresh
   }));
 }
@@ -10627,7 +10630,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "用户更关心走势和分析思路，不要把回答写成数字清单。每只基金最多保留3个关键数字，其他用“低位修复、短期偏热、等待确认、回撤未完成”等自然中文解释。",
     "如果市场快照或下钻摘要里有题材雷达，必须先用题材阶段、前瞻评分、拥挤度和操作倾向判断赔率，再筛选基金。",
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
-    "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度和数据新鲜度；但成交和盈亏仍以确认净值为准。",
+    "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度、盘中走势和数据新鲜度；若盘中冲高回落或尾盘转弱，只能降低买入把握度，成交和盈亏仍以确认净值为准。",
     "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
     "如果提供了候选基金下钻摘要，必须使用走势画像、风险、费用、持仓和可操作性评估来筛掉不适合的候选；不要只复述市场快照。",
     "如果提供了经理自选候选池，必须先复核这些已经沉淀的 ready/waiting/启动前夜候选；ready 可以进入主推荐评估，waiting 或启动前夜只能写备选观察和触发条件，不能当成自动买入。",
@@ -10726,7 +10729,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "遇到“某主题最近值不值得买”时，必须先判断题材/新闻/市场阶段，再判断基金或 ETF 工具；基金净值走势只是确认信号。",
     "用户更关心走势和分析思路，不要把回答写成数字清单。每只基金最多保留3个关键数字，其他用走势、位置、风险边界来解释。",
     "如果传入 marketSnapshot，可用它回答近期市场/题材问题；涉及黄金、白银或贵金属时，优先引用 marketIndicators.preciousMetals 和相关基金候选。",
-    "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度和数据新鲜度；但成交和盈亏仍以确认净值为准。",
+    "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度、盘中走势和数据新鲜度；若盘中冲高回落或尾盘转弱，只能降低买入把握度，成交和盈亏仍以确认净值为准。",
     "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
     "如果市场快照或下钻摘要里有题材雷达，优先引用中文题材阶段、前瞻评分、拥挤度和操作倾向，避免只按历史涨幅回答。",
     "如果提供了候选基金下钻摘要，必须使用下钻候选的走势画像、风险、费用、持仓和可操作性评估来形成买/等/回避判断。",
@@ -12178,6 +12181,7 @@ function normalizeRealtimeFundValuation(valuation = {}, seed = {}, fetchedAt = n
   const isFresh = Number.isFinite(freshnessMinutes)
     ? freshnessMinutes <= Number(process.env.MARKET_REALTIME_VALUATION_FRESH_MINUTES || 1440)
     : null;
+  const intradayTrend = valuation.intradayTrend || summarizeFundIntradayValuationTrend(valuation.intradaySeries || []);
   return {
     ok: true,
     code: valuation.fundcode || seed.code || "",
@@ -12193,6 +12197,8 @@ function normalizeRealtimeFundValuation(valuation = {}, seed = {}, fetchedAt = n
     freshnessLabel: valuation.valuationBasis === "最新官方净值"
       ? `最新官方净值 ${valuation.jzrq || ""}`.trim()
       : formatEstimateFreshnessLabel(freshnessMinutes),
+    intradayTrend,
+    intradayTrendLabel: intradayTrend?.label || "",
     isFresh,
     isRealtimeEstimate: valuation.sourceKind !== "eastmoney_latest_nav_fallback",
     sourceKind: valuation.sourceKind || "tiantian_intraday_estimate",
@@ -16196,6 +16202,8 @@ async function fetchFundValuationFromSinaEstimate(code) {
     gszzl: parsed.estimatedChangePct ?? "",
     jzrq: parsed.navDate || "",
     gztime: parsed.estimateTime || "",
+    intradaySeries: parsed.intradaySeries || [],
+    intradayTrend: parsed.intradayTrend || null,
     sourceKind: parsed.sourceKind,
     valuationBasis: parsed.valuationBasis,
     source
@@ -16223,7 +16231,8 @@ function parseSinaEstimateNetworthJsonp(text) {
   const navDate = normalizeSinaFundDate(latest.pre_date || data.worth_date || "");
   const estimateTime = navDate && latest.min_time ? `${navDate} ${String(latest.min_time).replace(/:(\d{2}):\d{2}$/, ":$1")}` : "";
   const unitNav = toNumber(data.worth) ?? toNumber(latest.pre_nav) ?? estimatedNav;
-  if (!Number.isFinite(Number(unitNav)) && !Number.isFinite(Number(estimatedNav)) && estimatedChangePct === null) return null;
+  if (!Number.isFinite(unitNav) && !Number.isFinite(estimatedNav) && estimatedChangePct === null) return null;
+  const intradaySeries = normalizeSinaEstimateIntradaySeries(points, data).slice(-120);
   return {
     code: String(latest.symbol || data.symbol || "").trim(),
     name: String(data.name || data.fund_name || "").trim(),
@@ -16232,8 +16241,68 @@ function parseSinaEstimateNetworthJsonp(text) {
     estimatedChangePct,
     navDate,
     estimateTime,
+    intradaySeries,
+    intradayTrend: summarizeFundIntradayValuationTrend(intradaySeries),
     sourceKind: "sina_intraday_estimate",
     valuationBasis: "盘中估算（新浪备源）"
+  };
+}
+
+function normalizeSinaEstimateIntradaySeries(points = [], data = {}) {
+  return (points || []).map((item) => {
+    const date = normalizeSinaFundDate(item?.pre_date || data.worth_date || "");
+    const rawTime = String(item?.min_time || "").replace(/:(\d{2}):\d{2}$/, ":$1");
+    const nav = toNumber(item?.pre_nav2) ?? toNumber(item?.pre_nav);
+    const growthRatio = toNumber(item?.growthrate2) ?? toNumber(item?.growthrate);
+    const changePct = Number.isFinite(growthRatio) ? round(growthRatio * 100, 2) : null;
+    if (!date || !rawTime || (!Number.isFinite(nav) && changePct === null)) return null;
+    return {
+      time: rawTime,
+      at: `${date} ${rawTime}`,
+      estimatedNav: Number.isFinite(nav) ? nav : null,
+      estimatedChangePct: changePct
+    };
+  }).filter(Boolean);
+}
+
+function summarizeFundIntradayValuationTrend(series = []) {
+  const points = (series || []).filter((item) => Number.isFinite(Number(item.estimatedChangePct)));
+  if (points.length < 2) {
+    return {
+      label: "盘中走势不足",
+      direction: "unknown",
+      points: points.length
+    };
+  }
+  const first = points[0];
+  const last = points[points.length - 1];
+  const values = points.map((item) => Number(item.estimatedChangePct));
+  const high = Math.max(...values);
+  const low = Math.min(...values);
+  const changeFromOpenPct = round(Number(last.estimatedChangePct) - Number(first.estimatedChangePct), 2);
+  const pullbackFromHighPct = round(Number(last.estimatedChangePct) - high, 2);
+  const reboundFromLowPct = round(Number(last.estimatedChangePct) - low, 2);
+  const reference = points[Math.max(0, points.length - 6)];
+  const recentSlopePct = round(Number(last.estimatedChangePct) - Number(reference.estimatedChangePct), 2);
+  let direction = "flat";
+  if (changeFromOpenPct >= 0.4) direction = "strengthening";
+  if (changeFromOpenPct <= -0.4) direction = "weakening";
+  let label = direction === "strengthening" ? "盘中走强" : direction === "weakening" ? "盘中回落" : "盘中横盘";
+  if (pullbackFromHighPct <= -0.6) label = `${label}，冲高回落`;
+  else if (reboundFromLowPct >= 0.6) label = `${label}，低位回升`;
+  if (recentSlopePct >= 0.3) label = `${label}，尾盘转强`;
+  if (recentSlopePct <= -0.3) label = `${label}，尾盘转弱`;
+  return {
+    label,
+    direction,
+    points: points.length,
+    latestPct: Number(last.estimatedChangePct),
+    changeFromOpenPct,
+    pullbackFromHighPct,
+    reboundFromLowPct,
+    recentSlopePct,
+    startTime: first.at || first.time || "",
+    endTime: last.at || last.time || ""
   };
 }
 
@@ -19920,6 +19989,7 @@ export {
   normalizeUserFacingFundAnswer,
   parseFundPingzhongLatestNav,
   parseSinaEstimateNetworthJsonp,
+  summarizeFundIntradayValuationTrend,
   normalizePortfolioDb,
   normalizePortfolioInvestedCostReturnText,
   normalizePortfolioReview,

@@ -105,11 +105,11 @@ const requiredPatterns = [
     message: "share-class inference must not misread QDII/ETF/FOF product suffixes as A/C/I share classes."
   },
   {
-    pattern: /function fetchRealtimeFundValuationSnapshot[\s\S]{0,1800}fetchFundValuation\(code\)[\s\S]{0,2600}function normalizeRealtimeFundValuation[\s\S]{0,1400}source: valuation\.source \|\| `https:\/\/fundgz\.1234567\.com\.cn\/js\/\$\{valuation\.fundcode/,
+    pattern: /function fetchRealtimeFundValuationSnapshot[\s\S]{0,2200}fetchFundValuation\(code\)[\s\S]{0,3600}function normalizeRealtimeFundValuation[\s\S]{0,1800}source: valuation\.source \|\| `https:\/\/fundgz\.1234567\.com\.cn\/js\/\$\{valuation\.fundcode/,
     message: "real-time fund valuation snapshots must use the existing Tiantian/FundGZ estimate endpoint with source traceability."
   },
   {
-    pattern: /async function fetchFundValuation[\s\S]{0,2200}isStaleFundValuation[\s\S]{0,900}fetchFundValuationFromPingzhongData[\s\S]{0,30000}function parseFundPingzhongLatestNav[\s\S]{0,700}Data_netWorthTrend/,
+    pattern: /async function fetchFundValuation[\s\S]{0,3600}fetchFundValuationFromPingzhongData[\s\S]{0,30000}function parseFundPingzhongLatestNav[\s\S]{0,700}Data_netWorthTrend/,
     message: "fund valuation must fall back to Eastmoney pingzhongdata latest official NAV when intraday estimates are unavailable or stale."
   },
   {
@@ -121,8 +121,20 @@ const requiredPatterns = [
     message: "fund valuation freshness must check intraday estimate time before trusting a realtime source."
   },
   {
-    pattern: /function parseSinaEstimateNetworthJsonp[\s\S]{0,900}growthrate2[\s\S]{0,900}sina_intraday_estimate/,
+    pattern: /function parseSinaEstimateNetworthJsonp[\s\S]{0,1600}growthrate2[\s\S]{0,2200}sina_intraday_estimate/,
     message: "Sina estimate backup must parse pre_nav2/growthrate2 into normalized realtime valuation evidence."
+  },
+  {
+    pattern: /function normalizeSinaEstimateIntradaySeries[\s\S]{0,900}function summarizeFundIntradayValuationTrend[\s\S]{0,1400}冲高回落/,
+    message: "Sina estimate backup must preserve minute-level valuation series and summarize intraday direction."
+  },
+  {
+    pattern: /function compactRealtimeFundValuations[\s\S]{0,900}盘中走势[\s\S]{0,600}尾盘变化/,
+    message: "compact market snapshots must carry intraday fund valuation direction into model prompts."
+  },
+  {
+    pattern: /realtimeFundValuations[\s\S]{0,220}盘中走势[\s\S]{0,220}冲高回落[\s\S]{0,220}尾盘转弱/,
+    message: "fund and portfolio prompts must use intraday valuation direction to reduce chase-buy confidence."
   },
   {
     pattern: /async function fetchFundHoldingRealtimePulse[\s\S]{0,2200}push2\.eastmoney\.com\/api\/qt\/ulist\.np\/get[\s\S]{0,2600}function buildFundHoldingRealtimePulseFromQuotes/,

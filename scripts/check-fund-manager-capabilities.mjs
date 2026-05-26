@@ -67,25 +67,28 @@ assert.deepEqual(
 const sinaEstimateNav = manager.parseSinaEstimateNetworthJsonp(`
 /*<script>location.href='//sina.com';</script>*/
 jsonp_sina_test({"result":{"status":{"code":0},"data":{"worth":"4.8297","worth_date":"20260526","networth":[
-  {"symbol":"008327","pre_date":"2026-05-26","min_time":"14:59:00","pre_nav":"4.8205","pre_nav2":"4.8188","growthrate":"-0.0061","growthrate2":"-0.0149"},
+  {"symbol":"008327","pre_date":"2026-05-26","min_time":"14:59:00","pre_nav":"4.8205","pre_nav2":"4.8188","growthrate":"-0.0061","growthrate2":"-0.0060"},
   {"symbol":"008327","pre_date":"2026-05-26","min_time":"15:00:00","pre_nav":"4.8210","pre_nav2":"4.8190","growthrate":"-0.0060","growthrate2":"-0.0148"}
 ]}}})
 `);
-assert.deepEqual(
-  sinaEstimateNav,
-  {
-    code: "008327",
-    name: "",
-    unitNav: 4.8297,
-    estimatedNav: 4.819,
-    estimatedChangePct: -1.48,
-    navDate: "2026-05-26",
-    estimateTime: "2026-05-26 15:00",
-    sourceKind: "sina_intraday_estimate",
-    valuationBasis: "盘中估算（新浪备源）"
-  },
-  "Sina estimate parser must recover near-real-time valuation data as a backup source"
-);
+assert.equal(sinaEstimateNav.code, "008327", "Sina estimate parser must preserve fund code");
+assert.equal(sinaEstimateNav.unitNav, 4.8297, "Sina estimate parser must recover latest official NAV");
+assert.equal(sinaEstimateNav.estimatedNav, 4.819, "Sina estimate parser must recover latest estimated NAV");
+assert.equal(sinaEstimateNav.estimatedChangePct, -1.48, "Sina estimate parser must recover latest estimated change");
+assert.equal(sinaEstimateNav.navDate, "2026-05-26", "Sina estimate parser must normalize valuation date");
+assert.equal(sinaEstimateNav.estimateTime, "2026-05-26 15:00", "Sina estimate parser must normalize estimate time");
+assert.equal(sinaEstimateNav.sourceKind, "sina_intraday_estimate", "Sina estimate parser must label the backup source kind");
+assert.equal(sinaEstimateNav.valuationBasis, "盘中估算（新浪备源）", "Sina estimate parser must expose the valuation basis");
+assert.equal(sinaEstimateNav.intradaySeries.length, 2, "Sina estimate parser must preserve minute-level valuation series");
+assert(sinaEstimateNav.intradayTrend.label.includes("盘中回落"), "Sina estimate parser must summarize minute-level valuation direction");
+assert.equal(sinaEstimateNav.intradayTrend.changeFromOpenPct, -0.88, "Sina intraday trend must compare the latest point with the first point");
+const manualIntradayTrend = manager.summarizeFundIntradayValuationTrend([
+  { at: "2026-05-26 09:30", estimatedChangePct: 0.2 },
+  { at: "2026-05-26 10:30", estimatedChangePct: 1.1 },
+  { at: "2026-05-26 14:30", estimatedChangePct: 0.1 },
+  { at: "2026-05-26 15:00", estimatedChangePct: -0.2 }
+]);
+assert(manualIntradayTrend.label.includes("冲高回落"), "intraday trend summary must flag high-to-close giveback instead of using only the latest estimate");
 const originalStaleEstimateMinutes = process.env.FUND_VALUATION_STALE_ESTIMATE_MINUTES;
 process.env.FUND_VALUATION_STALE_ESTIMATE_MINUTES = "30";
 assert.equal(
@@ -2758,6 +2761,7 @@ const noisyMarketSnapshot = {
       estimateTime: "2026-05-27 14:30",
       freshnessLabel: "半小时内更新",
       isFresh: true,
+      intradayTrend: index === 0 ? { label: "盘中回落，冲高回落", changeFromOpenPct: -0.8, recentSlopePct: -0.2 } : null,
       noisyRawPayload: "NOISY_REALTIME_PAYLOAD".repeat(300)
     }))
   },
@@ -2816,6 +2820,7 @@ assert.equal(compactMarketSnapshot.marketIndicators.globalMarkets.length, 8, "co
 assert.equal(compactMarketSnapshot.marketIndicators.globalMarkets[0].name, "纳斯达克", "compact market snapshot must preserve overseas market quote names");
 assert.equal(compactMarketSnapshot.marketIndicators.realtimeFundValuations.length, 12, "compact market snapshot must include capped real-time valuation candidates");
 assert(compactMarketSnapshot.marketIndicators.realtimeFundValuations[0].freshness === "半小时内更新", "compact market snapshot must preserve real-time valuation freshness labels");
+assert.equal(compactMarketSnapshot.marketIndicators.realtimeFundValuations[0]["盘中走势"], "盘中回落，冲高回落", "compact market snapshot must preserve intraday valuation direction for timing decisions");
 assert(compactMarketSnapshot.themeRadar[0]["板块位置"] === "交易拥挤", "compact market snapshot must carry Chinese theme-stage labels");
 assert(compactMarketSnapshot.themeRadar[0]["操作倾向"] === "等待或小额试探", "compact market snapshot must carry Chinese action-bias labels");
 assert(!/"(?:stage|positionSignal|actionBias|stageText|positionSignalText|actionBiasText)"\s*:/.test(compactMarketSnapshotJson), "compact market snapshot must not expose raw theme-radar field names to the model");
