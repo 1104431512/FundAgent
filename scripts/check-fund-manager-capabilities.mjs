@@ -232,9 +232,25 @@ assert.equal(
 );
 assert.equal(
   manager.summarizePortfolioEquityBrief({ totalAsset: 100000, pendingBuyAmount: 1500, receivableCash: 30000, pendingWeightPct: 0 }).pendingWeightPct,
-  31.5,
-  "equity history summaries must recover stale 0% pending weights when orders or receivables are present"
+  1.5,
+  "equity history summaries must keep pending buy weight separate from unsettled redemption receivables"
 );
+assert.equal(
+  manager.summarizePortfolioEquityBrief({ totalAsset: 100000, pendingBuyAmount: 1500, receivableCash: 30000, pendingWeightPct: 31.5 }).receivableCashPct,
+  30,
+  "equity history summaries must expose receivable cash as its own cash component"
+);
+const separatedCashComponentDb = manager.normalizePortfolioDb({
+  account: {
+    initialCapital: 100000,
+    cash: 68599.17,
+    receivableCash: 32098.68,
+    positions: []
+  },
+  orders: [{ side: "BUY", status: "submitted", code: "004877", amount: 1533 }]
+});
+assert.equal(separatedCashComponentDb.account.pendingWeightPct, 1.5, "live account summaries must not count receivable cash as pending-buy exposure");
+assert.equal(separatedCashComponentDb.account.receivableCashPct, 31.4, "live account summaries must keep unsettled redemption cash visible as a separate component");
 const staleLiquidatedEquityBrief = manager.summarizePortfolioEquityBrief({
   date: "2026-05-26",
   totalAsset: 102230.85,

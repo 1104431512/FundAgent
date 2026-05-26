@@ -1181,6 +1181,7 @@ async function executePortfolioValuation(db, run, config) {
     investedCostBasis: db.account.investedCostBasis,
     positionWeightPct: db.account.positionWeightPct,
     pendingWeightPct: db.account.pendingWeightPct,
+    receivableCashPct: db.account.receivableCashPct,
     peakTotalAsset: db.account.peakTotalAsset,
     peakTotalAssetDate: db.account.peakTotalAssetDate,
     drawdownFromPeakPct: db.account.drawdownFromPeakPct,
@@ -9768,6 +9769,8 @@ function createPortfolioAccount(config) {
     drawdownFromPeakPct: 0,
     riskBudget: buildPortfolioAccountRiskBudget({ totalAsset: initialCapital, peakTotalAsset: initialCapital }),
     positionWeightPct: 0,
+    pendingWeightPct: 0,
+    receivableCashPct: 0,
     dayPnl: 0,
     cumulativePnl: 0,
     cumulativePnlPct: 0,
@@ -9890,7 +9893,8 @@ function recalculatePortfolioAccount(account) {
   account.riskBudget = buildPortfolioAccountRiskBudget(account);
   account.availableCash = account.cash;
   account.positionWeightPct = account.totalAsset > 0 ? round((account.investedValue / account.totalAsset) * 100, 2) : 0;
-  account.pendingWeightPct = account.totalAsset > 0 ? round(((account.pendingBuyAmount + account.receivableCash) / account.totalAsset) * 100, 2) : 0;
+  account.pendingWeightPct = account.totalAsset > 0 ? round((account.pendingBuyAmount / account.totalAsset) * 100, 2) : 0;
+  account.receivableCashPct = account.totalAsset > 0 ? round((account.receivableCash / account.totalAsset) * 100, 2) : 0;
   account.positions = account.positions.map((position) => ({
     ...position,
     weightPct: account.totalAsset > 0 ? round((Number(position.currentValue || 0) / account.totalAsset) * 100, 2) : 0,
@@ -9937,7 +9941,8 @@ function summarizePortfolioAccount(account) {
     drawdownFromPeakPct: round(Number(account.drawdownFromPeakPct || 0), 2),
     riskBudget: account.riskBudget || buildPortfolioAccountRiskBudget(account),
     positionWeightPct: round(resolvePortfolioStoredWeightPct(account.positionWeightPct, investedValue, totalAsset), 2),
-    pendingWeightPct: round(resolvePortfolioStoredWeightPct(account.pendingWeightPct, pendingBuyAmount + receivableCash, totalAsset), 2),
+    pendingWeightPct: round(resolvePortfolioCashComponentWeightPct(pendingBuyAmount, totalAsset), 2),
+    receivableCashPct: round(resolvePortfolioCashComponentWeightPct(receivableCash, totalAsset), 2),
     dayPnl: round(Number(account.dayPnl || 0), 2),
     cumulativePnl: round(Number(account.cumulativePnl || 0), 2),
     cumulativePnlPct: round(Number(account.cumulativePnlPct || 0), 2),
@@ -10012,7 +10017,8 @@ function summarizePortfolioEquityBrief(item = {}) {
   const pendingBuyAmount = Number(item.pendingBuyAmount || 0);
   const receivableCash = Number(item.receivableCash || 0);
   const positionWeightPct = resolvePortfolioStoredWeightPct(item.positionWeightPct, investedValue, totalAsset);
-  const pendingWeightPct = resolvePortfolioStoredWeightPct(item.pendingWeightPct, pendingBuyAmount + receivableCash, totalAsset);
+  const pendingWeightPct = resolvePortfolioCashComponentWeightPct(pendingBuyAmount, totalAsset);
+  const receivableCashPct = resolvePortfolioCashComponentWeightPct(receivableCash, totalAsset);
   const investedCostBasis = resolvePortfolioSnapshotInvestedCostBasis(item);
   const cumulativePnl = round(Number(item.cumulativePnl || 0), 2);
   return {
@@ -10028,7 +10034,8 @@ function summarizePortfolioEquityBrief(item = {}) {
     cumulativePnl,
     cumulativePnlPct: repairPortfolioSnapshotCumulativePnlPct(item, { cumulativePnl, investedCostBasis }),
     positionWeightPct: round(positionWeightPct, 2),
-    pendingWeightPct: round(pendingWeightPct, 2)
+    pendingWeightPct: round(pendingWeightPct, 2),
+    receivableCashPct: round(receivableCashPct, 2)
   };
 }
 
@@ -10072,6 +10079,15 @@ function resolvePortfolioStoredWeightPct(storedPct, amount, totalAsset) {
   if (Number.isFinite(stored) && stored > 0) return stored;
   if (canDerive) return numerator / basis * 100;
   return Number.isFinite(stored) ? stored : 0;
+}
+
+function resolvePortfolioCashComponentWeightPct(amount, totalAsset) {
+  const basis = Number(totalAsset);
+  const numerator = Number(amount);
+  if (Number.isFinite(basis) && basis > 0 && Number.isFinite(numerator) && numerator > 0) {
+    return numerator / basis * 100;
+  }
+  return 0;
 }
 
 function compactPublicFundSnapshot(snapshot = null) {

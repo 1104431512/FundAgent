@@ -1289,15 +1289,19 @@ const requiredPatterns = [
     message: "portfolio capability queue must turn frozen-position replays into concrete position-change tasks."
   },
   {
-    pattern: /db\.dailyEquity\.push\(\{[\s\S]{0,600}positionWeightPct: db\.account\.positionWeightPct[\s\S]{0,220}pendingWeightPct: db\.account\.pendingWeightPct/,
-    message: "portfolio valuation history must persist position and pending weights."
+    pattern: /db\.dailyEquity\.push\(\{[\s\S]{0,600}positionWeightPct: db\.account\.positionWeightPct[\s\S]{0,220}pendingWeightPct: db\.account\.pendingWeightPct[\s\S]{0,180}receivableCashPct: db\.account\.receivableCashPct/,
+    message: "portfolio valuation history must persist position, pending-buy, and receivable-cash weights separately."
   },
   {
-    pattern: /function summarizePortfolioEquityBrief[\s\S]{0,900}resolvePortfolioStoredWeightPct\(item\.positionWeightPct, investedValue, totalAsset\)[\s\S]{0,900}resolvePortfolioStoredWeightPct\(item\.pendingWeightPct, pendingBuyAmount \+ receivableCash, totalAsset\)/,
-    message: "portfolio equity history summaries must derive missing or stale 0% historical weights instead of displaying 0%."
+    pattern: /function summarizePortfolioEquityBrief[\s\S]{0,900}resolvePortfolioStoredWeightPct\(item\.positionWeightPct, investedValue, totalAsset\)[\s\S]{0,500}resolvePortfolioCashComponentWeightPct\(pendingBuyAmount, totalAsset\)[\s\S]{0,500}resolvePortfolioCashComponentWeightPct\(receivableCash, totalAsset\)/,
+    message: "portfolio equity history summaries must derive pending buys separately from unsettled redemption receivables."
   },
   {
-    pattern: /function summarizePortfolioEquityBrief[\s\S]{0,1100}repairPortfolioSnapshotCumulativePnlPct[\s\S]{0,1800}function resolvePortfolioSnapshotInvestedCostBasis[\s\S]{0,1200}function repairPortfolioSnapshotCumulativePnlPct/,
+    pattern: /account\.pendingWeightPct = account\.totalAsset > 0 \? round\(\(account\.pendingBuyAmount \/ account\.totalAsset\) \* 100, 2\) : 0;\s+account\.receivableCashPct = account\.totalAsset > 0 \? round\(\(account\.receivableCash \/ account\.totalAsset\) \* 100, 2\) : 0;/,
+    message: "portfolio account recalculation must not mix receivable cash into pending-buy weight."
+  },
+  {
+    pattern: /function summarizePortfolioEquityBrief[\s\S]{0,1600}repairPortfolioSnapshotCumulativePnlPct[\s\S]{0,2400}function resolvePortfolioSnapshotInvestedCostBasis[\s\S]{0,1800}function repairPortfolioSnapshotCumulativePnlPct/,
     message: "portfolio equity history must repair stale zero invested-cost return percentages after liquidation."
   },
   {
