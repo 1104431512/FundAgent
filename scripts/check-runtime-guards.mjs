@@ -8,7 +8,9 @@ const adminHtml = fs.readFileSync(path.join(root, "public", "admin.html"), "utf8
 const adminCss = fs.readFileSync(path.join(root, "public", "styles.css"), "utf8");
 const packageJson = fs.readFileSync(path.join(root, "package.json"), "utf8");
 const deploymentCheck = fs.readFileSync(path.join(root, "scripts", "check-deployment-state.mjs"), "utf8");
-const allSource = [server, admin, adminHtml, adminCss, packageJson, deploymentCheck].join("\n");
+const dockerfile = fs.readFileSync(path.join(root, "Dockerfile"), "utf8");
+const dockerPublishWorkflow = fs.readFileSync(path.join(root, ".github", "workflows", "docker-publish.yml"), "utf8");
+const allSource = [server, admin, adminHtml, adminCss, packageJson, deploymentCheck, dockerfile, dockerPublishWorkflow].join("\n");
 
 const forbiddenPatterns = [
   {
@@ -149,6 +151,10 @@ const requiredPatterns = [
   {
     pattern: /check-deployment-state\.mjs[\s\S]{0,2600}\/health[\s\S]{0,1800}release[\s\S]{0,1800}deployed commit matches local HEAD/,
     message: "deployment checker must verify online release metadata against the current local commit."
+  },
+  {
+    pattern: /ARG FUNDAGENT_COMMIT[\s\S]{0,260}ENV FUNDAGENT_COMMIT=\$FUNDAGENT_COMMIT[\s\S]{0,2600}build-args:[\s\S]{0,260}FUNDAGENT_COMMIT=\$\{\{ github\.sha \}\}/,
+    message: "Docker image publishing must embed the git commit so /health can prove the deployed manager version."
   },
   {
     pattern: /check-deployment-state\.mjs[\s\S]{0,3600}portfolioCapabilityActionQueue[\s\S]{0,1800}capabilityDiagnostics[\s\S]{0,1800}capabilityActionQueue/,

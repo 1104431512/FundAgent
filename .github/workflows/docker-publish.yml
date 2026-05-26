@@ -51,5 +51,8 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            FUNDAGENT_COMMIT=${{ github.sha }}
+            FUNDAGENT_BRANCH=${{ github.ref_name }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

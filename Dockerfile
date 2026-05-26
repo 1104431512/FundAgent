@@ -1,7 +1,11 @@
 FROM node:20-alpine
 
 WORKDIR /app
+ARG FUNDAGENT_COMMIT=""
+ARG FUNDAGENT_BRANCH=""
 ENV NODE_ENV=production
+ENV FUNDAGENT_COMMIT=$FUNDAGENT_COMMIT
+ENV FUNDAGENT_BRANCH=$FUNDAGENT_BRANCH
 
 COPY package.json package-lock.json* ./
 RUN if [ -f package-lock.json ]; then \
