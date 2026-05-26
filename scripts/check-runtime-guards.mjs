@@ -971,15 +971,23 @@ const requiredPatterns = [
     message: "portfolio API must expose concrete capability repair tasks, not only diagnostics."
   },
   {
+    pattern: /backtestDiagnostics:\s*buildPortfolioBacktestDiagnostics\(db\)/,
+    message: "portfolio API must expose historical backtest diagnostics for replayed manager defects."
+  },
+  {
+    pattern: /function buildPortfolioBacktestDiagnostics[\s\S]{0,8200}重复成交回测[\s\S]{0,8200}追高买入回测[\s\S]{0,8200}卖出滞后回测[\s\S]{0,8200}空仓等待回测/,
+    message: "portfolio backtest diagnostics must replay duplicate trades, chase entries, delayed sells, and idle-cash redeployment failures."
+  },
+  {
     pattern: /function buildPortfolioCapabilityDiagnostics[\s\S]{0,4200}盈利能力承压[\s\S]{0,4200}追涨暴露待消化[\s\S]{0,4200}数据质量缺口/,
     message: "portfolio capability diagnostics must cover profitability, chase-risk exposure, and data-quality gaps."
   },
   {
-    pattern: /function buildPortfolioCapabilityActionQueue[\s\S]{0,2200}先解释亏损来源[\s\S]{0,2200}暂停新增同线买入/,
+    pattern: /function buildPortfolioCapabilityActionQueue[\s\S]{0,3600}先解释亏损来源[\s\S]{0,3600}暂停新增同线买入[\s\S]{0,3600}重复订单/,
     message: "portfolio capability diagnostics must become required repair tasks before the next decision."
   },
   {
-    pattern: /function buildPortfolioManagerProfileContext[\s\S]{0,900}组合能力诊断[\s\S]{0,900}能力修复队列/,
+    pattern: /function buildPortfolioManagerProfileContext[\s\S]{0,1200}历史回测诊断[\s\S]{0,1200}组合能力诊断[\s\S]{0,1200}能力修复队列/,
     message: "portfolio model context must carry capability diagnostics into every manager run."
   },
   {
@@ -997,6 +1005,10 @@ const requiredPatterns = [
   {
     pattern: /portfolioCapabilityActionQueue[\s\S]{0,600}renderCapabilityActionQueue|renderCapabilityActionQueue[\s\S]{0,600}portfolioCapabilityActionQueue/,
     message: "admin portfolio UI must show the manager's concrete capability repair queue."
+  },
+  {
+    pattern: /portfolioBacktestSummary[\s\S]{0,700}buildBacktestInsightItems|buildBacktestInsightItems[\s\S]{0,700}portfolioBacktestSummary/,
+    message: "admin portfolio UI must show historical backtest diagnostics, not only current-state diagnostics."
   },
   {
     pattern: /portfolio-insight-grid[\s\S]{0,180}repeat\(auto-fit,\s*minmax\(250px,\s*1fr\)\)/,

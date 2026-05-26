@@ -1428,7 +1428,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     JSON.stringify(decisionCapabilityDiagnostics, null, 2),
     "能力修复队列（必须进入 team.主席、team.风控经理、actions 或 learningNotes）：",
     JSON.stringify(decisionCapabilityActionQueue, null, 2),
-    "要求：若能力诊断包含盈利承压、追涨暴露、数据质量缺口或成交净值待核验，必须先解释原因和修复动作；没有完成修复前，不得用现金多作为新增买入理由。",
+    "要求：若能力诊断包含盈利承压、追涨暴露、历史回测缺口、数据质量缺口或成交净值待核验，必须先解释原因和修复动作；没有完成修复前，不得用现金多作为新增买入理由。",
     "",
     "今日公开市场/基金候选快照：",
     JSON.stringify(compactMarketSnapshotForModel(marketSnapshot), null, 2),
@@ -6342,11 +6342,13 @@ function buildPortfolioManagerProfileContext(config, db = null) {
   const behavior = db ? summarizePortfolioManagerBehavior(db) : null;
   const capabilityDiagnostics = db ? buildPortfolioCapabilityDiagnostics(db) : null;
   const capabilityActionQueue = db ? buildPortfolioCapabilityActionQueue(db) : [];
+  const backtestDiagnostics = db ? buildPortfolioBacktestDiagnostics(db) : null;
   return [
     `规定性画像：${normalizePortfolioManagerProfile(config.portfolioManagerProfile)}`,
     `风险风格：${config.portfolioRiskProfile || "balanced"}`,
     `自动汇报节奏：${schedule}`,
     behavior ? `账本行为画像：${JSON.stringify(behavior, null, 2)}` : "",
+    backtestDiagnostics ? `历史回测诊断：${JSON.stringify(backtestDiagnostics, null, 2)}` : "",
     capabilityDiagnostics ? `组合能力诊断：${JSON.stringify(capabilityDiagnostics, null, 2)}` : "",
     capabilityActionQueue.length ? `能力修复队列：${JSON.stringify(capabilityActionQueue, null, 2)}` : ""
   ]
@@ -6779,6 +6781,7 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
     })),
     account: summarizeAccount(db.account),
     exposureSummary: buildPortfolioExposureSummary(db.account.positions || []),
+    backtestDiagnostics: buildPortfolioBacktestDiagnostics(db),
     capabilityDiagnostics: buildPortfolioCapabilityDiagnostics(db),
     capabilityActionQueue: buildPortfolioCapabilityActionQueue(db),
     positions: db.account.positions.map(summarizePosition),
@@ -6980,6 +6983,16 @@ function buildPortfolioCapabilityDiagnostics(db = {}) {
     );
   }
 
+  const backtestDiagnostics = buildPortfolioBacktestDiagnostics(db);
+  for (const item of backtestDiagnostics.items || []) {
+    add(
+      item.severity || "info",
+      item.label,
+      item.value,
+      item.note || backtestDiagnostics.summary || ""
+    );
+  }
+
   const failedRuns = runs.slice(-12).filter((run) => run.status === "failed" || run.error).slice(0, 3);
   if (failedRuns.length) {
     add(
@@ -7089,6 +7102,353 @@ function formatPortfolioCapabilityDiagnosticSummary(level, items = []) {
   return "存在轻微信号，继续跟踪即可。";
 }
 
+function buildPortfolioBacktestDiagnostics(db = {}) {
+  const account = db.account || {};
+  const positions = Array.isArray(account.positions) ? account.positions : [];
+  const transactions = Array.isArray(db.transactions) ? db.transactions : [];
+  const orders = Array.isArray(db.orders) ? db.orders : [];
+  const runs = Array.isArray(db.runs) ? db.runs : [];
+  const watchlist = normalizePortfolioWatchlist(db.watchlist || []);
+  const phases = buildPortfolioBacktestPhases({ account, transactions, orders, runs });
+  const items = [];
+  const add = (severity, label, value, note, phase = "") => {
+    if (!label || !value) return;
+    items.push({ severity, label, value, note: String(note || ""), phase });
+  };
+
+  const duplicateTrades = findDuplicatePortfolioTradeGroups(transactions);
+  if (duplicateTrades.length) {
+    const first = duplicateTrades[0];
+    add(
+      "critical",
+      "重复成交回测",
+      `${duplicateTrades.length} 组疑似重复`,
+      `${formatPortfolioBacktestTradeGroup(first)}；同一交易日同一基金同方向出现多笔成交，下一轮必须先冻结同键订单去重，再解释是否误卖/误买。`,
+      "交易执行"
+    );
+  }
+
+  const hotBuys = findPortfolioBacktestHotBuys({ transactions, orders, runs, watchlist });
+  if (hotBuys.length) {
+    const first = hotBuys[0];
+    add(
+      "warning",
+      "追高买入回测",
+      `${first.code} ${first.name || ""}`.trim(),
+      `${first.date || "未知日期"}买入后证据显示${first.evidence || "偏热/等待回撤"}；入场纪律需要从“看见强势就买”改为“低位回调完成后小仓试探”。`,
+      "买入质量"
+    );
+  }
+
+  const delayedSell = buildPortfolioBacktestDelayedSellSignal({ transactions, orders, runs });
+  if (delayedSell) {
+    add(
+      "warning",
+      "卖出滞后回测",
+      `${delayedSell.warningCount} 次预警后才卖出`,
+      `${delayedSell.warningDates.join("、")} 已出现偏热、回吐、集中或减仓线索，但直到 ${delayedSell.sellDate} 才发生降风险动作；后续同类信号连续两次出现时必须给减仓复核。`,
+      "卖出纪律"
+    );
+  }
+
+  const failedRuns = runs.filter((run) => run.status === "failed" || run.error);
+  if (failedRuns.length) {
+    const first = failedRuns.slice(-3).map((run) => `${run.date || "未知日期"} ${run.type || "run"}`).join(" / ");
+    add(
+      failedRuns.length >= 2 ? "warning" : "info",
+      "运行中断回测",
+      `${failedRuns.length} 次失败`,
+      `${first} 影响连续决策；必须压缩上下文、保留关键账本字段，并在下一次 learningNotes 写清恢复动作。`,
+      "运行可靠性"
+    );
+  }
+
+  const totalAsset = Number(account.totalAsset || 0);
+  const cashLike = Number(account.cash || 0) + Number(account.receivableCash || 0);
+  const pendingBuy = Number(account.pendingBuyAmount || 0);
+  const positionWeightPct = Number(account.positionWeightPct || 0);
+  const cashLikePct = totalAsset > 0 ? cashLike / totalAsset * 100 : null;
+  const pendingBuyPct = totalAsset > 0 ? pendingBuy / totalAsset * 100 : null;
+  const investedValue = Number(account.investedValue || 0);
+  const effectivelyFlat = positions.length === 0
+    || (Number.isFinite(investedValue) && investedValue > 0 && totalAsset > 0 && investedValue / totalAsset <= 0.05)
+    || (Number.isFinite(positionWeightPct) && positionWeightPct > 0 && positionWeightPct <= 5);
+  const readyCount = watchlist.filter((item) => item.status === "ready").length;
+  const nearCount = watchlist.filter((item) => ["ready", "waiting_pullback"].includes(item.status)).length;
+  if (
+    Number.isFinite(cashLikePct)
+    && cashLikePct >= 65
+    && effectivelyFlat
+    && (!Number.isFinite(pendingBuyPct) || pendingBuyPct <= 5)
+    && !account.riskBudget?.blockNewBuys
+  ) {
+    add(
+      "warning",
+      "空仓等待回测",
+      `可部署资金约${formatFallbackPct(cashLikePct)}`,
+      `当前仓位${formatFallbackPct(positionWeightPct)}，待确认买入${formatFallbackPct(pendingBuyPct || 0)}，自选池接近候选${nearCount}只、ready ${readyCount}只；经理不能长期只说等待，必须给0.5%-2.5%试探或写清前三个候选的精确缺口。`,
+      "再部署能力"
+    );
+  }
+
+  const severityRank = { ok: 0, info: 1, warning: 2, critical: 3 };
+  const level = items.reduce((current, item) =>
+    severityRank[item.severity] > severityRank[current] ? item.severity : current
+  , "ok");
+  return {
+    level,
+    summary: formatPortfolioBacktestDiagnosticSummary(level, items, phases),
+    items: items.slice(0, 8),
+    phases: phases.slice(-8)
+  };
+}
+
+function formatPortfolioBacktestDiagnosticSummary(level, items = [], phases = []) {
+  if (!items.length || level === "ok") {
+    return phases.length ? "历史回测暂未发现明确交易纪律缺口，继续滚动复盘。" : "历史数据不足，等待更多交易和运行记录。";
+  }
+  const labels = items.slice(0, 3).map((item) => item.label).join("、");
+  if (level === "critical") return `历史回测发现严重缺口：${labels}，先修复执行链路再扩大仓位。`;
+  if (level === "warning") return `历史回测发现需要改进：${labels}，下一轮必须带着修复动作交易。`;
+  return `历史回测有观察信号：${labels}。`;
+}
+
+function buildPortfolioBacktestPhases({ account = {}, transactions = [], orders = [], runs = [] } = {}) {
+  const dates = [...new Set([
+    ...transactions.map((item) => normalizePortfolioEventDate(item.date || item.navDate || item.createdAt)),
+    ...orders.map((item) => normalizePortfolioEventDate(item.date || item.submittedAt || item.createdAt || item.updatedAt)),
+    ...runs.map((item) => normalizePortfolioEventDate(item.date || item.startedAt || item.completedAt))
+  ].filter(Boolean))].sort();
+  return dates.map((date) => {
+    const dayTransactions = transactions.filter((item) => normalizePortfolioEventDate(item.date || item.navDate || item.createdAt) === date);
+    const dayOrders = orders.filter((item) => normalizePortfolioEventDate(item.date || item.submittedAt || item.createdAt || item.updatedAt) === date);
+    const dayRuns = runs.filter((item) => normalizePortfolioEventDate(item.date || item.startedAt || item.completedAt) === date);
+    const buyCount = dayTransactions.filter((item) => String(item.side || "").toUpperCase() === "BUY").length
+      + dayOrders.filter((item) => String(item.side || "").toUpperCase() === "BUY").length;
+    const sellCount = dayTransactions.filter((item) => String(item.side || "").toUpperCase() === "SELL").length
+      + dayOrders.filter((item) => String(item.side || "").toUpperCase() === "SELL").length;
+    const failedCount = dayRuns.filter((run) => run.status === "failed" || run.error).length;
+    const warningCount = dayRuns.filter((run) => isPortfolioBacktestWarningText(portfolioBacktestText(run))).length;
+    const phase = sellCount ? "降风险/兑现" : buyCount ? "建仓/试探" : failedCount ? "运行中断" : warningCount ? "预警等待" : "观察复盘";
+    const phaseAccount = [...dayRuns]
+      .reverse()
+      .map((run) => getPortfolioRunAccountContext(run, {}))
+      .find((item) => Number.isFinite(Number(item.cash)) && Number.isFinite(Number(item.totalAsset)) && Number(item.totalAsset) > 0) || {};
+    return {
+      date,
+      phase,
+      buys: buyCount,
+      sells: sellCount,
+      warnings: warningCount,
+      failedRuns: failedCount,
+      cashPct: Number.isFinite(Number(phaseAccount.cash)) && Number.isFinite(Number(phaseAccount.totalAsset)) && Number(phaseAccount.totalAsset) > 0
+        ? round(Number(phaseAccount.cash) / Number(phaseAccount.totalAsset) * 100, 1)
+        : null,
+      note: buildPortfolioBacktestPhaseNote({ buyCount, sellCount, warningCount, failedCount, dayRuns })
+    };
+  });
+}
+
+function buildPortfolioBacktestPhaseNote({ buyCount, sellCount, warningCount, failedCount, dayRuns }) {
+  const parts = [];
+  if (buyCount) parts.push(`买入/申购${buyCount}笔`);
+  if (sellCount) parts.push(`卖出/赎回${sellCount}笔`);
+  if (warningCount) parts.push(`风险预警${warningCount}次`);
+  if (failedCount) parts.push(`运行失败${failedCount}次`);
+  const summary = dayRuns.map((run) => String(run.summary || run.title || "").trim()).find(Boolean);
+  if (summary) parts.push(summary.slice(0, 80));
+  return parts.join("；") || "无明显动作";
+}
+
+function findDuplicatePortfolioTradeGroups(transactions = []) {
+  const groups = new Map();
+  for (const item of transactions) {
+    const side = String(item.side || "").toUpperCase();
+    const code = String(item.code || "").trim();
+    const date = normalizePortfolioEventDate(item.date || item.navDate || item.createdAt);
+    if (!["BUY", "SELL"].includes(side) || !code || !date) continue;
+    const key = `${date}|${side}|${code}`;
+    if (!groups.has(key)) groups.set(key, { date, side, code, name: item.name || "", transactions: [] });
+    groups.get(key).transactions.push(item);
+  }
+  return [...groups.values()]
+    .filter((group) => group.transactions.length > 1)
+    .sort((a, b) => b.transactions.length - a.transactions.length || String(b.date).localeCompare(String(a.date)));
+}
+
+function formatPortfolioBacktestTradeGroup(group = {}) {
+  const total = (group.transactions || []).reduce((sum, item) => sum + (Number(item.amount || 0) || 0), 0);
+  return `${group.date || "未知日期"} ${group.side || ""} ${group.code || ""} ${group.name || ""} ${group.transactions?.length || 0}笔，合计约${round(total, 2)}元`.trim();
+}
+
+function findPortfolioBacktestHotBuys({ transactions = [], orders = [], runs = [], watchlist = [] } = {}) {
+  const buys = transactions.filter((item) => String(item.side || "").toUpperCase() === "BUY");
+  const hotBuys = [];
+  for (const buy of buys) {
+    const code = String(buy.code || "").trim();
+    if (!code) continue;
+    const evidenceText = collectPortfolioBacktestEvidenceForCode(code, {
+      anchorDate: buy.date || buy.navDate || buy.createdAt,
+      transactions,
+      orders,
+      runs,
+      watchlist
+    });
+    const evidence = summarizePortfolioBacktestHotEvidence(evidenceText);
+    if (!evidence) continue;
+    hotBuys.push({
+      code,
+      name: buy.name || "",
+      date: normalizePortfolioEventDate(buy.date || buy.navDate || buy.createdAt),
+      evidence
+    });
+  }
+  return hotBuys;
+}
+
+function collectPortfolioBacktestEvidenceForCode(code, { anchorDate = "", transactions = [], orders = [], runs = [], watchlist = [] } = {}) {
+  const target = String(code || "").trim();
+  if (!target) return "";
+  const anchor = Date.parse(normalizePortfolioEventDate(anchorDate) || "");
+  const windowDays = 18;
+  const pieces = [];
+  const isNearAnchor = (dateText) => {
+    if (!Number.isFinite(anchor)) return true;
+    const time = Date.parse(normalizePortfolioEventDate(dateText) || "");
+    return Number.isFinite(time) && time >= anchor - 86400000 && time <= anchor + windowDays * 86400000;
+  };
+  for (const item of transactions) {
+    if (String(item.code || "") === target && isNearAnchor(item.date || item.navDate || item.createdAt)) {
+      pieces.push(portfolioBacktestText(item));
+    }
+  }
+  for (const item of orders) {
+    if (String(item.code || "") === target && isNearAnchor(item.date || item.submittedAt || item.createdAt || item.updatedAt)) {
+      pieces.push(portfolioBacktestText(item));
+    }
+  }
+  for (const run of runs) {
+    if (!isNearAnchor(run.date || run.startedAt || run.completedAt)) continue;
+    const text = portfolioBacktestText(run);
+    if (text.includes(target)) pieces.push(text);
+  }
+  const watched = watchlist.find((item) => item.code === target);
+  if (watched) pieces.push(portfolioBacktestText(watched));
+  return pieces.join("\n").slice(0, 18000);
+}
+
+function summarizePortfolioBacktestHotEvidence(text = "") {
+  const normalized = String(text || "");
+  const evidence = [];
+  if (/extended_uptrend|趋势上行延伸|高位延伸/.test(normalized)) evidence.push("趋势延伸");
+  if (/wait_pullback|等待回撤|等回撤/.test(normalized)) evidence.push("入场偏等待回撤");
+  if (/偏热|过热|追涨|拥挤/.test(normalized)) evidence.push("短期偏热");
+  const return20 = extractPortfolioBacktestNumber(normalized, [
+    /近\s*20\s*日\s*([+-]?\d+(?:\.\d+)?)%/i,
+    /20\s*日\s*[+=为约：:\s]*([+-]?\d+(?:\.\d+)?)%/i,
+    /return20dPct["\s:]*([+-]?\d+(?:\.\d+)?)/i
+  ]);
+  const return60 = extractPortfolioBacktestNumber(normalized, [
+    /近\s*60\s*日\s*([+-]?\d+(?:\.\d+)?)%/i,
+    /60\s*日\s*[+=为约：:\s]*([+-]?\d+(?:\.\d+)?)%/i,
+    /return60dPct["\s:]*([+-]?\d+(?:\.\d+)?)/i
+  ]);
+  const position120 = extractPortfolioBacktestNumber(normalized, [
+    /120\s*日位置\s*([+-]?\d+(?:\.\d+)?)%?/i,
+    /lowPositionPct120["\s:]*([+-]?\d+(?:\.\d+)?)/i
+  ]);
+  if (Number.isFinite(return20) && return20 >= 12) evidence.push(`近20日${formatFallbackPct(return20)}`);
+  if (Number.isFinite(return60) && return60 >= 25) evidence.push(`近60日${formatFallbackPct(return60)}`);
+  if (Number.isFinite(position120) && position120 >= 85) evidence.push(`120日位置${round(position120, 1)}%`);
+  return evidence.length ? evidence.slice(0, 4).join("、") : "";
+}
+
+function extractPortfolioBacktestNumber(text, patterns = []) {
+  for (const pattern of patterns) {
+    const match = String(text || "").match(pattern);
+    if (!match) continue;
+    const numeric = Number(match[1]);
+    if (Number.isFinite(numeric)) return numeric;
+  }
+  return null;
+}
+
+function buildPortfolioBacktestDelayedSellSignal({ transactions = [], orders = [], runs = [] } = {}) {
+  const sellEvents = collectPortfolioBacktestTradeEvents({ transactions, orders }, "SELL");
+  if (!sellEvents.length) return null;
+  const warningRuns = runs
+    .filter((run) => normalizePortfolioEventDate(run.date || run.startedAt || run.completedAt))
+    .filter((run) => isPortfolioBacktestWarningText(portfolioBacktestText(run)))
+    .filter((run) => !portfolioBacktestRunHasSide(run, "SELL"))
+    .sort((a, b) => String(a.date || a.startedAt || "").localeCompare(String(b.date || b.startedAt || "")));
+  if (!warningRuns.length) return null;
+  const sellDates = [...new Set(sellEvents.map((item) => item.date).filter(Boolean))].sort();
+  let previousSellDate = "";
+  for (const sellDate of sellDates) {
+    const warnings = warningRuns.filter((run) => {
+      const date = normalizePortfolioEventDate(run.date || run.startedAt || run.completedAt);
+      return date && (!previousSellDate || date > previousSellDate) && date < sellDate;
+    });
+    if (warnings.length >= 2) {
+      return {
+        sellDate,
+        warningCount: warnings.length,
+        warningDates: [...new Set(warnings.map((run) => normalizePortfolioEventDate(run.date || run.startedAt || run.completedAt)).filter(Boolean))].slice(0, 4)
+      };
+    }
+    previousSellDate = sellDate;
+  }
+  return null;
+}
+
+function collectPortfolioBacktestTradeEvents({ transactions = [], orders = [] } = {}, side = "") {
+  const targetSide = String(side || "").toUpperCase();
+  return [
+    ...transactions.map((item) => ({
+      side: String(item.side || "").toUpperCase(),
+      code: item.code || "",
+      date: normalizePortfolioEventDate(item.date || item.navDate || item.createdAt)
+    })),
+    ...orders.map((item) => ({
+      side: String(item.side || "").toUpperCase(),
+      code: item.code || "",
+      date: normalizePortfolioEventDate(item.date || item.submittedAt || item.createdAt || item.updatedAt)
+    }))
+  ].filter((item) => (!targetSide || item.side === targetSide) && item.date).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function portfolioBacktestRunHasSide(run = {}, side = "") {
+  const targetSide = String(side || "").toUpperCase();
+  return [
+    ...(Array.isArray(run.actions) ? run.actions : []),
+    ...(Array.isArray(run.orders) ? run.orders : []),
+    ...(Array.isArray(run.transactions) ? run.transactions : [])
+  ].some((item) => String(item.action || item.side || "").toUpperCase() === targetSide);
+}
+
+function isPortfolioBacktestWarningText(text = "") {
+  return /(偏热|过热|追涨|等待回撤|等回撤|回吐|减仓|降仓|止盈|高位|集中|拥挤|破位|风险预算)/.test(String(text || ""));
+}
+
+function portfolioBacktestText(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value || "");
+  }
+}
+
+function normalizePortfolioEventDate(value) {
+  const text = String(value || "").trim();
+  const direct = text.match(/\d{4}-\d{2}-\d{2}/)?.[0] || "";
+  if (direct) return direct;
+  const time = Date.parse(text);
+  if (!Number.isFinite(time)) return "";
+  return new Date(time).toISOString().slice(0, 10);
+}
+
 function buildPortfolioCapabilityActionQueue(db = {}) {
   const diagnostics = buildPortfolioCapabilityDiagnostics(db);
   const tasks = [];
@@ -7122,6 +7482,16 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "不能只说等待机会；下一轮必须刷新低位启动候选，给出小仓试探方案或列明前三个近合买点的具体缺口。", "组合经理");
     } else if (item.label === "现金等待买点") {
       addTask(item, "继续增强低位召回；没有合格买点时明确0元等待，不硬凑推荐。", "组合经理");
+    } else if (item.label === "重复成交回测") {
+      addTask(item, "先冻结同日同基金同方向重复订单，按date+side+code去重后再允许新的申赎确认。", "执行风控");
+    } else if (item.label === "追高买入回测") {
+      addTask(item, "复盘买入当日是否处于高位延伸；后续同类基金必须等回调完成和5日/10日温和转强后才小仓试探。", "基金研究员");
+    } else if (item.label === "卖出滞后回测") {
+      addTask(item, "连续两次出现偏热、回吐或集中预警时，必须提交减仓复核，不能继续用HOLD拖延风险处理。", "风控经理");
+    } else if (item.label === "运行中断回测") {
+      addTask(item, "压缩历史上下文并保留关键账本字段，失败后的下一次运行必须先补回中断期间的订单和风险复核。", "主席");
+    } else if (item.label === "空仓等待回测") {
+      addTask(item, "不能长期全仓现金；若回撤预算正常，必须给出0.5%-2.5%试探仓或三个候选的精确未满足条件。", "组合经理");
     }
   }
   return tasks.slice(0, 8);
@@ -18173,6 +18543,7 @@ export {
   buildMarketDeepDiveSummary,
   buildPortfolioHeldPositionReviewActions,
   buildPortfolioHeldPositionReviewQueue,
+  buildPortfolioBacktestDiagnostics,
   buildPortfolioCapabilityDiagnostics,
   buildPortfolioCapabilityActionQueue,
   buildPortfolioDecisionReadinessQueue,

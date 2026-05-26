@@ -325,6 +325,8 @@ function renderPortfolioDashboard(portfolio = {}) {
   updatePortfolioCapabilityBadge(portfolio.capabilityDiagnostics || {});
   renderInsightList("#portfolioCapabilitySummary", buildCapabilityInsightItems(portfolio.capabilityDiagnostics || {}), "暂无明显能力短板。");
   renderCapabilityActionQueue(portfolio.capabilityActionQueue || []);
+  updatePortfolioBacktestBadge(portfolio.backtestDiagnostics || {});
+  renderInsightList("#portfolioBacktestSummary", buildBacktestInsightItems(portfolio.backtestDiagnostics || {}), "暂无历史回测缺口。");
 }
 
 function updateRunStateBadge(latestRun, scheduler = {}) {
@@ -483,6 +485,47 @@ function buildCapabilityInsightItems(diagnostics = {}) {
     value: item.value || formatDiagnosticSeverity(item.severity),
     meta: item.note || diagnostics.summary || ""
   }));
+}
+
+function updatePortfolioBacktestBadge(diagnostics = {}) {
+  const node = document.querySelector("#portfolioBacktestState");
+  if (!node) return;
+  const level = diagnostics.level || "ok";
+  const label = {
+    critical: "严重",
+    warning: "待修复",
+    info: "观察",
+    ok: "正常"
+  }[level] || "观察";
+  node.textContent = label;
+  node.className = `badge ${level === "critical" ? "bad" : level === "warning" ? "warn" : "ok"}`;
+}
+
+function buildBacktestInsightItems(diagnostics = {}) {
+  const items = Array.isArray(diagnostics.items) ? diagnostics.items : [];
+  if (!items.length) {
+    const phases = Array.isArray(diagnostics.phases) ? diagnostics.phases : [];
+    return [{
+      label: "回测状态",
+      value: diagnostics.summary || "历史回测暂未发现明确漏洞",
+      meta: phases.length ? `已划分 ${phases.length} 个历史阶段` : "等待更多运行和交易记录"
+    }];
+  }
+  const phaseItems = (Array.isArray(diagnostics.phases) ? diagnostics.phases : [])
+    .slice(-2)
+    .map((phase) => ({
+      label: phase.phase || "历史阶段",
+      value: phase.date || "未知日期",
+      meta: phase.note || `买入${phase.buys || 0}，卖出${phase.sells || 0}，预警${phase.warnings || 0}`
+    }));
+  return [
+    ...items.slice(0, 4).map((item) => ({
+      label: item.label || "回测信号",
+      value: item.value || formatDiagnosticSeverity(item.severity),
+      meta: item.note || diagnostics.summary || item.phase || ""
+    })),
+    ...phaseItems
+  ].slice(0, 6);
 }
 
 function renderCapabilityActionQueue(tasks = []) {

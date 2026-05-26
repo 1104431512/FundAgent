@@ -116,8 +116,72 @@ assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "成�
 assert(portfolioCapabilityDiagnostics.items.some((item) => item.label === "现金闲置风险"), "capability diagnostics must flag high-cash portfolios that have stopped deploying for too long");
 assert(serverSource.includes("capabilityDiagnostics: buildPortfolioCapabilityDiagnostics(db)"), "portfolio API must expose capability diagnostics");
 assert(serverSource.includes("capabilityActionQueue: buildPortfolioCapabilityActionQueue(db)"), "portfolio API must expose capability repair action queue");
+assert(serverSource.includes("backtestDiagnostics: buildPortfolioBacktestDiagnostics(db)"), "portfolio API must expose historical backtest diagnostics");
 assert(adminSource.includes("buildCapabilityInsightItems") && adminHtmlSource.includes("portfolioCapabilitySummary"), "admin UI must render portfolio capability diagnostics");
 assert(adminSource.includes("renderCapabilityActionQueue") && adminHtmlSource.includes("portfolioCapabilityActionQueue"), "admin UI must render concrete capability repair tasks");
+assert(adminSource.includes("buildBacktestInsightItems") && adminHtmlSource.includes("portfolioBacktestSummary"), "admin UI must render historical backtest diagnostics");
+const backtestFixture = {
+  account: {
+    cash: 88000,
+    receivableCash: 8000,
+    pendingBuyAmount: 1000,
+    totalAsset: 100000,
+    positionWeightPct: 0,
+    investedValue: 0,
+    positions: [],
+    riskBudget: { blockNewBuys: false }
+  },
+  watchlist: [{ code: "004877", name: "低位候选", status: "waiting_pullback" }],
+  transactions: [
+    { date: "2026-05-12", side: "BUY", code: "006265", name: "红土创新新科技股票A", amount: 10000, nav: 1, navDate: "2026-05-11" },
+    { date: "2026-05-26", side: "SELL", code: "006265", name: "红土创新新科技股票A", amount: 8000, nav: 1.1, navDate: "2026-05-25" },
+    { date: "2026-05-26", side: "SELL", code: "006265", name: "红土创新新科技股票A", amount: 2000, nav: 1.1, navDate: "2026-05-25" }
+  ],
+  orders: [{ date: "2026-05-26", side: "SELL", code: "006265", status: "confirmed" }],
+  runs: [
+    {
+      date: "2026-05-13",
+      type: "decision",
+      status: "completed",
+      summary: "买入后复核：006265 extended_uptrend，entryBias wait_pullback，近20日+18%，120日位置96%。",
+      actions: [{ action: "BUY", code: "006265", reason: "趋势强但已偏热" }]
+    },
+    {
+      date: "2026-05-21",
+      type: "decision",
+      status: "completed",
+      summary: "006265 偏热、等待回撤、浮盈回吐，但继续HOLD。",
+      actions: [{ action: "HOLD", code: "006265", reason: "偏热等待回撤，先观察" }]
+    },
+    {
+      date: "2026-05-22",
+      type: "decision",
+      status: "failed",
+      summary: "今日决策失败",
+      error: "stream error"
+    },
+    {
+      date: "2026-05-23",
+      type: "decision",
+      status: "completed",
+      summary: "006265 高位集中，出现减仓线索，但继续HOLD。",
+      actions: [{ action: "HOLD", code: "006265", reason: "高位集中，需减仓复核" }]
+    }
+  ]
+};
+const portfolioBacktestDiagnostics = manager.buildPortfolioBacktestDiagnostics(backtestFixture);
+assert.equal(portfolioBacktestDiagnostics.level, "critical", "historical backtest diagnostics must flag severe replayed defects");
+assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "重复成交回测"), "backtest diagnostics must catch duplicate same-day same-fund fills");
+assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "追高买入回测"), "backtest diagnostics must catch hot/chase entries after replay");
+assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "卖出滞后回测"), "backtest diagnostics must catch delayed sell discipline");
+assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "运行中断回测"), "backtest diagnostics must catch decision continuity failures");
+assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "空仓等待回测"), "backtest diagnostics must catch excessive idle cash after de-risking");
+assert(portfolioBacktestDiagnostics.phases.length >= 3, "backtest diagnostics must split history into replay phases");
+const backtestCapabilityDiagnostics = manager.buildPortfolioCapabilityDiagnostics(backtestFixture);
+assert(backtestCapabilityDiagnostics.items.some((item) => item.label === "重复成交回测"), "capability diagnostics must absorb historical backtest defects");
+const backtestActionQueue = manager.buildPortfolioCapabilityActionQueue(backtestFixture);
+assert(backtestActionQueue.some((item) => item.action.includes("重复订单")), "capability action queue must turn duplicate-fill replay into an execution repair task");
+assert(backtestActionQueue.some((item) => item.action.includes("0.5%-2.5%试探仓")), "capability action queue must turn idle-cash replay into a redeployment task");
 const capabilityActionQueue = manager.buildPortfolioCapabilityActionQueue({
   account: {
     cash: 70000,
@@ -170,6 +234,7 @@ const capabilityProfileContext = manager.buildPortfolioManagerProfileContext({
   transactions: []
 });
 assert(capabilityProfileContext.includes("组合能力诊断") && capabilityProfileContext.includes("能力修复队列"), "manager profile context must carry capability diagnostics into every portfolio model call");
+assert(capabilityProfileContext.includes("历史回测诊断"), "manager profile context must carry historical backtest diagnostics into every portfolio model call");
 assert(serverSource.includes("能力修复队列（必须进入 team.主席、team.风控经理、actions 或 learningNotes）"), "portfolio decision prompt must force capability repair tasks into decisions");
 const portfolioDecisionCapabilitySource = serverSource.slice(
   serverSource.indexOf("async function executePortfolioDecision"),

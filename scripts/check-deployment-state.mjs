@@ -44,7 +44,7 @@ async function main() {
     assertCheck(Boolean(body.exposureSummary), "portfolio API exposes exposure summary", "critical", "Exposure and overlap risk must be visible online.");
     assertCheck(Boolean(body.capabilityDiagnostics), "portfolio API exposes capability diagnostics", "critical", "The online manager must surface profitability, chase-risk, and data-quality weaknesses.");
     assertCheck(Array.isArray(body.capabilityActionQueue), "portfolio API exposes capability repair queue", "critical", "Diagnostics need concrete next actions.");
-    assertCheck(Boolean(body.account?.investedCost), "portfolio API exposes invested cost", "critical", "Return percentages must be based on actual invested amount.");
+    assertCheck(body.account && Object.prototype.hasOwnProperty.call(body.account, "investedCost"), "portfolio API exposes invested cost", "critical", "Return percentages must be based on actual invested amount, even when current positions are fully settled or flat.");
   }
 
   printReport();
