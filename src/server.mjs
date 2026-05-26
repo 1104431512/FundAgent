@@ -12170,6 +12170,7 @@ async function fetchMarketSnapshot() {
       "https://push2.eastmoney.com/api/qt/ulist.np/get",
       "https://fund.eastmoney.com/data/rankhandler.aspx",
       "https://fundgz.1234567.com.cn/js/{code}.js",
+      "https://stock.finance.sina.com.cn/fundInfo/api/openapi.php/FdFundService.getEstimateNetworthPic?symbol={code}",
       "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx",
       "https://np-listapi.eastmoney.com/comm/web/getFastNews"
     ]
@@ -12182,7 +12183,7 @@ function buildMarketDataQuality(components = [], options = {}) {
     .filter((item) => item.key || item.label);
   const available = normalized
     .filter((item) => item.status === "available")
-    .map(({ key, label, count }) => ({ key, label, count }));
+    .map(({ key, label, count, freshCount, staleCount, sourceKinds }) => ({ key, label, count, freshCount, staleCount, sourceKinds }));
   const missing = normalized
     .filter((item) => item.status !== "available")
     .map(({ key, label, status, error }) => ({ key, label, status, error }));
@@ -12213,6 +12214,12 @@ function buildMarketDataQuality(components = [], options = {}) {
   if (missing.some((item) => item.key === "preciousMetals" || item.key === "preciousMetalFunds")) {
     notes.push("贵金属相关模块不完整，回答黄金/白银问题时必须说明行情或基金候选缺口。");
   }
+  const realtimeQuality = normalized.find((item) => item.key === "realtimeFundValuations");
+  if (realtimeQuality?.status === "stale") {
+    notes.push("实时估算净值全部偏旧，盘中温度只能作为待复核线索，不能当作实时买点确认。");
+  } else if (realtimeQuality?.status === "available" && Number(realtimeQuality.staleCount || 0) > Number(realtimeQuality.freshCount || 0)) {
+    notes.push("实时估算净值里旧数据多于新数据，回答时要优先说明估值时间和盘中走势，不要把估算涨跌当成交依据。");
+  }
 
   return {
     ok: level !== "poor",
@@ -12234,17 +12241,26 @@ function normalizeMarketDataQualityComponent(component = {}) {
   const result = component.result || component.data || component;
   const items = Array.isArray(result?.items) ? result.items : [];
   const count = items.length;
+  const freshCount = Number.isFinite(Number(result?.freshCount)) ? Number(result.freshCount) : null;
+  const staleCount = Number.isFinite(Number(result?.staleCount)) ? Number(result.staleCount) : null;
+  const sourceKinds = Array.isArray(result?.sourceKinds) ? result.sourceKinds.filter(Boolean).slice(0, 6) : [];
   const error = result?.ok === false
     ? String(result?.error || component.error || "抓取失败")
     : "";
-  const status = error ? "missing" : count > 0 ? "available" : "empty";
+  let status = error ? "missing" : count > 0 ? "available" : "empty";
+  if ((component.key || result?.key) === "realtimeFundValuations" && count > 0 && freshCount === 0) {
+    status = "stale";
+  }
   return {
     key: component.key || result?.key || "",
     label: component.label || result?.label || component.key || result?.key || "未知数据",
     critical: Boolean(component.critical),
     count,
+    freshCount,
+    staleCount,
+    sourceKinds,
     status,
-    error: error || (status === "empty" ? "返回为空" : "")
+    error: error || (status === "empty" ? "返回为空" : status === "stale" ? "估算时间全部偏旧" : "")
   };
 }
 
@@ -12269,7 +12285,7 @@ async function fetchRealtimeFundValuationSnapshot(fundCandidates = {}) {
   ];
   const codes = mergeFundCodes(seedItems.map((item) => item.code)).slice(0, Number(process.env.MARKET_REALTIME_VALUATION_LIMIT || 24));
   if (!codes.length) {
-    return { ok: false, label: "天天基金实时估算净值", error: "没有候选基金代码可抓取", items: [] };
+    return { ok: false, label: "天天基金/新浪实时估算净值", error: "没有候选基金代码可抓取", items: [] };
   }
   const seedByCode = new Map(seedItems.filter((item) => item.code).map((item) => [item.code, item]));
   const results = await Promise.all(codes.map(async (code) => {
@@ -12298,11 +12314,13 @@ async function fetchRealtimeFundValuationSnapshot(fundCandidates = {}) {
   });
   return {
     ok: items.length > 0,
-    label: "天天基金实时估算净值",
+    label: "天天基金/新浪实时估算净值",
     fetchedAt,
     coverage: `${items.length}/${codes.length}`,
     freshCount,
     staleCount: items.length - freshCount,
+    sourceKinds: [...new Set(items.map((item) => item.sourceKind).filter(Boolean))],
+    supplementalSourceKinds: [...new Set(items.map((item) => item.supplementalIntradaySourceKind).filter(Boolean))],
     items
   };
 }

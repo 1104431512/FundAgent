@@ -2746,6 +2746,19 @@ const partialMarketQuality = manager.buildMarketDataQuality([
 assert.equal(partialMarketQuality.level, "partial", "market data quality must classify recoverable source failures as partial");
 assert(partialMarketQuality.notes.some((item) => item.includes("行业板块") && item.includes("降低把握度")), "partial market data quality must explain missing modules in Chinese");
 assert.equal(manager.compactMarketDataQuality(partialMarketQuality).missing[0].label, "行业板块", "summarized market snapshots must preserve data-quality gaps");
+const staleRealtimeMarketQuality = manager.buildMarketDataQuality([
+  { key: "conceptBoards", label: "概念板块", critical: true, result: { ok: true, items: [{ name: "机器人" }] } },
+  { key: "industryBoards", label: "行业板块", critical: true, result: { ok: true, items: [{ name: "医药" }] } },
+  { key: "stockFunds", label: "股票型基金排行", critical: true, result: { ok: true, items: [{ code: "000001" }] } },
+  { key: "hybridFunds", label: "混合型基金排行", critical: true, result: { ok: true, items: [{ code: "000002" }] } },
+  { key: "realtimeFundValuations", label: "实时估算净值", critical: false, result: { ok: true, freshCount: 0, staleCount: 2, sourceKinds: ["tiantian_intraday_estimate"], items: [{ code: "000001" }, { code: "000002" }] } }
+], {
+  fundCandidates: {
+    stockFunds: Array.from({ length: 12 }, (_, index) => ({ code: String(index).padStart(6, "0") }))
+  }
+});
+assert(staleRealtimeMarketQuality.missing.some((item) => item.key === "realtimeFundValuations" && item.status === "stale"), "market data quality must not treat stale realtime valuations as fully available");
+assert(staleRealtimeMarketQuality.notes.some((item) => item.includes("实时估算净值全部偏旧")), "market data quality must explain stale realtime valuation coverage in Chinese");
 const poorMarketQuality = manager.buildMarketDataQuality([
   { key: "conceptBoards", label: "概念板块", critical: true, result: { ok: false, error: "blocked", items: [] } },
   { key: "industryBoards", label: "行业板块", critical: true, result: { ok: false, error: "blocked", items: [] } },

@@ -533,6 +533,18 @@ const requiredPatterns = [
     message: "market data quality notes must explain partial source failures in natural Chinese."
   },
   {
+    pattern: /normalizeMarketDataQualityComponent[\s\S]{0,900}realtimeFundValuations[\s\S]{0,500}status = "stale"/,
+    message: "market data quality must downgrade stale realtime valuation coverage instead of treating it as live."
+  },
+  {
+    pattern: /实时估算净值全部偏旧[\s\S]{0,260}不能当作实时买点确认/,
+    message: "market data quality notes must explain stale realtime valuation evidence in Chinese."
+  },
+  {
+    pattern: /stock\.finance\.sina\.com\.cn\/fundInfo\/api\/openapi\.php\/FdFundService\.getEstimateNetworthPic/,
+    message: "market snapshot sources must expose the Sina intraday valuation supplement."
+  },
+  {
     pattern: /必须检查 marketSnapshot\.dataQuality[\s\S]{0,220}数据缺口[\s\S]{0,220}降低把握度/,
     message: "fund and portfolio prompts must force data-gap disclosure when public sources are partial or poor."
   },
