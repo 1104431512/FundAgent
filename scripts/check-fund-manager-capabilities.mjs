@@ -329,6 +329,36 @@ assert(
   }).some((item) => item.action.includes("加到3%-5%")),
   "capability action queue must turn a pending starter buy into explicit scale/hold/exit triggers"
 );
+const publicPendingProbeDb = {
+  account: {
+    cash: 68599.17,
+    totalAsset: 102230.85,
+    pendingBuyAmount: 1533,
+    investedValue: 0,
+    riskBudget: { blockNewBuys: false }
+  },
+  watchlist: [{ code: "004877", name: "汇添富全球医疗混合(QDII)人民币", status: "ready" }],
+  recentTransactions: [{ side: "BUY", code: "000001", name: "旧买入", date: "2000-01-01" }],
+  recentOrders: [{
+    id: "ord_public_pending",
+    side: "BUY",
+    code: "004877",
+    name: "汇添富全球医疗混合(QDII)人民币",
+    status: "submitted",
+    amount: 1533,
+    submittedAt: `${todayIso}T06:29:00.000Z`,
+    priceDate: todayIso,
+    confirmDate: "2026-05-28"
+  }],
+  runs: []
+};
+assert(manager.buildPortfolioCapabilityDiagnostics(publicPendingProbeDb).items.some((item) => item.label === "试探仓跟踪"), "capability diagnostics must recognize starter buys from public recentOrders as well as raw orders");
+const starterFollowUpQueue = manager.buildPortfolioStarterBuyFollowUpQueue(publicPendingProbeDb);
+assert.equal(starterFollowUpQueue[0].code, "004877", "starter buy follow-up queue must identify the pending QDII starter order");
+assert(starterFollowUpQueue[0].followUpAction.includes("确认前不追加"), "pending starter follow-up must forbid adding before NAV/share confirmation");
+const starterFollowUpDecision = manager.ensurePortfolioStarterBuyFollowUpReviewed({ actions: [], learningNotes: [] }, publicPendingProbeDb);
+assert.equal(starterFollowUpDecision.actions[0].action, "WATCH", "pending starter follow-up guard must inject a WATCH action before confirmation");
+assert(starterFollowUpDecision.actions[0].riskControl.includes("加到3%-5%"), "starter follow-up action must carry scale/hold/exit triggers");
 assert(serverSource.includes("capabilityDiagnostics: buildPortfolioCapabilityDiagnostics(db)"), "portfolio API must expose capability diagnostics");
 assert(serverSource.includes("capabilityActionQueue: buildPortfolioCapabilityActionQueue(db)"), "portfolio API must expose capability repair action queue");
 assert(serverSource.includes("backtestDiagnostics: buildPortfolioBacktestDiagnostics(db)"), "portfolio API must expose historical backtest diagnostics");

@@ -978,6 +978,7 @@ async function executePortfolioDecision(db, run, config) {
   const capabilityDiagnostics = buildPortfolioCapabilityDiagnostics(db);
   const capabilityActionQueue = buildPortfolioCapabilityActionQueue(db);
   const missedFollowThroughQueue = buildPortfolioMissedFollowThroughReviewQueue(db);
+  const starterBuyFollowUpQueue = buildPortfolioStarterBuyFollowUpQueue(db);
   const marketSnapshot = await fetchMarketSnapshot();
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "正在补全当前持仓和自选基金池资料。");
@@ -1022,6 +1023,7 @@ async function executePortfolioDecision(db, run, config) {
     config,
     profileContext,
     missedFollowThroughQueue,
+    starterBuyFollowUpQueue,
     capabilityDiagnostics,
     capabilityActionQueue
   });
@@ -1030,15 +1032,18 @@ async function executePortfolioDecision(db, run, config) {
   await yieldToEventLoop();
   const decision = ensurePortfolioHeldPositionsReviewed(
     ensurePortfolioMissedFollowThroughReviewed(
-      ensurePortfolioRedeploymentPlanReviewed(
-        ensurePortfolioReadyWatchlistReviewed(
-          normalizePortfolioDecision(raw),
+      ensurePortfolioStarterBuyFollowUpReviewed(
+        ensurePortfolioRedeploymentPlanReviewed(
+          ensurePortfolioReadyWatchlistReviewed(
+            normalizePortfolioDecision(raw),
+            watchlist,
+            { profiles: watchlistProfiles }
+          ),
+          accountBefore,
           watchlist,
-          { profiles: watchlistProfiles }
+          { profiles: mergePortfolioProfiles(watchlistProfiles, seedProfiles) }
         ),
-        accountBefore,
-        watchlist,
-        { profiles: mergePortfolioProfiles(watchlistProfiles, seedProfiles) }
+        db
       ),
       db
     ),
@@ -1408,7 +1413,7 @@ async function executePortfolioWeekly(db, run, config) {
   });
 }
 
-async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, watchlist = [], watchlistProfiles = [], watchlistSeedCandidates = [], seedProfiles = [], missedFollowThroughQueue = [], config, profileContext, capabilityDiagnostics = null, capabilityActionQueue = null }) {
+async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, watchlist = [], watchlistProfiles = [], watchlistSeedCandidates = [], seedProfiles = [], missedFollowThroughQueue = [], starterBuyFollowUpQueue = [], config, profileContext, capabilityDiagnostics = null, capabilityActionQueue = null }) {
   const exposureSummary = buildPortfolioExposureSummary(account.positions || []);
   const decisionCapabilityDiagnostics = capabilityDiagnostics || buildPortfolioCapabilityDiagnostics({ account, watchlist });
   const decisionCapabilityActionQueue = Array.isArray(capabilityActionQueue)
@@ -1466,6 +1471,10 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
     JSON.stringify((missedFollowThroughQueue || []).slice(0, 5), null, 2),
     "要求：若队列非空，actions 中必须对前3只给出 BUY/小仓试探、主动降级为 WATCH 的理由，或明确下一次复查时间；不能把已继续走强的候选继续笼统写成“等待机会”。",
+    "",
+    "已提交/已确认小仓试探跟踪队列（必须逐只处理）：",
+    JSON.stringify((starterBuyFollowUpQueue || []).slice(0, 5), null, 2),
+    "要求：若队列非空，actions 中必须对每只给 WATCH/HOLD，确认前不能追加买入；确认后必须写清加到3%-5%、继续观察或退出的触发条件。",
     "",
     "现金再部署纪律（系统计算；高现金低仓位时必须处理，不能只写等待机会）：",
     JSON.stringify(redeploymentPlan, null, 2),
@@ -4369,6 +4378,126 @@ function findPortfolioLedgerIntegrityIssues(db = {}) {
     ledgerIssueLabels.has(item.label)
     || (item.severity === "critical" && /订单|成交|应收|账本|净值/.test(`${item.label} ${item.note || ""}`))
   );
+}
+
+function buildPortfolioStarterBuyFollowUpQueue(db = {}) {
+  const account = db.account || {};
+  const totalAsset = Number(account.totalAsset || 0);
+  const orders = getPortfolioDiagnosticOrders(db);
+  const transactions = getPortfolioDiagnosticTransactions(db);
+  const activeBuyOrders = orders
+    .filter((order) => String(order.side || "").toUpperCase() === "BUY")
+    .filter((order) => !["cancelled", "rejected", "settled"].includes(String(order.status || "").toLowerCase()))
+    .filter((order) => Number(order.amount || order.actualAmount || 0) > 0)
+    .map((order) => buildPortfolioStarterBuyFollowUpFromOrder(order, totalAsset));
+  const recentBuyTransactions = transactions
+    .filter((transaction) => String(transaction.side || "").toUpperCase() === "BUY")
+    .filter((transaction) => !hasActivePortfolioOrderForCode(orders, transaction.code, "BUY"))
+    .map((transaction) => buildPortfolioStarterBuyFollowUpFromTransaction(transaction, totalAsset));
+  return [...activeBuyOrders, ...recentBuyTransactions]
+    .filter((item) => item?.code && Number(item.weightPct || 0) <= 3)
+    .sort((a, b) => Date.parse(b.submittedAt || b.date || "") - Date.parse(a.submittedAt || a.date || ""))
+    .slice(0, 5);
+}
+
+function buildPortfolioStarterBuyFollowUpFromOrder(order = {}, totalAsset = 0) {
+  const amount = Number(order.amount || order.actualAmount || 0);
+  const weightPct = totalAsset > 0 ? round(amount / totalAsset * 100, 2) : null;
+  const status = String(order.status || "");
+  const confirmed = ["confirmed"].includes(status.toLowerCase());
+  return {
+    code: order.code || "",
+    name: order.name || "",
+    side: "BUY",
+    status,
+    amount: round(amount, 2),
+    weightPct,
+    submittedAt: order.submittedAt || "",
+    priceDate: order.priceDate || "",
+    confirmDate: order.confirmDate || "",
+    navDate: order.navDate || order.confirmedNavDate || order.navSnapshot?.date || "",
+    nav: order.nav || order.confirmedNav || order.navSnapshot?.nav || null,
+    followUpAction: confirmed
+      ? "确认后复核：加到3%-5% / 继续观察 / 退出三选一"
+      : "确认前不追加：等待净值和份额落账",
+    scaleTrigger: "确认净值后，若走势仍是低位修复且5日/10日温和转强，可评估加到3%-5%。",
+    exitTrigger: "若确认前后盘中估算转弱、主题过热或费用/份额证据失效，维持观察或撤出。",
+    dataBasis: mergeStringLists([
+      "来源：portfolio_starter_buy_follow_up_order",
+      order.id ? `orderId=${order.id}` : "",
+      order.confirmDate ? `confirmDate=${order.confirmDate}` : ""
+    ])
+  };
+}
+
+function buildPortfolioStarterBuyFollowUpFromTransaction(transaction = {}, totalAsset = 0) {
+  const amount = Number(transaction.amount || 0);
+  const weightPct = totalAsset > 0 ? round(amount / totalAsset * 100, 2) : null;
+  return {
+    code: transaction.code || "",
+    name: transaction.name || "",
+    side: "BUY",
+    status: "confirmed",
+    amount: round(amount, 2),
+    weightPct,
+    date: transaction.date || transaction.createdAt || "",
+    navDate: transaction.navDate || "",
+    nav: transaction.nav || null,
+    followUpAction: "确认后复核：加到3%-5% / 继续观察 / 退出三选一",
+    scaleTrigger: "若确认后没有追涨、回调修复继续成立且持仓前景支持，可评估加到3%-5%。",
+    exitTrigger: "若买入后跌破修复结构、费用证据缺失或主题热度反转，退出或降为观察。",
+    dataBasis: mergeStringLists([
+      "来源：portfolio_starter_buy_follow_up_transaction",
+      transaction.orderId ? `orderId=${transaction.orderId}` : ""
+    ])
+  };
+}
+
+function hasActivePortfolioOrderForCode(orders = [], code = "", side = "") {
+  const targetCode = String(code || "").trim();
+  const targetSide = String(side || "").toUpperCase();
+  if (!targetCode) return false;
+  return (orders || []).some((order) =>
+    String(order.code || "").trim() === targetCode
+    && (!targetSide || String(order.side || "").toUpperCase() === targetSide)
+    && !["cancelled", "rejected", "settled"].includes(String(order.status || "").toLowerCase())
+  );
+}
+
+function ensurePortfolioStarterBuyFollowUpReviewed(decision = {}, db = {}) {
+  const queue = buildPortfolioStarterBuyFollowUpQueue(db);
+  if (!queue.length) return decision;
+  const actions = normalizePortfolioActions(decision.actions || []);
+  const existingCodes = new Set(actions.map((action) => String(action.code || "")).filter(Boolean));
+  const nextActions = [...actions];
+  for (const item of queue) {
+    if (!item.code || existingCodes.has(item.code)) continue;
+    const confirmed = String(item.status || "").toLowerCase() === "confirmed";
+    nextActions.push({
+      action: confirmed ? "HOLD" : "WATCH",
+      code: item.code,
+      name: item.name,
+      amount: 0,
+      targetWeightPct: 0,
+      reason: confirmed
+        ? `系统试探仓跟踪：${item.name || item.code} 已确认小仓，下一轮必须决定加到3%-5%、继续观察或退出，不能买完就悬空。`
+        : `系统试探仓跟踪：${item.name || item.code} 仍在确认中，确认前不追加买入，先等待净值和份额落账。`,
+      rotationCheck: "试探仓只跟踪原低位修复逻辑，不因短期新闻或单日估算涨幅追加。",
+      positionCheck: item.followUpAction,
+      chaseRisk: item.exitTrigger,
+      feeCheck: "后续加仓前继续复核份额类别、申购费、销售服务费和赎回规则。",
+      riskControl: item.scaleTrigger,
+      dataBasis: mergeStringLists(item.dataBasis, ["来源：portfolio_starter_buy_follow_up_guard"])
+    });
+    existingCodes.add(item.code);
+  }
+  return {
+    ...decision,
+    actions: nextActions,
+    learningNotes: mergeStringLists(decision.learningNotes, [
+      `系统试探仓跟踪：${queue.map((item) => `${item.code} ${item.name}`.trim()).join(" / ")} 必须给加仓、观察或退出条件。`
+    ])
+  };
 }
 
 function enforcePortfolioHeldPositionRiskOverrides(actions = [], profiles = [], positions = []) {
@@ -7847,13 +7976,52 @@ function shouldPreservePortfolioPublicString(key = "") {
   return /(?:^|_)(?:id|code|url|source|sources|receiveId|receiveIdMasked|imageKey|rawModelOutput)$/i.test(String(key || ""));
 }
 
+function getPortfolioDiagnosticOrders(db = {}) {
+  return dedupePortfolioDiagnosticItems([
+    ...(Array.isArray(db.orders) ? db.orders : []),
+    ...(Array.isArray(db.activeOrders) ? db.activeOrders : []),
+    ...(Array.isArray(db.recentOrders) ? db.recentOrders : [])
+  ], getPortfolioDiagnosticOrderKey);
+}
+
+function getPortfolioDiagnosticTransactions(db = {}) {
+  return dedupePortfolioDiagnosticItems([
+    ...(Array.isArray(db.transactions) ? db.transactions : []),
+    ...(Array.isArray(db.recentTransactions) ? db.recentTransactions : [])
+  ], (item) => item.id || [item.side, item.code, item.date, item.navDate, item.amount, item.orderId].join("|"));
+}
+
+function getPortfolioDiagnosticSettlements(db = {}) {
+  return dedupePortfolioDiagnosticItems([
+    ...(Array.isArray(db.settlements) ? db.settlements : []),
+    ...(Array.isArray(db.pendingSettlements) ? db.pendingSettlements : [])
+  ], (item) => item.id || getPortfolioSettlementDedupeKey(item) || [item.code, item.dueDate, item.amount, item.status].join("|"));
+}
+
+function dedupePortfolioDiagnosticItems(items = [], keyFn = null) {
+  const byKey = new Map();
+  for (const item of items || []) {
+    if (!item || typeof item !== "object") continue;
+    const key = keyFn ? keyFn(item) : item.id;
+    const fallbackKey = JSON.stringify([item.side, item.code, item.status, item.amount, item.submittedAt, item.date]);
+    const stableKey = String(key || fallbackKey);
+    if (!stableKey || byKey.has(stableKey)) continue;
+    byKey.set(stableKey, item);
+  }
+  return [...byKey.values()];
+}
+
+function getPortfolioDiagnosticOrderKey(order = {}) {
+  return order.id || [order.side, order.code, order.status, order.priceDate, order.confirmDate, order.amount, order.submittedAt].join("|");
+}
+
 function buildPortfolioCapabilityDiagnostics(db = {}) {
   const account = db.account || {};
   const positions = Array.isArray(account.positions) ? account.positions : [];
   const watchlist = normalizePortfolioWatchlist(db.watchlist || []);
   const runs = Array.isArray(db.runs) ? db.runs : [];
-  const transactions = Array.isArray(db.transactions) ? db.transactions : [];
-  const orders = Array.isArray(db.orders) ? db.orders : [];
+  const transactions = getPortfolioDiagnosticTransactions(db);
+  const orders = getPortfolioDiagnosticOrders(db);
   const exposureSummary = buildPortfolioExposureSummary(positions);
   const items = [];
   const add = (severity, label, value, note) => {
@@ -8101,9 +8269,9 @@ function formatPortfolioCapabilityDiagnosticSummary(level, items = []) {
 function buildPortfolioBacktestDiagnostics(db = {}) {
   const account = db.account || {};
   const positions = Array.isArray(account.positions) ? account.positions : [];
-  const transactions = Array.isArray(db.transactions) ? db.transactions : [];
-  const orders = Array.isArray(db.orders) ? db.orders : [];
-  const settlements = Array.isArray(db.settlements) ? db.settlements : [];
+  const transactions = getPortfolioDiagnosticTransactions(db);
+  const orders = getPortfolioDiagnosticOrders(db);
+  const settlements = getPortfolioDiagnosticSettlements(db);
   const runs = Array.isArray(db.runs) ? db.runs : [];
   const watchlist = normalizePortfolioWatchlist(db.watchlist || []);
   const phases = buildPortfolioBacktestPhases({ account, transactions, orders, runs });
@@ -21711,6 +21879,7 @@ export {
   buildPortfolioExposureSummary,
   buildPortfolioManagerProfileContext,
   buildPortfolioMissedFollowThroughReviewQueue,
+  buildPortfolioStarterBuyFollowUpQueue,
   buildPortfolioWatchlistSeedSearchText,
   buildPortfolioRunSummary,
   buildPortfolioAccountRiskBudget,
@@ -21770,6 +21939,7 @@ export {
   getFundQaSkillIds,
   getFundRecommendationSkillIds,
   getPortfolioDecisionSkillIds,
+  getPortfolioDiagnosticOrders,
   getPortfolioPremarketSkillIds,
   getPortfolioReviewSkillIds,
   getPortfolioWeeklySkillIds,
@@ -21784,6 +21954,7 @@ export {
   ensurePortfolioMissedFollowThroughReviewed,
   ensurePortfolioRedeploymentPlanReviewed,
   ensurePortfolioReadyWatchlistReviewed,
+  ensurePortfolioStarterBuyFollowUpReviewed,
   mergeFundWorkflowWatchlistIntoDeepDive,
   mergeChinaRealtimeIndexQuotes,
   inferPortfolioBlockedFollowThroughSearchKeywords,

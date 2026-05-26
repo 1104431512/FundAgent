@@ -757,8 +757,20 @@ const requiredPatterns = [
     message: "portfolio capability diagnostics must treat fresh pending buy orders as recent buy activity."
   },
   {
+    pattern: /function getPortfolioDiagnosticOrders[\s\S]{0,700}activeOrders[\s\S]{0,500}recentOrders[\s\S]{0,900}function getPortfolioDiagnosticTransactions[\s\S]{0,500}recentTransactions/,
+    message: "portfolio diagnostics must read public recentOrders/activeOrders as well as raw ledger orders."
+  },
+  {
     pattern: /试探仓跟踪[\s\S]{0,700}加到3%-5%[\s\S]{0,260}继续观察[\s\S]{0,260}退出/,
     message: "portfolio capability diagnostics must require explicit follow-through after starter buy orders."
+  },
+  {
+    pattern: /function buildPortfolioStarterBuyFollowUpQueue[\s\S]{0,3600}确认前不追加[\s\S]{0,2200}function ensurePortfolioStarterBuyFollowUpReviewed[\s\S]{0,2200}portfolio_starter_buy_follow_up_guard/,
+    message: "portfolio decisions must force scale/hold/exit follow-up for pending or confirmed starter buys."
+  },
+  {
+    pattern: /已提交\/已确认小仓试探跟踪队列（必须逐只处理）[\s\S]{0,700}确认前不能追加买入[\s\S]{0,260}加到3%-5%/,
+    message: "portfolio prompts must expose starter-buy follow-up queues to the model."
   },
   {
     pattern: /consolidatePortfolioWatchlistAlternatives/,
