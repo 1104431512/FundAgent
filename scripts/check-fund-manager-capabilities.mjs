@@ -83,6 +83,45 @@ assert.equal(sinaEstimateNav.valuationBasis, "盘中估算（新浪备源）", "
 assert.equal(sinaEstimateNav.intradaySeries.length, 2, "Sina estimate parser must preserve minute-level valuation series");
 assert(sinaEstimateNav.intradayTrend.label.includes("盘中回落"), "Sina estimate parser must summarize minute-level valuation direction");
 assert.equal(sinaEstimateNav.intradayTrend.changeFromOpenPct, -0.88, "Sina intraday trend must compare the latest point with the first point");
+const haoetfRows = manager.parseHaoetfQdiiValuationRows(`
+<p>数据更新时间：2026-05-27 05:02:20</p>
+<table><tbody>
+<tr>
+  <td><a href="/qdii/513100">513100</a></td>
+  <td>纳指ETF</td>
+  <td>2.0436</td>
+  <td class="text-danger">6.92%</td>
+  <td>2.0126</td>
+  <td class="text-danger">8.57%</td>
+  <td>05-22</td>
+  <td><a href="http://stocks.sina.cn/fund/?code=513100">2.185</a></td>
+  <td class="text-success">-2.06%</td>
+  <td>103384.09</td>
+  <td>-</td>
+  <td>-</td>
+  <td>2.0109</td>
+  <td class="text-success">-0.08%</td>
+  <td>05-25</td>
+  <td class="text-danger" data-toggle="tooltip2" title="业绩基准:纳斯达克100指数">0.42%</td>
+  <td>100万份</td>
+  <td>0.5%</td>
+  <td>0.5%</td>
+  <td><a href="http://fund.eastmoney.com/513100.html">天天</a></td>
+</tr>
+</tbody></table>`);
+assert.equal(haoetfRows.length, 1, "HaoETF QDII parser must recover realtime valuation table rows");
+assert.equal(haoetfRows[0].code, "513100", "HaoETF parser must recover QDII code");
+assert.equal(haoetfRows[0].realtimeEstimateNav, 2.0436, "HaoETF parser must recover realtime estimate");
+assert.equal(haoetfRows[0].realtimePremiumPct, 6.92, "HaoETF parser must recover realtime premium");
+assert.equal(haoetfRows[0].navDate, "2026-05-25", "HaoETF parser must normalize month-day NAV dates using page update year");
+assert.equal(haoetfRows[0].benchmarkName, "纳斯达克100指数", "HaoETF parser must preserve benchmark tooltip context");
+const haoetfValuation = manager.normalizeHaoetfQdiiValuationRow(haoetfRows[0]);
+assert.equal(haoetfValuation.sourceKind, "haoetf_qdii_realtime_estimate", "HaoETF valuation must expose a traceable realtime QDII source kind");
+assert.equal(haoetfValuation.gsz, 2.0436, "HaoETF valuation must map realtime estimate into estimated NAV");
+assert.equal(haoetfValuation.dwjz, 2.0109, "HaoETF valuation must keep the latest official NAV");
+assert.equal(haoetfValuation.gszzl, 1.54, "HaoETF valuation must derive realtime estimate change from latest estimate");
+assert.equal(haoetfValuation.realtimePremiumPct, 6.92, "HaoETF valuation must carry premium evidence for QDII timing");
+assert.equal(haoetfValuation.gztime, "2026-05-27 05:02:20", "HaoETF valuation must preserve the page update time for freshness checks");
 const manualIntradayTrend = manager.summarizeFundIntradayValuationTrend([
   { at: "2026-05-26 09:30", estimatedChangePct: 0.2 },
   { at: "2026-05-26 10:30", estimatedChangePct: 1.1 },
@@ -2688,7 +2727,20 @@ assert(manager.hasNumericDumpWithoutInterpretation(`直接结论：分批观察�
 const compactedDenseSingleFundLine = manager.normalizeUserFacingFundAnswer(denseSingleFundLine);
 assert(compactedDenseSingleFundLine.includes("走势低位修复"), "numeric compaction must keep the trend interpretation rather than only raw figures");
 assert(compactedDenseSingleFundLine.includes("其余明细交给配图和后续复盘"), "numeric compaction must tell users where the detailed figures went");
-assert((compactedDenseSingleFundLine.match(/(?:[+-]?\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:元|万|亿)|近\s*\d+\s*日|\d+\s*日位置|夏普\s*\d+(?:\.\d+)?|回撤\s*[+-]?\d+(?:\.\d+)?)/g) || []).length <= 4, "numeric compaction must leave only a few decision-changing numbers per fund line");
+assert((compactedDenseSingleFundLine.match(/(?:[+-]?\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:元|万|亿)|近\s*\d+\s*日|\d+\s*日位置|夏普\s*\d+(?:\.\d+)?|回撤\s*[+-]?\d+(?:\.\d+)?)/g) || []).length <= 3, "numeric compaction must leave only a few decision-changing numbers per fund line");
+const readablePortfolioReport = manager.normalizePortfolioUserFacingText([
+  "虚拟基金经理日报 2026-05-25",
+  "今日手法：不追涨，只做低位启动候选复核。",
+  "市场判断：现金充足但候选需要重新验证。",
+  "投委会意见：",
+  "市场分析师 中：科技偏热，医药低位待确认。",
+  "今日操作：",
+  "卖出 008327 东财通信C 建议11810.03元：近20日+19.64%，近60日+61.1%，120日位置100%，250日位置100%，距高点0%，浮盈回吐5.2个百分点，走势高位拥挤，原因是先保护利润。"
+].join("\n"));
+assert(readablePortfolioReport.includes("\n\n今日手法"), "portfolio reports must insert blank lines between major sections");
+assert(readablePortfolioReport.includes("\n\n市场判断"), "portfolio reports must keep market view visually separated");
+assert(readablePortfolioReport.includes("\n\n投委会意见"), "portfolio committee sections must not be glued to the prior paragraph");
+assert(readablePortfolioReport.includes("其余明细交给配图和后续复盘"), "portfolio dense action reasons must be compacted for card readability");
 
 const leakQuality = manager.evaluateFundAnswerQuality({
   text: "趋势/动作：extended_uptrend，actionability 为 tactical only / staged_buy，但 entryBias 是 wait_pullback。",

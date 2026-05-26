@@ -213,6 +213,7 @@ let portfolioDbFlushPending = false;
 let portfolioDbLastFlushError = "";
 const portfolioProgressFlushTimes = new Map();
 let runtimeStatsMemoryCache = null;
+let haoetfQdiiValuationCache = { fetchedAtMs: 0, promise: null, rows: [] };
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
@@ -1917,7 +1918,43 @@ function normalizePortfolioInvestedCostReturnText(text, account = {}) {
 
 function normalizePortfolioUserFacingText(text, account = {}) {
   const investedCostText = normalizePortfolioInvestedCostReturnText(String(text || ""), account);
-  return normalizeUserFacingFundAnswer(investedCostText).trim();
+  return formatReadablePortfolioUserFacingText(normalizeUserFacingFundAnswer(investedCostText)).trim();
+}
+
+const PORTFOLIO_USER_FACING_SECTION_PATTERN = /^(?:虚拟基金经理日报|直接结论|今日手法|市场判断|投委会意见|经理判断|今日操作|申购\/赎回申请|已确认成交|自选基金池|当前资产|回撤预算|风险控制|回溯学习点|数据来源|下一步|持仓复盘|买入准备|备选观察|决策边界|执行方案|风控检查|学习点)\s*[：:]?/;
+
+function formatReadablePortfolioUserFacingText(text = "") {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .flatMap((line) => splitOverlongPortfolioActionLine(line))
+    .map((line) => line.trimEnd());
+  const output = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (output.length && output[output.length - 1] !== "") output.push("");
+      continue;
+    }
+    const isSection = PORTFOLIO_USER_FACING_SECTION_PATTERN.test(trimmed);
+    const previous = output[output.length - 1];
+    if (isSection && output.length && previous !== "") {
+      output.push("");
+    }
+    output.push(trimmed);
+  }
+  return output.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function splitOverlongPortfolioActionLine(line = "") {
+  const text = String(line || "");
+  if (text.length < 240 || !/^(?:[-*•]\s*)?(?:买入|卖出|观察|持有|回避|申购|赎回)\s+\d{6}\b/.test(text.trim())) {
+    return [text];
+  }
+  const parts = text.split(/(?<=。)\s*/).map((item) => item.trim()).filter(Boolean);
+  if (parts.length <= 1) return [text];
+  const first = parts[0];
+  const rest = parts.slice(1).join(" ");
+  return rest ? [first, `  ${rest}`] : [first];
 }
 
 function normalizePortfolioUserFacingArray(value, limit = 8, account = {}) {
@@ -9247,6 +9284,11 @@ function compactRealtimeFundValuations(items = [], limit = 12) {
     estimatedChangePct: finiteMetricNumber(item.estimatedChangePct),
     estimateTime: item.estimateTime || "",
     freshness: item.freshnessLabel || "",
+    sourceKind: item.sourceKind || "",
+    估值依据: item.valuationBasis || "",
+    实时溢价: finiteMetricNumber(item.realtimePremiumPct),
+    申购限制: item.subscriptionLimit || "",
+    基准: item.benchmarkName || "",
     盘中走势: item.intradayTrend?.label || item.intradayTrendLabel || "",
     盘中变化: finiteMetricNumber(item.intradayTrend?.changeFromOpenPct),
     尾盘变化: finiteMetricNumber(item.intradayTrend?.recentSlopePct),
@@ -11846,11 +11888,11 @@ function compactUserFacingFundMetricLine(line = "") {
       kept.push(clause);
       continue;
     }
-    if (count && usedNumbers + count <= 4 && (interpretive || kept.length === 0)) {
+    if (count && usedNumbers + count <= 3 && (interpretive || kept.length === 0)) {
       kept.push(clause);
       usedNumbers += count;
     }
-    if (usedNumbers >= 4 && kept.length >= 2) break;
+    if (usedNumbers >= 3 && kept.length >= 2) break;
   }
   if (!kept.length) return String(line || "");
   const suffix = /配图|后续复盘/.test(original) ? "" : "；其余明细交给配图和后续复盘。";
@@ -11860,7 +11902,7 @@ function compactUserFacingFundMetricLine(line = "") {
 
 function hasDenseUserFacingMetricLine(line = "") {
   const text = String(line || "").trim();
-  if (text.length < 110) return false;
+  if (text.length < 90) return false;
   const count = countUserFacingMetricNumbers(text);
   if (count < 7) return false;
   return /(?:\d{6}|近\s*\d+\s*日|\d+\s*日位置|夏普|回撤|规模|费率|费用|净值|高点|低位|涨幅|跌幅|收益)/.test(text);
@@ -12433,6 +12475,7 @@ async function fetchMarketSnapshot() {
       "https://fund.eastmoney.com/data/rankhandler.aspx",
       "https://fundgz.1234567.com.cn/js/{code}.js",
       "https://stock.finance.sina.com.cn/fundInfo/api/openapi.php/FdFundService.getEstimateNetworthPic?symbol={code}",
+      "https://www.haoetf.com/",
       "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx",
       "https://np-listapi.eastmoney.com/comm/web/getFastNews"
     ]
@@ -12547,7 +12590,7 @@ async function fetchRealtimeFundValuationSnapshot(fundCandidates = {}) {
   ];
   const codes = mergeFundCodes(seedItems.map((item) => item.code)).slice(0, Number(process.env.MARKET_REALTIME_VALUATION_LIMIT || 24));
   if (!codes.length) {
-    return { ok: false, label: "天天基金/新浪实时估算净值", error: "没有候选基金代码可抓取", items: [] };
+    return { ok: false, label: "天天基金/新浪/HaoETF实时估算净值", error: "没有候选基金代码可抓取", items: [] };
   }
   const seedByCode = new Map(seedItems.filter((item) => item.code).map((item) => [item.code, item]));
   const results = await Promise.all(codes.map(async (code) => {
@@ -12576,7 +12619,7 @@ async function fetchRealtimeFundValuationSnapshot(fundCandidates = {}) {
   });
   return {
     ok: items.length > 0,
-    label: "天天基金/新浪实时估算净值",
+    label: "天天基金/新浪/HaoETF实时估算净值",
     fetchedAt,
     coverage: `${items.length}/${codes.length}`,
     freshCount,
@@ -12621,6 +12664,12 @@ function normalizeRealtimeFundValuation(valuation = {}, seed = {}, fetchedAt = n
     valuationSourceAgreement,
     supplementalIntradaySource: valuation.supplementalIntradaySource || "",
     supplementalIntradaySourceKind: valuation.supplementalIntradaySourceKind || "",
+    realtimePremiumPct: toNumber(valuation.realtimePremiumPct),
+    latestPremiumPct: toNumber(valuation.latestPremiumPct),
+    marketPrice: toNumber(valuation.marketPrice),
+    marketPriceChangePct: toNumber(valuation.marketPriceChangePct),
+    subscriptionLimit: valuation.subscriptionLimit || "",
+    benchmarkName: valuation.benchmarkName || "",
     source: valuation.source || `https://fundgz.1234567.com.cn/js/${valuation.fundcode || seed.code || ""}.js`
   };
 }
@@ -16764,6 +16813,14 @@ async function fetchFundValuation(code) {
         stalePrimaryDate: primary.jzrq || ""
       };
     }
+    const qdiiRealtimeFallback = await fetchFundValuationFromHaoetfQdii(code).catch(() => null);
+    if (qdiiRealtimeFallback?.ok && !isStaleFundValuation(qdiiRealtimeFallback)) {
+      return {
+        ...qdiiRealtimeFallback,
+        stalePrimarySource: primary.source || `https://fundgz.1234567.com.cn/js/${code}.js`,
+        stalePrimaryDate: primary.jzrq || ""
+      };
+    }
     const fallback = await fetchFundValuationFromPingzhongData(code).catch(() => null);
     if (fallback?.ok && isFundValuationDateNewer(fallback, primary)) {
       return {
@@ -16779,6 +16836,24 @@ async function fetchFundValuation(code) {
     error: error.message,
     source: `https://stock.finance.sina.com.cn/fundInfo/api/openapi.php/FdFundService.getEstimateNetworthPic?symbol=${code}`
   }));
+  if (realtimeFallback.ok && !isStaleFundValuation(realtimeFallback)) {
+    return {
+      ...realtimeFallback,
+      primarySourceError: primary.error || "fundgz returned empty valuation"
+    };
+  }
+  const qdiiRealtimeFallback = await fetchFundValuationFromHaoetfQdii(code).catch((error) => ({
+    ok: false,
+    error: error.message,
+    source: `https://www.haoetf.com/qdii/${code}`
+  }));
+  if (qdiiRealtimeFallback.ok && !isStaleFundValuation(qdiiRealtimeFallback)) {
+    return {
+      ...qdiiRealtimeFallback,
+      primarySourceError: primary.error || "fundgz returned empty valuation",
+      staleSupplementalSource: realtimeFallback.ok ? realtimeFallback.source : ""
+    };
+  }
   if (realtimeFallback.ok) {
     return {
       ...realtimeFallback,
@@ -16916,6 +16991,195 @@ async function fetchFundValuationFromSinaEstimate(code) {
     valuationBasis: parsed.valuationBasis,
     source
   };
+}
+
+async function fetchFundValuationFromHaoetfQdii(code) {
+  if (process.env.FUND_VALUATION_HAOETF_QDII === "0") {
+    return { ok: false, error: "HaoETF QDII valuation source disabled", source: `https://www.haoetf.com/qdii/${code}` };
+  }
+  const fundCode = String(code || "").trim();
+  if (!/^\d{6}$/.test(fundCode)) {
+    return { ok: false, error: "invalid fund code", source: "https://www.haoetf.com/" };
+  }
+  const rows = await fetchHaoetfQdiiValuationRows();
+  const row = rows.find((item) => item.code === fundCode);
+  if (!row) {
+    return { ok: false, error: "HaoETF QDII valuation row not found", source: `https://www.haoetf.com/qdii/${fundCode}` };
+  }
+  return normalizeHaoetfQdiiValuationRow(row);
+}
+
+async function fetchHaoetfQdiiValuationRows() {
+  const now = Date.now();
+  const ttlMs = Number(process.env.FUND_VALUATION_HAOETF_CACHE_MS || 10 * 60 * 1000);
+  if (haoetfQdiiValuationCache.rows?.length && now - Number(haoetfQdiiValuationCache.fetchedAtMs || 0) < ttlMs) {
+    return haoetfQdiiValuationCache.rows;
+  }
+  if (haoetfQdiiValuationCache.promise) {
+    return haoetfQdiiValuationCache.promise;
+  }
+  haoetfQdiiValuationCache.promise = fetchText("https://www.haoetf.com/", "https://www.haoetf.com/")
+    .then((html) => {
+      const rows = parseHaoetfQdiiValuationRows(html);
+      haoetfQdiiValuationCache = { fetchedAtMs: Date.now(), promise: null, rows };
+      updateStats({
+        counters: {
+          haoetfQdiiValuationFetches: 1,
+          haoetfQdiiValuationRows: rows.length
+        }
+      });
+      return rows;
+    })
+    .catch((error) => {
+      haoetfQdiiValuationCache.promise = null;
+      recordError(error, { haoetfQdiiValuationFailures: 1 });
+      throw error;
+    });
+  return haoetfQdiiValuationCache.promise;
+}
+
+function parseHaoetfQdiiValuationRows(html) {
+  const source = "https://www.haoetf.com/";
+  const pageUpdatedAt = extractHaoetfPageUpdatedAt(html);
+  const rows = [];
+  const rowMatches = String(html || "").match(/<tr\b[\s\S]*?<\/tr>/gi) || [];
+  for (const rowHtml of rowMatches) {
+    const cells = [...rowHtml.matchAll(/<td\b[^>]*>[\s\S]*?<\/td>/gi)].map((match) => match[0]);
+    if (cells.length < 15) continue;
+    const code = cleanHaoetfCellText(cells[0]).match(/\b\d{6}\b/)?.[0] || "";
+    if (!code) continue;
+    const name = cleanHaoetfCellText(cells[1]);
+    const realtimeEstimateNav = parseHaoetfNumericCell(cells[2]);
+    const latestEstimateNav = parseHaoetfNumericCell(cells[4]);
+    const nav = parseHaoetfNumericCell(cells[12]);
+    const row = {
+      ok: true,
+      code,
+      name,
+      realtimeEstimateNav,
+      realtimePremiumPct: parseHaoetfNumericCell(cells[3]),
+      latestEstimateNav,
+      latestPremiumPct: parseHaoetfNumericCell(cells[5]),
+      estimateDate: normalizeHaoetfMonthDayDate(cells[6], pageUpdatedAt),
+      marketPrice: parseHaoetfNumericCell(cells[7]),
+      marketPriceChangePct: parseHaoetfNumericCell(cells[8]),
+      turnoverAmountTenThousand: parseHaoetfNumericCell(cells[9]),
+      exchangeSharesTenThousand: parseHaoetfNumericCell(cells[10]),
+      newSharesTenThousand: parseHaoetfNumericCell(cells[11]),
+      nav,
+      navChangePct: parseHaoetfNumericCell(cells[13]),
+      navDate: normalizeHaoetfMonthDayDate(cells[14], pageUpdatedAt),
+      indexChangePct: parseHaoetfNumericCell(cells[15]),
+      subscriptionLimit: cleanHaoetfCellText(cells[16] || ""),
+      subscriptionFeePct: parseHaoetfNumericCell(cells[17]),
+      redemptionFeePct: parseHaoetfNumericCell(cells[18]),
+      benchmarkName: extractHaoetfBenchmarkName(cells[15] || ""),
+      measured: /<sup\b[^>]*>\s*测\s*<\/sup>/i.test(cells[2] || cells[3] || ""),
+      pageUpdatedAt,
+      source: `${source}qdii/${code}`
+    };
+    row.realtimeEstimatedChangePct = computeHaoetfRealtimeEstimatedChangePct(row);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function normalizeHaoetfQdiiValuationRow(row = {}) {
+  const code = String(row.code || "").trim();
+  const estimatedNav = Number.isFinite(Number(row.realtimeEstimateNav))
+    ? Number(row.realtimeEstimateNav)
+    : Number(row.latestEstimateNav);
+  const unitNav = Number.isFinite(Number(row.nav)) ? Number(row.nav) : Number(row.latestEstimateNav);
+  const changePct = Number.isFinite(Number(row.realtimeEstimatedChangePct))
+    ? Number(row.realtimeEstimatedChangePct)
+    : Number(row.navChangePct);
+  return {
+    ok: Boolean(code && (Number.isFinite(estimatedNav) || Number.isFinite(unitNav))),
+    fundcode: code,
+    name: row.name || "",
+    dwjz: Number.isFinite(unitNav) ? unitNav : "",
+    gsz: Number.isFinite(estimatedNav) ? estimatedNav : "",
+    gszzl: Number.isFinite(changePct) ? round(changePct, 2) : "",
+    jzrq: row.navDate || row.estimateDate || "",
+    gztime: row.pageUpdatedAt || "",
+    sourceKind: "haoetf_qdii_realtime_estimate",
+    valuationBasis: row.measured ? "QDII实时估值与溢价（HaoETF测算）" : "QDII实时估值与溢价（HaoETF）",
+    realtimePremiumPct: row.realtimePremiumPct,
+    latestPremiumPct: row.latestPremiumPct,
+    marketPrice: row.marketPrice,
+    marketPriceChangePct: row.marketPriceChangePct,
+    subscriptionLimit: row.subscriptionLimit || "",
+    benchmarkName: row.benchmarkName || "",
+    source: row.source || `https://www.haoetf.com/qdii/${code}`
+  };
+}
+
+function extractHaoetfPageUpdatedAt(html = "") {
+  const text = cleanHaoetfCellText(html);
+  const match = text.match(/数据更新时间\s*[：:]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(?::\d{2})?)/);
+  return match ? match[1] : "";
+}
+
+function decodeHtmlEntities(value = "") {
+  return String(value || "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)));
+}
+
+function extractHaoetfBenchmarkName(cellHtml = "") {
+  const title = String(cellHtml || "").match(/title=["']([^"']+)["']/i)?.[1] || "";
+  return decodeHtmlEntities(title).replace(/^业绩基准\s*[：:]\s*/, "").trim();
+}
+
+function computeHaoetfRealtimeEstimatedChangePct(row = {}) {
+  const realtime = Number(row.realtimeEstimateNav);
+  const base = Number(row.latestEstimateNav);
+  if (Number.isFinite(realtime) && Number.isFinite(base) && base > 0) {
+    return round((realtime / base - 1) * 100, 2);
+  }
+  const navChange = Number(row.navChangePct);
+  return Number.isFinite(navChange) ? navChange : null;
+}
+
+function parseHaoetfNumericCell(cellHtml = "") {
+  const text = cleanHaoetfCellText(cellHtml);
+  if (!text || /^[-—]+$/.test(text) || /无法估值|未找到/.test(text)) return null;
+  const match = text.match(/[+-]?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const numeric = Number(match[0]);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function normalizeHaoetfMonthDayDate(cellHtml = "", pageUpdatedAt = "") {
+  const text = cleanHaoetfCellText(cellHtml);
+  const match = text.match(/(\d{1,2})-(\d{1,2})/);
+  if (!match) return "";
+  const pageDate = String(pageUpdatedAt || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const pageYear = pageDate ? Number(pageDate[1]) : new Date().getFullYear();
+  const pageMonth = pageDate ? Number(pageDate[2]) : new Date().getMonth() + 1;
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  if (!Number.isFinite(month) || !Number.isFinite(day)) return "";
+  let year = pageYear;
+  if (pageMonth === 1 && month === 12) year -= 1;
+  if (pageMonth === 12 && month === 1) year += 1;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function cleanHaoetfCellText(html = "") {
+  return decodeHtmlEntities(String(html || "")
+    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim());
 }
 
 function parseSinaEstimateNetworthJsonp(text) {
@@ -20713,10 +20977,12 @@ export {
   mergeCandidateFunds,
   normalizeUserFacingFundAnswer,
   parseFundPingzhongLatestNav,
+  parseHaoetfQdiiValuationRows,
   parseSinaEstimateNetworthJsonp,
   parseTencentRealtimeQuotes,
   summarizeFundIntradayValuationTrend,
   mergeFundValuationIntradaySupplement,
+  normalizeHaoetfQdiiValuationRow,
   normalizePortfolioDb,
   normalizePortfolioInvestedCostReturnText,
   normalizePortfolioReview,

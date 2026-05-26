@@ -109,12 +109,20 @@ const requiredPatterns = [
     message: "real-time fund valuation snapshots must use the existing Tiantian/FundGZ estimate endpoint with source traceability."
   },
   {
-    pattern: /async function fetchFundValuation[\s\S]{0,5200}fetchFundValuationFromPingzhongData[\s\S]{0,30000}function parseFundPingzhongLatestNav[\s\S]{0,700}Data_netWorthTrend/,
+    pattern: /async function fetchFundValuation[\s\S]{0,7000}fetchFundValuationFromPingzhongData[\s\S]{0,50000}function parseFundPingzhongLatestNav[\s\S]{0,700}Data_netWorthTrend/,
     message: "fund valuation must fall back to Eastmoney pingzhongdata latest official NAV when intraday estimates are unavailable or stale."
   },
   {
     pattern: /async function fetchFundValuation[\s\S]{0,1800}fetchFundValuationFromSinaEstimate[\s\S]{0,2600}stock\.finance\.sina\.com\.cn\/fundInfo\/api\/openapi\.php\/FdFundService\.getEstimateNetworthPic/,
     message: "fund valuation must include a Sina minute-level estimate backup before falling back to official NAV only."
+  },
+  {
+    pattern: /async function fetchFundValuation[\s\S]{0,2600}fetchFundValuationFromHaoetfQdii[\s\S]{0,2600}https:\/\/www\.haoetf\.com\/qdii\/\$\{code\}/,
+    message: "fund valuation must include HaoETF realtime QDII valuation before falling back to official NAV only."
+  },
+  {
+    pattern: /function parseHaoetfQdiiValuationRows[\s\S]{0,2400}realtimePremiumPct[\s\S]{0,2400}benchmarkName[\s\S]{0,1800}function normalizeHaoetfQdiiValuationRow/,
+    message: "HaoETF QDII source must parse realtime valuation, premium, and benchmark evidence."
   },
   {
     pattern: /if \(!isStaleFundValuation\(primary\)\) \{[\s\S]{0,120}augmentFundValuationWithSinaIntraday\(primary,\s*code\)/,
@@ -2011,6 +2019,10 @@ const requiredPatterns = [
   {
     pattern: /function compactUserFacingFundMetricLine[\s\S]{0,1800}其余明细交给配图和后续复盘/,
     message: "dense metric line compaction must preserve readability and point users to charts/reviews for details."
+  },
+  {
+    pattern: /PORTFOLIO_USER_FACING_SECTION_PATTERN[\s\S]{0,900}function formatReadablePortfolioUserFacingText[\s\S]{0,1200}splitOverlongPortfolioActionLine/,
+    message: "portfolio reports must insert readable section spacing and split overlong action lines."
   },
   {
     pattern: /function hasNumericDumpWithoutInterpretation[\s\S]{0,900}hasDenseUserFacingMetricLine/,
