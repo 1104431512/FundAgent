@@ -12249,6 +12249,8 @@ function normalizeRealtimeFundValuation(valuation = {}, seed = {}, fetchedAt = n
     isRealtimeEstimate: valuation.sourceKind !== "eastmoney_latest_nav_fallback",
     sourceKind: valuation.sourceKind || "tiantian_intraday_estimate",
     valuationBasis: valuation.valuationBasis || "盘中估算",
+    supplementalIntradaySource: valuation.supplementalIntradaySource || "",
+    supplementalIntradaySourceKind: valuation.supplementalIntradaySourceKind || "",
     source: valuation.source || `https://fundgz.1234567.com.cn/js/${valuation.fundcode || seed.code || ""}.js`
   };
 }
@@ -16119,7 +16121,7 @@ async function fetchFundValuation(code) {
   }));
   if (isUsableFundValuation(primary)) {
     if (!isStaleFundValuation(primary)) {
-      return primary;
+      return augmentFundValuationWithSinaIntraday(primary, code);
     }
     const realtimeFallback = await fetchFundValuationFromSinaEstimate(code).catch(() => null);
     if (realtimeFallback?.ok && !isStaleFundValuation(realtimeFallback)) {
@@ -16162,6 +16164,33 @@ async function fetchFundValuation(code) {
     };
   }
   return primary.ok ? primary : fallback;
+}
+
+async function augmentFundValuationWithSinaIntraday(valuation = {}, code = "") {
+  if (process.env.FUND_VALUATION_SINA_INTRADAY_SUPPLEMENT === "0") return valuation;
+  if (valuation.sourceKind === "sina_intraday_estimate" || valuation.intradayTrend || valuation.intradaySeries?.length) {
+    return valuation;
+  }
+  const supplemental = await fetchFundValuationFromSinaEstimate(code || valuation.fundcode).catch(() => null);
+  if (!supplemental?.ok || isStaleFundValuation(supplemental)) {
+    return valuation;
+  }
+  return mergeFundValuationIntradaySupplement(valuation, supplemental);
+}
+
+function mergeFundValuationIntradaySupplement(valuation = {}, supplemental = {}) {
+  const hasTrend = supplemental.intradayTrend || supplemental.intradaySeries?.length;
+  if (!hasTrend) return valuation;
+  return {
+    ...valuation,
+    intradaySeries: supplemental.intradaySeries || valuation.intradaySeries || [],
+    intradayTrend: supplemental.intradayTrend || summarizeFundIntradayValuationTrend(supplemental.intradaySeries || []),
+    supplementalIntradaySource: supplemental.source || "",
+    supplementalIntradaySourceKind: supplemental.sourceKind || "",
+    supplementalEstimateTime: supplemental.gztime || "",
+    supplementalEstimatedChangePct: supplemental.gszzl ?? "",
+    supplementalEstimatedNav: supplemental.gsz ?? ""
+  };
 }
 
 async function fetchFundGzValuation(code) {
@@ -20036,6 +20065,7 @@ export {
   parseFundPingzhongLatestNav,
   parseSinaEstimateNetworthJsonp,
   summarizeFundIntradayValuationTrend,
+  mergeFundValuationIntradaySupplement,
   normalizePortfolioDb,
   normalizePortfolioInvestedCostReturnText,
   normalizePortfolioReview,

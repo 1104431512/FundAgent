@@ -109,12 +109,20 @@ const requiredPatterns = [
     message: "real-time fund valuation snapshots must use the existing Tiantian/FundGZ estimate endpoint with source traceability."
   },
   {
-    pattern: /async function fetchFundValuation[\s\S]{0,3600}fetchFundValuationFromPingzhongData[\s\S]{0,30000}function parseFundPingzhongLatestNav[\s\S]{0,700}Data_netWorthTrend/,
+    pattern: /async function fetchFundValuation[\s\S]{0,5200}fetchFundValuationFromPingzhongData[\s\S]{0,30000}function parseFundPingzhongLatestNav[\s\S]{0,700}Data_netWorthTrend/,
     message: "fund valuation must fall back to Eastmoney pingzhongdata latest official NAV when intraday estimates are unavailable or stale."
   },
   {
     pattern: /async function fetchFundValuation[\s\S]{0,1800}fetchFundValuationFromSinaEstimate[\s\S]{0,2600}stock\.finance\.sina\.com\.cn\/fundInfo\/api\/openapi\.php\/FdFundService\.getEstimateNetworthPic/,
     message: "fund valuation must include a Sina minute-level estimate backup before falling back to official NAV only."
+  },
+  {
+    pattern: /if \(!isStaleFundValuation\(primary\)\) \{[\s\S]{0,120}augmentFundValuationWithSinaIntraday\(primary,\s*code\)/,
+    message: "fresh Tiantian/FundGZ valuations must still be supplemented with Sina intraday trend evidence."
+  },
+  {
+    pattern: /function mergeFundValuationIntradaySupplement[\s\S]{0,900}supplementalIntradaySourceKind[\s\S]{0,500}supplementalEstimatedChangePct/,
+    message: "Sina intraday supplement must preserve the primary valuation while disclosing supplemental trend source."
   },
   {
     pattern: /function isStaleFundValuation[\s\S]{0,500}estimateFreshnessMinutes[\s\S]{0,500}FUND_VALUATION_STALE_ESTIMATE_MINUTES/,

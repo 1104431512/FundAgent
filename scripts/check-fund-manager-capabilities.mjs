@@ -89,6 +89,14 @@ const manualIntradayTrend = manager.summarizeFundIntradayValuationTrend([
   { at: "2026-05-26 15:00", estimatedChangePct: -0.2 }
 ]);
 assert(manualIntradayTrend.label.includes("冲高回落"), "intraday trend summary must flag high-to-close giveback instead of using only the latest estimate");
+const mergedPrimaryValuation = manager.mergeFundValuationIntradaySupplement(
+  { ok: true, fundcode: "008327", gsz: 4.8258, gszzl: -0.71, gztime: "2026-05-26 15:00", sourceKind: "tiantian_intraday_estimate", source: "https://fundgz.1234567.com.cn/js/008327.js" },
+  { ok: true, sourceKind: "sina_intraday_estimate", source: "https://stock.finance.sina.com.cn/fundInfo/api/openapi.php/FdFundService.getEstimateNetworthPic?symbol=008327", gsz: 4.819, gszzl: -1.48, gztime: "2026-05-26 15:00", intradaySeries: sinaEstimateNav.intradaySeries, intradayTrend: sinaEstimateNav.intradayTrend }
+);
+assert.equal(mergedPrimaryValuation.gsz, 4.8258, "Sina intraday supplement must not overwrite the primary realtime estimate");
+assert.equal(mergedPrimaryValuation.sourceKind, "tiantian_intraday_estimate", "Sina intraday supplement must preserve the primary valuation source kind");
+assert(mergedPrimaryValuation.intradayTrend.label.includes("盘中回落"), "primary realtime valuation must carry supplemental minute-level trend evidence");
+assert.equal(mergedPrimaryValuation.supplementalIntradaySourceKind, "sina_intraday_estimate", "merged valuation must disclose the supplemental intraday source");
 const originalStaleEstimateMinutes = process.env.FUND_VALUATION_STALE_ESTIMATE_MINUTES;
 process.env.FUND_VALUATION_STALE_ESTIMATE_MINUTES = "30";
 assert.equal(
