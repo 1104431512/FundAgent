@@ -279,7 +279,7 @@ const requiredPatterns = [
     message: "fund report charts must fit large labels instead of shrinking them into unreadable bitmap text."
   },
   {
-    pattern: /DEFAULT_MODEL_MAX_OUTPUT_TOKENS\s*=\s*9600/,
+    pattern: /DEFAULT_MODEL_MAX_OUTPUT_TOKENS\s*=\s*12000/,
     message: "fund manager default output token budget must remain high enough for richer answers."
   },
   {
@@ -287,7 +287,7 @@ const requiredPatterns = [
     message: "Feishu reply character budget must not force premature truncation."
   },
   {
-    pattern: /MIN_FUND_RECOMMENDATION_OUTPUT_TOKENS\s*=\s*9600/,
+    pattern: /MIN_FUND_RECOMMENDATION_OUTPUT_TOKENS\s*=\s*12000/,
     message: "fund recommendation workflow must have enough output budget for evidence, fees, execution tiers, and chart context."
   },
   {
@@ -311,7 +311,7 @@ const requiredPatterns = [
     message: "fund committee vote must respect the shared high-budget workflow floor instead of a fixed low cap."
   },
   {
-    pattern: /modelMaxOutputTokens\s*=\s*Number\(payload\.modelMaxOutputTokens\s*\|\|\s*9600\)/,
+    pattern: /modelMaxOutputTokens\s*=\s*Number\(payload\.modelMaxOutputTokens\s*\|\|\s*12000\)/,
     message: "admin config must not silently save the obsolete 4800-token model cap."
   },
   {
