@@ -21,6 +21,8 @@ const STARTED_AT = new Date();
 const APP_RELEASE = resolveAppRelease();
 const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS || 120000);
 const DEFAULT_MODEL_HTTP_TIMEOUT_MS = Number(process.env.MODEL_HTTP_TIMEOUT_MS ?? 0);
+const YANGJIBAO_PLUGIN_API_BASE = process.env.YANGJIBAO_PLUGIN_API_BASE || "http://browser-plug-api.yangjibao.com";
+const YANGJIBAO_PLUGIN_SIGN_SECRET = process.env.YANGJIBAO_PLUGIN_SIGN_SECRET || "YxmKSrQR4uoJ5lOoWIhcbd7SlUEh9OOc";
 const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 12000;
 const DEFAULT_MODEL_MAX_INPUT_CHARS = 120000;
 const DEFAULT_REPLY_MAX_CHARS = 18000;
@@ -9378,6 +9380,7 @@ function summarizeMarketSnapshot(snapshot) {
     note: snapshot.note,
     dataQuality: compactMarketDataQuality(snapshot.dataQuality),
     marketIndicators: {
+      chinaIndices: (snapshot.marketIndicators?.chinaIndices || []).slice(0, 12),
       preciousMetals: (snapshot.marketIndicators?.preciousMetals || []).slice(0, 10),
       globalMarkets: (snapshot.marketIndicators?.globalMarkets || []).slice(0, 12),
       realtimeFundValuations: (snapshot.marketIndicators?.realtimeFundValuations || []).slice(0, 24)
@@ -9408,6 +9411,7 @@ function compactMarketSnapshotForModel(snapshot = null) {
     note: summary.note || "",
     dataQuality: summary.dataQuality,
     marketIndicators: {
+      chinaIndices: compactMarketQuoteItems(summary.marketIndicators?.chinaIndices || [], 8),
       preciousMetals: compactMarketQuoteItems(summary.marketIndicators?.preciousMetals || [], 6),
       globalMarkets: compactMarketQuoteItems(summary.marketIndicators?.globalMarkets || [], 8),
       realtimeFundValuations: compactRealtimeFundValuations(summary.marketIndicators?.realtimeFundValuations || [], 12)
@@ -9426,7 +9430,7 @@ function compactMarketSnapshotForModel(snapshot = null) {
       preciousMetalFunds: compactMarketFundCandidates(summary.fundCandidates?.preciousMetalFunds || [], 8)
     },
     errors: (summary.errors || []).slice(0, 6),
-    sources: (summary.sources || []).slice(0, 6)
+    sources: (summary.sources || []).slice(0, 8)
   };
 }
 
@@ -9459,7 +9463,8 @@ function compactMarketQuoteItems(items = [], limit = 6) {
     latest: finiteMetricNumber(item.latest),
     changePct: finiteMetricNumber(item.changePct),
     fiveDayPct: finiteMetricNumber(item.fiveDayPct),
-    quoteTime: item.quoteTime || ""
+    quoteTime: item.quoteTime || "",
+    sourceKind: item.sourceKind || ""
   }));
 }
 
@@ -10239,6 +10244,19 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
     if (quality.level !== "good") {
       lines.push("质量要求：必须主动披露数据缺口，涉及缺失模块的结论只能写观察、待复核或降低把握度，不能装作已经完整联网验证。");
     }
+  }
+  const chinaIndices = marketSnapshot.marketIndicators?.chinaIndices || [];
+  if (chinaIndices.length) {
+    lines.push("A股指数温度（养基宝补充源）：");
+    lines.push(...chinaIndices.slice(0, 6).map((item) => {
+      const fields = [
+        item.name || item.code || "未知指数",
+        item.changePct !== null && item.changePct !== undefined ? `涨跌${formatFallbackPct(item.changePct)}` : "",
+        item.quoteTime ? `时间${item.quoteTime}` : ""
+      ].filter(Boolean);
+      return `- ${fields.join("，")}`;
+    }));
+    lines.push("质量要求：A股指数温度只用于判断市场风险偏好，不能替代具体基金净值、前十大持仓和费用核验。");
   }
   const realtimeValuations = marketSnapshot.marketIndicators?.realtimeFundValuations || [];
   if (realtimeValuations.length) {
@@ -12576,6 +12594,7 @@ async function fetchMarketSnapshot() {
     preciousMetals,
     preciousMetalFunds,
     globalMarketQuotes,
+    yangjibaoIndices,
     fastNews
   ] = await Promise.all([
     fetchEastmoneyBoards("concept").catch((error) => ({ ok: false, error: error.message, items: [] })),
@@ -12587,6 +12606,7 @@ async function fetchMarketSnapshot() {
     fetchPreciousMetalQuotes().catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchPreciousMetalFundCandidates().catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchGlobalMarketQuotes().catch((error) => ({ ok: false, error: error.message, items: [] })),
+    fetchYangjibaoChinaIndexQuotes().catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchEastmoneyFastNews().catch((error) => ({ ok: false, error: error.message, items: [] }))
   ]);
 
@@ -12612,6 +12632,7 @@ async function fetchMarketSnapshot() {
     { key: "preciousMetals", label: "贵金属行情", critical: false, result: preciousMetals },
     { key: "preciousMetalFunds", label: "贵金属基金候选", critical: false, result: preciousMetalFunds },
     { key: "globalMarketQuotes", label: "海外指数与汇率", critical: false, result: globalMarketQuotes },
+    { key: "yangjibaoIndices", label: "养基宝A股指数实时源", critical: false, result: yangjibaoIndices },
     { key: "realtimeFundValuations", label: "实时估算净值", critical: false, result: realtimeFundValuations },
     { key: "fastNews", label: "实时财经新闻", critical: true, result: fastNews }
   ];
@@ -12643,6 +12664,7 @@ async function fetchMarketSnapshot() {
     note: "公开数据快照可能有延迟；贵金属行情为公开报价，基金排行更偏近期动量，不等于长期质量。",
     dataQuality,
     marketIndicators: {
+      chinaIndices: yangjibaoIndices.items || [],
       preciousMetals: preciousMetals.items || [],
       globalMarkets: globalMarketQuotes.items || [],
       realtimeFundValuations: realtimeFundValuations.items || []
@@ -12664,6 +12686,7 @@ async function fetchMarketSnapshot() {
       "https://fundgz.1234567.com.cn/js/{code}.js",
       "https://stock.finance.sina.com.cn/fundInfo/api/openapi.php/FdFundService.getEstimateNetworthPic?symbol={code}",
       "https://www.haoetf.com/",
+      "http://browser-plug-api.yangjibao.com/index_data",
       "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx",
       "https://np-listapi.eastmoney.com/comm/web/getFastNews"
     ]
@@ -13284,6 +13307,79 @@ async function fetchGlobalMarketQuotes() {
         source: secid ? `https://quote.eastmoney.com/unify/r/${secid}` : "https://push2.eastmoney.com/api/qt/ulist.np/get"
       };
     }).filter((item) => item.code && item.name)
+  };
+}
+
+async function fetchYangjibaoChinaIndexQuotes() {
+  if (String(process.env.YANGJIBAO_INDEX_SOURCE_DISABLED || "").trim() === "1") {
+    return { ok: true, label: "养基宝A股指数实时源", items: [] };
+  }
+  const json = await fetchYangjibaoPluginJson("/index_data");
+  const items = normalizeYangjibaoIndexData(json?.data);
+  updateStats({ counters: { yangjibaoIndexQuoteFetches: 1 } });
+  return {
+    ok: json?.code === 200 && items.length > 0,
+    label: "养基宝A股指数实时源",
+    items,
+    sourceKinds: ["yangjibao_plugin_index_data"],
+    error: json?.code === 200 ? "" : String(json?.message || "养基宝指数源返回异常")
+  };
+}
+
+async function fetchYangjibaoPluginJson(apiPath, { token = process.env.YANGJIBAO_PLUGIN_TOKEN || "" } = {}) {
+  const base = new URL(YANGJIBAO_PLUGIN_API_BASE);
+  const requestPath = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
+  const url = new URL(requestPath, base.href);
+  const requestTime = Math.floor(Date.now() / 1000);
+  const headers = buildYangjibaoPluginHeaders(requestPath, { token, requestTime, base });
+  const response = await fetchWithTimeout(
+    url.href,
+    {
+      headers,
+      method: "GET"
+    },
+    PUBLIC_DATA_TIMEOUT_MS
+  );
+  const text = await response.text();
+  if (!response.ok) throw new Error(`HTTP ${response.status}: ${url.href}`);
+  return text ? JSON.parse(text) : {};
+}
+
+function buildYangjibaoPluginHeaders(apiPath, { token = "", requestTime = Math.floor(Date.now() / 1000), base = new URL(YANGJIBAO_PLUGIN_API_BASE) } = {}) {
+  const basePath = base.pathname && base.pathname !== "/" ? base.pathname : "";
+  const cleanPath = String(apiPath || "").split("?")[0] || "/";
+  const signText = `${basePath}${cleanPath}${token || ""}${requestTime}${YANGJIBAO_PLUGIN_SIGN_SECRET || ""}`;
+  return {
+    "Content-Type": "application/json",
+    Authorization: token || "",
+    "Request-Time": String(requestTime),
+    "Request-Sign": crypto.createHash("md5").update(signText).digest("hex")
+  };
+}
+
+function normalizeYangjibaoIndexData(data = {}) {
+  const rows = Array.isArray(data) ? data : Object.values(data || {});
+  const order = new Map(["1.000001", "1.000300", "0.399001", "0.399006", "1.000016"].map((code, index) => [code, index]));
+  return rows
+    .map(normalizeYangjibaoIndexQuote)
+    .filter((item) => item.code && item.name)
+    .sort((a, b) => (order.get(a.code) ?? 99) - (order.get(b.code) ?? 99))
+    .slice(0, 12);
+}
+
+function normalizeYangjibaoIndexQuote(row = {}) {
+  const code = String(row.code || row.secid || "").trim();
+  return {
+    code,
+    secid: code,
+    showCode: String(row.show_code || "").trim(),
+    name: String(row.name || "").trim(),
+    latest: toNumber(row.v),
+    change: toNumber(row.div),
+    changePct: toNumber(row.dir),
+    quoteTime: row.date || "",
+    sourceKind: "yangjibao_plugin_index_data",
+    source: "http://browser-plug-api.yangjibao.com/index_data"
   };
 }
 
@@ -21098,6 +21194,7 @@ export {
   buildPortfolioWatchlistStatusLines,
   buildPortfolioWatchlistLaunchEveLines,
   buildPortfolioWatchlistUpdatesFromAnswerProfiles,
+  buildYangjibaoPluginHeaders,
   buildFeishuCard,
   buildFeishuFundImageLegendNote,
   buildFeishuImageCaption,
@@ -21171,6 +21268,7 @@ export {
   summarizeFundIntradayValuationTrend,
   mergeFundValuationIntradaySupplement,
   normalizeHaoetfQdiiValuationRow,
+  normalizeYangjibaoIndexData,
   normalizePortfolioDb,
   normalizePortfolioInvestedCostReturnText,
   normalizePortfolioReview,

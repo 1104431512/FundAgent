@@ -561,6 +561,18 @@ const requiredPatterns = [
     message: "market snapshot sources must expose the Sina intraday valuation supplement."
   },
   {
+    pattern: /fetchYangjibaoChinaIndexQuotes[\s\S]{0,4200}yangjibao_plugin_index_data[\s\S]{0,1800}browser-plug-api\.yangjibao\.com\/index_data/,
+    message: "market snapshots must include Yangjibao's public index source as supplemental real-time market temperature evidence."
+  },
+  {
+    pattern: /marketIndicators:\s*\{[\s\S]{0,260}chinaIndices[\s\S]{0,900}compactMarketQuoteItems\(summary\.marketIndicators\?\.chinaIndices/,
+    message: "compact market snapshots must preserve Yangjibao China index evidence for model prompts."
+  },
+  {
+    pattern: /A股指数温度[\s\S]{0,500}不能替代具体基金净值、前十大持仓和费用核验/,
+    message: "fund and portfolio prompts must explain how to use Yangjibao index evidence without pretending it is fund-level valuation."
+  },
+  {
     pattern: /必须检查 marketSnapshot\.dataQuality[\s\S]{0,220}数据缺口[\s\S]{0,220}降低把握度/,
     message: "fund and portfolio prompts must force data-gap disclosure when public sources are partial or poor."
   },

@@ -122,6 +122,15 @@ assert.equal(haoetfValuation.dwjz, 2.0109, "HaoETF valuation must keep the lates
 assert.equal(haoetfValuation.gszzl, 1.54, "HaoETF valuation must derive realtime estimate change from latest estimate");
 assert.equal(haoetfValuation.realtimePremiumPct, 6.92, "HaoETF valuation must carry premium evidence for QDII timing");
 assert.equal(haoetfValuation.gztime, "2026-05-27 05:02:20", "HaoETF valuation must preserve the page update time for freshness checks");
+const yangjibaoHeaders = manager.buildYangjibaoPluginHeaders("/index_data", { requestTime: 1779831567 });
+assert.equal(yangjibaoHeaders["Request-Sign"], "58f2e965e9bdc1e14ea1d5f5dcab9384", "Yangjibao plugin request signing must match the public browser-plugin protocol");
+const yangjibaoIndexItems = manager.normalizeYangjibaoIndexData({
+  "0.399006": { code: "0.399006", v: "4043.07", dir: "0.54", div: "21.91", date: "2026-05-26 16:30:02", show_code: "399006", name: "创业板指" },
+  "1.000001": { code: "1.000001", v: "4145.37", dir: "-0.17", div: "-7.2", date: "2026-05-26 16:30:02", show_code: "000001", name: "上证指数" }
+});
+assert.equal(yangjibaoIndexItems[0].name, "上证指数", "Yangjibao index parser must keep major A-share indices first");
+assert.equal(yangjibaoIndexItems[0].changePct, -0.17, "Yangjibao index parser must recover index percentage change");
+assert.equal(yangjibaoIndexItems[0].sourceKind, "yangjibao_plugin_index_data", "Yangjibao index parser must leave a traceable source kind");
 const manualIntradayTrend = manager.summarizeFundIntradayValuationTrend([
   { at: "2026-05-26 09:30", estimatedChangePct: 0.2 },
   { at: "2026-05-26 10:30", estimatedChangePct: 1.1 },
