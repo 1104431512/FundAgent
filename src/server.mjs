@@ -6915,7 +6915,7 @@ function capturePortfolioPushTarget(payload) {
 
 function buildPortfolioDecisionCard({ decision, watchlistUpdates = [], account, orders = [], transactions, executionNotes = [], settlementEvents = [], run }) {
   const actionLines = decision.actions.length
-    ? decision.actions.map(formatPortfolioCustomerActionLine)
+    ? interspersePortfolioBlocks(decision.actions.map(formatPortfolioCustomerActionLine))
     : ["今日没有生成买卖动作。"];
   const digestLines = formatPortfolioCustomerDecisionDigest(decision, account);
   const nextStepLines = formatPortfolioCustomerNextStepLines({ decision, orders, watchlistUpdates });
@@ -7141,8 +7141,9 @@ function computePortfolioCustomerCashPct(account = {}) {
 
 function formatPortfolioCustomerActionLine(action = {}) {
   const name = [action.code, action.name].filter(Boolean).join(" ");
-  const amount = action.amount ? ` 建议${action.amount}元` : "";
-  const target = action.targetWeightPct ? ` 目标${action.targetWeightPct}%` : "";
+  const amount = action.amount ? ` 建议${formatPortfolioCustomerMoney(action.amount)}` : "";
+  const targetPct = toNumber(action.targetWeightPct);
+  const target = Number.isFinite(targetPct) ? ` 目标约${round(targetPct, 1)}%` : "";
   const reason = shortenPortfolioCustomerText(action.reason || "见投委会意见", 82);
   const logic = [
     action.rotationCheck,
@@ -7157,6 +7158,10 @@ function formatPortfolioCustomerActionLine(action = {}) {
     logic.length ? `  看点：${logic.join("；")}` : "",
     fee ? `  费用：${fee}` : ""
   ].filter(Boolean).join("\n");
+}
+
+function interspersePortfolioBlocks(blocks = []) {
+  return (blocks || []).flatMap((block, index) => index > 0 ? ["", block] : [block]);
 }
 
 function formatPortfolioCustomerTeamLine(item = {}) {

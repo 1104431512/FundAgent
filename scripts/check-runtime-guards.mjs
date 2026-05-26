@@ -1017,6 +1017,10 @@ const requiredPatterns = [
     message: "portfolio action lines must keep Chinese action labels while trimming metric-heavy model reasons."
   },
   {
+    pattern: /function formatPortfolioCustomerActionLine[\s\S]{0,400}formatPortfolioCustomerMoney\(action\.amount\)[\s\S]{0,500}目标约/,
+    message: "portfolio action lines must round customer-facing amounts and target weights instead of showing accounting decimals."
+  },
+  {
     pattern: /function formatPortfolioCustomerActionLine[\s\S]{0,1400}summarizePortfolioCustomerFeeText[\s\S]{0,2600}function choosePortfolioCustomerSentence/,
     message: "portfolio customer-facing action lines must prioritize readable logic and translate fee numbers into share-class meaning."
   },

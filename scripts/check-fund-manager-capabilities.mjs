@@ -1138,11 +1138,13 @@ const customerActionLine = manager.formatPortfolioCustomerActionLine({
 });
 const customerActionNumbers = customerActionLine.match(/(?:[+-]?\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:元|万|亿)|近\s*\d+\s*日|\d+\s*日位置)/g) || [];
 assert(customerActionLine.includes("理由：") && customerActionLine.includes("看点："), "customer action line must keep reasoning sections");
+assert(customerActionLine.includes("建议约1.2万元"), "customer action line must round execution amounts instead of showing precise accounting decimals");
 assert(customerActionLine.includes("同题材暴露过度集中"), "customer action line must lead with the portfolio logic instead of a raw metric trigger");
 assert(customerActionLine.includes("浮盈已经回吐到转亏"), "customer action line must translate dense giveback numbers into readable risk language");
 assert(customerActionLine.includes("C类偏短中期"), "customer action line must translate fee details into share-class meaning");
 assert(customerActionLine.length < 260, "customer action line must be compact enough for Feishu card reading");
 assert(customerActionNumbers.length <= 4, "customer action line must not dump a long metric list");
+assert(!customerActionLine.includes("11810.03元"), "customer action line must not expose precise accounting decimals in the user-facing decision card");
 assert(!customerActionLine.includes("120日和250日位置均为100%"), "customer action line must hide dense metric clauses after the key interpretation");
 assert(!customerActionLine.includes("0.25%/年"), "customer action line must hide fee-rate dumps after translating A/C share-class meaning");
 const sanitizedHistoricalRun = manager.sanitizePortfolioPublicReportValue({
