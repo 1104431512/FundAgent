@@ -2575,13 +2575,18 @@ async function fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist =
   const targetSize = Math.max(0, finiteNumberOr(process.env.PORTFOLIO_WATCHLIST_TARGET_SIZE, 10));
   const deficit = targetSize - activeWatchlist.filter((item) => !["blocked", "removed"].includes(item.status)).length;
   const forceRedeploymentScan = shouldForcePortfolioRedeploymentSeedScan(options.account, activeWatchlist, options.profiles || []);
-  if (deficit <= 0 && !forceRedeploymentScan) return [];
+  const blockedFollowThroughCandidates = findPortfolioBacktestBlockedFollowThroughCandidates({
+    watchlist: activeWatchlist,
+    totalAsset: options.account?.totalAsset || 0
+  });
+  const forceBlockedReplacementScan = shouldForcePortfolioBlockedFollowThroughSeedScan(options.account, activeWatchlist);
+  if (deficit <= 0 && !forceRedeploymentScan && !forceBlockedReplacementScan) return [];
 
-  const userText = "回调完成 低位 准备启动 基金";
+  const userText = buildPortfolioWatchlistSeedSearchText(blockedFollowThroughCandidates);
   const themeRadar = Array.isArray(marketSnapshot?.themeRadar) ? marketSnapshot.themeRadar : [];
   const candidates = await fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar);
   return selectPortfolioWatchlistSeedCandidates(candidates, activeWatchlist, themeRadar, {
-    limit: forceRedeploymentScan
+    limit: forceRedeploymentScan || forceBlockedReplacementScan
       ? finiteNumberOr(process.env.PORTFOLIO_REDEPLOYMENT_SEED_LIMIT, 8)
       : Math.min(deficit, finiteNumberOr(process.env.PORTFOLIO_WATCHLIST_SEED_LIMIT, 6))
   });
@@ -2591,6 +2596,49 @@ function shouldForcePortfolioRedeploymentSeedScan(account = {}, watchlist = [], 
   const plan = buildPortfolioRedeploymentPlan(account, watchlist, profiles);
   if (!plan.pressureActive) return false;
   return !plan.candidates.some((item) => ["verified_buy", "starter_buy"].includes(item.redeploymentAction));
+}
+
+function shouldForcePortfolioBlockedFollowThroughSeedScan(account = {}, watchlist = []) {
+  const totalAsset = Number(account.totalAsset || 0);
+  const cash = Number(account.cash || 0);
+  const cashPct = totalAsset > 0 ? cash / totalAsset * 100 : null;
+  if (!Number.isFinite(cashPct) || cashPct < 55 || account.riskBudget?.blockNewBuys) return false;
+  return findPortfolioBacktestBlockedFollowThroughCandidates({
+    watchlist,
+    totalAsset
+  }).length > 0;
+}
+
+function buildPortfolioWatchlistSeedSearchText(blockedFollowThroughCandidates = []) {
+  const keywords = inferPortfolioBlockedFollowThroughSearchKeywords(blockedFollowThroughCandidates);
+  return ["回调完成", "低位", "准备启动", "基金", ...keywords].join(" ");
+}
+
+function inferPortfolioBlockedFollowThroughSearchKeywords(candidates = []) {
+  const text = normalizeIntentText((candidates || []).slice(0, 6).map((item) => [
+    item.name,
+    item.reason,
+    item.blockingReason,
+    item.evidence,
+    ...(item.readinessGaps || [])
+  ].filter(Boolean).join(" ")).join(" "));
+  const groups = [
+    { needles: ["信息传媒", "传媒", "游戏", "影视"], keywords: ["传媒", "游戏"] },
+    { needles: ["全球价值", "全球", "海外", "qdii"], keywords: ["QDII", "全球", "海外"] },
+    { needles: ["新能源车", "新能源", "锂电", "电池"], keywords: ["新能源", "新能源车", "锂电池"] },
+    { needles: ["香港", "港股", "恒生"], keywords: ["港股", "恒生"] },
+    { needles: ["深圳", "特区", "小盘"], keywords: ["中证1000", "中证2000"] },
+    { needles: ["医药", "医疗", "创新药"], keywords: ["医药", "医疗"] },
+    { needles: ["半导体", "芯片"], keywords: ["半导体", "芯片"] },
+    { needles: ["人工智能", "ai", "算力", "通信"], keywords: ["人工智能", "算力", "通信"] }
+  ];
+  const keywords = [];
+  for (const group of groups) {
+    if (group.needles.some((needle) => text.includes(normalizeIntentText(needle)))) {
+      keywords.push(...group.keywords);
+    }
+  }
+  return [...new Set(keywords)].slice(0, 8);
 }
 
 function selectPortfolioWatchlistSeedCandidates(candidates = [], watchlist = [], themeRadar = [], options = {}) {
@@ -13932,6 +13980,7 @@ function inferFocusedFundSearchKeywords(userText) {
     { needles: ["白银", "沪银"], keywords: ["白银", "贵金属"] },
     { needles: ["半导体", "芯片"], keywords: ["半导体", "芯片"] },
     { needles: ["人工智能", "ai", "算力"], keywords: ["人工智能", "算力"] },
+    { needles: ["传媒", "信息传媒", "游戏"], keywords: ["传媒", "游戏"] },
     { needles: ["机器人"], keywords: ["机器人"] },
     { needles: ["新能源", "光伏", "锂电", "电池"], keywords: ["新能源", "光伏", "锂电池"] },
     { needles: ["医药", "医疗", "创新药"], keywords: ["医药", "医疗", "创新药"] },
@@ -13946,6 +13995,7 @@ function inferFocusedFundSearchKeywords(userText) {
     { needles: ["有色", "铜", "铝"], keywords: ["有色金属", "有色"] },
     { needles: ["电力", "公用"], keywords: ["电力", "公用事业"] },
     { needles: ["纳斯达克", "标普", "美股"], keywords: ["纳斯达克", "标普500"] },
+    { needles: ["qdii", "全球", "海外"], keywords: ["QDII", "全球"] },
     { needles: ["越南"], keywords: ["越南"] },
     { needles: ["印度"], keywords: ["印度"] },
     { needles: ["债券", "债基", "纯债", "短债"], keywords: ["纯债", "短债"] }
@@ -21661,6 +21711,7 @@ export {
   buildPortfolioExposureSummary,
   buildPortfolioManagerProfileContext,
   buildPortfolioMissedFollowThroughReviewQueue,
+  buildPortfolioWatchlistSeedSearchText,
   buildPortfolioRunSummary,
   buildPortfolioAccountRiskBudget,
   buildPortfolioReadyWatchlistReviewActions,
@@ -21705,6 +21756,7 @@ export {
   fetchEastmoneyChinaIndexQuotes,
   fetchGlobalMarketQuotes,
   fetchRealtimeFundValuationSnapshot,
+  findPortfolioBacktestBlockedFollowThroughCandidates,
   findDuplicatePortfolioSettlementGroups,
   findStalePortfolioActiveOrders,
   filterFocusedPullbackRankingCandidates,
@@ -21734,6 +21786,7 @@ export {
   ensurePortfolioReadyWatchlistReviewed,
   mergeFundWorkflowWatchlistIntoDeepDive,
   mergeChinaRealtimeIndexQuotes,
+  inferPortfolioBlockedFollowThroughSearchKeywords,
   inferPullbackSetupSearchKeywords,
   inferEastmoneySecidFromHolding,
   inferFundShareClass,
@@ -21764,6 +21817,7 @@ export {
   shouldReduceHeldPositionFromReview,
   shouldRejectImpossiblePortfolioSellOrder,
   shouldPersistRuntimeStats,
+  shouldForcePortfolioBlockedFollowThroughSeedScan,
   shouldForcePortfolioRedeploymentSeedScan,
   summarizePortfolioOrder,
   summarizePortfolioEquityBrief,

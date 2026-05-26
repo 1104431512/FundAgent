@@ -557,7 +557,7 @@ const blockedFollowThroughFixture = {
   },
   watchlist: [{
     code: "018589",
-    name: "小规模走强候选C",
+    name: "农银信息传媒股票C",
     status: "blocked",
     readinessScore: 24,
     reason: "基金规模0.24亿偏小，不能作为可直接买入候选。",
@@ -597,6 +597,15 @@ assert.equal(
   0,
   "missed follow-through review queue must not force reviews for blocked or structurally unbuyable candidates"
 );
+assert.equal(
+  manager.shouldForcePortfolioBlockedFollowThroughSeedScan(blockedFollowThroughFixture.account, blockedFollowThroughFixture.watchlist),
+  true,
+  "blocked follow-through should force a replacement seed scan when cash is deployable"
+);
+const blockedFollowThroughKeywords = manager.inferPortfolioBlockedFollowThroughSearchKeywords(blockedFollowThroughFixture.watchlist);
+assert(blockedFollowThroughKeywords.includes("传媒"), "blocked follow-through replacement scan must infer theme keywords from the blocked candidate");
+const blockedReplacementSearchText = manager.buildPortfolioWatchlistSeedSearchText(blockedFollowThroughFixture.watchlist);
+assert(blockedReplacementSearchText.includes("传媒"), "replacement seed search text must carry blocked-candidate themes into low-position recall");
 const missedFollowThroughReviewQueue = manager.buildPortfolioMissedFollowThroughReviewQueue(conservativeBacktestFixture);
 assert.equal(missedFollowThroughReviewQueue[0].code, "012046", "missed follow-through review queue must surface the ready candidate that kept rising");
 assert(missedFollowThroughReviewQueue[0].reviewAction.includes("小仓试探"), "missed follow-through review queue must require a probe, downgrade, or review time");

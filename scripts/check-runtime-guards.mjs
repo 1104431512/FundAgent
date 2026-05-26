@@ -1305,8 +1305,16 @@ const requiredPatterns = [
     message: "portfolio decision prompt must include deterministic redeployment pressure and executable starter candidates."
   },
   {
-    pattern: /async function fetchPortfolioWatchlistSeedCandidates[\s\S]{0,900}shouldForcePortfolioRedeploymentSeedScan[\s\S]{0,900}PORTFOLIO_REDEPLOYMENT_SEED_LIMIT/,
+    pattern: /async function fetchPortfolioWatchlistSeedCandidates[\s\S]{0,1600}shouldForcePortfolioRedeploymentSeedScan[\s\S]{0,1600}PORTFOLIO_REDEPLOYMENT_SEED_LIMIT/,
     message: "portfolio watchlist seeding must keep scanning low-position candidates when high-cash redeployment has no executable setup."
+  },
+  {
+    pattern: /async function fetchPortfolioWatchlistSeedCandidates[\s\S]{0,1200}findPortfolioBacktestBlockedFollowThroughCandidates[\s\S]{0,900}shouldForcePortfolioBlockedFollowThroughSeedScan[\s\S]{0,900}buildPortfolioWatchlistSeedSearchText/,
+    message: "portfolio watchlist seeding must search replacements when blocked candidates later follow through."
+  },
+  {
+    pattern: /function inferPortfolioBlockedFollowThroughSearchKeywords[\s\S]{0,1800}信息传媒[\s\S]{0,900}QDII[\s\S]{0,900}新能源车/,
+    message: "blocked follow-through replacement scans must infer theme keywords such as media, QDII, and new-energy vehicles."
   },
   {
     pattern: /function formatPortfolioCustomerActionLine[\s\S]{0,900}理由：\$\{reason\}[\s\S]{0,600}看点：\$\{logic\.join\("；"\)\}[\s\S]{0,400}\.join\("\\n"\)/,
