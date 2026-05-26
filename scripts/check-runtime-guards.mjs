@@ -83,6 +83,22 @@ const requiredPatterns = [
     message: "fund answer quality gate must reject internal enum/field leaks."
   },
   {
+    pattern: /numeric_dump_without_interpretation/,
+    message: "fund answer quality gate must reject numeric dumps that do not explain走势和买点逻辑."
+  },
+  {
+    pattern: /marketIndicators\.realtimeFundValuations/,
+    message: "market snapshots must carry a real-time or near-real-time fund valuation layer."
+  },
+  {
+    pattern: /function inferFundShareClass[\s\S]{0,500}knownProductSuffixes\.includes\(rawSuffix\)[\s\S]{0,80}return ""/,
+    message: "share-class inference must not misread QDII/ETF/FOF product suffixes as A/C/I share classes."
+  },
+  {
+    pattern: /function fetchRealtimeFundValuationSnapshot[\s\S]{0,1800}fetchFundValuation\(code\)[\s\S]{0,2600}function normalizeRealtimeFundValuation[\s\S]{0,1200}fundgz\.1234567\.com\.cn\/js\/\$\{valuation\.fundcode/,
+    message: "real-time fund valuation snapshots must use the existing Tiantian/FundGZ estimate endpoint with source traceability."
+  },
+  {
     pattern: /normalizeUserFacingFundAnswer/,
     message: "fund answers need a final localization pass for internal labels."
   },
@@ -463,7 +479,7 @@ const requiredPatterns = [
     message: "fund and portfolio prompts must force data-gap disclosure when public sources are partial or poor."
   },
   {
-    pattern: /function compactMarketSnapshotForModel[\s\S]{0,1400}compactMarketFundCandidates[\s\S]{0,900}errors/,
+    pattern: /function compactMarketSnapshotForModel[\s\S]{0,2200}compactRealtimeFundValuations[\s\S]{0,1200}compactMarketFundCandidates[\s\S]{0,1200}errors/,
     message: "model prompts must use a compact market snapshot that preserves key evidence without raw payload bloat."
   },
   {
@@ -823,8 +839,12 @@ const requiredPatterns = [
     message: "portfolio weekly reports must localize internal model fields before display."
   },
   {
-    pattern: /function buildPortfolioDecisionCard[\s\S]{0,2600}formatPortfolioActionLabel[\s\S]{0,1600}return normalizePortfolioUserFacingText\(card, account\)/,
-    message: "portfolio decision cards must show Chinese action labels and run a final user-facing localization pass."
+    pattern: /function buildPortfolioDecisionCard[\s\S]{0,900}formatPortfolioCustomerActionLine[\s\S]{0,3600}return normalizePortfolioUserFacingText\(card, account\)/,
+    message: "portfolio decision cards must use customer-friendly action summaries and run a final user-facing localization pass."
+  },
+  {
+    pattern: /function formatPortfolioCustomerActionLine[\s\S]{0,1400}formatPortfolioActionLabel\(action\.action\)[\s\S]{0,700}shortenPortfolioCustomerText/,
+    message: "portfolio action lines must keep Chinese action labels while trimming metric-heavy model reasons."
   },
   {
     pattern: /function summarizePortfolioRun\(run,\s*fallbackAccount\s*=\s*\{\}\)[\s\S]{0,220}getPortfolioRunAccountContext\(run,\s*fallbackAccount\)[\s\S]{0,800}card:\s*normalizePortfolioUserFacingText\(run\.card \|\| "",\s*account\)[\s\S]{0,900}sanitizePortfolioPublicReportValue/,

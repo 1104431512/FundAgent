@@ -941,6 +941,9 @@ const shareClassSkillContext = manager.buildSkillContextForIntent({
   skillIds: manager.getFundAnalysisSkillIds(["fund-comparison", "fund-synthesis"])
 });
 assert(shareClassSkillContext.includes("对比焦点：同一基金 A/C 等份额先比较费用和预计持有期"), "share-class comparisons must prioritize fees and holding period");
+assert.equal(manager.inferFundShareClass("汇添富全球医疗混合(QDII)人民币"), "", "QDII人民币 must not be misread as I share class");
+assert.equal(manager.inferFundShareClass("华安纳斯达克100ETF联接(QDII)A"), "A", "QDII products with explicit A suffix must still infer A share class");
+assert.equal(manager.inferFundShareClass("博时黄金ETF联接C"), "C", "ordinary C share suffix must still infer C share class");
 
 const lowSetupSeed = {
   name: "中证500ETF联接C",
@@ -2216,6 +2219,20 @@ assert(
   manager.normalizeUserFacingFundAnswer("把握度：高。").includes("我对这条判断把握度较高"),
   "localization pass must rewrite translated confidence labels into natural Chinese"
 );
+const numericDumpAnswer = [
+  "直接结论：分批买入1000元。",
+  "000001 低位基金C：近5日+1.1%，近10日+2.2%，近20日+3.3%，近60日-4.4%，近120日+5.5%，120日位置38.5%，250日位置42.2%，距高点-7.1%，夏普0.8，回撤-12.3%，规模42亿，费率0.4%。",
+  "000002 备选基金A：近5日+1.4%，近10日+2.5%，近20日+3.6%，近60日-4.1%，120日位置35.5%，250日位置40.2%，距高点-8.1%，夏普0.9，回撤-11.3%，规模36亿。",
+  "000003 观察基金C：近5日+1.6%，近10日+2.7%，近20日+3.8%，近60日-3.8%，120日位置39.5%，250日位置41.2%，距高点-6.1%，夏普0.7，回撤-10.3%，规模18亿。"
+].join("\n");
+const numericDumpQuality = manager.evaluateFundAnswerQuality({
+  text: numericDumpAnswer,
+  workflow: "fund_recommendation",
+  userText: setupQuery,
+  evidence: { marketDeepDive: { candidates: [setupDigest, setupDigestSecond] } }
+});
+assert(numericDumpQuality.issues.includes("numeric_dump_without_interpretation"), "quality gate must reject numeric dumps that lack enough trend interpretation");
+assert(manager.hasNumericDumpWithoutInterpretation(numericDumpAnswer), "numeric dump detector must be exported for deterministic regression coverage");
 
 const leakQuality = manager.evaluateFundAnswerQuality({
   text: "趋势/动作：extended_uptrend，actionability 为 tactical only / staged_buy，但 entryBias 是 wait_pullback。",
@@ -2455,6 +2472,15 @@ const noisyMarketSnapshot = {
       fiveDayPct: index / 5,
       quoteTime: "10:00",
       noisyRawPayload: "NOISY_MARKET_PAYLOAD".repeat(300)
+    })),
+    realtimeFundValuations: Array.from({ length: 18 }, (_, index) => ({
+      code: `0001${String(index).padStart(2, "0")}`,
+      name: `实时估值基金${index}`,
+      estimatedChangePct: index / 10,
+      estimateTime: "2026-05-27 14:30",
+      freshnessLabel: "半小时内更新",
+      isFresh: true,
+      noisyRawPayload: "NOISY_REALTIME_PAYLOAD".repeat(300)
     }))
   },
   themes: {
@@ -2508,6 +2534,8 @@ const compactMarketSnapshotJson = JSON.stringify(compactMarketSnapshot);
 assert(compactMarketSnapshot.dataQuality.level === "partial", "compact market snapshot must preserve data-quality level");
 assert.equal(compactMarketSnapshot.fundCandidates.stockFunds.length, 6, "compact market snapshot must cap fund ranking candidates before model prompts");
 assert.equal(compactMarketSnapshot.marketIndicators.preciousMetals.length, 6, "compact market snapshot must cap market quote candidates before model prompts");
+assert.equal(compactMarketSnapshot.marketIndicators.realtimeFundValuations.length, 12, "compact market snapshot must include capped real-time valuation candidates");
+assert(compactMarketSnapshot.marketIndicators.realtimeFundValuations[0].freshness === "半小时内更新", "compact market snapshot must preserve real-time valuation freshness labels");
 assert(compactMarketSnapshot.themeRadar[0]["板块位置"] === "交易拥挤", "compact market snapshot must carry Chinese theme-stage labels");
 assert(compactMarketSnapshot.themeRadar[0]["操作倾向"] === "等待或小额试探", "compact market snapshot must carry Chinese action-bias labels");
 assert(!/"(?:stage|positionSignal|actionBias|stageText|positionSignalText|actionBiasText)"\s*:/.test(compactMarketSnapshotJson), "compact market snapshot must not expose raw theme-radar field names to the model");

@@ -1411,6 +1411,8 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "必须执行单仓风控：浮亏触及止损线、浮盈大幅回吐或趋势破位时，先给 SELL/减仓复核，不要只写 HOLD。",
     "必须执行组合穿透暴露检查：同题材仓位、同一底层前十大持仓重叠、单一风格过热时，组合经理和风控经理必须写清不加仓或减风险条件。",
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，marketView、team 和 actions.dataBasis 必须写清数据缺口；缺少关键板块、排行、新闻或贵金属模块时，只能 WATCH、HOLD 或小额试探，不能当作完整联网证据下重仓 BUY。",
+    "必须使用 marketSnapshot.marketIndicators.realtimeFundValuations 复核候选当下温度和数据新鲜度；实时估算只能辅助判断追涨/止跌，成交和盈亏仍以确认净值为准。",
+    "给用户看的 summary、reason 和 riskControl 要先讲走势、轮动和操作边界，再放必要数字；不要把每个动作写成一长串指标。",
     "如果候选基金缺少可验证净值或走势数据，倾向 WATCH，不要强行 BUY。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
     "",
@@ -5973,17 +5975,9 @@ function capturePortfolioPushTarget(payload) {
 
 function buildPortfolioDecisionCard({ decision, watchlistUpdates = [], account, orders = [], transactions, executionNotes = [], settlementEvents = [], run }) {
   const actionLines = decision.actions.length
-    ? decision.actions.map((action) => {
-        const name = [action.code, action.name].filter(Boolean).join(" ");
-        const amount = action.amount ? ` 建议${action.amount}元` : "";
-        const target = action.targetWeightPct ? ` 目标${action.targetWeightPct}%` : "";
-        const checks = [action.rotationCheck, action.positionCheck, action.chaseRisk, action.feeCheck]
-          .filter(Boolean)
-          .join("；");
-        return `${formatPortfolioActionLabel(action.action)} ${name}${amount}${target}：${action.reason || "见投委会意见"}${checks ? `（${checks}）` : ""}`;
-      })
+    ? decision.actions.map(formatPortfolioCustomerActionLine)
     : ["今日没有生成买卖动作。"];
-  const teamLines = decision.team.map((item) => `${item.agent} ${item.stance}：${item.reason}`);
+  const teamLines = decision.team.map(formatPortfolioCustomerTeamLine);
   const transactionLines = transactions.length
     ? transactions.map((item) => {
         const nav = item.nav ? `，净值 ${item.nav}${item.navDate ? `（${item.navDate}）` : ""}` : "";
@@ -6045,6 +6039,45 @@ function buildPortfolioDecisionCard({ decision, watchlistUpdates = [], account, 
     .filter(Boolean)
     .join("\n");
   return normalizePortfolioUserFacingText(card, account);
+}
+
+function formatPortfolioCustomerActionLine(action = {}) {
+  const name = [action.code, action.name].filter(Boolean).join(" ");
+  const amount = action.amount ? ` 建议${action.amount}元` : "";
+  const target = action.targetWeightPct ? ` 目标${action.targetWeightPct}%` : "";
+  const reason = shortenPortfolioCustomerText(action.reason || "见投委会意见", 120);
+  const logic = [
+    action.rotationCheck,
+    action.positionCheck,
+    action.chaseRisk,
+    action.riskControl
+  ].map((item) => shortenPortfolioCustomerText(item, 72)).filter(Boolean).slice(0, 2);
+  const fee = shortenPortfolioCustomerText(action.feeCheck || "", 72);
+  return [
+    `${formatPortfolioActionLabel(action.action)} ${name}${amount}${target}：${reason}`,
+    logic.length ? `逻辑：${logic.join("；")}` : "",
+    fee ? `费用：${fee}` : ""
+  ].filter(Boolean).join("；");
+}
+
+function formatPortfolioCustomerTeamLine(item = {}) {
+  return `${item.agent || "投委"} ${item.stance || ""}：${shortenPortfolioCustomerText(item.reason || "", 120)}`.trim();
+}
+
+function shortenPortfolioCustomerText(value = "", maxLength = 120) {
+  const cleaned = normalizeUserFacingFundAnswer(String(value || ""))
+    .replace(/\s+/g, " ")
+    .replace(/（\s*）/g, "")
+    .trim();
+  if (!cleaned) return "";
+  const sentences = cleaned
+    .split(/(?<=[。；;])|(?=系统(?:买入|卖出|组合|单仓|风控))|(?=当前)|(?=若)|(?=费用)|(?=风险)|(?=观察缺口)|(?=触发)/)
+    .map((item) => item.replace(/^[；;。,\s]+|[；;。,\s]+$/g, "").trim())
+    .filter(Boolean);
+  const preferred = sentences.find((item) => /(走势|低位|回调|启动|轮动|拥挤|偏热|高位|风险|触发|费用|份额|持仓|减仓|买入|观察|等待)/.test(item))
+    || sentences[0]
+    || cleaned;
+  return preferred.length <= maxLength ? preferred : `${preferred.slice(0, Math.max(0, maxLength - 1))}…`;
 }
 
 function buildPortfolioValuationCard({ review, account, positionUpdates, lifecycle = {}, run }) {
@@ -8223,7 +8256,8 @@ function summarizeMarketSnapshot(snapshot) {
     note: snapshot.note,
     dataQuality: compactMarketDataQuality(snapshot.dataQuality),
     marketIndicators: {
-      preciousMetals: (snapshot.marketIndicators?.preciousMetals || []).slice(0, 10)
+      preciousMetals: (snapshot.marketIndicators?.preciousMetals || []).slice(0, 10),
+      realtimeFundValuations: (snapshot.marketIndicators?.realtimeFundValuations || []).slice(0, 24)
     },
     themes: {
       conceptBoards: (snapshot.themes?.conceptBoards || []).slice(0, 10),
@@ -8251,7 +8285,8 @@ function compactMarketSnapshotForModel(snapshot = null) {
     note: summary.note || "",
     dataQuality: summary.dataQuality,
     marketIndicators: {
-      preciousMetals: compactMarketQuoteItems(summary.marketIndicators?.preciousMetals || [], 6)
+      preciousMetals: compactMarketQuoteItems(summary.marketIndicators?.preciousMetals || [], 6),
+      realtimeFundValuations: compactRealtimeFundValuations(summary.marketIndicators?.realtimeFundValuations || [], 12)
     },
     themes: {
       conceptBoards: compactMarketBoardItems(summary.themes?.conceptBoards || [], 6),
@@ -8301,6 +8336,19 @@ function compactMarketQuoteItems(items = [], limit = 6) {
     changePct: finiteMetricNumber(item.changePct),
     fiveDayPct: finiteMetricNumber(item.fiveDayPct),
     quoteTime: item.quoteTime || ""
+  }));
+}
+
+function compactRealtimeFundValuations(items = [], limit = 12) {
+  return (items || []).slice(0, limit).map((item) => ({
+    code: item.code || "",
+    name: item.name || "",
+    shareClass: item.shareClass || "",
+    type: item.type || "",
+    estimatedChangePct: finiteMetricNumber(item.estimatedChangePct),
+    estimateTime: item.estimateTime || "",
+    freshness: item.freshnessLabel || "",
+    isFresh: item.isFresh
   }));
 }
 
@@ -9053,6 +9101,21 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
     if (quality.level !== "good") {
       lines.push("质量要求：必须主动披露数据缺口，涉及缺失模块的结论只能写观察、待复核或降低把握度，不能装作已经完整联网验证。");
     }
+  }
+  const realtimeValuations = marketSnapshot.marketIndicators?.realtimeFundValuations || [];
+  if (realtimeValuations.length) {
+    const freshCount = realtimeValuations.filter((item) => item.isFresh !== false).length;
+    lines.push(`实时估算净值：已抓到 ${realtimeValuations.length} 只候选，其中 ${freshCount} 只估算时间较新。`);
+    lines.push(...realtimeValuations.slice(0, 6).map((item) => {
+      const fields = [
+        `${item.code || "未知代码"} ${item.name || ""}`.trim(),
+        item.estimatedChangePct !== null && item.estimatedChangePct !== undefined ? `估算${formatFallbackPct(item.estimatedChangePct)}` : "",
+        item.freshnessLabel || "",
+        item.estimateTime ? `时间${item.estimateTime}` : ""
+      ].filter(Boolean);
+      return `- ${fields.join("，")}`;
+    }));
+    lines.push("质量要求：实时估算只用于判断当下温度和风险，最终成交仍以确认净值为准；回答用户时优先解释走势含义，不要把每个数字全列出来。");
   }
   const themeRadar = selectRelevantThemeRadar(userText, marketSnapshot).slice(0, 5);
   if (themeRadar.length) {
@@ -9972,8 +10035,10 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "你是飞书机器人“基金经理”的基金发现与配置工作流。",
     "当前任务不是分析用户已经给出的某一只基金，也不是截图 screening；当前任务是根据用户文字、公开市场快照和基金候选池，给出教育性的基金方向与候选清单。",
     "推荐顺序必须是：先判断题材/事件/催化阶段，再判断基金承载工具；基金净值走势只能作为确认信号，不能作为第一推荐理由。",
+    "用户更关心走势和分析思路，不要把回答写成数字清单。每只基金最多保留3个关键数字，其他用“低位修复、短期偏热、等待确认、回撤未完成”等自然中文解释。",
     "如果市场快照或下钻摘要里有题材雷达，必须先用题材阶段、前瞻评分、拥挤度和操作倾向判断赔率，再筛选基金。",
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
+    "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度和数据新鲜度；但成交和盈亏仍以确认净值为准。",
     "如果提供了候选基金下钻摘要，必须使用走势画像、风险、费用、持仓和可操作性评估来筛掉不适合的候选；不要只复述市场快照。",
     "如果提供了经理自选候选池，必须先复核这些已经沉淀的 ready/waiting/启动前夜候选；ready 可以进入主推荐评估，waiting 或启动前夜只能写备选观察和触发条件，不能当成自动买入。",
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，最终回答要用自然中文说明数据缺口、降低把握度；缺少贵金属/板块/排行/新闻模块时，不得声称已完整联网或给重仓买入。",
@@ -10069,7 +10134,9 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "你是飞书机器人“基金经理”的基金问答工作流。",
     "当前任务是回答用户问题，不是单只基金 screening；除非用户给出明确基金代码或截图，否则不要强行输出 Verdict/Score/8 角色评审。",
     "遇到“某主题最近值不值得买”时，必须先判断题材/新闻/市场阶段，再判断基金或 ETF 工具；基金净值走势只是确认信号。",
+    "用户更关心走势和分析思路，不要把回答写成数字清单。每只基金最多保留3个关键数字，其他用走势、位置、风险边界来解释。",
     "如果传入 marketSnapshot，可用它回答近期市场/题材问题；涉及黄金、白银或贵金属时，优先引用 marketIndicators.preciousMetals 和相关基金候选。",
+    "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度和数据新鲜度；但成交和盈亏仍以确认净值为准。",
     "如果市场快照或下钻摘要里有题材雷达，优先引用中文题材阶段、前瞻评分、拥挤度和操作倾向，避免只按历史涨幅回答。",
     "如果提供了候选基金下钻摘要，必须使用下钻候选的走势画像、风险、费用、持仓和可操作性评估来形成买/等/回避判断。",
     "如果提供了经理自选候选池，必须把它当成已经沉淀的备选来源先复核；ready 可以进入买入参考，waiting 或启动前夜只能说明等待条件。",
@@ -10208,6 +10275,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "若质检问题包含 missing_pullback_share_class_fee，主推荐每条必须写份额类别和费用模型，例如 C类无前端申购费但有销售服务费，或 A类有申购费但长期持有持续费率较低。",
       "若质检问题包含 insufficient_chart_linked_candidates，必须补足 12 张左右可配图候选：主买入参考和备选观察分开写，每只都写代码、买入/备选角色、图上看的走势/回撤/低位/费用证据。",
       "若质检问题包含 missing_market_data_quality_disclosure，必须在前两段用自然中文说明公开数据缺口、缺了哪些模块，并把结论降级为观察、待复核、少量试探或不重仓。",
+      "若质检问题包含 numeric_dump_without_interpretation，必须删除大部分指标堆砌：每只基金最多保留3个最能改变动作的数字，其余改成走势、位置、触发条件和操作理由。",
       "若证据没有 mainCandidateCodes，必须直接说明暂未筛到合格的回调完成/低位启动主推荐，不能硬凑基金代码。",
       "保持适合飞书卡片阅读，不要 Markdown 表格或代码块。",
       "",
@@ -10298,11 +10366,13 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   const rawEnglishActionLeak = workflow !== "conversation"
     && /\b(?:verdict|confidence|score|buy|staged\s*buy|staged|wait|avoid|hold|switch)\b\s*[：:]?/i.test(String(text || ""));
   const rawEnglishSectionLeak = workflow !== "conversation" && hasRawEnglishFundSectionLeak(text);
+  const numericOverload = workflow !== "conversation" && hasNumericDumpWithoutInterpretation(body);
 
   if (hasInternalFundSignalLeak(body)) issues.push("internal_signal_leak");
   if (stiffConfidenceLabel) issues.push("stiff_confidence_label");
   if (rawEnglishActionLeak) issues.push("raw_english_action_leak");
   if (rawEnglishSectionLeak) issues.push("raw_english_section_leak");
+  if (numericOverload) issues.push("numeric_dump_without_interpretation");
   issues.push(...evaluateMarketDataQualityDisclosure({ text, workflow, evidence }));
   issues.push(...evaluateStaleFundEvidenceActionDiscipline({ text, evidence }));
   issues.push(...evaluatePullbackAnswerDiscipline({ text, userText, evidence }));
@@ -10752,6 +10822,19 @@ function hasInternalFundSignalLeak(text) {
 
 function hasRawEnglishFundSectionLeak(text) {
   return /(^|[\n。；;])\s*(?:Manager\s+Decision|Evidence|Evidence\s+intake|Research\s+debate|Allocation\s+proposal|Risk\s+committee|Committee\s+consensus|Execution|Missing\s+data(?:\s+to\s+check)?|Key\s+disagreement)\s*[：:]/i.test(String(text || ""));
+}
+
+function hasNumericDumpWithoutInterpretation(text) {
+  const body = String(text || "");
+  if (body.length < 300) return false;
+  const numericTokens = body.match(/(?:[+-]?\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:元|万|亿)|近\s*\d+\s*日|\d+\s*日位置|\d+(?:\.\d+)?\s*分|夏普\s*\d+(?:\.\d+)?|回撤\s*[+-]?\d+(?:\.\d+)?)/g) || [];
+  if (numericTokens.length < 18) return false;
+  const interpretationTokens = body.match(/(?:走势|低位|高位|回调|启动|修复|转强|走弱|轮动|拥挤|偏热|追涨|确认|触发|边界|原因|因为|说明|意味着|适合|不适合|等待|观察|回避|分批|小仓|风控|前景|持仓逻辑)/g) || [];
+  const sectionLikeLines = body.split(/\n+/).filter((line) =>
+    /(?:\d+(?:\.\d+)?%|近\s*\d+\s*日|\d+\s*日位置)/.test(line)
+  );
+  return numericTokens.length > Math.max(interpretationTokens.length * 1.5, 16)
+    || sectionLikeLines.length >= 8;
 }
 
 function normalizeUserFacingFundAnswer(text) {
@@ -11287,6 +11370,18 @@ async function fetchMarketSnapshot() {
     fetchEastmoneyFastNews().catch((error) => ({ ok: false, error: error.message, items: [] }))
   ]);
 
+  const fundCandidates = {
+    stockFunds: stockFunds.items || [],
+    hybridFunds: hybridFunds.items || [],
+    indexFunds: indexFunds.items || [],
+    qdiiFunds: qdiiFunds.items || [],
+    preciousMetalFunds: preciousMetalFunds.items || []
+  };
+  const realtimeFundValuations = await fetchRealtimeFundValuationSnapshot(fundCandidates).catch((error) => {
+    console.warn("[market-realtime-valuation-error]", error.message);
+    recordError(error, { marketRealtimeValuationFailures: 1 });
+    return { ok: false, error: error.message, items: [] };
+  });
   const snapshotParts = [
     { key: "conceptBoards", label: "概念板块", critical: true, result: conceptBoards },
     { key: "industryBoards", label: "行业板块", critical: true, result: industryBoards },
@@ -11296,15 +11391,9 @@ async function fetchMarketSnapshot() {
     { key: "qdiiFunds", label: "QDII基金排行", critical: false, result: qdiiFunds },
     { key: "preciousMetals", label: "贵金属行情", critical: false, result: preciousMetals },
     { key: "preciousMetalFunds", label: "贵金属基金候选", critical: false, result: preciousMetalFunds },
+    { key: "realtimeFundValuations", label: "实时估算净值", critical: false, result: realtimeFundValuations },
     { key: "fastNews", label: "实时财经新闻", critical: true, result: fastNews }
   ];
-  const fundCandidates = {
-    stockFunds: stockFunds.items || [],
-    hybridFunds: hybridFunds.items || [],
-    indexFunds: indexFunds.items || [],
-    qdiiFunds: qdiiFunds.items || [],
-    preciousMetalFunds: preciousMetalFunds.items || []
-  };
   const themeRadar = buildThemeRadar({
     conceptBoards: conceptBoards.items || [],
     industryBoards: industryBoards.items || [],
@@ -11332,7 +11421,8 @@ async function fetchMarketSnapshot() {
     note: "公开数据快照可能有延迟；贵金属行情为公开报价，基金排行更偏近期动量，不等于长期质量。",
     dataQuality,
     marketIndicators: {
-      preciousMetals: preciousMetals.items || []
+      preciousMetals: preciousMetals.items || [],
+      realtimeFundValuations: realtimeFundValuations.items || []
     },
     themes: {
       conceptBoards: conceptBoards.items || [],
@@ -11348,6 +11438,7 @@ async function fetchMarketSnapshot() {
       "https://push2.eastmoney.com/api/qt/clist/get",
       "https://push2.eastmoney.com/api/qt/ulist.np/get",
       "https://fund.eastmoney.com/data/rankhandler.aspx",
+      "https://fundgz.1234567.com.cn/js/{code}.js",
       "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx",
       "https://np-listapi.eastmoney.com/comm/web/getFastNews"
     ]
@@ -11434,6 +11525,105 @@ function buildMarketCandidateCounts(fundCandidates = {}) {
     qdiiFunds: (fundCandidates.qdiiFunds || []).length,
     preciousMetalFunds: (fundCandidates.preciousMetalFunds || []).length
   };
+}
+
+async function fetchRealtimeFundValuationSnapshot(fundCandidates = {}) {
+  const fetchedAt = new Date().toISOString();
+  const seedItems = [
+    ...(fundCandidates.stockFunds || []),
+    ...(fundCandidates.hybridFunds || []),
+    ...(fundCandidates.indexFunds || []),
+    ...(fundCandidates.qdiiFunds || []),
+    ...(fundCandidates.preciousMetalFunds || [])
+  ];
+  const codes = mergeFundCodes(seedItems.map((item) => item.code)).slice(0, Number(process.env.MARKET_REALTIME_VALUATION_LIMIT || 24));
+  if (!codes.length) {
+    return { ok: false, label: "天天基金实时估算净值", error: "没有候选基金代码可抓取", items: [] };
+  }
+  const seedByCode = new Map(seedItems.filter((item) => item.code).map((item) => [item.code, item]));
+  const results = await Promise.all(codes.map(async (code) => {
+    try {
+      const valuation = await fetchFundValuation(code);
+      if (!valuation.ok) return null;
+      return normalizeRealtimeFundValuation(valuation, seedByCode.get(code), fetchedAt);
+    } catch (error) {
+      return {
+        code,
+        ok: false,
+        error: error.message,
+        source: `https://fundgz.1234567.com.cn/js/${code}.js`
+      };
+    }
+  }));
+  const items = results.filter((item) => item?.ok);
+  const failedCount = results.filter((item) => item && item.ok === false).length;
+  const freshCount = items.filter((item) => item.isFresh !== false).length;
+  updateStats({
+    counters: {
+      marketRealtimeValuationFetches: 1,
+      marketRealtimeValuationCodes: codes.length,
+      marketRealtimeValuationFailures: failedCount ? 1 : 0
+    }
+  });
+  return {
+    ok: items.length > 0,
+    label: "天天基金实时估算净值",
+    fetchedAt,
+    coverage: `${items.length}/${codes.length}`,
+    freshCount,
+    staleCount: items.length - freshCount,
+    items
+  };
+}
+
+function normalizeRealtimeFundValuation(valuation = {}, seed = {}, fetchedAt = new Date().toISOString()) {
+  const estimateTime = valuation.gztime || "";
+  const freshnessMinutes = estimateTime ? estimateFreshnessMinutes(estimateTime, fetchedAt) : null;
+  const isFresh = Number.isFinite(freshnessMinutes)
+    ? freshnessMinutes <= Number(process.env.MARKET_REALTIME_VALUATION_FRESH_MINUTES || 1440)
+    : null;
+  return {
+    ok: true,
+    code: valuation.fundcode || seed.code || "",
+    name: valuation.name || seed.name || "",
+    shareClass: seed.shareClass || inferFundShareClass(valuation.name || seed.name || ""),
+    type: seed.type || seed.label || "",
+    unitNav: toNumber(valuation.dwjz),
+    estimatedNav: toNumber(valuation.gsz),
+    estimatedChangePct: toNumber(valuation.gszzl),
+    navDate: valuation.jzrq || seed.navDate || "",
+    estimateTime,
+    estimateFreshnessMinutes: Number.isFinite(freshnessMinutes) ? freshnessMinutes : null,
+    freshnessLabel: formatEstimateFreshnessLabel(freshnessMinutes),
+    isFresh,
+    source: `https://fundgz.1234567.com.cn/js/${valuation.fundcode || seed.code || ""}.js`
+  };
+}
+
+function estimateFreshnessMinutes(estimateTime, fetchedAt = new Date().toISOString()) {
+  const estimateMs = parseChinaDateTimeMs(estimateTime);
+  const fetchedMs = Date.parse(fetchedAt);
+  if (!Number.isFinite(estimateMs) || !Number.isFinite(fetchedMs)) return null;
+  return Math.max(0, Math.round((fetchedMs - estimateMs) / 60000));
+}
+
+function parseChinaDateTimeMs(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (!match) {
+    const parsed = Date.parse(text);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  const [, year, month, day, hour = "00", minute = "00", second = "00"] = match;
+  return Date.parse(`${year}-${month}-${day}T${hour}:${minute}:${second}+08:00`);
+}
+
+function formatEstimateFreshnessLabel(minutes) {
+  if (!Number.isFinite(minutes)) return "未给出估算时间";
+  if (minutes <= 30) return "半小时内更新";
+  if (minutes <= 180) return "盘中较新";
+  if (minutes <= 1440) return "当日或隔夜更新";
+  return `约${Math.ceil(minutes / 1440)}天未更新`;
 }
 
 async function fetchEastmoneyFastNews() {
@@ -15198,15 +15388,20 @@ function buildFeeDecisionRule({
 
 function inferFundShareClass(name) {
   const compact = String(name || "").replace(/\s+/g, "").replace(/[（）()]/g, "");
-  const match = compact.match(/([A-Z])类?(?:人民币|美元)?$/i);
+  const currencyStripped = compact.replace(/(?:人民币|美元|港币)$/i, "");
+  const knownProductSuffixes = ["QDII", "ETF", "LOF", "FOF", "REIT"];
+  const rawSuffix = currencyStripped.match(/[A-Za-z]+$/)?.[0]?.toUpperCase() || "";
+  if (knownProductSuffixes.includes(rawSuffix)) {
+    return "";
+  }
+  const match = currencyStripped.match(/([A-Z])类?$/i);
   if (!match) {
     return "";
   }
 
-  const suffix = compact.match(/[A-Za-z]+$/)?.[0] || "";
+  const suffix = currencyStripped.match(/[A-Za-z]+$/)?.[0] || "";
   if (suffix.length > 1) {
     const prefix = suffix.slice(0, -1).toUpperCase();
-    const knownProductSuffixes = ["QDII", "ETF", "LOF", "FOF", "REIT"];
     if (!knownProductSuffixes.some((item) => prefix.endsWith(item))) {
       return "";
     }
@@ -18585,6 +18780,7 @@ export {
   evaluatePortfolioWatchReadiness,
   evaluatePortfolioWatchlistFreshness,
   evaluateFundAnswerQuality,
+  fetchRealtimeFundValuationSnapshot,
   filterFocusedPullbackRankingCandidates,
   getFeishuCardImageChunkSize,
   getFundReportChartLegendLines,
@@ -18602,11 +18798,13 @@ export {
   guardPortfolioWatchlistReadyUpdate,
   cancelDuplicatePortfolioActiveOrders,
   hasActivePortfolioOrderForAction,
+  hasNumericDumpWithoutInterpretation,
   hasPortfolioStarterBuySetup,
   ensurePortfolioHeldPositionsReviewed,
   ensurePortfolioReadyWatchlistReviewed,
   mergeFundWorkflowWatchlistIntoDeepDive,
   inferPullbackSetupSearchKeywords,
+  inferFundShareClass,
   isGenericPullbackSetupRequest,
   isPullbackSetupRequest,
   isFundChartGlossaryQuestion,
