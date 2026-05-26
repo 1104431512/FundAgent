@@ -385,6 +385,9 @@ assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "卖出�
 assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "运行中断回测"), "backtest diagnostics must catch decision continuity failures");
 assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "空仓等待回测"), "backtest diagnostics must catch excessive idle cash after de-risking");
 assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "试探仓后续回测"), "backtest diagnostics must require a scale-or-exit plan after tiny starter buys");
+const idleCashBacktestItem = portfolioBacktestDiagnostics.items.find((item) => item.label === "空仓等待回测");
+assert(idleCashBacktestItem.value.includes("可用现金"), "idle-cash backtest must use deployable cash rather than unsettled receivables as the headline denominator");
+assert(idleCashBacktestItem.note.includes("应收赎回"), "idle-cash backtest must still disclose pending redemption cash separately");
 assert(portfolioBacktestDiagnostics.phases.length >= 3, "backtest diagnostics must split history into replay phases");
 const backtestCapabilityDiagnostics = manager.buildPortfolioCapabilityDiagnostics(backtestFixture);
 assert(backtestCapabilityDiagnostics.items.some((item) => item.label === "重复成交回测"), "capability diagnostics must absorb historical backtest defects");

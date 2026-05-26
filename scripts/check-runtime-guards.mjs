@@ -1161,6 +1161,10 @@ const requiredPatterns = [
     message: "portfolio backtest diagnostics must force a scale-or-exit plan after tiny starter buys when cash remains excessive."
   },
   {
+    pattern: /deployableCashPct[\s\S]{0,900}可用现金约[\s\S]{0,260}应收赎回约/,
+    message: "portfolio backtest redeployment diagnostics must separate deployable cash from unsettled redemption receivables."
+  },
+  {
     pattern: /function buildPortfolioBacktestDiagnostics[\s\S]{0,9000}waitOnlyDecisionRuns[\s\S]{0,1200}过度保守回测/,
     message: "portfolio backtest diagnostics must detect repeated wait-only decisions while cash remains deployable."
   },

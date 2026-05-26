@@ -8037,10 +8037,14 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
   }
 
   const totalAsset = Number(account.totalAsset || 0);
-  const cashLike = Number(account.cash || 0) + Number(account.receivableCash || 0);
+  const cash = Number(account.cash || 0);
+  const receivableCash = Number(account.receivableCash || 0);
+  const cashLike = cash + receivableCash;
   const pendingBuy = Number(account.pendingBuyAmount || 0);
   const positionWeightPct = Number(account.positionWeightPct || 0);
+  const deployableCashPct = totalAsset > 0 ? cash / totalAsset * 100 : null;
   const cashLikePct = totalAsset > 0 ? cashLike / totalAsset * 100 : null;
+  const receivableCashPct = totalAsset > 0 ? receivableCash / totalAsset * 100 : null;
   const pendingBuyPct = totalAsset > 0 ? pendingBuy / totalAsset * 100 : null;
   const investedValue = Number(account.investedValue || 0);
   const effectivelyFlat = positions.length === 0
@@ -8049,8 +8053,8 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
   const readyCount = watchlist.filter((item) => item.status === "ready").length;
   const nearCount = watchlist.filter((item) => ["ready", "waiting_pullback"].includes(item.status)).length;
   if (
-    Number.isFinite(cashLikePct)
-    && cashLikePct >= 65
+    Number.isFinite(deployableCashPct)
+    && deployableCashPct >= 60
     && effectivelyFlat
     && (!Number.isFinite(pendingBuyPct) || pendingBuyPct <= 5)
     && !account.riskBudget?.blockNewBuys
@@ -8058,14 +8062,14 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
     add(
       "warning",
       "空仓等待回测",
-      `可部署资金约${formatFallbackPct(cashLikePct)}`,
-      `当前仓位${formatFallbackPct(positionWeightPct)}，待确认买入${formatFallbackPct(pendingBuyPct || 0)}，自选池接近候选${nearCount}只、ready ${readyCount}只；经理不能长期只说等待，必须给0.5%-2.5%试探或写清前三个候选的精确缺口。`,
+      `可用现金约${formatFallbackPct(deployableCashPct)}`,
+      `当前仓位${formatFallbackPct(positionWeightPct)}，待确认买入${formatFallbackPct(pendingBuyPct || 0)}，应收赎回约${formatFallbackPct(receivableCashPct || 0)}；自选池接近候选${nearCount}只、ready ${readyCount}只。经理不能长期只说等待，必须给0.5%-2.5%试探或写清前三个候选的精确缺口。`,
       "再部署能力"
     );
   }
   if (
-    Number.isFinite(cashLikePct)
-    && cashLikePct >= 60
+    Number.isFinite(deployableCashPct)
+    && deployableCashPct >= 60
     && effectivelyFlat
     && Number.isFinite(pendingBuyPct)
     && pendingBuyPct > 0
@@ -8075,7 +8079,7 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
     add(
       "info",
       "试探仓后续回测",
-      `试探仓${formatFallbackPct(pendingBuyPct)} / 可部署${formatFallbackPct(cashLikePct)}`,
+      `试探仓${formatFallbackPct(pendingBuyPct)} / 可用现金${formatFallbackPct(deployableCashPct)}`,
       `已有小仓试探但组合仍接近空仓；下一轮必须写清“加到3%-5%/继续观察/退出”的触发条件，不能买完1%多以后又长期无动作。`,
       "再部署能力"
     );
@@ -8085,8 +8089,8 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
     .filter((item) => item.status === "ready" || Number(item.readinessScore || 0) >= 75)
     .filter((item) => item.code && !hasRecentPortfolioBuyForCode(item.code, { transactions, orders }));
   if (
-    Number.isFinite(cashLikePct)
-    && cashLikePct >= 55
+    Number.isFinite(deployableCashPct)
+    && deployableCashPct >= 55
     && readyOpportunityCandidates.length
     && !account.riskBudget?.blockNewBuys
   ) {
@@ -8106,8 +8110,8 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
     totalAsset
   });
   if (
-    Number.isFinite(cashLikePct)
-    && cashLikePct >= 55
+    Number.isFinite(deployableCashPct)
+    && deployableCashPct >= 55
     && missedFollowThroughCandidates.length
     && !account.riskBudget?.blockNewBuys
   ) {
@@ -8135,8 +8139,8 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
       && /(等待|观望|观察|继续看|未提交|不买|暂不买|0元|零元|没有合格|没有可买|等待机会)/.test(text);
   });
   if (
-    Number.isFinite(cashLikePct)
-    && cashLikePct >= 60
+    Number.isFinite(deployableCashPct)
+    && deployableCashPct >= 60
     && waitOnlyDecisionRuns.length >= 3
     && !account.riskBudget?.blockNewBuys
   ) {
@@ -8154,8 +8158,8 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
     && !portfolioBacktestRunHasSide(run, "SELL")
   );
   if (
-    Number.isFinite(cashLikePct)
-    && cashLikePct >= 55
+    Number.isFinite(deployableCashPct)
+    && deployableCashPct >= 55
     && nearCount > 0
     && frozenDecisionRuns.length >= 3
     && !account.riskBudget?.blockNewBuys
@@ -8165,7 +8169,7 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
       "warning",
       "仓位冻结回测",
       `${frozenDecisionRuns.length} 次决策无申赎`,
-      `${dates.join("、") || "近期多次决策"} 都没有形成申购或赎回；若组合仍有${formatFallbackPct(cashLikePct)}可部署资金和${nearCount}只接近候选，下一轮必须做小仓试探、主动降级或明确下一次触发复查时间，不能只把仓位停在第一轮操作。`,
+      `${dates.join("、") || "近期多次决策"} 都没有形成申购或赎回；若组合仍有${formatFallbackPct(deployableCashPct)}可用现金和${nearCount}只接近候选，下一轮必须做小仓试探、主动降级或明确下一次触发复查时间，不能只把仓位停在第一轮操作。`,
       "组合管理"
     );
   }
