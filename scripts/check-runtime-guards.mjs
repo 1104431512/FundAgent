@@ -733,6 +733,10 @@ const requiredPatterns = [
     message: "portfolio order lifecycle must cancel duplicate same-fund active orders before they double-execute."
   },
   {
+    pattern: /function processPortfolioOrderLifecycle[\s\S]{0,3600}hasPortfolioTransactionForOrderDedupe[\s\S]{0,260}rejectDuplicatePortfolioConfirmOrder[\s\S]{0,2800}function hasPortfolioTransactionForOrderDedupe/,
+    message: "portfolio order lifecycle must reject duplicate same-day same-fund confirmations before recording another transaction."
+  },
+  {
     pattern: /现金闲置风险[\s\S]{0,360}不能只说等待机会/,
     message: "portfolio capability diagnostics must flag high-cash over-waiting as an actionable manager weakness."
   },

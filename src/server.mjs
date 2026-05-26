@@ -5690,6 +5690,10 @@ async function processPortfolioOrderLifecycle(db, run, config = getEffectiveConf
     }
 
     if (order.navSnapshot?.nav && order.confirmDate <= now.date && order.status !== "confirmed") {
+      if (hasPortfolioTransactionForOrderDedupe(db, order, run)) {
+        rejectDuplicatePortfolioConfirmOrder(order, result);
+        continue;
+      }
       const transaction =
         order.side === "BUY"
           ? confirmPortfolioBuyOrder(db, order, profile, run)
@@ -5737,6 +5741,54 @@ function rejectImpossiblePortfolioSellOrder(order = {}, result = null) {
   order.status = "rejected";
   order.rejectedAt = new Date().toISOString();
   order.rejectionReason = "赎回确认时已无可卖持仓或份额，系统自动作废该旧订单。";
+  addOrderTimeline(order, "rejected", order.rejectionReason);
+  if (result) {
+    result.notes.push({
+      action: order.side,
+      code: order.code,
+      name: order.name,
+      status: "rejected",
+      reason: order.rejectionReason
+    });
+    result.orderUpdates.push({
+      id: order.id,
+      code: order.code,
+      name: order.name,
+      side: order.side,
+      beforeStatus,
+      afterStatus: order.status,
+      priceDate: order.priceDate,
+      confirmDate: order.confirmDate
+    });
+    result.updatedOrders += 1;
+  }
+}
+
+function hasPortfolioTransactionForOrderDedupe(db = {}, order = {}, run = {}) {
+  const key = getPortfolioTransactionDedupeKey({
+    date: run.date || order.confirmDate || order.priceDate || order.submittedAt,
+    side: order.side,
+    code: order.code
+  });
+  if (!key) return false;
+  return (db.transactions || []).some((transaction) =>
+    !transaction.reversed
+    && getPortfolioTransactionDedupeKey(transaction) === key
+  );
+}
+
+function getPortfolioTransactionDedupeKey(value = {}) {
+  const date = normalizePortfolioEventDate(value.date || value.navDate || value.createdAt || value.confirmedAt);
+  const side = String(value.side || value.action || "").toUpperCase();
+  const code = String(value.code || "").trim();
+  return date && side && code && ["BUY", "SELL"].includes(side) ? `${date}|${side}|${code}` : "";
+}
+
+function rejectDuplicatePortfolioConfirmOrder(order = {}, result = null) {
+  const beforeStatus = order.status || "";
+  order.status = "rejected";
+  order.rejectedAt = new Date().toISOString();
+  order.rejectionReason = "同一交易日同一基金同方向已有确认成交，系统拒绝重复确认，避免虚拟账本重复买卖。";
   addOrderTimeline(order, "rejected", order.rejectionReason);
   if (result) {
     result.notes.push({
@@ -21349,6 +21401,7 @@ export {
   cancelDuplicatePortfolioActiveOrders,
   hasActivePortfolioOrderForAction,
   hasNumericDumpWithoutInterpretation,
+  hasPortfolioTransactionForOrderDedupe,
   hasPortfolioStarterBuySetup,
   ensurePortfolioHeldPositionsReviewed,
   ensurePortfolioRedeploymentPlanReviewed,

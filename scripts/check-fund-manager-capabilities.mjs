@@ -2112,6 +2112,30 @@ assert.equal(duplicateOrderDb.orders.find((order) => order.id === "older").statu
 assert.equal(duplicateOrderDb.orders.find((order) => order.id === "newer").status, "cancelled", "duplicate order dedupe must cancel later duplicate orders");
 manager.syncPortfolioActiveOrderReservations(duplicateOrderDb);
 assert.equal(duplicateOrderDb.account.positions[0].pendingSellUnits, 300, "active sell reservations must reflect only the surviving pending order");
+assert.equal(manager.hasPortfolioTransactionForOrderDedupe({
+  transactions: [
+    { id: "txn_old", date: "2026-05-26", side: "SELL", code: "008327", amount: 4200 }
+  ]
+}, {
+  id: "ord_dup",
+  side: "SELL",
+  code: "008327",
+  status: "priced",
+  priceDate: "2026-05-26",
+  confirmDate: "2026-05-26"
+}, { date: "2026-05-26" }), true, "order lifecycle must reject same-day same-fund same-side duplicate confirmations before recording another transaction");
+assert.equal(manager.hasPortfolioTransactionForOrderDedupe({
+  transactions: [
+    { id: "txn_old", date: "2026-05-26", side: "SELL", code: "008327", amount: 4200 }
+  ]
+}, {
+  id: "ord_next_day",
+  side: "SELL",
+  code: "008327",
+  status: "priced",
+  priceDate: "2026-05-27",
+  confirmDate: "2026-05-27"
+}, { date: "2026-05-27" }), false, "duplicate confirmation guard must still allow a later-day staged sell if it is explicitly generated");
 const duplicateSettlementDb = manager.normalizePortfolioDb({
   account: { initialCapital: 100000, cash: 70000, receivableCash: 1500, positions: [] },
   settlements: [
