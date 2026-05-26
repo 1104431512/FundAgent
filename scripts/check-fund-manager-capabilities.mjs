@@ -2473,6 +2473,15 @@ const noisyMarketSnapshot = {
       quoteTime: "10:00",
       noisyRawPayload: "NOISY_MARKET_PAYLOAD".repeat(300)
     })),
+    globalMarkets: Array.from({ length: 12 }, (_, index) => ({
+      code: index === 0 ? "NDX" : `GM${index}`,
+      name: index === 0 ? "纳斯达克" : `海外市场${index}`,
+      latest: 20000 + index,
+      changePct: index / 5,
+      fiveDayPct: index / 3,
+      quoteTime: "22:30",
+      noisyRawPayload: "NOISY_GLOBAL_PAYLOAD".repeat(300)
+    })),
     realtimeFundValuations: Array.from({ length: 18 }, (_, index) => ({
       code: `0001${String(index).padStart(2, "0")}`,
       name: `实时估值基金${index}`,
@@ -2534,6 +2543,8 @@ const compactMarketSnapshotJson = JSON.stringify(compactMarketSnapshot);
 assert(compactMarketSnapshot.dataQuality.level === "partial", "compact market snapshot must preserve data-quality level");
 assert.equal(compactMarketSnapshot.fundCandidates.stockFunds.length, 6, "compact market snapshot must cap fund ranking candidates before model prompts");
 assert.equal(compactMarketSnapshot.marketIndicators.preciousMetals.length, 6, "compact market snapshot must cap market quote candidates before model prompts");
+assert.equal(compactMarketSnapshot.marketIndicators.globalMarkets.length, 8, "compact market snapshot must include capped overseas market and FX quotes");
+assert.equal(compactMarketSnapshot.marketIndicators.globalMarkets[0].name, "纳斯达克", "compact market snapshot must preserve overseas market quote names");
 assert.equal(compactMarketSnapshot.marketIndicators.realtimeFundValuations.length, 12, "compact market snapshot must include capped real-time valuation candidates");
 assert(compactMarketSnapshot.marketIndicators.realtimeFundValuations[0].freshness === "半小时内更新", "compact market snapshot must preserve real-time valuation freshness labels");
 assert(compactMarketSnapshot.themeRadar[0]["板块位置"] === "交易拥挤", "compact market snapshot must carry Chinese theme-stage labels");

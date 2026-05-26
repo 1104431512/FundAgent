@@ -91,6 +91,14 @@ const requiredPatterns = [
     message: "market snapshots must carry a real-time or near-real-time fund valuation layer."
   },
   {
+    pattern: /marketIndicators\.globalMarkets/,
+    message: "market snapshots must carry overseas index and FX quotes for QDII decisions."
+  },
+  {
+    pattern: /function fetchGlobalMarketQuotes[\s\S]{0,2200}100\.NDX[\s\S]{0,600}133\.USDCNH/,
+    message: "global market quote fetching must include key US/HK/Japan index and offshore RMB references."
+  },
+  {
     pattern: /function inferFundShareClass[\s\S]{0,500}knownProductSuffixes\.includes\(rawSuffix\)[\s\S]{0,80}return ""/,
     message: "share-class inference must not misread QDII/ETF/FOF product suffixes as A/C/I share classes."
   },
@@ -483,7 +491,7 @@ const requiredPatterns = [
     message: "model prompts must use a compact market snapshot that preserves key evidence without raw payload bloat."
   },
   {
-    pattern: /function recommendFundsWithModel[\s\S]{0,1800}marketSnapshotForModel = compactMarketSnapshotForModel\(marketSnapshot\)[\s\S]{0,2600}JSON\.stringify\(marketSnapshotForModel \|\| \{\}, null, 2\)/,
+    pattern: /function recommendFundsWithModel[\s\S]{0,1800}marketSnapshotForModel = compactMarketSnapshotForModel\(marketSnapshot\)[\s\S]{0,3400}JSON\.stringify\(marketSnapshotForModel \|\| \{\}, null, 2\)/,
     message: "fund recommendation prompts must send compact market snapshots instead of full raw snapshots."
   },
   {
@@ -495,7 +503,7 @@ const requiredPatterns = [
     message: "portfolio decisions must use compact market snapshots to avoid model context-window failures."
   },
   {
-    pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,1800}compactHeldProfiles = \(heldProfiles \|\| \[\]\)\.map\(compactPortfolioReviewProfile\)[\s\S]{0,2600}JSON\.stringify\(compactHeldProfiles, null, 2\)/,
+    pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,1800}compactHeldProfiles = \(heldProfiles \|\| \[\]\)\.map\(compactPortfolioReviewProfile\)[\s\S]{0,3400}JSON\.stringify\(compactHeldProfiles, null, 2\)/,
     message: "portfolio decisions must compact held fund profiles before model prompts."
   },
   {

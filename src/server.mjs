@@ -1412,6 +1412,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "必须执行组合穿透暴露检查：同题材仓位、同一底层前十大持仓重叠、单一风格过热时，组合经理和风控经理必须写清不加仓或减风险条件。",
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，marketView、team 和 actions.dataBasis 必须写清数据缺口；缺少关键板块、排行、新闻或贵金属模块时，只能 WATCH、HOLD 或小额试探，不能当作完整联网证据下重仓 BUY。",
     "必须使用 marketSnapshot.marketIndicators.realtimeFundValuations 复核候选当下温度和数据新鲜度；实时估算只能辅助判断追涨/止跌，成交和盈亏仍以确认净值为准。",
+    "若操作或候选涉及 QDII/海外基金，必须使用 marketSnapshot.marketIndicators.globalMarkets 复核外盘和人民币汇率温度，并写清净值披露时差。",
     "给用户看的 summary、reason 和 riskControl 要先讲走势、轮动和操作边界，再放必要数字；不要把每个动作写成一长串指标。",
     "如果候选基金缺少可验证净值或走势数据，倾向 WATCH，不要强行 BUY。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
@@ -8257,6 +8258,7 @@ function summarizeMarketSnapshot(snapshot) {
     dataQuality: compactMarketDataQuality(snapshot.dataQuality),
     marketIndicators: {
       preciousMetals: (snapshot.marketIndicators?.preciousMetals || []).slice(0, 10),
+      globalMarkets: (snapshot.marketIndicators?.globalMarkets || []).slice(0, 12),
       realtimeFundValuations: (snapshot.marketIndicators?.realtimeFundValuations || []).slice(0, 24)
     },
     themes: {
@@ -8286,6 +8288,7 @@ function compactMarketSnapshotForModel(snapshot = null) {
     dataQuality: summary.dataQuality,
     marketIndicators: {
       preciousMetals: compactMarketQuoteItems(summary.marketIndicators?.preciousMetals || [], 6),
+      globalMarkets: compactMarketQuoteItems(summary.marketIndicators?.globalMarkets || [], 8),
       realtimeFundValuations: compactRealtimeFundValuations(summary.marketIndicators?.realtimeFundValuations || [], 12)
     },
     themes: {
@@ -8378,6 +8381,11 @@ function compactThemeRadarForModel(theme = {}) {
     相关板块: (theme.evidence?.boards || []).slice(0, 2).map((item) => ({
       name: item.name || "",
       changePct: finiteMetricNumber(item.changePct)
+    })),
+    海外市场: (theme.evidence?.globalMarkets || []).slice(0, 2).map((item) => ({
+      name: item.name || "",
+      changePct: finiteMetricNumber(item.changePct),
+      quoteTime: item.quoteTime || ""
     })),
     相关新闻: (theme.evidence?.news || []).slice(0, 2).map((item) => item.title || "").filter(Boolean)
   };
@@ -9078,6 +9086,7 @@ function formatThemeRadarEvidenceLine(theme = {}) {
     theme.actionBias ? `操作倾向：${formatUserFacingFundLabel(theme.actionBias)}` : "",
     theme.primaryCatalyst ? `主要催化：${theme.primaryCatalyst}` : "",
     theme.evidence?.boards?.length ? `板块：${theme.evidence.boards.slice(0, 2).map((item) => `${item.name}${formatSignedNumber(item.changePct)}%`).join("/")}` : "",
+    theme.evidence?.globalMarkets?.length ? `海外：${theme.evidence.globalMarkets.slice(0, 2).map((item) => `${item.name}${formatSignedNumber(item.changePct)}%`).join("/")}` : "",
     theme.evidence?.news?.length ? `新闻：${theme.evidence.news.slice(0, 2).map((item) => item.title).join(" / ")}` : ""
   ].filter(Boolean);
   return `- ${fields.join("，")}`;
@@ -9116,6 +9125,20 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
       return `- ${fields.join("，")}`;
     }));
     lines.push("质量要求：实时估算只用于判断当下温度和风险，最终成交仍以确认净值为准；回答用户时优先解释走势含义，不要把每个数字全列出来。");
+  }
+  const globalMarkets = marketSnapshot.marketIndicators?.globalMarkets || [];
+  if (globalMarkets.length) {
+    lines.push("海外指数与汇率：");
+    lines.push(...globalMarkets.slice(0, 6).map((item) => {
+      const fields = [
+        item.name || item.code || "未知市场",
+        item.changePct !== null && item.changePct !== undefined ? `涨跌${formatFallbackPct(item.changePct)}` : "",
+        item.fiveDayPct !== null && item.fiveDayPct !== undefined ? `近5日${formatFallbackPct(item.fiveDayPct)}` : "",
+        item.quoteTime ? `时间${item.quoteTime}` : ""
+      ].filter(Boolean);
+      return `- ${fields.join("，")}`;
+    }));
+    lines.push("质量要求：QDII/海外基金必须结合外盘、汇率和净值披露时差判断，不要只看基金滞后净值。");
   }
   const themeRadar = selectRelevantThemeRadar(userText, marketSnapshot).slice(0, 5);
   if (themeRadar.length) {
@@ -10039,6 +10062,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "如果市场快照或下钻摘要里有题材雷达，必须先用题材阶段、前瞻评分、拥挤度和操作倾向判断赔率，再筛选基金。",
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
     "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度和数据新鲜度；但成交和盈亏仍以确认净值为准。",
+    "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
     "如果提供了候选基金下钻摘要，必须使用走势画像、风险、费用、持仓和可操作性评估来筛掉不适合的候选；不要只复述市场快照。",
     "如果提供了经理自选候选池，必须先复核这些已经沉淀的 ready/waiting/启动前夜候选；ready 可以进入主推荐评估，waiting 或启动前夜只能写备选观察和触发条件，不能当成自动买入。",
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，最终回答要用自然中文说明数据缺口、降低把握度；缺少贵金属/板块/排行/新闻模块时，不得声称已完整联网或给重仓买入。",
@@ -10137,6 +10161,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "用户更关心走势和分析思路，不要把回答写成数字清单。每只基金最多保留3个关键数字，其他用走势、位置、风险边界来解释。",
     "如果传入 marketSnapshot，可用它回答近期市场/题材问题；涉及黄金、白银或贵金属时，优先引用 marketIndicators.preciousMetals 和相关基金候选。",
     "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度和数据新鲜度；但成交和盈亏仍以确认净值为准。",
+    "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
     "如果市场快照或下钻摘要里有题材雷达，优先引用中文题材阶段、前瞻评分、拥挤度和操作倾向，避免只按历史涨幅回答。",
     "如果提供了候选基金下钻摘要，必须使用下钻候选的走势画像、风险、费用、持仓和可操作性评估来形成买/等/回避判断。",
     "如果提供了经理自选候选池，必须把它当成已经沉淀的备选来源先复核；ready 可以进入买入参考，waiting 或启动前夜只能说明等待条件。",
@@ -11357,6 +11382,7 @@ async function fetchMarketSnapshot() {
     qdiiFunds,
     preciousMetals,
     preciousMetalFunds,
+    globalMarketQuotes,
     fastNews
   ] = await Promise.all([
     fetchEastmoneyBoards("concept").catch((error) => ({ ok: false, error: error.message, items: [] })),
@@ -11367,6 +11393,7 @@ async function fetchMarketSnapshot() {
     fetchFundRanking("qdii", "QDII基金").catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchPreciousMetalQuotes().catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchPreciousMetalFundCandidates().catch((error) => ({ ok: false, error: error.message, items: [] })),
+    fetchGlobalMarketQuotes().catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchEastmoneyFastNews().catch((error) => ({ ok: false, error: error.message, items: [] }))
   ]);
 
@@ -11391,6 +11418,7 @@ async function fetchMarketSnapshot() {
     { key: "qdiiFunds", label: "QDII基金排行", critical: false, result: qdiiFunds },
     { key: "preciousMetals", label: "贵金属行情", critical: false, result: preciousMetals },
     { key: "preciousMetalFunds", label: "贵金属基金候选", critical: false, result: preciousMetalFunds },
+    { key: "globalMarketQuotes", label: "海外指数与汇率", critical: false, result: globalMarketQuotes },
     { key: "realtimeFundValuations", label: "实时估算净值", critical: false, result: realtimeFundValuations },
     { key: "fastNews", label: "实时财经新闻", critical: true, result: fastNews }
   ];
@@ -11398,6 +11426,7 @@ async function fetchMarketSnapshot() {
     conceptBoards: conceptBoards.items || [],
     industryBoards: industryBoards.items || [],
     preciousMetals: preciousMetals.items || [],
+    globalMarkets: globalMarketQuotes.items || [],
     fastNews: fastNews.items || [],
     fundCandidates
   });
@@ -11422,6 +11451,7 @@ async function fetchMarketSnapshot() {
     dataQuality,
     marketIndicators: {
       preciousMetals: preciousMetals.items || [],
+      globalMarkets: globalMarketQuotes.items || [],
       realtimeFundValuations: realtimeFundValuations.items || []
     },
     themes: {
@@ -11712,7 +11742,7 @@ const THEME_RADAR_RULES = [
   }
 ];
 
-function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMetals = [], fastNews = [], fundCandidates = {} } = {}) {
+function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMetals = [], globalMarkets = [], fastNews = [], fundCandidates = {} } = {}) {
   const allFunds = [
     ...(fundCandidates.stockFunds || []),
     ...(fundCandidates.hybridFunds || []),
@@ -11762,8 +11792,20 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
           quoteTime: item.quoteTime || ""
         }))
       : [];
+    const overseasMarkets = rule.id === "overseas_us" || rule.id === "hongkong"
+      ? globalMarkets
+          .filter((item) => textMatchesKeywords(`${item.name || ""} ${item.code || ""}`, rule.keywords))
+          .slice(0, 6)
+          .map((item) => ({
+            name: item.name || item.code || "",
+            latest: item.latest,
+            changePct: item.changePct,
+            fiveDayPct: item.fiveDayPct,
+            quoteTime: item.quoteTime || ""
+          }))
+      : [];
 
-    const catalystScore = clampScore(news.length * 12 + metals.filter((item) => Number.isFinite(item.changePct)).length * 4);
+    const catalystScore = clampScore(news.length * 12 + metals.filter((item) => Number.isFinite(item.changePct)).length * 4 + overseasMarkets.filter((item) => Number.isFinite(item.changePct)).length * 3);
     const boardScore = clampScore(
       boards.reduce((sum, item) => sum + Math.max(0, Number(item.changePct || 0)) * 4 + Math.max(0, Number(item.mainNetInflowPct || 0)) / 8, 0)
     );
@@ -11773,12 +11815,15 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
     const maxFundOneMonth = Math.max(0, ...fundOneMonthReturns);
     const avgFundOneMonth = averageNumeric(fundOneMonthReturns);
     const metalFiveDay = Math.max(0, ...metals.map((item) => Number(item.fiveDayPct || 0)));
-    const crowdingScore = clampScore(Math.max(0, maxBoardChange - 3) * 9 + Math.max(0, maxFundOneMonth - 15) * 1.2 + Math.max(0, metalFiveDay - 4) * 5);
+    const overseasFiveDay = Math.max(0, ...overseasMarkets.map((item) => Number(item.fiveDayPct || 0)));
+    const overseasDaily = Math.max(0, ...overseasMarkets.map((item) => Number(item.changePct || 0)));
+    const crowdingScore = clampScore(Math.max(0, maxBoardChange - 3) * 9 + Math.max(0, maxFundOneMonth - 15) * 1.2 + Math.max(0, metalFiveDay - 4) * 5 + Math.max(0, overseasFiveDay - 5) * 4);
     const lowPositionScore = clampScore(
       Math.max(0, 18 - maxFundOneMonth) * 2.4
       + Math.max(0, 8 - Math.max(0, avgFundOneMonth)) * 1.4
       + Math.max(0, 4 - maxBoardChange) * 4
       + Math.max(0, 5 - metalFiveDay) * 2
+      + Math.max(0, 3 - overseasDaily) * 2
     );
     const rotationScore = clampScore(
       catalystScore * 0.35
@@ -11807,8 +11852,8 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       lowPositionScore: round(lowPositionScore, 1),
       positionSignal,
       actionBias,
-      primaryCatalyst: news[0]?.title || boards[0]?.name || metals[0]?.name || "",
-      evidence: { news, boards, metals, funds }
+      primaryCatalyst: news[0]?.title || boards[0]?.name || metals[0]?.name || overseasMarkets[0]?.name || "",
+      evidence: { news, boards, metals, globalMarkets: overseasMarkets, funds }
     };
   }).filter((theme) =>
     theme.forwardScore >= 8
@@ -11947,6 +11992,62 @@ async function fetchPreciousMetalQuotes() {
         previousClose: toNumber(item.f18),
         amplitudePct: toNumber(item.f22),
         fiveDayPct: toNumber(item.f24),
+        quoteTime: formatEpochSeconds(item.f124),
+        source: secid ? `https://quote.eastmoney.com/unify/r/${secid}` : "https://push2.eastmoney.com/api/qt/ulist.np/get"
+      };
+    }).filter((item) => item.code && item.name)
+  };
+}
+
+async function fetchGlobalMarketQuotes() {
+  const defaultSecids = [
+    "100.NDX",
+    "100.SPX",
+    "100.HSI",
+    "100.N225",
+    "100.UDI",
+    "133.USDCNH"
+  ];
+  const secids = String(process.env.GLOBAL_MARKET_SECIDS || defaultSecids.join(","))
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 24);
+  if (!secids.length) {
+    return { ok: true, label: "海外指数与汇率", items: [] };
+  }
+  const url = new URL("https://push2.eastmoney.com/api/qt/ulist.np/get");
+  const params = {
+    fltt: "2",
+    secids: secids.join(","),
+    fields: "f12,f13,f14,f2,f3,f4,f15,f16,f17,f18,f22,f24,f25,f124,f152"
+  };
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+
+  const json = JSON.parse(await fetchText(url.href, "https://quote.eastmoney.com/"));
+  const diff = Array.isArray(json?.data?.diff) ? json.data.diff : [];
+  updateStats({ counters: { globalMarketQuoteFetches: 1 } });
+  return {
+    ok: true,
+    label: "海外指数与汇率",
+    items: diff.map((item) => {
+      const secid = item.f13 && item.f12 ? `${item.f13}.${item.f12}` : "";
+      return {
+        code: item.f12 || "",
+        secid,
+        name: item.f14 || "",
+        latest: toNumber(item.f2),
+        change: toNumber(item.f4),
+        changePct: toNumber(item.f3),
+        open: toNumber(item.f17),
+        high: toNumber(item.f15),
+        low: toNumber(item.f16),
+        previousClose: toNumber(item.f18),
+        amplitudePct: toNumber(item.f22),
+        fiveDayPct: toNumber(item.f24),
+        yearToDatePct: toNumber(item.f25),
         quoteTime: formatEpochSeconds(item.f124),
         source: secid ? `https://quote.eastmoney.com/unify/r/${secid}` : "https://push2.eastmoney.com/api/qt/ulist.np/get"
       };
@@ -18780,6 +18881,7 @@ export {
   evaluatePortfolioWatchReadiness,
   evaluatePortfolioWatchlistFreshness,
   evaluateFundAnswerQuality,
+  fetchGlobalMarketQuotes,
   fetchRealtimeFundValuationSnapshot,
   filterFocusedPullbackRankingCandidates,
   getFeishuCardImageChunkSize,
