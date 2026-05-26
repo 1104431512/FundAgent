@@ -13721,6 +13721,10 @@ async function fetchFundResearchDigest(code, seed = {}) {
       navDate: valuation.jzrq || seed.navDate || "",
       estimateTime: valuation.gztime || ""
     },
+    intradayTrend: valuation.intradayTrend || null,
+    intradayTrendLabel: valuation.intradayTrend?.label || valuation.intradayTrendLabel || "",
+    valuationSourceKind: valuation.sourceKind || "",
+    supplementalIntradaySourceKind: valuation.supplementalIntradaySourceKind || "",
     returns: {
       oneMonthPct: profile.syl_1y || seed.oneMonthPct || "",
       threeMonthPct: profile.syl_3y || seed.threeMonthPct || "",
@@ -15688,6 +15692,7 @@ function buildFundActionabilitySignals(digest) {
   const trend = digest.trendProfile || {};
   const risk = digest.risk?.oneYear || {};
   const fees = digest.fees || {};
+  const intradayTrend = digest.intradayTrend || digest.valuation?.intradayTrend || digest.nav?.intradayTrend || null;
   const isMoneyMarket = Boolean(digest.moneyMarket?.ok) || /货币/.test(`${digest.name || ""} ${digest.seed?.type || ""}`);
   const feeType = fees.shareClassFeeModel?.type || "unknown";
   const feeImpact = fees.feeImpact || null;
@@ -15710,6 +15715,16 @@ function buildFundActionabilitySignals(digest) {
   if (trend.trendLabel === "extended_uptrend") score -= 12;
   if (Number(trend.return20dPct) > 12) score -= 8;
   if (Number(trend.return60dPct) > 24) score -= 8;
+  if (intradayTrend?.label) {
+    const intradayLabel = String(intradayTrend.label || "");
+    if (/盘中回落/.test(intradayLabel)) score -= 3;
+    if (/冲高回落|尾盘转弱/.test(intradayLabel)) score -= 8;
+    if (/盘中走强|低位回升|尾盘转强/.test(intradayLabel)
+      && ["buyable_now", "staged_buy"].includes(trend.entryBias)
+      && ["pullback_complete", "launch_setup"].includes(trend.pullbackSetup?.signal)) {
+      score += 3;
+    }
+  }
   if (isMoneyMarket) {
     score += digest.moneyMarket?.ok ? 16 : 0;
   }
@@ -15740,12 +15755,19 @@ function buildFundActionabilitySignals(digest) {
 
   const entryDiscipline = getActionabilityEntryDiscipline(trend, { isMoneyMarket });
   const freshnessDiscipline = getActionabilityFreshnessDiscipline(digest, { isMoneyMarket });
+  const intradayDiscipline = getActionabilityIntradayDiscipline(digest, { isMoneyMarket });
+  if (Number.isFinite(intradayDiscipline.scorePenalty)) {
+    score -= intradayDiscipline.scorePenalty;
+  }
   let boundedScore = Math.max(0, Math.min(100, Math.round(score)));
   if (Number.isFinite(entryDiscipline.scoreCap)) {
     boundedScore = Math.min(boundedScore, entryDiscipline.scoreCap);
   }
   if (Number.isFinite(freshnessDiscipline.scoreCap)) {
     boundedScore = Math.min(boundedScore, freshnessDiscipline.scoreCap);
+  }
+  if (Number.isFinite(intradayDiscipline.scoreCap)) {
+    boundedScore = Math.min(boundedScore, intradayDiscipline.scoreCap);
   }
   const action = boundedScore >= 78
     ? "buy"
@@ -15777,6 +15799,7 @@ function buildFundActionabilitySignals(digest) {
   const decisiveEvidence = [
     trend.ok ? formatTrendActionabilityEvidence(trend) : "",
     trend.pullbackSetup?.signal && trend.pullbackSetup.signal !== "none" ? `回调启动信号=${trend.pullbackSetup.signalText}，评分=${trend.pullbackSetup.score}` : "",
+    formatIntradayTrendActionabilityEvidence(intradayTrend),
     risk.ok ? `近一年收益${risk.totalReturnPct}%，最大回撤${risk.maxDrawdownPct}%，夏普${risk.sharpe}` : "",
     holdingsOutlook.evidence,
     formatMoneyMarketEvidence(digest.moneyMarket),
@@ -15786,6 +15809,7 @@ function buildFundActionabilitySignals(digest) {
   const decisionBlocker = [
     entryDiscipline.blocker || "",
     freshnessDiscipline.blocker || "",
+    intradayDiscipline.blocker || "",
     trend.invalidationHint || "",
     isMoneyMarket ? "货币基金主要用于现金管理，不适合作为权益进攻仓或追求高弹性的配置。" : "",
     trend.trendLabel === "extended_uptrend" ? "短期涨幅偏热，不符合回调完成后启动的买点。" : "",
@@ -15794,7 +15818,7 @@ function buildFundActionabilitySignals(digest) {
     missingFeeData.length ? `费用数据缺口：${missingFeeData.slice(0, 3).join("/")}` : "",
     feeImpact?.feeDragLevel === "high" ? "持有期费用拖累偏高，买入强度需下调或改选低费率份额。" : "",
     highDrawdown ? "近一年回撤偏深，只能按卫星仓或战术仓处理。" : ""
-  ].filter(Boolean).slice(0, 2);
+  ].filter(Boolean).slice(0, 3);
 
   return {
     score: boundedScore,
@@ -15855,6 +15879,30 @@ function getActionabilityFreshnessDiscipline(digest = {}, { isMoneyMarket = fals
   return { scoreCap: null, blocker: "" };
 }
 
+function getActionabilityIntradayDiscipline(digest = {}, { isMoneyMarket = false } = {}) {
+  if (isMoneyMarket || !digest || typeof digest !== "object") {
+    return { scoreCap: null, scorePenalty: 0, blocker: "" };
+  }
+  const intradayTrend = digest.intradayTrend || digest.valuation?.intradayTrend || digest.nav?.intradayTrend || null;
+  if (!intradayTrend || typeof intradayTrend !== "object") {
+    return { scoreCap: null, scorePenalty: 0, blocker: "" };
+  }
+  const label = String(intradayTrend.label || "");
+  const pullbackFromHighPct = Number(intradayTrend.pullbackFromHighPct);
+  const recentSlopePct = Number(intradayTrend.recentSlopePct);
+  const isFading = /冲高回落|尾盘转弱/.test(label)
+    || (Number.isFinite(pullbackFromHighPct) && pullbackFromHighPct <= -0.6)
+    || (Number.isFinite(recentSlopePct) && recentSlopePct <= -0.3);
+  if (!isFading) {
+    return { scoreCap: null, scorePenalty: 0, blocker: "" };
+  }
+  return {
+    scoreCap: 58,
+    scorePenalty: 8,
+    blocker: `系统盘中走势降级：${formatIntradayTrendActionabilityEvidence(intradayTrend)}，不能把估算涨幅当追买理由。`
+  };
+}
+
 function formatTrendActionabilityEvidence(trend = {}) {
   return [
     `走势=${trend.trendLabelText || formatTrendLabel(trend.trendLabel)}`,
@@ -15865,6 +15913,18 @@ function formatTrendActionabilityEvidence(trend = {}) {
     Number.isFinite(Number(trend.return60dPct)) ? `60日=${trend.return60dPct}%` : "",
     Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置=${trend.lowPositionPct120}%` : "",
     Number.isFinite(Number(trend.lowPositionPct250)) ? `250日位置=${trend.lowPositionPct250}%` : ""
+  ].filter(Boolean).join("，");
+}
+
+function formatIntradayTrendActionabilityEvidence(intradayTrend = null) {
+  if (!intradayTrend || typeof intradayTrend !== "object") return "";
+  const label = String(intradayTrend.label || "").trim();
+  if (!label || label === "盘中走势不足") return "";
+  return [
+    `盘中估值=${label}`,
+    Number.isFinite(Number(intradayTrend.changeFromOpenPct)) ? `开盘后${formatFallbackPct(intradayTrend.changeFromOpenPct)}` : "",
+    Number.isFinite(Number(intradayTrend.pullbackFromHighPct)) ? `距盘中高点${formatFallbackPct(intradayTrend.pullbackFromHighPct)}` : "",
+    Number.isFinite(Number(intradayTrend.recentSlopePct)) ? `尾盘${formatFallbackPct(intradayTrend.recentSlopePct)}` : ""
   ].filter(Boolean).join("，");
 }
 
@@ -16069,7 +16129,8 @@ async function fetchFundProfile(code) {
     risk: { oneYear: pickRiskPeriod(riskMetrics.periods?.["1y"] || {}) },
     fees: feeProfile,
     holdings: holdingsSummary,
-    holdingRealtimePulse
+    holdingRealtimePulse,
+    intradayTrend: valuation.intradayTrend || null
   });
   return {
     ok: true,
@@ -16082,6 +16143,10 @@ async function fetchFundProfile(code) {
     estimatedNav: valuation.gsz || "",
     estimatedChangePct: valuation.gszzl || "",
     estimateTime: valuation.gztime || "",
+    intradayTrend: valuation.intradayTrend || null,
+    intradayTrendLabel: valuation.intradayTrend?.label || valuation.intradayTrendLabel || "",
+    valuationSourceKind: valuation.sourceKind || "",
+    supplementalIntradaySourceKind: valuation.supplementalIntradaySourceKind || "",
     fees: feeProfile,
     returns: {
       oneMonthPct: profile.syl_1y || "",

@@ -2336,6 +2336,61 @@ assert(
   hotButStrongActionability.decisionBlocker.some((item) => item.includes("系统动作降级") && item.includes("不能给买入或分批买入动作")),
   "actionability blocker must explain why a hot fund is downgraded instead of sounding inconsistent"
 );
+const intradayFadingStrongActionability = manager.buildFundActionabilitySignals({
+  ...holdingsSupportedDigest,
+  code: "000035",
+  name: "盘中冲高回落基金C",
+  trendProfile: {
+    ...holdingsSupportedDigest.trendProfile,
+    ok: true,
+    latestDate: "2099-05-22",
+    entryBias: "buyable_now",
+    trendLabel: "uptrend",
+    pullbackSetup: { signal: "pullback_complete", signalText: "回调完成", score: 84 },
+    lowPositionPct120: 35.2,
+    lowPositionPct250: 42.7,
+    return5dPct: 1.2,
+    return10dPct: 2.4,
+    return20dPct: 4.1,
+    return60dPct: 5.6
+  },
+  intradayTrend: {
+    label: "盘中走强，冲高回落，尾盘转弱",
+    changeFromOpenPct: 0.42,
+    pullbackFromHighPct: -0.91,
+    recentSlopePct: -0.38,
+    points: 80
+  },
+  risk: {
+    oneYear: {
+      ok: true,
+      totalReturnPct: 18.4,
+      annualizedReturnPct: 18.6,
+      maxDrawdownPct: -10.2,
+      sharpe: 1.12
+    }
+  },
+  fees: {
+    shareClass: "C",
+    shareClassFeeModel: { type: "sales_service_fee", label: "C类：偏销售服务费模型" },
+    feeImpact: {
+      oneYearCostPer10000: 42,
+      feeDragLevel: "low",
+      missingFeeData: []
+    },
+    missingFeeData: []
+  }
+});
+assert.equal(intradayFadingStrongActionability.action, "wait", "actionability must not say buy/staged-buy when intraday valuation fades from the high");
+assert(intradayFadingStrongActionability.score < 62, "intraday fading discipline must cap actionability below staged-buy threshold");
+assert(
+  intradayFadingStrongActionability.decisiveEvidence.some((item) => item.includes("盘中估值") && item.includes("冲高回落")),
+  "actionability evidence must include intraday valuation trend when it changes the decision"
+);
+assert(
+  intradayFadingStrongActionability.decisionBlocker.some((item) => item.includes("系统盘中走势降级") && item.includes("不能把估算涨幅当追买理由")),
+  "actionability blocker must explain intraday fading downgrades in customer-readable Chinese"
+);
 const staleButStrongDigest = {
   ...holdingsSupportedDigest,
   code: "000034",
