@@ -2588,14 +2588,19 @@ async function fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist =
     watchlist: activeWatchlist,
     totalAsset: options.account?.totalAsset || 0
   });
+  const dataBlockedCandidates = findPortfolioBacktestDataBlockedCandidates(activeWatchlist);
   const forceBlockedReplacementScan = shouldForcePortfolioBlockedFollowThroughSeedScan(options.account, activeWatchlist);
-  if (deficit <= 0 && !forceRedeploymentScan && !forceBlockedReplacementScan) return [];
+  const forceDataBlockedScan = shouldForcePortfolioDataBlockedSeedScan(options.account, activeWatchlist);
+  if (deficit <= 0 && !forceRedeploymentScan && !forceBlockedReplacementScan && !forceDataBlockedScan) return [];
 
-  const userText = buildPortfolioWatchlistSeedSearchText(blockedFollowThroughCandidates);
+  const userText = buildPortfolioWatchlistSeedSearchText([
+    ...blockedFollowThroughCandidates,
+    ...dataBlockedCandidates
+  ]);
   const themeRadar = Array.isArray(marketSnapshot?.themeRadar) ? marketSnapshot.themeRadar : [];
   const candidates = await fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar);
   return selectPortfolioWatchlistSeedCandidates(candidates, activeWatchlist, themeRadar, {
-    limit: forceRedeploymentScan || forceBlockedReplacementScan
+    limit: forceRedeploymentScan || forceBlockedReplacementScan || forceDataBlockedScan
       ? finiteNumberOr(process.env.PORTFOLIO_REDEPLOYMENT_SEED_LIMIT, 8)
       : Math.min(deficit, finiteNumberOr(process.env.PORTFOLIO_WATCHLIST_SEED_LIMIT, 6))
   });
@@ -2618,9 +2623,17 @@ function shouldForcePortfolioBlockedFollowThroughSeedScan(account = {}, watchlis
   }).length > 0;
 }
 
-function buildPortfolioWatchlistSeedSearchText(blockedFollowThroughCandidates = []) {
-  const keywords = inferPortfolioBlockedFollowThroughSearchKeywords(blockedFollowThroughCandidates);
-  return ["回调完成", "低位", "准备启动", "基金", ...keywords].join(" ");
+function shouldForcePortfolioDataBlockedSeedScan(account = {}, watchlist = []) {
+  const totalAsset = Number(account.totalAsset || 0);
+  const cash = Number(account.cash || 0);
+  const cashPct = totalAsset > 0 ? cash / totalAsset * 100 : null;
+  if (!Number.isFinite(cashPct) || cashPct < 55 || account.riskBudget?.blockNewBuys) return false;
+  return findPortfolioBacktestDataBlockedCandidates(watchlist).length > 0;
+}
+
+function buildPortfolioWatchlistSeedSearchText(seedContextCandidates = []) {
+  const keywords = inferPortfolioBlockedFollowThroughSearchKeywords(seedContextCandidates);
+  return ["回调完成", "低位", "准备启动", "同主题替代", "基金", ...keywords].join(" ");
 }
 
 function inferPortfolioBlockedFollowThroughSearchKeywords(candidates = []) {
@@ -2628,7 +2641,10 @@ function inferPortfolioBlockedFollowThroughSearchKeywords(candidates = []) {
     item.name,
     item.reason,
     item.blockingReason,
+    item.blocker,
     item.evidence,
+    ...(item.setupEvidence || []),
+    ...(item.riskNotes || []),
     ...(item.readinessGaps || [])
   ].filter(Boolean).join(" ")).join(" "));
   const groups = [
@@ -22488,6 +22504,7 @@ export {
   shouldRejectImpossiblePortfolioSellOrder,
   shouldPersistRuntimeStats,
   shouldForcePortfolioBlockedFollowThroughSeedScan,
+  shouldForcePortfolioDataBlockedSeedScan,
   shouldForcePortfolioRedeploymentSeedScan,
   summarizePortfolioOrder,
   summarizePortfolioEquityBrief,

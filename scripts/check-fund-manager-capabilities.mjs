@@ -687,6 +687,16 @@ assert(
   "capability queue must turn data-blocked candidates into explicit data-source repair work"
 );
 assert.equal(
+  manager.shouldForcePortfolioDataBlockedSeedScan(dataBlockedFixture.account, dataBlockedFixture.watchlist),
+  true,
+  "data-blocked candidates should force a replacement seed scan when cash is deployable"
+);
+const dataBlockedKeywords = manager.inferPortfolioBlockedFollowThroughSearchKeywords(dataBlockedFixture.watchlist);
+assert(dataBlockedKeywords.includes("医药"), "data-blocked replacement scan must infer theme keywords from the blocked candidate");
+const dataBlockedSearchText = manager.buildPortfolioWatchlistSeedSearchText(dataBlockedFixture.watchlist);
+assert(dataBlockedSearchText.includes("同主题替代"), "data-blocked seed search text must explicitly search for same-theme substitutes");
+assert(dataBlockedSearchText.includes("医药"), "data-blocked seed search text must carry blocked-candidate themes into low-position recall");
+assert.equal(
   manager.buildPortfolioMissedFollowThroughReviewQueue(blockedFollowThroughFixture).length,
   0,
   "missed follow-through review queue must not force reviews for blocked or structurally unbuyable candidates"

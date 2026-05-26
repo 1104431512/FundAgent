@@ -1369,8 +1369,12 @@ const requiredPatterns = [
     message: "portfolio watchlist seeding must search replacements when blocked candidates later follow through."
   },
   {
-    pattern: /function inferPortfolioBlockedFollowThroughSearchKeywords[\s\S]{0,1800}信息传媒[\s\S]{0,900}QDII[\s\S]{0,900}新能源车/,
-    message: "blocked follow-through replacement scans must infer theme keywords such as media, QDII, and new-energy vehicles."
+    pattern: /async function fetchPortfolioWatchlistSeedCandidates[\s\S]{0,1400}findPortfolioBacktestDataBlockedCandidates[\s\S]{0,900}shouldForcePortfolioDataBlockedSeedScan[\s\S]{0,900}buildPortfolioWatchlistSeedSearchText/,
+    message: "portfolio watchlist seeding must search replacements when candidates are blocked by trend/data-source gaps."
+  },
+  {
+    pattern: /function inferPortfolioBlockedFollowThroughSearchKeywords[\s\S]{0,2200}信息传媒[\s\S]{0,900}QDII[\s\S]{0,900}新能源车[\s\S]{0,900}医药/,
+    message: "blocked or data-gapped replacement scans must infer theme keywords such as media, QDII, new-energy vehicles, and healthcare."
   },
   {
     pattern: /function formatPortfolioCustomerActionLine[\s\S]{0,900}理由：\$\{reason\}[\s\S]{0,600}看点：\$\{logic\.join\("；"\)\}[\s\S]{0,400}\.join\("\\n"\)/,
