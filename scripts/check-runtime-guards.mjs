@@ -1157,8 +1157,16 @@ const requiredPatterns = [
     message: "portfolio valuation history must persist position and pending weights."
   },
   {
-    pattern: /function summarizePortfolioEquityBrief[\s\S]{0,900}investedValue \/ totalAsset \* 100[\s\S]{0,900}pendingWeightPct/,
-    message: "portfolio equity history summaries must derive missing historical position weights instead of displaying 0%."
+    pattern: /function summarizePortfolioEquityBrief[\s\S]{0,900}resolvePortfolioStoredWeightPct\(item\.positionWeightPct, investedValue, totalAsset\)[\s\S]{0,900}resolvePortfolioStoredWeightPct\(item\.pendingWeightPct, pendingBuyAmount \+ receivableCash, totalAsset\)/,
+    message: "portfolio equity history summaries must derive missing or stale 0% historical weights instead of displaying 0%."
+  },
+  {
+    pattern: /function resolvePortfolioStoredWeightPct[\s\S]{0,500}stored > 0[\s\S]{0,500}numerator \/ basis \* 100/,
+    message: "portfolio stored weight recovery must recompute stale zero weights from ledger amounts."
+  },
+  {
+    pattern: /function buildPortfolioRedeploymentPlan[\s\S]{0,1200}resolvePortfolioStoredWeightPct\(account\.positionWeightPct, investedValue, totalAsset\)/,
+    message: "portfolio redeployment pressure must not treat stale 0% stored weights as a true empty portfolio."
   },
   {
     pattern: /function processPortfolioOrderLifecycle[\s\S]{0,2200}order\.confirmDate <= now\.date && shouldRejectImpossiblePortfolioSellOrder[\s\S]{0,260}rejectImpossiblePortfolioSellOrder[\s\S]{0,900}resolveOrderNavSnapshot/,

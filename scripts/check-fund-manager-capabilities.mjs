@@ -114,6 +114,25 @@ assert.equal(
   30,
   "equity history summaries must derive position weight when older records lack positionWeightPct"
 );
+assert.equal(
+  manager.summarizePortfolioEquityBrief({ totalAsset: 100000, investedValue: 30000, positionWeightPct: 0 }).positionWeightPct,
+  30,
+  "equity history summaries must recover stale 0% position weights when invested value is present"
+);
+assert.equal(
+  manager.summarizePortfolioEquityBrief({ totalAsset: 100000, pendingBuyAmount: 1500, receivableCash: 30000, pendingWeightPct: 0 }).pendingWeightPct,
+  31.5,
+  "equity history summaries must recover stale 0% pending weights when orders or receivables are present"
+);
+assert.equal(
+  manager.buildPortfolioRedeploymentPlan(
+    { totalAsset: 100000, cash: 70000, investedValue: 30000, positionWeightPct: 0, riskBudget: { blockNewBuys: false } },
+    [],
+    []
+  ).pressureActive,
+  false,
+  "redeployment pressure must not mistake stale 0% stored weights for a truly empty portfolio"
+);
 const runtimeDiagnostics = manager.buildRuntimeDiagnostics({
   counters: {
     modelCalls: 100,

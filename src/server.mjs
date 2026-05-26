@@ -2917,9 +2917,7 @@ function buildPortfolioRedeploymentPlan(account = {}, watchlist = [], profiles =
   const receivableCash = Number(account.receivableCash || 0);
   const pendingBuy = Number(account.pendingBuyAmount || 0);
   const investedValue = Number(account.investedValue || 0);
-  const positionWeightPct = Number.isFinite(Number(account.positionWeightPct))
-    ? Number(account.positionWeightPct)
-    : totalAsset > 0 ? investedValue / totalAsset * 100 : null;
+  const positionWeightPct = resolvePortfolioStoredWeightPct(account.positionWeightPct, investedValue, totalAsset);
   const cashPct = totalAsset > 0 && Number.isFinite(cash) ? cash / totalAsset * 100 : null;
   const cashLikePct = totalAsset > 0 && Number.isFinite(cash + receivableCash) ? (cash + receivableCash) / totalAsset * 100 : null;
   const pendingBuyPct = totalAsset > 0 && Number.isFinite(pendingBuy) ? pendingBuy / totalAsset * 100 : null;
@@ -8851,22 +8849,26 @@ function recalculatePortfolioAccount(account) {
 }
 
 function summarizePortfolioAccount(account) {
+  const totalAsset = Number(account.totalAsset || 0);
+  const investedValue = Number(account.investedValue || 0);
+  const pendingBuyAmount = Number(account.pendingBuyAmount || 0);
+  const receivableCash = Number(account.receivableCash || 0);
   return {
     initialCapital: round(Number(account.initialCapital || 0), 2),
     cash: round(Number(account.cash || 0), 2),
     availableCash: round(Number(account.availableCash || account.cash || 0), 2),
-    pendingBuyAmount: round(Number(account.pendingBuyAmount || 0), 2),
-    receivableCash: round(Number(account.receivableCash || 0), 2),
-    investedValue: round(Number(account.investedValue || 0), 2),
+    pendingBuyAmount: round(pendingBuyAmount, 2),
+    receivableCash: round(receivableCash, 2),
+    investedValue: round(investedValue, 2),
     investedCost: round(Number(account.investedCost || 0), 2),
     investedCostBasis: round(Number(account.investedCostBasis || account.investedCost || 0), 2),
-    totalAsset: round(Number(account.totalAsset || 0), 2),
-    peakTotalAsset: round(Number(account.peakTotalAsset || account.totalAsset || 0), 2),
+    totalAsset: round(totalAsset, 2),
+    peakTotalAsset: round(Number(account.peakTotalAsset || totalAsset || 0), 2),
     peakTotalAssetDate: account.peakTotalAssetDate || "",
     drawdownFromPeakPct: round(Number(account.drawdownFromPeakPct || 0), 2),
     riskBudget: account.riskBudget || buildPortfolioAccountRiskBudget(account),
-    positionWeightPct: round(Number(account.positionWeightPct || 0), 2),
-    pendingWeightPct: round(Number(account.pendingWeightPct || 0), 2),
+    positionWeightPct: round(resolvePortfolioStoredWeightPct(account.positionWeightPct, investedValue, totalAsset), 2),
+    pendingWeightPct: round(resolvePortfolioStoredWeightPct(account.pendingWeightPct, pendingBuyAmount + receivableCash, totalAsset), 2),
     dayPnl: round(Number(account.dayPnl || 0), 2),
     cumulativePnl: round(Number(account.cumulativePnl || 0), 2),
     cumulativePnlPct: round(Number(account.cumulativePnlPct || 0), 2),
@@ -8940,12 +8942,8 @@ function summarizePortfolioEquityBrief(item = {}) {
   const investedValue = Number(item.investedValue || 0);
   const pendingBuyAmount = Number(item.pendingBuyAmount || 0);
   const receivableCash = Number(item.receivableCash || 0);
-  const positionWeightPct = Number.isFinite(Number(item.positionWeightPct))
-    ? Number(item.positionWeightPct)
-    : totalAsset > 0 ? investedValue / totalAsset * 100 : 0;
-  const pendingWeightPct = Number.isFinite(Number(item.pendingWeightPct))
-    ? Number(item.pendingWeightPct)
-    : totalAsset > 0 ? (pendingBuyAmount + receivableCash) / totalAsset * 100 : 0;
+  const positionWeightPct = resolvePortfolioStoredWeightPct(item.positionWeightPct, investedValue, totalAsset);
+  const pendingWeightPct = resolvePortfolioStoredWeightPct(item.pendingWeightPct, pendingBuyAmount + receivableCash, totalAsset);
   return {
     date: item.date || "",
     totalAsset: round(totalAsset, 2),
@@ -8960,6 +8958,16 @@ function summarizePortfolioEquityBrief(item = {}) {
     positionWeightPct: round(positionWeightPct, 2),
     pendingWeightPct: round(pendingWeightPct, 2)
   };
+}
+
+function resolvePortfolioStoredWeightPct(storedPct, amount, totalAsset) {
+  const stored = Number(storedPct);
+  const basis = Number(totalAsset);
+  const numerator = Number(amount);
+  const canDerive = Number.isFinite(basis) && basis > 0 && Number.isFinite(numerator) && numerator > 0;
+  if (Number.isFinite(stored) && stored > 0) return stored;
+  if (canDerive) return numerator / basis * 100;
+  return Number.isFinite(stored) ? stored : 0;
 }
 
 function compactPublicFundSnapshot(snapshot = null) {
