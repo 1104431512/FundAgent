@@ -7656,6 +7656,25 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
     );
   }
 
+  const readyOpportunityCandidates = watchlist
+    .filter((item) => item.status === "ready" || Number(item.readinessScore || 0) >= 75)
+    .filter((item) => item.code && !hasRecentPortfolioBuyForCode(item.code, { transactions, orders }));
+  if (
+    Number.isFinite(cashLikePct)
+    && cashLikePct >= 55
+    && readyOpportunityCandidates.length
+    && !account.riskBudget?.blockNewBuys
+  ) {
+    const firstCandidates = readyOpportunityCandidates.slice(0, 3).map((item) => `${item.code} ${item.name || ""}`.trim()).join(" / ");
+    add(
+      "warning",
+      "买点错过回测",
+      `${readyOpportunityCandidates.length} 只接近买点未执行`,
+      `${firstCandidates} 已在自选池接近买点，但近期没有对应买入订单或成交；下一轮必须给小仓试探、降级理由，或明确触发时间，不能只保留在观察池。`,
+      "买入质量"
+    );
+  }
+
   const recentDecisionRuns = runs
     .filter((run) => run.type === "decision" && run.status === "completed")
     .slice(-8);
@@ -7929,6 +7948,31 @@ function collectPortfolioBacktestTradeEvents({ transactions = [], orders = [] } 
   ].filter((item) => (!targetSide || item.side === targetSide) && item.date).sort((a, b) => a.date.localeCompare(b.date));
 }
 
+function hasRecentPortfolioBuyForCode(code, { transactions = [], orders = [] } = {}, maxAgeDays = 7) {
+  const targetCode = String(code || "").trim();
+  if (!targetCode) return false;
+  const cutoffMs = Date.now() - Math.max(0, Number(maxAgeDays || 0)) * 86400000;
+  return [
+    ...transactions.map((item) => ({
+      side: String(item.side || "").toUpperCase(),
+      code: String(item.code || "").trim(),
+      date: Date.parse(item.date || item.navDate || item.createdAt || "")
+    })),
+    ...orders.map((item) => ({
+      side: String(item.side || "").toUpperCase(),
+      code: String(item.code || "").trim(),
+      date: Date.parse(item.date || item.submittedAt || item.createdAt || item.updatedAt || ""),
+      status: String(item.status || "")
+    }))
+  ].some((item) =>
+    item.side === "BUY"
+    && item.code === targetCode
+    && Number.isFinite(item.date)
+    && item.date >= cutoffMs
+    && !["cancelled", "rejected"].includes(item.status)
+  );
+}
+
 function portfolioBacktestRunHasSide(run = {}, side = "") {
   const targetSide = String(side || "").toUpperCase();
   return [
@@ -8010,6 +8054,8 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "不能长期全仓现金；若回撤预算正常，必须给出0.5%-2.5%试探仓或三个候选的精确未满足条件。", "组合经理");
     } else if (item.label === "试探仓后续回测") {
       addTask(item, "首仓后不能无期限观望；下一轮必须按走势确认给出加到3%-5%、继续观察或退出的明确条件。", "组合经理");
+    } else if (item.label === "买点错过回测") {
+      addTask(item, "自选池ready不能只收藏；逐只给0.5%-2.5%试探、降级理由或下一次触发复查时间。", "组合经理");
     } else if (item.label === "过度保守回测") {
       addTask(item, "连续等待不能算完成工作；下一轮必须给小仓试探方案，或列出前三个候选缺口和下一次触发复查时间。", "组合经理");
     }

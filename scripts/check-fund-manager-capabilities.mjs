@@ -274,9 +274,14 @@ const conservativeBacktestFixture = {
 };
 const conservativeBacktest = manager.buildPortfolioBacktestDiagnostics(conservativeBacktestFixture);
 assert(conservativeBacktest.items.some((item) => item.label === "过度保守回测"), "backtest diagnostics must detect repeated wait-only decisions under high cash");
+assert(conservativeBacktest.items.some((item) => item.label === "买点错过回测"), "backtest diagnostics must detect ready candidates that remain unexecuted under high cash");
 assert(
   manager.buildPortfolioCapabilityActionQueue(conservativeBacktestFixture).some((item) => item.action.includes("连续等待不能算完成工作")),
   "capability action queue must turn over-conservative replay into a concrete redeployment task"
+);
+assert(
+  manager.buildPortfolioCapabilityActionQueue(conservativeBacktestFixture).some((item) => item.action.includes("自选池ready不能只收藏")),
+  "capability action queue must turn missed ready candidates into concrete trial-or-downgrade tasks"
 );
 assert.equal(manager.findStalePortfolioActiveOrders(backtestFixture.orders, "2026-05-27").length, 1, "stale active order detector must find overdue queued/submitted/priced orders");
 assert.equal(

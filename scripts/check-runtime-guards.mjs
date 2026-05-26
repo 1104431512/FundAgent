@@ -1085,6 +1085,18 @@ const requiredPatterns = [
     message: "portfolio backtest diagnostics must detect repeated wait-only decisions while cash remains deployable."
   },
   {
+    pattern: /readyOpportunityCandidates[\s\S]{0,1500}买点错过回测[\s\S]{0,400}接近买点未执行/,
+    message: "portfolio backtests must detect ready watchlist candidates that stay unexecuted under high cash."
+  },
+  {
+    pattern: /function hasRecentPortfolioBuyForCode[\s\S]{0,900}item\.side === "BUY"[\s\S]{0,500}!\["cancelled", "rejected"\]\.includes\(item\.status\)/,
+    message: "missed-ready-candidate diagnostics must ignore candidates with recent valid buy orders."
+  },
+  {
+    pattern: /买点错过回测[\s\S]{0,700}自选池ready不能只收藏/,
+    message: "portfolio capability queue must force trial-or-downgrade actions for missed ready candidates."
+  },
+  {
     pattern: /过度保守回测[\s\S]{0,700}连续等待不能算完成工作/,
     message: "portfolio capability queue must turn over-conservative replays into concrete redeployment tasks."
   },
