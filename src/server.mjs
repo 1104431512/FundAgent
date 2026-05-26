@@ -7674,6 +7674,31 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
       "买入质量"
     );
   }
+  const missedFollowThroughCandidates = findPortfolioBacktestMissedFollowThroughCandidates({
+    watchlist,
+    transactions,
+    orders,
+    totalAsset
+  });
+  if (
+    Number.isFinite(cashLikePct)
+    && cashLikePct >= 55
+    && missedFollowThroughCandidates.length
+    && !account.riskBudget?.blockNewBuys
+  ) {
+    const first = missedFollowThroughCandidates[0];
+    const names = missedFollowThroughCandidates.slice(0, 3).map((item) => `${item.code} ${item.name || ""}`.trim()).join(" / ");
+    const opportunityText = Number.isFinite(first.estimatedStarterOpportunity)
+      ? `按2.5%试探仓估算少赚约${round(first.estimatedStarterOpportunity, 2)}元`
+      : "试探仓机会成本待估";
+    add(
+      "warning",
+      "机会成本回测",
+      `${missedFollowThroughCandidates.length} 只等待后继续走强`,
+      `${names} 已有低位/启动证据且等待后继续走强，${opportunityText}；经理不能把错过后的上涨只归因于“市场太快”，下一轮必须选择小仓试探、主动降级或写出下一次触发复查时间。`,
+      "买入质量"
+    );
+  }
 
   const recentDecisionRuns = runs
     .filter((run) => run.type === "decision" && run.status === "completed")
@@ -7993,6 +8018,69 @@ function hasRecentPortfolioBuyForCode(code, { transactions = [], orders = [] } =
   );
 }
 
+function findPortfolioBacktestMissedFollowThroughCandidates({
+  watchlist = [],
+  transactions = [],
+  orders = [],
+  totalAsset = 0
+} = {}) {
+  return normalizePortfolioWatchlist(watchlist)
+    .map((item) => {
+      const trend = item.lastSnapshot?.trendProfile || item.trendProfile || {};
+      const readiness = item.readinessScore === undefined
+        ? evaluatePortfolioWatchReadiness(item)
+        : { score: Number(item.readinessScore || 0), label: item.readinessLabel || "", gaps: item.readinessGaps || [] };
+      const return5d = finiteMetricNumber(trend.return5dPct);
+      const return10d = finiteMetricNumber(trend.return10dPct);
+      const return20d = finiteMetricNumber(trend.return20dPct);
+      const return60d = finiteMetricNumber(trend.return60dPct);
+      const followThroughPct = selectPortfolioFollowThroughPct({ return5d, return10d, return20d });
+      const code = String(item.code || "").trim();
+      const hasSetup = item.status === "ready"
+        || Number(readiness.score || 0) >= 85
+        || ["pullback_complete", "launch_setup"].includes(trend.pullbackSetup?.signal);
+      const notOverheated = (!Number.isFinite(return20d) || return20d <= 12)
+        && (!Number.isFinite(return60d) || return60d <= 24)
+        && trend.entryBias !== "avoid_now"
+        && trend.trendLabel !== "extended_uptrend";
+      if (!code || !hasSetup || !notOverheated || !Number.isFinite(followThroughPct) || followThroughPct < 2) {
+        return null;
+      }
+      if (hasRecentPortfolioBuyForCode(code, { transactions, orders }, 20)) {
+        return null;
+      }
+      const starterCapital = Number.isFinite(Number(totalAsset)) && Number(totalAsset) > 0
+        ? Number(totalAsset) * 0.025
+        : null;
+      return {
+        code,
+        name: item.name || "",
+        status: item.status || "watch",
+        readinessScore: Number(readiness.score || 0),
+        followThroughPct,
+        estimatedStarterOpportunity: Number.isFinite(starterCapital) ? round(starterCapital * followThroughPct / 100, 2) : null,
+        evidence: [
+          Number.isFinite(return5d) ? `5日${formatFallbackPct(return5d)}` : "",
+          Number.isFinite(return10d) ? `10日${formatFallbackPct(return10d)}` : "",
+          Number.isFinite(return20d) ? `20日${formatFallbackPct(return20d)}` : ""
+        ].filter(Boolean).join("，")
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(b.estimatedStarterOpportunity || 0) - Number(a.estimatedStarterOpportunity || 0)
+      || Number(b.followThroughPct || 0) - Number(a.followThroughPct || 0));
+}
+
+function selectPortfolioFollowThroughPct({ return5d, return10d, return20d } = {}) {
+  const candidates = [
+    Number.isFinite(return5d) ? return5d : null,
+    Number.isFinite(return10d) ? return10d : null,
+    Number.isFinite(return20d) ? return20d : null
+  ].filter((value) => Number.isFinite(value) && value > 0);
+  if (!candidates.length) return null;
+  return round(Math.max(...candidates), 2);
+}
+
 function portfolioBacktestRunHasSide(run = {}, side = "") {
   const targetSide = String(side || "").toUpperCase();
   return [
@@ -8076,6 +8164,8 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "首仓后不能无期限观望；下一轮必须按走势确认给出加到3%-5%、继续观察或退出的明确条件。", "组合经理");
     } else if (item.label === "买点错过回测") {
       addTask(item, "自选池ready不能只收藏；逐只给0.5%-2.5%试探、降级理由或下一次触发复查时间。", "组合经理");
+    } else if (item.label === "机会成本回测") {
+      addTask(item, "等待后继续走强要被追责；下一轮必须在低位转强候选里给0.5%-2.5%试探、主动降级或明确触发复查时间。", "组合经理");
     } else if (item.label === "过度保守回测") {
       addTask(item, "连续等待不能算完成工作；下一轮必须给小仓试探方案，或列出前三个候选缺口和下一次触发复查时间。", "组合经理");
     } else if (item.label === "仓位冻结回测") {

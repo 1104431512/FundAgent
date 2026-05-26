@@ -1109,12 +1109,24 @@ const requiredPatterns = [
     message: "portfolio backtests must detect ready watchlist candidates that stay unexecuted under high cash."
   },
   {
+    pattern: /findPortfolioBacktestMissedFollowThroughCandidates[\s\S]{0,2600}estimatedStarterOpportunity[\s\S]{0,1200}function selectPortfolioFollowThroughPct/,
+    message: "portfolio backtests must quantify opportunity cost when unbought ready candidates keep rising."
+  },
+  {
+    pattern: /少赚约[\s\S]{0,900}机会成本回测[\s\S]{0,700}等待后继续走强/,
+    message: "portfolio diagnostics must explain missed follow-through in user-readable opportunity-cost terms."
+  },
+  {
     pattern: /function hasRecentPortfolioBuyForCode[\s\S]{0,900}item\.side === "BUY"[\s\S]{0,500}!\["cancelled", "rejected"\]\.includes\(item\.status\)/,
     message: "missed-ready-candidate diagnostics must ignore candidates with recent valid buy orders."
   },
   {
     pattern: /买点错过回测[\s\S]{0,700}自选池ready不能只收藏/,
     message: "portfolio capability queue must force trial-or-downgrade actions for missed ready candidates."
+  },
+  {
+    pattern: /机会成本回测[\s\S]{0,700}等待后继续走强要被追责/,
+    message: "portfolio capability queue must turn missed follow-through into a concrete repair task."
   },
   {
     pattern: /过度保守回测[\s\S]{0,700}连续等待不能算完成工作/,

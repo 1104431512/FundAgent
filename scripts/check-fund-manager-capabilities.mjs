@@ -269,7 +269,25 @@ const conservativeBacktestFixture = {
   },
   watchlist: [
     { code: "010802", name: "低位消费候选C", status: "waiting_pullback" },
-    { code: "012046", name: "医药修复候选C", status: "ready" }
+    {
+      code: "012046",
+      name: "医药修复候选C",
+      status: "ready",
+      readinessScore: 92,
+      readinessLabel: "低位转强",
+      lastSnapshot: {
+        trendProfile: {
+          ok: true,
+          trendLabel: "uptrend",
+          entryBias: "buyable_now",
+          return5dPct: 1.4,
+          return10dPct: 2.8,
+          return20dPct: 5.6,
+          return60dPct: 8.2,
+          pullbackSetup: { signal: "pullback_complete", signalText: "回调完成" }
+        }
+      }
+    }
   ],
   runs: [
     { date: "2026-05-21", type: "decision", status: "completed", summary: "继续等待机会，暂不买入。", actions: [{ action: "WATCH", code: "010802", reason: "观察" }] },
@@ -283,6 +301,11 @@ const conservativeBacktestFixture = {
 const conservativeBacktest = manager.buildPortfolioBacktestDiagnostics(conservativeBacktestFixture);
 assert(conservativeBacktest.items.some((item) => item.label === "过度保守回测"), "backtest diagnostics must detect repeated wait-only decisions under high cash");
 assert(conservativeBacktest.items.some((item) => item.label === "买点错过回测"), "backtest diagnostics must detect ready candidates that remain unexecuted under high cash");
+assert(conservativeBacktest.items.some((item) => item.label === "机会成本回测"), "backtest diagnostics must estimate opportunity cost when unbought ready candidates keep rising");
+assert(
+  conservativeBacktest.items.find((item) => item.label === "机会成本回测")?.note.includes("少赚约140元"),
+  "opportunity-cost diagnostics must translate missed starter position gains into an estimated yuan impact"
+);
 assert(conservativeBacktest.items.some((item) => item.label === "仓位冻结回测"), "backtest diagnostics must detect portfolios whose position structure freezes across decision runs");
 assert(
   manager.buildPortfolioCapabilityActionQueue(conservativeBacktestFixture).some((item) => item.action.includes("连续等待不能算完成工作")),
@@ -291,6 +314,10 @@ assert(
 assert(
   manager.buildPortfolioCapabilityActionQueue(conservativeBacktestFixture).some((item) => item.action.includes("自选池ready不能只收藏")),
   "capability action queue must turn missed ready candidates into concrete trial-or-downgrade tasks"
+);
+assert(
+  manager.buildPortfolioCapabilityActionQueue(conservativeBacktestFixture).some((item) => item.action.includes("等待后继续走强要被追责")),
+  "capability action queue must turn missed follow-through into a concrete opportunity-cost repair task"
 );
 assert(
   manager.buildPortfolioCapabilityActionQueue(conservativeBacktestFixture).some((item) => item.action.includes("仓位不能停在第一轮操作")),
