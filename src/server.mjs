@@ -1161,6 +1161,7 @@ async function executePortfolioValuation(db, run, config) {
     receivableCash: db.account.receivableCash,
     investedValue: db.account.investedValue,
     investedCost: db.account.investedCost,
+    investedCostBasis: db.account.investedCostBasis,
     positionWeightPct: db.account.positionWeightPct,
     pendingWeightPct: db.account.pendingWeightPct,
     peakTotalAsset: db.account.peakTotalAsset,
@@ -1563,7 +1564,7 @@ async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, p
   const systemText = [
     "你是飞书机器人“基金经理”的虚拟基金经理，正在做晚间估值复盘。",
     "请解释今日盈亏、仓位变化和明天观察重点。不要编造传入资料之外的数据。",
-    "累计盈亏百分比必须使用 accountAfter.cumulativePnlPct，也就是按实际投入成本 investedCost 计算；严禁把初始本金 initialCapital 当作收益率分母，也不要在客户可见复盘里写“初始资金口径/初始本金口径”。",
+    "累计盈亏百分比必须使用 accountAfter.cumulativePnlPct，也就是按实际投入基准 investedCostBasis 计算；investedCost 只是当前仍持有的成本，清仓后不能让收益率归零；严禁把初始本金 initialCapital 当作收益率分母，也不要在客户可见复盘里写“初始资金口径/初始本金口径”。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
     "",
     skillContext
@@ -1899,7 +1900,7 @@ function normalizePortfolioReview(raw, options = {}) {
 function normalizePortfolioInvestedCostReturnText(text, account = {}) {
   const body = String(text || "");
   if (!body) return body;
-  const investedCost = Number(account.investedCost);
+  const investedCost = resolvePortfolioInvestedCostBasis(account);
   const investedPct = Number(account.cumulativePnlPct);
   const pctText = Number.isFinite(investedPct) ? `${formatSignedNumber(investedPct)}%` : "实际投入成本口径";
   const costText = Number.isFinite(investedCost) && investedCost > 0
@@ -1998,7 +1999,7 @@ function buildFallbackPortfolioWeeklyRaw({ account = {}, weeklyContext = {}, wat
       Number.isFinite(assetChange)
         ? `本周账面资产从${firstEquity.totalAsset}元变为${lastEquity.totalAsset}元，变化${formatSignedNumber(assetChange)}元。`
         : `当前总资产${account.totalAsset ?? 0}元，累计盈亏${formatSignedNumber(account.cumulativePnl || 0)}元。`,
-      `当前持仓市值${account.investedValue ?? 0}元，实际投入成本${account.investedCost ?? 0}元，收益率按投入成本为${formatFallbackPct(account.cumulativePnlPct ?? 0)}。`,
+      `当前持仓市值${account.investedValue ?? 0}元，当前持仓成本${account.investedCost ?? 0}元，实际投入基准${account.investedCostBasis ?? account.investedCost ?? 0}元，收益率按投入基准为${formatFallbackPct(account.cumulativePnlPct ?? 0)}。`,
       weakPositions.length
         ? `拖累项优先复核：${weakPositions.map((item) => `${item.code} ${item.name || ""} ${formatFallbackPct(item.unrealizedPnlPct)}`).join("；")}。`
         : "本周缺少足够持仓盈亏拆分，下一轮估值后继续归因。"
@@ -5715,6 +5716,7 @@ function confirmPortfolioBuyOrder(db, order, profile, run) {
   position.fundSnapshot = buildPortfolioFundSnapshot(profile, position) || order.fundSnapshot;
   position.dataSource = profile?.sources?.[0] || order.source || "";
   position.updatedAt = new Date().toISOString();
+  accountUpdateInvestedCostBasis(db.account);
 
   db.account.pendingBuyAmount = round(Math.max(0, Number(db.account.pendingBuyAmount || 0) - Number(order.amount || 0)), 2);
   order.status = "confirmed";
@@ -5766,6 +5768,7 @@ function confirmPortfolioSellOrder(db, order, profile, run) {
   position.fundSnapshot = buildPortfolioFundSnapshot(profile, position) || order.fundSnapshot;
   position.dataSource = profile?.sources?.[0] || order.source || "";
   position.updatedAt = new Date().toISOString();
+  accountUpdateInvestedCostBasis(db.account);
 
   const existingSettlement = findPortfolioSettlementForOrder(db.settlements, order.id);
   if (!existingSettlement) {
@@ -6341,8 +6344,8 @@ function buildPortfolioDecisionCard({ decision, watchlistUpdates = [], account, 
   const card = [
     `虚拟基金经理日报 ${run.date}`,
     "",
-    `今日手法：${decision.summary}`,
-    decision.marketView ? `市场判断：${decision.marketView}` : "",
+    `今日手法：${shortenPortfolioCustomerText(decision.summary, 110) || decision.summary}`,
+    decision.marketView ? `市场判断：${shortenPortfolioCustomerText(decision.marketView, 140)}` : "",
     "",
     "投委会意见：",
     ...teamLines,
@@ -6381,14 +6384,14 @@ function formatPortfolioCustomerActionLine(action = {}) {
   const name = [action.code, action.name].filter(Boolean).join(" ");
   const amount = action.amount ? ` 建议${action.amount}元` : "";
   const target = action.targetWeightPct ? ` 目标${action.targetWeightPct}%` : "";
-  const reason = shortenPortfolioCustomerText(action.reason || "见投委会意见", 120);
+  const reason = shortenPortfolioCustomerText(action.reason || "见投委会意见", 96);
   const logic = [
     action.rotationCheck,
     action.positionCheck,
     action.chaseRisk,
     action.riskControl
-  ].map((item) => shortenPortfolioCustomerText(item, 72)).filter(Boolean).slice(0, 2);
-  const fee = shortenPortfolioCustomerText(action.feeCheck || "", 72);
+  ].map((item) => shortenPortfolioCustomerText(item, 60)).filter(Boolean).slice(0, 2);
+  const fee = shortenPortfolioCustomerText(action.feeCheck || "", 60);
   return [
     `- ${formatPortfolioActionLabel(action.action)} ${name}${amount}${target}`,
     reason ? `  理由：${reason}` : "",
@@ -6399,12 +6402,14 @@ function formatPortfolioCustomerActionLine(action = {}) {
 
 function formatPortfolioCustomerTeamLine(item = {}) {
   const stance = item.stance ? `（${item.stance}）` : "";
-  return `- ${item.agent || "投委"}${stance}：${shortenPortfolioCustomerText(item.reason || "", 120)}`.trim();
+  return `- ${item.agent || "投委"}${stance}：${shortenPortfolioCustomerText(item.reason || "", 90)}`.trim();
 }
 
 function shortenPortfolioCustomerText(value = "", maxLength = 120) {
   const cleaned = normalizeUserFacingFundAnswer(String(value || ""))
     .replace(/\s+/g, " ")
+    .replace(/（[^（）]{80,}）/g, "")
+    .replace(/曾浮盈[+-]?\d+(?:\.\d+)?%但当前转亏[+-]?\d+(?:\.\d+)?%/g, "浮盈已经回吐到转亏")
     .replace(/（\s*）/g, "")
     .trim();
   if (!cleaned) return "";
@@ -6415,7 +6420,36 @@ function shortenPortfolioCustomerText(value = "", maxLength = 120) {
   const preferred = sentences.find((item) => /(走势|低位|回调|启动|轮动|拥挤|偏热|高位|风险|触发|费用|份额|持仓|减仓|买入|观察|等待)/.test(item))
     || sentences[0]
     || cleaned;
-  return preferred.length <= maxLength ? preferred : `${preferred.slice(0, Math.max(0, maxLength - 1))}…`;
+  const compact = compactNumericHeavyCustomerText(preferred, Math.min(3, Math.max(1, Math.floor(maxLength / 45))));
+  return compact.length <= maxLength ? compact : `${compact.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+function compactNumericHeavyCustomerText(value = "", maxNumbers = 3) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const metricPattern = /(?:[+-]?\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:元|万|亿)|近\s*\d+\s*日|\d+\s*日位置|\d+(?:\.\d+)?\s*分|回撤\s*[+-]?\d+(?:\.\d+)?)/g;
+  const clauses = text
+    .split(/[；;。]/)
+    .flatMap((item) => item.split(/，(?=(?:[^“”"]|“[^”]*”|"[^"]*")*$)/))
+    .map((item) => item.replace(/^[，,；;。:\s]+|[，,；;。:\s]+$/g, "").trim())
+    .filter(Boolean);
+  let usedNumbers = 0;
+  const kept = [];
+  for (const clause of clauses) {
+    const count = (clause.match(metricPattern) || []).length;
+    const hasInterpretation = /(走势|低位|高位|回调|启动|修复|转强|转弱|轮动|拥挤|偏热|追涨|风险|触发|边界|费用|份额|持仓|减仓|买入|观察|等待|回避|止盈|止损|重叠|前景)/.test(clause);
+    if (count && usedNumbers + count > maxNumbers && kept.length) continue;
+    if (!hasInterpretation && count && kept.length) continue;
+    kept.push(clause);
+    usedNumbers += count;
+    if (usedNumbers >= maxNumbers && kept.length >= 2) break;
+  }
+  const compact = (kept.length ? kept : [clauses[0] || text]).join("；");
+  return compact
+    .replace(/系统(?:买入|卖出|组合|单仓|风控)[^：:]{0,18}[：:]\s*/g, "")
+    .replace(/；{2,}/g, "；")
+    .replace(/^[；;。,\s]+|[；;。,\s]+$/g, "")
+    .trim();
 }
 
 function buildPortfolioValuationCard({ review, account, positionUpdates, lifecycle = {}, run }) {
@@ -6447,7 +6481,7 @@ function buildPortfolioValuationCard({ review, account, positionUpdates, lifecyc
     "",
     `总资产：${account.totalAsset}元`,
     `今日盈亏：${formatSignedNumber(account.dayPnl)}元`,
-    `累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（按实际投入成本 ${account.investedCost || 0} 元计 ${formatSignedNumber(account.cumulativePnlPct)}%）`,
+    `累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（按实际投入基准 ${account.investedCostBasis || account.investedCost || 0} 元计 ${formatSignedNumber(account.cumulativePnlPct)}%）`,
     `可用现金：${account.cash}元，待确认申购：${account.pendingBuyAmount || 0}元，应收赎回：${account.receivableCash || 0}元，仓位：${account.positionWeightPct}%`,
     `回撤预算：峰值 ${account.peakTotalAsset || account.totalAsset}元，当前距峰值 ${formatFallbackPct(account.drawdownFromPeakPct || 0)}，状态 ${account.riskBudget?.label || "回撤正常"}`,
     review.nextWatch.length ? ["", "明日观察：", ...review.nextWatch].join("\n") : "",
@@ -6858,6 +6892,7 @@ function compactPortfolioWeeklyEquity(item = {}) {
     cash: round(Number(item.cash || 0), 2),
     investedValue: round(Number(item.investedValue || 0), 2),
     investedCost: round(Number(item.investedCost || 0), 2),
+    investedCostBasis: round(Number(item.investedCostBasis || item.investedCost || 0), 2),
     dayPnl: round(Number(item.dayPnl || 0), 2),
     cumulativePnl: round(Number(item.cumulativePnl || 0), 2),
     cumulativePnlPct: round(Number(item.cumulativePnlPct || 0), 2),
@@ -6874,6 +6909,7 @@ function compactPortfolioWeeklyAccount(account = {}) {
     receivableCash: round(Number(account.receivableCash || 0), 2),
     investedValue: round(Number(account.investedValue || 0), 2),
     investedCost: round(Number(account.investedCost || 0), 2),
+    investedCostBasis: round(Number(account.investedCostBasis || account.investedCost || 0), 2),
     totalAsset: round(Number(account.totalAsset || 0), 2),
     peakTotalAsset: round(Number(account.peakTotalAsset || account.totalAsset || 0), 2),
     drawdownFromPeakPct: round(Number(account.drawdownFromPeakPct || 0), 2),
@@ -6991,7 +7027,7 @@ function buildPortfolioStatusAnswer(userText, intent) {
       lines.push(`待确认申购：${account.pendingBuyAmount || 0}元，应收赎回：${account.receivableCash || 0}元`);
     }
     lines.push(`当前仓位：${account.positionWeightPct}%`);
-    lines.push(`累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（按实际投入成本 ${account.investedCost || 0} 元计 ${formatSignedNumber(account.cumulativePnlPct)}%）`);
+    lines.push(`累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（按实际投入基准 ${account.investedCostBasis || account.investedCost || 0} 元计 ${formatSignedNumber(account.cumulativePnlPct)}%）`);
   }
 
   if (wantsPosition || (!wantsOperation && !wantsOnlyProfileOrSchedule && !wantsWatchlist)) {
@@ -7221,6 +7257,7 @@ function summarizePortfolioRun(run, fallbackAccount = {}) {
 }
 
 function getPortfolioRunAccountContext(run = {}, fallbackAccount = {}) {
+  const fallbackInvestedCostBasis = resolvePortfolioInvestedCostBasis(fallbackAccount);
   const account = {
     ...(isPortfolioAccountLike(fallbackAccount) ? fallbackAccount : {}),
     ...(isPortfolioAccountLike(run.accountBefore) ? run.accountBefore : {}),
@@ -7231,6 +7268,7 @@ function getPortfolioRunAccountContext(run = {}, fallbackAccount = {}) {
     "cash",
     "investedValue",
     "investedCost",
+    "investedCostBasis",
     "totalAsset",
     "dayPnl",
     "cumulativePnl",
@@ -7253,8 +7291,21 @@ function getPortfolioRunAccountContext(run = {}, fallbackAccount = {}) {
   if ((!Number.isFinite(Number(account.investedCost)) || Number(account.investedCost) <= 0) && positionCost > 0) {
     account.investedCost = round(positionCost, 2);
   }
-  if ((!Number.isFinite(Number(account.cumulativePnlPct)) || account.cumulativePnlPct === "") && Number(account.investedCost) > 0 && Number.isFinite(Number(account.cumulativePnl))) {
-    account.cumulativePnlPct = round((Number(account.cumulativePnl) / Number(account.investedCost)) * 100, 2);
+  if (
+    fallbackInvestedCostBasis > 0
+    && (!Number.isFinite(Number(account.investedCostBasis)) || Number(account.investedCostBasis) <= 0)
+    && Number(account.investedCost || 0) <= 0
+  ) {
+    account.investedCostBasis = fallbackInvestedCostBasis;
+  }
+  account.investedCostBasis = resolvePortfolioInvestedCostBasis(account);
+  const pctMissing = !Number.isFinite(Number(account.cumulativePnlPct)) || account.cumulativePnlPct === "";
+  const staleZeroPctAfterLiquidation = Number(account.investedCost || 0) <= 0
+    && Number(account.investedCostBasis || 0) > 0
+    && Number(account.cumulativePnl || 0) !== 0
+    && Number(account.cumulativePnlPct || 0) === 0;
+  if ((pctMissing || staleZeroPctAfterLiquidation) && Number(account.investedCostBasis) > 0 && Number.isFinite(Number(account.cumulativePnl))) {
+    account.cumulativePnlPct = round((Number(account.cumulativePnl) / Number(account.investedCostBasis)) * 100, 2);
   }
   return account;
 }
@@ -7300,7 +7351,7 @@ function buildPortfolioCapabilityDiagnostics(db = {}) {
       cumulativePnlPct <= -3 ? "critical" : "warning",
       "盈利能力承压",
       `${formatSignedNumber(Number(account.cumulativePnl || 0))}元 / ${formatFallbackPct(cumulativePnlPct)}`,
-      `收益率按实际投入成本${round(Number(account.investedCost || 0), 2)}元计算；下一轮要先解释亏损来源，再决定是否补仓。`
+      `收益率按实际投入基准${round(Number(account.investedCostBasis || account.investedCost || 0), 2)}元计算；下一轮要先解释亏损来源，再决定是否补仓。`
     );
   }
 
@@ -7602,6 +7653,31 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
       `试探仓${formatFallbackPct(pendingBuyPct)} / 可部署${formatFallbackPct(cashLikePct)}`,
       `已有小仓试探但组合仍接近空仓；下一轮必须写清“加到3%-5%/继续观察/退出”的触发条件，不能买完1%多以后又长期无动作。`,
       "再部署能力"
+    );
+  }
+
+  const recentDecisionRuns = runs
+    .filter((run) => run.type === "decision" && run.status === "completed")
+    .slice(-8);
+  const waitOnlyDecisionRuns = recentDecisionRuns.filter((run) => {
+    const text = portfolioBacktestText(run);
+    return !portfolioBacktestRunHasSide(run, "BUY")
+      && !portfolioBacktestRunHasSide(run, "SELL")
+      && /(等待|观望|观察|继续看|未提交|不买|暂不买|0元|零元|没有合格|没有可买|等待机会)/.test(text);
+  });
+  if (
+    Number.isFinite(cashLikePct)
+    && cashLikePct >= 60
+    && waitOnlyDecisionRuns.length >= 3
+    && !account.riskBudget?.blockNewBuys
+  ) {
+    const dates = waitOnlyDecisionRuns.map((run) => run.date || normalizePortfolioEventDate(run.completedAt || run.startedAt)).filter(Boolean);
+    add(
+      "warning",
+      "过度保守回测",
+      `${waitOnlyDecisionRuns.length} 次决策只等待`,
+      `${dates.join("、") || "近期多次决策"} 都没有买入或减仓执行；若回撤预算正常，下一轮必须在低位候选里选择小仓试探，或把前三个候选未触发的条件写到可验证字段。`,
+      "买入质量"
     );
   }
 
@@ -7934,6 +8010,8 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "不能长期全仓现金；若回撤预算正常，必须给出0.5%-2.5%试探仓或三个候选的精确未满足条件。", "组合经理");
     } else if (item.label === "试探仓后续回测") {
       addTask(item, "首仓后不能无期限观望；下一轮必须按走势确认给出加到3%-5%、继续观察或退出的明确条件。", "组合经理");
+    } else if (item.label === "过度保守回测") {
+      addTask(item, "连续等待不能算完成工作；下一轮必须给小仓试探方案，或列出前三个候选缺口和下一次触发复查时间。", "组合经理");
     }
   }
   return tasks.slice(0, 8);
@@ -8352,6 +8430,7 @@ function ensurePortfolioAccount(db, config = getEffectiveConfig()) {
   db.account.pendingBuyAmount = round(Number(db.account.pendingBuyAmount || 0), 2);
   db.account.receivableCash = round(Number(db.account.receivableCash || 0), 2);
   db.account.positions = Array.isArray(db.account.positions) ? db.account.positions.map(normalizePortfolioPosition).filter(Boolean) : [];
+  db.account.investedCostBasis = derivePortfolioInvestedCostBasis(db, db.account);
   syncPortfolioActiveOrderReservations(db);
   recalculatePortfolioAccount(db.account);
   return db.account;
@@ -8367,6 +8446,7 @@ function createPortfolioAccount(config) {
     positions: [],
     investedValue: 0,
     investedCost: 0,
+    investedCostBasis: 0,
     totalAsset: initialCapital,
     peakTotalAsset: initialCapital,
     peakTotalAssetDate: new Date().toISOString().slice(0, 10),
@@ -8406,6 +8486,69 @@ function normalizePortfolioPosition(position) {
   };
 }
 
+function resolvePortfolioInvestedCostBasis(account = {}) {
+  const currentCost = Array.isArray(account.positions)
+    ? account.positions.reduce((sum, position) => sum + (Number(position?.costAmount || 0) || 0), 0)
+    : 0;
+  const candidates = [
+    account.investedCostBasis,
+    account.actualInvestedCostBasis,
+    account.historicalInvestedCost,
+    account.maxInvestedCost,
+    account.deployedCapitalBasis,
+    currentCost,
+    account.investedCost
+  ]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  return candidates.length ? round(Math.max(...candidates), 2) : 0;
+}
+
+function accountUpdateInvestedCostBasis(account = {}) {
+  account.investedCostBasis = resolvePortfolioInvestedCostBasis(account);
+  return account.investedCostBasis;
+}
+
+function derivePortfolioInvestedCostBasis(db = {}, account = {}) {
+  const candidates = [resolvePortfolioInvestedCostBasis(account)];
+  const transactionBasis = derivePortfolioInvestedCostBasisFromTransactions(db.transactions || []);
+  if (transactionBasis > 0) candidates.push(transactionBasis);
+  for (const item of db.dailyEquity || []) {
+    const value = Number(item?.investedCostBasis ?? item?.investedCost);
+    if (Number.isFinite(value) && value > 0) candidates.push(value);
+  }
+  for (const run of db.runs || []) {
+    for (const snapshot of [run?.accountBefore, run?.account, run?.accountAfter]) {
+      const value = Number(snapshot?.investedCostBasis ?? snapshot?.investedCost);
+      if (Number.isFinite(value) && value > 0) candidates.push(value);
+    }
+  }
+  return candidates.length ? round(Math.max(...candidates), 2) : 0;
+}
+
+function derivePortfolioInvestedCostBasisFromTransactions(transactions = []) {
+  const tradeEvents = (transactions || [])
+    .filter((item) => ["BUY", "SELL"].includes(String(item?.side || "").toUpperCase()))
+    .map((item, index) => ({
+      side: String(item.side || "").toUpperCase(),
+      amount: round(Number(item.amount || 0), 2),
+      sortKey: Date.parse(item.createdAt || item.navDate || item.date || "") || index
+    }))
+    .filter((item) => Number.isFinite(item.amount) && item.amount > 0)
+    .sort((a, b) => a.sortKey - b.sortKey);
+  let activeCost = 0;
+  let peakCost = 0;
+  for (const item of tradeEvents) {
+    if (item.side === "BUY") {
+      activeCost = round(activeCost + item.amount, 2);
+      peakCost = Math.max(peakCost, activeCost);
+    } else {
+      activeCost = round(Math.max(0, activeCost - item.amount), 2);
+    }
+  }
+  return round(peakCost, 2);
+}
+
 function recalculatePortfolioAccount(account) {
   const nowIso = new Date().toISOString();
   account.cash = round(Number(account.cash || 0), 2);
@@ -8413,9 +8556,10 @@ function recalculatePortfolioAccount(account) {
   account.receivableCash = round(Number(account.receivableCash || 0), 2);
   account.investedValue = round(account.positions.reduce((sum, position) => sum + Number(position.currentValue || 0), 0), 2);
   account.investedCost = round(account.positions.reduce((sum, position) => sum + Number(position.costAmount || 0), 0), 2);
+  account.investedCostBasis = resolvePortfolioInvestedCostBasis(account);
   account.totalAsset = round(account.cash + account.investedValue + account.pendingBuyAmount + account.receivableCash, 2);
   account.cumulativePnl = round(account.totalAsset - Number(account.initialCapital || 0), 2);
-  account.cumulativePnlPct = account.investedCost > 0 ? round((account.cumulativePnl / account.investedCost) * 100, 2) : 0;
+  account.cumulativePnlPct = account.investedCostBasis > 0 ? round((account.cumulativePnl / account.investedCostBasis) * 100, 2) : 0;
   account.capitalPnlPct = account.initialCapital > 0 ? round((account.cumulativePnl / account.initialCapital) * 100, 2) : 0;
   const previousPeak = Number(account.peakTotalAsset || account.initialCapital || account.totalAsset || 0);
   if (!Number.isFinite(previousPeak) || previousPeak <= 0 || Number(account.totalAsset || 0) > previousPeak) {
@@ -8467,6 +8611,7 @@ function summarizePortfolioAccount(account) {
     receivableCash: round(Number(account.receivableCash || 0), 2),
     investedValue: round(Number(account.investedValue || 0), 2),
     investedCost: round(Number(account.investedCost || 0), 2),
+    investedCostBasis: round(Number(account.investedCostBasis || account.investedCost || 0), 2),
     totalAsset: round(Number(account.totalAsset || 0), 2),
     peakTotalAsset: round(Number(account.peakTotalAsset || account.totalAsset || 0), 2),
     peakTotalAssetDate: account.peakTotalAssetDate || "",
@@ -15924,6 +16069,14 @@ async function fetchFundValuation(code) {
     if (!isStaleFundValuation(primary)) {
       return primary;
     }
+    const realtimeFallback = await fetchFundValuationFromSinaEstimate(code).catch(() => null);
+    if (realtimeFallback?.ok && !isStaleFundValuation(realtimeFallback)) {
+      return {
+        ...realtimeFallback,
+        stalePrimarySource: primary.source || `https://fundgz.1234567.com.cn/js/${code}.js`,
+        stalePrimaryDate: primary.jzrq || ""
+      };
+    }
     const fallback = await fetchFundValuationFromPingzhongData(code).catch(() => null);
     if (fallback?.ok && isFundValuationDateNewer(fallback, primary)) {
       return {
@@ -15933,6 +16086,17 @@ async function fetchFundValuation(code) {
       };
     }
     return primary;
+  }
+  const realtimeFallback = await fetchFundValuationFromSinaEstimate(code).catch((error) => ({
+    ok: false,
+    error: error.message,
+    source: `https://stock.finance.sina.com.cn/fundInfo/api/openapi.php/FdFundService.getEstimateNetworthPic?symbol=${code}`
+  }));
+  if (realtimeFallback.ok) {
+    return {
+      ...realtimeFallback,
+      primarySourceError: primary.error || "fundgz returned empty valuation"
+    };
   }
   const fallback = await fetchFundValuationFromPingzhongData(code).catch((error) => ({
     ok: false,
@@ -16004,6 +16168,75 @@ async function fetchFundValuationFromPingzhongData(code) {
     valuationBasis: "最新官方净值",
     source: `https://fund.eastmoney.com/pingzhongdata/${code}.js`
   };
+}
+
+async function fetchFundValuationFromSinaEstimate(code) {
+  const callback = `jsonp_sina_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const source = `https://stock.finance.sina.com.cn/fundInfo/api/openapi.php/FdFundService.getEstimateNetworthPic?symbol=${code}`;
+  const text = await fetchText(`${source}&callback=${callback}`);
+  const parsed = parseSinaEstimateNetworthJsonp(text);
+  if (!parsed) {
+    return {
+      ok: false,
+      error: "Sina estimate networth payload not found",
+      source
+    };
+  }
+  return {
+    ok: true,
+    fundcode: parsed.code || code,
+    name: parsed.name || "",
+    dwjz: parsed.unitNav || "",
+    gsz: parsed.estimatedNav || "",
+    gszzl: parsed.estimatedChangePct ?? "",
+    jzrq: parsed.navDate || "",
+    gztime: parsed.estimateTime || "",
+    sourceKind: parsed.sourceKind,
+    valuationBasis: parsed.valuationBasis,
+    source
+  };
+}
+
+function parseSinaEstimateNetworthJsonp(text) {
+  const body = String(text || "").trim();
+  const start = body.indexOf("(");
+  const end = body.lastIndexOf(")");
+  if (start < 0 || end <= start) return null;
+  let payload = null;
+  try {
+    payload = JSON.parse(body.slice(start + 1, end));
+  } catch {
+    return null;
+  }
+  const data = payload?.result?.data || {};
+  const points = Array.isArray(data.networth) ? data.networth : [];
+  const latest = [...points].reverse().find((item) => item && (item.pre_nav2 || item.pre_nav || item.growthrate2 || item.growthrate));
+  if (!latest) return null;
+  const estimatedNav = toNumber(latest.pre_nav2) ?? toNumber(latest.pre_nav);
+  const growthRatio = toNumber(latest.growthrate2) ?? toNumber(latest.growthrate);
+  const estimatedChangePct = Number.isFinite(growthRatio) ? round(growthRatio * 100, 2) : null;
+  const navDate = normalizeSinaFundDate(latest.pre_date || data.worth_date || "");
+  const estimateTime = navDate && latest.min_time ? `${navDate} ${String(latest.min_time).replace(/:(\d{2}):\d{2}$/, ":$1")}` : "";
+  const unitNav = toNumber(data.worth) ?? toNumber(latest.pre_nav) ?? estimatedNav;
+  if (!Number.isFinite(Number(unitNav)) && !Number.isFinite(Number(estimatedNav)) && estimatedChangePct === null) return null;
+  return {
+    code: String(latest.symbol || data.symbol || "").trim(),
+    name: String(data.name || data.fund_name || "").trim(),
+    unitNav,
+    estimatedNav,
+    estimatedChangePct,
+    navDate,
+    estimateTime,
+    sourceKind: "sina_intraday_estimate",
+    valuationBasis: "盘中估算（新浪备源）"
+  };
+}
+
+function normalizeSinaFundDate(value) {
+  const text = String(value || "").trim();
+  const compact = text.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compact) return `${compact[1]}-${compact[2]}-${compact[3]}`;
+  return normalizePortfolioEventDate(text);
 }
 
 async function fetchFundPingzhongData(code) {
@@ -19648,6 +19881,7 @@ export {
   findDuplicatePortfolioSettlementGroups,
   findStalePortfolioActiveOrders,
   filterFocusedPullbackRankingCandidates,
+  formatPortfolioCustomerActionLine,
   getFeishuCardImageChunkSize,
   getFundReportChartLegendLines,
   getFundReportChartLimit,
@@ -19679,6 +19913,7 @@ export {
   mergeCandidateFunds,
   normalizeUserFacingFundAnswer,
   parseFundPingzhongLatestNav,
+  parseSinaEstimateNetworthJsonp,
   normalizePortfolioDb,
   normalizePortfolioInvestedCostReturnText,
   normalizePortfolioReview,

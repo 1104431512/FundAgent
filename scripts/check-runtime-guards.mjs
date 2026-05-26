@@ -113,6 +113,14 @@ const requiredPatterns = [
     message: "fund valuation must fall back to Eastmoney pingzhongdata latest official NAV when intraday estimates are unavailable or stale."
   },
   {
+    pattern: /async function fetchFundValuation[\s\S]{0,1800}fetchFundValuationFromSinaEstimate[\s\S]{0,2600}stock\.finance\.sina\.com\.cn\/fundInfo\/api\/openapi\.php\/FdFundService\.getEstimateNetworthPic/,
+    message: "fund valuation must include a Sina minute-level estimate backup before falling back to official NAV only."
+  },
+  {
+    pattern: /function parseSinaEstimateNetworthJsonp[\s\S]{0,900}growthrate2[\s\S]{0,900}sina_intraday_estimate/,
+    message: "Sina estimate backup must parse pre_nav2/growthrate2 into normalized realtime valuation evidence."
+  },
+  {
     pattern: /async function fetchFundHoldingRealtimePulse[\s\S]{0,2200}push2\.eastmoney\.com\/api\/qt\/ulist\.np\/get[\s\S]{0,2600}function buildFundHoldingRealtimePulseFromQuotes/,
     message: "fund enrichment must add realtime top-holding quote pulse evidence, not only stale fund NAV estimates."
   },
@@ -849,6 +857,14 @@ const requiredPatterns = [
     message: "portfolio PnL percentage must use actual invested cost instead of initial capital."
   },
   {
+    pattern: /function derivePortfolioInvestedCostBasisFromTransactions[\s\S]{0,900}peakCost[\s\S]{0,500}return round\(peakCost,\s*2\)/,
+    message: "portfolio PnL denominator must preserve the historical actual invested basis after full liquidation."
+  },
+  {
+    pattern: /staleZeroPctAfterLiquidation[\s\S]{0,500}account\.investedCostBasis[\s\S]{0,500}account\.cumulativePnlPct = round\(\(Number\(account\.cumulativePnl\) \/ Number\(account\.investedCostBasis\)\) \* 100,\s*2\)/,
+    message: "public historical portfolio runs must repair stale zero PnL percentages after positions are fully sold."
+  },
+  {
     pattern: /按实际投入/,
     message: "admin portfolio UI must label PnL percentage as based on actual invested amount."
   },
@@ -875,6 +891,10 @@ const requiredPatterns = [
   {
     pattern: /function formatPortfolioCustomerActionLine[\s\S]{0,1400}formatPortfolioActionLabel\(action\.action\)[\s\S]{0,700}shortenPortfolioCustomerText/,
     message: "portfolio action lines must keep Chinese action labels while trimming metric-heavy model reasons."
+  },
+  {
+    pattern: /function shortenPortfolioCustomerText[\s\S]{0,900}compactNumericHeavyCustomerText[\s\S]{0,900}function compactNumericHeavyCustomerText[\s\S]{0,900}maxNumbers/,
+    message: "portfolio customer-facing cards must compact numeric-heavy action reasons before Feishu display."
   },
   {
     pattern: /function summarizePortfolioRun\(run,\s*fallbackAccount\s*=\s*\{\}\)[\s\S]{0,220}getPortfolioRunAccountContext\(run,\s*fallbackAccount\)[\s\S]{0,800}card:\s*normalizePortfolioUserFacingText\(run\.card \|\| "",\s*account\)[\s\S]{0,900}sanitizePortfolioPublicReportValue/,
@@ -1043,6 +1063,14 @@ const requiredPatterns = [
   {
     pattern: /function buildPortfolioBacktestDiagnostics[\s\S]{0,5200}试探仓后续回测[\s\S]{0,900}加到3%-5%/,
     message: "portfolio backtest diagnostics must force a scale-or-exit plan after tiny starter buys when cash remains excessive."
+  },
+  {
+    pattern: /function buildPortfolioBacktestDiagnostics[\s\S]{0,9000}waitOnlyDecisionRuns[\s\S]{0,1200}过度保守回测/,
+    message: "portfolio backtest diagnostics must detect repeated wait-only decisions while cash remains deployable."
+  },
+  {
+    pattern: /过度保守回测[\s\S]{0,700}连续等待不能算完成工作/,
+    message: "portfolio capability queue must turn over-conservative replays into concrete redeployment tasks."
   },
   {
     pattern: /db\.dailyEquity\.push\(\{[\s\S]{0,600}positionWeightPct: db\.account\.positionWeightPct[\s\S]{0,220}pendingWeightPct: db\.account\.pendingWeightPct/,

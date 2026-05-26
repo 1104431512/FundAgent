@@ -64,6 +64,28 @@ assert.deepEqual(
   { date: "2026-05-24", unitNav: 2.4229, dailyReturnPct: -0.05 },
   "Eastmoney pingzhongdata fallback must recover the latest official NAV when fundgz lacks an intraday estimate"
 );
+const sinaEstimateNav = manager.parseSinaEstimateNetworthJsonp(`
+/*<script>location.href='//sina.com';</script>*/
+jsonp_sina_test({"result":{"status":{"code":0},"data":{"worth":"4.8297","worth_date":"20260526","networth":[
+  {"symbol":"008327","pre_date":"2026-05-26","min_time":"14:59:00","pre_nav":"4.8205","pre_nav2":"4.8188","growthrate":"-0.0061","growthrate2":"-0.0149"},
+  {"symbol":"008327","pre_date":"2026-05-26","min_time":"15:00:00","pre_nav":"4.8210","pre_nav2":"4.8190","growthrate":"-0.0060","growthrate2":"-0.0148"}
+]}}})
+`);
+assert.deepEqual(
+  sinaEstimateNav,
+  {
+    code: "008327",
+    name: "",
+    unitNav: 4.8297,
+    estimatedNav: 4.819,
+    estimatedChangePct: -1.48,
+    navDate: "2026-05-26",
+    estimateTime: "2026-05-26 15:00",
+    sourceKind: "sina_intraday_estimate",
+    valuationBasis: "盘中估算（新浪备源）"
+  },
+  "Sina estimate parser must recover near-real-time valuation data as a backup source"
+);
 assert.equal(
   manager.summarizePortfolioEquityBrief({ totalAsset: 100000, investedValue: 30000 }).positionWeightPct,
   30,
@@ -211,6 +233,36 @@ assert(backtestActionQueue.some((item) => item.action.includes("卡滞订单")),
 assert(backtestActionQueue.some((item) => item.action.includes("重复pending应收")), "capability action queue must turn duplicated settlements into a receivable repair task");
 assert(backtestActionQueue.some((item) => item.action.includes("0.5%-2.5%试探仓")), "capability action queue must turn idle-cash replay into a redeployment task");
 assert(backtestActionQueue.some((item) => item.action.includes("加到3%-5%")), "capability action queue must turn starter-buy underdeployment into a scale-or-exit task");
+const conservativeBacktestFixture = {
+  account: {
+    cash: 82000,
+    receivableCash: 0,
+    pendingBuyAmount: 0,
+    totalAsset: 100000,
+    positionWeightPct: 4,
+    investedValue: 4000,
+    positions: [{ code: "000001", name: "试探仓基金", currentValue: 4000, costAmount: 4000 }],
+    riskBudget: { blockNewBuys: false }
+  },
+  watchlist: [
+    { code: "010802", name: "低位消费候选C", status: "waiting_pullback" },
+    { code: "012046", name: "医药修复候选C", status: "ready" }
+  ],
+  runs: [
+    { date: "2026-05-21", type: "decision", status: "completed", summary: "继续等待机会，暂不买入。", actions: [{ action: "WATCH", code: "010802", reason: "观察" }] },
+    { date: "2026-05-22", type: "decision", status: "completed", summary: "仍然观望，没有合格买点，0元执行。", actions: [{ action: "HOLD", code: "000001", reason: "等待确认" }] },
+    { date: "2026-05-25", type: "decision", status: "completed", summary: "继续看低位候选，但未提交申购。", actions: [{ action: "WATCH", code: "012046", reason: "等待机会" }] }
+  ],
+  transactions: [],
+  orders: [],
+  settlements: []
+};
+const conservativeBacktest = manager.buildPortfolioBacktestDiagnostics(conservativeBacktestFixture);
+assert(conservativeBacktest.items.some((item) => item.label === "过度保守回测"), "backtest diagnostics must detect repeated wait-only decisions under high cash");
+assert(
+  manager.buildPortfolioCapabilityActionQueue(conservativeBacktestFixture).some((item) => item.action.includes("连续等待不能算完成工作")),
+  "capability action queue must turn over-conservative replay into a concrete redeployment task"
+);
 assert.equal(manager.findStalePortfolioActiveOrders(backtestFixture.orders, "2026-05-27").length, 1, "stale active order detector must find overdue queued/submitted/priced orders");
 assert.equal(
   manager.findStalePortfolioActiveOrders([...backtestFixture.orders, backtestFixture.orders[1]], "2026-05-27").length,
@@ -536,9 +588,25 @@ const investedReturnDb = manager.normalizePortfolioDb({
   }
 });
 assert.equal(investedReturnDb.account.investedCost, 10000, "portfolio account must expose the actual invested cost denominator");
+assert.equal(investedReturnDb.account.investedCostBasis, 10000, "portfolio account must expose the actual invested cost basis");
 assert.equal(investedReturnDb.account.cumulativePnl, 739.77, "portfolio account PnL amount should still reflect total asset minus initial cash ledger");
 assert.equal(investedReturnDb.account.cumulativePnlPct, 7.4, "portfolio PnL percentage must use actual invested amount instead of initial capital");
 assert.equal(investedReturnDb.account.capitalPnlPct, 0.74, "portfolio account may still expose initial-capital return separately for reference");
+const liquidatedReturnDb = manager.normalizePortfolioDb({
+  account: {
+    initialCapital: 100000,
+    cash: 102230.85,
+    positions: []
+  },
+  transactions: [
+    { date: "2026-05-20", createdAt: "2026-05-20T06:00:00.000Z", side: "BUY", code: "008327", name: "东财通信C", amount: 30002.28 },
+    { date: "2026-05-25", createdAt: "2026-05-25T08:00:00.000Z", side: "SELL", code: "008327", name: "东财通信C", amount: 32098.68 }
+  ]
+});
+assert.equal(liquidatedReturnDb.account.investedCost, 0, "fully liquidated account must keep current open-position cost at zero");
+assert.equal(liquidatedReturnDb.account.investedCostBasis, 30002.28, "fully liquidated account must recover the actual invested denominator from trade history");
+assert.equal(liquidatedReturnDb.account.cumulativePnl, 2230.85, "fully liquidated account must keep realized account PnL");
+assert.equal(liquidatedReturnDb.account.cumulativePnlPct, 7.44, "fully liquidated account PnL percentage must not collapse to zero after positions are sold");
 const exposureSummary = manager.buildPortfolioExposureSummary([
   { code: "008327", name: "东财通信C", currentValue: 12000, weightPct: 12, fundSnapshot: { topHoldings: ["300502 新易盛 8.74%", "300308 中际旭创 7.98%"] } },
   { code: "006265", name: "红土创新新科技股票A", currentValue: 10000, weightPct: 10, fundSnapshot: { topHoldings: ["300308 中际旭创 8.54%", "300502 新易盛 8.36%"] } },
@@ -611,6 +679,22 @@ const decisionRunSummary = manager.buildPortfolioRunSummary({
 assert(decisionRunSummary.includes("今日决策：持有复核1、观察1，未提交申购/赎回"), "portfolio run summary must replace generic save-progress text with action counts");
 assert(decisionRunSummary.includes("风险重点：同题材暴露偏高"), "portfolio run summary must surface the main risk rather than a generic progress line");
 assert(!decisionRunSummary.includes("正在保存任务结果"), "portfolio run summary must not expose progress-only text after completion");
+const customerActionLine = manager.formatPortfolioCustomerActionLine({
+  action: "SELL",
+  code: "008327",
+  name: "东财通信C",
+  amount: 11810.03,
+  targetWeightPct: 8,
+  reason: "系统组合集中度控制：同题材暴露科技约29.6%；底层重叠300502 新易盛涉及3只基金；同题材暴露过度集中，先分批降低同题材暴露。该基金近20日+19.64%、近60日+61.1%，120日和250日位置均为100%，且账户单仓触发回吐保护复核。",
+  riskControl: "单仓回吐保护：曾浮盈+3.24%但当前转亏-1.58%，需要防止利润继续回吐。",
+  feeCheck: "当前持有C类，前端申购费0，销售服务费0.25%/年，每万元1年约25元，适合战术持有。"
+});
+const customerActionNumbers = customerActionLine.match(/(?:[+-]?\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:元|万|亿)|近\s*\d+\s*日|\d+\s*日位置)/g) || [];
+assert(customerActionLine.includes("理由：") && customerActionLine.includes("看点："), "customer action line must keep reasoning sections");
+assert(customerActionLine.includes("浮盈已经回吐到转亏"), "customer action line must translate dense giveback numbers into readable risk language");
+assert(customerActionLine.length < 320, "customer action line must be compact enough for Feishu card reading");
+assert(customerActionNumbers.length <= 6, "customer action line must not dump a long metric list");
+assert(!customerActionLine.includes("120日和250日位置均为100%"), "customer action line must hide dense metric clauses after the key interpretation");
 const sanitizedHistoricalRun = manager.sanitizePortfolioPublicReportValue({
   card: "持仓关注：趋势 extended_uptrend，entryBias=wait_pullback，actionability 为 weak_fit，建议 watch/test only。",
   observation: {

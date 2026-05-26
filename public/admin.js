@@ -313,8 +313,8 @@ function renderPortfolioDashboard(portfolio = {}) {
   ];
   setText("#portfolioBrief", briefParts.filter(Boolean).join(" · "));
   setText("#portfolioAssetFootnote", `初始本金 ${formatMoney(account.initialCapital)}，今日 ${formatSigned(account.dayPnl)}`);
-  setText("#portfolioExposureFootnote", `持仓市值 ${formatMoney(account.investedValue)}，成本 ${formatMoney(account.investedCost)}，距峰值 ${formatSigned(account.drawdownFromPeakPct || 0)}%`);
-  setText("#portfolioPnlFootnote", `按实际投入成本 ${formatMoney(account.investedCost)} 计算`);
+  setText("#portfolioExposureFootnote", `持仓市值 ${formatMoney(account.investedValue)}，当前成本 ${formatMoney(account.investedCost)}，距峰值 ${formatSigned(account.drawdownFromPeakPct || 0)}%`);
+  setText("#portfolioPnlFootnote", `按实际投入基准 ${formatMoney(account.investedCostBasis || account.investedCost)} 计算`);
   setText("#portfolioPositionCount", `${positions.length} 只`);
   setText("#portfolioReadinessCount", `${ready.length + waiting.length} 只`);
   updateRunStateBadge(latestRun, portfolio.scheduler || {});
