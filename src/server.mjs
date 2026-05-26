@@ -5294,6 +5294,10 @@ async function processPortfolioOrderLifecycle(db, run, config = getEffectiveConf
     }
 
     if (order.navSnapshot?.nav && order.confirmDate <= now.date && order.status !== "confirmed") {
+      if (shouldRejectImpossiblePortfolioSellOrder(db, order)) {
+        rejectImpossiblePortfolioSellOrder(order, result);
+        continue;
+      }
       const transaction =
         order.side === "BUY"
           ? confirmPortfolioBuyOrder(db, order, profile, run)
@@ -5322,6 +5326,46 @@ async function processPortfolioOrderLifecycle(db, run, config = getEffectiveConf
   syncPortfolioActiveOrderReservations(db);
   recalculatePortfolioAccount(db.account);
   return result;
+}
+
+function shouldRejectImpossiblePortfolioSellOrder(db = {}, order = {}) {
+  if (String(order.side || "").toUpperCase() !== "SELL") return false;
+  const position = (db.account?.positions || []).find((item) => item.code === order.code);
+  if (!position) return true;
+  const requestedUnits = Number(order.requestedUnits || 0);
+  const positionUnits = Number(position.units || 0);
+  return !Number.isFinite(requestedUnits)
+    || requestedUnits <= 0
+    || !Number.isFinite(positionUnits)
+    || positionUnits <= 0;
+}
+
+function rejectImpossiblePortfolioSellOrder(order = {}, result = null) {
+  const beforeStatus = order.status;
+  order.status = "rejected";
+  order.rejectedAt = new Date().toISOString();
+  order.rejectionReason = "赎回确认时已无可卖持仓或份额，系统自动作废该旧订单。";
+  addOrderTimeline(order, "rejected", order.rejectionReason);
+  if (result) {
+    result.notes.push({
+      action: order.side,
+      code: order.code,
+      name: order.name,
+      status: "rejected",
+      reason: order.rejectionReason
+    });
+    result.orderUpdates.push({
+      id: order.id,
+      code: order.code,
+      name: order.name,
+      side: order.side,
+      beforeStatus,
+      afterStatus: order.status,
+      priceDate: order.priceDate,
+      confirmDate: order.confirmDate
+    });
+    result.updatedOrders += 1;
+  }
 }
 
 async function resolveOrderNavSnapshot(order, profile) {
@@ -7162,6 +7206,18 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
     );
   }
 
+  const staleActiveOrders = findStalePortfolioActiveOrders(orders);
+  if (staleActiveOrders.length) {
+    const first = staleActiveOrders[0];
+    add(
+      "warning",
+      "订单卡滞回测",
+      `${staleActiveOrders.length} 笔过期待处理`,
+      `${first.side || ""} ${first.code || ""} ${first.name || ""} 已过确认日 ${first.confirmDate || "-"} 仍为 ${formatPortfolioOrderStatus(first.status)}；下一轮必须先处理订单生命周期，不能把卡滞订单当作真实仓位或可用现金。`,
+      "订单结算"
+    );
+  }
+
   const hotBuys = findPortfolioBacktestHotBuys({ transactions, orders, runs, watchlist });
   if (hotBuys.length) {
     const first = hotBuys[0];
@@ -7313,6 +7369,28 @@ function findDuplicatePortfolioTradeGroups(transactions = []) {
 function formatPortfolioBacktestTradeGroup(group = {}) {
   const total = (group.transactions || []).reduce((sum, item) => sum + (Number(item.amount || 0) || 0), 0);
   return `${group.date || "未知日期"} ${group.side || ""} ${group.code || ""} ${group.name || ""} ${group.transactions?.length || 0}笔，合计约${round(total, 2)}元`.trim();
+}
+
+function findStalePortfolioActiveOrders(orders = [], referenceDate = getZonedDateTime(getEffectiveConfig().portfolioTimezone).date) {
+  const finalStatuses = new Set(["confirmed", "cancelled", "rejected", "settled"]);
+  const seenKeys = new Set();
+  return (orders || [])
+    .filter((order) => order && !finalStatuses.has(String(order.status || "")))
+    .filter((order) => {
+      const key = order.id || [order.side, order.code, order.status, order.priceDate, order.confirmDate, order.amount].join("|");
+      if (seenKeys.has(key)) return false;
+      seenKeys.add(key);
+      return true;
+    })
+    .filter((order) => {
+      const confirmDate = normalizePortfolioEventDate(order.confirmDate);
+      const priceDate = normalizePortfolioEventDate(order.priceDate || order.acceptedDate);
+      const settlementDate = normalizePortfolioEventDate(order.settlementDate);
+      return (confirmDate && confirmDate < referenceDate)
+        || (priceDate && priceDate < referenceDate && String(order.status || "") === "queued")
+        || (settlementDate && settlementDate < referenceDate && String(order.status || "") !== "settled");
+    })
+    .sort((a, b) => String(a.confirmDate || a.priceDate || "").localeCompare(String(b.confirmDate || b.priceDate || "")));
 }
 
 function findPortfolioBacktestHotBuys({ transactions = [], orders = [], runs = [], watchlist = [] } = {}) {
@@ -7518,6 +7596,8 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "继续增强低位召回；没有合格买点时明确0元等待，不硬凑推荐。", "组合经理");
     } else if (item.label === "重复成交回测") {
       addTask(item, "先冻结同日同基金同方向重复订单，按date+side+code去重后再允许新的申赎确认。", "执行风控");
+    } else if (item.label === "订单卡滞回测") {
+      addTask(item, "先处理过期queued/submitted/priced订单；无持仓可卖的旧赎回必须作废，不能让卡滞订单继续影响现金和仓位判断。", "执行风控");
     } else if (item.label === "追高买入回测") {
       addTask(item, "复盘买入当日是否处于高位延伸；后续同类基金必须等回调完成和5日/10日温和转强后才小仓试探。", "基金研究员");
     } else if (item.label === "卖出滞后回测") {
@@ -18883,6 +18963,7 @@ export {
   evaluateFundAnswerQuality,
   fetchGlobalMarketQuotes,
   fetchRealtimeFundValuationSnapshot,
+  findStalePortfolioActiveOrders,
   filterFocusedPullbackRankingCandidates,
   getFeishuCardImageChunkSize,
   getFundReportChartLegendLines,
@@ -18922,6 +19003,7 @@ export {
   renderFundReportSummaryPng,
   parseDotEnvValue,
   shouldReduceHeldPositionFromReview,
+  shouldRejectImpossiblePortfolioSellOrder,
   shouldPersistRuntimeStats,
   summarizePortfolioOrder,
   capPortfolioSellAmountByDiscipline,

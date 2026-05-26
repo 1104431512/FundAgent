@@ -1007,7 +1007,15 @@ const requiredPatterns = [
     message: "portfolio backtest diagnostics must replay duplicate trades, chase entries, delayed sells, and idle-cash redeployment failures."
   },
   {
-    pattern: /function buildPortfolioCapabilityDiagnostics[\s\S]{0,4200}盈利能力承压[\s\S]{0,4200}追涨暴露待消化[\s\S]{0,4200}数据质量缺口/,
+    pattern: /function buildPortfolioBacktestDiagnostics[\s\S]{0,2600}订单卡滞回测/,
+    message: "portfolio backtest diagnostics must flag stale active orders that can distort cash, receivables, and deployment capacity."
+  },
+  {
+    pattern: /function processPortfolioOrderLifecycle[\s\S]{0,4200}shouldRejectImpossiblePortfolioSellOrder[\s\S]{0,900}rejectImpossiblePortfolioSellOrder/,
+    message: "portfolio order lifecycle must reject old sell orders when there is no remaining position or sellable unit."
+  },
+  {
+    pattern: /function buildPortfolioCapabilityDiagnostics[\s\S]{0,5200}盈利能力承压[\s\S]{0,5200}追涨暴露待消化[\s\S]{0,5200}数据质量缺口/,
     message: "portfolio capability diagnostics must cover profitability, chase-risk exposure, and data-quality gaps."
   },
   {

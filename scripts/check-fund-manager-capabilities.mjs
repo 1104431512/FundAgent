@@ -137,7 +137,10 @@ const backtestFixture = {
     { date: "2026-05-26", side: "SELL", code: "006265", name: "红土创新新科技股票A", amount: 8000, nav: 1.1, navDate: "2026-05-25" },
     { date: "2026-05-26", side: "SELL", code: "006265", name: "红土创新新科技股票A", amount: 2000, nav: 1.1, navDate: "2026-05-25" }
   ],
-  orders: [{ date: "2026-05-26", side: "SELL", code: "006265", status: "confirmed" }],
+  orders: [
+    { date: "2026-05-26", side: "SELL", code: "006265", status: "confirmed" },
+    { id: "stale_sell", side: "SELL", code: "008327", name: "旧赎回订单", amount: 3000, status: "queued", priceDate: "2026-05-20", confirmDate: "2026-05-21", submittedAt: "2026-05-20T06:00:00.000Z" }
+  ],
   runs: [
     {
       date: "2026-05-13",
@@ -172,6 +175,7 @@ const backtestFixture = {
 const portfolioBacktestDiagnostics = manager.buildPortfolioBacktestDiagnostics(backtestFixture);
 assert.equal(portfolioBacktestDiagnostics.level, "critical", "historical backtest diagnostics must flag severe replayed defects");
 assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "重复成交回测"), "backtest diagnostics must catch duplicate same-day same-fund fills");
+assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "订单卡滞回测"), "backtest diagnostics must catch stale active orders that still affect the ledger");
 assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "追高买入回测"), "backtest diagnostics must catch hot/chase entries after replay");
 assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "卖出滞后回测"), "backtest diagnostics must catch delayed sell discipline");
 assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "运行中断回测"), "backtest diagnostics must catch decision continuity failures");
@@ -181,7 +185,24 @@ const backtestCapabilityDiagnostics = manager.buildPortfolioCapabilityDiagnostic
 assert(backtestCapabilityDiagnostics.items.some((item) => item.label === "重复成交回测"), "capability diagnostics must absorb historical backtest defects");
 const backtestActionQueue = manager.buildPortfolioCapabilityActionQueue(backtestFixture);
 assert(backtestActionQueue.some((item) => item.action.includes("重复订单")), "capability action queue must turn duplicate-fill replay into an execution repair task");
+assert(backtestActionQueue.some((item) => item.action.includes("卡滞订单")), "capability action queue must turn stale active orders into an execution repair task");
 assert(backtestActionQueue.some((item) => item.action.includes("0.5%-2.5%试探仓")), "capability action queue must turn idle-cash replay into a redeployment task");
+assert.equal(manager.findStalePortfolioActiveOrders(backtestFixture.orders, "2026-05-27").length, 1, "stale active order detector must find overdue queued/submitted/priced orders");
+assert.equal(
+  manager.findStalePortfolioActiveOrders([...backtestFixture.orders, backtestFixture.orders[1]], "2026-05-27").length,
+  1,
+  "stale active order detector must dedupe repeated API/order-list views by id"
+);
+assert.equal(
+  manager.findStalePortfolioActiveOrders([{ side: "BUY", code: "004877", status: "submitted", priceDate: "2026-05-26", confirmDate: "2026-05-28" }], "2026-05-27").length,
+  0,
+  "submitted QDII or fund orders must not be marked stale before the confirmation date"
+);
+assert.equal(
+  manager.shouldRejectImpossiblePortfolioSellOrder({ account: { positions: [] } }, { side: "SELL", code: "008327", requestedUnits: 100 }),
+  true,
+  "order lifecycle must reject stale sell orders when there is no remaining position to sell"
+);
 const capabilityActionQueue = manager.buildPortfolioCapabilityActionQueue({
   account: {
     cash: 70000,
