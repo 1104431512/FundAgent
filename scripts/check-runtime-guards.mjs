@@ -1109,6 +1109,14 @@ const requiredPatterns = [
     message: "portfolio capability queue must turn over-conservative replays into concrete redeployment tasks."
   },
   {
+    pattern: /frozenDecisionRuns[\s\S]{0,1000}仓位冻结回测[\s\S]{0,500}不能只把仓位停在第一轮操作/,
+    message: "portfolio backtest diagnostics must detect frozen position structure across repeated decision runs."
+  },
+  {
+    pattern: /仓位冻结回测[\s\S]{0,700}仓位不能停在第一轮操作/,
+    message: "portfolio capability queue must turn frozen-position replays into concrete position-change tasks."
+  },
+  {
     pattern: /db\.dailyEquity\.push\(\{[\s\S]{0,600}positionWeightPct: db\.account\.positionWeightPct[\s\S]{0,220}pendingWeightPct: db\.account\.pendingWeightPct/,
     message: "portfolio valuation history must persist position and pending weights."
   },

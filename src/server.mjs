@@ -7699,6 +7699,26 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
       "买入质量"
     );
   }
+  const frozenDecisionRuns = recentDecisionRuns.filter((run) =>
+    !portfolioBacktestRunHasSide(run, "BUY")
+    && !portfolioBacktestRunHasSide(run, "SELL")
+  );
+  if (
+    Number.isFinite(cashLikePct)
+    && cashLikePct >= 55
+    && nearCount > 0
+    && frozenDecisionRuns.length >= 3
+    && !account.riskBudget?.blockNewBuys
+  ) {
+    const dates = frozenDecisionRuns.map((run) => run.date || normalizePortfolioEventDate(run.completedAt || run.startedAt)).filter(Boolean);
+    add(
+      "warning",
+      "仓位冻结回测",
+      `${frozenDecisionRuns.length} 次决策无申赎`,
+      `${dates.join("、") || "近期多次决策"} 都没有形成申购或赎回；若组合仍有${formatFallbackPct(cashLikePct)}可部署资金和${nearCount}只接近候选，下一轮必须做小仓试探、主动降级或明确下一次触发复查时间，不能只把仓位停在第一轮操作。`,
+      "组合管理"
+    );
+  }
 
   const severityRank = { ok: 0, info: 1, warning: 2, critical: 3 };
   const level = items.reduce((current, item) =>
@@ -8058,6 +8078,8 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "自选池ready不能只收藏；逐只给0.5%-2.5%试探、降级理由或下一次触发复查时间。", "组合经理");
     } else if (item.label === "过度保守回测") {
       addTask(item, "连续等待不能算完成工作；下一轮必须给小仓试探方案，或列出前三个候选缺口和下一次触发复查时间。", "组合经理");
+    } else if (item.label === "仓位冻结回测") {
+      addTask(item, "仓位不能停在第一轮操作；下一轮必须对接近候选逐只给试探、降级或复查时间，形成可验证的仓位变化计划。", "组合经理");
     }
   }
   return tasks.slice(0, 8);
