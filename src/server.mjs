@@ -14110,16 +14110,39 @@ async function fetchFundHoldingRealtimePulse(holdings = {}) {
     return { ok: false, label: "前十大持仓实时脉冲未启用", items: [], sources: [] };
   }
   const normalized = normalizeHoldingItems(holdings.equityTopHoldings || [])
-    .map((item) => ({ ...item, secid: inferEastmoneySecidFromHolding(item) }))
+    .map((item) => ({
+      ...item,
+      secid: inferEastmoneySecidFromHolding(item),
+      tencentQuoteCode: inferTencentQuoteCodeFromHolding(item)
+    }))
     .filter((item) => item.secid)
     .slice(0, finiteNumberOr(process.env.FUND_HOLDING_REALTIME_LIMIT, 8));
   if (!normalized.length) {
     return { ok: false, label: "前十大持仓实时脉冲不可用", note: "前十大持仓缺少可映射的市场代码。", items: [], sources: [] };
   }
   const quotes = await fetchEastmoneyRealtimeQuotes(normalized.map((item) => item.secid));
-  return buildFundHoldingRealtimePulseFromQuotes(normalized, quotes.items || [], {
-    sourceLabel: quotes.label,
-    fetchedAt: quotes.fetchedAt
+  let quoteItems = quotes.items || [];
+  let sourceLabel = quotes.label;
+  const coveredKeys = new Set(quoteItems.flatMap((item) => [item.secid, item.code].filter(Boolean).map((key) => String(key).toUpperCase())));
+  const missingTencentCodes = normalized
+    .filter((item) =>
+      item.tencentQuoteCode
+      && !coveredKeys.has(String(item.secid || "").toUpperCase())
+      && !coveredKeys.has(String(item.code || "").toUpperCase())
+    )
+    .map((item) => item.tencentQuoteCode);
+  if (missingTencentCodes.length) {
+    const supplemental = await fetchTencentRealtimeQuotes(missingTencentCodes).catch(() => null);
+    if (supplemental?.items?.length) {
+      quoteItems = [...quoteItems, ...supplemental.items];
+      sourceLabel = quoteItems.length > (quotes.items || []).length
+        ? `${quotes.label || "东方财富实时行情"} + 腾讯实时行情`
+        : sourceLabel;
+    }
+  }
+  return buildFundHoldingRealtimePulseFromQuotes(normalized, quoteItems, {
+    sourceLabel,
+    fetchedAt: quotes.fetchedAt || new Date().toISOString()
   });
 }
 
@@ -14171,6 +14194,58 @@ function normalizeEastmoneyRealtimeQuote(item = {}) {
   };
 }
 
+async function fetchTencentRealtimeQuotes(quoteCodes = []) {
+  const uniqueCodes = [...new Set((quoteCodes || []).map((item) => String(item || "").trim().toLowerCase()).filter(Boolean))]
+    .slice(0, finiteNumberOr(process.env.TENCENT_REALTIME_QUOTE_LIMIT, 60));
+  if (!uniqueCodes.length) {
+    return { ok: false, label: "腾讯实时行情", error: "没有可抓取的市场代码", items: [] };
+  }
+  const source = `https://qt.gtimg.cn/q=${uniqueCodes.join(",")}`;
+  const fetchedAt = new Date().toISOString();
+  const text = await fetchText(source, "https://gu.qq.com/");
+  const items = parseTencentRealtimeQuotes(text);
+  updateStats({ counters: { holdingTencentRealtimeQuoteFetches: 1, holdingTencentRealtimeQuoteCodes: uniqueCodes.length } });
+  return {
+    ok: items.length > 0,
+    label: "腾讯前十大持仓实时行情",
+    fetchedAt,
+    items
+  };
+}
+
+function parseTencentRealtimeQuotes(text = "") {
+  const body = String(text || "");
+  const items = [];
+  const pattern = /v_([a-z]{2}\d{5,6})="([^"]*)";/gi;
+  for (const match of body.matchAll(pattern)) {
+    const quoteCode = String(match[1] || "").toLowerCase();
+    const parts = String(match[2] || "").split("~");
+    const code = parts[2] || quoteCode.replace(/^(?:sh|sz|hk)/, "");
+    const secid = inferEastmoneySecidFromTencentQuoteCode(quoteCode);
+    const latest = toNumber(parts[3]);
+    const previousClose = toNumber(parts[4]);
+    const change = toNumber(parts[31]);
+    const changePct = toNumber(parts[32]);
+    if (!code || !Number.isFinite(latest)) continue;
+    items.push({
+      code,
+      secid,
+      name: parts[1] || "",
+      latest,
+      change,
+      changePct,
+      open: toNumber(parts[5]),
+      high: toNumber(parts[33]),
+      low: toNumber(parts[34]),
+      previousClose,
+      quoteTime: normalizeTencentQuoteTime(parts[30] || ""),
+      source: `https://qt.gtimg.cn/q=${quoteCode}`,
+      sourceKind: "tencent_realtime_quote"
+    });
+  }
+  return items;
+}
+
 function inferEastmoneySecidFromHolding(holding = {}) {
   const raw = [
     holding.secid,
@@ -14186,6 +14261,58 @@ function inferEastmoneySecidFromHolding(holding = {}) {
   if (!cnMatch) return "";
   const code = cnMatch[1];
   return code.startsWith("6") ? `1.${code}` : `0.${code}`;
+}
+
+function inferTencentQuoteCodeFromHolding(holding = {}) {
+  const raw = [
+    holding.tencentQuoteCode,
+    holding.quoteCode,
+    holding.secid,
+    holding.code,
+    holding.name,
+    holding.text
+  ].map((item) => String(item || "").trim()).filter(Boolean).join(" ");
+  const explicit = raw.match(/\b((?:sh|sz)\d{6}|hk\d{5})\b/i);
+  if (explicit) return explicit[1].toLowerCase();
+  const secid = raw.match(/(?:^|\s)(\d{1,3})\.([A-Z0-9]{1,8})(?=\s|$)/i);
+  if (secid) return inferTencentQuoteCodeFromEastmoneySecid(`${secid[1]}.${secid[2]}`);
+  const hkMatch = raw.match(/\b(?:HK)?(\d{5})(?:\.HK)?\b/i);
+  if (hkMatch) return `hk${hkMatch[1]}`;
+  const cnMatch = raw.match(/\b(\d{6})\b/);
+  if (!cnMatch) return "";
+  const code = cnMatch[1];
+  return `${code.startsWith("6") ? "sh" : "sz"}${code}`;
+}
+
+function inferTencentQuoteCodeFromEastmoneySecid(secid = "") {
+  const match = String(secid || "").trim().match(/^(\d{1,3})\.([A-Z0-9]{1,8})$/i);
+  if (!match) return "";
+  const market = match[1];
+  const code = match[2].toUpperCase();
+  if (market === "1") return `sh${code}`;
+  if (market === "0") return `sz${code}`;
+  if (market === "116") return `hk${code.padStart(5, "0")}`;
+  return "";
+}
+
+function inferEastmoneySecidFromTencentQuoteCode(quoteCode = "") {
+  const match = String(quoteCode || "").trim().match(/^(sh|sz|hk)(\d{5,6})$/i);
+  if (!match) return "";
+  const prefix = match[1].toLowerCase();
+  const code = match[2];
+  if (prefix === "sh") return `1.${code}`;
+  if (prefix === "sz") return `0.${code}`;
+  if (prefix === "hk") return `116.${code.padStart(5, "0")}`;
+  return "";
+}
+
+function normalizeTencentQuoteTime(value = "") {
+  const text = String(value || "").trim();
+  const compact = text.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/);
+  if (compact) return `${compact[1]}-${compact[2]}-${compact[3]} ${compact[4]}:${compact[5]}`;
+  const slashed = text.match(/^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})/);
+  if (slashed) return `${slashed[1]}-${slashed[2]}-${slashed[3]} ${slashed[4]}:${slashed[5]}`;
+  return text;
 }
 
 function buildFundHoldingRealtimePulseFromQuotes(holdings = [], quotes = [], options = {}) {
@@ -20496,6 +20623,7 @@ export {
   normalizeUserFacingFundAnswer,
   parseFundPingzhongLatestNav,
   parseSinaEstimateNetworthJsonp,
+  parseTencentRealtimeQuotes,
   summarizeFundIntradayValuationTrend,
   mergeFundValuationIntradaySupplement,
   normalizePortfolioDb,

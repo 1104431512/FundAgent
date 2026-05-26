@@ -145,8 +145,12 @@ const requiredPatterns = [
     message: "fund and portfolio prompts must use intraday valuation direction to reduce chase-buy confidence."
   },
   {
-    pattern: /async function fetchFundHoldingRealtimePulse[\s\S]{0,2200}push2\.eastmoney\.com\/api\/qt\/ulist\.np\/get[\s\S]{0,2600}function buildFundHoldingRealtimePulseFromQuotes/,
-    message: "fund enrichment must add realtime top-holding quote pulse evidence, not only stale fund NAV estimates."
+    pattern: /async function fetchFundHoldingRealtimePulse[\s\S]{0,2600}fetchEastmoneyRealtimeQuotes[\s\S]{0,9000}fetchTencentRealtimeQuotes[\s\S]{0,9000}function buildFundHoldingRealtimePulseFromQuotes/,
+    message: "fund enrichment must add Eastmoney and Tencent realtime top-holding quote pulse evidence, not only stale fund NAV estimates."
+  },
+  {
+    pattern: /function parseTencentRealtimeQuotes[\s\S]{0,2200}sourceKind: "tencent_realtime_quote"[\s\S]{0,1800}function inferTencentQuoteCodeFromHolding/,
+    message: "Tencent realtime quote fallback must parse A-share and HK holding quotes into normalized pulse evidence."
   },
   {
     pattern: /function buildHoldingsOutlookProfile[\s\S]{0,5000}holdingRealtimePulse[\s\S]{0,1600}前十大持仓盘中/,

@@ -89,6 +89,21 @@ const manualIntradayTrend = manager.summarizeFundIntradayValuationTrend([
   { at: "2026-05-26 15:00", estimatedChangePct: -0.2 }
 ]);
 assert(manualIntradayTrend.label.includes("冲高回落"), "intraday trend summary must flag high-to-close giveback instead of using only the latest estimate");
+const tencentHoldingQuotes = manager.parseTencentRealtimeQuotes(`
+v_sh688521="1~芯原股份~688521~266.15~286.27~289.20~26615007~12160660~14454347~266.14~2~266.10~5~266.07~2~266.05~4~266.04~2~266.15~27~266.16~7~266.17~15~266.18~8~266.19~152~~20260526161447~-20.12~-7.03~289.36~259.31~266.15/26615007/7178619701";
+v_hk00700="100~腾讯控股~00700~439.000~441.400~438.000~32795639.0~0~0~439.000~0~0~0~0~0~0~0~0~0~439.000~0~0~0~0~0~0~0~0~0~32795639.0~2026/05/26 16:08:26~-2.400~-0.54~441.000~432.000~439.000";
+`);
+assert.equal(tencentHoldingQuotes.length, 2, "Tencent quote parser must recover realtime top-holding quote rows");
+assert.equal(tencentHoldingQuotes[0].secid, "1.688521", "Tencent A-share quote parser must map back to Eastmoney secid");
+assert.equal(tencentHoldingQuotes[0].changePct, -7.03, "Tencent A-share quote parser must recover realtime percentage change");
+assert.equal(tencentHoldingQuotes[1].secid, "116.00700", "Tencent HK quote parser must map back to Eastmoney secid");
+const tencentHoldingPulse = manager.buildFundHoldingRealtimePulseFromQuotes([
+  { code: "688521", name: "芯原股份", pct: 5 },
+  { code: "00700", name: "腾讯控股", pct: 5 }
+], tencentHoldingQuotes, { sourceLabel: "腾讯前十大持仓实时行情" });
+assert(tencentHoldingPulse.ok, "Tencent quote fallback must feed the top-holding realtime pulse");
+assert(tencentHoldingPulse.sourceLabel.includes("腾讯"), "holding pulse must disclose Tencent as a realtime source when used");
+assert(tencentHoldingPulse.risks.some((item) => item.includes("盘中走弱")), "Tencent holding pulse must turn realtime weakness into buy/wait evidence");
 const mergedPrimaryValuation = manager.mergeFundValuationIntradaySupplement(
   { ok: true, fundcode: "008327", gsz: 4.8258, gszzl: -0.71, gztime: "2026-05-26 15:00", sourceKind: "tiantian_intraday_estimate", source: "https://fundgz.1234567.com.cn/js/008327.js" },
   { ok: true, sourceKind: "sina_intraday_estimate", source: "https://stock.finance.sina.com.cn/fundInfo/api/openapi.php/FdFundService.getEstimateNetworthPic?symbol=008327", gsz: 4.819, gszzl: -1.48, gztime: "2026-05-26 15:00", intradaySeries: sinaEstimateNav.intradaySeries, intradayTrend: sinaEstimateNav.intradayTrend }
