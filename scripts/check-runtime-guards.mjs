@@ -1019,6 +1019,14 @@ const requiredPatterns = [
     message: "portfolio backtest diagnostics must flag stale active orders that can distort cash, receivables, and deployment capacity."
   },
   {
+    pattern: /function dedupePortfolioSettlements[\s\S]{0,2200}重复应收作废[\s\S]{0,500}receivableCash/,
+    message: "portfolio settlement lifecycle must cancel duplicate receivables and repair receivable cash."
+  },
+  {
+    pattern: /function buildPortfolioBacktestDiagnostics[\s\S]{0,3600}重复应收回测/,
+    message: "portfolio backtest diagnostics must flag duplicated settlement receivables that overstate deployable cash."
+  },
+  {
     pattern: /function processPortfolioOrderLifecycle[\s\S]{0,2200}order\.confirmDate <= now\.date && shouldRejectImpossiblePortfolioSellOrder[\s\S]{0,260}rejectImpossiblePortfolioSellOrder[\s\S]{0,900}resolveOrderNavSnapshot/,
     message: "portfolio order lifecycle must reject old impossible sell orders before depending on NAV fetches."
   },

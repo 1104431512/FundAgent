@@ -141,6 +141,10 @@ const backtestFixture = {
     { date: "2026-05-26", side: "SELL", code: "006265", status: "confirmed" },
     { id: "stale_sell", side: "SELL", code: "008327", name: "旧赎回订单", amount: 3000, status: "queued", priceDate: "2026-05-20", confirmDate: "2026-05-21", submittedAt: "2026-05-20T06:00:00.000Z" }
   ],
+  settlements: [
+    { id: "set_keep", orderId: "ord_dup_settle", code: "006265", name: "红土创新新科技股票A", amount: 8000, dueDate: "2026-05-28", status: "pending", createdAt: "2026-05-26T01:00:00.000Z" },
+    { id: "set_dup", orderId: "ord_dup_settle", code: "006265", name: "红土创新新科技股票A", amount: 2000, dueDate: "2026-05-28", status: "pending", createdAt: "2026-05-26T06:00:00.000Z" }
+  ],
   runs: [
     {
       date: "2026-05-13",
@@ -176,6 +180,7 @@ const portfolioBacktestDiagnostics = manager.buildPortfolioBacktestDiagnostics(b
 assert.equal(portfolioBacktestDiagnostics.level, "critical", "historical backtest diagnostics must flag severe replayed defects");
 assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "重复成交回测"), "backtest diagnostics must catch duplicate same-day same-fund fills");
 assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "订单卡滞回测"), "backtest diagnostics must catch stale active orders that still affect the ledger");
+assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "重复应收回测"), "backtest diagnostics must catch duplicated settlement receivables");
 assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "追高买入回测"), "backtest diagnostics must catch hot/chase entries after replay");
 assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "卖出滞后回测"), "backtest diagnostics must catch delayed sell discipline");
 assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "运行中断回测"), "backtest diagnostics must catch decision continuity failures");
@@ -186,6 +191,7 @@ assert(backtestCapabilityDiagnostics.items.some((item) => item.label === "重复
 const backtestActionQueue = manager.buildPortfolioCapabilityActionQueue(backtestFixture);
 assert(backtestActionQueue.some((item) => item.action.includes("重复订单")), "capability action queue must turn duplicate-fill replay into an execution repair task");
 assert(backtestActionQueue.some((item) => item.action.includes("卡滞订单")), "capability action queue must turn stale active orders into an execution repair task");
+assert(backtestActionQueue.some((item) => item.action.includes("重复pending应收")), "capability action queue must turn duplicated settlements into a receivable repair task");
 assert(backtestActionQueue.some((item) => item.action.includes("0.5%-2.5%试探仓")), "capability action queue must turn idle-cash replay into a redeployment task");
 assert.equal(manager.findStalePortfolioActiveOrders(backtestFixture.orders, "2026-05-27").length, 1, "stale active order detector must find overdue queued/submitted/priced orders");
 assert.equal(
@@ -1716,6 +1722,17 @@ assert.equal(duplicateOrderDb.orders.find((order) => order.id === "older").statu
 assert.equal(duplicateOrderDb.orders.find((order) => order.id === "newer").status, "cancelled", "duplicate order dedupe must cancel later duplicate orders");
 manager.syncPortfolioActiveOrderReservations(duplicateOrderDb);
 assert.equal(duplicateOrderDb.account.positions[0].pendingSellUnits, 300, "active sell reservations must reflect only the surviving pending order");
+const duplicateSettlementDb = manager.normalizePortfolioDb({
+  account: { initialCapital: 100000, cash: 70000, receivableCash: 1500, positions: [] },
+  settlements: [
+    { id: "set_keep", orderId: "ord_001", code: "008327", name: "东财通信C", amount: 1000, dueDate: "2026-05-28", status: "pending", createdAt: "2026-05-26T01:00:00.000Z" },
+    { id: "set_dup", orderId: "ord_001", code: "008327", name: "东财通信C", amount: 500, dueDate: "2026-05-28", status: "pending", createdAt: "2026-05-26T06:00:00.000Z" }
+  ]
+});
+const cancelledSettlementDuplicates = manager.dedupePortfolioSettlements(duplicateSettlementDb);
+assert.equal(cancelledSettlementDuplicates.length, 1, "duplicate settlement dedupe must cancel later duplicate receivables");
+assert.equal(duplicateSettlementDb.settlements.find((item) => item.id === "set_dup").status, "cancelled", "duplicate settlement dedupe must mark duplicates cancelled");
+assert.equal(duplicateSettlementDb.account.receivableCash, 1000, "duplicate settlement dedupe must subtract cancelled pending receivables from account receivable cash");
 const accountRiskBudget = manager.buildPortfolioAccountRiskBudget({
   totalAsset: 93500,
   peakTotalAsset: 100000

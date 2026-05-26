@@ -5452,6 +5452,7 @@ async function processPortfolioOrderLifecycle(db, run, config = getEffectiveConf
     updatedOrders: 0
   };
 
+  dedupePortfolioSettlements(db, result);
   for (const settlement of db.settlements) {
     if (settlement.status !== "pending") continue;
     if (settlement.dueDate && settlement.dueDate <= now.date) {
@@ -5582,6 +5583,75 @@ function rejectImpossiblePortfolioSellOrder(order = {}, result = null) {
   }
 }
 
+function dedupePortfolioSettlements(db = {}, result = null) {
+  db.settlements = Array.isArray(db.settlements) ? db.settlements : [];
+  if (!db.account || typeof db.account !== "object") db.account = {};
+  const groups = findDuplicatePortfolioSettlementGroups(db.settlements);
+  const cancelled = [];
+  for (const group of groups) {
+    const sorted = [...group.settlements].sort(comparePortfolioSettlementPriority);
+    const keep = sorted[0];
+    for (const settlement of sorted.slice(1)) {
+      if (settlement.status === "cancelled") continue;
+      const beforeStatus = settlement.status || "";
+      settlement.status = "cancelled";
+      settlement.cancelledAt = new Date().toISOString();
+      settlement.cancellationReason = `同一赎回订单 ${group.key} 已保留 ${keep.id || "较早记录"}，本条重复应收作废。`;
+      if (beforeStatus === "pending") {
+        db.account.receivableCash = round(Math.max(0, Number(db.account.receivableCash || 0) - Number(settlement.amount || 0)), 2);
+      }
+      cancelled.push(settlement);
+      if (result) {
+        result.notes.push({
+          action: "SETTLEMENT",
+          code: settlement.code,
+          name: settlement.name,
+          status: "cancelled",
+          reason: settlement.cancellationReason
+        });
+        result.updatedOrders += 1;
+      }
+    }
+  }
+  return cancelled;
+}
+
+function findDuplicatePortfolioSettlementGroups(settlements = []) {
+  const groups = new Map();
+  for (const settlement of settlements || []) {
+    if (!settlement || settlement.status === "cancelled") continue;
+    const key = getPortfolioSettlementDedupeKey(settlement);
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, { key, settlements: [] });
+    groups.get(key).settlements.push(settlement);
+  }
+  return [...groups.values()].filter((group) => group.settlements.length > 1);
+}
+
+function getPortfolioSettlementDedupeKey(settlement = {}) {
+  if (settlement.orderId) return `order:${settlement.orderId}`;
+  const code = String(settlement.code || "").trim();
+  const dueDate = normalizePortfolioEventDate(settlement.dueDate || settlement.date || settlement.createdAt);
+  const amount = round(Number(settlement.amount || 0), 2);
+  if (!code || !dueDate || !Number.isFinite(amount) || amount <= 0) return "";
+  return `fallback:${code}|${dueDate}|${amount}`;
+}
+
+function comparePortfolioSettlementPriority(a = {}, b = {}) {
+  const statusRank = { settled: 0, pending: 1, cancelled: 2 };
+  const rankDiff = (statusRank[a.status] ?? 9) - (statusRank[b.status] ?? 9);
+  if (rankDiff) return rankDiff;
+  return String(a.createdAt || a.settledAt || "").localeCompare(String(b.createdAt || b.settledAt || ""));
+}
+
+function findPortfolioSettlementForOrder(settlements = [], orderId = "") {
+  const id = String(orderId || "").trim();
+  if (!id) return null;
+  return (settlements || []).find((settlement) =>
+    settlement?.orderId === id && ["pending", "settled"].includes(String(settlement.status || ""))
+  ) || null;
+}
+
 async function resolveOrderNavSnapshot(order, profile) {
   const profileNav = getProfileNav(profile);
   if (profileNav && profile?.snapshotDate === order.priceDate) {
@@ -5694,19 +5764,22 @@ function confirmPortfolioSellOrder(db, order, profile, run) {
   position.dataSource = profile?.sources?.[0] || order.source || "";
   position.updatedAt = new Date().toISOString();
 
-  db.account.receivableCash = round(Number(db.account.receivableCash || 0) + amount, 2);
-  const settlement = {
-    id: createId("set"),
-    orderId: order.id,
-    runId: run.id,
-    code: order.code,
-    name: order.name,
-    amount,
-    dueDate: order.settlementDate,
-    status: "pending",
-    createdAt: new Date().toISOString()
-  };
-  db.settlements.push(settlement);
+  const existingSettlement = findPortfolioSettlementForOrder(db.settlements, order.id);
+  if (!existingSettlement) {
+    db.account.receivableCash = round(Number(db.account.receivableCash || 0) + amount, 2);
+    const settlement = {
+      id: createId("set"),
+      orderId: order.id,
+      runId: run.id,
+      code: order.code,
+      name: order.name,
+      amount,
+      dueDate: order.settlementDate,
+      status: "pending",
+      createdAt: new Date().toISOString()
+    };
+    db.settlements.push(settlement);
+  }
   order.status = "confirmed";
   order.confirmedAt = new Date().toISOString();
   order.actualAmount = amount;
@@ -7402,6 +7475,7 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
   const positions = Array.isArray(account.positions) ? account.positions : [];
   const transactions = Array.isArray(db.transactions) ? db.transactions : [];
   const orders = Array.isArray(db.orders) ? db.orders : [];
+  const settlements = Array.isArray(db.settlements) ? db.settlements : [];
   const runs = Array.isArray(db.runs) ? db.runs : [];
   const watchlist = normalizePortfolioWatchlist(db.watchlist || []);
   const phases = buildPortfolioBacktestPhases({ account, transactions, orders, runs });
@@ -7431,6 +7505,19 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
       "订单卡滞回测",
       `${staleActiveOrders.length} 笔过期待处理`,
       `${first.side || ""} ${first.code || ""} ${first.name || ""} 已过确认日 ${first.confirmDate || "-"} 仍为 ${formatPortfolioOrderStatus(first.status)}；下一轮必须先处理订单生命周期，不能把卡滞订单当作真实仓位或可用现金。`,
+      "订单结算"
+    );
+  }
+
+  const duplicateSettlementGroups = findDuplicatePortfolioSettlementGroups(settlements);
+  if (duplicateSettlementGroups.length) {
+    const first = duplicateSettlementGroups[0];
+    const duplicateAmount = first.settlements.slice(1).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    add(
+      "warning",
+      "重复应收回测",
+      `${duplicateSettlementGroups.length} 组重复到账`,
+      `同一赎回订单 ${first.key} 出现 ${first.settlements.length} 条结算记录，重复应收约${round(duplicateAmount, 2)}元；下一轮必须先去重，否则现金和再部署能力会被高估。`,
       "订单结算"
     );
   }
@@ -7815,6 +7902,8 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "先冻结同日同基金同方向重复订单，按date+side+code去重后再允许新的申赎确认。", "执行风控");
     } else if (item.label === "订单卡滞回测") {
       addTask(item, "先处理过期queued/submitted/priced订单；无持仓可卖的旧赎回必须作废，不能让卡滞订单继续影响现金和仓位判断。", "执行风控");
+    } else if (item.label === "重复应收回测") {
+      addTask(item, "同一赎回订单只保留一条有效到账；重复pending应收要作废并从应收现金扣回。", "执行风控");
     } else if (item.label === "追高买入回测") {
       addTask(item, "复盘买入当日是否处于高位延伸；后续同类基金必须等回调完成和5日/10日温和转强后才小仓试探。", "基金研究员");
     } else if (item.label === "卖出滞后回测") {
@@ -19405,6 +19494,7 @@ export {
   compactPublicFundSnapshot,
   computeTrendProfile,
   defaultSkillIdsForWorkflow,
+  dedupePortfolioSettlements,
   enforceFundAnswerQuality,
   enforcePortfolioBuyDiscipline,
   enforcePortfolioHeldPositionRiskOverrides,
@@ -19417,6 +19507,7 @@ export {
   evaluateFundAnswerQuality,
   fetchGlobalMarketQuotes,
   fetchRealtimeFundValuationSnapshot,
+  findDuplicatePortfolioSettlementGroups,
   findStalePortfolioActiveOrders,
   filterFocusedPullbackRankingCandidates,
   getFeishuCardImageChunkSize,
