@@ -16135,6 +16135,11 @@ function isUsableFundValuation(valuation = {}) {
 }
 
 function isStaleFundValuation(valuation = {}) {
+  const estimateMinutes = valuation.gztime ? estimateFreshnessMinutes(valuation.gztime, new Date().toISOString()) : null;
+  const maxEstimateMinutes = Number(process.env.FUND_VALUATION_STALE_ESTIMATE_MINUTES || process.env.MARKET_REALTIME_VALUATION_FRESH_MINUTES || 1440);
+  if (Number.isFinite(estimateMinutes) && Number.isFinite(maxEstimateMinutes) && estimateMinutes > maxEstimateMinutes) {
+    return true;
+  }
   const age = estimateDateAgeDays(valuation.jzrq || valuation.navDate || "");
   return Number.isFinite(age) && age > Number(process.env.FUND_VALUATION_STALE_DAYS || 7);
 }
@@ -19910,6 +19915,7 @@ export {
   isGenericPullbackSetupRequest,
   isPullbackSetupRequest,
   isFundChartGlossaryQuestion,
+  isStaleFundValuation,
   mergeCandidateFunds,
   normalizeUserFacingFundAnswer,
   parseFundPingzhongLatestNav,

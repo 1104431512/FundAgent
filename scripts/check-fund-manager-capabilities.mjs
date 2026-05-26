@@ -86,6 +86,18 @@ assert.deepEqual(
   },
   "Sina estimate parser must recover near-real-time valuation data as a backup source"
 );
+const originalStaleEstimateMinutes = process.env.FUND_VALUATION_STALE_ESTIMATE_MINUTES;
+process.env.FUND_VALUATION_STALE_ESTIMATE_MINUTES = "30";
+assert.equal(
+  manager.isStaleFundValuation({ ok: true, gsz: 1.23, gztime: "2000-01-01 15:00", jzrq: todayIso }),
+  true,
+  "intraday valuation freshness must check estimate time, not only official NAV date"
+);
+if (originalStaleEstimateMinutes === undefined) {
+  delete process.env.FUND_VALUATION_STALE_ESTIMATE_MINUTES;
+} else {
+  process.env.FUND_VALUATION_STALE_ESTIMATE_MINUTES = originalStaleEstimateMinutes;
+}
 assert.equal(
   manager.summarizePortfolioEquityBrief({ totalAsset: 100000, investedValue: 30000 }).positionWeightPct,
   30,

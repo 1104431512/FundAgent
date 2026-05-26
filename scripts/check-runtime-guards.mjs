@@ -117,6 +117,10 @@ const requiredPatterns = [
     message: "fund valuation must include a Sina minute-level estimate backup before falling back to official NAV only."
   },
   {
+    pattern: /function isStaleFundValuation[\s\S]{0,500}estimateFreshnessMinutes[\s\S]{0,500}FUND_VALUATION_STALE_ESTIMATE_MINUTES/,
+    message: "fund valuation freshness must check intraday estimate time before trusting a realtime source."
+  },
+  {
     pattern: /function parseSinaEstimateNetworthJsonp[\s\S]{0,900}growthrate2[\s\S]{0,900}sina_intraday_estimate/,
     message: "Sina estimate backup must parse pre_nav2/growthrate2 into normalized realtime valuation evidence."
   },
