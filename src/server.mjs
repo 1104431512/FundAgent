@@ -990,7 +990,10 @@ async function executePortfolioDecision(db, run, config) {
   }
   markPortfolioRunProgress(db, run, "正在扫描低位回调候选，补充经理自选基金池。");
   await yieldToEventLoop();
-  const watchlistSeedCandidates = await fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist).catch((error) => {
+  const watchlistSeedCandidates = await fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist, {
+    account: accountBefore,
+    profiles: watchlistProfiles
+  }).catch((error) => {
     console.warn("[portfolio-watchlist-seed-error]", error.message);
     recordError(error, { portfolioWatchlistSeedFailures: 1 });
     return [];
@@ -1018,10 +1021,15 @@ async function executePortfolioDecision(db, run, config) {
   markPortfolioRunProgress(db, run, "模型已返回，正在解析投委会决策。");
   await yieldToEventLoop();
   const decision = ensurePortfolioHeldPositionsReviewed(
-    ensurePortfolioReadyWatchlistReviewed(
-      normalizePortfolioDecision(raw),
+    ensurePortfolioRedeploymentPlanReviewed(
+      ensurePortfolioReadyWatchlistReviewed(
+        normalizePortfolioDecision(raw),
+        watchlist,
+        { profiles: watchlistProfiles }
+      ),
+      accountBefore,
       watchlist,
-      { profiles: watchlistProfiles }
+      { profiles: mergePortfolioProfiles(watchlistProfiles, seedProfiles) }
     ),
     db.account.positions,
     { profiles: heldProfiles }
@@ -1238,7 +1246,10 @@ async function executePortfolioPremarket(db, run, config) {
   const watchlist = getActivePortfolioWatchlist(db);
   const watchlistCodes = mergeFundCodes(watchlist.map((item) => item.code));
   const watchlistProfiles = watchlistCodes.length ? await enrichFunds(watchlistCodes) : [];
-  const watchlistSeedCandidates = await fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist).catch((error) => {
+  const watchlistSeedCandidates = await fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist, {
+    account,
+    profiles: watchlistProfiles
+  }).catch((error) => {
     console.warn("[portfolio-watchlist-seed-error]", error.message);
     recordError(error, { portfolioWatchlistSeedFailures: 1 });
     return [];
@@ -1388,6 +1399,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
   const decisionCapabilityActionQueue = Array.isArray(capabilityActionQueue)
     ? capabilityActionQueue
     : buildPortfolioCapabilityActionQueue({ account, watchlist });
+  const redeploymentPlan = buildPortfolioRedeploymentPlan(account, watchlist, mergePortfolioProfiles(watchlistProfiles, seedProfiles));
   const compactHeldProfiles = (heldProfiles || []).map(compactPortfolioReviewProfile);
   const compactWatchlistProfiles = (watchlistProfiles || []).map(compactPortfolioReviewProfile);
   const compactSeedProfiles = (seedProfiles || []).map(compactPortfolioReviewProfile);
@@ -1413,6 +1425,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，marketView、team 和 actions.dataBasis 必须写清数据缺口；缺少关键板块、排行、新闻或贵金属模块时，只能 WATCH、HOLD 或小额试探，不能当作完整联网证据下重仓 BUY。",
     "必须使用 marketSnapshot.marketIndicators.realtimeFundValuations 复核候选当下温度和数据新鲜度；实时估算只能辅助判断追涨/止跌，成交和盈亏仍以确认净值为准。",
     "若操作或候选涉及 QDII/海外基金，必须使用 marketSnapshot.marketIndicators.globalMarkets 复核外盘和人民币汇率温度，并写清净值披露时差。",
+    "若现金再部署纪律提示 pressureActive=true 且存在 verified_buy 或 starter_buy 候选，actions 必须逐只给 BUY 或明确 WATCH 拦截理由；符合小仓启动条件时优先 0.5%-2.5% 试探，不要继续空泛观望。",
     "给用户看的 summary、reason 和 riskControl 要先讲走势、轮动和操作边界，再放必要数字；不要把每个动作写成一长串指标。",
     "如果候选基金缺少可验证净值或走势数据，倾向 WATCH，不要强行 BUY。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
@@ -1432,6 +1445,10 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "能力修复队列（必须进入 team.主席、team.风控经理、actions 或 learningNotes）：",
     JSON.stringify(decisionCapabilityActionQueue, null, 2),
     "要求：若能力诊断包含盈利承压、追涨暴露、历史回测缺口、数据质量缺口或成交净值待核验，必须先解释原因和修复动作；没有完成修复前，不得用现金多作为新增买入理由。",
+    "",
+    "现金再部署纪律（系统计算；高现金低仓位时必须处理，不能只写等待机会）：",
+    JSON.stringify(redeploymentPlan, null, 2),
+    "要求：若 pressureActive=true，优先处理 candidates 前三只；verified_buy/starter_buy 至少给 BUY 或写清本轮为何被风控拦截，blocked/watch 只能写触发条件。",
     "",
     "今日公开市场/基金候选快照：",
     JSON.stringify(compactMarketSnapshotForModel(marketSnapshot), null, 2),
@@ -1594,6 +1611,8 @@ function compactPortfolioReviewProfile(profile = {}) {
     unitNav: profile.unitNav || "",
     estimatedNav: profile.estimatedNav || "",
     estimatedChangePct: profile.estimatedChangePct || "",
+    estimateTime: profile.estimateTime || "",
+    realtimeEvidence: formatPortfolioRealtimeEvidence(profile),
     trendProfile: compactPortfolioTrendProfile(profile.trendProfile),
     actionability: compactPortfolioActionabilityProfile(profile.actionability),
     oneYearRisk: oneYear.ok ? pickRiskPeriod(oneYear) : null,
@@ -1723,6 +1742,7 @@ async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profi
   const compactProfiles = (profiles || []).map(compactPortfolioReviewProfile);
   const compactWatchlistProfiles = (watchlistProfiles || []).map(compactPortfolioReviewProfile);
   const compactSeedProfiles = (seedProfiles || []).map(compactPortfolioReviewProfile);
+  const redeploymentPlan = buildPortfolioRedeploymentPlan(account, watchlist, mergePortfolioProfiles(watchlistProfiles, seedProfiles));
   const skillContext = buildSkillContextForIntent(
     { workflow: "portfolio_status", skillIds: getPortfolioPremarketSkillIds() },
     []
@@ -1732,6 +1752,7 @@ async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profi
     "盘前观察只给观察清单和下午决策偏向，不生成 BUY/SELL 订单。",
     "请基于传入的市场快照、持仓资料、自选基金池、订单生命周期和经理画像输出 JSON，不要编造资料之外的数据。",
     "盘前必须复核自选基金池：哪些已经接近可买、哪些还要等回调、哪些因为追高/费用/数据不足应降级。",
+    "若现金再部署纪律提示 pressureActive=true，盘前 todayPlan 必须列出下午要买入复核还是继续观察的前三只候选，不能只写等待机会。",
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，summary、riskAlerts 和 todayPlan 必须写清数据缺口；缺少关键板块、排行、新闻或贵金属模块时，盘前只做观察计划，不把它包装成买点确认。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
     "",
@@ -1761,6 +1782,9 @@ async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profi
     "",
     "低位/回调候选联网资料：",
     JSON.stringify(compactSeedProfiles, null, 2),
+    "",
+    "现金再部署纪律：",
+    JSON.stringify(redeploymentPlan, null, 2),
     "",
     "活动订单与生命周期更新：",
     JSON.stringify({ activeOrders, lifecycle }, null, 2),
@@ -2484,21 +2508,30 @@ function buildPortfolioWatchlistUpdatesFromActions(actions = []) {
     });
 }
 
-async function fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist = []) {
+async function fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist = [], options = {}) {
   if (String(process.env.PORTFOLIO_WATCHLIST_SEED_ENABLED ?? "true") === "false") {
     return [];
   }
   const activeWatchlist = getActivePortfolioWatchlist({ watchlist });
   const targetSize = Math.max(0, finiteNumberOr(process.env.PORTFOLIO_WATCHLIST_TARGET_SIZE, 10));
   const deficit = targetSize - activeWatchlist.filter((item) => !["blocked", "removed"].includes(item.status)).length;
-  if (deficit <= 0) return [];
+  const forceRedeploymentScan = shouldForcePortfolioRedeploymentSeedScan(options.account, activeWatchlist, options.profiles || []);
+  if (deficit <= 0 && !forceRedeploymentScan) return [];
 
   const userText = "回调完成 低位 准备启动 基金";
   const themeRadar = Array.isArray(marketSnapshot?.themeRadar) ? marketSnapshot.themeRadar : [];
   const candidates = await fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar);
   return selectPortfolioWatchlistSeedCandidates(candidates, activeWatchlist, themeRadar, {
-    limit: Math.min(deficit, finiteNumberOr(process.env.PORTFOLIO_WATCHLIST_SEED_LIMIT, 6))
+    limit: forceRedeploymentScan
+      ? finiteNumberOr(process.env.PORTFOLIO_REDEPLOYMENT_SEED_LIMIT, 8)
+      : Math.min(deficit, finiteNumberOr(process.env.PORTFOLIO_WATCHLIST_SEED_LIMIT, 6))
   });
+}
+
+function shouldForcePortfolioRedeploymentSeedScan(account = {}, watchlist = [], profiles = []) {
+  const plan = buildPortfolioRedeploymentPlan(account, watchlist, profiles);
+  if (!plan.pressureActive) return false;
+  return !plan.candidates.some((item) => ["verified_buy", "starter_buy"].includes(item.redeploymentAction));
 }
 
 function selectPortfolioWatchlistSeedCandidates(candidates = [], watchlist = [], themeRadar = [], options = {}) {
@@ -2870,6 +2903,184 @@ function buildPortfolioDecisionReadinessQueue(watchlist = [], profiles = []) {
     })
     .sort(comparePortfolioWatchReadiness)
     .slice(0, 8);
+}
+
+function buildPortfolioRedeploymentPlan(account = {}, watchlist = [], profiles = []) {
+  const totalAsset = Number(account.totalAsset || 0);
+  const cash = Number(account.cash || 0);
+  const receivableCash = Number(account.receivableCash || 0);
+  const pendingBuy = Number(account.pendingBuyAmount || 0);
+  const investedValue = Number(account.investedValue || 0);
+  const positionWeightPct = Number.isFinite(Number(account.positionWeightPct))
+    ? Number(account.positionWeightPct)
+    : totalAsset > 0 ? investedValue / totalAsset * 100 : null;
+  const cashPct = totalAsset > 0 && Number.isFinite(cash) ? cash / totalAsset * 100 : null;
+  const cashLikePct = totalAsset > 0 && Number.isFinite(cash + receivableCash) ? (cash + receivableCash) / totalAsset * 100 : null;
+  const pendingBuyPct = totalAsset > 0 && Number.isFinite(pendingBuy) ? pendingBuy / totalAsset * 100 : null;
+  const accountBudget = buildPortfolioAccountRiskBudget(account);
+  const pressureActive = Number.isFinite(cashPct)
+    && cashPct >= 60
+    && (!Number.isFinite(positionWeightPct) || positionWeightPct <= 10)
+    && (!Number.isFinite(pendingBuyPct) || pendingBuyPct <= 3)
+    && !accountBudget.blockNewBuys;
+  const profileByCode = new Map((profiles || []).filter((profile) => profile?.code).map((profile) => [profile.code, profile]));
+  const watchItems = normalizePortfolioWatchlist(watchlist).filter((item) => item.status !== "removed");
+  const itemByCode = new Map(watchItems.map((item) => [item.code, item]));
+  for (const profile of profiles || []) {
+    if (profile?.code && !itemByCode.has(profile.code)) {
+      itemByCode.set(profile.code, {
+        code: profile.code,
+        name: profile.name || "",
+        shareClass: profile.shareClass || profile.fees?.shareClass || "",
+        status: "watch",
+        priority: 3,
+        reason: "系统低位/回调候选联网资料，需要纳入再部署复核。",
+        lastSnapshot: profile
+      });
+    }
+  }
+
+  const candidates = [...itemByCode.values()]
+    .filter((item) => ["ready", "waiting_pullback", "watch"].includes(normalizePortfolioWatchStatus(item.status || "watch")))
+    .map((item) => {
+      const profile = profileByCode.get(item.code) || item.lastSnapshot || null;
+      const readiness = evaluatePortfolioWatchReadiness(item, profile);
+      const verifiedBuy = Boolean(profile && hasVerifiedPortfolioBuySetup(profile));
+      const starterBuy = Boolean(profile && hasPortfolioStarterBuySetup(profile));
+      const feeVerified = Boolean(profile && hasVerifiedPortfolioFeeEvidence(profile));
+      const hardGap = readiness.gaps.find(isPortfolioRedeploymentHardGap);
+      const buyGuard = (verifiedBuy || starterBuy)
+        ? evaluatePortfolioBuyDiscipline(
+            { action: "BUY", code: item.code, name: item.name || profile?.name || "", targetWeightPct: starterBuy ? 1.5 : 2.5 },
+            profile,
+            account.positions || [],
+            account
+          )
+        : { ok: false, reason: readiness.gaps?.[0] || "还没有形成可执行买点。", evidence: [] };
+      const executable = Boolean(buyGuard.ok && (verifiedBuy || starterBuy) && feeVerified && !hardGap);
+      const suggestedTargetWeightPct = executable ? (verifiedBuy ? 2.5 : 1.5) : 0;
+      const firstGap = executable
+        ? "低位/回调/费用条件支持小仓试探，仍需盘前确认。"
+        : hardGap || buyGuard.reason || readiness.gaps?.[0] || "等待下一次复核。";
+      return {
+        code: item.code,
+        name: item.name || profile?.name || "",
+        shareClass: item.shareClass || profile?.shareClass || profile?.fees?.shareClass || "",
+        status: normalizePortfolioWatchStatus(item.status || "watch"),
+        priority: Number(item.priority || 3),
+        readinessScore: readiness.score,
+        readinessLabel: readiness.label,
+        redeploymentAction: executable ? (verifiedBuy ? "verified_buy" : "starter_buy") : "watch",
+        redeploymentActionText: executable
+          ? (verifiedBuy ? "可分批首仓" : "可小仓试探")
+          : "只观察触发条件",
+        suggestedTargetWeightPct,
+        suggestedAmount: suggestedTargetWeightPct && totalAsset > 0 ? round(totalAsset * suggestedTargetWeightPct / 100, 2) : 0,
+        firstGap,
+        trendEvidence: profile ? formatPortfolioSeedVerifiedTrendEvidence(profile) : item.lastSnapshot?.trendSummary || "",
+        realtimeEvidence: profile ? formatPortfolioRealtimeEvidence(profile) : "",
+        feeEvidence: profile ? formatPortfolioFeeVerificationEvidence(profile) : (item.feeNotes || [])[0] || "",
+        buyGuard: {
+          ok: Boolean(buyGuard.ok),
+          reason: buyGuard.reason || "",
+          evidence: normalizeStringArray(buyGuard.evidence).slice(0, 4)
+        },
+        dataBasis: mergeStringLists(item.dataBasis, [
+          "来源：portfolio_redeployment_plan",
+          profile?.sources?.[0] || "",
+          profile?.estimateTime ? `实时估算时间：${profile.estimateTime}` : ""
+        ])
+      };
+    })
+    .filter((item) => item.code)
+    .sort((a, b) =>
+      Number(["verified_buy", "starter_buy"].includes(b.redeploymentAction)) - Number(["verified_buy", "starter_buy"].includes(a.redeploymentAction))
+      || Number(b.readinessScore || 0) - Number(a.readinessScore || 0)
+      || Number(a.priority || 3) - Number(b.priority || 3)
+    )
+    .slice(0, 6);
+  const executableCount = candidates.filter((item) => ["verified_buy", "starter_buy"].includes(item.redeploymentAction)).length;
+  const summary = pressureActive
+    ? executableCount
+      ? `现金${formatFallbackPct(cashPct)}且低仓位，发现${executableCount}只可小仓再部署候选。`
+      : `现金${formatFallbackPct(cashPct)}且低仓位，但候选仍缺关键触发条件，必须写清前三个缺口。`
+    : "现金/仓位/回撤预算暂未触发强制再部署。";
+  return {
+    pressureActive,
+    summary,
+    account: {
+      cashPct: Number.isFinite(cashPct) ? round(cashPct, 1) : null,
+      cashLikePct: Number.isFinite(cashLikePct) ? round(cashLikePct, 1) : null,
+      positionWeightPct: Number.isFinite(positionWeightPct) ? round(positionWeightPct, 1) : null,
+      pendingBuyPct: Number.isFinite(pendingBuyPct) ? round(pendingBuyPct, 1) : null,
+      riskLevel: accountBudget.level || ""
+    },
+    discipline: pressureActive
+      ? "不能继续空泛等待；可执行候选给0.5%-2.5%试探仓，不可执行候选写清触发条件和复核时间。"
+      : "按正常仓位纪律复核。",
+    candidates
+  };
+}
+
+function isPortfolioRedeploymentHardGap(gap = "") {
+  return /缺少可验证净值|走势下钻|基金规模.*(?:不能作为可直接买入|偏小)|前十大集中度.*(?:过高|偏高)|费用\/份额|题材拥挤|追涨风险|暂时回避|仍是回避/.test(String(gap || ""));
+}
+
+function formatPortfolioRealtimeEvidence(profile = {}) {
+  const pieces = [];
+  const estimatedChange = finiteMetricNumber(profile.estimatedChangePct);
+  if (Number.isFinite(estimatedChange)) pieces.push(`实时估算${formatFallbackPct(estimatedChange)}`);
+  if (profile.estimateTime) {
+    const freshness = formatEstimateFreshnessLabel(estimateFreshnessMinutes(profile.estimateTime));
+    pieces.push(`更新时间${profile.estimateTime}${freshness ? `（${freshness}）` : ""}`);
+  }
+  return pieces.join("，");
+}
+
+function ensurePortfolioRedeploymentPlanReviewed(decision = {}, account = {}, watchlist = [], options = {}) {
+  const plan = buildPortfolioRedeploymentPlan(account, watchlist, options.profiles || []);
+  if (!plan.pressureActive) return decision;
+  const actions = normalizePortfolioActions(decision.actions || []);
+  const existingKeys = new Set(actions.map((action) => `${action.action}:${action.code}`));
+  const nextActions = [...actions];
+  for (const candidate of plan.candidates.slice(0, 3)) {
+    if (existingKeys.has(`BUY:${candidate.code}`) || existingKeys.has(`WATCH:${candidate.code}`) || existingKeys.has(`HOLD:${candidate.code}`)) {
+      continue;
+    }
+    const canBuy = ["verified_buy", "starter_buy"].includes(candidate.redeploymentAction);
+    const action = canBuy ? "BUY" : "WATCH";
+    const amount = canBuy ? candidate.suggestedAmount : 0;
+    nextActions.push({
+      action,
+      code: candidate.code,
+      name: candidate.name,
+      amount,
+      targetWeightPct: canBuy ? candidate.suggestedTargetWeightPct : 0,
+      reason: canBuy
+        ? `系统再部署纪律：${candidate.name || candidate.code} 已出现${candidate.redeploymentActionText}条件，现金长期空转时应给小仓试错，而不是继续泛泛等待。`
+        : `系统再部署纪律：${candidate.name || candidate.code} 需要被复核，但本轮仍不买；${candidate.firstGap}`,
+      rotationCheck: "再部署只选择低位回调/启动修复候选，不因新闻热度追涨。",
+      positionCheck: candidate.trendEvidence,
+      chaseRisk: candidate.firstGap,
+      feeCheck: candidate.feeEvidence,
+      riskControl: canBuy
+        ? "单笔只做0.5%-2.5%试探；若实时估算转弱、回撤修复失败或费用证据失效，下一轮撤回。"
+        : "只放观察，触发条件未满足前不提交虚拟申购。",
+      dataBasis: mergeStringLists(candidate.dataBasis, [
+        "来源：portfolio_redeployment_guard",
+        candidate.realtimeEvidence,
+        candidate.buyGuard?.reason || ""
+      ])
+    });
+    existingKeys.add(`${action}:${candidate.code}`);
+  }
+  return {
+    ...decision,
+    actions: nextActions,
+    learningNotes: mergeStringLists(decision.learningNotes, [
+      `系统再部署纪律：${plan.summary}`
+    ])
+  };
 }
 
 function buildPortfolioHeldPositionReviewQueue(positions = [], profiles = []) {
@@ -18924,6 +19135,7 @@ export {
   buildPortfolioCapabilityDiagnostics,
   buildPortfolioCapabilityActionQueue,
   buildPortfolioDecisionReadinessQueue,
+  buildPortfolioRedeploymentPlan,
   buildPortfolioExposureSummary,
   buildPortfolioManagerProfileContext,
   buildPortfolioRunSummary,
@@ -18985,6 +19197,7 @@ export {
   hasNumericDumpWithoutInterpretation,
   hasPortfolioStarterBuySetup,
   ensurePortfolioHeldPositionsReviewed,
+  ensurePortfolioRedeploymentPlanReviewed,
   ensurePortfolioReadyWatchlistReviewed,
   mergeFundWorkflowWatchlistIntoDeepDive,
   inferPullbackSetupSearchKeywords,
@@ -19006,6 +19219,7 @@ export {
   shouldReduceHeldPositionFromReview,
   shouldRejectImpossiblePortfolioSellOrder,
   shouldPersistRuntimeStats,
+  shouldForcePortfolioRedeploymentSeedScan,
   summarizePortfolioOrder,
   capPortfolioSellAmountByDiscipline,
   resolvePortfolioTradeAmount,

@@ -1558,6 +1558,8 @@ const starterSetupProfile = {
   ...verifiedSeedProfile,
   code: "000020",
   name: "低位启动试探基金C",
+  estimatedChangePct: "0.32",
+  estimateTime: "2026-05-20 14:30",
   trendProfile: {
     ...verifiedSeedProfile.trendProfile,
     pullbackSetup: { signal: "pullback_complete", score: 74, reason: "回调完成但10日仍轻微修复中" },
@@ -1579,6 +1581,66 @@ const starterBuyAmount = manager.resolvePortfolioTradeAmount({
   positions: []
 }, { action: "BUY", code: "000020", amount: 50000, targetWeightPct: 20 }, "BUY", null, starterSetupProfile);
 assert.equal(starterBuyAmount, 2500, "starter buy sizing must cap imperfect low-position setups to a smaller probing order");
+const redeploymentAccount = {
+  totalAsset: 100000,
+  cash: 85000,
+  receivableCash: 0,
+  pendingBuyAmount: 0,
+  investedValue: 0,
+  positionWeightPct: 0,
+  positions: [],
+  riskBudget: { blockNewBuys: false }
+};
+const redeploymentWatchlist = [{
+  code: "000020",
+  name: "低位启动试探基金C",
+  status: "waiting_pullback",
+  priority: 2,
+  reason: "回调完成后低位修复，10日仍轻微确认中。",
+  buyTriggers: ["5日保持温和转强"],
+  riskNotes: ["若实时估算转弱则撤回"]
+}];
+const redeploymentPlan = manager.buildPortfolioRedeploymentPlan(redeploymentAccount, redeploymentWatchlist, [starterSetupProfile]);
+assert.equal(redeploymentPlan.pressureActive, true, "redeployment plan must activate when high cash and flat exposure persist");
+assert.equal(redeploymentPlan.candidates[0].redeploymentAction, "starter_buy", "redeployment plan must surface eligible starter buys instead of generic waiting");
+assert(redeploymentPlan.candidates[0].realtimeEvidence.includes("实时估算"), "redeployment plan must carry near-real-time valuation evidence into the decision prompt");
+const tinyFundRedeploymentPlan = manager.buildPortfolioRedeploymentPlan(
+  redeploymentAccount,
+  [{ ...redeploymentWatchlist[0], code: "000021", name: "低位小规模基金C" }],
+  [{ ...starterSetupProfile, code: "000021", name: "低位小规模基金C", scale: { valueYi: 0.24 } }]
+);
+assert.equal(tinyFundRedeploymentPlan.candidates[0].redeploymentAction, "watch", "redeployment plan must not auto-buy tiny funds even when the chart setup looks ready");
+assert(tinyFundRedeploymentPlan.candidates[0].firstGap.includes("基金规模"), "tiny-fund redeployment block must explain the liquidity/scale gap");
+assert.equal(
+  manager.shouldForcePortfolioRedeploymentSeedScan(redeploymentAccount, redeploymentWatchlist, [starterSetupProfile]),
+  false,
+  "redeployment seed scan should not expand the pool when an executable starter candidate already exists"
+);
+assert.equal(
+  manager.shouldForcePortfolioRedeploymentSeedScan(
+    redeploymentAccount,
+    [{ ...redeploymentWatchlist[0], code: "000021", name: "低位小规模基金C" }],
+    [{ ...starterSetupProfile, code: "000021", name: "低位小规模基金C", scale: { valueYi: 0.24 } }]
+  ),
+  true,
+  "redeployment seed scan must expand new data sources when high cash has no executable candidate"
+);
+const redeployedDecision = manager.ensurePortfolioRedeploymentPlanReviewed(
+  { actions: [], learningNotes: [] },
+  redeploymentAccount,
+  redeploymentWatchlist,
+  { profiles: [starterSetupProfile] }
+);
+assert.equal(redeployedDecision.actions[0].action, "BUY", "redeployment guard must inject a small BUY review when a starter setup is eligible");
+assert.equal(redeployedDecision.actions[0].targetWeightPct, 1.5, "redeployment guard must keep starter buys small");
+assert(redeployedDecision.actions[0].dataBasis.includes("来源：portfolio_redeployment_guard"), "redeployment guard must leave a traceable source");
+const enforcedRedeploymentDecision = manager.enforcePortfolioBuyDiscipline(
+  redeployedDecision.actions,
+  [starterSetupProfile],
+  [],
+  redeploymentAccount
+);
+assert.equal(enforcedRedeploymentDecision[0].action, "BUY", "redeployment BUY should survive normal buy discipline when setup and fees are verified");
 const missingFeeProfile = {
   ...verifiedSeedProfile,
   fees: {

@@ -499,11 +499,11 @@ const requiredPatterns = [
     message: "fund QA prompts must send compact market snapshots instead of full raw snapshots."
   },
   {
-    pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,3600}JSON\.stringify\(compactMarketSnapshotForModel\(marketSnapshot\), null, 2\)/,
+    pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,5200}JSON\.stringify\(compactMarketSnapshotForModel\(marketSnapshot\), null, 2\)/,
     message: "portfolio decisions must use compact market snapshots to avoid model context-window failures."
   },
   {
-    pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,1800}compactHeldProfiles = \(heldProfiles \|\| \[\]\)\.map\(compactPortfolioReviewProfile\)[\s\S]{0,3400}JSON\.stringify\(compactHeldProfiles, null, 2\)/,
+    pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,2200}compactHeldProfiles = \(heldProfiles \|\| \[\]\)\.map\(compactPortfolioReviewProfile\)[\s\S]{0,4200}JSON\.stringify\(compactHeldProfiles, null, 2\)/,
     message: "portfolio decisions must compact held fund profiles before model prompts."
   },
   {
@@ -1033,6 +1033,22 @@ const requiredPatterns = [
   {
     pattern: /组合能力诊断（系统计算，必须先处理，不能只写套话）[\s\S]{0,700}能力修复队列（必须进入 team\.主席、team\.风控经理、actions 或 learningNotes）/,
     message: "portfolio decision prompt must force capability repair before new buy decisions."
+  },
+  {
+    pattern: /function buildPortfolioRedeploymentPlan[\s\S]{0,5200}pressureActive[\s\S]{0,5200}starter_buy[\s\S]{0,5200}实时估算时间/,
+    message: "portfolio redeployment plan must force high-cash low-exposure portfolios to review starter buys with realtime valuation evidence."
+  },
+  {
+    pattern: /function ensurePortfolioRedeploymentPlanReviewed[\s\S]{0,2600}0\.5%-2\.5%试探[\s\S]{0,1200}portfolio_redeployment_guard/,
+    message: "portfolio redeployment guard must inject small starter-buy reviews instead of allowing generic waiting."
+  },
+  {
+    pattern: /现金再部署纪律（系统计算；高现金低仓位时必须处理，不能只写等待机会）[\s\S]{0,700}verified_buy\/starter_buy/,
+    message: "portfolio decision prompt must include deterministic redeployment pressure and executable starter candidates."
+  },
+  {
+    pattern: /async function fetchPortfolioWatchlistSeedCandidates[\s\S]{0,900}shouldForcePortfolioRedeploymentSeedScan[\s\S]{0,900}PORTFOLIO_REDEPLOYMENT_SEED_LIMIT/,
+    message: "portfolio watchlist seeding must keep scanning low-position candidates when high-cash redeployment has no executable setup."
   },
   {
     pattern: /portfolioCapabilitySummary[\s\S]{0,500}buildCapabilityInsightItems|buildCapabilityInsightItems[\s\S]{0,500}portfolioCapabilitySummary/,
