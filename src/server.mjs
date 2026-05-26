@@ -10268,7 +10268,8 @@ function compactMarketDataQuality(quality = null) {
       status: item.status || "missing",
       error: String(item.error || "").slice(0, 160)
     })),
-    candidateCounts: quality.candidateCounts || {}
+    candidateCounts: quality.candidateCounts || {},
+    sourceCapabilities: quality.sourceCapabilities || {}
   };
 }
 
@@ -13462,7 +13463,11 @@ async function fetchMarketSnapshot() {
     fastNews: fastNews.items || [],
     fundCandidates
   });
-  const dataQuality = buildMarketDataQuality(snapshotParts, { fundCandidates, fetchedAt });
+  const dataQuality = buildMarketDataQuality(snapshotParts, {
+    fundCandidates,
+    fetchedAt,
+    yangjibaoFundRealtimeConfigured: Boolean(process.env.YANGJIBAO_PLUGIN_TOKEN)
+  });
   const failures = snapshotParts.filter(
     (item) => item?.result && item.result.ok === false
   ).length;
@@ -13505,11 +13510,11 @@ async function fetchMarketSnapshot() {
       "https://stock.finance.sina.com.cn/fundInfo/api/openapi.php/FdFundService.getEstimateNetworthPic?symbol={code}",
       "https://www.haoetf.com/",
       "http://browser-plug-api.yangjibao.com/index_data",
-      "http://browser-plug-api.yangjibao.com/search_fund?keyword={code}",
+      process.env.YANGJIBAO_PLUGIN_TOKEN ? "http://browser-plug-api.yangjibao.com/search_fund?keyword={code}" : "",
       "https://push2.eastmoney.com/api/qt/ulist.np/get?secids=1.000001,1.000300,0.399001,0.399006",
       "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx",
       "https://np-listapi.eastmoney.com/comm/web/getFastNews"
-    ]
+    ].filter(Boolean)
   };
 }
 
@@ -13556,6 +13561,10 @@ function buildMarketDataQuality(components = [], options = {}) {
   } else if (realtimeQuality?.status === "available" && Number(realtimeQuality.staleCount || 0) > Number(realtimeQuality.freshCount || 0)) {
     notes.push("实时估算净值里旧数据多于新数据，回答时要优先说明估值时间和盘中走势，不要把估算涨跌当成交依据。");
   }
+  const yangjibaoFundRealtimeConfigured = options.yangjibaoFundRealtimeConfigured ?? Boolean(process.env.YANGJIBAO_PLUGIN_TOKEN);
+  if (!yangjibaoFundRealtimeConfigured) {
+    notes.push("养基宝基金级实时估值未配置授权；当前只把养基宝指数当作市场温度，具体基金估值仍需天天基金、Sina、HaoETF和东财净值交叉复核。");
+  }
 
   return {
     ok: level !== "poor",
@@ -13569,6 +13578,9 @@ function buildMarketDataQuality(components = [], options = {}) {
     available,
     missing,
     candidateCounts,
+    sourceCapabilities: {
+      yangjibaoFundRealtime: yangjibaoFundRealtimeConfigured ? "configured" : "token_required"
+    },
     notes
   };
 }

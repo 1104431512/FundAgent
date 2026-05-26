@@ -577,6 +577,14 @@ const requiredPatterns = [
     message: "market snapshots must include Yangjibao's public index source as supplemental real-time market temperature evidence."
   },
   {
+    pattern: /process\.env\.YANGJIBAO_PLUGIN_TOKEN \? "http:\/\/browser-plug-api\.yangjibao\.com\/search_fund\?keyword=\{code\}" : ""/,
+    message: "market snapshot sources must only claim Yangjibao fund-level realtime search when the plugin token is configured."
+  },
+  {
+    pattern: /养基宝基金级实时估值未配置授权[\s\S]{0,260}具体基金估值仍需天天基金、Sina、HaoETF和东财净值交叉复核/,
+    message: "market data quality notes must disclose when Yangjibao fund-level realtime valuation is not configured."
+  },
+  {
     pattern: /fetchChinaRealtimeIndexQuotes[\s\S]{0,2400}fetchYangjibaoChinaIndexQuotes[\s\S]{0,2400}fetchEastmoneyChinaIndexQuotes[\s\S]{0,2400}A股指数实时源（养基宝\+东方财富备份）/,
     message: "market snapshots must merge Yangjibao index temperature with an Eastmoney realtime A-share index backup."
   },

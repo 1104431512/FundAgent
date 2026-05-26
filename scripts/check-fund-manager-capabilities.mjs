@@ -3482,6 +3482,17 @@ const staleRealtimeMarketQuality = manager.buildMarketDataQuality([
 });
 assert(staleRealtimeMarketQuality.missing.some((item) => item.key === "realtimeFundValuations" && item.status === "stale"), "market data quality must not treat stale realtime valuations as fully available");
 assert(staleRealtimeMarketQuality.notes.some((item) => item.includes("实时估算净值全部偏旧")), "market data quality must explain stale realtime valuation coverage in Chinese");
+const yangjibaoTokenMissingQuality = manager.buildMarketDataQuality([
+  { key: "conceptBoards", label: "概念板块", critical: true, result: { ok: true, items: [{ name: "医药" }] } },
+  { key: "industryBoards", label: "行业板块", critical: true, result: { ok: true, items: [{ name: "医疗服务" }] } },
+  { key: "stockFunds", label: "股票型基金排行", critical: true, result: { ok: true, items: [{ code: "000001" }] } },
+  { key: "realtimeFundValuations", label: "实时估算净值", critical: false, result: { ok: true, freshCount: 1, staleCount: 0, sourceKinds: ["tiantian_intraday_estimate"], items: [{ code: "000001" }] } }
+], {
+  fundCandidates: { stockFunds: Array.from({ length: 12 }, (_, index) => ({ code: String(index).padStart(6, "0") })) },
+  yangjibaoFundRealtimeConfigured: false
+});
+assert(yangjibaoTokenMissingQuality.notes.some((item) => item.includes("养基宝基金级实时估值未配置授权")), "market data quality must not imply Yangjibao fund realtime coverage when the token is absent");
+assert.equal(manager.compactMarketDataQuality(yangjibaoTokenMissingQuality).sourceCapabilities.yangjibaoFundRealtime, "token_required", "compact market snapshots must preserve Yangjibao fund realtime availability");
 const poorMarketQuality = manager.buildMarketDataQuality([
   { key: "conceptBoards", label: "概念板块", critical: true, result: { ok: false, error: "blocked", items: [] } },
   { key: "industryBoards", label: "行业板块", critical: true, result: { ok: false, error: "blocked", items: [] } },
