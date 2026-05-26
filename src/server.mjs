@@ -3065,7 +3065,7 @@ function buildPortfolioRedeploymentPlan(account = {}, watchlist = [], profiles =
 }
 
 function isPortfolioRedeploymentHardGap(gap = "") {
-  return /缺少可验证净值|走势下钻|基金规模.*(?:不能作为可直接买入|偏小)|前十大集中度.*(?:过高|偏高)|费用\/份额|题材拥挤|追涨风险|暂时回避|仍是回避/.test(String(gap || ""));
+  return /缺少可验证净值|走势下钻|基金规模.*(?:不能作为可直接买入|偏小)|前十大集中度.*(?:过高|偏高)|费用\/份额|特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛|题材拥挤|追涨风险|暂时回避|仍是回避/.test(String(gap || ""));
 }
 
 function formatPortfolioRealtimeEvidence(profile = {}) {
@@ -3511,6 +3511,8 @@ function hasVerifiedPortfolioFeeEvidence(profile = {}) {
   const missing = new Set(normalizeStringArray(impact.missingFeeData || fees.missingFeeData));
   const oneYearCost = toNumber(impact.oneYearCostPer10000);
   if (!shareClass || !feeModel.label || feeModel.type === "unknown") return false;
+  const specialAvailability = evaluatePortfolioSpecialShareClassAvailability(profile);
+  if (specialAvailability.required && !specialAvailability.ok) return false;
   if (["share_class", "subscription_or_sales_service_fee", "sales_service_fee", "subscription_fee"].some((item) => missing.has(item))) {
     return false;
   }
@@ -3522,6 +3524,91 @@ function hasVerifiedPortfolioFeeEvidence(profile = {}) {
     return Number.isFinite(toNumber(fees.currentRatePct)) || Number.isFinite(toNumber(fees.sourceRatePct));
   }
   return Boolean(fees.source || fees.feeRules?.subscription || fees.feeRules?.redemption);
+}
+
+function evaluatePortfolioSpecialShareClassAvailability(profile = {}) {
+  const fees = profile?.fees || {};
+  const impact = fees.feeImpact || profile.feeImpact || {};
+  const shareClass = String(fees.shareClass || profile.shareClass || "").toUpperCase();
+  const feeModel = fees.shareClassFeeModel || profile.shareClassFeeModel || {};
+  const required = feeModel.type === "special_or_platform_class"
+    || ["D", "I", "Y"].includes(shareClass)
+    || impact.holdingPeriodFit === "channel_or_institution_only_check";
+  if (!required) return { required: false, ok: true, reason: "", evidence: [] };
+
+  const channelSignals = [
+    fees.retailAvailable,
+    fees.ordinaryRetailAvailable,
+    fees.availableForPurchase,
+    fees.subscriptionAvailable,
+    fees.channelAvailability,
+    fees.purchaseAvailability,
+    fees.subscriptionAvailability,
+    profile.retailAvailable,
+    profile.ordinaryRetailAvailable,
+    profile.availableForPurchase,
+    profile.subscriptionAvailable,
+    profile.channelAvailability,
+    profile.purchaseAvailability,
+    profile.subscriptionAvailability
+  ].flatMap(normalizePortfolioAvailabilitySignals);
+  const subscriptionRules = String(
+    fees.feeRules?.subscription
+    || fees.subscriptionRules
+    || impact.subscriptionRules
+    || profile.subscriptionRules
+    || ""
+  ).trim();
+  const minPurchase = toNumber(fees.minPurchase ?? profile.minPurchase ?? profile.seed?.minPurchase);
+  const hasRetailOpenSignal = channelSignals.some(isPortfolioShareAvailabilityOpenSignal);
+  const hasClosedSignal = channelSignals.some(isPortfolioShareAvailabilityClosedSignal)
+    || isPortfolioShareAvailabilityClosedSignal(subscriptionRules);
+  const hasMinPurchase = Number.isFinite(minPurchase);
+  const hasSubscriptionRules = Boolean(subscriptionRules);
+  const missing = [];
+  if (!hasRetailOpenSignal) missing.push("普通渠道可申购");
+  if (!hasMinPurchase) missing.push("起购门槛");
+  if (!hasSubscriptionRules) missing.push("申购规则");
+  if (hasClosedSignal) missing.push("渠道限制");
+  const ok = hasRetailOpenSignal && hasMinPurchase && hasSubscriptionRules && !hasClosedSignal;
+  const label = shareClass ? `${shareClass}类` : "特殊/平台份额";
+  return {
+    required: true,
+    ok,
+    reason: ok
+      ? `${label}特殊份额已验证普通渠道可申购、起购门槛和申购规则。`
+      : `${label}特殊/平台份额缺少${missing.join("、")}验证，不能直接买入。`,
+    evidence: [
+      `${label}特殊/平台份额`,
+      hasRetailOpenSignal ? "普通渠道可申购已验证" : "缺普通渠道可申购验证",
+      hasMinPurchase ? `起购门槛${minPurchase}元` : "缺起购门槛",
+      hasSubscriptionRules ? "申购规则已抓取" : "缺申购规则",
+      hasClosedSignal ? "存在渠道限制信号" : ""
+    ].filter(Boolean)
+  };
+}
+
+function normalizePortfolioAvailabilitySignals(value) {
+  if (value === null || value === undefined || value === "") return [];
+  if (Array.isArray(value)) return value.flatMap(normalizePortfolioAvailabilitySignals);
+  if (typeof value === "object") {
+    return Object.entries(value)
+      .filter(([key]) => /status|state|note|text|label|available|availability|retail|ordinary|channel|subscription|purchase/i.test(key))
+      .flatMap(([, entry]) => normalizePortfolioAvailabilitySignals(entry));
+  }
+  return [String(value).trim()].filter(Boolean);
+}
+
+function isPortfolioShareAvailabilityOpenSignal(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  return /^(true|yes|available|open|retail_open|ordinary_retail_open|purchase_open|subscription_open)$/.test(text)
+    || /普通.*(?:可申购|可购买|开放)|面向普通投资者|渠道.*(?:可申购|可购买|开放)|开放申购|可申购|可购买/.test(text);
+}
+
+function isPortfolioShareAvailabilityClosedSignal(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  return /^(false|no|closed|unavailable|blocked|suspended|institution_only|platform_only)$/.test(text)
+    || /暂停.*申购|暂停.*买入|不可申购|不可购买|不开放|仅.*(?:机构|特定|平台)|机构专属|平台专属|渠道受限/.test(text);
 }
 
 function hasPortfolioVerifiedSeedChaseRisk(candidate = {}, profile = {}) {
@@ -3573,11 +3660,13 @@ function formatPortfolioFeeVerificationEvidence(profile = {}) {
   const feeModel = fees.shareClassFeeModel || profile.shareClassFeeModel || {};
   const impact = fees.feeImpact || profile.feeImpact || {};
   const missing = normalizeStringArray(impact.missingFeeData || fees.missingFeeData);
+  const specialAvailability = evaluatePortfolioSpecialShareClassAvailability(profile);
   return [
     "费用验证：",
     shareClass ? `${shareClass}类` : "份额未知",
     feeModel.label || "费用模型未知",
     Number.isFinite(toNumber(impact.oneYearCostPer10000)) ? `每万元1年约${round(toNumber(impact.oneYearCostPer10000), 0)}元` : "",
+    specialAvailability.required ? specialAvailability.reason : "",
     missing.length ? `缺失${missing.slice(0, 3).join("/")}` : ""
   ].filter(Boolean).join("，");
 }
@@ -4025,6 +4114,14 @@ function evaluatePortfolioBuyDiscipline(action = {}, profile = null, positions =
     }
   }
   const feeEvidence = formatPortfolioFeeVerificationEvidence(profile);
+  const specialAvailability = evaluatePortfolioSpecialShareClassAvailability(profile);
+  if (specialAvailability.required && !specialAvailability.ok) {
+    return {
+      ok: false,
+      reason: "系统买入纪律拦截：D/I/Y等特殊或平台份额缺少可申购渠道、起购门槛或申购规则验证，不能提交虚拟申购。",
+      evidence: [trendEvidence, feeEvidence, ...specialAvailability.evidence].filter(Boolean)
+    };
+  }
   if (!hasVerifiedPortfolioFeeEvidence(profile)) {
     return {
       ok: false,
@@ -4865,7 +4962,7 @@ function buildPortfolioReadyStatusReadinessGuard(status, readiness = {}) {
 }
 
 function isPortfolioWatchStructuralReadinessGap(gap = "") {
-  return /基金规模|前十大集中度/.test(String(gap || ""));
+  return /基金规模|前十大集中度|特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛/.test(String(gap || ""));
 }
 
 function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
@@ -4911,7 +5008,10 @@ function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
   if (hasHighChaseTheme(evidence) || hasHighChaseTheme(item)) {
     gaps.push("题材拥挤或追涨风险仍需下降。");
   }
-  if (!hasVerifiedPortfolioFeeEvidence(evidence)) {
+  const specialAvailability = evaluatePortfolioSpecialShareClassAvailability(evidence);
+  if (specialAvailability.required && !specialAvailability.ok) {
+    gaps.push(specialAvailability.reason);
+  } else if (!hasVerifiedPortfolioFeeEvidence(evidence)) {
     gaps.push("还差可验证费用/份额证据。");
   }
   gaps.push(...buildPortfolioWatchStructuralReadinessGaps(item, evidence));
@@ -5072,6 +5172,7 @@ function evaluatePortfolioWatchReadiness(item = {}, profile = null) {
 
 function getPortfolioWatchStructuralReadinessCap(gaps = []) {
   const text = (gaps || []).join(" ");
+  if (/特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛/.test(text)) return 58;
   if (/基金规模.*不能作为可直接买入|前十大集中度.*过高/.test(text)) return 58;
   if (/基金规模.*偏小|前十大集中度.*偏高/.test(text)) return 78;
   return null;
@@ -5082,6 +5183,7 @@ function scorePortfolioWatchReadinessGapPenalty(gap = "") {
   if (/缺少可验证净值|走势下钻/.test(text)) return 70;
   if (/基金规模.*不能作为可直接买入/.test(text)) return 30;
   if (/前十大集中度.*过高/.test(text)) return 24;
+  if (/特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛/.test(text)) return 32;
   if (/基金规模.*偏小/.test(text)) return 16;
   if (/前十大集中度.*偏高/.test(text)) return 18;
   if (/回调完成|启动前夜/.test(text)) return 18;

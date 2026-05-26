@@ -1996,6 +1996,53 @@ assert(
   manager.buildPortfolioWatchReadinessGaps({ code: "000010", status: "ready" }, missingFeeProfile).some((item) => item.includes("费用/份额")),
   "watchlist readiness gaps must expose missing fee/share-class evidence before buying"
 );
+const unverifiedSpecialShareProfile = {
+  ...verifiedSeedProfile,
+  code: "000030",
+  name: "特殊平台份额基金I",
+  fees: {
+    shareClass: "I",
+    minPurchase: "10",
+    shareClassFeeModel: { type: "special_or_platform_class", label: "I类：特殊/机构/平台份额" },
+    feeImpact: {
+      oneYearCostPer10000: 8,
+      holdingPeriodFit: "channel_or_institution_only_check"
+    }
+  }
+};
+const specialShareBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000030" }, unverifiedSpecialShareProfile);
+assert.equal(specialShareBuyGuard.ok, false, "portfolio buy discipline must block special/platform share classes until retail channel availability is verified");
+assert(
+  /特殊或平台份额|可申购渠道|起购门槛/.test(specialShareBuyGuard.reason),
+  "special share-class block must explain channel availability and minimum-purchase verification"
+);
+assert(
+  manager.buildPortfolioWatchReadinessGaps({ code: "000030", status: "ready" }, unverifiedSpecialShareProfile).some((item) => /特殊\/平台份额|普通渠道可申购/.test(item)),
+  "watchlist readiness gaps must expose unverified special/platform share-class availability"
+);
+const enforcedSpecialShareBuy = manager.enforcePortfolioBuyDiscipline([
+  { action: "BUY", code: "000030", name: "特殊平台份额基金I", amount: 1500, reason: "模型想买特殊份额" }
+], [unverifiedSpecialShareProfile]);
+assert.equal(enforcedSpecialShareBuy[0].action, "WATCH", "execution guard must convert unverified special-share BUY actions into WATCH");
+assert.equal(enforcedSpecialShareBuy[0].amount, 0, "execution guard must zero unverified special-share buy amounts");
+assert(enforcedSpecialShareBuy[0].dataBasis.some((item) => item.includes("缺普通渠道可申购验证")), "special-share execution guard must preserve the missing channel evidence");
+const verifiedSpecialShareProfile = {
+  ...unverifiedSpecialShareProfile,
+  code: "000031",
+  fees: {
+    ...unverifiedSpecialShareProfile.fees,
+    retailAvailable: true,
+    feeRules: {
+      subscription: "普通渠道开放申购，10元起购。",
+      redemption: "按基金公告赎回。"
+    }
+  }
+};
+assert.equal(
+  manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000031" }, verifiedSpecialShareProfile).ok,
+  true,
+  "special/platform share classes may pass only when retail availability, minimum purchase, and subscription rules are explicit"
+);
 const duplicateExposureBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, verifiedSeedProfile, [
   { code: "000099", name: "南方中证A500ETF联接C", currentValue: 7000 }
 ]);

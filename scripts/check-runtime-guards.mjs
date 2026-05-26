@@ -1281,6 +1281,14 @@ const requiredPatterns = [
     message: "portfolio BUY guard must explain when share-class fee evidence is missing."
   },
   {
+    pattern: /evaluatePortfolioSpecialShareClassAvailability[\s\S]{0,1800}special_or_platform_class[\s\S]{0,1800}普通渠道可申购[\s\S]{0,900}起购门槛/,
+    message: "portfolio BUY guard must verify retail channel availability and minimum purchase before buying special/platform share classes."
+  },
+  {
+    pattern: /D\/I\/Y等特殊或平台份额缺少可申购渠道、起购门槛或申购规则验证/,
+    message: "portfolio BUY guard must explain special/platform share-class blocks in user-readable Chinese."
+  },
+  {
     pattern: /缺少回调完成\/启动前夜、5日\/10日刚转强和低位证据/,
     message: "portfolio BUY guard must explain when low-position launch or early-turn evidence is missing."
   },
