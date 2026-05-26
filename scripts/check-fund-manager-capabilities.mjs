@@ -53,6 +53,17 @@ assert(runtimeRelease && runtimeRelease.name && runtimeRelease.startedAt, "runti
 assert(Object.prototype.hasOwnProperty.call(runtimeRelease, "shortCommit"), "runtime release metadata must expose the deployed short commit when available");
 assert(serverSource.includes("release: getRuntimeRelease()"), "health/stats APIs must expose runtime release metadata");
 assert(adminSource.includes("formatReleaseCommit") && adminHtmlSource.includes("statReleaseCommit"), "admin runtime UI must show the deployed commit");
+const pingzhongLatestNav = manager.parseFundPingzhongLatestNav(`
+var Data_netWorthTrend = [
+  {"x":1779465600000,"y":2.4100,"equityReturn":0.11,"unitMoney":""},
+  {"x":1779638400000,"y":2.4229,"equityReturn":-0.05,"unitMoney":""}
+];
+`);
+assert.deepEqual(
+  pingzhongLatestNav,
+  { date: "2026-05-24", unitNav: 2.4229, dailyReturnPct: -0.05 },
+  "Eastmoney pingzhongdata fallback must recover the latest official NAV when fundgz lacks an intraday estimate"
+);
 const runtimeDiagnostics = manager.buildRuntimeDiagnostics({
   counters: {
     modelCalls: 100,
@@ -185,6 +196,7 @@ assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "追高�
 assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "卖出滞后回测"), "backtest diagnostics must catch delayed sell discipline");
 assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "运行中断回测"), "backtest diagnostics must catch decision continuity failures");
 assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "空仓等待回测"), "backtest diagnostics must catch excessive idle cash after de-risking");
+assert(portfolioBacktestDiagnostics.items.some((item) => item.label === "试探仓后续回测"), "backtest diagnostics must require a scale-or-exit plan after tiny starter buys");
 assert(portfolioBacktestDiagnostics.phases.length >= 3, "backtest diagnostics must split history into replay phases");
 const backtestCapabilityDiagnostics = manager.buildPortfolioCapabilityDiagnostics(backtestFixture);
 assert(backtestCapabilityDiagnostics.items.some((item) => item.label === "重复成交回测"), "capability diagnostics must absorb historical backtest defects");
@@ -193,6 +205,7 @@ assert(backtestActionQueue.some((item) => item.action.includes("重复订单")),
 assert(backtestActionQueue.some((item) => item.action.includes("卡滞订单")), "capability action queue must turn stale active orders into an execution repair task");
 assert(backtestActionQueue.some((item) => item.action.includes("重复pending应收")), "capability action queue must turn duplicated settlements into a receivable repair task");
 assert(backtestActionQueue.some((item) => item.action.includes("0.5%-2.5%试探仓")), "capability action queue must turn idle-cash replay into a redeployment task");
+assert(backtestActionQueue.some((item) => item.action.includes("加到3%-5%")), "capability action queue must turn starter-buy underdeployment into a scale-or-exit task");
 assert.equal(manager.findStalePortfolioActiveOrders(backtestFixture.orders, "2026-05-27").length, 1, "stale active order detector must find overdue queued/submitted/priced orders");
 assert.equal(
   manager.findStalePortfolioActiveOrders([...backtestFixture.orders, backtestFixture.orders[1]], "2026-05-27").length,

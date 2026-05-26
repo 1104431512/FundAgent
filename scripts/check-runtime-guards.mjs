@@ -103,8 +103,12 @@ const requiredPatterns = [
     message: "share-class inference must not misread QDII/ETF/FOF product suffixes as A/C/I share classes."
   },
   {
-    pattern: /function fetchRealtimeFundValuationSnapshot[\s\S]{0,1800}fetchFundValuation\(code\)[\s\S]{0,2600}function normalizeRealtimeFundValuation[\s\S]{0,1200}fundgz\.1234567\.com\.cn\/js\/\$\{valuation\.fundcode/,
+    pattern: /function fetchRealtimeFundValuationSnapshot[\s\S]{0,1800}fetchFundValuation\(code\)[\s\S]{0,2600}function normalizeRealtimeFundValuation[\s\S]{0,1400}source: valuation\.source \|\| `https:\/\/fundgz\.1234567\.com\.cn\/js\/\$\{valuation\.fundcode/,
     message: "real-time fund valuation snapshots must use the existing Tiantian/FundGZ estimate endpoint with source traceability."
+  },
+  {
+    pattern: /async function fetchFundValuation[\s\S]{0,2200}isStaleFundValuation[\s\S]{0,900}fetchFundValuationFromPingzhongData[\s\S]{0,30000}function parseFundPingzhongLatestNav[\s\S]{0,700}Data_netWorthTrend/,
+    message: "fund valuation must fall back to Eastmoney pingzhongdata latest official NAV when intraday estimates are unavailable or stale."
   },
   {
     pattern: /async function fetchFundHoldingRealtimePulse[\s\S]{0,2200}push2\.eastmoney\.com\/api\/qt\/ulist\.np\/get[\s\S]{0,2600}function buildFundHoldingRealtimePulseFromQuotes/,
@@ -509,6 +513,10 @@ const requiredPatterns = [
   {
     pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,5200}JSON\.stringify\(compactMarketSnapshotForModel\(marketSnapshot\), null, 2\)/,
     message: "portfolio decisions must use compact market snapshots to avoid model context-window failures."
+  },
+  {
+    pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,5000}每只基金最多保留3个最能改变动作的数字[\s\S]{0,260}不要连续罗列5日\/10日\/20日\/60日\/120日/,
+    message: "portfolio decision prompts must reduce numeric dumps and prioritize customer-readable trend logic."
   },
   {
     pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,2200}compactHeldProfiles = \(heldProfiles \|\| \[\]\)\.map\(compactPortfolioReviewProfile\)[\s\S]{0,4200}JSON\.stringify\(compactHeldProfiles, null, 2\)/,
@@ -1025,6 +1033,10 @@ const requiredPatterns = [
   {
     pattern: /function buildPortfolioBacktestDiagnostics[\s\S]{0,3600}重复应收回测/,
     message: "portfolio backtest diagnostics must flag duplicated settlement receivables that overstate deployable cash."
+  },
+  {
+    pattern: /function buildPortfolioBacktestDiagnostics[\s\S]{0,5200}试探仓后续回测[\s\S]{0,900}加到3%-5%/,
+    message: "portfolio backtest diagnostics must force a scale-or-exit plan after tiny starter buys when cash remains excessive."
   },
   {
     pattern: /function processPortfolioOrderLifecycle[\s\S]{0,2200}order\.confirmDate <= now\.date && shouldRejectImpossiblePortfolioSellOrder[\s\S]{0,260}rejectImpossiblePortfolioSellOrder[\s\S]{0,900}resolveOrderNavSnapshot/,

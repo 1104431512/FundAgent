@@ -1427,6 +1427,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "若操作或候选涉及 QDII/海外基金，必须使用 marketSnapshot.marketIndicators.globalMarkets 复核外盘和人民币汇率温度，并写清净值披露时差。",
     "若现金再部署纪律提示 pressureActive=true 且存在 verified_buy 或 starter_buy 候选，actions 必须逐只给 BUY 或明确 WATCH 拦截理由；符合小仓启动条件时优先 0.5%-2.5% 试探，不要继续空泛观望。",
     "给用户看的 summary、reason 和 riskControl 要先讲走势、轮动和操作边界，再放必要数字；不要把每个动作写成一长串指标。",
+    "客户可见文本每只基金最多保留3个最能改变动作的数字；优先写“刚转强、仍偏高、回撤修复、费用拖累、持仓前景”，不要连续罗列5日/10日/20日/60日/120日。",
     "如果候选基金缺少可验证净值或走势数据，倾向 WATCH，不要强行 BUY。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
     "",
@@ -7584,6 +7585,23 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
       "再部署能力"
     );
   }
+  if (
+    Number.isFinite(cashLikePct)
+    && cashLikePct >= 60
+    && effectivelyFlat
+    && Number.isFinite(pendingBuyPct)
+    && pendingBuyPct > 0
+    && pendingBuyPct <= 2.5
+    && !account.riskBudget?.blockNewBuys
+  ) {
+    add(
+      "info",
+      "试探仓后续回测",
+      `试探仓${formatFallbackPct(pendingBuyPct)} / 可部署${formatFallbackPct(cashLikePct)}`,
+      `已有小仓试探但组合仍接近空仓；下一轮必须写清“加到3%-5%/继续观察/退出”的触发条件，不能买完1%多以后又长期无动作。`,
+      "再部署能力"
+    );
+  }
 
   const severityRank = { ok: 0, info: 1, warning: 2, critical: 3 };
   const level = items.reduce((current, item) =>
@@ -7912,6 +7930,8 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "压缩历史上下文并保留关键账本字段，失败后的下一次运行必须先补回中断期间的订单和风险复核。", "主席");
     } else if (item.label === "空仓等待回测") {
       addTask(item, "不能长期全仓现金；若回撤预算正常，必须给出0.5%-2.5%试探仓或三个候选的精确未满足条件。", "组合经理");
+    } else if (item.label === "试探仓后续回测") {
+      addTask(item, "首仓后不能无期限观望；下一轮必须按走势确认给出加到3%-5%、继续观察或退出的明确条件。", "组合经理");
     }
   }
   return tasks.slice(0, 8);
@@ -12010,9 +12030,14 @@ function normalizeRealtimeFundValuation(valuation = {}, seed = {}, fetchedAt = n
     navDate: valuation.jzrq || seed.navDate || "",
     estimateTime,
     estimateFreshnessMinutes: Number.isFinite(freshnessMinutes) ? freshnessMinutes : null,
-    freshnessLabel: formatEstimateFreshnessLabel(freshnessMinutes),
+    freshnessLabel: valuation.valuationBasis === "最新官方净值"
+      ? `最新官方净值 ${valuation.jzrq || ""}`.trim()
+      : formatEstimateFreshnessLabel(freshnessMinutes),
     isFresh,
-    source: `https://fundgz.1234567.com.cn/js/${valuation.fundcode || seed.code || ""}.js`
+    isRealtimeEstimate: valuation.sourceKind !== "eastmoney_latest_nav_fallback",
+    sourceKind: valuation.sourceKind || "tiantian_intraday_estimate",
+    valuationBasis: valuation.valuationBasis || "盘中估算",
+    source: valuation.source || `https://fundgz.1234567.com.cn/js/${valuation.fundcode || seed.code || ""}.js`
   };
 }
 
@@ -15875,12 +15900,95 @@ async function fetchFundProfile(code) {
 }
 
 async function fetchFundValuation(code) {
+  const primary = await fetchFundGzValuation(code).catch((error) => ({
+    ok: false,
+    error: error.message,
+    source: `https://fundgz.1234567.com.cn/js/${code}.js`
+  }));
+  if (isUsableFundValuation(primary)) {
+    if (!isStaleFundValuation(primary)) {
+      return primary;
+    }
+    const fallback = await fetchFundValuationFromPingzhongData(code).catch(() => null);
+    if (fallback?.ok && isFundValuationDateNewer(fallback, primary)) {
+      return {
+        ...fallback,
+        stalePrimarySource: primary.source || `https://fundgz.1234567.com.cn/js/${code}.js`,
+        stalePrimaryDate: primary.jzrq || ""
+      };
+    }
+    return primary;
+  }
+  const fallback = await fetchFundValuationFromPingzhongData(code).catch((error) => ({
+    ok: false,
+    error: error.message,
+    source: `https://fund.eastmoney.com/pingzhongdata/${code}.js`
+  }));
+  if (fallback.ok) {
+    return {
+      ...fallback,
+      primarySourceError: primary.error || "fundgz returned empty valuation"
+    };
+  }
+  return primary.ok ? primary : fallback;
+}
+
+async function fetchFundGzValuation(code) {
   const text = await fetchText(`https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`);
   const match = text.match(/jsonpgz\((\{[\s\S]*\})\);?/);
   if (!match) {
-    return { ok: false };
+    return { ok: false, source: `https://fundgz.1234567.com.cn/js/${code}.js` };
   }
-  return { ok: true, ...JSON.parse(match[1]) };
+  return {
+    ok: true,
+    sourceKind: "tiantian_intraday_estimate",
+    valuationBasis: "盘中估算",
+    source: `https://fundgz.1234567.com.cn/js/${code}.js`,
+    ...JSON.parse(match[1])
+  };
+}
+
+function isUsableFundValuation(valuation = {}) {
+  return Boolean(
+    valuation?.ok
+    && (valuation.dwjz || valuation.gsz || valuation.jzrq || valuation.name)
+  );
+}
+
+function isStaleFundValuation(valuation = {}) {
+  const age = estimateDateAgeDays(valuation.jzrq || valuation.navDate || "");
+  return Number.isFinite(age) && age > Number(process.env.FUND_VALUATION_STALE_DAYS || 7);
+}
+
+function isFundValuationDateNewer(candidate = {}, reference = {}) {
+  const candidateDate = normalizePortfolioEventDate(candidate.jzrq || candidate.navDate || "");
+  const referenceDate = normalizePortfolioEventDate(reference.jzrq || reference.navDate || "");
+  return Boolean(candidateDate && (!referenceDate || candidateDate > referenceDate));
+}
+
+async function fetchFundValuationFromPingzhongData(code) {
+  const text = await fetchFundPingzhongData(code);
+  const latest = parseFundPingzhongLatestNav(text);
+  if (!latest) {
+    return {
+      ok: false,
+      error: "Eastmoney pingzhongdata latest NAV not found",
+      source: `https://fund.eastmoney.com/pingzhongdata/${code}.js`
+    };
+  }
+  return {
+    ok: true,
+    fundcode: extractJsString(text, "fS_code") || code,
+    name: extractJsString(text, "fS_name"),
+    dwjz: latest.unitNav,
+    gsz: "",
+    gszzl: latest.dailyReturnPct ?? "",
+    jzrq: latest.date,
+    gztime: "",
+    sourceKind: "eastmoney_latest_nav_fallback",
+    valuationBasis: "最新官方净值",
+    source: `https://fund.eastmoney.com/pingzhongdata/${code}.js`
+  };
 }
 
 async function fetchFundPingzhongData(code) {
@@ -16466,6 +16574,21 @@ function parseFundPingzhongData(text) {
     moneyMarket: summarizeMoneyMarketData({ millionCopiesIncome, sevenDaysYearIncome }),
     managers: summarizeManagers(managers),
     topStocks: extractTopStockCodes(text)
+  };
+}
+
+function parseFundPingzhongLatestNav(text) {
+  const series = parseJsAssignment(text, "Data_netWorthTrend");
+  if (!Array.isArray(series) || !series.length) return null;
+  const latest = [...series].reverse().find((point) => point && Number.isFinite(Number(point.y)));
+  if (!latest) return null;
+  const date = formatEpochMsDate(latest.x || latest.date);
+  const unitNav = toNumber(latest.y);
+  if (!date || !Number.isFinite(unitNav)) return null;
+  return {
+    date,
+    unitNav,
+    dailyReturnPct: toNumber(latest.equityReturn)
   };
 }
 
@@ -19540,6 +19663,7 @@ export {
   isFundChartGlossaryQuestion,
   mergeCandidateFunds,
   normalizeUserFacingFundAnswer,
+  parseFundPingzhongLatestNav,
   normalizePortfolioDb,
   normalizePortfolioInvestedCostReturnText,
   normalizePortfolioReview,
