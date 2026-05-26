@@ -6382,14 +6382,14 @@ function formatPortfolioCustomerActionLine(action = {}) {
   const name = [action.code, action.name].filter(Boolean).join(" ");
   const amount = action.amount ? ` 建议${action.amount}元` : "";
   const target = action.targetWeightPct ? ` 目标${action.targetWeightPct}%` : "";
-  const reason = shortenPortfolioCustomerText(action.reason || "见投委会意见", 96);
+  const reason = shortenPortfolioCustomerText(action.reason || "见投委会意见", 82);
   const logic = [
     action.rotationCheck,
     action.positionCheck,
     action.chaseRisk,
     action.riskControl
-  ].map((item) => shortenPortfolioCustomerText(item, 60)).filter(Boolean).slice(0, 2);
-  const fee = shortenPortfolioCustomerText(action.feeCheck || "", 60);
+  ].map((item) => shortenPortfolioCustomerText(item, 54)).filter(Boolean).slice(0, 2);
+  const fee = summarizePortfolioCustomerFeeText(action.feeCheck || "");
   return [
     `- ${formatPortfolioActionLabel(action.action)} ${name}${amount}${target}`,
     reason ? `  理由：${reason}` : "",
@@ -6404,22 +6404,65 @@ function formatPortfolioCustomerTeamLine(item = {}) {
 }
 
 function shortenPortfolioCustomerText(value = "", maxLength = 120) {
-  const cleaned = normalizeUserFacingFundAnswer(String(value || ""))
+  const rawCleaned = String(value || "")
     .replace(/\s+/g, " ")
     .replace(/（[^（）]{80,}）/g, "")
     .replace(/曾浮盈[+-]?\d+(?:\.\d+)?%但当前转亏[+-]?\d+(?:\.\d+)?%/g, "浮盈已经回吐到转亏")
     .replace(/（\s*）/g, "")
     .trim();
-  if (!cleaned) return "";
-  const sentences = cleaned
+  if (!rawCleaned) return "";
+  const localized = normalizeUserFacingFundAnswer(rawCleaned).trim();
+  const sentences = rawCleaned
     .split(/(?<=[。；;])|(?=系统(?:买入|卖出|组合|单仓|风控))|(?=当前)|(?=若)|(?=费用)|(?=风险)|(?=观察缺口)|(?=触发)/)
     .map((item) => item.replace(/^[；;。,\s]+|[；;。,\s]+$/g, "").trim())
     .filter(Boolean);
-  const preferred = sentences.find((item) => /(走势|低位|回调|启动|轮动|拥挤|偏热|高位|风险|触发|费用|份额|持仓|减仓|买入|观察|等待)/.test(item))
-    || sentences[0]
-    || cleaned;
-  const compact = compactNumericHeavyCustomerText(preferred, Math.min(3, Math.max(1, Math.floor(maxLength / 45))));
+  const preferred = choosePortfolioCustomerSentence(sentences, localized || rawCleaned);
+  const compact = compactNumericHeavyCustomerText(
+    normalizeUserFacingFundAnswer(preferred),
+    Math.min(3, Math.max(1, Math.floor(maxLength / 45)))
+  );
   return compact.length <= maxLength ? compact : `${compact.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+function choosePortfolioCustomerSentence(sentences = [], fallback = "") {
+  const candidates = (sentences.length ? sentences : [fallback]).filter(Boolean);
+  return candidates
+    .map((text, index) => {
+      const numericCount = (text.match(/(?:[+-]?\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:元|万|亿)|近\s*\d+\s*日|\d+\s*日位置|\d{6})/g) || []).length;
+      let score = 0;
+      if (/(高位|低位|回调|启动|修复|轮动|拥挤|偏热|追涨|回吐|转亏|止盈|止损|减仓|小仓|等待|回避)/.test(text)) score += 8;
+      if (/(同题材.*(?:过度|集中)|暴露过度|集中度|底层重叠)/.test(text)) score += 6;
+      if (/(因为|因此|所以|不是|不能|需要|必须|适合|不适合|先|后续|下一轮|触发)/.test(text)) score += 4;
+      if (/(同题材|底层|持仓|前十大|费用|份额|风控|风险|利润)/.test(text)) score += 3;
+      if (text.length < 12) score -= 3;
+      if (/^系统/.test(text)) score -= 1;
+      score -= numericCount * 2;
+      return { text, score, index };
+    })
+    .sort((a, b) => b.score - a.score || a.index - b.index)[0]?.text || fallback;
+}
+
+function summarizePortfolioCustomerFeeText(value = "") {
+  const text = normalizeUserFacingFundAnswer(String(value || "")).replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  const shareClass = text.match(/([A-DI])类/i)?.[1]?.toUpperCase() || "";
+  const pieces = [];
+  if (shareClass) {
+    if (/销售服务费|短期|战术|30-180天/.test(text)) {
+      pieces.push(`${shareClass}类偏短中期，别长期拖着不复核`);
+    } else if (/前端申购费|中期|长期/.test(text)) {
+      pieces.push(`${shareClass}类偏中长期，注意申购和赎回摩擦`);
+    } else {
+      pieces.push(`${shareClass}类份额已识别`);
+    }
+  }
+  if (/不混买|避免份额混用|不新增同基金其他份额|本次不新增/.test(text)) {
+    pieces.push("不和同基金其他份额混买");
+  }
+  if (/缺|未提供|未知|无法核验/.test(text)) {
+    pieces.push("费用/份额还要补齐后再放大仓位");
+  }
+  return pieces.length ? [...new Set(pieces)].slice(0, 2).join("；") : shortenPortfolioCustomerText(text, 46);
 }
 
 function compactNumericHeavyCustomerText(value = "", maxNumbers = 3) {
