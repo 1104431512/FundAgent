@@ -2292,6 +2292,44 @@ const cancelledSettlementDuplicates = manager.dedupePortfolioSettlements(duplica
 assert.equal(cancelledSettlementDuplicates.length, 1, "duplicate settlement dedupe must cancel later duplicate receivables");
 assert.equal(duplicateSettlementDb.settlements.find((item) => item.id === "set_dup").status, "cancelled", "duplicate settlement dedupe must mark duplicates cancelled");
 assert.equal(duplicateSettlementDb.account.receivableCash, 1000, "duplicate settlement dedupe must subtract cancelled pending receivables from account receivable cash");
+const duplicateBuyOrderDb = manager.normalizePortfolioDb({
+  account: { initialCapital: 100000, cash: 98000, pendingBuyAmount: 2000, positions: [] },
+  orders: [
+    { id: "ord_buy_keep", side: "BUY", code: "004877", name: "低位医疗QDII", amount: 1000, status: "submitted", priceDate: "2026-05-26", confirmDate: "2026-05-28", submittedAt: "2026-05-26T01:00:00.000Z" },
+    { id: "ord_buy_dup", side: "BUY", code: "004877", name: "低位医疗QDII", amount: 1000, status: "submitted", priceDate: "2026-05-26", confirmDate: "2026-05-28", submittedAt: "2026-05-26T02:00:00.000Z" }
+  ]
+});
+const duplicateBuyCancelled = manager.cancelDuplicatePortfolioActiveOrders(duplicateBuyOrderDb);
+assert.equal(duplicateBuyCancelled.length, 1, "duplicate active buy orders must be cancelled before they double-freeze cash");
+assert.equal(duplicateBuyOrderDb.orders.find((item) => item.id === "ord_buy_dup").status, "cancelled", "duplicate active buy order must be marked cancelled");
+assert.equal(duplicateBuyOrderDb.account.cash, 99000, "cancelled duplicate buy order must release its frozen cash");
+assert.equal(duplicateBuyOrderDb.account.pendingBuyAmount, 1000, "active pending buy amount must be recomputed after duplicate cancellation");
+const staleBuyOrderDb = manager.normalizePortfolioDb({
+  account: { initialCapital: 100000, cash: 95000, pendingBuyAmount: 5000, positions: [] },
+  orders: [
+    { id: "ord_stale_buy", side: "BUY", code: "000111", name: "过期申购测试基金C", amount: 5000, status: "submitted", priceDate: "2026-05-19", confirmDate: "2026-05-20", submittedAt: "2026-05-19T06:00:00.000Z" }
+  ]
+});
+const staleBuyCancelled = manager.cancelStalePortfolioActiveOrders(staleBuyOrderDb, null, "2026-05-27");
+assert.equal(staleBuyCancelled.length, 1, "stale unconfirmed buy orders must be cancelled after the grace window");
+assert.equal(staleBuyOrderDb.orders[0].status, "cancelled", "stale buy order must be marked cancelled");
+assert(staleBuyOrderDb.orders[0].cancelReason.includes("释放冻结现金"), "stale buy cancellation must explain cash release");
+assert.equal(staleBuyOrderDb.account.cash, 100000, "stale cancelled buy order must restore deployable cash");
+assert.equal(staleBuyOrderDb.account.pendingBuyAmount, 0, "stale cancelled buy order must clear pending buy reservations");
+const duplicateTransactionDb = {
+  account: { cash: 90000, totalAsset: 100000, positions: [] },
+  transactions: [
+    { id: "txn_keep", orderId: "ord_sell_keep", date: "2026-05-26", side: "SELL", code: "006265", name: "红土创新新科技股票A", amount: 8000, createdAt: "2026-05-26T01:00:00.000Z" },
+    { id: "txn_dup", date: "2026-05-26", side: "SELL", code: "006265", name: "红土创新新科技股票A", amount: 2000, createdAt: "2026-05-26T02:00:00.000Z" }
+  ],
+  orders: [],
+  settlements: [],
+  runs: []
+};
+const reversedTransactions = manager.repairDuplicatePortfolioTransactions(duplicateTransactionDb);
+assert.equal(reversedTransactions.length, 1, "duplicate transaction repair must mark later same-day same-fund fills as reversed");
+assert.equal(duplicateTransactionDb.transactions.find((item) => item.id === "txn_dup").reversed, true, "duplicate transaction must be retained for audit but excluded by a reversed flag");
+assert(!manager.buildPortfolioBacktestDiagnostics(duplicateTransactionDb).items.some((item) => item.label === "重复成交回测"), "reversed duplicate transactions must no longer keep the manager in ledger-integrity lockdown");
 const accountRiskBudget = manager.buildPortfolioAccountRiskBudget({
   totalAsset: 93500,
   peakTotalAsset: 100000

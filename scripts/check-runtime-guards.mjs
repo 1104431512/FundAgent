@@ -1177,6 +1177,22 @@ const requiredPatterns = [
     message: "portfolio settlement lifecycle must cancel duplicate receivables and repair receivable cash."
   },
   {
+    pattern: /function cancelPortfolioActiveOrder[\s\S]{0,900}releasePortfolioOrderReservation[\s\S]{0,900}pendingBuyAmount[\s\S]{0,500}reservationReleasedAt/,
+    message: "portfolio order cancellation must release frozen BUY cash exactly once."
+  },
+  {
+    pattern: /function cancelStalePortfolioActiveOrders[\s\S]{0,1400}释放冻结现金[\s\S]{0,1000}shouldCancelStalePortfolioOrder/,
+    message: "portfolio lifecycle must cancel stale unconfirmed orders so old pending items do not freeze cash forever."
+  },
+  {
+    pattern: /function repairDuplicatePortfolioTransactions[\s\S]{0,1800}reversed\s*=\s*true[\s\S]{0,700}reversalReason/,
+    message: "portfolio lifecycle must mark duplicate transactions as reversed with an audit reason."
+  },
+  {
+    pattern: /function findDuplicatePortfolioTradeGroups[\s\S]{0,500}item\?\.reversed/,
+    message: "portfolio duplicate-trade diagnostics must ignore transactions already marked reversed."
+  },
+  {
     pattern: /function buildPortfolioBacktestDiagnostics[\s\S]{0,3600}重复应收回测/,
     message: "portfolio backtest diagnostics must flag duplicated settlement receivables that overstate deployable cash."
   },

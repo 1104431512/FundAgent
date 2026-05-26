@@ -5536,30 +5536,13 @@ function cancelDuplicatePortfolioActiveOrders(db = {}, result = null) {
     const keep = sorted[0];
     for (const duplicate of sorted.slice(1)) {
       const beforeStatus = duplicate.status || "";
-      duplicate.status = "cancelled";
-      duplicate.cancelledAt = new Date().toISOString();
-      duplicate.cancelReason = `同一基金同方向已有未完成订单 ${keep.id || ""}，为避免重复提交已自动取消。`;
-      addOrderTimeline(duplicate, "cancelled", duplicate.cancelReason);
-      cancelled.push({ order: duplicate, beforeStatus, keep });
-      if (result) {
-        result.orderUpdates.push({
-          id: duplicate.id,
-          code: duplicate.code,
-          name: duplicate.name,
-          side: duplicate.side,
-          beforeStatus,
-          afterStatus: duplicate.status,
-          priceDate: duplicate.priceDate,
-          confirmDate: duplicate.confirmDate
-        });
-        result.notes.push({
-          action: duplicate.side,
-          code: duplicate.code,
-          name: duplicate.name,
-          status: "cancelled",
-          reason: duplicate.cancelReason
-        });
-      }
+      const cancelledOrder = cancelPortfolioActiveOrder(
+        db,
+        duplicate,
+        `同一基金同方向已有未完成订单 ${keep.id || ""}，为避免重复提交已自动取消。`,
+        result
+      );
+      if (cancelledOrder) cancelled.push({ order: duplicate, beforeStatus, keep });
     }
   }
 
@@ -5573,6 +5556,88 @@ function comparePortfolioOrderPriorityForDedupe(a = {}, b = {}) {
   return String(a.acceptedDate || a.priceDate || "").localeCompare(String(b.acceptedDate || b.priceDate || ""))
     || String(a.submittedAt || a.createdAt || "").localeCompare(String(b.submittedAt || b.createdAt || ""))
     || String(a.id || "").localeCompare(String(b.id || ""));
+}
+
+function cancelPortfolioActiveOrder(db = {}, order = {}, reason = "", result = null) {
+  if (!order || !isPortfolioActiveOrder(order)) return null;
+  const beforeStatus = order.status || "";
+  order.status = "cancelled";
+  order.cancelledAt = new Date().toISOString();
+  order.cancelReason = reason || "系统自动取消未完成订单。";
+  releasePortfolioOrderReservation(db, order);
+  addOrderTimeline(order, "cancelled", order.cancelReason);
+  if (result) {
+    result.orderUpdates.push({
+      id: order.id,
+      code: order.code,
+      name: order.name,
+      side: order.side,
+      beforeStatus,
+      afterStatus: order.status,
+      priceDate: order.priceDate,
+      confirmDate: order.confirmDate
+    });
+    result.notes.push({
+      action: order.side,
+      code: order.code,
+      name: order.name,
+      status: "cancelled",
+      reason: order.cancelReason
+    });
+    result.updatedOrders += 1;
+  }
+  return order;
+}
+
+function releasePortfolioOrderReservation(db = {}, order = {}) {
+  if (!db.account || typeof db.account !== "object" || order.reservationReleasedAt) return false;
+  const side = String(order.side || "").toUpperCase();
+  const amount = round(Number(order.amount || order.actualAmount || 0), 2);
+  if (side === "BUY" && amount > 0) {
+    db.account.cash = round(Number(db.account.cash || 0) + amount, 2);
+    db.account.pendingBuyAmount = round(Math.max(0, Number(db.account.pendingBuyAmount || 0) - amount), 2);
+  }
+  order.reservationReleasedAt = new Date().toISOString();
+  return true;
+}
+
+function cancelStalePortfolioActiveOrders(db = {}, result = null, referenceDate = getZonedDateTime(getEffectiveConfig().portfolioTimezone).date) {
+  const staleOrders = findStalePortfolioActiveOrders(db.orders || [], referenceDate)
+    .filter((order) => shouldCancelStalePortfolioOrder(order, referenceDate));
+  const cancelled = [];
+  for (const order of staleOrders) {
+    const reason = String(order.side || "").toUpperCase() === "BUY"
+      ? `确认日 ${order.confirmDate || order.priceDate || "-"} 已过，仍没有可验证净值或份额确认，系统取消旧申购并释放冻结现金。`
+      : `确认日 ${order.confirmDate || order.priceDate || "-"} 已过，仍未完成确认，系统取消旧赎回并释放待卖份额。`;
+    const cancelledOrder = cancelPortfolioActiveOrder(db, order, reason, result);
+    if (cancelledOrder) cancelled.push(cancelledOrder);
+  }
+  if (cancelled.length) {
+    syncPortfolioActiveOrderReservations(db);
+    recalculatePortfolioAccount(db.account);
+  }
+  return cancelled;
+}
+
+function shouldCancelStalePortfolioOrder(order = {}, referenceDate = getZonedDateTime(getEffectiveConfig().portfolioTimezone).date) {
+  if (!isPortfolioActiveOrder(order)) return false;
+  const status = String(order.status || "").toLowerCase();
+  const confirmDate = normalizePortfolioEventDate(order.confirmDate);
+  const priceDate = normalizePortfolioEventDate(order.priceDate || order.acceptedDate);
+  const anchorDate = confirmDate || priceDate;
+  if (!anchorDate) return false;
+  const staleDays = daysBetweenPortfolioDates(anchorDate, referenceDate);
+  const graceDays = Math.max(1, Number(process.env.PORTFOLIO_ORDER_STALE_CANCEL_DAYS || 4));
+  if (!Number.isFinite(staleDays) || staleDays < graceDays) return false;
+  if (order.navSnapshot?.nav && confirmDate && confirmDate <= referenceDate && status !== "priced") return false;
+  return ["queued", "submitted", "priced", "pending"].includes(status);
+}
+
+function daysBetweenPortfolioDates(startDate, endDate) {
+  const start = Date.parse(normalizePortfolioEventDate(startDate) || "");
+  const end = Date.parse(normalizePortfolioEventDate(endDate) || "");
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  return Math.floor((end - start) / 86400000);
 }
 
 function syncPortfolioActiveOrderReservations(db = {}) {
@@ -5900,6 +5965,7 @@ async function processPortfolioOrderLifecycle(db, run, config = getEffectiveConf
   };
 
   dedupePortfolioSettlements(db, result);
+  repairDuplicatePortfolioTransactions(db, result);
   for (const settlement of db.settlements) {
     if (settlement.status !== "pending") continue;
     if (settlement.dueDate && settlement.dueDate <= now.date) {
@@ -5961,7 +6027,7 @@ async function processPortfolioOrderLifecycle(db, run, config = getEffectiveConf
 
     if (order.navSnapshot?.nav && order.confirmDate <= now.date && order.status !== "confirmed") {
       if (hasPortfolioTransactionForOrderDedupe(db, order, run)) {
-        rejectDuplicatePortfolioConfirmOrder(order, result);
+        rejectDuplicatePortfolioConfirmOrder(db, order, result);
         continue;
       }
       const transaction =
@@ -5989,6 +6055,7 @@ async function processPortfolioOrderLifecycle(db, run, config = getEffectiveConf
     }
   }
 
+  cancelStalePortfolioActiveOrders(db, result, now.date);
   syncPortfolioActiveOrderReservations(db);
   recalculatePortfolioAccount(db.account);
   return result;
@@ -6047,6 +6114,44 @@ function hasPortfolioTransactionForOrderDedupe(db = {}, order = {}, run = {}) {
   );
 }
 
+function repairDuplicatePortfolioTransactions(db = {}, result = null) {
+  db.transactions = Array.isArray(db.transactions) ? db.transactions : [];
+  const duplicateGroups = findDuplicatePortfolioTradeGroups(db.transactions);
+  const reversed = [];
+  for (const group of duplicateGroups) {
+    const sorted = [...(group.transactions || [])].sort(comparePortfolioTransactionPriorityForDedupe);
+    const keep = sorted[0];
+    for (const transaction of sorted.slice(1)) {
+      if (!transaction || transaction.reversed) continue;
+      transaction.reversed = true;
+      transaction.reversedAt = new Date().toISOString();
+      transaction.reversalReason = `同一交易日同一基金同方向已有成交 ${keep.id || keep.orderId || ""}，本条标记为重复成交冲销，保留审计但不再参与能力诊断。`;
+      reversed.push(transaction);
+      if (result) {
+        result.notes.push({
+          action: transaction.side,
+          code: transaction.code,
+          name: transaction.name,
+          status: "reversed",
+          reason: transaction.reversalReason
+        });
+        result.updatedOrders += 1;
+      }
+    }
+  }
+  if (reversed.length) {
+    db.updatedAt = new Date().toISOString();
+  }
+  return reversed;
+}
+
+function comparePortfolioTransactionPriorityForDedupe(a = {}, b = {}) {
+  const orderEvidenceDiff = (a.orderId ? 0 : 1) - (b.orderId ? 0 : 1);
+  if (orderEvidenceDiff) return orderEvidenceDiff;
+  return String(a.createdAt || a.date || "").localeCompare(String(b.createdAt || b.date || ""))
+    || String(a.id || "").localeCompare(String(b.id || ""));
+}
+
 function getPortfolioTransactionDedupeKey(value = {}) {
   const date = normalizePortfolioEventDate(value.date || value.navDate || value.createdAt || value.confirmedAt);
   const side = String(value.side || value.action || "").toUpperCase();
@@ -6054,11 +6159,12 @@ function getPortfolioTransactionDedupeKey(value = {}) {
   return date && side && code && ["BUY", "SELL"].includes(side) ? `${date}|${side}|${code}` : "";
 }
 
-function rejectDuplicatePortfolioConfirmOrder(order = {}, result = null) {
+function rejectDuplicatePortfolioConfirmOrder(db = {}, order = {}, result = null) {
   const beforeStatus = order.status || "";
   order.status = "rejected";
   order.rejectedAt = new Date().toISOString();
   order.rejectionReason = "同一交易日同一基金同方向已有确认成交，系统拒绝重复确认，避免虚拟账本重复买卖。";
+  releasePortfolioOrderReservation(db, order);
   addOrderTimeline(order, "rejected", order.rejectionReason);
   if (result) {
     result.notes.push({
@@ -8597,6 +8703,7 @@ function buildPortfolioBacktestPhaseNote({ buyCount, sellCount, warningCount, fa
 function findDuplicatePortfolioTradeGroups(transactions = []) {
   const groups = new Map();
   for (const item of transactions) {
+    if (item?.reversed) continue;
     const side = String(item.side || "").toUpperCase();
     const code = String(item.code || "").trim();
     const date = normalizePortfolioEventDate(item.date || item.navDate || item.createdAt);
@@ -21945,7 +22052,9 @@ export {
   getPortfolioWeeklySkillIds,
   getRuntimeRelease,
   guardPortfolioWatchlistReadyUpdate,
+  cancelPortfolioActiveOrder,
   cancelDuplicatePortfolioActiveOrders,
+  cancelStalePortfolioActiveOrders,
   hasActivePortfolioOrderForAction,
   hasNumericDumpWithoutInterpretation,
   hasPortfolioTransactionForOrderDedupe,
@@ -21984,6 +22093,7 @@ export {
   normalizePortfolioWatchlistUpdates,
   normalizeModelName,
   renderFundReportSummaryPng,
+  repairDuplicatePortfolioTransactions,
   parseDotEnvValue,
   shouldReduceHeldPositionFromReview,
   shouldRejectImpossiblePortfolioSellOrder,
