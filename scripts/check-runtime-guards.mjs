@@ -113,6 +113,10 @@ const requiredPatterns = [
     message: "fund valuation must fall back to Eastmoney pingzhongdata latest official NAV when intraday estimates are unavailable or stale."
   },
   {
+    pattern: /async function fetchFundRecentNavHistory[\s\S]{0,2600}fetchFundPingzhongNavHistory[\s\S]{0,900}deepDiveNavHistoryFallbacks[\s\S]*function parseFundPingzhongNavHistoryPoints[\s\S]{0,900}Data_netWorthTrend/,
+    message: "deep-dive trend checks must repair F10 NAV failures with Eastmoney pingzhongdata NAV history."
+  },
+  {
     pattern: /async function fetchFundValuation[\s\S]{0,1800}fetchFundValuationFromSinaEstimate[\s\S]{0,2600}stock\.finance\.sina\.com\.cn\/fundInfo\/api\/openapi\.php\/FdFundService\.getEstimateNetworthPic/,
     message: "fund valuation must include a Sina minute-level estimate backup before falling back to official NAV only."
   },
@@ -769,6 +773,10 @@ const requiredPatterns = [
     message: "portfolio capability diagnostics must flag high-cash over-waiting as an actionable manager weakness."
   },
   {
+    pattern: /候选数据源阻塞回测[\s\S]{0,1400}抓取失败当成没有机会/,
+    message: "portfolio backtests must turn data-blocked candidates into explicit data-source repair work."
+  },
+  {
     pattern: /function findMostRecentPortfolioBuyActivity[\s\S]{0,1200}cancelled[\s\S]{0,260}rejected[\s\S]{0,260}status/,
     message: "portfolio capability diagnostics must treat fresh pending buy orders as recent buy activity."
   },
@@ -1221,7 +1229,7 @@ const requiredPatterns = [
     message: "portfolio backtest redeployment diagnostics must separate deployable cash from unsettled redemption receivables."
   },
   {
-    pattern: /function buildPortfolioBacktestDiagnostics[\s\S]{0,9000}waitOnlyDecisionRuns[\s\S]{0,1200}过度保守回测/,
+    pattern: /function buildPortfolioBacktestDiagnostics[\s\S]{0,11000}waitOnlyDecisionRuns[\s\S]{0,1200}过度保守回测/,
     message: "portfolio backtest diagnostics must detect repeated wait-only decisions while cash remains deployable."
   },
   {

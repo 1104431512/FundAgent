@@ -65,6 +65,19 @@ assert.deepEqual(
   { date: "2026-05-24", unitNav: 2.4229, dailyReturnPct: -0.05 },
   "Eastmoney pingzhongdata fallback must recover the latest official NAV when fundgz lacks an intraday estimate"
 );
+const pingzhongHistory = manager.parseFundPingzhongNavHistoryPoints(`
+var Data_netWorthTrend = [
+  {"x":1779465600000,"y":2.4100,"equityReturn":0.11,"unitMoney":""},
+  {"x":1779552000000,"y":2.4240,"equityReturn":0.58,"unitMoney":""},
+  {"x":1779638400000,"y":2.4229,"equityReturn":-0.05,"unitMoney":""}
+];
+`, new Date("2026-05-23T00:00:00Z"), new Date("2026-05-24T00:00:00Z"));
+assert.equal(pingzhongHistory.length, 2, "Eastmoney pingzhongdata fallback must expose enough NAV history points for trend repair");
+assert.deepEqual(
+  pingzhongHistory[0],
+  { date: "2026-05-23", unitNav: 2.424, cumulativeNav: 2.424, dailyReturnPct: 0.58 },
+  "pingzhongdata history fallback must normalize points into the same shape as F10 NAV rows"
+);
 const sinaEstimateNav = manager.parseSinaEstimateNetworthJsonp(`
 /*<script>location.href='//sina.com';</script>*/
 jsonp_sina_test({"result":{"status":{"code":0},"data":{"worth":"4.8297","worth_date":"20260526","networth":[
@@ -639,6 +652,39 @@ assert(blockedFollowThroughBacktest.items.some((item) => item.label === "候选�
 assert(
   manager.buildPortfolioCapabilityActionQueue(blockedFollowThroughFixture).some((item) => item.action.includes("同主题可执行替代候选")),
   "capability queue must turn blocked follow-through into data/source expansion work rather than chase pressure"
+);
+const dataBlockedFixture = {
+  account: {
+    cash: 76000,
+    receivableCash: 0,
+    pendingBuyAmount: 0,
+    totalAsset: 100000,
+    positionWeightPct: 0,
+    investedValue: 0,
+    positions: [],
+    riskBudget: { blockNewBuys: false }
+  },
+  watchlist: [{
+    code: "012046",
+    name: "大成医药健康股票C",
+    status: "waiting_pullback",
+    readinessScore: 58,
+    reason: "低位回调修复候选，但净值下钻暂不可用，先观察。",
+    setupEvidence: ["净值验证：fetch failed", "低位启动前夜候选"],
+    lastSnapshot: {
+      trendProfile: { ok: false, note: "fetch failed" }
+    }
+  }],
+  runs: [],
+  transactions: [],
+  orders: [],
+  settlements: []
+};
+const dataBlockedBacktest = manager.buildPortfolioBacktestDiagnostics(dataBlockedFixture);
+assert(dataBlockedBacktest.items.some((item) => item.label === "候选数据源阻塞回测"), "backtest diagnostics must distinguish data-source blockage from a true lack of fund opportunities");
+assert(
+  manager.buildPortfolioCapabilityActionQueue(dataBlockedFixture).some((item) => item.action.includes("抓取失败当成没有机会")),
+  "capability queue must turn data-blocked candidates into explicit data-source repair work"
 );
 assert.equal(
   manager.buildPortfolioMissedFollowThroughReviewQueue(blockedFollowThroughFixture).length,

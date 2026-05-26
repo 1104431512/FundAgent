@@ -8653,6 +8653,22 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
       "候选召回"
     );
   }
+  const dataBlockedCandidates = findPortfolioBacktestDataBlockedCandidates(watchlist);
+  if (
+    Number.isFinite(deployableCashPct)
+    && deployableCashPct >= 55
+    && dataBlockedCandidates.length
+    && !account.riskBudget?.blockNewBuys
+  ) {
+    const names = dataBlockedCandidates.slice(0, 3).map((item) => `${item.code} ${item.name || ""}`.trim()).join(" / ");
+    add(
+      "warning",
+      "候选数据源阻塞回测",
+      `${dataBlockedCandidates.length} 只候选缺趋势证据`,
+      `${names} 不是因为投资逻辑已证伪，而是净值/走势下钻缺口卡住了买点判断；下一轮必须先用备用历史净值、实时估值和前十大持仓补证据，再决定试探、降级或寻找同主题替代。`,
+      "数据源"
+    );
+  }
 
   const recentDecisionRuns = runs
     .filter((run) => run.type === "decision" && run.status === "completed")
@@ -9079,6 +9095,30 @@ function findPortfolioBacktestBlockedFollowThroughCandidates({
       || Number(b.followThroughPct || 0) - Number(a.followThroughPct || 0));
 }
 
+function findPortfolioBacktestDataBlockedCandidates(watchlist = []) {
+  return normalizePortfolioWatchlist(watchlist)
+    .filter((item) => item.code && ["ready", "waiting_pullback", "watch"].includes(item.status))
+    .map((item) => {
+      const trend = item.lastSnapshot?.trendProfile || item.trendProfile || {};
+      const text = portfolioBacktestText(item);
+      const blockedByData = trend.ok === false
+        || /fetch failed|净值下钻暂不可用|缺少可验证净值|走势画像抓取失败|走势抓取失败|净值\/走势下钻|趋势数据缺口/.test(text);
+      if (!blockedByData) return null;
+      const hasActionableSeed = Number(item.readinessScore || 0) >= 45
+        || /(低位|回调|启动|转强|修复|准备|候选)/.test(text);
+      if (!hasActionableSeed) return null;
+      return {
+        code: item.code,
+        name: item.name || "",
+        status: item.status,
+        readinessScore: Number(item.readinessScore || 0),
+        blocker: trend.note || "净值/走势证据缺口"
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(b.readinessScore || 0) - Number(a.readinessScore || 0));
+}
+
 function buildPortfolioBacktestFollowThroughCandidate(item = {}, { transactions = [], orders = [], totalAsset = 0 } = {}) {
   const status = normalizePortfolioWatchStatus(item.status || "watch");
   const trend = item.lastSnapshot?.trendProfile || item.trendProfile || {};
@@ -9260,6 +9300,8 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "等待后继续走强要被追责；下一轮必须在低位转强候选里给0.5%-2.5%试探、主动降级或明确触发复查时间。", "组合经理");
     } else if (item.label === "候选质量缺口回测") {
       addTask(item, "这些上涨不能直接追买；下一轮要补实时净值、份额费率和可申购渠道，并寻找同主题可执行替代候选。", "基金研究员");
+    } else if (item.label === "候选数据源阻塞回测") {
+      addTask(item, "先补备用历史净值、实时估值和前十大持仓；数据补齐后必须给试探、降级或同主题替代，不要把抓取失败当成没有机会。", "基金研究员");
     } else if (item.label === "过度保守回测") {
       addTask(item, "连续等待不能算完成工作；下一轮必须给小仓试探方案，或列出前三个候选缺口和下一次触发复查时间。", "组合经理");
     } else if (item.label === "仓位冻结回测") {
@@ -15344,30 +15386,65 @@ async function fetchFundRecentNavHistory(code) {
   const endDate = new Date();
   const startDate = new Date(endDate);
   startDate.setMonth(startDate.getMonth() - Number(process.env.FUND_DEEP_DIVE_NAV_MONTHS || 18));
-  const firstPage = await fetchFundNavHistoryPage(code, 1, startDate, endDate);
-  const points = [...firstPage.points];
-  const totalPages = Math.min(firstPage.pages || 1, Number(process.env.FUND_DEEP_DIVE_NAV_MAX_PAGES || 10));
+  try {
+    const firstPage = await fetchFundNavHistoryPage(code, 1, startDate, endDate);
+    const points = [...firstPage.points];
+    const totalPages = Math.min(firstPage.pages || 1, Number(process.env.FUND_DEEP_DIVE_NAV_MAX_PAGES || 10));
 
-  for (let page = 2; page <= totalPages; page += 1) {
-    const pageData = await fetchFundNavHistoryPage(code, page, startDate, endDate);
-    points.push(...pageData.points);
+    for (let page = 2; page <= totalPages; page += 1) {
+      const pageData = await fetchFundNavHistoryPage(code, page, startDate, endDate);
+      points.push(...pageData.points);
+    }
+
+    const deduped = [...new Map(points.map((point) => [point.date, point])).values()].sort((a, b) =>
+      a.date.localeCompare(b.date)
+    );
+    if (deduped.length < 20) {
+      throw new Error(`F10 NAV history returned ${deduped.length} points`);
+    }
+    updateStats({
+      counters: { deepDiveNavHistoryFetches: 1, deepDiveNavHistoryPoints: deduped.length },
+      last: { lastDeepDiveNavHistoryFetchAt: new Date().toISOString() }
+    });
+
+    return {
+      ok: deduped.length >= 20,
+      code,
+      startDate: formatDate(startDate),
+      endDate: formatDate(endDate),
+      sourceKind: "eastmoney_f10_nav_history",
+      points: deduped
+    };
+  } catch (error) {
+    const fallback = await fetchFundPingzhongNavHistory(code, startDate, endDate).catch((fallbackError) => ({
+      ok: false,
+      code,
+      startDate: formatDate(startDate),
+      endDate: formatDate(endDate),
+      sourceKind: "eastmoney_pingzhongdata_nav_history_fallback",
+      error: fallbackError.message,
+      points: []
+    }));
+    updateStats({
+      counters: {
+        deepDiveNavHistoryFetches: 1,
+        deepDiveNavHistoryFallbacks: fallback.ok ? 1 : 0,
+        deepDiveNavHistoryPoints: fallback.points?.length || 0
+      },
+      last: { lastDeepDiveNavHistoryFetchAt: new Date().toISOString() }
+    });
+
+    if (fallback.ok) {
+      return {
+        ...fallback,
+        primaryError: error.message
+      };
+    }
+    return {
+      ...fallback,
+      error: `${error.message}; pingzhongdata fallback: ${fallback.error || "no points"}`
+    };
   }
-
-  const deduped = [...new Map(points.map((point) => [point.date, point])).values()].sort((a, b) =>
-    a.date.localeCompare(b.date)
-  );
-  updateStats({
-    counters: { deepDiveNavHistoryFetches: 1, deepDiveNavHistoryPoints: deduped.length },
-    last: { lastDeepDiveNavHistoryFetchAt: new Date().toISOString() }
-  });
-
-  return {
-    ok: deduped.length >= 20,
-    code,
-    startDate: formatDate(startDate),
-    endDate: formatDate(endDate),
-    points: deduped
-  };
 }
 
 function buildHoldingsDigest(holdings = {}, fallbackTopStocks = []) {
@@ -18987,31 +19064,65 @@ async function fetchFundNavHistory(code) {
   const startDate = new Date(endDate);
   startDate.setFullYear(startDate.getFullYear() - 5);
 
-  const firstPage = await fetchFundNavHistoryPage(code, 1, startDate, endDate);
-  const points = [...firstPage.points];
-  const totalPages = Math.min(firstPage.pages || 1, Number(process.env.FUND_NAV_MAX_PAGES || 35));
+  try {
+    const firstPage = await fetchFundNavHistoryPage(code, 1, startDate, endDate);
+    const points = [...firstPage.points];
+    const totalPages = Math.min(firstPage.pages || 1, Number(process.env.FUND_NAV_MAX_PAGES || 35));
 
-  for (let page = 2; page <= totalPages; page += 1) {
-    const pageData = await fetchFundNavHistoryPage(code, page, startDate, endDate);
-    points.push(...pageData.points);
+    for (let page = 2; page <= totalPages; page += 1) {
+      const pageData = await fetchFundNavHistoryPage(code, page, startDate, endDate);
+      points.push(...pageData.points);
+    }
+
+    const deduped = [...new Map(points.map((point) => [point.date, point])).values()].sort((a, b) =>
+      a.date.localeCompare(b.date)
+    );
+    if (deduped.length < 20) {
+      throw new Error(`F10 NAV history returned ${deduped.length} points`);
+    }
+
+    updateStats({
+      counters: { navHistoryFetches: 1, navHistoryPoints: deduped.length },
+      last: { lastNavHistoryFetchAt: new Date().toISOString() }
+    });
+
+    return {
+      ok: true,
+      code,
+      startDate: formatDate(startDate),
+      endDate: formatDate(endDate),
+      sourceKind: "eastmoney_f10_nav_history",
+      points: deduped
+    };
+  } catch (error) {
+    const fallback = await fetchFundPingzhongNavHistory(code, startDate, endDate).catch((fallbackError) => ({
+      ok: false,
+      code,
+      startDate: formatDate(startDate),
+      endDate: formatDate(endDate),
+      sourceKind: "eastmoney_pingzhongdata_nav_history_fallback",
+      error: fallbackError.message,
+      points: []
+    }));
+    updateStats({
+      counters: {
+        navHistoryFetches: 1,
+        navHistoryFallbacks: fallback.ok ? 1 : 0,
+        navHistoryPoints: fallback.points?.length || 0
+      },
+      last: { lastNavHistoryFetchAt: new Date().toISOString() }
+    });
+    if (fallback.ok) {
+      return {
+        ...fallback,
+        primaryError: error.message
+      };
+    }
+    return {
+      ...fallback,
+      error: `${error.message}; pingzhongdata fallback: ${fallback.error || "no points"}`
+    };
   }
-
-  const deduped = [...new Map(points.map((point) => [point.date, point])).values()].sort((a, b) =>
-    a.date.localeCompare(b.date)
-  );
-
-  updateStats({
-    counters: { navHistoryFetches: 1, navHistoryPoints: deduped.length },
-    last: { lastNavHistoryFetchAt: new Date().toISOString() }
-  });
-
-  return {
-    ok: true,
-    code,
-    startDate: formatDate(startDate),
-    endDate: formatDate(endDate),
-    points: deduped
-  };
 }
 
 async function fetchFundNavHistoryPage(code, page, startDate, endDate) {
@@ -19202,6 +19313,42 @@ function parseFundPingzhongLatestNav(text) {
     unitNav,
     dailyReturnPct: toNumber(latest.equityReturn)
   };
+}
+
+async function fetchFundPingzhongNavHistory(code, startDate, endDate) {
+  const text = await fetchFundPingzhongData(code);
+  const points = parseFundPingzhongNavHistoryPoints(text, startDate, endDate);
+  return {
+    ok: points.length >= 20,
+    code,
+    startDate: formatDate(startDate),
+    endDate: formatDate(endDate),
+    sourceKind: "eastmoney_pingzhongdata_nav_history_fallback",
+    points,
+    note: "东财F10历史净值接口失败时，使用基金页面净值走势序列做趋势备用；该序列以单位净值近似区间趋势。"
+  };
+}
+
+function parseFundPingzhongNavHistoryPoints(text, startDate = null, endDate = null) {
+  const series = parseJsAssignment(text, "Data_netWorthTrend");
+  if (!Array.isArray(series) || !series.length) return [];
+  const start = startDate ? formatDate(startDate) : "";
+  const end = endDate ? formatDate(endDate) : "";
+  return [...new Map(series
+    .map((point) => {
+      const date = formatEpochMsDate(point?.x || point?.date);
+      const unitNav = toNumber(point?.y);
+      if (!date || !Number.isFinite(unitNav)) return null;
+      return {
+        date,
+        unitNav,
+        cumulativeNav: unitNav,
+        dailyReturnPct: toNumber(point?.equityReturn)
+      };
+    })
+    .filter((point) => point && (!start || point.date >= start) && (!end || point.date <= end))
+    .map((point) => [point.date, point])).values()]
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function summarizeMoneyMarketData({ millionCopiesIncome, sevenDaysYearIncome } = {}) {
@@ -22328,6 +22475,7 @@ export {
   normalizePortfolioWatchlist,
   normalizePortfolioWatchlistUpdates,
   normalizeModelName,
+  parseFundPingzhongNavHistoryPoints,
   renderFundReportSummaryPng,
   repairDuplicatePortfolioTransactions,
   parseDotEnvValue,
