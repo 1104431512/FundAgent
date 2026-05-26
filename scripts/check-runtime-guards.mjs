@@ -1051,6 +1051,10 @@ const requiredPatterns = [
     message: "portfolio watchlist seeding must keep scanning low-position candidates when high-cash redeployment has no executable setup."
   },
   {
+    pattern: /function formatPortfolioCustomerActionLine[\s\S]{0,900}理由：\$\{reason\}[\s\S]{0,600}看点：\$\{logic\.join\("；"\)\}[\s\S]{0,400}\.join\("\\n"\)/,
+    message: "portfolio decision cards must split action reasoning into readable lines instead of one dense numeric paragraph."
+  },
+  {
     pattern: /portfolioCapabilitySummary[\s\S]{0,500}buildCapabilityInsightItems|buildCapabilityInsightItems[\s\S]{0,500}portfolioCapabilitySummary/,
     message: "admin portfolio UI must show capability diagnostics instead of hiding manager weaknesses in raw JSON."
   },

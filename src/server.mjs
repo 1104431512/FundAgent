@@ -6311,14 +6311,16 @@ function formatPortfolioCustomerActionLine(action = {}) {
   ].map((item) => shortenPortfolioCustomerText(item, 72)).filter(Boolean).slice(0, 2);
   const fee = shortenPortfolioCustomerText(action.feeCheck || "", 72);
   return [
-    `${formatPortfolioActionLabel(action.action)} ${name}${amount}${target}：${reason}`,
-    logic.length ? `逻辑：${logic.join("；")}` : "",
-    fee ? `费用：${fee}` : ""
-  ].filter(Boolean).join("；");
+    `- ${formatPortfolioActionLabel(action.action)} ${name}${amount}${target}`,
+    reason ? `  理由：${reason}` : "",
+    logic.length ? `  看点：${logic.join("；")}` : "",
+    fee ? `  费用：${fee}` : ""
+  ].filter(Boolean).join("\n");
 }
 
 function formatPortfolioCustomerTeamLine(item = {}) {
-  return `${item.agent || "投委"} ${item.stance || ""}：${shortenPortfolioCustomerText(item.reason || "", 120)}`.trim();
+  const stance = item.stance ? `（${item.stance}）` : "";
+  return `- ${item.agent || "投委"}${stance}：${shortenPortfolioCustomerText(item.reason || "", 120)}`.trim();
 }
 
 function shortenPortfolioCustomerText(value = "", maxLength = 120) {
