@@ -1427,6 +1427,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "新闻只能作为催化证据，不能单独触发 BUY。每次买入前必须通过“轮动/低位/拥挤度”检查：优先低位轮动、回撤修复和早期确认，回避仅因新闻热度和短期涨幅追高。",
     "如果题材雷达显示位置判断为追高风险偏高，或拥挤度高但低位/轮动评分不支持，只能 WATCH、HOLD 或小额试探，不能重仓追涨。",
     "如果账户回撤正常、现金超过60%、且候选满足低位/回调完成/费用可核验但10日趋势只差轻微确认，必须评估0.5%-2.5%的启动试探；不能用“继续等待”替代具体触发价位、复核日期和小仓试错计划。",
+    "账户里的 account.cash 才是当下可动用现金；receivableCash 是赎回在途资金，不能当作已经到账的买入火力。客户可见文本要把“可动用现金”和“赎回款未到账”分开说。",
     "同一基金不同份额类别不能混着推荐；必须比较 A/C/D/I 等份额的申购费、销售服务费、赎回费、起购门槛和渠道可得性，并说明费用拖累是否适合本次持有期。",
     "交易建议应以 targetWeightPct 为主，amount 只是建议值；系统执行时会按公开净值、现金和已有持仓重新计算真实份额。",
     "必须执行账户级回撤预算：账户回撤到预警线时缩小买入，到最大回撤预算时暂停新增买入并优先分批降风险；不能用加仓摊薄替代止损。",
@@ -6657,6 +6658,8 @@ function formatPortfolioCustomerAccountLine(account = {}) {
   const cashPct = computePortfolioCustomerCashPct(account);
   const pendingBuy = Number(account.pendingBuyAmount || 0);
   const receivableCash = Number(account.receivableCash || 0);
+  const total = Number(account.totalAsset || 0);
+  const receivablePct = total > 0 && Number.isFinite(receivableCash) ? receivableCash * 100 / total : null;
   const pieces = [];
   if (Number.isFinite(positionPct)) {
     const stance = positionPct < 20 ? "仓位偏低" : positionPct > 75 ? "仓位偏高" : "仓位中等";
@@ -6664,10 +6667,14 @@ function formatPortfolioCustomerAccountLine(account = {}) {
   }
   if (Number.isFinite(cashPct)) {
     const cashLabel = cashPct >= 60 ? "现金很充足" : cashPct >= 35 ? "现金还有余地" : "现金不算多";
-    pieces.push(`${cashLabel}，约${round(cashPct, 1)}%`);
+    pieces.push(`${cashLabel}，可动用约${round(cashPct, 1)}%`);
   }
-  if (pendingBuy > 0 || receivableCash > 0) {
-    pieces.push("有在途申购/赎回，执行前先等确认");
+  if (receivableCash > 0) {
+    const receivableText = Number.isFinite(receivablePct) ? `赎回款约${round(receivablePct, 1)}%未到账` : "赎回款未到账";
+    pieces.push(`${receivableText}，不当作买入火力`);
+  }
+  if (pendingBuy > 0) {
+    pieces.push("有申购在确认中，后续按净值落账复核");
   }
   return `当前资产：${pieces.length ? pieces.join("；") : "账本状态正常，等待下一次净值确认"}。`;
 }
@@ -6684,7 +6691,7 @@ function formatPortfolioCustomerDrawdownLine(account = {}) {
 function computePortfolioCustomerCashPct(account = {}) {
   const total = Number(account.totalAsset || 0);
   if (!Number.isFinite(total) || total <= 0) return null;
-  const cash = Number(account.cash || 0) + Number(account.receivableCash || 0);
+  const cash = Number(account.cash || 0);
   if (!Number.isFinite(cash)) return null;
   return cash * 100 / total;
 }
@@ -7796,6 +7803,8 @@ function buildPortfolioCapabilityDiagnostics(db = {}) {
 
   const cash = Number(account.cash || 0);
   const totalAsset = Number(account.totalAsset || 0);
+  const receivableCash = Number(account.receivableCash || 0);
+  const receivableCashPct = totalAsset > 0 ? receivableCash / totalAsset * 100 : null;
   const pendingBuyAmount = Number(account.pendingBuyAmount || 0);
   const pendingBuyPct = totalAsset > 0 ? pendingBuyAmount / totalAsset * 100 : null;
   const readyCount = watchlist.filter((item) => item.status === "ready").length;
@@ -7803,6 +7812,18 @@ function buildPortfolioCapabilityDiagnostics(db = {}) {
   const recentBuyActivity = findMostRecentPortfolioBuyActivity({ transactions, orders });
   const daysSinceBuy = recentBuyActivity?.date ? estimateDateAgeDays(recentBuyActivity.date) : null;
   const accountBudget = buildPortfolioAccountRiskBudget(account);
+  if (
+    Number.isFinite(receivableCashPct)
+    && receivableCashPct >= 10
+    && receivableCash > 0
+  ) {
+    add(
+      "info",
+      "赎回款在途",
+      `应收${formatFallbackPct(receivableCashPct)}`,
+      `这部分资金尚未到账，客户侧要解释为赎回结算中；再部署只能按可动用现金${formatFallbackPct(totalAsset > 0 ? cash / totalAsset * 100 : 0)}评估，不能把应收赎回当成买入火力。`
+    );
+  }
   if (
     Number.isFinite(cash)
     && Number.isFinite(totalAsset)
@@ -12763,7 +12784,7 @@ async function fetchMarketSnapshot() {
     fetchPreciousMetalQuotes().catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchPreciousMetalFundCandidates().catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchGlobalMarketQuotes().catch((error) => ({ ok: false, error: error.message, items: [] })),
-    fetchYangjibaoChinaIndexQuotes().catch((error) => ({ ok: false, error: error.message, items: [] })),
+    fetchChinaRealtimeIndexQuotes().catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchEastmoneyFastNews().catch((error) => ({ ok: false, error: error.message, items: [] }))
   ]);
 
@@ -12789,7 +12810,7 @@ async function fetchMarketSnapshot() {
     { key: "preciousMetals", label: "贵金属行情", critical: false, result: preciousMetals },
     { key: "preciousMetalFunds", label: "贵金属基金候选", critical: false, result: preciousMetalFunds },
     { key: "globalMarketQuotes", label: "海外指数与汇率", critical: false, result: globalMarketQuotes },
-    { key: "yangjibaoIndices", label: "养基宝A股指数实时源", critical: false, result: yangjibaoIndices },
+    { key: "chinaRealtimeIndices", label: "A股指数实时源", critical: false, result: yangjibaoIndices },
     { key: "realtimeFundValuations", label: "实时估算净值", critical: false, result: realtimeFundValuations },
     { key: "fastNews", label: "实时财经新闻", critical: true, result: fastNews }
   ];
@@ -12844,6 +12865,7 @@ async function fetchMarketSnapshot() {
       "https://stock.finance.sina.com.cn/fundInfo/api/openapi.php/FdFundService.getEstimateNetworthPic?symbol={code}",
       "https://www.haoetf.com/",
       "http://browser-plug-api.yangjibao.com/index_data",
+      "https://push2.eastmoney.com/api/qt/ulist.np/get?secids=1.000001,1.000300,0.399001,0.399006",
       "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx",
       "https://np-listapi.eastmoney.com/comm/web/getFastNews"
     ]
@@ -13465,6 +13487,129 @@ async function fetchGlobalMarketQuotes() {
       };
     }).filter((item) => item.code && item.name)
   };
+}
+
+async function fetchChinaRealtimeIndexQuotes() {
+  const [yangjibao, eastmoney] = await Promise.all([
+    fetchYangjibaoChinaIndexQuotes().catch((error) => ({
+      ok: false,
+      label: "养基宝A股指数实时源",
+      error: error.message,
+      items: [],
+      sourceKinds: ["yangjibao_plugin_index_data"]
+    })),
+    fetchEastmoneyChinaIndexQuotes().catch((error) => ({
+      ok: false,
+      label: "东方财富A股指数实时源",
+      error: error.message,
+      items: [],
+      sourceKinds: ["eastmoney_china_index_realtime"]
+    }))
+  ]);
+  const items = mergeChinaRealtimeIndexQuotes(yangjibao.items || [], eastmoney.items || []);
+  const sourceKinds = [...new Set([
+    ...(yangjibao.sourceKinds || []),
+    ...(eastmoney.sourceKinds || []),
+    ...items.map((item) => item.sourceKind).filter(Boolean)
+  ])];
+  updateStats({ counters: { chinaRealtimeIndexQuoteFetches: 1 } });
+  return {
+    ok: items.length > 0,
+    label: "A股指数实时源（养基宝+东方财富备份）",
+    items,
+    sourceKinds,
+    error: items.length ? "" : [yangjibao.error, eastmoney.error].filter(Boolean).join("；") || "A股指数实时源返回为空"
+  };
+}
+
+async function fetchEastmoneyChinaIndexQuotes() {
+  const defaultSecids = [
+    "1.000001",
+    "1.000300",
+    "0.399001",
+    "0.399006",
+    "1.000016",
+    "1.000688"
+  ];
+  const secids = String(process.env.CHINA_INDEX_SECIDS || defaultSecids.join(","))
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 20);
+  if (!secids.length) {
+    return { ok: true, label: "东方财富A股指数实时源", items: [], sourceKinds: ["eastmoney_china_index_realtime"] };
+  }
+  const url = new URL("https://push2.eastmoney.com/api/qt/ulist.np/get");
+  const params = {
+    fltt: "2",
+    secids: secids.join(","),
+    fields: "f12,f13,f14,f2,f3,f4,f15,f16,f17,f18,f22,f24,f25,f124,f152"
+  };
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+
+  const json = JSON.parse(await fetchText(url.href, "https://quote.eastmoney.com/"));
+  const diff = Array.isArray(json?.data?.diff) ? json.data.diff : [];
+  updateStats({ counters: { eastmoneyChinaIndexQuoteFetches: 1 } });
+  return {
+    ok: diff.length > 0,
+    label: "东方财富A股指数实时源",
+    items: diff.map(normalizeEastmoneyChinaIndexQuote).filter((item) => item.code && item.name),
+    sourceKinds: ["eastmoney_china_index_realtime"],
+    error: diff.length ? "" : "东方财富A股指数实时源返回为空"
+  };
+}
+
+function normalizeEastmoneyChinaIndexQuote(row = {}) {
+  const item = normalizeEastmoneyRealtimeQuote(row);
+  return {
+    ...item,
+    showCode: item.code,
+    sourceKind: "eastmoney_china_index_realtime"
+  };
+}
+
+function mergeChinaRealtimeIndexQuotes(primaryItems = [], fallbackItems = []) {
+  const byKey = new Map();
+  const push = (item, preferred = false) => {
+    const key = getChinaRealtimeIndexQuoteKey(item);
+    if (!key) return;
+    const existing = byKey.get(key);
+    if (!existing || preferred) {
+      byKey.set(key, existing ? mergeChinaRealtimeIndexQuote(item, existing) : item);
+    } else {
+      byKey.set(key, mergeChinaRealtimeIndexQuote(existing, item));
+    }
+  };
+  (primaryItems || []).forEach((item) => push(item, true));
+  (fallbackItems || []).forEach((item) => push(item, false));
+  const order = new Map(["1.000001", "1.000300", "0.399001", "0.399006", "1.000016", "1.000688"].map((code, index) => [code, index]));
+  return [...byKey.values()]
+    .sort((a, b) => (order.get(a.secid || a.code) ?? 99) - (order.get(b.secid || b.code) ?? 99))
+    .slice(0, 12);
+}
+
+function mergeChinaRealtimeIndexQuote(primary = {}, fallback = {}) {
+  const merged = { ...fallback, ...primary };
+  for (const key of ["latest", "change", "changePct", "open", "high", "low", "previousClose", "amplitudePct", "fiveDayPct", "yearToDatePct"]) {
+    if (!Number.isFinite(Number(merged[key])) && Number.isFinite(Number(fallback[key]))) {
+      merged[key] = fallback[key];
+    }
+  }
+  if (!merged.quoteTime && fallback.quoteTime) merged.quoteTime = fallback.quoteTime;
+  if (!merged.source && fallback.source) merged.source = fallback.source;
+  if (fallback.sourceKind && fallback.sourceKind !== merged.sourceKind) {
+    merged.supplementalSourceKind = fallback.sourceKind;
+  }
+  return merged;
+}
+
+function getChinaRealtimeIndexQuoteKey(item = {}) {
+  const secid = String(item.secid || item.code || "").trim();
+  const showCode = String(item.showCode || "").trim();
+  const code = String(item.code || "").trim();
+  return secid || showCode || code;
 }
 
 async function fetchYangjibaoChinaIndexQuotes() {
@@ -21382,6 +21527,8 @@ export {
   evaluatePortfolioWatchReadiness,
   evaluatePortfolioWatchlistFreshness,
   evaluateFundAnswerQuality,
+  fetchChinaRealtimeIndexQuotes,
+  fetchEastmoneyChinaIndexQuotes,
   fetchGlobalMarketQuotes,
   fetchRealtimeFundValuationSnapshot,
   findDuplicatePortfolioSettlementGroups,
@@ -21411,6 +21558,7 @@ export {
   ensurePortfolioRedeploymentPlanReviewed,
   ensurePortfolioReadyWatchlistReviewed,
   mergeFundWorkflowWatchlistIntoDeepDive,
+  mergeChinaRealtimeIndexQuotes,
   inferPullbackSetupSearchKeywords,
   inferEastmoneySecidFromHolding,
   inferFundShareClass,
@@ -21429,6 +21577,7 @@ export {
   normalizeHaoetfQdiiValuationRow,
   normalizeYangjibaoIndexData,
   normalizePortfolioDb,
+  normalizeEastmoneyChinaIndexQuote,
   normalizePortfolioInvestedCostReturnText,
   normalizePortfolioReview,
   normalizePortfolioUserFacingText,

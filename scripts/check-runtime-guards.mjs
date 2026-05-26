@@ -565,6 +565,14 @@ const requiredPatterns = [
     message: "market snapshots must include Yangjibao's public index source as supplemental real-time market temperature evidence."
   },
   {
+    pattern: /fetchChinaRealtimeIndexQuotes[\s\S]{0,2400}fetchYangjibaoChinaIndexQuotes[\s\S]{0,2400}fetchEastmoneyChinaIndexQuotes[\s\S]{0,2400}A股指数实时源（养基宝\+东方财富备份）/,
+    message: "market snapshots must merge Yangjibao index temperature with an Eastmoney realtime A-share index backup."
+  },
+  {
+    pattern: /function fetchEastmoneyChinaIndexQuotes[\s\S]{0,2200}CHINA_INDEX_SECIDS[\s\S]{0,1200}eastmoney_china_index_realtime/,
+    message: "A-share market temperature must have a public Eastmoney realtime index fallback when Yangjibao is unavailable."
+  },
+  {
     pattern: /marketIndicators:\s*\{[\s\S]{0,260}chinaIndices[\s\S]{0,900}compactMarketQuoteItems\(summary\.marketIndicators\?\.chinaIndices/,
     message: "compact market snapshots must preserve Yangjibao China index evidence for model prompts."
   },
@@ -595,6 +603,10 @@ const requiredPatterns = [
   {
     pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,5000}每只基金最多保留3个最能改变动作的数字[\s\S]{0,260}不要连续罗列5日\/10日\/20日\/60日\/120日/,
     message: "portfolio decision prompts must reduce numeric dumps and prioritize customer-readable trend logic."
+  },
+  {
+    pattern: /account\.cash 才是当下可动用现金[\s\S]{0,180}receivableCash 是赎回在途资金[\s\S]{0,180}不能当作已经到账的买入火力/,
+    message: "portfolio decision prompts must distinguish deployable cash from unsettled redemption receivables."
   },
   {
     pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,2200}compactHeldProfiles = \(heldProfiles \|\| \[\]\)\.map\(compactPortfolioReviewProfile\)[\s\S]{0,4200}JSON\.stringify\(compactHeldProfiles, null, 2\)/,
@@ -1275,6 +1287,10 @@ const requiredPatterns = [
   {
     pattern: /function formatPortfolioCustomerActionLine[\s\S]{0,900}理由：\$\{reason\}[\s\S]{0,600}看点：\$\{logic\.join\("；"\)\}[\s\S]{0,400}\.join\("\\n"\)/,
     message: "portfolio decision cards must split action reasoning into readable lines instead of one dense numeric paragraph."
+  },
+  {
+    pattern: /function formatPortfolioCustomerAccountLine[\s\S]{0,1400}可动用约[\s\S]{0,900}赎回款约[\s\S]{0,500}不当作买入火力[\s\S]{0,900}function formatPortfolioCustomerDrawdownLine[\s\S]{0,900}function computePortfolioCustomerCashPct[\s\S]{0,360}Number\(account\.cash \|\| 0\)/,
+    message: "portfolio decision cards must present deployable cash separately from unsettled redemption receivables."
   },
   {
     pattern: /portfolioCapabilitySummary[\s\S]{0,500}buildCapabilityInsightItems|buildCapabilityInsightItems[\s\S]{0,500}portfolioCapabilitySummary/,

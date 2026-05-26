@@ -131,6 +131,22 @@ const yangjibaoIndexItems = manager.normalizeYangjibaoIndexData({
 assert.equal(yangjibaoIndexItems[0].name, "上证指数", "Yangjibao index parser must keep major A-share indices first");
 assert.equal(yangjibaoIndexItems[0].changePct, -0.17, "Yangjibao index parser must recover index percentage change");
 assert.equal(yangjibaoIndexItems[0].sourceKind, "yangjibao_plugin_index_data", "Yangjibao index parser must leave a traceable source kind");
+const eastmoneyChinaIndex = manager.normalizeEastmoneyChinaIndexQuote({
+  f12: "000001",
+  f13: 1,
+  f14: "上证指数",
+  f2: "4146.20",
+  f3: "-0.15",
+  f4: "-6.37",
+  f24: "1.62",
+  f124: "1779831600"
+});
+assert.equal(eastmoneyChinaIndex.secid, "1.000001", "Eastmoney China index parser must preserve secid for dedupe");
+assert.equal(eastmoneyChinaIndex.sourceKind, "eastmoney_china_index_realtime", "Eastmoney China index parser must expose a traceable source kind");
+const mergedChinaIndices = manager.mergeChinaRealtimeIndexQuotes(yangjibaoIndexItems, [eastmoneyChinaIndex]);
+assert.equal(mergedChinaIndices.length, 2, "China realtime index merger must dedupe Yangjibao and Eastmoney rows by secid");
+assert.equal(mergedChinaIndices[0].sourceKind, "yangjibao_plugin_index_data", "China realtime index merger must prefer Yangjibao when both sources cover the same index");
+assert.equal(mergedChinaIndices[0].fiveDayPct, 1.62, "China realtime index merger must fill missing Yangjibao fields from the Eastmoney backup");
 const manualIntradayTrend = manager.summarizeFundIntradayValuationTrend([
   { at: "2026-05-26 09:30", estimatedChangePct: 0.2 },
   { at: "2026-05-26 10:30", estimatedChangePct: 1.1 },
@@ -391,6 +407,23 @@ assert(idleCashBacktestItem.note.includes("应收赎回"), "idle-cash backtest m
 assert(portfolioBacktestDiagnostics.phases.length >= 3, "backtest diagnostics must split history into replay phases");
 const backtestCapabilityDiagnostics = manager.buildPortfolioCapabilityDiagnostics(backtestFixture);
 assert(backtestCapabilityDiagnostics.items.some((item) => item.label === "重复成交回测"), "capability diagnostics must absorb historical backtest defects");
+const receivableCapabilityDiagnostics = manager.buildPortfolioCapabilityDiagnostics({
+  account: {
+    cash: 15000,
+    receivableCash: 70000,
+    pendingBuyAmount: 0,
+    totalAsset: 100000,
+    positionWeightPct: 0,
+    positions: [],
+    riskBudget: { blockNewBuys: false }
+  },
+  watchlist: [],
+  transactions: [],
+  orders: [],
+  settlements: [],
+  runs: []
+});
+assert(receivableCapabilityDiagnostics.items.some((item) => item.label === "赎回款在途"), "capability diagnostics must explain unsettled redemption cash before judging waiting behavior");
 const backtestActionQueue = manager.buildPortfolioCapabilityActionQueue(backtestFixture);
 assert(backtestActionQueue.some((item) => item.action.includes("重复订单")), "capability action queue must turn duplicate-fill replay into an execution repair task");
 assert(backtestActionQueue.some((item) => item.action.includes("卡滞订单")), "capability action queue must turn stale active orders into an execution repair task");
@@ -2944,6 +2977,34 @@ assert(readableDecisionCard.includes("直接结论："), "portfolio decision car
 assert(readableDecisionCard.includes("关注点：") && readableDecisionCard.includes("触发：") && readableDecisionCard.includes("风险："), "watchlist updates must be split into readable reason/trigger/risk lines");
 assert(readableDecisionCard.includes("当前资产：仓位中等") && readableDecisionCard.includes("现金很充足"), "account section must describe position and cash state instead of dumping raw account figures");
 assert(!readableDecisionCard.includes("marketSnapshot.dataQuality") && !readableDecisionCard.includes("readinessScore"), "portfolio reports must hide raw internal field names from customers");
+const settlementAwareDecisionCard = manager.buildPortfolioDecisionCard({
+  decision: {
+    summary: "赎回结算中，先复核低位候选。",
+    marketView: "市场正常，但执行上不把未到账赎回款当作买入资金。",
+    team: [],
+    actions: [],
+    riskNotes: [],
+    learningNotes: []
+  },
+  watchlistUpdates: [],
+  account: {
+    totalAsset: 100000,
+    cash: 15000,
+    pendingBuyAmount: 0,
+    receivableCash: 70000,
+    positionWeightPct: 0,
+    peakTotalAsset: 100000,
+    drawdownFromPeakPct: 0,
+    riskBudget: { label: "回撤正常", blockNewBuys: false }
+  },
+  orders: [],
+  transactions: [],
+  executionNotes: [],
+  settlementEvents: [],
+  run: { date: "2026-05-26", sources: [] }
+});
+assert(settlementAwareDecisionCard.includes("现金不算多，可动用约15"), "customer account line must use deployable cash rather than cash plus receivables");
+assert(settlementAwareDecisionCard.includes("赎回款约70") && settlementAwareDecisionCard.includes("不当作买入火力"), "customer account line must explain unsettled redemption cash separately");
 const readableDecisionCardLines = readableDecisionCard.split(/\n+/);
 assert(readableDecisionCardLines.every((line) => line.length < 180), "portfolio decision card lines must stay short enough for Feishu reading");
 assert(readableDecisionCardLines.filter((line) => /(?:风险控制|回溯学习点|关注点|触发|风险)/.test(line)).every((line) =>
