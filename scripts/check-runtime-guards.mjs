@@ -1381,8 +1381,8 @@ const requiredPatterns = [
     message: "blocked or data-gapped replacement scans must infer theme keywords such as media, QDII, new-energy vehicles, and healthcare."
   },
   {
-    pattern: /function formatPortfolioCustomerActionLine[\s\S]{0,900}理由：\$\{reason\}[\s\S]{0,600}看点：\$\{logic\.join\("；"\)\}[\s\S]{0,400}\.join\("\\n"\)/,
-    message: "portfolio decision cards must split action reasoning into readable lines instead of one dense numeric paragraph."
+    pattern: /function formatPortfolioCustomerActionLine[\s\S]{0,900}走势：\$\{trend\}[\s\S]{0,500}为什么：\$\{why\}[\s\S]{0,500}边界：\$\{boundary\}[\s\S]{0,500}\.join\("\\n"\)/,
+    message: "portfolio decision cards must split action reasoning into trend, reason, and boundary lines instead of one dense numeric paragraph."
   },
   {
     pattern: /function formatPortfolioCustomerAccountLine[\s\S]{0,1400}可动用约[\s\S]{0,900}赎回款约[\s\S]{0,500}不当作买入火力/,

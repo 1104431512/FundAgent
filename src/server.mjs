@@ -7161,18 +7161,15 @@ function formatPortfolioCustomerActionLine(action = {}) {
   const amount = action.amount ? ` 建议${formatPortfolioCustomerMoney(action.amount)}` : "";
   const targetPct = toNumber(action.targetWeightPct);
   const target = Number.isFinite(targetPct) ? ` 目标约${round(targetPct, 1)}%` : "";
-  const reason = shortenPortfolioCustomerText(action.reason || "见投委会意见", 82);
-  const logic = [
-    action.rotationCheck,
-    action.positionCheck,
-    action.chaseRisk,
-    action.riskControl
-  ].map((item) => shortenPortfolioCustomerText(item, 54)).filter(Boolean).slice(0, 2);
+  const trend = shortenPortfolioCustomerText(action.positionCheck || action.rotationCheck || action.chaseRisk || "", 64);
+  const why = shortenPortfolioCustomerText(action.reason || action.rotationCheck || "见投委会意见", 72);
+  const boundary = shortenPortfolioCustomerText(action.riskControl || action.chaseRisk || "", 64);
   const fee = summarizePortfolioCustomerFeeText(action.feeCheck || "");
   return [
     `- ${formatPortfolioActionLabel(action.action)} ${name}${amount}${target}`,
-    reason ? `  理由：${reason}` : "",
-    logic.length ? `  看点：${logic.join("；")}` : "",
+    trend ? `  走势：${trend}` : "",
+    why && why !== trend ? `  为什么：${why}` : "",
+    boundary ? `  边界：${boundary}` : "",
     fee ? `  费用：${fee}` : ""
   ].filter(Boolean).join("\n");
 }

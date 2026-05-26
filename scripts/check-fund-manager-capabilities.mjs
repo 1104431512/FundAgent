@@ -1163,7 +1163,7 @@ const customerActionLine = manager.formatPortfolioCustomerActionLine({
   feeCheck: "当前持有C类，前端申购费0，销售服务费0.25%/年，每万元1年约25元，适合战术持有。"
 });
 const customerActionNumbers = customerActionLine.match(/(?:[+-]?\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:元|万|亿)|近\s*\d+\s*日|\d+\s*日位置)/g) || [];
-assert(customerActionLine.includes("理由：") && customerActionLine.includes("看点："), "customer action line must keep reasoning sections");
+assert(customerActionLine.includes("为什么：") && customerActionLine.includes("边界："), "customer action line must keep reason and boundary sections");
 assert(customerActionLine.includes("建议约1.2万元"), "customer action line must round execution amounts instead of showing precise accounting decimals");
 assert(customerActionLine.includes("同题材暴露过度集中"), "customer action line must lead with the portfolio logic instead of a raw metric trigger");
 assert(customerActionLine.includes("浮盈已经回吐到转亏"), "customer action line must translate dense giveback numbers into readable risk language");
@@ -3215,6 +3215,7 @@ const readableDecisionCard = manager.buildPortfolioDecisionCard({
 assert(readableDecisionCard.includes("直接结论："), "portfolio decision card must start with a customer-readable conclusion");
 assert(readableDecisionCard.includes("下一步："), "portfolio decision card must state the next validation step instead of only listing metrics");
 assert(readableDecisionCard.includes("不急着追进同一热门方向"), "portfolio next-step copy must explain the manager's operating logic in plain Chinese");
+assert(readableDecisionCard.includes("走势：") && readableDecisionCard.includes("为什么：") && readableDecisionCard.includes("边界："), "portfolio action cards must explain trend, reason, and operating boundary in separate readable lines");
 assert(readableDecisionCard.includes("关注点：") && readableDecisionCard.includes("触发：") && readableDecisionCard.includes("风险："), "watchlist updates must be split into readable reason/trigger/risk lines");
 assert(readableDecisionCard.includes("当前资产：仓位中等") && readableDecisionCard.includes("现金很充足"), "account section must describe position and cash state instead of dumping raw account figures");
 assert(!readableDecisionCard.includes("marketSnapshot.dataQuality") && !readableDecisionCard.includes("readinessScore"), "portfolio reports must hide raw internal field names from customers");
