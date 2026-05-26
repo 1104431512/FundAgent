@@ -11466,6 +11466,8 @@ function hasRawEnglishFundSectionLeak(text) {
 
 function hasNumericDumpWithoutInterpretation(text) {
   const body = String(text || "");
+  const denseMetricLine = body.split(/\n+/).some((line) => hasDenseUserFacingMetricLine(line));
+  if (denseMetricLine) return true;
   if (body.length < 300) return false;
   const numericTokens = body.match(/(?:[+-]?\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:元|万|亿)|近\s*\d+\s*日|\d+\s*日位置|\d+(?:\.\d+)?\s*分|夏普\s*\d+(?:\.\d+)?|回撤\s*[+-]?\d+(?:\.\d+)?)/g) || [];
   if (numericTokens.length < 18) return false;
@@ -11484,7 +11486,7 @@ function normalizeUserFacingFundAnswer(text) {
   for (const [raw, label] of [...USER_FACING_FUND_FIELD_LABELS, ...USER_FACING_FUND_LABELS]) {
     output = output.replace(new RegExp(`\\b${escapeRegExp(raw)}\\b`, "gi"), label);
   }
-  return output
+  output = output
     .replace(/\bNAV\b/g, "净值")
     .replace(/\bManager\s+Decision\s*[：:]/gi, "经理最终判断：")
     .replace(/\bEvidence\s+intake\s*[：:]/gi, "证据整理：")
@@ -11525,6 +11527,68 @@ function normalizeUserFacingFundAnswer(text) {
     .replace(/(走势画像|买卖可行性评估|动作|板块位置|板块位置理由|买点判断|适配度|趋势状态|前瞻评分|拥挤度|轮动评分|低位评分|市场确认度|市场姿态|位置判断|操作倾向|评分|仓位上限|买入限制|回调启动信号|120日区间位置|250日区间位置|近5日收益|近10日收益|近20日收益|近60日收益|近120日收益|近20日|近60日|近120日|近250日|距近期高点回撤|回撤|最大回撤|规模|份额类别|夏普比率|波动率|收益|每万成本)\s*(?:为|是)\s*/g, "$1：")
     .replace(/(趋势|动作|买点|信号|买点判断|入场判断|适配度|板块位置|阶段|板块位置理由|操作倾向|位置判断|前瞻评分|拥挤度|轮动评分|低位评分|市场确认度|市场姿态|走势画像|买卖可行性评估|可操作性评估|趋势状态|回调启动信号|120日区间位置|250日区间位置|120日低位|250日低位|距近期高点回撤|近20日|近60日|近120日|近250日|回撤|最大回撤|规模|份额类别|夏普比率|波动率|收益|评分|仓位上限|买入限制|每万成本)\s*[:：=]\s*/g, "$1：")
     .trim();
+  return compactUserFacingFundMetricLines(output);
+}
+
+const USER_FACING_FUND_METRIC_TOKEN_PATTERN = /(?:[+-]?\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:元|万|亿)|近\s*\d+\s*日|\d+\s*日位置|\d+(?:\.\d+)?\s*分|夏普\s*\d+(?:\.\d+)?|回撤\s*[+-]?\d+(?:\.\d+)?|\d{6})/g;
+
+function compactUserFacingFundMetricLines(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => compactUserFacingFundMetricLine(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function compactUserFacingFundMetricLine(line = "") {
+  const original = String(line || "").trim();
+  if (!hasDenseUserFacingMetricLine(original)) return String(line || "");
+  if (isAdministrativeMetricLine(original)) return String(line || "");
+  const match = original.match(/^((?:[-*•]\s*)?(?:(?:买入|卖出|观察|持有|回避|申购|赎回)\s+)?(?:\d{6}\s*)?[^：:]{0,90}[：:])\s*(.+)$/);
+  const prefix = match ? match[1].trim() : "";
+  const body = match ? match[2].trim() : original;
+  const clauses = body
+    .split(/[；;。]|\s+(?=(?:走势|买点|风险|费用|份额|持仓|触发|等待|观察|回避)[：:])/)
+    .flatMap((item) => item.split(/，(?=(?:[^“”"]|“[^”]*”|"[^"]*")*$)/))
+    .map((item) => item.replace(/^[，,；;。:\s]+|[，,；;。:\s]+$/g, "").trim())
+    .filter(Boolean);
+  let usedNumbers = countUserFacingMetricNumbers(prefix);
+  const kept = [];
+  for (const clause of clauses) {
+    const count = countUserFacingMetricNumbers(clause);
+    const interpretive = /(走势|低位|高位|回调|启动|修复|转强|转弱|轮动|拥挤|偏热|追涨|风险|触发|边界|费用|份额|持仓|前景|原因|因为|因此|等待|观察|回避|分批|减仓|买入|卖出|止盈|止损|重叠|确认)/.test(clause);
+    if (!count && interpretive) {
+      kept.push(clause);
+      continue;
+    }
+    if (count && usedNumbers + count <= 4 && (interpretive || kept.length === 0)) {
+      kept.push(clause);
+      usedNumbers += count;
+    }
+    if (usedNumbers >= 4 && kept.length >= 2) break;
+  }
+  if (!kept.length) return String(line || "");
+  const suffix = /配图|后续复盘/.test(original) ? "" : "；其余明细交给配图和后续复盘。";
+  const compact = [prefix, kept.join("；")].filter(Boolean).join(prefix ? "" : "：");
+  return `${compact}${suffix}`;
+}
+
+function hasDenseUserFacingMetricLine(line = "") {
+  const text = String(line || "").trim();
+  if (text.length < 110) return false;
+  const count = countUserFacingMetricNumbers(text);
+  if (count < 7) return false;
+  return /(?:\d{6}|近\s*\d+\s*日|\d+\s*日位置|夏普|回撤|规模|费率|费用|净值|高点|低位|涨幅|跌幅|收益)/.test(text);
+}
+
+function countUserFacingMetricNumbers(text = "") {
+  return (String(text || "").match(USER_FACING_FUND_METRIC_TOKEN_PATTERN) || []).length;
+}
+
+function isAdministrativeMetricLine(line = "") {
+  return /^(?:当前资产|回撤预算|总资产|今日盈亏|累计盈亏|可用现金|数据来源)[：:]/.test(String(line || "").trim())
+    || /(?:估值日|确认日|到账日|交易日\s*15:00|tenant_access_token)/.test(String(line || ""));
 }
 
 function isActionSeekingFundQuestion(text) {

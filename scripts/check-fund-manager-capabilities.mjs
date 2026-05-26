@@ -2518,6 +2518,12 @@ const numericDumpQuality = manager.evaluateFundAnswerQuality({
 });
 assert(numericDumpQuality.issues.includes("numeric_dump_without_interpretation"), "quality gate must reject numeric dumps that lack enough trend interpretation");
 assert(manager.hasNumericDumpWithoutInterpretation(numericDumpAnswer), "numeric dump detector must be exported for deterministic regression coverage");
+const denseSingleFundLine = "000001 低位基金C：近5日+1.1%，近10日+2.2%，近20日+3.3%，近60日-4.4%，近120日+5.5%，120日位置38.5%，250日位置42.2%，距高点-7.1%，夏普0.8，回撤-12.3%，规模42亿，费率0.4%，走势低位修复，买点需要等待启动确认。";
+assert(manager.hasNumericDumpWithoutInterpretation(`直接结论：分批观察。\n${denseSingleFundLine}\n风险边界：不追涨。`), "quality gate must reject a single dense fund line that reads like a metric dump");
+const compactedDenseSingleFundLine = manager.normalizeUserFacingFundAnswer(denseSingleFundLine);
+assert(compactedDenseSingleFundLine.includes("走势低位修复"), "numeric compaction must keep the trend interpretation rather than only raw figures");
+assert(compactedDenseSingleFundLine.includes("其余明细交给配图和后续复盘"), "numeric compaction must tell users where the detailed figures went");
+assert((compactedDenseSingleFundLine.match(/(?:[+-]?\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:元|万|亿)|近\s*\d+\s*日|\d+\s*日位置|夏普\s*\d+(?:\.\d+)?|回撤\s*[+-]?\d+(?:\.\d+)?)/g) || []).length <= 4, "numeric compaction must leave only a few decision-changing numbers per fund line");
 
 const leakQuality = manager.evaluateFundAnswerQuality({
   text: "趋势/动作：extended_uptrend，actionability 为 tactical only / staged_buy，但 entryBias 是 wait_pullback。",

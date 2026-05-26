@@ -1911,6 +1911,18 @@ const requiredPatterns = [
   {
     pattern: /function normalizePortfolioActionabilityText[\s\S]{0,520}normalizePortfolioUserFacingText[\s\S]{0,520}watch\\s\*\\\/\\s\*test/,
     message: "portfolio actionability sanitizer must translate watch/test and internal fund labels."
+  },
+  {
+    pattern: /function normalizeUserFacingFundAnswer[\s\S]{0,3600}return compactUserFacingFundMetricLines\(output\)/,
+    message: "fund answer normalization must compact dense metric lines before users see them."
+  },
+  {
+    pattern: /function compactUserFacingFundMetricLine[\s\S]{0,1800}其余明细交给配图和后续复盘/,
+    message: "dense metric line compaction must preserve readability and point users to charts/reviews for details."
+  },
+  {
+    pattern: /function hasNumericDumpWithoutInterpretation[\s\S]{0,900}hasDenseUserFacingMetricLine/,
+    message: "fund answer quality gate must catch dense single-fund metric lines, not only long full-answer dumps."
   }
 ];
 
