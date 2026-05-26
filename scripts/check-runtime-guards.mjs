@@ -1039,6 +1039,14 @@ const requiredPatterns = [
     message: "portfolio backtest diagnostics must force a scale-or-exit plan after tiny starter buys when cash remains excessive."
   },
   {
+    pattern: /db\.dailyEquity\.push\(\{[\s\S]{0,600}positionWeightPct: db\.account\.positionWeightPct[\s\S]{0,220}pendingWeightPct: db\.account\.pendingWeightPct/,
+    message: "portfolio valuation history must persist position and pending weights."
+  },
+  {
+    pattern: /function summarizePortfolioEquityBrief[\s\S]{0,900}investedValue \/ totalAsset \* 100[\s\S]{0,900}pendingWeightPct/,
+    message: "portfolio equity history summaries must derive missing historical position weights instead of displaying 0%."
+  },
+  {
     pattern: /function processPortfolioOrderLifecycle[\s\S]{0,2200}order\.confirmDate <= now\.date && shouldRejectImpossiblePortfolioSellOrder[\s\S]{0,260}rejectImpossiblePortfolioSellOrder[\s\S]{0,900}resolveOrderNavSnapshot/,
     message: "portfolio order lifecycle must reject old impossible sell orders before depending on NAV fetches."
   },

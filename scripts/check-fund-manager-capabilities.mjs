@@ -64,6 +64,11 @@ assert.deepEqual(
   { date: "2026-05-24", unitNav: 2.4229, dailyReturnPct: -0.05 },
   "Eastmoney pingzhongdata fallback must recover the latest official NAV when fundgz lacks an intraday estimate"
 );
+assert.equal(
+  manager.summarizePortfolioEquityBrief({ totalAsset: 100000, investedValue: 30000 }).positionWeightPct,
+  30,
+  "equity history summaries must derive position weight when older records lack positionWeightPct"
+);
 const runtimeDiagnostics = manager.buildRuntimeDiagnostics({
   counters: {
     modelCalls: 100,

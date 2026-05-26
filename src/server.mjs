@@ -1161,6 +1161,8 @@ async function executePortfolioValuation(db, run, config) {
     receivableCash: db.account.receivableCash,
     investedValue: db.account.investedValue,
     investedCost: db.account.investedCost,
+    positionWeightPct: db.account.positionWeightPct,
+    pendingWeightPct: db.account.pendingWeightPct,
     peakTotalAsset: db.account.peakTotalAsset,
     peakTotalAssetDate: db.account.peakTotalAssetDate,
     drawdownFromPeakPct: db.account.drawdownFromPeakPct,
@@ -8541,16 +8543,29 @@ function summarizePortfolioTransactionBrief(item = {}) {
 }
 
 function summarizePortfolioEquityBrief(item = {}) {
+  const totalAsset = Number(item.totalAsset || 0);
+  const investedValue = Number(item.investedValue || 0);
+  const pendingBuyAmount = Number(item.pendingBuyAmount || 0);
+  const receivableCash = Number(item.receivableCash || 0);
+  const positionWeightPct = Number.isFinite(Number(item.positionWeightPct))
+    ? Number(item.positionWeightPct)
+    : totalAsset > 0 ? investedValue / totalAsset * 100 : 0;
+  const pendingWeightPct = Number.isFinite(Number(item.pendingWeightPct))
+    ? Number(item.pendingWeightPct)
+    : totalAsset > 0 ? (pendingBuyAmount + receivableCash) / totalAsset * 100 : 0;
   return {
     date: item.date || "",
-    totalAsset: round(Number(item.totalAsset || 0), 2),
+    totalAsset: round(totalAsset, 2),
     cash: round(Number(item.cash || 0), 2),
-    investedValue: round(Number(item.investedValue || 0), 2),
+    pendingBuyAmount: round(pendingBuyAmount, 2),
+    receivableCash: round(receivableCash, 2),
+    investedValue: round(investedValue, 2),
     investedCost: round(Number(item.investedCost || 0), 2),
     dayPnl: round(Number(item.dayPnl || 0), 2),
     cumulativePnl: round(Number(item.cumulativePnl || 0), 2),
     cumulativePnlPct: round(Number(item.cumulativePnlPct || 0), 2),
-    positionWeightPct: round(Number(item.positionWeightPct || 0), 2)
+    positionWeightPct: round(positionWeightPct, 2),
+    pendingWeightPct: round(pendingWeightPct, 2)
   };
 }
 
@@ -19678,6 +19693,7 @@ export {
   shouldPersistRuntimeStats,
   shouldForcePortfolioRedeploymentSeedScan,
   summarizePortfolioOrder,
+  summarizePortfolioEquityBrief,
   capPortfolioSellAmountByDiscipline,
   resolvePortfolioTradeAmount,
   buildPortfolioWatchlistUpdatesFromSeedCandidates,
