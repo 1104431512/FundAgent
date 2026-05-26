@@ -1273,6 +1273,18 @@ const requiredPatterns = [
     message: "portfolio redeployment plan must force high-cash low-exposure portfolios to review starter buys with realtime valuation evidence."
   },
   {
+    pattern: /function buildPortfolioMissedFollowThroughReviewQueue[\s\S]{0,2200}findPortfolioBacktestMissedFollowThroughCandidates[\s\S]{0,2200}小仓试探 \/ 主动降级 \/ 明确复查时间/,
+    message: "portfolio decisions must expose missed follow-through candidates as a concrete review queue."
+  },
+  {
+    pattern: /function ensurePortfolioMissedFollowThroughReviewed[\s\S]{0,2600}portfolio_missed_follow_through_guard[\s\S]{0,1200}等待后继续走强/,
+    message: "portfolio decisions must inject a buy/watch review when historical waiting missed follow-through."
+  },
+  {
+    pattern: /等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）[\s\S]{0,900}actions 中必须对前3只给出 BUY\/小仓试探/,
+    message: "portfolio prompts must force the model to handle missed follow-through candidates explicitly."
+  },
+  {
     pattern: /function ensurePortfolioRedeploymentPlanReviewed[\s\S]{0,2600}0\.5%-2\.5%试探[\s\S]{0,1200}portfolio_redeployment_guard/,
     message: "portfolio redeployment guard must inject small starter-buy reviews instead of allowing generic waiting."
   },

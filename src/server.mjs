@@ -977,6 +977,7 @@ async function executePortfolioDecision(db, run, config) {
   const accountBefore = summarizePortfolioAccount(db.account);
   const capabilityDiagnostics = buildPortfolioCapabilityDiagnostics(db);
   const capabilityActionQueue = buildPortfolioCapabilityActionQueue(db);
+  const missedFollowThroughQueue = buildPortfolioMissedFollowThroughReviewQueue(db);
   const marketSnapshot = await fetchMarketSnapshot();
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "正在补全当前持仓和自选基金池资料。");
@@ -1020,6 +1021,7 @@ async function executePortfolioDecision(db, run, config) {
     seedProfiles,
     config,
     profileContext,
+    missedFollowThroughQueue,
     capabilityDiagnostics,
     capabilityActionQueue
   });
@@ -1027,15 +1029,18 @@ async function executePortfolioDecision(db, run, config) {
   markPortfolioRunProgress(db, run, "模型已返回，正在解析投委会决策。");
   await yieldToEventLoop();
   const decision = ensurePortfolioHeldPositionsReviewed(
-    ensurePortfolioRedeploymentPlanReviewed(
-      ensurePortfolioReadyWatchlistReviewed(
-        normalizePortfolioDecision(raw),
+    ensurePortfolioMissedFollowThroughReviewed(
+      ensurePortfolioRedeploymentPlanReviewed(
+        ensurePortfolioReadyWatchlistReviewed(
+          normalizePortfolioDecision(raw),
+          watchlist,
+          { profiles: watchlistProfiles }
+        ),
+        accountBefore,
         watchlist,
-        { profiles: watchlistProfiles }
+        { profiles: mergePortfolioProfiles(watchlistProfiles, seedProfiles) }
       ),
-      accountBefore,
-      watchlist,
-      { profiles: mergePortfolioProfiles(watchlistProfiles, seedProfiles) }
+      db
     ),
     db.account.positions,
     { profiles: heldProfiles }
@@ -1403,7 +1408,7 @@ async function executePortfolioWeekly(db, run, config) {
   });
 }
 
-async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, watchlist = [], watchlistProfiles = [], watchlistSeedCandidates = [], seedProfiles = [], config, profileContext, capabilityDiagnostics = null, capabilityActionQueue = null }) {
+async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, watchlist = [], watchlistProfiles = [], watchlistSeedCandidates = [], seedProfiles = [], missedFollowThroughQueue = [], config, profileContext, capabilityDiagnostics = null, capabilityActionQueue = null }) {
   const exposureSummary = buildPortfolioExposureSummary(account.positions || []);
   const decisionCapabilityDiagnostics = capabilityDiagnostics || buildPortfolioCapabilityDiagnostics({ account, watchlist });
   const decisionCapabilityActionQueue = Array.isArray(capabilityActionQueue)
@@ -1457,6 +1462,10 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "能力修复队列（必须进入 team.主席、team.风控经理、actions 或 learningNotes）：",
     JSON.stringify(decisionCapabilityActionQueue, null, 2),
     "要求：若能力诊断包含盈利承压、追涨暴露、历史回测缺口、数据质量缺口或成交净值待核验，必须先解释原因和修复动作；没有完成修复前，不得用现金多作为新增买入理由。",
+    "",
+    "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
+    JSON.stringify((missedFollowThroughQueue || []).slice(0, 5), null, 2),
+    "要求：若队列非空，actions 中必须对前3只给出 BUY/小仓试探、主动降级为 WATCH 的理由，或明确下一次复查时间；不能把已继续走强的候选继续笼统写成“等待机会”。",
     "",
     "现金再部署纪律（系统计算；高现金低仓位时必须处理，不能只写等待机会）：",
     JSON.stringify(redeploymentPlan, null, 2),
@@ -3127,6 +3136,89 @@ function ensurePortfolioRedeploymentPlanReviewed(decision = {}, account = {}, wa
     actions: nextActions,
     learningNotes: mergeStringLists(decision.learningNotes, [
       `系统再部署纪律：${plan.summary}`
+    ])
+  };
+}
+
+function buildPortfolioMissedFollowThroughReviewQueue(db = {}) {
+  const account = db.account || {};
+  const watchlist = normalizePortfolioWatchlist(db.watchlist || []);
+  const itemByCode = new Map(watchlist.map((item) => [item.code, item]));
+  const candidates = findPortfolioBacktestMissedFollowThroughCandidates({
+    watchlist,
+    transactions: db.transactions || [],
+    orders: db.orders || [],
+    totalAsset: account.totalAsset || 0
+  });
+  return candidates.slice(0, 6).map((candidate) => {
+    const item = itemByCode.get(candidate.code) || {};
+    const firstTrigger = normalizeStringArray(item.buyTriggers)[0] || "";
+    const firstRisk = normalizeStringArray(item.riskNotes)[0] || "";
+    const firstFee = normalizeStringArray(item.feeNotes)[0] || "";
+    return {
+      code: candidate.code,
+      name: candidate.name || item.name || "",
+      status: item.status || candidate.status || "watch",
+      readinessScore: candidate.readinessScore,
+      followThroughPct: candidate.followThroughPct,
+      estimatedStarterOpportunity: candidate.estimatedStarterOpportunity,
+      evidence: candidate.evidence || "",
+      reviewAction: "小仓试探 / 主动降级 / 明确复查时间三选一",
+      firstTrigger,
+      firstRisk,
+      firstFee,
+      reason: shortenPortfolioCustomerText(item.reason || "", 90),
+      reviewDate: item.reviewDate || "",
+      dataBasis: mergeStringLists(item.dataBasis, [
+        "来源：portfolio_missed_follow_through_review",
+        candidate.evidence,
+        Number.isFinite(candidate.estimatedStarterOpportunity) ? `估算少赚约${candidate.estimatedStarterOpportunity}元` : ""
+      ])
+    };
+  });
+}
+
+function ensurePortfolioMissedFollowThroughReviewed(decision = {}, db = {}) {
+  const queue = buildPortfolioMissedFollowThroughReviewQueue(db);
+  if (!queue.length) return decision;
+  const account = db.account || {};
+  const totalAsset = Number(account.totalAsset || 0);
+  const actions = normalizePortfolioActions(decision.actions || []);
+  const existingKeys = new Set(actions.map((action) => `${action.action}:${action.code}`));
+  const nextActions = [...actions];
+  for (const candidate of queue.slice(0, 3)) {
+    if (!candidate.code) continue;
+    if ([...existingKeys].some((key) => key.endsWith(`:${candidate.code}`))) continue;
+    const canProbe = candidate.status === "ready" || Number(candidate.readinessScore || 0) >= 85;
+    const targetWeightPct = canProbe ? 1.5 : 0;
+    nextActions.push({
+      action: canProbe ? "BUY" : "WATCH",
+      code: candidate.code,
+      name: candidate.name,
+      amount: canProbe && totalAsset > 0 ? round(totalAsset * targetWeightPct / 100, 2) : 0,
+      targetWeightPct,
+      reason: canProbe
+        ? `系统机会成本复核：${candidate.name || candidate.code} 等待后继续走强，若费用和净值复核通过，本轮应给1.5%以内小仓试探，而不是继续笼统观望。`
+        : `系统机会成本复核：${candidate.name || candidate.code} 等待后继续走强，但本轮仍需主动降级或写清复查时间；${candidate.firstTrigger || "触发条件未补齐"}。`,
+      rotationCheck: "只处理低位/回调后继续转强的候选，不因新闻热度追高。",
+      positionCheck: candidate.evidence,
+      chaseRisk: candidate.firstRisk || "若继续走强后涨幅过快，下一轮主动降级为等待回撤。",
+      feeCheck: candidate.firstFee || "执行前仍需核验份额类别、申购费、销售服务费和赎回规则。",
+      riskControl: canProbe
+        ? "仅作小仓验证；若盘中估算转弱、回调修复失败或费用证据不足，系统执行守卫会拦截或降级观察。"
+        : "不买但必须设置复查时间，避免观察池长期沉淀后继续错过。",
+      dataBasis: mergeStringLists(candidate.dataBasis, [
+        "来源：portfolio_missed_follow_through_guard",
+        Number.isFinite(candidate.estimatedStarterOpportunity) ? `等待机会成本估算${candidate.estimatedStarterOpportunity}元` : ""
+      ])
+    });
+    existingKeys.add(`${canProbe ? "BUY" : "WATCH"}:${candidate.code}`);
+  }
+  return {
+    ...decision,
+    actions: nextActions,
+    learningNotes: mergeStringLists(decision.learningNotes, [
+      `系统机会成本复核：${queue.slice(0, 3).map((item) => `${item.code} ${item.name}`.trim()).join(" / ")} 等待后继续走强，本轮必须给小仓试探、主动降级或复查时间。`
     ])
   };
 }
@@ -21487,6 +21579,7 @@ export {
   buildPortfolioRedeploymentPlan,
   buildPortfolioExposureSummary,
   buildPortfolioManagerProfileContext,
+  buildPortfolioMissedFollowThroughReviewQueue,
   buildPortfolioRunSummary,
   buildPortfolioAccountRiskBudget,
   buildPortfolioReadyWatchlistReviewActions,
@@ -21555,6 +21648,7 @@ export {
   hasPortfolioTransactionForOrderDedupe,
   hasPortfolioStarterBuySetup,
   ensurePortfolioHeldPositionsReviewed,
+  ensurePortfolioMissedFollowThroughReviewed,
   ensurePortfolioRedeploymentPlanReviewed,
   ensurePortfolioReadyWatchlistReviewed,
   mergeFundWorkflowWatchlistIntoDeepDive,

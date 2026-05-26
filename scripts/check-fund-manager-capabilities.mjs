@@ -537,6 +537,16 @@ assert(
   manager.buildPortfolioCapabilityActionQueue(conservativeBacktestFixture).some((item) => item.action.includes("仓位不能停在第一轮操作")),
   "capability action queue must turn frozen-position replay into a concrete position-change task"
 );
+const missedFollowThroughReviewQueue = manager.buildPortfolioMissedFollowThroughReviewQueue(conservativeBacktestFixture);
+assert.equal(missedFollowThroughReviewQueue[0].code, "012046", "missed follow-through review queue must surface the ready candidate that kept rising");
+assert(missedFollowThroughReviewQueue[0].reviewAction.includes("小仓试探"), "missed follow-through review queue must require a probe, downgrade, or review time");
+const missedFollowThroughDecision = manager.ensurePortfolioMissedFollowThroughReviewed(
+  { actions: [], learningNotes: [] },
+  conservativeBacktestFixture
+);
+assert.equal(missedFollowThroughDecision.actions[0].action, "BUY", "missed follow-through guard must inject a small BUY review for a ready candidate");
+assert.equal(missedFollowThroughDecision.actions[0].targetWeightPct, 1.5, "missed follow-through guard must keep the injected review to a starter size");
+assert(missedFollowThroughDecision.actions[0].dataBasis.includes("来源：portfolio_missed_follow_through_guard"), "missed follow-through guard must leave a traceable source");
 assert.equal(manager.findStalePortfolioActiveOrders(backtestFixture.orders, "2026-05-27").length, 1, "stale active order detector must find overdue queued/submitted/priced orders");
 assert.equal(
   manager.findStalePortfolioActiveOrders([...backtestFixture.orders, backtestFixture.orders[1]], "2026-05-27").length,
