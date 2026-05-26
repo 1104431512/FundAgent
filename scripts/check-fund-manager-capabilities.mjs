@@ -2423,6 +2423,61 @@ assert(
   intradayFadingStrongActionability.decisionBlocker.some((item) => item.includes("系统盘中走势降级") && item.includes("不能把估算涨幅当追买理由")),
   "actionability blocker must explain intraday fading downgrades in customer-readable Chinese"
 );
+const valuationConflictActionability = manager.buildFundActionabilitySignals({
+  ...holdingsSupportedDigest,
+  code: "000036",
+  name: "估值源打架基金C",
+  trendProfile: {
+    ...holdingsSupportedDigest.trendProfile,
+    ok: true,
+    latestDate: "2099-05-22",
+    entryBias: "buyable_now",
+    trendLabel: "uptrend",
+    pullbackSetup: { signal: "pullback_complete", signalText: "回调完成", score: 84 },
+    lowPositionPct120: 35.2,
+    lowPositionPct250: 42.7,
+    return5dPct: 1.2,
+    return10dPct: 2.4,
+    return20dPct: 4.1,
+    return60dPct: 5.6
+  },
+  valuationSourceAgreement: {
+    status: "conflict",
+    label: "实时估值源明显分歧",
+    primaryChangePct: 0.82,
+    supplementalChangePct: -0.55,
+    divergencePct: 1.37
+  },
+  risk: {
+    oneYear: {
+      ok: true,
+      totalReturnPct: 18.4,
+      annualizedReturnPct: 18.6,
+      maxDrawdownPct: -10.2,
+      sharpe: 1.12
+    }
+  },
+  fees: {
+    shareClass: "C",
+    shareClassFeeModel: { type: "sales_service_fee", label: "C类：偏销售服务费模型" },
+    feeImpact: {
+      oneYearCostPer10000: 42,
+      feeDragLevel: "low",
+      missingFeeData: []
+    },
+    missingFeeData: []
+  }
+});
+assert.equal(valuationConflictActionability.action, "wait", "actionability must not say buy/staged-buy when realtime valuation sources disagree materially");
+assert(valuationConflictActionability.score < 62, "valuation-source conflict discipline must cap actionability below staged-buy threshold");
+assert(
+  valuationConflictActionability.decisiveEvidence.some((item) => item.includes("估值源") && item.includes("明显分歧")),
+  "actionability evidence must include realtime valuation-source disagreement when it changes the decision"
+);
+assert(
+  valuationConflictActionability.decisionBlocker.some((item) => item.includes("系统估值源分歧降级") && item.includes("不能把单一估算源当作买点确认")),
+  "actionability blocker must explain valuation-source conflict downgrades in customer-readable Chinese"
+);
 const staleButStrongDigest = {
   ...holdingsSupportedDigest,
   code: "000034",

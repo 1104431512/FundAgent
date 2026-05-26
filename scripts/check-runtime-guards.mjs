@@ -105,7 +105,7 @@ const requiredPatterns = [
     message: "share-class inference must not misread QDII/ETF/FOF product suffixes as A/C/I share classes."
   },
   {
-    pattern: /function fetchRealtimeFundValuationSnapshot[\s\S]{0,2200}fetchFundValuation\(code\)[\s\S]{0,3600}function normalizeRealtimeFundValuation[\s\S]{0,1800}source: valuation\.source \|\| `https:\/\/fundgz\.1234567\.com\.cn\/js\/\$\{valuation\.fundcode/,
+    pattern: /function fetchRealtimeFundValuationSnapshot[\s\S]{0,2200}fetchFundValuation\(code\)[\s\S]{0,3600}function normalizeRealtimeFundValuation[\s\S]{0,2600}source: valuation\.source \|\| `https:\/\/fundgz\.1234567\.com\.cn\/js\/\$\{valuation\.fundcode/,
     message: "real-time fund valuation snapshots must use the existing Tiantian/FundGZ estimate endpoint with source traceability."
   },
   {
@@ -1825,6 +1825,10 @@ const requiredPatterns = [
     message: "fund actionability must cap buy/staged-buy scores when intraday valuation fades from the high."
   },
   {
+    pattern: /buildFundActionabilitySignals[\s\S]{0,5200}getActionabilityValuationSourceDiscipline\(digest[\s\S]{0,1100}boundedScore = Math\.min\(boundedScore, valuationSourceDiscipline\.scoreCap\)/,
+    message: "fund actionability must cap buy/staged-buy scores when realtime valuation sources disagree."
+  },
+  {
     pattern: /function getActionabilityEntryDiscipline[\s\S]{0,1800}scoreCap:\s*58[\s\S]{0,600}不能给买入或分批买入动作/,
     message: "fund actionability entry discipline must explain hot/wait-pullback downgrades in Chinese."
   },
@@ -1837,12 +1841,28 @@ const requiredPatterns = [
     message: "fund actionability intraday discipline must explain fading valuation downgrades in Chinese."
   },
   {
+    pattern: /function getActionabilityValuationSourceDiscipline[\s\S]{0,1100}系统估值源分歧降级[\s\S]{0,500}不能把单一估算源当作买点确认/,
+    message: "fund actionability valuation-source discipline must explain conflicting realtime estimates in Chinese."
+  },
+  {
+    pattern: /function buildFundValuationSourceAgreement[\s\S]{0,1100}mild_divergence[\s\S]{0,700}实时估值源明显分歧/,
+    message: "fund valuation agreement must classify primary/supplemental realtime source divergence."
+  },
+  {
     pattern: /async function fetchFundResearchDigest[\s\S]{0,3200}intradayTrend:\s*valuation\.intradayTrend \|\| null/,
     message: "fund research digest must pass realtime intraday valuation trend into actionability."
   },
   {
+    pattern: /async function fetchFundResearchDigest[\s\S]{0,900}valuationSourceAgreement = buildFundValuationSourceAgreement\(valuation\)[\s\S]{0,2600}valuationSourceAgreement/,
+    message: "fund research digest must pass realtime valuation-source agreement into actionability."
+  },
+  {
     pattern: /async function fetchFundProfile[\s\S]{0,2600}buildFundActionabilitySignals\([\s\S]{0,900}intradayTrend:\s*valuation\.intradayTrend \|\| null/,
     message: "fund profile actionability must consume realtime intraday valuation trend."
+  },
+  {
+    pattern: /async function fetchFundProfile[\s\S]{0,900}valuationSourceAgreement = buildFundValuationSourceAgreement\(valuation\)[\s\S]{0,2200}valuationSourceAgreement/,
+    message: "fund profile actionability must consume realtime valuation-source agreement."
   },
   {
     pattern: /formatPullbackSetupCandidateLine[\s\S]{0,2400}formatHoldingsOutlookEvidence/,
