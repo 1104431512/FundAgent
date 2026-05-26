@@ -721,6 +721,14 @@ const requiredPatterns = [
     message: "Feishu cards must expose key evidence and risk sections as scannable blocks."
   },
   {
+    pattern: /function formatPortfolioCustomerNextStepLines[\s\S]{0,1600}确认前不追加[\s\S]{0,900}不急着追进同一热门方向/,
+    message: "portfolio reports must explain next-step operating logic instead of only dumping metrics."
+  },
+  {
+    pattern: /function formatPortfolioCustomerOrderLine[\s\S]{0,1200}确认前不追加[\s\S]{0,900}formatPortfolioCustomerTransactionLine[\s\S]{0,900}按低位修复是否延续/,
+    message: "portfolio order and transaction lines must be customer-readable and avoid NAV/share metric dumps."
+  },
+  {
     pattern: /function formatFeishuColoredText[\s\S]{0,260}<font color='/,
     message: "Feishu card summaries must use supported lark_md color markup for important text."
   },
@@ -1357,8 +1365,12 @@ const requiredPatterns = [
     message: "portfolio decision cards must split action reasoning into readable lines instead of one dense numeric paragraph."
   },
   {
-    pattern: /function formatPortfolioCustomerAccountLine[\s\S]{0,1400}可动用约[\s\S]{0,900}赎回款约[\s\S]{0,500}不当作买入火力[\s\S]{0,900}function formatPortfolioCustomerDrawdownLine[\s\S]{0,900}function computePortfolioCustomerCashPct[\s\S]{0,360}Number\(account\.cash \|\| 0\)/,
+    pattern: /function formatPortfolioCustomerAccountLine[\s\S]{0,1400}可动用约[\s\S]{0,900}赎回款约[\s\S]{0,500}不当作买入火力/,
     message: "portfolio decision cards must present deployable cash separately from unsettled redemption receivables."
+  },
+  {
+    pattern: /function computePortfolioCustomerCashPct[\s\S]{0,360}Number\(account\.cash \|\| 0\)/,
+    message: "portfolio customer cash percentage must use deployable cash, not cash plus receivables."
   },
   {
     pattern: /portfolioCapabilitySummary[\s\S]{0,500}buildCapabilityInsightItems|buildCapabilityInsightItems[\s\S]{0,500}portfolioCapabilitySummary/,

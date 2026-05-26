@@ -3139,6 +3139,8 @@ const readableDecisionCard = manager.buildPortfolioDecisionCard({
   run: { date: "2026-05-25", sources: [] }
 });
 assert(readableDecisionCard.includes("直接结论："), "portfolio decision card must start with a customer-readable conclusion");
+assert(readableDecisionCard.includes("下一步："), "portfolio decision card must state the next validation step instead of only listing metrics");
+assert(readableDecisionCard.includes("不急着追进同一热门方向"), "portfolio next-step copy must explain the manager's operating logic in plain Chinese");
 assert(readableDecisionCard.includes("关注点：") && readableDecisionCard.includes("触发：") && readableDecisionCard.includes("风险："), "watchlist updates must be split into readable reason/trigger/risk lines");
 assert(readableDecisionCard.includes("当前资产：仓位中等") && readableDecisionCard.includes("现金很充足"), "account section must describe position and cash state instead of dumping raw account figures");
 assert(!readableDecisionCard.includes("marketSnapshot.dataQuality") && !readableDecisionCard.includes("readinessScore"), "portfolio reports must hide raw internal field names from customers");

@@ -6918,20 +6918,13 @@ function buildPortfolioDecisionCard({ decision, watchlistUpdates = [], account, 
     ? decision.actions.map(formatPortfolioCustomerActionLine)
     : ["今日没有生成买卖动作。"];
   const digestLines = formatPortfolioCustomerDecisionDigest(decision, account);
+  const nextStepLines = formatPortfolioCustomerNextStepLines({ decision, orders, watchlistUpdates });
   const teamLines = decision.team.map(formatPortfolioCustomerTeamLine);
   const transactionLines = transactions.length
-    ? transactions.map((item) => {
-        const nav = item.nav ? `，净值 ${item.nav}${item.navDate ? `（${item.navDate}）` : ""}` : "";
-        const units = item.units ? `，份额 ${item.units}` : "";
-        const trend = item.fundSnapshot?.trendSummary ? `，走势 ${item.fundSnapshot.trendSummary}` : "";
-        return `${formatPortfolioActionLabel(item.side)} ${item.code} ${item.name} ${item.amount}元${nav}${units}${trend}`;
-      })
+    ? transactions.map(formatPortfolioCustomerTransactionLine)
     : ["无实际账本变动。"];
   const orderLines = orders.length
-    ? orders.map((order) => {
-        const dateLine = `估值日 ${order.priceDate}，确认日 ${order.confirmDate}${order.settlementDate ? `，到账日 ${order.settlementDate}` : ""}`;
-        return `${formatPortfolioActionLabel(order.side)} ${order.code} ${order.name} ${order.amount}元：${formatPortfolioOrderStatus(order.status)}，${dateLine}；${order.scheduleReason}`;
-      })
+    ? orders.map(formatPortfolioCustomerOrderLine)
     : ["本次没有提交新的申购/赎回申请。"];
   const settlementLines = settlementEvents.length
     ? settlementEvents.map((item) => `${item.code} ${item.name} ${item.amount}元已到账。`)
@@ -6958,6 +6951,9 @@ function buildPortfolioDecisionCard({ decision, watchlistUpdates = [], account, 
     "",
     "今日操作：",
     ...actionLines,
+    nextStepLines.length ? "" : "",
+    nextStepLines.length ? "下一步：" : "",
+    ...nextStepLines,
     "",
     "申购/赎回申请：",
     ...orderLines,
@@ -7013,6 +7009,32 @@ function formatPortfolioCustomerDecisionDigest(decision = {}, account = {}) {
   return [headline, focus.length ? `本次重点：${focus.slice(0, 2).join("；")}` : ""].filter(Boolean);
 }
 
+function formatPortfolioCustomerNextStepLines({ decision = {}, orders = [], watchlistUpdates = [] } = {}) {
+  const lines = [];
+  const actions = Array.isArray(decision.actions) ? decision.actions : [];
+  const buy = actions.find((item) => String(item.action || "").toUpperCase() === "BUY")
+    || orders.find((item) => String(item.side || "").toUpperCase() === "BUY");
+  const sell = actions.find((item) => String(item.action || "").toUpperCase() === "SELL")
+    || orders.find((item) => String(item.side || "").toUpperCase() === "SELL");
+  const watch = actions.find((item) => String(item.action || "").toUpperCase() === "WATCH")
+    || watchlistUpdates.find((item) => ["ready", "waiting_pullback", "watch"].includes(normalizePortfolioWatchStatus(item.status || "watch")));
+
+  if (buy) {
+    lines.push("- 买入后先看走势是否继续低位修复；确认前不追加，确认后再决定加仓、继续观察或退出。");
+  }
+  if (sell) {
+    lines.push("- 减仓资金先回到现金池，不急着追进同一热门方向；等高位回落或新低位主题确认。");
+  }
+  if (watch) {
+    const trigger = shortenPortfolioCustomerText(watch.buyTriggers?.[0] || watch.positionCheck || watch.positionPlan || watch.reason || "", 82);
+    lines.push(`- 观察池下一轮只看触发条件，不用“感觉不错”买入${trigger ? `：${trigger}` : "。"}`);
+  }
+  if (!lines.length && decision.marketView) {
+    lines.push(`- 下一轮先复核市场温度和低位候选：${shortenPortfolioCustomerText(decision.marketView, 86)}`);
+  }
+  return [...new Set(lines)].slice(0, 3);
+}
+
 function formatPortfolioCustomerNoteLines(notes = [], options = {}) {
   const maxItems = Math.max(1, Number(options.maxItems || 4));
   const maxLength = Math.max(40, Number(options.maxLength || 90));
@@ -7061,6 +7083,52 @@ function formatPortfolioCustomerDrawdownLine(account = {}) {
     ? "先保护回撤，不扩大新仓"
     : "回撤预算允许继续复核低位候选";
   return `回撤预算：当前距峰值${formatFallbackPct(drawdown)}，${label}；${action}。`;
+}
+
+function formatPortfolioCustomerOrderLine(order = {}) {
+  const side = formatPortfolioActionLabel(order.side);
+  const label = [order.code, order.name].filter(Boolean).join(" ");
+  const amount = formatPortfolioCustomerMoney(order.amount);
+  const status = formatPortfolioOrderStatus(order.status);
+  const confirm = order.confirmDate ? `等 ${order.confirmDate} 确认` : "等待确认";
+  const settle = order.settlementDate ? `，预计 ${order.settlementDate} 到账` : "";
+  const next = String(order.side || "").toUpperCase() === "BUY"
+    ? "确认前不追加，先看净值和份额落账"
+    : "到账前不把赎回款当作买入火力";
+  const reason = shortenPortfolioCustomerText(order.scheduleReason || order.reason || "", 70);
+  return `${side} ${label}${amount ? ` ${amount}` : ""}：${status}，${confirm}${settle}；${next}${reason ? `；${reason}` : ""}`;
+}
+
+function formatPortfolioCustomerTransactionLine(item = {}) {
+  const side = formatPortfolioActionLabel(item.side);
+  const label = [item.code, item.name].filter(Boolean).join(" ");
+  const amount = formatPortfolioCustomerMoney(item.amount);
+  const trend = shortenPortfolioCustomerText(item.fundSnapshot?.trendSummary || item.reason || "", 72);
+  const next = String(item.side || "").toUpperCase() === "BUY"
+    ? "已落账，后续按低位修复是否延续来决定加仓或退出"
+    : "已确认，后续看风险是否释放，不急着买回同线";
+  return `${side} ${label}${amount ? ` ${amount}` : ""}：${next}${trend ? `；走势：${trend}` : ""}`;
+}
+
+function formatPortfolioCustomerOrderUpdateLine(item = {}) {
+  const side = formatPortfolioActionLabel(item.side);
+  const label = [item.code, item.name].filter(Boolean).join(" ");
+  const before = formatPortfolioOrderStatus(item.beforeStatus);
+  const after = formatPortfolioOrderStatus(item.afterStatus);
+  const confirm = item.confirmDate ? `，等 ${item.confirmDate} 确认` : "";
+  const meaning = /取消|拒绝/.test(after)
+    ? "旧订单已处理，避免继续冻结现金或份额"
+    : /确认/.test(after)
+      ? "订单进入落账复核"
+      : "订单还在流转中";
+  return `${side} ${label}：${before}转为${after}${confirm}；${meaning}`;
+}
+
+function formatPortfolioCustomerMoney(value) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount) || amount <= 0) return "";
+  if (amount >= 10000) return `约${round(amount / 10000, 1)}万元`;
+  return `约${round(amount, 0)}元`;
 }
 
 function computePortfolioCustomerCashPct(account = {}) {
@@ -7211,10 +7279,10 @@ function buildPortfolioValuationCard({ review, account, positionUpdates, lifecyc
     ...updateLines,
     lifecycle.orderUpdates?.length ? "" : "",
     lifecycle.orderUpdates?.length ? "订单进度：" : "",
-    ...(lifecycle.orderUpdates || []).map((item) => `${formatPortfolioActionLabel(item.side)} ${item.code} ${item.name}：${formatPortfolioOrderStatus(item.beforeStatus)} -> ${formatPortfolioOrderStatus(item.afterStatus)}，估值日 ${item.priceDate}，确认日 ${item.confirmDate}`),
+    ...(lifecycle.orderUpdates || []).map(formatPortfolioCustomerOrderUpdateLine),
     lifecycle.transactions?.length ? "" : "",
     lifecycle.transactions?.length ? "确认成交：" : "",
-    ...(lifecycle.transactions || []).map((item) => `${formatPortfolioActionLabel(item.side)} ${item.code} ${item.name} ${item.amount}元，净值 ${item.nav}，份额 ${item.units}`),
+    ...(lifecycle.transactions || []).map(formatPortfolioCustomerTransactionLine),
     lifecycle.settlementEvents?.length ? "" : "",
     lifecycle.settlementEvents?.length ? "到账更新：" : "",
     ...(lifecycle.settlementEvents || []).map((item) => `${item.code} ${item.name} ${item.amount}元已到账。`),
@@ -7265,7 +7333,7 @@ function buildPortfolioPremarketCard({ observation, watchlistUpdates = [], accou
     ...orderLines,
     lifecycle.orderUpdates?.length ? "" : "",
     lifecycle.orderUpdates?.length ? "隔夜订单更新：" : "",
-    ...(lifecycle.orderUpdates || []).map((item) => `${formatPortfolioActionLabel(item.side)} ${item.code} ${item.name}：${formatPortfolioOrderStatus(item.beforeStatus)} -> ${formatPortfolioOrderStatus(item.afterStatus)}`),
+    ...(lifecycle.orderUpdates || []).map(formatPortfolioCustomerOrderUpdateLine),
     "",
     `当前资产：${account.totalAsset}元，可用现金 ${account.cash}元，仓位 ${account.positionWeightPct}%`,
     "",
