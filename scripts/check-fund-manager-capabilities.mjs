@@ -2852,6 +2852,76 @@ assert(readablePortfolioReport.includes("\n\n今日手法"), "portfolio reports 
 assert(readablePortfolioReport.includes("\n\n市场判断"), "portfolio reports must keep market view visually separated");
 assert(readablePortfolioReport.includes("\n\n投委会意见"), "portfolio committee sections must not be glued to the prior paragraph");
 assert(readablePortfolioReport.includes("其余明细交给配图和后续复盘"), "portfolio dense action reasons must be compacted for card readability");
+const readableDecisionCard = manager.buildPortfolioDecisionCard({
+  decision: {
+    summary: "今日采取高位科技减仓复核 + 低位医药小额试探 + 购买准备队列继续等待触发的虚拟组合操作，不做重仓追涨。",
+    marketView: "账户总资产99671.93元，较峰值回撤-1.6%，低于3%预警线，账户级风险预算允许小额买入；但组合当前权益仓约29.64%，且几乎集中在通信、AI、芯片等高位科技链。",
+    team: [
+      {
+        agent: "风控经理",
+        stance: "负",
+        reason: "008327、006265、001986均显示单仓回吐保护复核信号，且008327、006265、001986在新易盛、中际旭创、东山精密等底层持仓上明显重叠。"
+      }
+    ],
+    actions: [
+      {
+        action: "SELL",
+        code: "008327",
+        name: "东财通信C",
+        amount: 11810.03,
+        targetWeightPct: 8,
+        reason: "系统组合集中度控制：同题材暴露科技约29.6%；底层重叠300502 新易盛涉及3只基金；同题材暴露过度集中，先分批降低同题材暴露。该基金近20日+19.64%、近60日+61.1%，120日和250日位置均为100%，且账户单仓触发回吐保护复核。",
+        rotationCheck: "通信/光模块方向不是低位轮动，而是高位延伸；没有完整市场快照支持继续追高。",
+        positionCheck: "过热追涨，高位趋势延伸，距近期高点0%。",
+        riskControl: "曾浮盈+3.24%但当前转亏-1.58%，需要回吐保护。",
+        feeCheck: "当前持有C类，前端申购费0，销售服务费0.25%/年，每万元1年约25元，适合战术持有；本次是赎回减仓，不新增同基金其他份额。"
+      }
+    ],
+    riskNotes: [
+      "本次未提供完整marketSnapshot.dataQuality、主要指数、板块资金和新闻模块，按partial数据处理；因此新增012046只做2.5%小额试仓，不做重仓买入。",
+      "科技仓穿透重叠较高：008327、006265、001986共同暴露新易盛、中际旭创、东山精密等方向，且多只处于高位短期涨幅偏热，今日以降风险为先。"
+    ],
+    learningNotes: [
+      "今日购买准备队列不能只看readinessScore，必须逐只检查5日/10日转强、120日位置、QDII滞后、份额类别和费用完整性。"
+    ]
+  },
+  watchlistUpdates: [
+    {
+      code: "010802",
+      name: "长江量化消费精选股票C",
+      status: "waiting_pullback",
+      statusText: "等待回调",
+      reason: "净值验证：趋势回调完成，5日+0.47%，10日-0.89%，20日+0.45%，60日-7.74%，120日位置6.1%，距高点-14.21%",
+      buyTriggers: ["备选候选需等回踩确认或5日/10日重新转强。"],
+      riskNotes: ["规模、费用和集中度风险仍需复核，不能只因低位就重仓。"],
+      feeNotes: ["C类销售服务费0.40%/年，每万元1年约40元，适合30-180天战术观察。"]
+    }
+  ],
+  account: {
+    totalAsset: 100980.4,
+    cash: 70132.17,
+    pendingBuyAmount: 0,
+    receivableCash: 0,
+    positionWeightPct: 30.55,
+    peakTotalAsset: 101291.65,
+    drawdownFromPeakPct: -0.31,
+    riskBudget: { label: "回撤正常", blockNewBuys: false }
+  },
+  orders: [],
+  transactions: [],
+  executionNotes: [],
+  settlementEvents: [],
+  run: { date: "2026-05-25", sources: [] }
+});
+assert(readableDecisionCard.includes("直接结论："), "portfolio decision card must start with a customer-readable conclusion");
+assert(readableDecisionCard.includes("关注点：") && readableDecisionCard.includes("触发：") && readableDecisionCard.includes("风险："), "watchlist updates must be split into readable reason/trigger/risk lines");
+assert(readableDecisionCard.includes("当前资产：仓位中等") && readableDecisionCard.includes("现金很充足"), "account section must describe position and cash state instead of dumping raw account figures");
+assert(!readableDecisionCard.includes("marketSnapshot.dataQuality") && !readableDecisionCard.includes("readinessScore"), "portfolio reports must hide raw internal field names from customers");
+const readableDecisionCardLines = readableDecisionCard.split(/\n+/);
+assert(readableDecisionCardLines.every((line) => line.length < 180), "portfolio decision card lines must stay short enough for Feishu reading");
+assert(readableDecisionCardLines.filter((line) => /(?:风险控制|回溯学习点|关注点|触发|风险)/.test(line)).every((line) =>
+  (line.match(/(?:[+-]?\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:元|万|亿)|近\s*\d+\s*日|\d+\s*日位置|\d{6})/g) || []).length <= 4
+), "customer-facing report support lines must avoid dense numeric dumps");
 
 const leakQuality = manager.evaluateFundAnswerQuality({
   text: "趋势/动作：extended_uptrend，actionability 为 tactical only / staged_buy，但 entryBias 是 wait_pullback。",

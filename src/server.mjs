@@ -188,6 +188,9 @@ const USER_FACING_FUND_FIELD_LABELS = [
   ["marketTone", "市场姿态"],
   ["actionText", "动作"],
   ["score", "评分"],
+  ["readinessScore", "买入准备度"],
+  ["readinessLabel", "买入准备状态"],
+  ["marketSnapshot.dataQuality", "市场数据质量"],
   ["allocationBand", "仓位上限"],
   ["decisionBlocker", "买入限制"],
   ["pullbackSetup", "回调启动信号"],
@@ -1923,7 +1926,7 @@ function normalizePortfolioUserFacingText(text, account = {}) {
   return formatReadablePortfolioUserFacingText(normalizeUserFacingFundAnswer(investedCostText)).trim();
 }
 
-const PORTFOLIO_USER_FACING_SECTION_PATTERN = /^(?:虚拟基金经理日报|直接结论|今日手法|市场判断|投委会意见|经理判断|今日操作|申购\/赎回申请|已确认成交|自选基金池|当前资产|回撤预算|风险控制|回溯学习点|数据来源|下一步|持仓复盘|买入准备|备选观察|决策边界|执行方案|风控检查|学习点)\s*[：:]?/;
+const PORTFOLIO_USER_FACING_SECTION_PATTERN = /^(?:虚拟基金经理日报|直接结论|本次重点|今日手法|市场判断|投委会意见|经理判断|今日操作|申购\/赎回申请|已确认成交|自选基金池|当前资产|回撤预算|风险控制|回溯学习点|数据来源|下一步|持仓复盘|买入准备|备选观察|决策边界|执行方案|风控检查|学习点)\s*[：:]?/;
 
 function formatReadablePortfolioUserFacingText(text = "") {
   const lines = String(text || "")
@@ -6486,6 +6489,7 @@ function buildPortfolioDecisionCard({ decision, watchlistUpdates = [], account, 
   const actionLines = decision.actions.length
     ? decision.actions.map(formatPortfolioCustomerActionLine)
     : ["今日没有生成买卖动作。"];
+  const digestLines = formatPortfolioCustomerDecisionDigest(decision, account);
   const teamLines = decision.team.map(formatPortfolioCustomerTeamLine);
   const transactionLines = transactions.length
     ? transactions.map((item) => {
@@ -6510,9 +6514,13 @@ function buildPortfolioDecisionCard({ decision, watchlistUpdates = [], account, 
   const watchlistLines = watchlistUpdates.length
     ? watchlistUpdates.slice(0, 8).map(formatPortfolioWatchLine)
     : ["本次没有更新自选基金池。"];
+  const riskLines = formatPortfolioCustomerNoteLines(decision.riskNotes, { maxItems: 4, maxLength: 92 });
+  const learningLines = formatPortfolioCustomerNoteLines(decision.learningNotes, { maxItems: 3, maxLength: 96 });
 
   const card = [
     `虚拟基金经理日报 ${run.date}`,
+    "",
+    ...digestLines,
     "",
     `今日手法：${shortenPortfolioCustomerText(decision.summary, 110) || decision.summary}`,
     decision.marketView ? `市场判断：${shortenPortfolioCustomerText(decision.marketView, 140)}` : "",
@@ -6538,16 +6546,95 @@ function buildPortfolioDecisionCard({ decision, watchlistUpdates = [], account, 
     "自选基金池：",
     ...watchlistLines,
     "",
-    `当前资产：${account.totalAsset}元，可用现金 ${account.cash}元，待确认申购 ${account.pendingBuyAmount || 0}元，应收赎回 ${account.receivableCash || 0}元，仓位 ${account.positionWeightPct}%`,
-    `回撤预算：峰值 ${account.peakTotalAsset || account.totalAsset}元，当前距峰值 ${formatFallbackPct(account.drawdownFromPeakPct || 0)}，状态 ${account.riskBudget?.label || "回撤正常"}`,
-    decision.riskNotes.length ? ["", "风险控制：", ...decision.riskNotes].join("\n") : "",
-    decision.learningNotes.length ? ["", "回溯学习点：", ...decision.learningNotes].join("\n") : "",
+    formatPortfolioCustomerAccountLine(account),
+    formatPortfolioCustomerDrawdownLine(account),
+    riskLines.length ? ["", "风险控制：", ...riskLines].join("\n") : "",
+    learningLines.length ? ["", "回溯学习点：", ...learningLines].join("\n") : "",
     "",
     `数据来源：${(run.sources || []).slice(0, 6).join("；") || "公开市场快照与基金公开资料"}`
   ]
     .filter(Boolean)
     .join("\n");
   return normalizePortfolioUserFacingText(card, account);
+}
+
+function formatPortfolioCustomerDecisionDigest(decision = {}, account = {}) {
+  const actions = Array.isArray(decision.actions) ? decision.actions : [];
+  const buyCount = actions.filter((item) => String(item.action || "").toUpperCase() === "BUY").length;
+  const sellCount = actions.filter((item) => String(item.action || "").toUpperCase() === "SELL").length;
+  const watchCount = actions.filter((item) => String(item.action || "").toUpperCase() === "WATCH").length;
+  const cashPct = computePortfolioCustomerCashPct(account);
+  let headline = "";
+  if (buyCount && sellCount) {
+    headline = "直接结论：先把高位拥挤风险降下来，同时只拿小仓位验证低位候选。";
+  } else if (buyCount) {
+    headline = "直接结论：有低位候选进入小仓验证，执行上仍然按分批和触发条件来。";
+  } else if (sellCount) {
+    headline = "直接结论：今天重点是保护组合，不把减仓资金立刻追进热门方向。";
+  } else if (watchCount) {
+    headline = "直接结论：今天只把候选放进观察，不把还没确认的走势包装成买点。";
+  } else if (Number.isFinite(cashPct) && cashPct >= 60) {
+    headline = "直接结论：现金较多，下一步必须复核低位启动候选，不能只停留在等机会。";
+  } else {
+    headline = "直接结论：今天以复核组合为主，买卖动作要等触发条件更清楚。";
+  }
+  const focus = [
+    shortenPortfolioCustomerText(decision.summary || "", 90),
+    shortenPortfolioCustomerText(decision.marketView || "", 90)
+  ].filter(Boolean);
+  return [headline, focus.length ? `本次重点：${focus.slice(0, 2).join("；")}` : ""].filter(Boolean);
+}
+
+function formatPortfolioCustomerNoteLines(notes = [], options = {}) {
+  const maxItems = Math.max(1, Number(options.maxItems || 4));
+  const maxLength = Math.max(40, Number(options.maxLength || 90));
+  const seen = new Set();
+  return normalizeStringArray(notes)
+    .map((item) => shortenPortfolioCustomerText(item, maxLength))
+    .filter((item) => {
+      if (!item || seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    })
+    .slice(0, maxItems)
+    .map((item) => `- ${item}`);
+}
+
+function formatPortfolioCustomerAccountLine(account = {}) {
+  const positionPct = Number(account.positionWeightPct);
+  const cashPct = computePortfolioCustomerCashPct(account);
+  const pendingBuy = Number(account.pendingBuyAmount || 0);
+  const receivableCash = Number(account.receivableCash || 0);
+  const pieces = [];
+  if (Number.isFinite(positionPct)) {
+    const stance = positionPct < 20 ? "仓位偏低" : positionPct > 75 ? "仓位偏高" : "仓位中等";
+    pieces.push(`${stance}，约${round(positionPct, 1)}%`);
+  }
+  if (Number.isFinite(cashPct)) {
+    const cashLabel = cashPct >= 60 ? "现金很充足" : cashPct >= 35 ? "现金还有余地" : "现金不算多";
+    pieces.push(`${cashLabel}，约${round(cashPct, 1)}%`);
+  }
+  if (pendingBuy > 0 || receivableCash > 0) {
+    pieces.push("有在途申购/赎回，执行前先等确认");
+  }
+  return `当前资产：${pieces.length ? pieces.join("；") : "账本状态正常，等待下一次净值确认"}。`;
+}
+
+function formatPortfolioCustomerDrawdownLine(account = {}) {
+  const drawdown = Number(account.drawdownFromPeakPct || 0);
+  const label = account.riskBudget?.label || "回撤正常";
+  const action = account.riskBudget?.blockNewBuys
+    ? "先保护回撤，不扩大新仓"
+    : "回撤预算允许继续复核低位候选";
+  return `回撤预算：当前距峰值${formatFallbackPct(drawdown)}，${label}；${action}。`;
+}
+
+function computePortfolioCustomerCashPct(account = {}) {
+  const total = Number(account.totalAsset || 0);
+  if (!Number.isFinite(total) || total <= 0) return null;
+  const cash = Number(account.cash || 0) + Number(account.receivableCash || 0);
+  if (!Number.isFinite(cash)) return null;
+  return cash * 100 / total;
 }
 
 function formatPortfolioCustomerActionLine(action = {}) {
@@ -6584,11 +6671,17 @@ function shortenPortfolioCustomerText(value = "", maxLength = 120) {
     .trim();
   if (!rawCleaned) return "";
   const localized = normalizeUserFacingFundAnswer(rawCleaned).trim();
-  const sentences = rawCleaned
+  const sentenceSource = localized || rawCleaned;
+  const sentences = sentenceSource
     .split(/(?<=[。；;])|(?=系统(?:买入|卖出|组合|单仓|风控))|(?=当前)|(?=若)|(?=费用)|(?=风险)|(?=观察缺口)|(?=触发)/)
     .map((item) => item.replace(/^[；;。,\s]+|[；;。,\s]+$/g, "").trim())
     .filter(Boolean);
-  const preferred = choosePortfolioCustomerSentence(sentences, localized || rawCleaned);
+  const portfolioLogic = sentences.find((item) =>
+    /同题材.*(?:过度|集中)|暴露过度|过度集中/.test(item)
+  ) || sentences.find((item) =>
+    /同题材.*(?:暴露|集中)|底层重叠|集中度/.test(item)
+  );
+  const preferred = portfolioLogic || choosePortfolioCustomerSentence(sentences, localized || rawCleaned);
   const compact = compactNumericHeavyCustomerText(
     normalizeUserFacingFundAnswer(preferred),
     Math.min(3, Math.max(1, Math.floor(maxLength / 45)))
@@ -6603,7 +6696,7 @@ function choosePortfolioCustomerSentence(sentences = [], fallback = "") {
       const numericCount = (text.match(/(?:[+-]?\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:元|万|亿)|近\s*\d+\s*日|\d+\s*日位置|\d{6})/g) || []).length;
       let score = 0;
       if (/(高位|低位|回调|启动|修复|轮动|拥挤|偏热|追涨|回吐|转亏|止盈|止损|减仓|小仓|等待|回避)/.test(text)) score += 8;
-      if (/(同题材.*(?:过度|集中)|暴露过度|集中度|底层重叠)/.test(text)) score += 6;
+      if (/(同题材.*(?:过度|集中)|暴露过度|集中度|底层重叠)/.test(text)) score += 14;
       if (/(因为|因此|所以|不是|不能|需要|必须|适合|不适合|先|后续|下一轮|触发)/.test(text)) score += 4;
       if (/(同题材|底层|持仓|前十大|费用|份额|风控|风险|利润)/.test(text)) score += 3;
       if (text.length < 12) score -= 3;
@@ -6650,7 +6743,7 @@ function compactNumericHeavyCustomerText(value = "", maxNumbers = 3) {
   const kept = [];
   for (const clause of clauses) {
     const count = (clause.match(metricPattern) || []).length;
-    const hasInterpretation = /(走势|低位|高位|回调|启动|修复|转强|转弱|轮动|拥挤|偏热|追涨|风险|触发|边界|费用|份额|持仓|减仓|买入|观察|等待|回避|止盈|止损|重叠|前景)/.test(clause);
+    const hasInterpretation = /(走势|低位|高位|回调|启动|修复|转强|转弱|轮动|拥挤|偏热|追涨|风险|触发|边界|费用|份额|持仓|减仓|买入|观察|等待|回避|止盈|止损|重叠|集中|暴露|过度|前景)/.test(clause);
     if (count && usedNumbers + count > maxNumbers && kept.length) continue;
     if (!hasInterpretation && count && kept.length) continue;
     kept.push(clause);
@@ -6828,11 +6921,17 @@ function formatPortfolioOrderStatus(value) {
 function formatPortfolioWatchLine(item = {}) {
   const head = `${item.code || ""} ${item.name || ""}`.trim();
   const status = item.statusText || formatPortfolioWatchStatus(item.status);
-  const reason = item.reason ? `：${item.reason}` : "";
-  const trigger = item.buyTriggers?.length ? `；触发=${item.buyTriggers.slice(0, 2).join(" / ")}` : "";
-  const risk = item.riskNotes?.length ? `；风险=${item.riskNotes.slice(0, 2).join(" / ")}` : "";
-  const fee = item.feeNotes?.length ? `；费用=${item.feeNotes.slice(0, 1).join(" / ")}` : "";
-  return `${head}（${status}，优先级${item.priority || 3}）${reason}${trigger}${risk}${fee}`;
+  const reason = shortenPortfolioCustomerText(item.reason || item.setupEvidence?.[0] || "", 72);
+  const trigger = shortenPortfolioCustomerText(item.buyTriggers?.[0] || item.positionPlan || "", 72);
+  const risk = shortenPortfolioCustomerText(item.riskNotes?.[0] || "", 70);
+  const fee = summarizePortfolioCustomerFeeText((item.feeNotes || []).join("；"));
+  return [
+    `- ${head}（${status}）`,
+    reason ? `  关注点：${reason}` : "",
+    trigger ? `  触发：${trigger}` : "",
+    risk ? `  风险：${risk}` : "",
+    fee ? `  费用：${fee}` : ""
+  ].filter(Boolean).join("\n");
 }
 
 function buildPortfolioWatchlistStatusLines(watchlist = [], options = {}) {
@@ -12036,6 +12135,8 @@ function normalizeUserFacingFundAnswer(text) {
     .replace(/\baggressive\b/gi, "积极")
     .replace(/\bdefensive\b/gi, "防守")
     .replace(/\bneutral\b/gi, "中性")
+    .replace(/\bpartial\b/gi, "数据不完整")
+    .replace(/\bpoor\b/gi, "数据不足")
     .replace(/\bstaged\s+buy\b/gi, "分批买入")
     .replace(/\bbuy\b/gi, "买入")
     .replace(/\bstaged\b/gi, "分批")
@@ -12089,7 +12190,7 @@ function compactUserFacingFundMetricLine(line = "") {
   const kept = [];
   for (const clause of clauses) {
     const count = countUserFacingMetricNumbers(clause);
-    const interpretive = /(走势|低位|高位|回调|启动|修复|转强|转弱|轮动|拥挤|偏热|追涨|风险|触发|边界|费用|份额|持仓|前景|原因|因为|因此|等待|观察|回避|分批|减仓|买入|卖出|止盈|止损|重叠|确认)/.test(clause);
+    const interpretive = /(走势|低位|高位|回调|启动|修复|转强|转弱|轮动|拥挤|偏热|追涨|风险|触发|边界|费用|份额|持仓|前景|原因|因为|因此|等待|观察|回避|分批|减仓|买入|卖出|止盈|止损|重叠|集中|暴露|过度|确认)/.test(clause);
     if (!count && interpretive) {
       kept.push(clause);
       continue;
@@ -18712,7 +18813,7 @@ function buildFeishuCard(text, kind, options = {}) {
 }
 
 const FEISHU_DETAIL_SECTION_MAX_CHARS = 1500;
-const FEISHU_DETAIL_SECTION_PATTERN = /^(?:\*\*)?(虚拟基金经理日报(?:\s+\d{4}-\d{2}-\d{2})?|今日手法|市场判断|投委会意见|今日操作|申购\/赎回申请|已确认成交|自选基金池|当前资产|回撤预算|风险控制|回溯学习点|风险边界|执行记录|下一步|组合复盘|周总结|周计划)(?:\*\*)?\s*(?:[：:]\s*(.*))?$/;
+const FEISHU_DETAIL_SECTION_PATTERN = /^(?:\*\*)?(虚拟基金经理日报(?:\s+\d{4}-\d{2}-\d{2})?|直接结论|本次重点|今日手法|市场判断|投委会意见|今日操作|申购\/赎回申请|已确认成交|自选基金池|当前资产|回撤预算|风险控制|回溯学习点|风险边界|执行记录|下一步|组合复盘|周总结|周计划)(?:\*\*)?\s*(?:[：:]\s*(.*))?$/;
 
 function buildFeishuCardTextElements(content, kind) {
   const normalized = String(content || "").trim();
@@ -18799,7 +18900,7 @@ function splitFeishuDetailSections(detail) {
 function expandFeishuDetailSectionBreaks(detail = "") {
   return String(detail || "")
     .replace(/\r\n/g, "\n")
-    .replace(/([。；;）)])\s*(?=(?:今日手法|市场判断|投委会意见|今日操作|申购\/赎回申请|已确认成交|自选基金池|当前资产|回撤预算|风险控制|回溯学习点)\s*[：:])/g, "$1\n")
+    .replace(/([。；;）)])\s*(?=(?:直接结论|本次重点|今日手法|市场判断|投委会意见|今日操作|申购\/赎回申请|已确认成交|自选基金池|当前资产|回撤预算|风险控制|回溯学习点)\s*[：:])/g, "$1\n")
     .replace(/([。；;）)])\s*(?=(?:卖出|买入|观察|持有|申购|赎回)\s+\d{6})/g, "$1\n");
 }
 
@@ -21180,6 +21281,7 @@ export {
   buildPortfolioBacktestDiagnostics,
   buildPortfolioCapabilityDiagnostics,
   buildPortfolioCapabilityActionQueue,
+  buildPortfolioDecisionCard,
   buildPortfolioDecisionReadinessQueue,
   buildPortfolioRedeploymentPlan,
   buildPortfolioExposureSummary,

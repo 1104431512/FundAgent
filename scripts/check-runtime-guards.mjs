@@ -969,7 +969,7 @@ const requiredPatterns = [
     message: "portfolio customer-facing action lines must prioritize readable logic and translate fee numbers into share-class meaning."
   },
   {
-    pattern: /function shortenPortfolioCustomerText[\s\S]{0,900}compactNumericHeavyCustomerText[\s\S]{0,4200}function compactNumericHeavyCustomerText[\s\S]{0,900}maxNumbers/,
+    pattern: /function shortenPortfolioCustomerText[\s\S]{0,1200}compactNumericHeavyCustomerText[\s\S]{0,4500}function compactNumericHeavyCustomerText[\s\S]{0,900}maxNumbers/,
     message: "portfolio customer-facing cards must compact numeric-heavy action reasons before Feishu display."
   },
   {
