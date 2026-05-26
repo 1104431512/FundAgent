@@ -5272,6 +5272,11 @@ async function processPortfolioOrderLifecycle(db, run, config = getEffectiveConf
       addOrderTimeline(order, "submitted", `已到达估值交易日 ${order.acceptedDate}，等待净值。`);
     }
 
+    if (order.confirmDate <= now.date && shouldRejectImpossiblePortfolioSellOrder(db, order)) {
+      rejectImpossiblePortfolioSellOrder(order, result);
+      continue;
+    }
+
     if (!order.navSnapshot && order.priceDate <= now.date) {
       const navSnapshot = await resolveOrderNavSnapshot(order, profile).catch((error) => {
         result.notes.push({
@@ -5294,10 +5299,6 @@ async function processPortfolioOrderLifecycle(db, run, config = getEffectiveConf
     }
 
     if (order.navSnapshot?.nav && order.confirmDate <= now.date && order.status !== "confirmed") {
-      if (shouldRejectImpossiblePortfolioSellOrder(db, order)) {
-        rejectImpossiblePortfolioSellOrder(order, result);
-        continue;
-      }
       const transaction =
         order.side === "BUY"
           ? confirmPortfolioBuyOrder(db, order, profile, run)
