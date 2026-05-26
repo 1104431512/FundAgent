@@ -107,6 +107,14 @@ const requiredPatterns = [
     message: "real-time fund valuation snapshots must use the existing Tiantian/FundGZ estimate endpoint with source traceability."
   },
   {
+    pattern: /async function fetchFundHoldingRealtimePulse[\s\S]{0,2200}push2\.eastmoney\.com\/api\/qt\/ulist\.np\/get[\s\S]{0,2600}function buildFundHoldingRealtimePulseFromQuotes/,
+    message: "fund enrichment must add realtime top-holding quote pulse evidence, not only stale fund NAV estimates."
+  },
+  {
+    pattern: /function buildHoldingsOutlookProfile[\s\S]{0,5000}holdingRealtimePulse[\s\S]{0,1600}前十大持仓盘中/,
+    message: "holdings outlook must convert realtime top-holding pulse into buy/wait risk evidence."
+  },
+  {
     pattern: /normalizeUserFacingFundAnswer/,
     message: "fund answers need a final localization pass for internal labels."
   },

@@ -2542,6 +2542,61 @@ const poorMarketQuality = manager.buildMarketDataQuality([
 assert.equal(poorMarketQuality.level, "poor", "market data quality must mark severe source loss as poor");
 assert(serverSource.includes("必须检查 marketSnapshot.dataQuality"), "fund and portfolio prompts must force market data-quality checks");
 assert(serverSource.includes("数据缺口") && serverSource.includes("降低把握度"), "prompts must require user-facing disclosure when market data is partial or poor");
+assert.equal(manager.inferEastmoneySecidFromHolding({ code: "300502", name: "新易盛" }), "0.300502", "holding realtime mapper must convert SZ/A-share holdings to Eastmoney secids");
+assert.equal(manager.inferEastmoneySecidFromHolding({ text: "105.NVDA 英伟达 4.18%" }), "105.NVDA", "holding realtime mapper must preserve Eastmoney overseas stock secids");
+const holdingRealtimePulse = manager.buildFundHoldingRealtimePulseFromQuotes([
+  { code: "300502", name: "新易盛", netValuePct: 9.3 },
+  { code: "300308", name: "中际旭创", netValuePct: 8.63 },
+  { code: "00700.HK", name: "腾讯控股", netValuePct: 4.2 }
+], [
+  { secid: "0.300502", code: "300502", name: "新易盛", latest: 150, changePct: 0.8, quoteTime: "14:30" },
+  { secid: "0.300308", code: "300308", name: "中际旭创", latest: 120, changePct: 0.4, quoteTime: "14:30" },
+  { secid: "116.00700", code: "00700", name: "腾讯控股", latest: 420, changePct: -0.2, quoteTime: "14:30" }
+], { sourceLabel: "测试实时行情", fetchedAt: "2026-05-27T06:30:00.000Z" });
+assert.equal(holdingRealtimePulse.ok, true, "holding realtime pulse must build from top-holding quotes");
+assert(holdingRealtimePulse.label.includes("偏强"), "holding realtime pulse must classify weighted top-holding strength");
+assert.equal(holdingRealtimePulse.quoteCount, 3, "holding realtime pulse must retain covered quote count");
+assert(holdingRealtimePulse.coveredHoldingPct > 20, "holding realtime pulse must estimate top-holding coverage");
+const holdingPulseOutlook = manager.buildHoldingsOutlookProfile({
+  name: "通信低位修复基金C",
+  seed: { keywords: ["通信"] },
+  holdings: {
+    equityTopHoldings: [
+      { code: "300502", name: "新易盛", netValuePct: 9.3 },
+      { code: "300308", name: "中际旭创", netValuePct: 8.63 },
+      { code: "00700.HK", name: "腾讯控股", netValuePct: 4.2 }
+    ]
+  },
+  holdingRealtimePulse
+});
+assert(holdingPulseOutlook.evidence.includes("实时="), "holdings outlook must include top-holding realtime pulse evidence");
+assert(holdingPulseOutlook.positives.some((item) => item.includes("盘中温和转强") || item.includes("底层持仓")), "holdings outlook must turn realtime top-holding strength into a positive or explanatory signal");
+const holdingPulseActionability = manager.buildFundActionabilitySignals({
+  name: "通信低位修复基金C",
+  trendProfile: {
+    ok: true,
+    trendLabel: "pullback_complete",
+    entryBias: "staged_buy",
+    pullbackSetup: { signal: "pullback_complete", signalText: "回调完成", score: 72 },
+    return20dPct: 4,
+    return60dPct: -2
+  },
+  risk: { oneYear: { ok: true, totalReturnPct: 12, annualizedReturnPct: 12, maxDrawdownPct: -14, sharpe: 1.1 } },
+  fees: {
+    shareClassFeeModel: { type: "sales_service_fee", label: "C类：按销售服务费计提" },
+    feeImpact: { oneYearCostPer10000: 40, missingFeeData: [] },
+    missingFeeData: []
+  },
+  holdings: {
+    equityTopHoldings: [
+      { code: "300502", name: "新易盛", netValuePct: 9.3 },
+      { code: "300308", name: "中际旭创", netValuePct: 8.63 },
+      { code: "00700.HK", name: "腾讯控股", netValuePct: 4.2 }
+    ]
+  },
+  holdingRealtimePulse
+});
+assert(JSON.stringify(holdingPulseActionability).includes("实时="), "actionability evidence must carry realtime top-holding pulse into manager prompts");
 const noisyMarketSnapshot = {
   fetchedAt: "2026-05-23T06:20:05.155Z",
   note: "公开数据快照可能延迟。",

@@ -1613,6 +1613,7 @@ function compactPortfolioReviewProfile(profile = {}) {
     estimatedChangePct: profile.estimatedChangePct || "",
     estimateTime: profile.estimateTime || "",
     realtimeEvidence: formatPortfolioRealtimeEvidence(profile),
+    holdingRealtimePulse: compactFundHoldingRealtimePulse(profile.holdingRealtimePulse),
     trendProfile: compactPortfolioTrendProfile(profile.trendProfile),
     actionability: compactPortfolioActionabilityProfile(profile.actionability),
     oneYearRisk: oneYear.ok ? pickRiskPeriod(oneYear) : null,
@@ -1671,6 +1672,7 @@ function compactPortfolioActionabilityProfile(actionability = null) {
       risks: normalizePortfolioActionabilityList(holdingsOutlook.risks, 4),
       positives: normalizePortfolioActionabilityList(holdingsOutlook.positives, 4),
       concentration: holdingsOutlook.concentration || null,
+      realtimePulse: compactFundHoldingRealtimePulse(holdingsOutlook.realtimePulse),
       disclosureDate: holdingsOutlook.disclosureDate || "",
       topHoldings: (holdingsOutlook.topHoldings || []).slice(0, 10)
     } : null
@@ -5907,6 +5909,7 @@ function buildPortfolioFundSnapshot(profile, position = null) {
       missingFeeData: profile.fees.missingFeeData || []
     } : null,
     scale: profile.scale || null,
+    holdingRealtimePulse: compactFundHoldingRealtimePulse(profile.holdingRealtimePulse),
     topHoldings,
     trendSummary: buildPortfolioTrendSummary({ trendProfile, actionability, oneYear, threeYear }),
     sources: profile.sources || []
@@ -13357,6 +13360,13 @@ async function fetchFundResearchDigest(code, seed = {}) {
     ? computePeriodRiskMetrics(navHistory.points, latest, 1, Number(process.env.RISK_FREE_RATE_PCT || 2))
     : { ok: false, note: "近一年风险指标不足。" };
   const holdingsSummary = buildHoldingsDigest(holdings, profile.topStocks);
+  const holdingRealtimePulse = await fetchFundHoldingRealtimePulse(holdingsSummary).catch((error) => ({
+    ok: false,
+    label: "前十大持仓实时脉冲抓取失败",
+    error: error.message,
+    items: [],
+    sources: []
+  }));
   const digest = {
     ok: true,
     code,
@@ -13409,10 +13419,12 @@ async function fetchFundResearchDigest(code, seed = {}) {
     scale: profile.scale,
     managers: (profile.managers || []).slice(0, 2),
     holdings: holdingsSummary,
+    holdingRealtimePulse,
     sources: [
       `https://fund.eastmoney.com/${code}.html`,
       `https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${code}`,
-      `https://fundf10.eastmoney.com/jjfl_${code}.html`
+      `https://fundf10.eastmoney.com/jjfl_${code}.html`,
+      ...(holdingRealtimePulse.sources || [])
     ]
   };
   digest.actionability = buildFundActionabilitySignals(digest);
@@ -13463,6 +13475,199 @@ function buildHoldingsDigest(holdings = {}, fallbackTopStocks = []) {
   };
 }
 
+async function fetchFundHoldingRealtimePulse(holdings = {}) {
+  if (String(process.env.FUND_HOLDING_REALTIME_ENABLED ?? "true") === "false") {
+    return { ok: false, label: "前十大持仓实时脉冲未启用", items: [], sources: [] };
+  }
+  const normalized = normalizeHoldingItems(holdings.equityTopHoldings || [])
+    .map((item) => ({ ...item, secid: inferEastmoneySecidFromHolding(item) }))
+    .filter((item) => item.secid)
+    .slice(0, finiteNumberOr(process.env.FUND_HOLDING_REALTIME_LIMIT, 8));
+  if (!normalized.length) {
+    return { ok: false, label: "前十大持仓实时脉冲不可用", note: "前十大持仓缺少可映射的市场代码。", items: [], sources: [] };
+  }
+  const quotes = await fetchEastmoneyRealtimeQuotes(normalized.map((item) => item.secid));
+  return buildFundHoldingRealtimePulseFromQuotes(normalized, quotes.items || [], {
+    sourceLabel: quotes.label,
+    fetchedAt: quotes.fetchedAt
+  });
+}
+
+async function fetchEastmoneyRealtimeQuotes(secids = []) {
+  const uniqueSecids = [...new Set((secids || []).map((item) => String(item || "").trim()).filter(Boolean))]
+    .slice(0, finiteNumberOr(process.env.EASTMONEY_REALTIME_QUOTE_LIMIT, 60));
+  if (!uniqueSecids.length) {
+    return { ok: false, label: "东方财富实时行情", error: "没有可抓取的市场代码", items: [] };
+  }
+  const url = new URL("https://push2.eastmoney.com/api/qt/ulist.np/get");
+  const params = {
+    fltt: "2",
+    secids: uniqueSecids.join(","),
+    fields: "f12,f13,f14,f2,f3,f4,f15,f16,f17,f18,f22,f24,f25,f124,f152"
+  };
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+  const fetchedAt = new Date().toISOString();
+  const json = JSON.parse(await fetchText(url.href, "https://quote.eastmoney.com/"));
+  const diff = Array.isArray(json?.data?.diff) ? json.data.diff : [];
+  updateStats({ counters: { holdingRealtimeQuoteFetches: 1, holdingRealtimeQuoteCodes: uniqueSecids.length } });
+  return {
+    ok: diff.length > 0,
+    label: "东方财富前十大持仓实时行情",
+    fetchedAt,
+    items: diff.map(normalizeEastmoneyRealtimeQuote).filter((item) => item.code && item.name)
+  };
+}
+
+function normalizeEastmoneyRealtimeQuote(item = {}) {
+  const secid = item.f13 && item.f12 ? `${item.f13}.${item.f12}` : "";
+  return {
+    code: item.f12 || "",
+    secid,
+    name: item.f14 || "",
+    latest: toNumber(item.f2),
+    change: toNumber(item.f4),
+    changePct: toNumber(item.f3),
+    open: toNumber(item.f17),
+    high: toNumber(item.f15),
+    low: toNumber(item.f16),
+    previousClose: toNumber(item.f18),
+    amplitudePct: toNumber(item.f22),
+    fiveDayPct: toNumber(item.f24),
+    yearToDatePct: toNumber(item.f25),
+    quoteTime: formatEpochSeconds(item.f124),
+    source: secid ? `https://quote.eastmoney.com/unify/r/${secid}` : "https://push2.eastmoney.com/api/qt/ulist.np/get"
+  };
+}
+
+function inferEastmoneySecidFromHolding(holding = {}) {
+  const raw = [
+    holding.secid,
+    holding.code,
+    holding.name,
+    holding.text
+  ].map((item) => String(item || "").trim()).filter(Boolean).join(" ");
+  const hkMatch = raw.match(/\b(?:HK)?(\d{5})(?:\.HK)?\b/i);
+  if (hkMatch) return `116.${hkMatch[1]}`;
+  const secidMatch = raw.match(/(?:^|\s)(\d{1,3}\.[A-Z0-9]{1,8})(?=\s|$)/i);
+  if (secidMatch) return secidMatch[1].toUpperCase();
+  const cnMatch = raw.match(/\b(\d{6})\b/);
+  if (!cnMatch) return "";
+  const code = cnMatch[1];
+  return code.startsWith("6") ? `1.${code}` : `0.${code}`;
+}
+
+function buildFundHoldingRealtimePulseFromQuotes(holdings = [], quotes = [], options = {}) {
+  const normalizedHoldings = normalizeHoldingItems(holdings)
+    .map((item) => ({ ...item, secid: inferEastmoneySecidFromHolding(item) }))
+    .filter((item) => item.secid);
+  const quoteByKey = new Map();
+  for (const quote of quotes || []) {
+    if (!quote) continue;
+    const normalized = normalizeEastmoneyRealtimeQuoteLike(quote);
+    if (normalized.secid) quoteByKey.set(normalized.secid.toUpperCase(), normalized);
+    if (normalized.code) quoteByKey.set(normalized.code.toUpperCase(), normalized);
+  }
+  const items = normalizedHoldings.map((holding) => {
+    const quote = quoteByKey.get(String(holding.secid || "").toUpperCase())
+      || quoteByKey.get(String(holding.code || "").toUpperCase());
+    if (!quote) return null;
+    return {
+      code: holding.code || quote.code || "",
+      secid: holding.secid || quote.secid || "",
+      name: holding.name || quote.name || "",
+      pct: Number.isFinite(holding.pct) ? round(holding.pct, 2) : null,
+      changePct: finiteMetricNumber(quote.changePct),
+      latest: finiteMetricNumber(quote.latest),
+      quoteTime: quote.quoteTime || "",
+      source: quote.source || ""
+    };
+  }).filter(Boolean);
+  const weightedItems = items.filter((item) => Number.isFinite(item.pct) && Number.isFinite(item.changePct));
+  const weightedPct = weightedItems.reduce((sum, item) => sum + Number(item.pct || 0), 0);
+  const weightedChangePct = weightedPct > 0
+    ? weightedItems.reduce((sum, item) => sum + Number(item.pct || 0) * Number(item.changePct || 0), 0) / weightedPct
+    : averageNumeric(items.map((item) => item.changePct).filter(Number.isFinite));
+  const positiveCount = items.filter((item) => Number(item.changePct) > 0).length;
+  const negativeCount = items.filter((item) => Number(item.changePct) < 0).length;
+  const label = formatFundHoldingRealtimePulseLabel(weightedChangePct);
+  const risks = [];
+  const positives = [];
+  if (Number.isFinite(weightedChangePct) && weightedChangePct <= -0.8) risks.push("底层持仓盘中走弱，买入需要等止跌确认。");
+  if (Number.isFinite(weightedChangePct) && weightedChangePct >= 1.2) risks.push("底层持仓盘中冲高，避免把实时强势当成追涨理由。");
+  if (Number.isFinite(weightedChangePct) && weightedChangePct > 0 && weightedChangePct < 1.2) positives.push("底层持仓温和转强，支持观察是否进入启动确认。");
+  if (weightedPct > 0 && weightedPct < 15) risks.push(`实时覆盖前十大约${formatFallbackPlainPct(weightedPct)}，只能作为辅助证据。`);
+  return {
+    ok: items.length > 0,
+    label,
+    weightedChangePct: Number.isFinite(weightedChangePct) ? round(weightedChangePct, 2) : null,
+    coveredHoldingPct: Number.isFinite(weightedPct) && weightedPct > 0 ? round(weightedPct, 2) : null,
+    quoteCount: items.length,
+    positiveCount,
+    negativeCount,
+    quoteTime: items.map((item) => item.quoteTime).find(Boolean) || "",
+    sourceLabel: options.sourceLabel || "东方财富前十大持仓实时行情",
+    fetchedAt: options.fetchedAt || "",
+    topPositive: [...items].filter((item) => Number.isFinite(item.changePct)).sort((a, b) => Number(b.changePct) - Number(a.changePct)).slice(0, 2),
+    topNegative: [...items].filter((item) => Number.isFinite(item.changePct)).sort((a, b) => Number(a.changePct) - Number(b.changePct)).slice(0, 2),
+    positives: positives.slice(0, 3),
+    risks: risks.slice(0, 3),
+    items: items.slice(0, 8),
+    sources: [...new Set(items.map((item) => item.source).filter(Boolean))].slice(0, 6)
+  };
+}
+
+function normalizeEastmoneyRealtimeQuoteLike(quote = {}) {
+  if (quote.f12 || quote.f13 || quote.f14) return normalizeEastmoneyRealtimeQuote(quote);
+  const secid = String(quote.secid || "").trim();
+  return {
+    code: String(quote.code || (secid.includes(".") ? secid.split(".").slice(1).join(".") : "") || "").trim(),
+    secid,
+    name: String(quote.name || "").trim(),
+    latest: finiteMetricNumber(quote.latest),
+    change: finiteMetricNumber(quote.change),
+    changePct: finiteMetricNumber(quote.changePct),
+    quoteTime: quote.quoteTime || "",
+    source: quote.source || (secid ? `https://quote.eastmoney.com/unify/r/${secid}` : "")
+  };
+}
+
+function formatFundHoldingRealtimePulseLabel(value) {
+  if (!Number.isFinite(value)) return "底层持仓实时脉冲待确认";
+  if (value >= 1.2) return "底层持仓盘中明显走强";
+  if (value >= 0.3) return "底层持仓盘中偏强";
+  if (value <= -1.2) return "底层持仓盘中明显走弱";
+  if (value <= -0.3) return "底层持仓盘中偏弱";
+  return "底层持仓盘中平稳";
+}
+
+function compactFundHoldingRealtimePulse(pulse = null) {
+  if (!pulse || typeof pulse !== "object" || !pulse.ok) return null;
+  return {
+    label: pulse.label || "",
+    weightedChangePct: finiteMetricNumber(pulse.weightedChangePct),
+    coveredHoldingPct: finiteMetricNumber(pulse.coveredHoldingPct),
+    quoteCount: Number(pulse.quoteCount || 0),
+    positiveCount: Number(pulse.positiveCount || 0),
+    negativeCount: Number(pulse.negativeCount || 0),
+    quoteTime: pulse.quoteTime || "",
+    topPositive: (pulse.topPositive || []).slice(0, 2).map(compactHoldingRealtimePulseItem),
+    topNegative: (pulse.topNegative || []).slice(0, 2).map(compactHoldingRealtimePulseItem),
+    risks: normalizeStringArray(pulse.risks).slice(0, 3),
+    positives: normalizeStringArray(pulse.positives).slice(0, 3)
+  };
+}
+
+function compactHoldingRealtimePulseItem(item = {}) {
+  return {
+    code: item.code || "",
+    name: item.name || "",
+    pct: finiteMetricNumber(item.pct),
+    changePct: finiteMetricNumber(item.changePct)
+  };
+}
+
 const HOLDING_THEME_GROUPS = [
   ["贵金属", "黄金", "有色", "资源", "矿业", "铜", "铝", "锂"],
   ["医药", "医疗", "创新药", "生物医药", "CXO", "医疗器械"],
@@ -13504,7 +13709,7 @@ function normalizeHoldingItem(item) {
   if (typeof item === "string") return parseHoldingText(item);
   const code = String(item.code || item.stockCode || item.bondCode || item.f12 || "").trim();
   const name = String(item.name || item.stockName || item.bondName || item.f14 || "").trim();
-  const pct = parseHoldingPct(item.netValuePct ?? item.navPct ?? item.percent ?? item.ratio ?? item.zjzbl);
+  const pct = parseHoldingPct(item.netValuePct ?? item.navPct ?? item.percent ?? item.ratio ?? item.zjzbl ?? item.pct);
   if (!code && !name) return parseHoldingText(String(item.text || item.title || ""));
   const text = [code, name, Number.isFinite(pct) ? `${round(pct, 2)}%` : ""].filter(Boolean).join(" ");
   return { code, name, pct, text };
@@ -13614,6 +13819,25 @@ function buildHoldingsOutlookProfile(candidate = {}) {
     risks.push("持仓方向对应题材拥挤，前景兑现风险偏高");
   }
 
+  const realtimePulse = candidate.holdingRealtimePulse || candidate.holdings?.realtimePulse || null;
+  if (realtimePulse?.ok) {
+    const pulseChange = finiteMetricNumber(realtimePulse.weightedChangePct);
+    if (Number.isFinite(pulseChange)) {
+      if (pulseChange >= 0.3 && pulseChange < 1.2) {
+        score += 3;
+        positives.push("前十大持仓盘中温和转强");
+      } else if (pulseChange >= 1.2) {
+        score += 1;
+        risks.push("前十大持仓盘中冲高，避免追涨");
+      } else if (pulseChange <= -0.8) {
+        score -= 5;
+        risks.push("前十大持仓盘中走弱，需等止跌确认");
+      }
+    }
+    positives.push(...normalizeStringArray(realtimePulse.positives).slice(0, 2));
+    risks.push(...normalizeStringArray(realtimePulse.risks).slice(0, 2));
+  }
+
   if (Number.isFinite(disclosureAge)) {
     const maxAge = finiteNumberOr(process.env.FUND_HOLDINGS_MAX_DISCLOSURE_AGE_DAYS, 150);
     if (disclosureAge > maxAge) {
@@ -13639,6 +13863,7 @@ function buildHoldingsOutlookProfile(candidate = {}) {
     Number.isFinite(top3Pct) ? `前三约${formatFallbackPlainPct(top3Pct)}` : "",
     holdingTags.length ? `行业=${holdingTags.join("/")}` : "",
     matchedTags.length ? `匹配=${matchedTags.join("/")}` : "",
+    realtimePulse?.ok ? `实时=${realtimePulse.label}${Number.isFinite(finiteMetricNumber(realtimePulse.weightedChangePct)) ? formatFallbackPct(realtimePulse.weightedChangePct) : ""}` : "",
     disclosureDate ? `披露=${disclosureDate}` : ""
   ].filter(Boolean);
   return {
@@ -13657,6 +13882,7 @@ function buildHoldingsOutlookProfile(candidate = {}) {
       top3Pct: Number.isFinite(top3Pct) ? round(top3Pct, 2) : null,
       top10Pct: Number.isFinite(top10Pct) ? round(top10Pct, 2) : null
     },
+    realtimePulse: compactFundHoldingRealtimePulse(realtimePulse),
     disclosureDate: disclosureDate || "",
     disclosureAgeDays: Number.isFinite(disclosureAge) ? disclosureAge : null,
     holdingsText
@@ -15502,11 +15728,20 @@ async function fetchFundProfile(code) {
     ? computeTrendProfile(navHistory.points)
     : { ok: false, note: navHistory.error || "历史净值抓取失败，无法判断走势。" };
   const holdingsSummary = buildHoldingsDigest(holdings, profile.topStocks);
+  const holdingRealtimePulse = await fetchFundHoldingRealtimePulse(holdingsSummary).catch((error) => ({
+    ok: false,
+    label: "前十大持仓实时脉冲抓取失败",
+    error: error.message,
+    items: [],
+    sources: []
+  }));
   const actionability = buildFundActionabilitySignals({
+    name,
     trendProfile,
     risk: { oneYear: pickRiskPeriod(riskMetrics.periods?.["1y"] || {}) },
     fees: feeProfile,
-    holdings: holdingsSummary
+    holdings: holdingsSummary,
+    holdingRealtimePulse
   });
   return {
     ok: true,
@@ -15535,6 +15770,7 @@ async function fetchFundProfile(code) {
     performanceEvaluation: profile.performanceEvaluation,
     managers: profile.managers,
     holdings,
+    holdingRealtimePulse,
     topStocks: holdings.equityTopHoldings?.length ? holdings.equityTopHoldings : profile.topStocks,
     sources: [
       `https://fundgz.1234567.com.cn/js/${code}.js`,
@@ -15543,7 +15779,8 @@ async function fetchFundProfile(code) {
       `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${code}`,
       `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=zqcc&code=${code}`,
       `https://fundf10.eastmoney.com/jjfl_${code}.html`,
-      `https://fund.eastmoney.com/${code}.html`
+      `https://fund.eastmoney.com/${code}.html`,
+      ...(holdingRealtimePulse.sources || [])
     ]
   };
 }
@@ -19125,6 +19362,7 @@ export {
   allowedSkillIdsForWorkflow,
   appendFundReportChartReadingGuide,
   buildFundActionabilitySignals,
+  buildFundHoldingRealtimePulseFromQuotes,
   buildHoldingsOutlookProfile,
   compactPortfolioReviewProfile,
   compactPortfolioWeeklyContext,
@@ -19163,6 +19401,7 @@ export {
   compactModelInputForContext,
   compactMarketSnapshotForModel,
   compactMarketDataQuality,
+  compactFundHoldingRealtimePulse,
   compactPublicFundSnapshot,
   computeTrendProfile,
   defaultSkillIdsForWorkflow,
@@ -19203,6 +19442,7 @@ export {
   ensurePortfolioReadyWatchlistReviewed,
   mergeFundWorkflowWatchlistIntoDeepDive,
   inferPullbackSetupSearchKeywords,
+  inferEastmoneySecidFromHolding,
   inferFundShareClass,
   isGenericPullbackSetupRequest,
   isPullbackSetupRequest,
