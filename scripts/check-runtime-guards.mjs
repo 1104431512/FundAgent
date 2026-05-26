@@ -189,8 +189,12 @@ const requiredPatterns = [
     message: "deployment checker must verify online release metadata against the current local commit."
   },
   {
-    pattern: /ARG FUNDAGENT_COMMIT[\s\S]{0,260}ENV FUNDAGENT_COMMIT=\$FUNDAGENT_COMMIT[\s\S]{0,2600}build-args:[\s\S]{0,260}FUNDAGENT_COMMIT=\$\{\{ github\.sha \}\}/,
-    message: "Docker image publishing must embed the git commit so /health can prove the deployed manager version."
+    pattern: /ARG FUNDAGENT_COMMIT[\s\S]{0,260}ENV FUNDAGENT_COMMIT=\$FUNDAGENT_COMMIT[\s\S]{0,2600}\.fundagent-release\.json[\s\S]{0,2600}build-args:[\s\S]{0,260}FUNDAGENT_COMMIT=\$\{\{ github\.sha \}\}/,
+    message: "Docker image publishing must embed the git commit and a build release file so /health can prove the deployed manager version."
+  },
+  {
+    pattern: /function resolveAppRelease[\s\S]{0,700}readBuildReleaseMetadata\(\)[\s\S]{0,1000}builtAt: buildFile\.builtAt/,
+    message: "runtime release metadata must fall back to the Docker build release file when env vars or .git metadata are unavailable."
   },
   {
     pattern: /check-deployment-state\.mjs[\s\S]{0,3600}portfolioCapabilityActionQueue[\s\S]{0,1800}capabilityDiagnostics[\s\S]{0,1800}capabilityActionQueue/,

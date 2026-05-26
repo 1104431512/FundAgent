@@ -15,6 +15,7 @@ RUN if [ -f package-lock.json ]; then \
     fi
 
 COPY . .
+RUN node -e "const fs=require('fs'); const release={commit:process.env.FUNDAGENT_COMMIT||'',branch:process.env.FUNDAGENT_BRANCH||'',source:'docker-build-file',builtAt:new Date().toISOString()}; fs.writeFileSync('/app/.fundagent-release.json', JSON.stringify(release)+'\n')"
 
 EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

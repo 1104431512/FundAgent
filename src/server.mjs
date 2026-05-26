@@ -19298,16 +19298,18 @@ function resolveAppRelease() {
     "VERCEL_GIT_COMMIT_REF",
     "RENDER_GIT_BRANCH"
   ]);
+  const buildFile = readBuildReleaseMetadata();
   const git = readGitReleaseMetadata();
-  const commit = normalizeGitCommit(envCommit || git.commit || "");
-  const branch = String(envBranch || git.branch || "").replace(/^origin\//, "");
+  const commit = normalizeGitCommit(envCommit || buildFile.commit || git.commit || "");
+  const branch = String(envBranch || buildFile.branch || git.branch || "").replace(/^origin\//, "");
   return {
     name: pkg.name || "feishu-fund-assistant",
     version: pkg.version || "0.0.0",
     commit,
     shortCommit: commit ? commit.slice(0, 7) : "",
     branch,
-    source: envCommit ? "env" : git.source || "",
+    source: envCommit ? "env" : buildFile.source || git.source || "",
+    builtAt: buildFile.builtAt || "",
     startedAt: STARTED_AT.toISOString()
   };
 }
@@ -19323,6 +19325,20 @@ function firstNonEmptyEnv(keys = []) {
 function normalizeGitCommit(value) {
   const match = String(value || "").trim().match(/[a-f0-9]{7,40}/i);
   return match ? match[0] : "";
+}
+
+function readBuildReleaseMetadata() {
+  const release = safeReadJson(path.join(ROOT, ".fundagent-release.json"));
+  const commit = normalizeGitCommit(release.commit || release.shortCommit || "");
+  const branch = String(release.branch || "").replace(/^origin\//, "").trim();
+  return commit || branch || release.builtAt
+    ? {
+        commit,
+        branch,
+        source: "build-file",
+        builtAt: String(release.builtAt || "").trim()
+      }
+    : {};
 }
 
 function readGitReleaseMetadata() {
