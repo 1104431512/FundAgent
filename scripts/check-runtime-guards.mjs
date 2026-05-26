@@ -1185,12 +1185,20 @@ const requiredPatterns = [
     message: "portfolio backtests must detect ready watchlist candidates that stay unexecuted under high cash."
   },
   {
-    pattern: /findPortfolioBacktestMissedFollowThroughCandidates[\s\S]{0,2600}estimatedStarterOpportunity[\s\S]{0,1200}function selectPortfolioFollowThroughPct/,
+    pattern: /function buildPortfolioBacktestFollowThroughCandidate[\s\S]{0,2600}starterCapital[\s\S]{0,900}estimatedStarterOpportunity/,
     message: "portfolio backtests must quantify opportunity cost when unbought ready candidates keep rising."
+  },
+  {
+    pattern: /findPortfolioBacktestMissedFollowThroughCandidates[\s\S]{0,1200}!item\.blockingReason[\s\S]{0,800}readinessScore[\s\S]{0,900}findPortfolioBacktestBlockedFollowThroughCandidates/,
+    message: "portfolio opportunity-cost diagnostics must exclude blocked or structurally unbuyable candidates."
   },
   {
     pattern: /少赚约[\s\S]{0,900}机会成本回测[\s\S]{0,700}等待后继续走强/,
     message: "portfolio diagnostics must explain missed follow-through in user-readable opportunity-cost terms."
+  },
+  {
+    pattern: /候选质量缺口回测[\s\S]{0,700}不能直接算作可买机会成本[\s\S]{0,500}扩展数据源和同主题替代品/,
+    message: "portfolio diagnostics must attribute blocked follow-through to candidate-quality or data-source gaps rather than chase pressure."
   },
   {
     pattern: /function hasRecentPortfolioBuyForCode[\s\S]{0,900}item\.side === "BUY"[\s\S]{0,500}!\["cancelled", "rejected"\]\.includes\(item\.status\)/,
@@ -1203,6 +1211,10 @@ const requiredPatterns = [
   {
     pattern: /机会成本回测[\s\S]{0,700}等待后继续走强要被追责/,
     message: "portfolio capability queue must turn missed follow-through into a concrete repair task."
+  },
+  {
+    pattern: /候选质量缺口回测[\s\S]{0,700}同主题可执行替代候选/,
+    message: "portfolio capability queue must turn blocked follow-through into data-source and substitute-candidate work."
   },
   {
     pattern: /利润回吐放任回测[\s\S]{0,700}浮盈回吐不是纸面波动/,

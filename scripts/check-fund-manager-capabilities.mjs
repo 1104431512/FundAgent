@@ -490,6 +490,13 @@ const conservativeBacktestFixture = {
       readinessScore: 92,
       readinessLabel: "低位转强",
       lastSnapshot: {
+        shareClass: "C",
+        fees: {
+          shareClass: "C",
+          shareClassFeeModel: { type: "sales_service_fee", label: "C类：销售服务费" },
+          salesServiceFeePct: 0.4,
+          feeImpact: { oneYearCostPer10000: 40, missingFeeData: [] }
+        },
         trendProfile: {
           ok: true,
           trendLabel: "uptrend",
@@ -536,6 +543,59 @@ assert(
 assert(
   manager.buildPortfolioCapabilityActionQueue(conservativeBacktestFixture).some((item) => item.action.includes("仓位不能停在第一轮操作")),
   "capability action queue must turn frozen-position replay into a concrete position-change task"
+);
+const blockedFollowThroughFixture = {
+  account: {
+    cash: 90000,
+    receivableCash: 0,
+    pendingBuyAmount: 0,
+    totalAsset: 100000,
+    positionWeightPct: 0,
+    investedValue: 0,
+    positions: [],
+    riskBudget: { blockNewBuys: false }
+  },
+  watchlist: [{
+    code: "018589",
+    name: "小规模走强候选C",
+    status: "blocked",
+    readinessScore: 24,
+    reason: "基金规模0.24亿偏小，不能作为可直接买入候选。",
+    buyTriggers: ["规模恢复至可接受水平并确认无清盘/流动性风险"],
+    feeNotes: ["C类销售服务费0.40%/年"],
+    lastSnapshot: {
+      trendProfile: {
+        ok: true,
+        trendLabel: "uptrend",
+        entryBias: "buyable_now",
+        return5dPct: 3.2,
+        return10dPct: 5.4,
+        return20dPct: 6.1,
+        return60dPct: 8,
+        pullbackSetup: { signal: "pullback_complete", signalText: "回调完成" }
+      }
+    }
+  }],
+  runs: [
+    { date: "2026-05-21", type: "decision", status: "completed", summary: "继续等待机会，暂不买入。", actions: [] },
+    { date: "2026-05-22", type: "decision", status: "completed", summary: "仍然观望，没有合格买点。", actions: [] },
+    { date: "2026-05-25", type: "decision", status: "completed", summary: "等待机会。", actions: [] }
+  ],
+  transactions: [],
+  orders: [],
+  settlements: []
+};
+const blockedFollowThroughBacktest = manager.buildPortfolioBacktestDiagnostics(blockedFollowThroughFixture);
+assert(!blockedFollowThroughBacktest.items.some((item) => item.label === "机会成本回测"), "blocked follow-through candidates must not be counted as executable opportunity cost");
+assert(blockedFollowThroughBacktest.items.some((item) => item.label === "候选质量缺口回测"), "blocked candidates that later rise must be attributed to candidate-quality or data-source gaps");
+assert(
+  manager.buildPortfolioCapabilityActionQueue(blockedFollowThroughFixture).some((item) => item.action.includes("同主题可执行替代候选")),
+  "capability queue must turn blocked follow-through into data/source expansion work rather than chase pressure"
+);
+assert.equal(
+  manager.buildPortfolioMissedFollowThroughReviewQueue(blockedFollowThroughFixture).length,
+  0,
+  "missed follow-through review queue must not force reviews for blocked or structurally unbuyable candidates"
 );
 const missedFollowThroughReviewQueue = manager.buildPortfolioMissedFollowThroughReviewQueue(conservativeBacktestFixture);
 assert.equal(missedFollowThroughReviewQueue[0].code, "012046", "missed follow-through review queue must surface the ready candidate that kept rising");

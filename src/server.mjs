@@ -8241,6 +8241,28 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
       "买入质量"
     );
   }
+  const blockedFollowThroughCandidates = findPortfolioBacktestBlockedFollowThroughCandidates({
+    watchlist,
+    transactions,
+    orders,
+    totalAsset
+  });
+  if (
+    Number.isFinite(deployableCashPct)
+    && deployableCashPct >= 55
+    && blockedFollowThroughCandidates.length
+    && !account.riskBudget?.blockNewBuys
+  ) {
+    const first = blockedFollowThroughCandidates[0];
+    const names = blockedFollowThroughCandidates.slice(0, 3).map((item) => `${item.code} ${item.name || ""}`.trim()).join(" / ");
+    add(
+      "info",
+      "候选质量缺口回测",
+      `${blockedFollowThroughCandidates.length} 只被拦截后走强`,
+      `${names} 后续走强，但当时存在${first.blockingReason || "规模、份额、净值或费用缺口"}，不能直接算作可买机会成本；下一轮应扩展数据源和同主题替代品，而不是追买已被拦截的基金。`,
+      "候选召回"
+    );
+  }
 
   const recentDecisionRuns = runs
     .filter((run) => run.type === "decision" && run.status === "completed")
@@ -8643,50 +8665,107 @@ function findPortfolioBacktestMissedFollowThroughCandidates({
   totalAsset = 0
 } = {}) {
   return normalizePortfolioWatchlist(watchlist)
-    .map((item) => {
-      const trend = item.lastSnapshot?.trendProfile || item.trendProfile || {};
-      const readiness = item.readinessScore === undefined
-        ? evaluatePortfolioWatchReadiness(item)
-        : { score: Number(item.readinessScore || 0), label: item.readinessLabel || "", gaps: item.readinessGaps || [] };
-      const return5d = finiteMetricNumber(trend.return5dPct);
-      const return10d = finiteMetricNumber(trend.return10dPct);
-      const return20d = finiteMetricNumber(trend.return20dPct);
-      const return60d = finiteMetricNumber(trend.return60dPct);
-      const followThroughPct = selectPortfolioFollowThroughPct({ return5d, return10d, return20d });
-      const code = String(item.code || "").trim();
-      const hasSetup = item.status === "ready"
-        || Number(readiness.score || 0) >= 85
-        || ["pullback_complete", "launch_setup"].includes(trend.pullbackSetup?.signal);
-      const notOverheated = (!Number.isFinite(return20d) || return20d <= 12)
-        && (!Number.isFinite(return60d) || return60d <= 24)
-        && trend.entryBias !== "avoid_now"
-        && trend.trendLabel !== "extended_uptrend";
-      if (!code || !hasSetup || !notOverheated || !Number.isFinite(followThroughPct) || followThroughPct < 2) {
-        return null;
-      }
-      if (hasRecentPortfolioBuyForCode(code, { transactions, orders }, 20)) {
-        return null;
-      }
-      const starterCapital = Number.isFinite(Number(totalAsset)) && Number(totalAsset) > 0
-        ? Number(totalAsset) * 0.025
-        : null;
-      return {
-        code,
-        name: item.name || "",
-        status: item.status || "watch",
-        readinessScore: Number(readiness.score || 0),
-        followThroughPct,
-        estimatedStarterOpportunity: Number.isFinite(starterCapital) ? round(starterCapital * followThroughPct / 100, 2) : null,
-        evidence: [
-          Number.isFinite(return5d) ? `5日${formatFallbackPct(return5d)}` : "",
-          Number.isFinite(return10d) ? `10日${formatFallbackPct(return10d)}` : "",
-          Number.isFinite(return20d) ? `20日${formatFallbackPct(return20d)}` : ""
-        ].filter(Boolean).join("，")
-      };
-    })
+    .map((item) => buildPortfolioBacktestFollowThroughCandidate(item, { transactions, orders, totalAsset }))
+    .filter((item) => item && !item.blockingReason)
+    .filter((item) => item.status === "ready" || Number(item.readinessScore || 0) >= 75)
+    .filter((item) => !hasRecentPortfolioBuyForCode(item.code, { transactions, orders }, 20))
     .filter(Boolean)
     .sort((a, b) => Number(b.estimatedStarterOpportunity || 0) - Number(a.estimatedStarterOpportunity || 0)
       || Number(b.followThroughPct || 0) - Number(a.followThroughPct || 0));
+}
+
+function findPortfolioBacktestBlockedFollowThroughCandidates({
+  watchlist = [],
+  transactions = [],
+  orders = [],
+  totalAsset = 0
+} = {}) {
+  return normalizePortfolioWatchlist(watchlist)
+    .map((item) => buildPortfolioBacktestFollowThroughCandidate(item, { transactions, orders, totalAsset }))
+    .filter((item) => item?.blockingReason || Number(item?.readinessScore || 0) < 75)
+    .filter((item) => item && !hasRecentPortfolioBuyForCode(item.code, { transactions, orders }, 20))
+    .sort((a, b) => Number(b.estimatedStarterOpportunity || 0) - Number(a.estimatedStarterOpportunity || 0)
+      || Number(b.followThroughPct || 0) - Number(a.followThroughPct || 0));
+}
+
+function buildPortfolioBacktestFollowThroughCandidate(item = {}, { transactions = [], orders = [], totalAsset = 0 } = {}) {
+  const status = normalizePortfolioWatchStatus(item.status || "watch");
+  const trend = item.lastSnapshot?.trendProfile || item.trendProfile || {};
+  const readiness = resolvePortfolioBacktestWatchReadiness(item);
+  const return5d = finiteMetricNumber(trend.return5dPct);
+  const return10d = finiteMetricNumber(trend.return10dPct);
+  const return20d = finiteMetricNumber(trend.return20dPct);
+  const return60d = finiteMetricNumber(trend.return60dPct);
+  const followThroughPct = selectPortfolioFollowThroughPct({ return5d, return10d, return20d });
+  const code = String(item.code || "").trim();
+  const hasSetup = status === "ready"
+    || Number(readiness.score || 0) >= 75
+    || ["pullback_complete", "launch_setup"].includes(trend.pullbackSetup?.signal);
+  const notOverheated = (!Number.isFinite(return20d) || return20d <= 12)
+    && (!Number.isFinite(return60d) || return60d <= 24)
+    && trend.entryBias !== "avoid_now"
+    && trend.trendLabel !== "extended_uptrend";
+  if (!code || !hasSetup || !notOverheated || !Number.isFinite(followThroughPct) || followThroughPct < 2) {
+    return null;
+  }
+  const starterCapital = Number.isFinite(Number(totalAsset)) && Number(totalAsset) > 0
+    ? Number(totalAsset) * 0.025
+    : null;
+  return {
+    code,
+    name: item.name || "",
+    status,
+    readinessScore: Number(readiness.score || 0),
+    readinessLabel: readiness.label || "",
+    readinessGaps: readiness.gaps || [],
+    blockingReason: getPortfolioBacktestFollowThroughBlockingReason(item, readiness),
+    followThroughPct,
+    estimatedStarterOpportunity: Number.isFinite(starterCapital) ? round(starterCapital * followThroughPct / 100, 2) : null,
+    evidence: [
+      Number.isFinite(return5d) ? `5日${formatFallbackPct(return5d)}` : "",
+      Number.isFinite(return10d) ? `10日${formatFallbackPct(return10d)}` : "",
+      Number.isFinite(return20d) ? `20日${formatFallbackPct(return20d)}` : ""
+    ].filter(Boolean).join("，")
+  };
+}
+
+function resolvePortfolioBacktestWatchReadiness(item = {}) {
+  const fallback = evaluatePortfolioWatchReadiness(item);
+  if (item.readinessScore === undefined) return fallback;
+  const gaps = normalizeStringArray(item.readinessGaps).length
+    ? normalizeStringArray(item.readinessGaps)
+    : [];
+  return {
+    score: Number(item.readinessScore || 0),
+    label: item.readinessLabel || fallback.label || "",
+    gaps
+  };
+}
+
+function getPortfolioBacktestFollowThroughBlockingReason(item = {}, readiness = {}) {
+  const status = normalizePortfolioWatchStatus(item.status || "watch");
+  if (["blocked", "removed"].includes(status)) {
+    return "候选状态已被系统拦截";
+  }
+  const gap = normalizeStringArray(readiness.gaps).find(isPortfolioBacktestHardFollowThroughGap);
+  if (gap) return gap;
+  const text = [
+    item.reason,
+    item.positionPlan,
+    ...(item.setupEvidence || []),
+    ...(item.buyTriggers || []),
+    ...(item.riskNotes || []),
+    ...(item.feeNotes || []),
+    ...(item.dataBasis || [])
+  ].filter(Boolean).join(" ");
+  const match = text.match(/(?:缺少可验证净值|净值.*缺|基金规模[^。；;]{0,40}(?:偏小|清盘|流动性|不能)|特殊\/平台份额|普通渠道可买|可申购渠道|起购门槛|费用\/份额|份额类别缺失|A\/C\/D\/I缺失|未核验|无法核验)[^。；;]{0,60}/);
+  return match ? match[0] : "";
+}
+
+function isPortfolioBacktestHardFollowThroughGap(gap = "") {
+  const text = String(gap || "");
+  return isPortfolioRedeploymentHardGap(text)
+    || /缺少可验证净值|基金规模.*(?:偏小|清盘|流动性|不能)|特殊\/平台份额|普通渠道可买|可申购渠道|起购门槛|费用\/份额|份额类别缺失|未核验|无法核验/.test(text);
 }
 
 function selectPortfolioFollowThroughPct({ return5d, return10d, return20d } = {}) {
@@ -8788,6 +8867,8 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "自选池ready不能只收藏；逐只给0.5%-2.5%试探、降级理由或下一次触发复查时间。", "组合经理");
     } else if (item.label === "机会成本回测") {
       addTask(item, "等待后继续走强要被追责；下一轮必须在低位转强候选里给0.5%-2.5%试探、主动降级或明确触发复查时间。", "组合经理");
+    } else if (item.label === "候选质量缺口回测") {
+      addTask(item, "这些上涨不能直接追买；下一轮要补实时净值、份额费率和可申购渠道，并寻找同主题可执行替代候选。", "基金研究员");
     } else if (item.label === "过度保守回测") {
       addTask(item, "连续等待不能算完成工作；下一轮必须给小仓试探方案，或列出前三个候选缺口和下一次触发复查时间。", "组合经理");
     } else if (item.label === "仓位冻结回测") {
