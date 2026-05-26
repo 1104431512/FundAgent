@@ -290,6 +290,13 @@ assert(backtestActionQueue.some((item) => item.action.includes("卡滞订单")),
 assert(backtestActionQueue.some((item) => item.action.includes("重复pending应收")), "capability action queue must turn duplicated settlements into a receivable repair task");
 assert(backtestActionQueue.some((item) => item.action.includes("0.5%-2.5%试探仓")), "capability action queue must turn idle-cash replay into a redeployment task");
 assert(backtestActionQueue.some((item) => item.action.includes("加到3%-5%")), "capability action queue must turn starter-buy underdeployment into a scale-or-exit task");
+const ledgerGuardedBuy = manager.enforcePortfolioLedgerIntegrityGuard([
+  { action: "BUY", code: "004877", name: "低位医药候选", amount: 1500, targetWeightPct: 1.5, reason: "低位回调修复" }
+], backtestFixture);
+assert.equal(ledgerGuardedBuy[0].action, "WATCH", "ledger integrity guard must block new buys while duplicate trades or stale orders can distort cash");
+assert.equal(ledgerGuardedBuy[0].amount, 0, "ledger integrity guard must zero blocked buy amounts");
+assert(ledgerGuardedBuy[0].reason.includes("系统账本完整性拦截"), "ledger integrity guard must explain the buy block in user-readable Chinese");
+assert(ledgerGuardedBuy[0].dataBasis.includes("来源：portfolio_ledger_integrity_guard"), "ledger integrity guard must leave a traceable source");
 const givebackLossBacktestFixture = {
   account: {
     cash: 30000,

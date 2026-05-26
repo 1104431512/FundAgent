@@ -1061,6 +1061,14 @@ const requiredPatterns = [
     message: "portfolio BUY exposure guard must explain duplicate exposure blocks in user-readable Chinese."
   },
   {
+    pattern: /enforcePortfolioLedgerIntegrityGuard[\s\S]{0,1400}系统账本完整性拦截[\s\S]{0,700}portfolio_ledger_integrity_guard/,
+    message: "portfolio execution must block new buys while duplicate trades, stale orders, or duplicate receivables can distort cash."
+  },
+  {
+    pattern: /decision\.actions = enforcePortfolioLedgerIntegrityGuard\(decision\.actions,\s*db\)/,
+    message: "portfolio decision runs must apply ledger integrity protection after model and discipline guards."
+  },
+  {
     pattern: /buildPortfolioExposureSummary/,
     message: "portfolio manager must compute portfolio-level look-through exposure and overlap diagnostics."
   },

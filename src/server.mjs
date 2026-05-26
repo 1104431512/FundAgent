@@ -1043,6 +1043,7 @@ async function executePortfolioDecision(db, run, config) {
   decision.actions = enforcePortfolioBuyDiscipline(decision.actions, executionProfiles, db.account.positions, db.account);
   decision.actions = enforcePortfolioHeldPositionRiskOverrides(decision.actions, executionProfiles, db.account.positions);
   decision.actions = enforcePortfolioSellDiscipline(decision.actions, executionProfiles, db.account.positions);
+  decision.actions = enforcePortfolioLedgerIntegrityGuard(decision.actions, db);
   const watchlistUpdates = applyPortfolioWatchlistUpdates(
     db,
     [
@@ -4058,6 +4059,36 @@ function enforcePortfolioSellDiscipline(actions = [], profiles = [], positions =
       riskControl: action.riskControl || "本轮不提交虚拟赎回，下一次复核破位、转弱、回撤扩大或止盈证据后再决定。"
     };
   });
+}
+
+function enforcePortfolioLedgerIntegrityGuard(actions = [], db = {}) {
+  const issues = findPortfolioLedgerIntegrityIssues(db);
+  if (!issues.length) return normalizePortfolioActions(actions);
+  const issueSummary = issues.slice(0, 3).map((item) => `${item.label}${item.value ? `：${item.value}` : ""}`).join("；");
+  return normalizePortfolioActions(actions).map((action) => {
+    if (action.action !== "BUY") return action;
+    return {
+      ...action,
+      action: "WATCH",
+      amount: 0,
+      targetWeightPct: 0,
+      reason: `系统账本完整性拦截：${issueSummary}。现金、应收或持仓可能失真，先修复账本再买入。`,
+      riskControl: "重复成交、卡滞订单或重复应收未处理前，禁止扩大仓位；只能观察候选和补数据。",
+      dataBasis: mergeStringLists(action.dataBasis, [
+        ...issues.map((item) => `${item.label}=${item.value || item.note || ""}`),
+        "来源：portfolio_ledger_integrity_guard"
+      ])
+    };
+  });
+}
+
+function findPortfolioLedgerIntegrityIssues(db = {}) {
+  const diagnostics = buildPortfolioBacktestDiagnostics(db);
+  const ledgerIssueLabels = new Set(["重复成交回测", "订单卡滞回测", "重复应收回测"]);
+  return (diagnostics.items || []).filter((item) =>
+    ledgerIssueLabels.has(item.label)
+    || (item.severity === "critical" && /订单|成交|应收|账本|净值/.test(`${item.label} ${item.note || ""}`))
+  );
 }
 
 function enforcePortfolioHeldPositionRiskOverrides(actions = [], profiles = [], positions = []) {
@@ -20620,6 +20651,7 @@ export {
   enforceFundAnswerQuality,
   enforcePortfolioBuyDiscipline,
   enforcePortfolioHeldPositionRiskOverrides,
+  enforcePortfolioLedgerIntegrityGuard,
   enforcePortfolioRiskBudget,
   enforcePortfolioSellDiscipline,
   evaluatePortfolioBuyDiscipline,
