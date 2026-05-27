@@ -5619,13 +5619,24 @@ function releasePortfolioOrderReservation(db = {}, order = {}) {
 }
 
 function cancelStalePortfolioActiveOrders(db = {}, result = null, referenceDate = getZonedDateTime(getEffectiveConfig().portfolioTimezone).date) {
+  const impossibleSellOrders = findImpossiblePortfolioSellOrders(db);
   const staleOrders = findStalePortfolioActiveOrders(db.orders || [], referenceDate)
     .filter((order) => shouldCancelStalePortfolioOrder(order, referenceDate));
+  const ordersToCancel = dedupePortfolioOrdersByIdOrIdentity([
+    ...impossibleSellOrders,
+    ...staleOrders
+  ]);
   const cancelled = [];
-  for (const order of staleOrders) {
-    const reason = String(order.side || "").toUpperCase() === "BUY"
-      ? `确认日 ${order.confirmDate || order.priceDate || "-"} 已过，仍没有可验证净值或份额确认，系统取消旧申购并释放冻结现金。`
-      : `确认日 ${order.confirmDate || order.priceDate || "-"} 已过，仍未完成确认，系统取消旧赎回并释放待卖份额。`;
+  for (const order of ordersToCancel) {
+    const impossibleSell = impossibleSellOrders.includes(order);
+    let reason = "";
+    if (impossibleSell) {
+      reason = "账户已无对应持仓或可卖份额，系统取消旧赎回，避免继续显示为待处理订单。";
+    } else if (String(order.side || "").toUpperCase() === "BUY") {
+      reason = `确认日 ${order.confirmDate || order.priceDate || "-"} 已过，仍没有可验证净值或份额确认，系统取消旧申购并释放冻结现金。`;
+    } else {
+      reason = `确认日 ${order.confirmDate || order.priceDate || "-"} 已过，仍未完成确认，系统取消旧赎回并释放待卖份额。`;
+    }
     const cancelledOrder = cancelPortfolioActiveOrder(db, order, reason, result);
     if (cancelledOrder) cancelled.push(cancelledOrder);
   }
@@ -5634,6 +5645,32 @@ function cancelStalePortfolioActiveOrders(db = {}, result = null, referenceDate 
     recalculatePortfolioAccount(db.account);
   }
   return cancelled;
+}
+
+function findImpossiblePortfolioSellOrders(db = {}) {
+  return getPortfolioActiveOrders(db.orders || [])
+    .filter((order) => shouldRejectImpossiblePortfolioSellOrder(db, order));
+}
+
+function dedupePortfolioOrdersByIdOrIdentity(orders = []) {
+  const seen = new Set();
+  const unique = [];
+  for (const order of orders || []) {
+    if (!order) continue;
+    const key = order.id || [
+      order.side,
+      order.code,
+      order.status,
+      order.priceDate,
+      order.confirmDate,
+      order.amount,
+      order.requestedUnits
+    ].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(order);
+  }
+  return unique;
 }
 
 function shouldCancelStalePortfolioOrder(order = {}, referenceDate = getZonedDateTime(getEffectiveConfig().portfolioTimezone).date) {

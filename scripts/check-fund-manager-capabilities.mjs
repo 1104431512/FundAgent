@@ -2408,6 +2408,16 @@ assert.equal(staleBuyOrderDb.orders[0].status, "cancelled", "stale buy order mus
 assert(staleBuyOrderDb.orders[0].cancelReason.includes("释放冻结现金"), "stale buy cancellation must explain cash release");
 assert.equal(staleBuyOrderDb.account.cash, 100000, "stale cancelled buy order must restore deployable cash");
 assert.equal(staleBuyOrderDb.account.pendingBuyAmount, 0, "stale cancelled buy order must clear pending buy reservations");
+const impossibleSellOrderDb = manager.normalizePortfolioDb({
+  account: { initialCapital: 100000, cash: 100000, positions: [] },
+  orders: [
+    { id: "ord_impossible_sell", side: "SELL", code: "008327", name: "旧赎回测试基金C", amount: 3000, requestedUnits: 600, status: "queued", priceDate: "2026-05-27", confirmDate: "2026-05-28", submittedAt: "2026-05-27T06:00:00.000Z" }
+  ]
+});
+const impossibleSellCancelled = manager.cancelStalePortfolioActiveOrders(impossibleSellOrderDb, null, "2026-05-27");
+assert.equal(impossibleSellCancelled.length, 1, "impossible active sell orders must be cancelled immediately when the account has no sellable position");
+assert.equal(impossibleSellOrderDb.orders[0].status, "cancelled", "impossible active sell order must be marked cancelled before it pollutes active-order views");
+assert(impossibleSellOrderDb.orders[0].cancelReason.includes("已无对应持仓"), "impossible sell cancellation must explain the missing-position reason");
 const duplicateTransactionDb = {
   account: { cash: 90000, totalAsset: 100000, positions: [] },
   transactions: [

@@ -1217,8 +1217,8 @@ const requiredPatterns = [
     message: "portfolio order cancellation must release frozen BUY cash exactly once."
   },
   {
-    pattern: /function cancelStalePortfolioActiveOrders[\s\S]{0,1400}释放冻结现金[\s\S]{0,1000}shouldCancelStalePortfolioOrder/,
-    message: "portfolio lifecycle must cancel stale unconfirmed orders so old pending items do not freeze cash forever."
+    pattern: /function cancelStalePortfolioActiveOrders[\s\S]{0,900}findImpossiblePortfolioSellOrders[\s\S]{0,2200}已无对应持仓[\s\S]{0,1200}释放冻结现金[\s\S]{0,1400}function shouldCancelStalePortfolioOrder/,
+    message: "portfolio lifecycle must cancel stale unconfirmed orders and impossible sell orders so old pending items do not distort the ledger."
   },
   {
     pattern: /function repairDuplicatePortfolioTransactions[\s\S]{0,1800}reversed\s*=\s*true[\s\S]{0,700}reversalReason/,
