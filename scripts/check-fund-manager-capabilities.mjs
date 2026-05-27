@@ -27,6 +27,11 @@ assert.equal(intent.mode, "pullback_setup_discovery", "pullback setup query must
 assert.equal(intent.reason, "hard_rule_pullback_setup_request", "pullback setup routing must not depend on model router");
 assert.equal(manager.isPullbackSetupRequest(setupQuery), true, "setup query must be recognized as pullback/setup request");
 assert.equal(manager.isGenericPullbackSetupRequest(setupQuery), true, "generic setup query must expand beyond a single named theme");
+assert.equal(
+  manager.isHeldFundSellTimingAsk("我需要的是对图中的我已经买的基金，告诉我多久卖"),
+  true,
+  "image captions that ask when to sell an already-bought fund must be recognized as held-position sell timing"
+);
 assertSkillCoverage(intent.skillIds, [
   "fund-theme-radar",
   "theme-stage-analysis",
@@ -948,6 +953,31 @@ assert.deepEqual(
   ]),
   ["黄金", "贵金属"],
   "explicit precious-metal setup requests must still search precious-metal funds"
+);
+
+await assertIntent({
+  userText: "我发的图里是我已经买的基金，告诉我大概多久卖",
+  imageKeys: ["img_test_key"],
+  messageType: "image",
+  expectedWorkflow: "fund_screening",
+  expectedReason: "message_contains_image_and_sell_timing_request",
+  expectedMode: "screenshot_held_position_sell_plan",
+  requiredSkills: ["fund-vision", "fund-trend-analysis", "fund-risk-analysis", "fund-market-timing", "fund-actionability-evaluation", "fund-answer-quality"]
+});
+await assertIntent({
+  userText: "000001 我已经买了，什么时候卖比较合适",
+  expectedWorkflow: "fund_screening",
+  expectedReason: "text_contains_held_position_sell_timing_request",
+  expectedMode: "held_position_sell_plan",
+  requiredSkills: ["fund-data-enrichment", "fund-trend-analysis", "fund-risk-analysis", "fund-market-timing", "fund-portfolio-execution", "fund-answer-quality"]
+});
+assert(
+  serverSource.includes("图文同一需求：截图事实和用户文字必须合并成一个问题"),
+  "fund screening prompts must explicitly fuse screenshot facts and text instructions"
+);
+assert(
+  serverSource.includes("已买/持有基金的卖出计划"),
+  "held-position screenshot asks must produce a sell/hold plan instead of a buy template"
 );
 
 await assertIntent({
@@ -4436,11 +4466,11 @@ if (previousModelMaxInputChars === undefined) {
   process.env.MODEL_MAX_INPUT_CHARS = previousModelMaxInputChars;
 }
 
-async function assertIntent({ userText, expectedWorkflow, expectedReason, expectedMode = null, requiredSkills = [] }) {
+async function assertIntent({ userText, imageKeys = [], messageType = "text", expectedWorkflow, expectedReason, expectedMode = null, requiredSkills = [] }) {
   const routed = await manager.classifyMessageIntent({
     userText,
-    messageType: "text",
-    imageKeys: []
+    messageType,
+    imageKeys
   });
   assert.equal(routed.workflow, expectedWorkflow, `${userText} should route to ${expectedWorkflow}`);
   assert.equal(routed.reason, expectedReason, `${userText} should use deterministic routing`);

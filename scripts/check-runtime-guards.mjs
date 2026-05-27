@@ -2195,6 +2195,26 @@ const requiredPatterns = [
   {
     pattern: /function hasNumericDumpWithoutInterpretation[\s\S]{0,900}hasDenseUserFacingMetricLine/,
     message: "fund answer quality gate must catch dense single-fund metric lines, not only long full-answer dumps."
+  },
+  {
+    pattern: /pendingImageMessages/,
+    message: "Feishu image-only messages must be buffered briefly so a following text instruction can be merged."
+  },
+  {
+    pattern: /FEISHU_IMAGE_TEXT_MERGE_WINDOW_MS/,
+    message: "Feishu image/text merge window must be configurable."
+  },
+  {
+    pattern: /downloadMessageImage\(entry\.messageId,\s*entry\.imageKey\)/,
+    message: "merged image/text requests must download images from the original image message id."
+  },
+  {
+    pattern: /screenshot_held_position_sell_plan/,
+    message: "screenshots plus held-position sell timing captions must route to a dedicated sell-plan mode."
+  },
+  {
+    pattern: /图文同一需求：截图事实和用户文字必须合并成一个问题/,
+    message: "fund screening prompts must explicitly fuse screenshot facts with the user's text instruction."
   }
 ];
 

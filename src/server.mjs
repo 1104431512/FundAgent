@@ -26,6 +26,7 @@ const YANGJIBAO_PLUGIN_SIGN_SECRET = process.env.YANGJIBAO_PLUGIN_SIGN_SECRET ||
 const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 12000;
 const DEFAULT_MODEL_MAX_INPUT_CHARS = 120000;
 const DEFAULT_REPLY_MAX_CHARS = 18000;
+const FEISHU_IMAGE_TEXT_MERGE_WINDOW_MS = Number(process.env.FEISHU_IMAGE_TEXT_MERGE_WINDOW_MS || 4500);
 const MIN_FUND_EXTRACTION_OUTPUT_TOKENS = 1800;
 const MIN_FUND_ANALYST_OUTPUT_TOKENS = 7200;
 const MIN_FUND_COMMITTEE_OUTPUT_TOKENS = 6400;
@@ -41,6 +42,7 @@ const DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE = 4;
 const DEFAULT_PORTFOLIO_REPORT_IMAGE_MIN = 8;
 const DEFAULT_PORTFOLIO_REPORT_IMAGE_LIMIT = 8;
 const PUBLIC_DATA_TIMEOUT_MS = Number(process.env.PUBLIC_DATA_TIMEOUT_MS || 20000);
+const pendingImageMessages = new Map();
 const DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS = [
   "沪深300",
   "中证500",
@@ -457,6 +459,30 @@ async function handleMessageEvent(payload) {
 
   const imageKeys = extractImageKeys(parsedContent);
   const userText = extractUserText(message.message_type, parsedContent);
+  const mergeKey = getFeishuImageTextMergeKey(payload);
+  const pendingImageMessage = mergeKey ? takePendingImageMessageForText(mergeKey, userText) : null;
+
+  if (pendingImageMessage) {
+    const currentImageEntries = buildMessageImageEntries(message.message_id, imageKeys);
+    await processFeishuFundMessage({
+      message,
+      imageKeys: [
+        ...pendingImageMessage.imageEntries.map((entry) => entry.imageKey),
+        ...currentImageEntries.map((entry) => entry.imageKey)
+      ],
+      imageEntries: [...pendingImageMessage.imageEntries, ...currentImageEntries],
+      userText,
+      messageType: message.message_type,
+      parsedContent,
+      mergedFromPendingImages: true
+    });
+    return;
+  }
+
+  if (shouldBufferImageOnlyMessage({ imageKeys, userText })) {
+    bufferPendingImageMessage({ key: mergeKey, message, parsedContent, imageKeys });
+    return;
+  }
 
   if (!imageKeys.length && !userText) {
     await replyToMessage(
@@ -468,20 +494,121 @@ async function handleMessageEvent(payload) {
     return;
   }
 
+  await processFeishuFundMessage({
+    message,
+    imageKeys,
+    imageEntries: buildMessageImageEntries(message.message_id, imageKeys),
+    userText,
+    messageType: message.message_type,
+    parsedContent
+  });
+}
+
+function buildMessageImageEntries(messageId, imageKeys = []) {
+  return (imageKeys || [])
+    .map((imageKey) => ({
+      messageId,
+      imageKey: String(imageKey || "").trim()
+    }))
+    .filter((entry) => entry.messageId && entry.imageKey);
+}
+
+function getFeishuImageTextMergeKey(payload) {
+  const message = payload?.event?.message || {};
+  const senderId = payload?.event?.sender?.sender_id || {};
+  const chatId = message.chat_id || payload?.event?.chat_id || "";
+  const sender = senderId.open_id || senderId.union_id || senderId.user_id || senderId.email || "";
+  if (!chatId || !sender) return "";
+  return `${chatId}:${sender}`;
+}
+
+function shouldBufferImageOnlyMessage({ imageKeys = [], userText = "" }) {
+  return FEISHU_IMAGE_TEXT_MERGE_WINDOW_MS > 0 && imageKeys.length > 0 && !String(userText || "").trim();
+}
+
+function takePendingImageMessageForText(key, userText) {
+  if (!key || !String(userText || "").trim()) return null;
+  const pending = pendingImageMessages.get(key);
+  if (!pending) return null;
+  if (pending.timer) clearTimeout(pending.timer);
+  pendingImageMessages.delete(key);
+  updateStats({ counters: { mergedImageTextMessages: 1 } });
+  return pending;
+}
+
+function bufferPendingImageMessage({ key, message, parsedContent, imageKeys = [] }) {
+  const mergeKey = key || `message:${message.message_id}`;
+  const previous = pendingImageMessages.get(mergeKey);
+  if (previous?.timer) clearTimeout(previous.timer);
+
+  const imageEntries = [
+    ...(previous?.imageEntries || []),
+    ...buildMessageImageEntries(message.message_id, imageKeys)
+  ];
+
+  const timer = setTimeout(() => {
+    const pending = pendingImageMessages.get(mergeKey);
+    if (!pending) return;
+    pendingImageMessages.delete(mergeKey);
+    processFeishuFundMessage({
+      message: pending.message,
+      imageKeys: pending.imageEntries.map((entry) => entry.imageKey),
+      imageEntries: pending.imageEntries,
+      userText: "",
+      messageType: pending.message?.message_type || "image",
+      parsedContent: pending.parsedContent,
+      bufferedImageOnly: true
+    }).catch((error) => {
+      console.error("[buffered-image-message-error]", error);
+      recordError(error);
+    });
+  }, Math.max(0, FEISHU_IMAGE_TEXT_MERGE_WINDOW_MS));
+
+  pendingImageMessages.set(mergeKey, {
+    message,
+    parsedContent,
+    imageEntries,
+    createdAt: previous?.createdAt || Date.now(),
+    timer
+  });
+  updateStats({ counters: { bufferedImageMessages: 1 } });
+}
+
+async function processFeishuFundMessage({
+  message,
+  imageKeys = [],
+  imageEntries = buildMessageImageEntries(message?.message_id, imageKeys),
+  userText = "",
+  messageType = message?.message_type || "",
+  parsedContent = {},
+  mergedFromPendingImages = false,
+  bufferedImageOnly = false
+}) {
+  const normalizedImageEntries = imageEntries?.length
+    ? imageEntries
+    : buildMessageImageEntries(message?.message_id, imageKeys);
+  const imageCount = normalizedImageEntries.length;
+
   updateStats({
     counters: {
       conversations: 1,
-      imagesReceived: imageKeys.length,
+      imagesReceived: imageCount,
       textMessages: userText ? 1 : 0
     },
     last: {
       lastConversationAt: new Date().toISOString(),
-      lastMessageType: message.message_type || "unknown"
+      lastMessageType: messageType || "unknown",
+      lastImageTextMerge: mergedFromPendingImages ? "merged" : bufferedImageOnly ? "image_only_timeout" : "direct"
     }
   });
 
   try {
-    const intent = await classifyMessageIntent({ imageKeys, userText, messageType: message.message_type });
+    const intent = await classifyMessageIntent({
+      imageKeys: normalizedImageEntries.map((entry) => entry.imageKey),
+      userText,
+      messageType
+    });
+    const isHeldSellPlan = intent.mode === "screenshot_held_position_sell_plan" || intent.mode === "held_position_sell_plan";
     recordWorkflowIntent(intent);
 
     if (intent.workflow === "conversation") {
@@ -504,7 +631,7 @@ async function handleMessageEvent(payload) {
       return;
     }
 
-    await replyToMessage(message.message_id, buildProgressMessage(imageKeys.length, userText), {
+    await replyToMessage(message.message_id, buildProgressMessage(imageCount, userText), {
       kind: "progress"
     }).catch((error) => {
       console.error("[progress-reply-error]", error);
@@ -513,7 +640,7 @@ async function handleMessageEvent(payload) {
 
     await replyToMessage(
       message.message_id,
-      imageKeys.length
+      imageCount
         ? "进度：正在识别截图中的基金代码和关键字段。"
         : "进度：正在识别文字中的基金名称、代码和关键字段。",
       {
@@ -525,11 +652,11 @@ async function handleMessageEvent(payload) {
     });
 
     const images = [];
-    for (const imageKey of imageKeys) {
-      images.push(await downloadMessageImage(message.message_id, imageKey));
+    for (const entry of normalizedImageEntries) {
+      images.push(await downloadMessageImage(entry.messageId, entry.imageKey));
     }
 
-    const extracted = await extractFundFactsWithModel({ images, userText, messageType: message.message_type });
+    const extracted = await extractFundFactsWithModel({ images, userText, messageType, intent });
     const fundCodes = mergeFundCodes(extractFundCodes(userText), extracted.fundCodes);
 
     await replyToMessage(
@@ -557,9 +684,10 @@ async function handleMessageEvent(payload) {
     const analystReview = await buildAnalystReviewWithModel({
       images,
       userText,
-      messageType: message.message_type,
+      messageType,
       extracted,
-      enrichments
+      enrichments,
+      intent
     });
 
     await replyToMessage(
@@ -573,15 +701,18 @@ async function handleMessageEvent(payload) {
 
     const committeeVote = await buildCommitteeVoteWithModel({
       userText,
-      messageType: message.message_type,
+      messageType,
       extracted,
       enrichments,
-      analystReview
+      analystReview,
+      intent
     });
 
     await replyToMessage(
       message.message_id,
-      "进度：主席验收中。正在把投票结果压缩成飞书卡片，并生成 1 万元执行方案。",
+      isHeldSellPlan
+        ? "进度：主席验收中。正在把投票结果压缩成飞书卡片，并生成持有/减仓/卖出计划。"
+        : "进度：主席验收中。正在把投票结果压缩成飞书卡片，并生成 1 万元执行方案。",
       { kind: "progress" }
     ).catch((error) => {
       console.error("[progress-reply-error]", error);
@@ -590,11 +721,12 @@ async function handleMessageEvent(payload) {
 
     const analysis = await analyzeFundWithModel({
       userText,
-      messageType: message.message_type,
+      messageType,
       extracted,
       enrichments,
       analystReview,
-      committeeVote
+      committeeVote,
+      intent
     });
     const screeningChartProfiles = selectFundReportProfilesForAnswer(
       selectFundScreeningWatchlistProfiles(enrichments, analysis, userText),
@@ -11607,7 +11739,10 @@ function createId(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
 }
 
-async function extractFundFactsWithModel({ images, userText, messageType }) {
+async function extractFundFactsWithModel({ images, userText, messageType, intent = null }) {
+  const positionIntent = isHeldFundSellTimingAsk(userText) || intent?.mode === "screenshot_held_position_sell_plan" || intent?.mode === "held_position_sell_plan"
+    ? "held_position_sell_timing"
+    : "";
   if (!images?.length) {
     const fundCodes = extractFundCodes(userText);
     const resolvedFunds = fundCodes.length ? [] : await resolveFundMentionsFromText(userText);
@@ -11616,6 +11751,9 @@ async function extractFundFactsWithModel({ images, userText, messageType }) {
       fundCodes: mergeFundCodes(fundCodes, resolvedCodes),
       fundNames: resolvedFunds.map((item) => item.name).filter(Boolean),
       visibleFacts: userText ? [userText] : [],
+      userInstruction: String(userText || ""),
+      positionIntent,
+      visiblePositionFacts: [],
       missingFields: [],
       textResolvedFunds: resolvedFunds
     };
@@ -11624,6 +11762,7 @@ async function extractFundFactsWithModel({ images, userText, messageType }) {
   const skillContext = buildSkillContextForIntent({ skillIds: ["fund-vision"] }, []);
   const systemText = [
     "你只负责从基金截图中提取可见事实，不做投资评价。",
+    "如果用户文字提出任务，例如“我已经买了，告诉我多久卖”，必须把这段文字记录为 userInstruction 和 positionIntent；不要把图片和文字拆成两个独立问题。",
     "请只返回 JSON，不要 Markdown，不要解释。",
     "如果看不清，不要猜。基金代码必须是截图中可见或用户文字中明确出现的 6 位数字。",
     "",
@@ -11635,7 +11774,7 @@ async function extractFundFactsWithModel({ images, userText, messageType }) {
     `图片数量：${images.length}`,
     "",
     "返回 JSON 结构：",
-    '{"fundCodes":["000001"],"fundNames":["示例基金"],"visibleFacts":["截图中可见的关键事实"],"missingFields":["看不清或缺失字段"]}'
+    '{"fundCodes":["000001"],"fundNames":["示例基金"],"visibleFacts":["截图中可见的关键事实"],"userInstruction":"用户文字原意","positionIntent":"held_position_sell_timing 或空字符串","visiblePositionFacts":["截图中可见的已买、持仓、收益、成本、仓位等事实"],"missingFields":["看不清或缺失字段"]}'
   ].join("\n");
 
   try {
@@ -11655,6 +11794,9 @@ async function extractFundFactsWithModel({ images, userText, messageType }) {
       fundCodes,
       fundNames: Array.isArray(parsed.fundNames) ? parsed.fundNames.map(String).filter(Boolean) : [],
       visibleFacts: Array.isArray(parsed.visibleFacts) ? parsed.visibleFacts.map(String).filter(Boolean) : [],
+      userInstruction: String(parsed.userInstruction || userText || ""),
+      positionIntent: String(parsed.positionIntent || positionIntent || ""),
+      visiblePositionFacts: Array.isArray(parsed.visiblePositionFacts) ? parsed.visiblePositionFacts.map(String).filter(Boolean) : [],
       missingFields: Array.isArray(parsed.missingFields) ? parsed.missingFields.map(String).filter(Boolean) : [],
       raw: raw.slice(0, 2000)
     };
@@ -11664,6 +11806,9 @@ async function extractFundFactsWithModel({ images, userText, messageType }) {
       fundCodes: extractFundCodes(userText),
       fundNames: [],
       visibleFacts: userText ? [userText] : [],
+      userInstruction: String(userText || ""),
+      positionIntent,
+      visiblePositionFacts: [],
       missingFields: ["截图事实提取失败，已退回到可见文字/图片整体分析。"],
       extractionError: error.message
     };
@@ -11865,11 +12010,13 @@ function getPortfolioWeeklySkillIds(extra = []) {
   ]);
 }
 
-function buildFundCommitteeSystemText(skillIds = getFundAnalysisSkillIds(), { userText = "" } = {}) {
-  const skillContext = buildSkillContextForIntent({ workflow: "fund_screening", skillIds, userText }, [], { userText });
+function buildFundCommitteeSystemText(skillIds = getFundAnalysisSkillIds(), { userText = "", intent = null } = {}) {
+  const isHeldSellPlan = intent?.mode === "screenshot_held_position_sell_plan" || intent?.mode === "held_position_sell_plan" || isHeldFundSellTimingAsk(userText);
+  const skillContext = buildSkillContextForIntent({ workflow: "fund_screening", skillIds, userText, mode: intent?.mode || "" }, [], { userText });
   return [
     "你是飞书机器人“基金经理”。你的任务是根据用户发送的基金截图或基金文字信息做教育性基金筛选分析。",
     "必须严格遵循当前阶段加载的 modular skills。只使用与当前任务相关的 skill，不要把所有基金流程强行套到用户请求上。",
+    "如果同一次请求里同时有截图和文字，必须把它们合并成一个用户需求：截图提供事实，用户文字定义决策问题，禁止分别回答成两个问题。",
     "不要对截图逐字念稿。要先吸收截图事实和联网补全资料，再给出投资筛选评价。",
     "必须识别份额类别并解释费用差异；A/C/D/I 等同基金不同份额要按申购费、销售服务费、赎回费和预计持有期比较。",
     "如果联网补全资料与截图冲突，要明确分开“截图可见”和“联网补全”，不要硬合并。",
@@ -11877,12 +12024,16 @@ function buildFundCommitteeSystemText(skillIds = getFundAnalysisSkillIds(), { us
     "回答中文，优先简洁、明确、可执行。不要保证收益，不要给出个性化承诺；但如果证据偏正面，要敢于给出买入/分批买入方案，不要机械地总是建议等待回撤或极低仓位。",
     "面向用户时禁止输出内部字段名或英文枚举，例如 trendProfile、actionability、entryBias、fitLabel、extended_uptrend、tactical_only、staged_buy、wait_pullback；必须转成自然中文。",
     "最终给用户的回答禁止输出 Manager Decision、Evidence、Confidence、Verdict、Score 等英文栏目词；必须改成结论、证据、把握度、评分、经理判断等自然中文。",
+    isHeldSellPlan
+      ? "本次是已买/持有基金的卖出计划：回答重点是现在是否急卖、还能拿多久、什么条件减仓/卖出、多久复核；不要改写成新增买入推荐或默认给 1 万元申购方案。"
+      : "",
     "",
     skillContext
   ].join("\n");
 }
 
-function buildFundCommitteeEvidencePrompt({ images = [], userText, messageType, extracted, enrichments }) {
+function buildFundCommitteeEvidencePrompt({ images = [], userText, messageType, extracted, enrichments, intent = null }) {
+  const isHeldSellPlan = intent?.mode === "screenshot_held_position_sell_plan" || intent?.mode === "held_position_sell_plan" || extracted?.positionIntent === "held_position_sell_timing" || isHeldFundSellTimingAsk(userText);
   return [
     "用户通过飞书发送了一条基金相关消息。",
     `消息类型：${messageType || "unknown"}`,
@@ -11890,6 +12041,10 @@ function buildFundCommitteeEvidencePrompt({ images = [], userText, messageType, 
     images?.length
       ? `图片：已附上 ${images.length} 张。请逐张识别截图中的基金信息；如果多张图属于同一只基金，请合并分析；如果是多只基金，请分别给出简短结论并说明对比。`
       : "图片：无，请只根据已提取事实和用户文字分析。",
+    "图文同一需求：截图事实和用户文字必须合并成一个问题；用户文字是任务指令，截图只是证据来源，不得拆成“看图”和“回答文字”两段。",
+    isHeldSellPlan
+      ? "已买/持有基金的卖出计划：请按持仓处置回答，优先给出卖出/继续持有/分批减仓条件、复核周期和触发边界；不要输出新增申购金额。"
+      : "",
     "",
     "截图事实提取结果：",
     JSON.stringify(extracted || {}, null, 2),
@@ -11905,16 +12060,16 @@ function buildFundCommitteeEvidencePrompt({ images = [], userText, messageType, 
   ].join("\n");
 }
 
-async function buildAnalystReviewWithModel({ images, userText, messageType, extracted, enrichments }) {
+async function buildAnalystReviewWithModel({ images, userText, messageType, extracted, enrichments, intent = null }) {
   const isComparison = detectComparisonNeed({ userText, extracted, enrichments });
   const systemText = buildFundCommitteeSystemText(
     isComparison
       ? getFundAnalysisSkillIds(["fund-comparison"])
       : getFundAnalysisSkillIds(),
-    { userText }
+    { userText, intent }
   );
   const userPrompt = [
-    buildFundCommitteeEvidencePrompt({ images, userText, messageType, extracted, enrichments }),
+    buildFundCommitteeEvidencePrompt({ images, userText, messageType, extracted, enrichments, intent }),
     "",
     "阶段：分析师分析中。",
     "请只输出内部投研简报，不要给最终用户话术，不要输出 Markdown 表格。",
@@ -11944,11 +12099,19 @@ function getFundWorkflowMaxOutputTokens(minimum) {
   return Math.max(getConfiguredMaxOutputTokens(), Number(minimum || 0));
 }
 
-async function buildCommitteeVoteWithModel({ userText, messageType, extracted, enrichments, analystReview }) {
+async function buildCommitteeVoteWithModel({ userText, messageType, extracted, enrichments, analystReview, intent = null }) {
   const isComparison = detectComparisonNeed({ userText, extracted, enrichments });
-  const systemText = buildFundCommitteeSystemText(isComparison ? getFundAnalysisSkillIds(["fund-comparison"]) : getFundAnalysisSkillIds(), { userText });
+  const isHeldSellPlan = intent?.mode === "screenshot_held_position_sell_plan" || intent?.mode === "held_position_sell_plan" || extracted?.positionIntent === "held_position_sell_timing" || isHeldFundSellTimingAsk(userText);
+  const systemText = buildFundCommitteeSystemText(
+    isComparison
+      ? getFundAnalysisSkillIds(["fund-comparison"])
+      : isHeldSellPlan
+        ? getFundAnalysisSkillIds(["fund-market-timing", "fund-portfolio-execution"])
+        : getFundAnalysisSkillIds(),
+    { userText, intent }
+  );
   const userPrompt = [
-    buildFundCommitteeEvidencePrompt({ images: [], userText, messageType, extracted, enrichments }),
+    buildFundCommitteeEvidencePrompt({ images: [], userText, messageType, extracted, enrichments, intent }),
     "",
     "分析师简报：",
     analystReview,
@@ -11964,10 +12127,14 @@ async function buildCommitteeVoteWithModel({ userText, messageType, extracted, e
       : "2. 熊方研究员：正/中/负，最强反对理由。",
     "3. 风险经理：激进、均衡、保守三档仓位约束。",
     "4. 委员会票数：正向 x、 neutral x、负向 x。",
-    isComparison
+    isHeldSellPlan
+      ? "5. 建议动作草案：继续持有 / 分批减仓 / 触发卖出 / 立即回避，并给复核周期。"
+      : isComparison
       ? "5. 建议动作草案：选哪只 / 组合买入 / 继续观察 / 全部回避。"
       : "5. 建议动作草案：买入 / 分批买入 / 持有 / 换基 / 观察 / 回避。",
-    "6. 10000 元草案：激进、均衡、保守各自金额。"
+    isHeldSellPlan
+      ? "6. 持仓处置草案：激进、均衡、保守各自是继续拿、减多少或触发什么条件再卖；不要写新增申购金额。"
+      : "6. 10000 元草案：激进、均衡、保守各自金额。"
   ].join("\n");
 
   const maxTokens = getFundWorkflowMaxOutputTokens(MIN_FUND_COMMITTEE_OUTPUT_TOKENS);
@@ -11979,23 +12146,28 @@ async function buildCommitteeVoteWithModel({ userText, messageType, extracted, e
   return vote;
 }
 
-async function analyzeFundWithModel({ userText, messageType, extracted, enrichments, analystReview, committeeVote }) {
+async function analyzeFundWithModel({ userText, messageType, extracted, enrichments, analystReview, committeeVote, intent = null }) {
   const isComparison = detectComparisonNeed({ userText, extracted, enrichments });
+  const isHeldSellPlan = intent?.mode === "screenshot_held_position_sell_plan" || intent?.mode === "held_position_sell_plan" || extracted?.positionIntent === "held_position_sell_timing" || isHeldFundSellTimingAsk(userText);
   const systemText = [
     buildFundCommitteeSystemText(
       isComparison
         ? getFundAnalysisSkillIds(["fund-comparison", "fund-synthesis"])
-        : getFundAnalysisSkillIds(["fund-synthesis"]),
-      { userText }
+        : isHeldSellPlan
+          ? getFundAnalysisSkillIds(["fund-market-timing", "fund-portfolio-execution", "fund-synthesis"])
+          : getFundAnalysisSkillIds(["fund-synthesis"]),
+      { userText, intent }
     ),
     "",
-    isComparison
+    isHeldSellPlan
+      ? "现在进入汇总阶段。你要回答用户“图中已买/持有基金还能拿多久、什么时候卖”，不要输出新增买入模板。"
+      : isComparison
       ? "现在进入汇总阶段。你要回答用户“多个基金怎么选”，不要为每只基金输出完整单基长报告。"
       : "现在进入汇总阶段。你要把分析师简报和委员会投票整理成最终发给用户的飞书卡片文案。"
   ].join("\n");
 
   const userPrompt = [
-    buildFundCommitteeEvidencePrompt({ images: [], userText, messageType, extracted, enrichments }),
+    buildFundCommitteeEvidencePrompt({ images: [], userText, messageType, extracted, enrichments, intent }),
     "",
     "分析师简报：",
     analystReview || "缺失",
@@ -12006,16 +12178,26 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
     "阶段：主席验收中。",
     "",
     "请按以下结构输出，不要输出 Markdown 表格：",
-    isComparison
+    isHeldSellPlan
+      ? "1. 开场结论：先说现在是继续拿、分批减仓、触发卖出还是立即回避；同时给“多久复核/多久考虑卖”的自然时间范围。"
+      : isComparison
       ? "1. 开场结论：首选哪只/哪几只、把握度、选择理由；不需要给每只基金都打完整单基分。"
       : "1. 开场结论：结论、把握度、评分，并用一句话解释这个分数的含义，例如“61/100 = 可观察但还没到重仓”。",
-    isComparison
+    isHeldSellPlan
+      ? "2. 图里这只基金：用截图事实、联网补全和推断分开说明走势位置、持仓状态、当前主要矛盾；如果看不到成本/仓位，要说明仍可先给条件计划。"
+      : isComparison
       ? "2. 多基金选择：给出排名、首选、备选、为什么不选其他基金；不要给每只基金都套 8 角色长流程。"
       : "2. 投研团队视角：产品、业绩、持仓、市场、风险等角色各 1 行，给出正/中/负倾向和关键理由。",
-    "3. 经理最终判断：最终动作必须是买入 / 分批买入 / 持有 / 换基 / 观察 / 回避之一，并说明最大买点和最大不买理由。",
-    "4. 1万元执行方案：假设用户准备新增 10000 元，给出激进、均衡、保守三档的金额或比例；如果基金适合出击，激进档可以给到更高比例，但要写清止损/再评估触发条件。",
+    isHeldSellPlan
+      ? "3. 卖出计划：给出触发卖出、分批减仓、继续持有三类条件；每类用走势/回撤/主题/费用或持有期解释，不要堆数字。"
+      : "3. 经理最终判断：最终动作必须是买入 / 分批买入 / 持有 / 换基 / 观察 / 回避之一，并说明最大买点和最大不买理由。",
+    isHeldSellPlan
+      ? "4. 复核节奏：给用户一个可执行的复核窗口，例如未来3-5个交易日看是否止跌转强、跌破哪类位置就不等、冲高回落怎么处理。"
+      : "4. 1万元执行方案：假设用户准备新增 10000 元，给出激进、均衡、保守三档的金额或比例；如果基金适合出击，激进档可以给到更高比例，但要写清止损/再评估触发条件。",
     "5. 自评估结果：是否适合当前用户真实需求，适合谁，不适合谁；把把握度写成自然句，不要写 confidence 或“信心：高”这类字段。",
-    "6. 决策边界：最多 2 条，只列会改变买入/持有/回避动作的条件，不要写通用风险清单。",
+    isHeldSellPlan
+      ? "6. 决策边界：最多 2 条，只列会改变继续持有/减仓/卖出动作的条件，不要写通用风险清单。"
+      : "6. 决策边界：最多 2 条，只列会改变买入/持有/回避动作的条件，不要写通用风险清单。",
     "7. 缺失数据：只列真正影响结论的字段；不要把已联网补全的夏普率、回撤、波动率重复列为缺失。"
   ].join("\n");
 
@@ -12029,7 +12211,7 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
     text: finalText,
     workflow: isComparison ? "fund_comparison" : "fund_screening",
     userText,
-    intent: { workflow: isComparison ? "fund_comparison" : "fund_screening" },
+    intent: intent || { workflow: isComparison ? "fund_comparison" : "fund_screening" },
     evidence: {
       extracted,
       enrichments,
@@ -21476,6 +21658,62 @@ function cleanFeishuUserText(text, content = {}) {
   return cleaned;
 }
 
+function isHeldFundSellTimingAsk(text) {
+  const normalized = normalizeIntentText(text);
+  if (!normalized) return false;
+  const hasHeldPositionContext = hasAny(normalized, [
+    "已经买",
+    "已买",
+    "买了",
+    "我买",
+    "持有",
+    "已持有",
+    "我的持仓",
+    "仓位",
+    "成本",
+    "浮盈",
+    "浮亏",
+    "已入",
+    "入场"
+  ]);
+  const hasImageOrSpecificContext = hasAny(normalized, [
+    "图中",
+    "图片",
+    "截图",
+    "这只",
+    "这支",
+    "这个",
+    "这个基金",
+    "该基金",
+    "这几个",
+    "这些"
+  ]);
+  const asksSellTiming = hasAny(normalized, [
+    "多久卖",
+    "多久可以卖",
+    "多久能卖",
+    "什么时候卖",
+    "什么时候减仓",
+    "何时卖",
+    "哪天卖",
+    "卖点",
+    "止盈",
+    "止损",
+    "退出",
+    "出场",
+    "减仓",
+    "清仓",
+    "卖出",
+    "要不要卖",
+    "怎么卖",
+    "拿多久",
+    "持有多久",
+    "还能拿",
+    "卖出计划"
+  ]);
+  return asksSellTiming && (hasHeldPositionContext || hasImageOrSpecificContext);
+}
+
 async function classifyMessageIntent({ imageKeys = [], userText = "", messageType = "" }) {
   const text = normalizeIntentText(userText);
   const fundCodes = extractFundCodes(text);
@@ -21512,6 +21750,19 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
   ]);
 
   if (imageKeys.length) {
+    if (isHeldFundSellTimingAsk(text)) {
+      return {
+        workflow: "fund_screening",
+        mode: "screenshot_held_position_sell_plan",
+        reason: "message_contains_image_and_sell_timing_request",
+        fundCodes,
+        skillIds: [
+          "fund-vision",
+          ...getFundAnalysisSkillIds(["fund-market-timing", "fund-portfolio-execution", "fund-synthesis"])
+        ],
+        messageType
+      };
+    }
     return {
       workflow: "fund_screening",
       mode: "screenshot_or_mixed",
@@ -21546,6 +21797,16 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
 
   if (fundCodes.length) {
     const specificPullbackSetup = isPullbackSetupRequest(text);
+    if (isHeldFundSellTimingAsk(text)) {
+      return {
+        workflow: "fund_screening",
+        mode: "held_position_sell_plan",
+        reason: "text_contains_held_position_sell_timing_request",
+        fundCodes,
+        skillIds: getFundAnalysisSkillIds(["fund-market-timing", "fund-portfolio-execution", "fund-synthesis"]),
+        messageType
+      };
+    }
     return {
       workflow: "fund_screening",
       mode: specificPullbackSetup
@@ -21576,6 +21837,17 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
       reason: "hard_rule_text_requests_recommendations_without_specific_fund",
       fundCodes,
       skillIds: getFundRecommendationSkillIds(),
+      messageType
+    };
+  }
+
+  if (hasFundWord && isHeldFundSellTimingAsk(text)) {
+    return {
+      workflow: "fund_screening",
+      mode: "held_position_sell_plan",
+      reason: "hard_rule_held_position_sell_timing_request",
+      fundCodes,
+      skillIds: getFundAnalysisSkillIds(["fund-market-timing", "fund-portfolio-execution", "fund-synthesis"]),
       messageType
     };
   }
@@ -21737,6 +22009,7 @@ function allowedSkillIdsForWorkflow(workflow) {
     fund_screening: [
       "fund-vision",
       ...getFundAnalysisSkillIds(["fund-comparison", "fund-synthesis"]),
+      "fund-portfolio-execution",
       "fund-screening"
     ],
     fund_qa: ["fund-data-enrichment", ...getFundQaSkillIds()]
@@ -22010,6 +22283,12 @@ function buildSkillFocusDirective(intent = {}, skills = []) {
       "本次任务焦点：评价用户给出的具体基金，必须分开基金长期质量、当前买点、份额费用和适合对象。",
       "不要把基金质量好直接等同于现在可以买；A/C/D/I 等份额类别要按预计持有期解释。"
     );
+    if (mode === "screenshot_held_position_sell_plan" || mode === "held_position_sell_plan" || isHeldFundSellTimingAsk(userText)) {
+      lines.push(
+        "本次任务焦点：已买/持有基金的卖出计划。截图事实和用户文字必须合并成一个问题，先回答还能拿多久和什么条件卖。",
+        "回答纪律：不要输出新增买入金额；如果缺少成本、仓位或买入日期，也要先给条件化的持有/减仓/卖出计划，并说明需要用户补哪一项来精确化。"
+      );
+    }
     if (mode === "specific_pullback_setup_assessment" || isPullbackSetupRequest(userText)) {
       lines.push(
         "本次任务焦点：具体基金的回调完成/低位启动评估，不追热点。",
@@ -22535,6 +22814,7 @@ export {
   inferEastmoneySecidFromHolding,
   inferFundShareClass,
   isGenericPullbackSetupRequest,
+  isHeldFundSellTimingAsk,
   isPullbackSetupRequest,
   isFundChartGlossaryQuestion,
   isStaleFundValuation,
