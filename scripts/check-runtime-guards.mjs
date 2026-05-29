@@ -1497,6 +1497,10 @@ const requiredPatterns = [
     message: "portfolio decision prompts must force recommendations to cite the manager ranking board."
   },
   {
+    pattern: /客户视角要求[\s\S]{0,500}customerActionDeck[\s\S]{0,500}可买复核[\s\S]{0,500}等待触发[\s\S]{0,500}卖出\/减仓[\s\S]{0,500}先补数据/,
+    message: "portfolio decision prompts must make the customer action deck the first layer for client-facing buy, wait, avoid, sell, and data guidance."
+  },
+  {
     pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,1900}cash_redeployment[\s\S]{0,500}position_sizing[\s\S]{0,500}quality_score[\s\S]{0,500}manager_stability[\s\S]{0,500}portfolio_fit[\s\S]{0,900}drawdown_defense[\s\S]{0,900}data_confidence[\s\S]{0,900}replacement_choice/,
     message: "portfolio decision prompts must force the model to review the cash-redeployment, position-sizing, fund-quality, manager-stability, portfolio-fit, drawdown-defense, data-confidence, and replacement-choice ranking lanes."
   },
@@ -2543,6 +2547,14 @@ const requiredPatterns = [
   {
     pattern: /renderManagerCustomerDigest[\s\S]{0,1800}客户视角摘要/,
     message: "admin manager ranking board must render the customer-facing digest before detailed lists."
+  },
+  {
+    pattern: /(?=[\s\S]*buildPortfolioRankingCustomerActionDeck[\s\S]*客户行动牌)(?=[\s\S]*可买复核[\s\S]*等待触发[\s\S]*先回避[\s\S]*卖出\/减仓[\s\S]*先补数据)/,
+    message: "manager ranking boards must translate ranking lanes into customer action cards for buy, wait, avoid, sell, and data-first decisions."
+  },
+  {
+    pattern: /renderManagerRankingActionDeck[\s\S]{0,1800}ranking-action-deck[\s\S]{0,1200}renderManagerRankingActionCard/,
+    message: "admin manager ranking board must show customer action cards before detailed ranking lists."
   },
   {
     pattern: /renderManagerPriorityQueue[\s\S]{0,1200}今日优先处理/,

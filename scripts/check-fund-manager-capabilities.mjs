@@ -339,6 +339,12 @@ assert(rankingBoard.health?.summary, "manager ranking board must explain the cur
 assert(rankingBoard.lists.every((item) => item.nextAction), "manager ranking board empty states must include next actions");
 assert(rankingBoard.customerDigest?.summary, "manager ranking board must translate ranking lanes into a customer-facing digest");
 assert(rankingBoard.customerDigest?.watchFocus?.length || rankingBoard.customerDigest?.buyReview?.length || rankingBoard.customerDigest?.riskAvoid?.length, "customer-facing digest must group candidates into buy, watch, or avoid buckets");
+assert(rankingBoard.customerActionDeck?.cards?.length === 5, "manager ranking board must translate ranking lanes into five customer action cards");
+assert(rankingBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items.some((item) => item.code === "000001" || item.code === "000005"), "customer action deck must surface buy-review candidates");
+assert(rankingBoard.customerActionDeck.cards.find((card) => card.id === "wait")?.nextStep?.includes("触发条件"), "customer action deck must turn watch candidates into explicit trigger-wait guidance");
+assert(rankingBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items.some((item) => item.code === "000006"), "customer action deck must surface chase-risk avoid candidates");
+assert(rankingBoard.customerActionDeck.cards.find((card) => card.id === "sell")?.items.some((item) => item.code === "008327"), "customer action deck must surface sell or de-risk candidates separately from avoid candidates");
+assert(rankingBoard.customerActionDeck.cards.find((card) => card.id === "data")?.items.some((item) => item.code === "000010"), "customer action deck must surface data-first blockers before buy execution");
 assert(rankingBoard.decisionMatrix?.items?.length, "manager ranking board must build a cross-list decision matrix");
 assert(rankingBoard.decisionMatrix.items.some((item) => item.code === "000005" && item.cells?.buy && item.cells?.sector), "decision matrix must align buy and sector evidence for the same fund");
 assert(rankingBoard.decisionMatrix.items.some((item) => item.code === "000010" && item.cells?.data && /补证据|补齐|不能提交买入|数据/.test(item.nextStep || item.action || "")), "decision matrix must surface data blockers before buy execution");
@@ -1476,6 +1482,7 @@ assert(adminHtmlSource.includes("费率适配"), "admin UI must describe share-c
 assert(adminHtmlSource.includes("替代优选"), "admin UI must describe replacement-choice rankings as a manager decision angle");
 assert(adminSource.includes("renderManagerRankings"), "admin UI must render multi-angle ranking boards");
 assert(adminSource.includes("renderManagerCustomerDigest"), "admin UI must render customer-facing ranking digest before detailed lists");
+assert(adminSource.includes("renderManagerRankingActionDeck"), "admin UI must render customer action cards before detailed ranking lists");
 assert(adminSource.includes("renderManagerPriorityQueue"), "admin UI must render the cross-ranking priority queue");
 assert(adminSource.includes("renderManagerRankingOverview"), "admin UI must render ranking board overview cards before detailed lists");
 assert(adminSource.includes("setManagerRankingFilter"), "admin UI must allow focusing one manager ranking lane from overview cards");
@@ -1530,6 +1537,7 @@ assert(adminStyleSource.includes("portfolio-workspace-card"), "admin portfolio o
 assert(adminStyleSource.includes("ranking-terminal"), "admin manager ranking board must be a focused terminal-style workspace instead of a long stacked report");
 assert(adminStyleSource.includes("ranking-detail-stage"), "admin manager ranking board must separate lane navigation from the active ranking detail");
 assert(adminStyleSource.includes("ranking-terminal-body") && adminStyleSource.includes("ranking-digest-deck"), "admin manager ranking board must keep digest and selected ranking list inside a bounded terminal body");
+assert(adminStyleSource.includes("ranking-action-deck") && adminStyleSource.includes("ranking-action-card-sell"), "admin manager ranking board must style customer action cards with distinct buy, wait, avoid, sell, and data lanes");
 assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must style customer-facing ranking digest as a first-class panel");
 assert(adminStyleSource.includes("focused-from-ranking"), "admin UI must highlight watchlist cards opened from customer digest items");
 assert(adminStyleSource.includes("watchlist-ranking-refs"), "admin UI must style ranking citations inside watchlist fund details");

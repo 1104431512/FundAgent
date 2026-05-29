@@ -1726,6 +1726,7 @@ function renderManagerRankings(board = {}) {
       <div class="ranking-terminal-body">
         ${renderManagerRankingOverview(lists)}
         <div class="ranking-detail-stage">
+          ${renderManagerRankingActionDeck(board.customerActionDeck || {})}
           <div class="ranking-list-stage">
             ${lists.map(renderManagerRankingList).join("")}
           </div>
@@ -1759,6 +1760,53 @@ function renderManagerRankingDigestDeck(board = {}) {
       ${renderManagerCustomerDigest(board.customerDigest || {})}
       ${renderManagerPriorityQueue(board.priorityQueue || [])}
     </div>
+  `;
+}
+
+function renderManagerRankingActionDeck(deck = {}) {
+  const cards = Array.isArray(deck.cards) ? deck.cards : [];
+  if (!cards.length) return "";
+  return `
+    <section class="ranking-action-deck">
+      <div class="ranking-action-deck-head">
+        <div>
+          <strong>${escapeHtml(deck.title || "客户行动牌")}</strong>
+          <small>${escapeHtml(deck.summary || "把榜单翻译成客户今天先看什么。")}</small>
+        </div>
+      </div>
+      <div class="ranking-action-deck-grid">
+        ${cards.map(renderManagerRankingActionCard).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderManagerRankingActionCard(card = {}) {
+  const items = Array.isArray(card.items) ? card.items : [];
+  return `
+    <article class="ranking-action-card ranking-action-card-${escapeHtml(card.tone || card.id || "watch")}">
+      <div>
+        <span>${escapeHtml(card.title || "行动")}</span>
+        <strong>${escapeHtml(items[0] ? `${items[0].code || ""} ${items[0].name || ""}`.trim() || card.summary : card.emptyText || card.summary || "暂无")}</strong>
+      </div>
+      <small>${escapeHtml(items[0]?.reason || card.summary || "")}</small>
+      <div class="ranking-action-card-items">
+        ${items.length ? items.slice(0, 3).map((item) => renderManagerRankingActionChip(item)).join("") : `<em>${escapeHtml(card.emptyText || "暂无触发项")}</em>`}
+      </div>
+      <p>${escapeHtml(items[0]?.nextStep || card.nextStep || "")}</p>
+    </article>
+  `;
+}
+
+function renderManagerRankingActionChip(item = {}) {
+  if (!item.code) {
+    return `<em>${escapeHtml(item.action || item.reason || "复核")}</em>`;
+  }
+  return `
+    <button type="button" class="ranking-action-chip" data-focus-watchlist-code="${escapeHtml(item.code || "")}">
+      <b>${escapeHtml(item.code || "-")}</b>
+      <span>${escapeHtml(item.action || "复核")}</span>
+    </button>
   `;
 }
 

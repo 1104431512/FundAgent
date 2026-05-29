@@ -1740,7 +1740,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "经理多角度榜单（系统计算，必须先看榜单再决定）：",
     JSON.stringify(compactManagerRankings, null, 2),
-    "客户视角要求：回答客户时优先使用 alertCenter 和 customerDigest：alertCenter 决定今天必须先处理的买入复核、卖出风控、数据补证和用户持仓提醒；customerDigest 用于给客户讲可买、观察、回避。先讲原因和动作，再补必要数字；不要把所有榜单指标原样堆给客户。",
+    "客户视角要求：回答客户时优先使用 customerActionDeck、alertCenter 和 customerDigest：customerActionDeck 决定今天给客户先讲可买复核、等待触发、先回避、卖出/减仓、先补数据；alertCenter 决定今天必须先处理的买入复核、卖出风控、数据补证和用户持仓提醒；customerDigest 用于补充可买、观察、回避。先讲原因和动作，再补必要数字；不要把所有榜单指标原样堆给客户。",
     "要求：榜单是本轮决策前置清单。必须先处理 alertCenter 每个 lane 的前2项和 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、cash_redeployment、position_sizing、quality_score、manager_stability、portfolio_fit、theme_allocation、rotation_opportunity、chase_risk、drawdown_defense、data_confidence、fee_suitability、replacement_choice、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。主题配置榜必须先回答哪个主题值得看，再选代表基金，不得把同主题多个基金全买；回撤防线榜必须先处理利润回吐、历史最大回撤和单仓风险，不得用补仓摊薄替代风控；数据体检榜出现净值过期、份额/费率缺失、持仓缺口时不得给买入执行。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
@@ -8566,6 +8566,13 @@ function buildPortfolioRankingBoard(db = {}) {
   const customerDigest = buildPortfolioRankingCustomerDigest(lists);
   const decisionMatrix = buildPortfolioRankingDecisionMatrix(lists, priorityQueue);
   const alertCenter = buildPortfolioRankingAlertCenter(lists, priorityQueue, decisionMatrix);
+  const customerActionDeck = buildPortfolioRankingCustomerActionDeck({
+    customerDigest,
+    alertCenter,
+    decisionMatrix,
+    priorityQueue,
+    lists
+  });
   return {
     updatedAt: new Date().toISOString(),
     lists,
@@ -8573,8 +8580,9 @@ function buildPortfolioRankingBoard(db = {}) {
     alertCenter,
     decisionMatrix,
     customerDigest,
+    customerActionDeck,
     health: buildPortfolioRankingBoardHealth({ watchlist, positions, userPortfolios, lists }),
-    summary: `${lists.map((list) => `${list.title}${list.items.length}只`).join("，")}；预警${alertCenter.items.length}项；矩阵${decisionMatrix.items.length}只；今日优先${priorityQueue.length}项`
+    summary: `${lists.map((list) => `${list.title}${list.items.length}只`).join("，")}；预警${alertCenter.items.length}项；矩阵${decisionMatrix.items.length}只；今日优先${priorityQueue.length}项；行动牌${customerActionDeck.cards.filter((card) => card.count).length}类`
   };
 }
 
@@ -10969,6 +10977,174 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
   };
 }
 
+function buildPortfolioRankingCustomerActionDeck({ customerDigest = {}, alertCenter = {}, decisionMatrix = {}, priorityQueue = [] } = {}) {
+  const lanes = new Map((alertCenter.lanes || []).map((lane) => [lane.id, lane]));
+  const buyItems = uniquePortfolioCustomerActionItems([
+    ...(customerDigest.buyReview || []),
+    ...((lanes.get("buy")?.items || []))
+  ].filter(isPortfolioCustomerBuyAction), 3);
+  const sellLaneItems = lanes.get("sell")?.items || [];
+  const sellItems = uniquePortfolioCustomerActionItems(
+    sellLaneItems.filter((item) => isPortfolioCustomerSellAction(item)),
+    3
+  );
+  const sellCodes = new Set(sellItems.map((item) => item.code).filter(Boolean));
+  const avoidItems = uniquePortfolioCustomerActionItems([
+    ...(customerDigest.riskAvoid || []).filter((item) => !sellCodes.has(item.code)),
+    ...sellLaneItems.filter((item) => !sellCodes.has(item.code) && isPortfolioCustomerAvoidAction(item))
+  ], 3);
+  const dataItems = uniquePortfolioCustomerActionItems(lanes.get("data")?.items || [], 3);
+  const waitItems = uniquePortfolioCustomerActionItems([
+    ...(customerDigest.watchFocus || []),
+    ...((decisionMatrix.items || []).filter((item) => /方向观察|继续观察|先补证据/.test(item.action || "")))
+  ].filter((item) => !sellCodes.has(item.code)), 3);
+  const cards = [
+    buildPortfolioCustomerActionCard({
+      id: "buy",
+      tone: "buy",
+      title: "可买复核",
+      emptyText: "暂无可买复核",
+      summary: "只放接近买点、现金再部署或小仓试探对象。",
+      nextStep: "先交叉确认走势、费率、持仓前景和仓位上限，再小仓或分批。",
+      items: buyItems
+    }),
+    buildPortfolioCustomerActionCard({
+      id: "wait",
+      tone: "watch",
+      title: "等待触发",
+      emptyText: "暂无等待触发",
+      summary: "方向值得盯，但还差回调、转强、数据或费用确认。",
+      nextStep: "写清下一次触发条件，避免经理泛泛说等待机会。",
+      items: waitItems
+    }),
+    buildPortfolioCustomerActionCard({
+      id: "avoid",
+      tone: "avoid",
+      title: "先回避",
+      emptyText: "暂无回避提醒",
+      summary: "高位、追涨、拥挤或证据不完整时先排除。",
+      nextStep: "等回撤、降温、补齐证据后再恢复复核。",
+      items: avoidItems
+    }),
+    buildPortfolioCustomerActionCard({
+      id: "sell",
+      tone: "sell",
+      title: "卖出/减仓",
+      emptyText: "暂无卖出提醒",
+      summary: "持仓回吐、止盈止损和用户真实持仓提醒优先处理。",
+      nextStep: "先看回吐和单仓风险，别用补仓替代风控。",
+      items: sellItems
+    }),
+    buildPortfolioCustomerActionCard({
+      id: "data",
+      tone: "data",
+      title: "先补数据",
+      emptyText: "暂无数据缺口",
+      summary: "净值、费率、份额、前十大持仓缺失时卡住买入。",
+      nextStep: "证据补齐前，不给买入金额。",
+      items: dataItems
+    })
+  ];
+  return {
+    title: "客户行动牌",
+    summary: cards
+      .filter((card) => card.count)
+      .map((card) => `${card.title}${card.count}`)
+      .join("，") || "暂无直接行动牌；先运行盘前观察或导入持仓。",
+    cards,
+    priorityCodes: (priorityQueue || []).slice(0, 6).map((item) => item.code).filter(Boolean)
+  };
+}
+
+function buildPortfolioCustomerActionCard({ id = "", tone = "watch", title = "", emptyText = "", summary = "", nextStep = "", items = [] } = {}) {
+  const normalizedItems = uniquePortfolioCustomerActionItems(items, 3);
+  return {
+    id,
+    tone,
+    title,
+    emptyText,
+    summary,
+    nextStep,
+    count: normalizedItems.length,
+    items: normalizedItems
+  };
+}
+
+function uniquePortfolioCustomerActionItems(items = [], limit = 3) {
+  const byKey = new Map();
+  for (const item of items || []) {
+    const normalized = buildPortfolioCustomerActionItem(item);
+    const key = [normalized.userId, normalized.code, normalized.action].filter(Boolean).join(":") || normalized.reason;
+    if (!normalized.code && !normalized.reason) continue;
+    if (!byKey.has(key)) byKey.set(key, normalized);
+  }
+  return [...byKey.values()].slice(0, limit);
+}
+
+function buildPortfolioCustomerActionItem(item = {}) {
+  const tags = normalizeStringArray([
+    ...(item.tags || []),
+    ...(item.facts || []),
+    ...(item.gaps || []),
+    item.listTitle || "",
+    item.matrixAction || ""
+  ]).slice(0, 3);
+  return {
+    code: item.code || "",
+    name: item.name || "",
+    userId: item.userId || "",
+    action: item.action || item.matrixAction || "复核",
+    reason: item.reason || selectPortfolioRankingFirstText(item.risks, item.gaps, item.facts, item.tags) || "等待经理复核。",
+    nextStep: item.nextStep || "进入对应榜单查看处理边界。",
+    tags
+  };
+}
+
+function isPortfolioCustomerSellAction(item = {}) {
+  const text = [
+    item.action,
+    item.reason,
+    item.nextStep,
+    item.listId,
+    item.listTitle,
+    ...(item.facts || []),
+    ...(item.risks || []),
+    ...(item.gaps || [])
+  ].filter(Boolean).join(" ");
+  return /sell_risk|卖出|减仓|止盈|止损|回吐|赎回|用户持仓/.test(text);
+}
+
+function isPortfolioCustomerBuyAction(item = {}) {
+  const text = [
+    item.action,
+    item.reason,
+    item.nextStep,
+    item.listId,
+    item.listTitle,
+    ...(item.facts || []),
+    ...(item.risks || []),
+    ...(item.gaps || [])
+  ].filter(Boolean).join(" ");
+  if (/卖出|减仓|止盈|止损|回吐|追涨|高位|拥挤|回避|数据阻塞|持仓数据阻塞|阻塞|过期|不能提交买入|不能把/.test(text)) {
+    return false;
+  }
+  return /买入|试探|启动|再部署|复核|可买|小仓/.test(text);
+}
+
+function isPortfolioCustomerAvoidAction(item = {}) {
+  const text = [
+    item.action,
+    item.reason,
+    item.nextStep,
+    item.listId,
+    item.listTitle,
+    ...(item.facts || []),
+    ...(item.risks || []),
+    ...(item.gaps || [])
+  ].filter(Boolean).join(" ");
+  return /追涨|高位|拥挤|回避|暂不|blocked|chase_risk|风险/.test(text);
+}
+
 function buildPortfolioRankingAlertCenter(lists = [], priorityQueue = [], decisionMatrix = {}) {
   const queueByCode = new Map((priorityQueue || []).map((item) => [String(item.code || ""), item]));
   const matrixByCode = new Map((decisionMatrix.items || []).map((item) => [String(item.code || ""), item]));
@@ -11327,6 +11503,18 @@ function compactPortfolioRankingBoardForModel(board = {}) {
       buyReview: (board.customerDigest.buyReview || []).slice(0, 3),
       watchFocus: (board.customerDigest.watchFocus || []).slice(0, 4),
       riskAvoid: (board.customerDigest.riskAvoid || []).slice(0, 3)
+    } : null,
+    customerActionDeck: board.customerActionDeck ? {
+      summary: board.customerActionDeck.summary || "",
+      cards: (board.customerActionDeck.cards || []).map((card) => ({
+        id: card.id || "",
+        title: card.title || "",
+        tone: card.tone || "",
+        count: Number(card.count || 0),
+        summary: card.summary || "",
+        nextStep: card.nextStep || "",
+        items: (card.items || []).slice(0, 3)
+      }))
     } : null,
     priorityQueue: priorityQueue.slice(0, 8).map((item) => ({
       queueRank: item.queueRank,

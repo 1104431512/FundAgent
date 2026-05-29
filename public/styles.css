@@ -3263,6 +3263,166 @@ button:disabled {
   gap: 10px;
 }
 
+.ranking-action-deck {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #d8e3ec;
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.ranking-action-deck-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ranking-action-deck-head strong,
+.ranking-action-deck-head small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.ranking-action-deck-head strong {
+  color: #1d2d3b;
+  font-size: 15px;
+}
+
+.ranking-action-deck-head small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.42;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ranking-action-deck-grid {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.ranking-action-card {
+  flex: 0 0 156px;
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid #e1e8ee;
+  border-top: 3px solid #7d95aa;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.ranking-action-card-buy {
+  border-top-color: #2f855a;
+}
+
+.ranking-action-card-watch {
+  border-top-color: #2b6cb0;
+}
+
+.ranking-action-card-avoid {
+  border-top-color: #dc6b19;
+}
+
+.ranking-action-card-sell {
+  border-top-color: #b91c1c;
+}
+
+.ranking-action-card-data {
+  border-top-color: #475569;
+}
+
+.ranking-action-card span,
+.ranking-action-card strong,
+.ranking-action-card small,
+.ranking-action-card p,
+.ranking-action-card em {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.ranking-action-card > div:first-child span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ranking-action-card > div:first-child strong {
+  margin-top: 4px;
+  color: #1f2f3d;
+  font-size: 13px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ranking-action-card small,
+.ranking-action-card p,
+.ranking-action-card em {
+  color: #60707f;
+  font-size: 12px;
+  line-height: 1.32;
+}
+
+.ranking-action-card small,
+.ranking-action-card p {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ranking-action-card p {
+  display: none;
+}
+
+.ranking-action-card-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.ranking-action-chip {
+  max-width: 100%;
+  min-height: 23px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border: 1px solid #d8e2ea;
+  border-radius: 999px;
+  color: #314253;
+  background: #f7fafc;
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.ranking-action-chip:hover {
+  border-color: #9fb7c9;
+  background: #eef6fb;
+}
+
+.ranking-action-chip b,
+.ranking-action-chip span {
+  display: inline;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ranking-overview {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
