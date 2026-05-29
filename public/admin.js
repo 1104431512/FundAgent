@@ -290,6 +290,7 @@ function activateTab(tab) {
 function setPortfolioView(view = "overview") {
   const nextView = document.querySelector(`[data-portfolio-view="${view}"]`) ? view : "overview";
   activePortfolioView = nextView;
+  document.body.dataset.activePortfolioView = nextView;
   localStorage.setItem("fundagent_portfolio_view", nextView);
   document.querySelectorAll("[data-portfolio-view-target]").forEach((button) => {
     const active = button.dataset.portfolioViewTarget === nextView;

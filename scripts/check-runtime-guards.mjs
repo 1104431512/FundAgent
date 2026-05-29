@@ -1065,6 +1065,14 @@ const requiredPatterns = [
     message: "admin portfolio command header must be a compact trading-console strip instead of a tall stacked dashboard."
   },
   {
+    pattern: /@media \(min-width:\s*861px\)[\s\S]{0,900}body\[data-active-tab="portfolio"\] \.main[\s\S]{0,260}padding:\s*16px[\s\S]{0,900}\.portfolio-command-panel[\s\S]{0,360}max-height:\s*108px[\s\S]{0,2200}\.portfolio-workspace-switcher small[\s\S]{0,120}display:\s*none/,
+    message: "admin portfolio desktop layout must compress the header and rail labels so the trading workspace fits in one screen."
+  },
+  {
+    pattern: /function setPortfolioView[\s\S]{0,360}document\.body\.dataset\.activePortfolioView\s*=\s*nextView/,
+    message: "admin portfolio view switching must expose the active workspace on the body for view-specific terminal layouts."
+  },
+  {
     pattern: /portfolio-workspace-group[\s\S]{0,160}账户[\s\S]{0,900}data-portfolio-view-target="positions"[\s\S]{0,900}portfolio-workspace-group[\s\S]{0,160}机会[\s\S]{0,900}data-portfolio-view-target="watchlist"[\s\S]{0,900}portfolio-workspace-group[\s\S]{0,160}决策[\s\S]{0,1200}data-portfolio-view-target="diagnostics"[\s\S]{0,900}portfolio-workspace-group[\s\S]{0,160}记录[\s\S]{0,900}data-portfolio-view-target="orders"/,
     message: "admin portfolio page must group stock-terminal workspace entries by account, opportunity, decision, and records instead of one long page."
   },

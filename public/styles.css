@@ -7338,6 +7338,137 @@ button.danger-button:hover {
 }
 
 @media (min-width: 861px) {
+  body[data-active-tab="portfolio"] .main {
+    padding: 16px;
+  }
+
+  .tab-panel[data-panel="portfolio"].active {
+    height: calc(100vh - 32px);
+    gap: 8px;
+  }
+
+  .portfolio-command-panel {
+    min-height: 84px;
+    max-height: 108px;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    overflow: hidden;
+  }
+
+  .portfolio-hero {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .portfolio-hero h2 {
+    font-size: 17px;
+  }
+
+  .portfolio-hero p {
+    margin-top: 4px;
+    -webkit-line-clamp: 1;
+  }
+
+  .portfolio-hero .actions {
+    flex-direction: column;
+    gap: 5px;
+    max-height: 66px;
+    overflow: visible;
+  }
+
+  .portfolio-hero .actions button {
+    min-height: 28px;
+    padding: 5px 8px;
+  }
+
+  .portfolio-kpi-grid {
+    gap: 5px;
+  }
+
+  .portfolio-kpi {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "label value"
+      "note note";
+    gap: 2px 6px;
+    align-content: center;
+    min-height: 56px;
+    padding: 6px 7px;
+  }
+
+  .portfolio-kpi span {
+    grid-area: label;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .portfolio-kpi strong {
+    grid-area: value;
+    margin: 0;
+    font-size: 15px;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .portfolio-kpi small {
+    grid-area: note;
+    max-height: 1.25em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .portfolio-command-panel .info-grid {
+    gap: 4px;
+  }
+
+  .portfolio-command-panel .info-grid > div {
+    grid-template-columns: 50px minmax(0, 1fr);
+    padding: 4px 6px;
+  }
+
+  .portfolio-command-panel .info-grid span {
+    font-size: 11px;
+  }
+
+  .portfolio-command-panel .info-grid strong {
+    max-height: 1.3em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+
+  .portfolio-terminal-shell {
+    gap: 8px;
+  }
+
+  .portfolio-terminal-rail {
+    padding: 8px;
+  }
+
+  .portfolio-workspace-switcher {
+    gap: 8px;
+  }
+
+  .portfolio-workspace-group {
+    gap: 5px;
+  }
+
+  .portfolio-workspace-switcher button {
+    min-height: 40px;
+    grid-template-areas: "label count";
+    padding: 6px 8px;
+  }
+
+  .portfolio-workspace-switcher small {
+    display: none;
+  }
+
   .portfolio-workspace-view[data-portfolio-view="overview"].active {
     grid-template-areas:
       "entries entries"
