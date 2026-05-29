@@ -1076,6 +1076,8 @@ assert(adminHtmlSource.includes("用户持仓关注"), "admin UI must expose use
 assert(adminSource.includes("/api/user-portfolios/holding"), "admin UI must save user-level holdings through the API");
 assert(adminHtmlSource.includes("经理榜单"), "admin UI must expose manager ranking boards");
 assert(adminSource.includes("renderManagerRankings"), "admin UI must render multi-angle ranking boards");
+assert(adminSource.includes("renderManagerRankingOverview"), "admin UI must render ranking board overview cards before detailed lists");
+assert(adminSource.includes("getManagerRankingActionClass"), "admin ranking items must color-code buy, watch, and sell style actions");
 assert(adminSource.includes("ranking-health"), "admin UI must render ranking board state guidance");
 assert(adminSource.includes("ranking-next"), "admin UI must render ranking next-action guidance");
 assert(adminSource.includes("renderManagerRankingDecision"), "admin UI must render per-fund ranking decision matrices");

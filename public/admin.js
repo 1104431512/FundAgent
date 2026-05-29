@@ -71,6 +71,13 @@ document.querySelector("#userPortfolioList")?.addEventListener("click", (event) 
     fillUserHoldingForm(editButton.dataset.userId, editButton.dataset.code);
   }
 });
+document.querySelector("#managerRankingBoard")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-scroll-target]");
+  if (!button) return;
+  const scrollTarget = button.dataset.scrollTarget || "";
+  const target = [...document.querySelectorAll("[data-ranking-id]")].find((node) => node.dataset.rankingId === scrollTarget);
+  target?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -371,7 +378,7 @@ function renderManagerRankings(board = {}) {
     root.innerHTML = `<div class="empty">暂无榜单数据。自选池、持仓或用户持仓关注有数据后会自动生成。</div>`;
     return;
   }
-  root.innerHTML = `${renderManagerRankingHealth(board.health || {})}${lists.map(renderManagerRankingList).join("")}`;
+  root.innerHTML = `${renderManagerRankingHealth(board.health || {})}${renderManagerRankingOverview(lists)}${lists.map(renderManagerRankingList).join("")}`;
 }
 
 function renderManagerRankingHealth(health = {}) {
@@ -384,6 +391,25 @@ function renderManagerRankingHealth(health = {}) {
         <p>${escapeHtml(health.summary || "等待经理下一次复核后更新。")}</p>
       </div>
       ${actions.length ? `<div class="ranking-health-actions">${actions.slice(0, 3).map((action) => `<span>${escapeHtml(action)}</span>`).join("")}</div>` : ""}
+    </div>
+  `;
+}
+
+function renderManagerRankingOverview(lists = []) {
+  if (!lists.length) return "";
+  return `
+    <div class="ranking-overview">
+      ${lists.map((list) => {
+        const items = Array.isArray(list.items) ? list.items : [];
+        const top = items[0] || null;
+        return `
+          <button class="ranking-overview-card ranking-overview-${getManagerRankingListClass(list.id)}" type="button" data-scroll-target="${escapeHtml(list.id || "")}">
+            <span>${escapeHtml(list.title || "榜单")}</span>
+            <strong>${items.length} 只</strong>
+            <small>${top ? `${top.code || ""} ${top.name || ""}`.trim() : (list.emptyText || "暂无触发项")}</small>
+          </button>
+        `;
+      }).join("")}
     </div>
   `;
 }
@@ -410,13 +436,14 @@ function renderManagerRankingList(list = {}) {
 function renderManagerRankingItem(item = {}) {
   const rankClass = item.rank <= 3 ? "top" : "";
   const facts = Array.isArray(item.facts) ? item.facts : [];
+  const actionClass = getManagerRankingActionClass(item.action || item.status || "");
   return `
     <article class="ranking-item ${rankClass}">
       <div class="ranking-index">${escapeHtml(String(item.rank || "-"))}</div>
       <div class="ranking-body">
         <div class="ranking-title">
           <strong>${escapeHtml(item.code || "")} ${escapeHtml(item.name || "")}</strong>
-          <span>${escapeHtml(item.action || item.status || "")}</span>
+          <span class="ranking-action ${actionClass}">${escapeHtml(item.action || item.status || "")}</span>
         </div>
         <p>${escapeHtml(item.reason || "等待下一次复核。")}</p>
         <div class="ranking-meta">
@@ -464,6 +491,13 @@ function getManagerRankingListClass(id = "") {
   if (id === "launch_setup") return "launch";
   if (id === "sell_risk") return "sell";
   if (id === "user_holding_alerts") return "user";
+  return "default";
+}
+
+function getManagerRankingActionClass(text = "") {
+  if (/卖出|减仓|止损|止盈|回吐/.test(text)) return "sell";
+  if (/买入|启动|触发/.test(text)) return "buy";
+  if (/补证据|缺口|等待|观察/.test(text)) return "watch";
   return "default";
 }
 

@@ -2265,7 +2265,15 @@ const requiredPatterns = [
     message: "admin portfolio UI must render manager ranking boards."
   },
   {
-    pattern: /ranking-health[\s\S]{0,1200}ranking-next/,
+    pattern: /renderManagerRankingOverview[\s\S]{0,1400}ranking-overview-card/,
+    message: "admin manager rankings must include overview cards for quick scanning before detailed lists."
+  },
+  {
+    pattern: /getManagerRankingActionClass[\s\S]{0,500}卖出[\s\S]{0,500}买入[\s\S]{0,500}观察/,
+    message: "admin ranking items must visually distinguish buy, watch, and sell style actions."
+  },
+  {
+    pattern: /(?=[\s\S]*ranking-health)(?=[\s\S]*ranking-next)/,
     message: "manager ranking boards must explain empty states and next actions."
   },
   {

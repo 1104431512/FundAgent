@@ -636,6 +636,73 @@ button:disabled {
   gap: 12px;
 }
 
+.ranking-overview {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.ranking-overview-card {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid #dde6ee;
+  border-left: 4px solid #8aa1b5;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  text-align: left;
+  box-shadow: none;
+}
+
+.ranking-overview-card:hover {
+  border-color: #c5d2de;
+  background: #fbfdff;
+}
+
+.ranking-overview-card span,
+.ranking-overview-card strong,
+.ranking-overview-card small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.ranking-overview-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 820;
+}
+
+.ranking-overview-card strong {
+  color: #1d2d3b;
+  font-size: 22px;
+  line-height: 1.05;
+}
+
+.ranking-overview-card small {
+  color: #435363;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.ranking-overview-buy {
+  border-left-color: #2f855a;
+}
+
+.ranking-overview-launch {
+  border-left-color: #2b6cb0;
+}
+
+.ranking-overview-sell {
+  border-left-color: #c05621;
+}
+
+.ranking-overview-user {
+  border-left-color: #5f6f52;
+}
+
 .ranking-health {
   grid-column: 1 / -1;
   display: grid;
@@ -802,12 +869,30 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-.ranking-title span {
+.ranking-title .ranking-action {
   flex: 0 0 auto;
-  color: var(--accent);
   font-size: 12px;
   font-weight: 900;
   white-space: nowrap;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #2f4050;
+  background: #edf2f7;
+}
+
+.ranking-action.buy {
+  color: #176142;
+  background: #e5f6ed;
+}
+
+.ranking-action.sell {
+  color: #8b3217;
+  background: #fff1e8;
+}
+
+.ranking-action.watch {
+  color: #365d87;
+  background: #edf6ff;
 }
 
 .ranking-body p {
