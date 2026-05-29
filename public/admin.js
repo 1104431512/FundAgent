@@ -1800,29 +1800,65 @@ function renderPortfolioOpportunityBoard(context = {}) {
   const total = ready.length + waiting.length + launchEve.length;
   setText("#portfolioOpportunityState", total ? `${total} 个观察入口` : "暂无机会");
   root.innerHTML = `
-    <section class="opportunity-command-row">
-      <article>
-        <span>先看</span>
-        <strong>接近可买</strong>
-        <small>只展示通过基础买点复核的候选。</small>
-      </article>
-      <article>
-        <span>再等</span>
-        <strong>等待回调</strong>
-        <small>适合盯回撤完成，不在这里追涨。</small>
-      </article>
-      <article>
-        <span>警惕</span>
-        <strong>暂不买</strong>
-        <small>把风险候选放在独立区域，避免混进推荐。</small>
-      </article>
-    </section>
+    ${renderPortfolioOpportunityCommand({ ready, waiting, launchEve, blocked })}
     <div class="opportunity-lane-grid">
       ${renderOpportunityLane("接近可买", ready, "buy", "暂无可买复核候选。")}
       ${renderOpportunityLane("等待回调", waiting, "watch", "暂无等待回调候选。")}
       ${renderOpportunityLane("启动前夜", launchEve, "launch", "暂无低位启动前夜候选。")}
       ${renderOpportunityLane("暂不买", blocked, "risk", "暂无被拦截候选。", 4)}
     </div>
+  `;
+}
+
+function renderPortfolioOpportunityCommand({ ready = [], waiting = [], launchEve = [], blocked = [] } = {}) {
+  const lead = selectPortfolioOpportunityLead({ ready, waiting, launchEve, blocked });
+  const code = String(lead.item?.code || "").trim();
+  return `
+    <section class="opportunity-command-row" aria-label="机会指挥条">
+      <article class="opportunity-command-primary opportunity-command-${escapeHtml(lead.tone || "watch")}">
+        <span>${escapeHtml(lead.label || "今日机会指挥")}</span>
+        <strong>${escapeHtml(code ? `${code} ${lead.item?.name || ""}`.trim() : "暂无第一优先候选")}</strong>
+        <small>${escapeHtml(lead.reason || "等待经理生成接近可买、等待回调或启动前夜候选。")}</small>
+      </article>
+      <div class="opportunity-command-counts">
+        ${renderOpportunityCommandCount("接近可买", ready.length, "buy_preparation")}
+        ${renderOpportunityCommandCount("启动前夜", launchEve.length, "launch_setup")}
+        ${renderOpportunityCommandCount("等待回调", waiting.length, "launch_setup")}
+        ${renderOpportunityCommandCount("暂不买", blocked.length, "chase_risk")}
+      </div>
+      <div class="opportunity-command-actions">
+        <em class="ranking-action ${getManagerRankingActionClass(lead.action || lead.label || "")}">${escapeHtml(lead.action || "等待信号")}</em>
+        ${code ? `<button type="button" class="ranking-detail-link" data-focus-watchlist-code="${escapeHtml(code)}">自选详情</button>` : ""}
+        <button type="button" class="ranking-detail-link" data-open-ranking-filter="${escapeHtml(lead.rankingFilter || "buy_preparation")}">对应榜单</button>
+      </div>
+    </section>
+  `;
+}
+
+function selectPortfolioOpportunityLead({ ready = [], waiting = [], launchEve = [], blocked = [] } = {}) {
+  const candidates = [
+    { item: ready[0], tone: "buy", label: "先看可买", action: "买入复核", rankingFilter: "buy_preparation" },
+    { item: launchEve[0], tone: "launch", label: "盯启动前夜", action: "启动确认", rankingFilter: "launch_setup" },
+    { item: waiting[0], tone: "watch", label: "等待回调", action: "等触发", rankingFilter: "launch_setup" },
+    { item: blocked[0], tone: "risk", label: "先排风险", action: "暂不买", rankingFilter: "chase_risk" }
+  ];
+  const selected = candidates.find((candidate) => candidate.item) || candidates[0];
+  const item = selected.item || null;
+  return {
+    ...selected,
+    item,
+    reason: item
+      ? item.buyTriggers?.[0] || item.positionPlan || item.reason || selectWatchlistPrimaryGap(item)
+      : "暂无通过机会池筛选的候选；先运行盘前观察或补充自选池。"
+  };
+}
+
+function renderOpportunityCommandCount(label, count, rankingFilter) {
+  return `
+    <button type="button" data-open-ranking-filter="${escapeHtml(rankingFilter || "decision_synthesis")}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(String(count || 0))}</strong>
+    </button>
   `;
 }
 

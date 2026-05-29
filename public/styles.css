@@ -3101,23 +3101,43 @@ button:disabled {
 
 .opportunity-command-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.95fr) auto;
   gap: 10px;
+  align-items: stretch;
 }
 
 .opportunity-command-row article {
   min-width: 0;
   padding: 12px;
   border: 1px solid #dde6ee;
+  border-left: 4px solid #d97706;
   border-radius: 8px;
   background: #f8fbfd;
+}
+
+.opportunity-command-buy {
+  border-left-color: #2f855a;
+  background: #f6fbf8;
+}
+
+.opportunity-command-launch,
+.opportunity-command-watch {
+  border-left-color: #d97706;
+  background: #fffbf4;
+}
+
+.opportunity-command-risk {
+  border-left-color: #b3261e;
+  background: #fff7f7;
 }
 
 .opportunity-command-row span,
 .opportunity-command-row strong,
 .opportunity-command-row small {
   display: block;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .opportunity-command-row span {
@@ -3137,6 +3157,58 @@ button:disabled {
   color: #60707f;
   font-size: 12px;
   line-height: 1.42;
+}
+
+.opportunity-command-counts {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.opportunity-command-counts button {
+  min-width: 0;
+  min-height: 100%;
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  align-content: center;
+  padding: 9px;
+  border: 1px solid #dce5ec;
+  border-radius: 8px;
+  color: #314253;
+  background: #ffffff;
+  box-shadow: none;
+  text-align: left;
+}
+
+.opportunity-command-counts button:hover {
+  border-color: #b7c9d8;
+  background: #f2f8fb;
+}
+
+.opportunity-command-counts span,
+.opportunity-command-counts strong {
+  max-width: 100%;
+}
+
+.opportunity-command-counts span {
+  color: #68798a;
+  font-size: 11px;
+}
+
+.opportunity-command-counts strong {
+  color: #1f2f3d;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.opportunity-command-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
 }
 
 .opportunity-lane-grid {
@@ -7169,6 +7241,20 @@ button.danger-button:hover {
 
   .portfolio-ranking-radar-priority button {
     flex-basis: 190px;
+  }
+
+  .opportunity-command-counts {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .opportunity-command-counts button {
+    flex: 0 0 92px;
+  }
+
+  .opportunity-command-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .position-main {

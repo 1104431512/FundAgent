@@ -2573,6 +2573,10 @@ const requiredPatterns = [
     message: "admin portfolio UI must split observation opportunities into buy, pullback, and launch-eve entrances."
   },
   {
+    pattern: /renderPortfolioOpportunityCommand[\s\S]{0,2200}selectPortfolioOpportunityLead[\s\S]{0,1800}buy_preparation[\s\S]{0,1800}launch_setup/,
+    message: "admin opportunity workspace must lift the first actionable opportunity and shortcut counts above the lane grid."
+  },
+  {
     pattern: /(?=[\s\S]*PORTFOLIO_DATA_LANES[\s\S]{0,900}净值\/走势[\s\S]{0,900}份额\/费率[\s\S]{0,900}持仓\/前景[\s\S]{0,900}来源\/补证)(?=[\s\S]*function renderPortfolioDataBoard)/,
     message: "admin portfolio UI must split data confidence into NAV, fee, holdings, and source lanes."
   },

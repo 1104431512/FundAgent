@@ -1459,6 +1459,7 @@ assert(adminSource.includes("renderPortfolioDataBoard"), "admin portfolio UI mus
 assert(adminSource.includes("renderPortfolioDecisionMatrixBoard"), "admin portfolio UI must render a compact decision matrix outside the full ranking page");
 assert(adminSource.includes("renderPortfolioActionDesk"), "admin portfolio UI must render a compact action desk outside the long run timeline");
 assert(adminSource.includes("renderPortfolioAlertBoard"), "admin portfolio UI must render a compact alert desk outside the long run timeline");
+assert(adminSource.includes("renderPortfolioOpportunityCommand") && adminSource.includes("selectPortfolioOpportunityLead"), "admin opportunity workspace must surface the first actionable opportunity before lane details");
 assert(adminSource.includes("PORTFOLIO_POSITION_LANES"), "admin portfolio positions view must split holdings into risk, profit, core, and watch lanes");
 assert(adminStyleSource.includes("portfolio-ranking-radar-grid") && adminStyleSource.includes("portfolio-ranking-radar-data"), "admin portfolio ranking radar must be styled as a scannable five-action-card board");
 assert(adminStyleSource.includes("portfolio-ranking-command") && adminStyleSource.includes("portfolio-ranking-command-lanes"), "admin portfolio ranking radar must style the first-scan command strip and lane counters");
@@ -1475,6 +1476,7 @@ assert(adminStyleSource.includes("alert-terminal"), "admin portfolio alert desk 
 assert(adminStyleSource.includes("alert-lane-grid"), "admin portfolio alert desk must split buy, sell/risk, data, and user alerts into lanes");
 assert(adminStyleSource.includes("position-terminal"), "admin portfolio positions view must be styled as a bounded terminal panel");
 assert(adminStyleSource.includes("position-lane-grid"), "admin portfolio positions view must split holdings into scannable lanes");
+assert(adminStyleSource.includes("opportunity-command-counts") && adminStyleSource.includes("opportunity-command-actions"), "admin opportunity workspace must style the first-opportunity command strip and count shortcuts");
 assert(adminStyleSource.includes("matrix-terminal"), "admin portfolio decision matrix must be styled as a bounded terminal panel");
 assert(adminStyleSource.includes("matrix-table"), "admin portfolio decision matrix must render a horizontal buy-sector-risk-data comparison table");
 assert(adminHtmlSource.includes("综合决策"), "admin UI must describe integrated decision-synthesis rankings as a manager decision angle");
