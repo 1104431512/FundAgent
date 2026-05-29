@@ -152,6 +152,21 @@ const rankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfol
           lowPositionPct250: 44,
           pullbackSetup: { signal: "pullback_complete", signalText: "回调完成", score: 78 }
         },
+        risk: {
+          oneYear: {
+            ok: true,
+            annualizedReturnPct: 16.2,
+            maxDrawdownPct: -12.4,
+            sharpe: 1.18
+          },
+          threeYear: {
+            ok: true,
+            annualizedReturnPct: 12.6,
+            maxDrawdownPct: -18.8,
+            sharpe: 0.92
+          }
+        },
+        scale: { valueYi: 18.6 },
         matchedThemes: [{
           id: "medicine",
           name: "医药/创新药",
@@ -201,6 +216,7 @@ assert(rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.s
 assert(rankingBoard.lists.find((item) => item.id === "launch_setup")?.items.some((item) => item.code === "000001"), "manager ranking board must expose low-position launch candidates");
 assert(rankingBoard.lists.find((item) => item.id === "cash_redeployment")?.items.some((item) => item.code === "000001"), "manager ranking board must expose high-cash redeployment candidates");
 assert(rankingBoard.lists.find((item) => item.id === "position_sizing")?.items.some((item) => item.code === "000001"), "manager ranking board must expose position-sizing candidates with explicit starter ranges");
+assert(rankingBoard.lists.find((item) => item.id === "quality_score")?.items.some((item) => item.code === "000005"), "manager ranking board must expose risk-adjusted fund quality candidates");
 assert(rankingBoard.lists.find((item) => item.id === "portfolio_fit")?.items.some((item) => item.code === "000005"), "manager ranking board must expose portfolio-fit candidates that diversify current exposure");
 assert(rankingBoard.lists.find((item) => item.id === "rotation_opportunity")?.items.some((item) => item.code === "000005"), "manager ranking board must expose sector-rotation opportunity candidates");
 assert(rankingBoard.lists.find((item) => item.id === "chase_risk")?.items.some((item) => item.code === "000006"), "manager ranking board must expose hot chase-risk candidates");
@@ -224,6 +240,7 @@ const synthesisRankingItem = rankingBoard.lists.find((item) => item.id === "deci
 const buyRankingItem = rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.find((item) => item.code === "000001");
 const cashRedeploymentRankingItem = rankingBoard.lists.find((item) => item.id === "cash_redeployment")?.items.find((item) => item.code === "000001");
 const positionSizingRankingItem = rankingBoard.lists.find((item) => item.id === "position_sizing")?.items.find((item) => item.code === "000001");
+const qualityRankingItem = rankingBoard.lists.find((item) => item.id === "quality_score")?.items.find((item) => item.code === "000005");
 const portfolioFitRankingItem = rankingBoard.lists.find((item) => item.id === "portfolio_fit")?.items.find((item) => item.code === "000005");
 const rotationRankingItem = rankingBoard.lists.find((item) => item.id === "rotation_opportunity")?.items.find((item) => item.code === "000005");
 const chaseRankingItem = rankingBoard.lists.find((item) => item.id === "chase_risk")?.items.find((item) => item.code === "000006");
@@ -238,6 +255,8 @@ assert(cashRedeploymentRankingItem?.reason.includes("现金偏高"), "cash-redep
 assert(/0\.5%-2\.5%|小仓/.test(cashRedeploymentRankingItem?.decision?.nextStep || ""), "cash-redeployment ranking items must force small starter-buy review instead of vague waiting");
 assert(/0\.5%|1\.5%|2\.5%|0元观察/.test(positionSizingRankingItem?.decision?.nextStep || ""), "position-sizing ranking items must turn buy interest into explicit weight limits");
 assert(positionSizingRankingItem?.facts?.some((item) => /现金|仓位|试探仓/.test(item)), "position-sizing ranking items must include account-aware sizing facts");
+assert(qualityRankingItem?.facts?.some((item) => /夏普|回撤|规模/.test(item)), "quality ranking items must expose risk-adjusted quality facts");
+assert(/买入准备|质量|风险收益/.test(qualityRankingItem?.decision?.nextStep || ""), "quality ranking items must force quality evidence to be cross-checked before buying");
 assert(/组合|补位|适配/.test(portfolioFitRankingItem?.reason || portfolioFitRankingItem?.action || ""), "portfolio-fit ranking items must explain how a candidate fits the current portfolio before buying");
 assert(portfolioFitRankingItem?.decision?.nextStep?.includes("买入准备"), "portfolio-fit ranking items must force cross-checking with buy-preparation evidence");
 assert(rotationRankingItem?.facts.some((item) => item.includes("医药") || item.includes("轮动")), "rotation ranking items must expose readable sector-rotation facts");
@@ -1078,6 +1097,8 @@ assert(serverSource.includes("buildPortfolioCashRedeploymentRanking"), "portfoli
 assert(serverSource.includes("cash_redeployment"), "portfolio decision prompt and ranking guards must reference the cash-redeployment lane");
 assert(serverSource.includes("buildPortfolioPositionSizingRanking"), "portfolio ranking board must include a position-sizing lane to convert buy candidates into weight limits");
 assert(serverSource.includes("position_sizing"), "portfolio decision prompt and ranking guards must reference the position-sizing lane");
+assert(serverSource.includes("buildPortfolioQualityScoreRanking"), "portfolio ranking board must include a fund-quality lane to avoid buying weak products on timing alone");
+assert(serverSource.includes("quality_score"), "portfolio decision prompt and ranking guards must reference the fund-quality lane");
 assert(serverSource.includes("buildPortfolioFitRanking"), "portfolio ranking board must include a portfolio-fit lane to prevent duplicate same-theme buying");
 assert(serverSource.includes("portfolio_fit"), "portfolio decision prompt and ranking guards must reference the portfolio-fit lane");
 const portfolioDecisionCapabilitySource = serverSource.slice(
@@ -1257,6 +1278,7 @@ assert(adminHtmlSource.includes("板块轮动"), "admin UI must describe sector-
 assert(adminHtmlSource.includes("追涨风险"), "admin UI must describe chase-risk rankings as a manager decision angle");
 assert(adminHtmlSource.includes("持仓前景"), "admin UI must describe top-ten holdings outlook rankings as a manager decision angle");
 assert(adminHtmlSource.includes("仓位方案"), "admin UI must describe position-sizing rankings as a manager decision angle");
+assert(adminHtmlSource.includes("基金质量"), "admin UI must describe fund-quality rankings as a manager decision angle");
 assert(adminHtmlSource.includes("组合适配"), "admin UI must describe portfolio-fit rankings as a manager decision angle");
 assert(adminHtmlSource.includes("费率适配"), "admin UI must describe share-class fee suitability rankings as a manager decision angle");
 assert(adminSource.includes("renderManagerRankings"), "admin UI must render multi-angle ranking boards");
@@ -1274,6 +1296,7 @@ assert(adminSource.includes("renderWatchlistRankingRefs"), "admin UI watchlist d
 assert(adminSource.includes("decision_synthesis"), "admin UI must render the decision-synthesis ranking lane");
 assert(adminSource.includes("cash_redeployment"), "admin UI must render the cash-redeployment ranking lane");
 assert(adminSource.includes("position_sizing"), "admin UI must render the position-sizing ranking lane");
+assert(adminSource.includes("quality_score"), "admin UI must render the fund-quality ranking lane");
 assert(adminSource.includes("portfolio_fit"), "admin UI must render the portfolio-fit ranking lane");
 assert(adminSource.includes("rotation_opportunity"), "admin UI must render the sector-rotation ranking lane");
 assert(adminSource.includes("chase_risk"), "admin UI must render the chase-risk ranking lane");
@@ -1295,6 +1318,9 @@ assert(adminStyleSource.includes("ranking-action.redeploy"), "admin UI must visu
 assert(adminStyleSource.includes("ranking-overview-sizing"), "admin UI must visually distinguish position-sizing overview cards");
 assert(adminStyleSource.includes("ranking-list-sizing"), "admin UI must visually distinguish position-sizing ranking lists");
 assert(adminStyleSource.includes("ranking-action.sizing"), "admin UI must visually distinguish position-sizing action pills");
+assert(adminStyleSource.includes("ranking-overview-quality"), "admin UI must visually distinguish fund-quality overview cards");
+assert(adminStyleSource.includes("ranking-list-quality"), "admin UI must visually distinguish fund-quality ranking lists");
+assert(adminStyleSource.includes("ranking-action.quality"), "admin UI must visually distinguish fund-quality action pills");
 assert(adminStyleSource.includes("ranking-overview-fit"), "admin UI must visually distinguish portfolio-fit overview cards");
 assert(adminStyleSource.includes("ranking-list-fit"), "admin UI must visually distinguish portfolio-fit ranking lists");
 assert(adminStyleSource.includes("ranking-action.fit"), "admin UI must visually distinguish portfolio-fit action pills");
