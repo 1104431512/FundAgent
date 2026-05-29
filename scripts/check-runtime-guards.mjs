@@ -2257,8 +2257,12 @@ const requiredPatterns = [
     message: "ranking-board guards must add traceable fallback review actions when top ranked items are omitted."
   },
   {
-    pattern: /buy_preparation[\s\S]*launch_setup[\s\S]*holdings_outlook[\s\S]*fee_suitability[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
-    message: "manager ranking boards must cover buy preparation, low-position launch, holdings outlook, fee suitability, opportunity cost, sell risk, and user holding alerts."
+    pattern: /buy_preparation[\s\S]*launch_setup[\s\S]*rotation_opportunity[\s\S]*holdings_outlook[\s\S]*fee_suitability[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
+    message: "manager ranking boards must cover buy preparation, low-position launch, sector rotation, holdings outlook, fee suitability, opportunity cost, sell risk, and user holding alerts."
+  },
+  {
+    pattern: /function buildPortfolioRotationOpportunityRanking[\s\S]{0,2200}板块轮动[\s\S]{0,2200}拥挤度/,
+    message: "manager ranking boards must include a sector-rotation opportunity lane with low-position and crowding evidence."
   },
   {
     pattern: /function buildPortfolioFeeSuitabilityRanking[\s\S]{0,1800}A\/C\/D\/I[\s\S]{0,1800}每万/,
@@ -2285,8 +2289,12 @@ const requiredPatterns = [
     message: "admin manager rankings must include overview cards for quick scanning before detailed lists."
   },
   {
-    pattern: /getManagerRankingActionClass[\s\S]{0,900}卖出[\s\S]{0,900}买入[\s\S]{0,900}持仓[\s\S]{0,900}费用[\s\S]{0,900}机会[\s\S]{0,900}观察/,
-    message: "admin ranking items must visually distinguish buy, holdings-outlook, fee-suitability, opportunity-cost, watch, and sell style actions."
+    pattern: /getManagerRankingActionClass[\s\S]{0,900}卖出[\s\S]{0,900}轮动[\s\S]{0,900}买入[\s\S]{0,900}持仓[\s\S]{0,900}费用[\s\S]{0,900}机会[\s\S]{0,900}观察/,
+    message: "admin ranking items must visually distinguish buy, sector-rotation, holdings-outlook, fee-suitability, opportunity-cost, watch, and sell style actions."
+  },
+  {
+    pattern: /(?=[\s\S]*ranking-overview-rotation)(?=[\s\S]*ranking-list-rotation)(?=[\s\S]*ranking-action\.rotation)/,
+    message: "admin ranking board must visually distinguish sector-rotation cards, lists, and action pills."
   },
   {
     pattern: /(?=[\s\S]*ranking-overview-fee)(?=[\s\S]*ranking-list-fee)(?=[\s\S]*ranking-action\.fee)/,

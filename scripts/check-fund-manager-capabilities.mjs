@@ -126,12 +126,43 @@ const rankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfol
           }
         }
       }
+    },
+    {
+      code: "000005",
+      name: "医药轮动低位基金C",
+      shareClass: "C",
+      status: "watch",
+      priority: 1,
+      reason: "医药板块低位轮动，走势回调完成后刚转强。",
+      setupEvidence: ["板块轮动线索", "回调完成"],
+      lastSnapshot: {
+        trendProfile: {
+          ok: true,
+          return5dPct: 1.2,
+          return10dPct: 2.4,
+          return20dPct: 3.2,
+          lowPositionPct120: 32,
+          lowPositionPct250: 44,
+          pullbackSetup: { signal: "pullback_complete", signalText: "回调完成", score: 78 }
+        },
+        matchedThemes: [{
+          id: "medicine",
+          name: "医药/创新药",
+          stage: "low_position_rotation",
+          positionSignal: "low_position_rotation",
+          rotationScore: 62,
+          lowPositionScore: 58,
+          crowdingScore: 22,
+          forwardScore: 46
+        }]
+      }
     }
   ],
   userPortfolios: normalizedUserPortfolios
 }));
 assert(rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.some((item) => item.code === "000001"), "manager ranking board must expose buy-preparation candidates");
 assert(rankingBoard.lists.find((item) => item.id === "launch_setup")?.items.some((item) => item.code === "000001"), "manager ranking board must expose low-position launch candidates");
+assert(rankingBoard.lists.find((item) => item.id === "rotation_opportunity")?.items.some((item) => item.code === "000005"), "manager ranking board must expose sector-rotation opportunity candidates");
 assert(rankingBoard.lists.find((item) => item.id === "holdings_outlook")?.items.some((item) => item.code === "000003"), "manager ranking board must expose candidates with supportive top-ten holdings");
 assert(rankingBoard.lists.find((item) => item.id === "fee_suitability")?.items.some((item) => item.code === "000004"), "manager ranking board must expose share-class fee suitability candidates");
 assert(rankingBoard.lists.find((item) => item.id === "opportunity_cost")?.nextAction, "manager ranking board must include an opportunity-cost list even when it is empty");
@@ -140,15 +171,19 @@ assert(rankingBoard.health?.summary, "manager ranking board must explain the cur
 assert(rankingBoard.lists.every((item) => item.nextAction), "manager ranking board empty states must include next actions");
 assert(rankingBoard.priorityQueue?.length >= 3, "manager ranking board must build a cross-list priority queue");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "008327" && item.listId === "sell_risk"), "priority queue must include urgent sell-risk items");
+assert(rankingBoard.priorityQueue.some((item) => item.code === "000005" && item.listId === "rotation_opportunity"), "priority queue must include sector-rotation opportunity items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000004" && item.listId === "fee_suitability"), "priority queue must include fee-suitability review items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000003" && item.listId === "holdings_outlook"), "priority queue must include holdings-outlook review items");
 assert(rankingBoard.priorityQueue.every((item) => item.queueRank && item.nextStep), "priority queue items must be ranked and actionable");
 const buyRankingItem = rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.find((item) => item.code === "000001");
+const rotationRankingItem = rankingBoard.lists.find((item) => item.id === "rotation_opportunity")?.items.find((item) => item.code === "000005");
 const holdingsRankingItem = rankingBoard.lists.find((item) => item.id === "holdings_outlook")?.items.find((item) => item.code === "000003");
 const feeRankingItem = rankingBoard.lists.find((item) => item.id === "fee_suitability")?.items.find((item) => item.code === "000004");
 const sellRankingItem = rankingBoard.lists.find((item) => item.id === "sell_risk")?.items.find((item) => item.code === "008327");
 assert(buyRankingItem?.decision?.highlights?.length, "buy ranking items must explain the opportunity highlight");
 assert(buyRankingItem?.decision?.nextStep, "buy ranking items must include an actionable next step");
+assert(rotationRankingItem?.facts.some((item) => item.includes("医药") || item.includes("轮动")), "rotation ranking items must expose readable sector-rotation facts");
+assert(/交叉复核|小仓/.test(rotationRankingItem?.decision?.nextStep || ""), "rotation ranking items must force cross-checking before small starter buys");
 assert(holdingsRankingItem?.reason.includes("持仓前景"), "holdings-outlook ranking items must explain top-ten holdings outlook");
 assert(holdingsRankingItem?.facts.some((item) => item.includes("新能源")), "holdings-outlook ranking items must expose the holding theme");
 assert(feeRankingItem?.facts.some((item) => item.includes("C类") || item.includes("每万")), "fee-suitability ranking items must expose readable share-class fee facts");
@@ -1144,12 +1179,15 @@ assert(adminHtmlSource.includes("用户持仓关注"), "admin UI must expose use
 assert(adminSource.includes("/api/user-portfolios/holding"), "admin UI must save user-level holdings through the API");
 assert(adminHtmlSource.includes("经理榜单"), "admin UI must expose manager ranking boards");
 assert(adminHtmlSource.includes("机会成本"), "admin UI must describe opportunity-cost rankings as a manager decision angle");
+assert(adminHtmlSource.includes("板块轮动"), "admin UI must describe sector-rotation rankings as a manager decision angle");
 assert(adminHtmlSource.includes("持仓前景"), "admin UI must describe top-ten holdings outlook rankings as a manager decision angle");
 assert(adminHtmlSource.includes("费率适配"), "admin UI must describe share-class fee suitability rankings as a manager decision angle");
 assert(adminSource.includes("renderManagerRankings"), "admin UI must render multi-angle ranking boards");
 assert(adminSource.includes("renderManagerPriorityQueue"), "admin UI must render the cross-ranking priority queue");
 assert(adminSource.includes("renderManagerRankingOverview"), "admin UI must render ranking board overview cards before detailed lists");
+assert(adminSource.includes("rotation_opportunity"), "admin UI must render the sector-rotation ranking lane");
 assert(adminSource.includes("fee_suitability"), "admin UI must render the fee-suitability ranking lane");
+assert(adminStyleSource.includes("ranking-overview-rotation"), "admin UI must visually distinguish sector-rotation overview cards");
 assert(adminStyleSource.includes("ranking-overview-fee"), "admin UI must visually distinguish fee-suitability overview cards");
 assert(adminSource.includes("getManagerRankingActionClass"), "admin ranking items must color-code buy, watch, and sell style actions");
 assert(adminSource.includes("ranking-health"), "admin UI must render ranking board state guidance");

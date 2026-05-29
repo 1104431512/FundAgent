@@ -1740,7 +1740,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "经理多角度榜单（系统计算，必须先看榜单再决定）：",
     JSON.stringify(compactManagerRankings, null, 2),
-    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 buy_preparation、fee_suitability、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
+    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 buy_preparation、rotation_opportunity、fee_suitability、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
     JSON.stringify((missedFollowThroughQueue || []).slice(0, 5), null, 2),
@@ -3687,7 +3687,7 @@ function inferPortfolioRankingBoardReviewAction(list = {}, item = {}) {
 function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = []) {
   const lists = Array.isArray(board?.lists) ? board.lists : [];
   const existingCodes = new Set((existingActions || []).map((action) => action.code).filter(Boolean));
-  const watchedListIds = new Set(["buy_preparation", "launch_setup", "fee_suitability", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
+  const watchedListIds = new Set(["buy_preparation", "launch_setup", "rotation_opportunity", "fee_suitability", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
   const actions = [];
   for (const list of lists) {
     if (!watchedListIds.has(String(list?.id || ""))) continue;
@@ -8476,6 +8476,7 @@ function buildPortfolioRankingBoard(db = {}) {
   const lists = [
     buildPortfolioBuyPreparationRanking(watchlist),
     buildPortfolioLaunchSetupRanking(watchlist),
+    buildPortfolioRotationOpportunityRanking(watchlist),
     buildPortfolioHoldingsOutlookRanking(watchlist),
     buildPortfolioFeeSuitabilityRanking(watchlist),
     buildPortfolioOpportunityCostRanking(db, watchlist),
@@ -8498,8 +8499,8 @@ function buildPortfolioRankingBoardHealth({ watchlist = [], positions = [], user
     return {
       level: "ok",
       title: "榜单已生成",
-      summary: `当前有 ${totalItems} 个可复核对象，经理可以按买入、低位启动、持仓前景、费率适配、机会成本、卖出风险和用户持仓提醒分层处理。`,
-      actions: ["优先处理排名靠前项", "买点/费率/持仓/错过/卖出分开复核", "把用户真实持仓提醒放入每日跟踪"]
+      summary: `当前有 ${totalItems} 个可复核对象，经理可以按买入、低位启动、板块轮动、持仓前景、费率适配、机会成本、卖出风险和用户持仓提醒分层处理。`,
+      actions: ["优先处理排名靠前项", "买点/轮动/费率/持仓/错过/卖出分开复核", "把用户真实持仓提醒放入每日跟踪"]
     };
   }
   if (!watchlist.length && !positions.length && !userPortfolios.length) {
@@ -8568,6 +8569,187 @@ function buildPortfolioLaunchSetupRanking(watchlist = []) {
     nextAction: "下一步放宽行业召回范围，再用低位、回撤深度和持仓前景二次筛选。",
     items
   });
+}
+
+function buildPortfolioRotationOpportunityRanking(watchlist = []) {
+  const items = (watchlist || [])
+    .filter((item) => item?.code && ["ready", "waiting_pullback", "watch"].includes(item.status))
+    .map(buildPortfolioRotationOpportunityRankingItem)
+    .filter(Boolean)
+    .sort(compareRankingItems)
+    .slice(0, 6);
+  return buildPortfolioRankingList({
+    id: "rotation_opportunity",
+    title: "板块轮动榜",
+    subtitle: "把题材位置、低位修复和拥挤度放在一起看，减少新闻追涨。",
+    emptyText: "暂无低位轮动证据明确的候选。",
+    nextAction: "下一步刷新题材雷达和低位候选，优先找轮动评分改善、拥挤度不高、走势刚修复的基金。",
+    items
+  });
+}
+
+function buildPortfolioRotationOpportunityRankingItem(item = {}) {
+  const evidence = resolvePortfolioRotationOpportunityEvidence(item);
+  if (!evidence.shouldSurface) return null;
+  return buildPortfolioRankingItem({
+    code: item.code,
+    name: item.name,
+    source: "板块轮动",
+    score: round(evidence.score, 1),
+    action: evidence.highChase ? "轮动降温观察" : evidence.strong ? "轮动启动复核" : "低位轮动观察",
+    reason: buildPortfolioRotationOpportunityReason(evidence),
+    facts: buildPortfolioRotationOpportunityFacts(evidence),
+    decision: {
+      highlights: [
+        evidence.themeName ? `${evidence.themeName}：${evidence.themePositionLabel || "轮动线索待确认"}` : "",
+        evidence.setupLabel || "",
+        evidence.rotationLine || ""
+      ].filter(Boolean),
+      risks: [
+        evidence.highChase ? "板块或基金已经偏热，不能把新闻催化当作追买理由。" : "",
+        evidence.crowdingRisk ? "拥挤度偏高，只能等待回调或小额观察。" : "",
+        evidence.missingTheme ? "缺少题材雷达匹配，轮动判断置信度不足。" : ""
+      ].filter(Boolean),
+      gaps: [
+        evidence.missingTheme ? "缺题材雷达" : "",
+        evidence.needsEarlyTurn ? "缺5日/10日温和转强" : "",
+        evidence.needsLowPosition ? "缺120日或250日低位证据" : ""
+      ].filter(Boolean),
+      nextStep: evidence.highChase
+        ? "降级为观察，等拥挤度下降或回撤后再进入买入准备。"
+        : "和买入准备榜、费率适配榜交叉复核；若低位和早期转强同时成立，只能先小仓试探。"
+    },
+    status: evidence.highChase ? "watch" : evidence.strong ? "ready" : item.status || "watch"
+  });
+}
+
+function resolvePortfolioRotationOpportunityEvidence(item = {}) {
+  const profile = item.lastSnapshot || {};
+  const trend = profile.trendProfile || {};
+  const themes = getCandidateThemeSignals({
+    ...profile,
+    name: item.name || profile.name,
+    type: item.type || profile.type,
+    matchedThemes: profile.matchedThemes || item.matchedThemes || [],
+    seed: {
+      ...(profile.seed || {}),
+      name: item.name || profile.seed?.name || profile.name,
+      matchedThemes: profile.seed?.matchedThemes || profile.matchedThemes || item.matchedThemes || []
+    }
+  });
+  const theme = themes[0] || {};
+  const themeRotationScore = scorePortfolioWatchThemeRotation(theme);
+  const trendRotationScore = scorePortfolioWatchTrendRotation(trend);
+  const text = mergeStringLists(item.setupEvidence, item.buyTriggers, item.reason, item.riskNotes).join(" ");
+  const textScore = /低位轮动|板块轮动|轮动/.test(text) ? 12 : /低位|回调完成|启动前夜|刚转强/.test(text) ? 6 : 0;
+  const readinessScore = Math.min(18, Number(item.readinessScore || 0) / 5);
+  const highChase = theme.positionSignal === "high_chase_risk"
+    || theme.stage === "crowded"
+    || Number(theme.crowdingScore) >= 55
+    || Number(trend.return20dPct) > 18
+    || Number(trend.lowPositionPct120) > 85;
+  const score = Math.max(0, themeRotationScore + trendRotationScore + textScore + readinessScore - (highChase ? 24 : 0));
+  const strong = score >= 55 && !highChase;
+  const hasTheme = Boolean(theme.id || theme.name);
+  const low120 = Number(trend.lowPositionPct120);
+  const low250 = Number(trend.lowPositionPct250);
+  const signal = trend.pullbackSetup?.signal || "";
+  const shouldSurface = Boolean(
+    hasTheme
+    || /低位轮动|板块轮动|轮动/.test(text)
+    || ["pullback_complete", "launch_setup"].includes(signal)
+    || (Number.isFinite(low120) && low120 <= 55)
+  );
+  return {
+    theme,
+    themeName: theme.name || theme.id || "",
+    themePositionLabel: formatPortfolioRotationThemePosition(theme),
+    setupLabel: trend.pullbackSetup?.signalText || formatTrendLabel(trend.trendLabel),
+    rotationLine: formatPortfolioRotationScoreLine(theme),
+    score,
+    strong,
+    shouldSurface,
+    highChase,
+    crowdingRisk: Number(theme.crowdingScore) >= 40,
+    missingTheme: !hasTheme,
+    needsEarlyTurn: !["pullback_complete", "launch_setup"].includes(signal) && !/刚转强|回调完成|启动前夜/.test(text),
+    needsLowPosition: !((Number.isFinite(low120) && low120 <= 60) || (Number.isFinite(low250) && low250 <= 65)),
+    trend
+  };
+}
+
+function scorePortfolioWatchThemeRotation(theme = {}) {
+  if (!theme?.id && !theme?.name) return 0;
+  let score = 18;
+  const rotation = Number(theme.rotationScore);
+  const lowPosition = Number(theme.lowPositionScore);
+  const crowding = Number(theme.crowdingScore);
+  if (theme.positionSignal === "low_position_rotation") score += 18;
+  if (theme.stage === "low_position_rotation") score += 14;
+  if (theme.positionSignal === "acceptable_position") score += 8;
+  if (Number.isFinite(rotation)) score += Math.min(16, rotation / 4);
+  if (Number.isFinite(lowPosition)) score += Math.min(16, lowPosition / 4);
+  if (Number.isFinite(crowding)) score -= crowding >= 55 ? 24 : crowding >= 40 ? 10 : 0;
+  return score;
+}
+
+function scorePortfolioWatchTrendRotation(trend = {}) {
+  let score = 0;
+  const signal = trend.pullbackSetup?.signal || "";
+  const low120 = Number(trend.lowPositionPct120);
+  const low250 = Number(trend.lowPositionPct250);
+  const r20 = Number(trend.return20dPct);
+  const r5 = Number(trend.return5dPct);
+  const r10 = Number(trend.return10dPct);
+  if (signal === "pullback_complete") score += 18;
+  if (signal === "launch_setup") score += 12;
+  if (Number.isFinite(low120) && low120 >= 8 && low120 <= 55) score += 14;
+  if (Number.isFinite(low250) && low250 <= 65) score += 8;
+  if (Number.isFinite(r5) && r5 >= -1 && r5 <= 5 && Number.isFinite(r10) && r10 >= -2 && r10 <= 8) score += 8;
+  if (Number.isFinite(r20) && r20 > 14) score -= 12;
+  return score;
+}
+
+function formatPortfolioRotationThemePosition(theme = {}) {
+  const labels = [
+    theme.positionSignal ? formatUserFacingFundLabel(theme.positionSignal) : "",
+    theme.stage ? formatUserFacingFundLabel(theme.stage) : ""
+  ].filter(Boolean);
+  return [...new Set(labels)].join(" / ");
+}
+
+function formatPortfolioRotationScoreLine(theme = {}) {
+  const parts = [
+    Number.isFinite(Number(theme.rotationScore)) ? `轮动${round(Number(theme.rotationScore), 0)}` : "",
+    Number.isFinite(Number(theme.lowPositionScore)) ? `低位${round(Number(theme.lowPositionScore), 0)}` : "",
+    Number.isFinite(Number(theme.crowdingScore)) ? `拥挤${round(Number(theme.crowdingScore), 0)}` : ""
+  ].filter(Boolean);
+  return parts.length ? parts.join("，") : "";
+}
+
+function buildPortfolioRotationOpportunityReason(evidence = {}) {
+  if (evidence.highChase) {
+    return "板块或基金位置已经偏热，本轮只做降温观察，避免被新闻和短期涨幅牵着追。";
+  }
+  if (evidence.strong) {
+    return "板块轮动和低位修复同时出现，适合进入小仓试探前置复核。";
+  }
+  if (evidence.themeName) {
+    return "题材有低位或轮动线索，但还需要和早期转强、费用和持仓前景交叉确认。";
+  }
+  return "基金走势有低位修复线索，但缺少明确题材雷达，暂时只放轮动观察。";
+}
+
+function buildPortfolioRotationOpportunityFacts(evidence = {}) {
+  const trend = evidence.trend || {};
+  return [
+    evidence.themeName ? `题材${evidence.themeName}` : "",
+    evidence.themePositionLabel ? `位置${evidence.themePositionLabel}` : "",
+    evidence.rotationLine,
+    trend.pullbackSetup?.signalText || "",
+    Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置${round(Number(trend.lowPositionPct120), 1)}%` : "",
+    Number.isFinite(Number(trend.return20dPct)) ? `20日${formatFallbackPlainPct(trend.return20dPct)}` : ""
+  ].filter(Boolean);
 }
 
 function buildPortfolioHoldingsOutlookRanking(watchlist = []) {
@@ -9005,6 +9187,7 @@ function buildPortfolioRankingPriorityQueue(lists = []) {
   const listWeight = {
     sell_risk: 42,
     opportunity_cost: 38,
+    rotation_opportunity: 36,
     buy_preparation: 34,
     fee_suitability: 32,
     user_holding_alerts: 30,
@@ -24192,6 +24375,7 @@ export {
   buildPortfolioRankingActionAudit,
   buildPortfolioRankingBoardReviewActions,
   buildPortfolioFeeSuitabilityRanking,
+  buildPortfolioRotationOpportunityRanking,
   buildPortfolioRankingPriorityQueue,
   buildPortfolioAccountRiskBudget,
   buildPortfolioReadyWatchlistReviewActions,
