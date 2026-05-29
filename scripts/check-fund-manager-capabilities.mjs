@@ -200,6 +200,8 @@ assert(rankingBoard.lists.find((item) => item.id === "opportunity_cost")?.nextAc
 assert(rankingBoard.lists.find((item) => item.id === "sell_risk")?.items.some((item) => item.code === "008327"), "manager ranking board must expose sell-risk positions");
 assert(rankingBoard.health?.summary, "manager ranking board must explain the current board state");
 assert(rankingBoard.lists.every((item) => item.nextAction), "manager ranking board empty states must include next actions");
+assert(rankingBoard.customerDigest?.summary, "manager ranking board must translate ranking lanes into a customer-facing digest");
+assert(rankingBoard.customerDigest?.watchFocus?.length || rankingBoard.customerDigest?.buyReview?.length || rankingBoard.customerDigest?.riskAvoid?.length, "customer-facing digest must group candidates into buy, watch, or avoid buckets");
 assert(rankingBoard.priorityQueue?.length >= 3, "manager ranking board must build a cross-list priority queue");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "008327" && item.listId === "sell_risk"), "priority queue must include urgent sell-risk items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000006" && item.listId === "chase_risk"), "priority queue must include chase-risk warning items");
@@ -1223,6 +1225,7 @@ assert(adminHtmlSource.includes("追涨风险"), "admin UI must describe chase-r
 assert(adminHtmlSource.includes("持仓前景"), "admin UI must describe top-ten holdings outlook rankings as a manager decision angle");
 assert(adminHtmlSource.includes("费率适配"), "admin UI must describe share-class fee suitability rankings as a manager decision angle");
 assert(adminSource.includes("renderManagerRankings"), "admin UI must render multi-angle ranking boards");
+assert(adminSource.includes("renderManagerCustomerDigest"), "admin UI must render customer-facing ranking digest before detailed lists");
 assert(adminSource.includes("renderManagerPriorityQueue"), "admin UI must render the cross-ranking priority queue");
 assert(adminSource.includes("renderManagerRankingOverview"), "admin UI must render ranking board overview cards before detailed lists");
 assert(adminSource.includes("setManagerRankingFilter"), "admin UI must allow focusing one manager ranking lane from overview cards");
@@ -1232,6 +1235,7 @@ assert(adminSource.includes("rotation_opportunity"), "admin UI must render the s
 assert(adminSource.includes("chase_risk"), "admin UI must render the chase-risk ranking lane");
 assert(adminSource.includes("fee_suitability"), "admin UI must render the fee-suitability ranking lane");
 assert(adminStyleSource.includes("ranking-list.is-filtered-out"), "admin UI must hide non-focused ranking lists when a ranking filter is active");
+assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must style customer-facing ranking digest as a first-class panel");
 assert(adminStyleSource.includes("ranking-overview-synthesis"), "admin UI must visually distinguish decision-synthesis overview cards");
 assert(adminStyleSource.includes("ranking-overview-rotation"), "admin UI must visually distinguish sector-rotation overview cards");
 assert(adminStyleSource.includes("ranking-overview-chase"), "admin UI must visually distinguish chase-risk overview cards");

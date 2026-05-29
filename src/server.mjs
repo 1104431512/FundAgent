@@ -1740,6 +1740,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "经理多角度榜单（系统计算，必须先看榜单再决定）：",
     JSON.stringify(compactManagerRankings, null, 2),
+    "客户视角要求：回答客户时优先使用 customerDigest 里的可买复核、观察重点和回避提醒，先讲原因和动作，再补必要数字；不要把所有榜单指标原样堆给客户。",
     "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、rotation_opportunity、chase_risk、fee_suitability、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
@@ -8506,10 +8507,12 @@ function buildPortfolioRankingBoard(db = {}) {
     buildUserHoldingAlertRanking(userPortfolios)
   ];
   const priorityQueue = buildPortfolioRankingPriorityQueue(lists);
+  const customerDigest = buildPortfolioRankingCustomerDigest(lists);
   return {
     updatedAt: new Date().toISOString(),
     lists,
     priorityQueue,
+    customerDigest,
     health: buildPortfolioRankingBoardHealth({ watchlist, positions, userPortfolios, lists }),
     summary: `${lists.map((list) => `${list.title}${list.items.length}只`).join("，")}；今日优先${priorityQueue.length}项`
   };
@@ -9490,6 +9493,67 @@ function buildPortfolioRankingPriorityQueue(lists = []) {
     .map((item, index) => ({ ...item, queueRank: index + 1 }));
 }
 
+function buildPortfolioRankingCustomerDigest(lists = []) {
+  const listById = new Map((lists || []).map((list) => [list.id, list]));
+  const synthesisItems = listById.get("decision_synthesis")?.items || [];
+  const chaseItems = listById.get("chase_risk")?.items || [];
+  const feeItems = listById.get("fee_suitability")?.items || [];
+  const holdingsItems = listById.get("holdings_outlook")?.items || [];
+  const riskAvoid = [
+    ...synthesisItems.filter((item) => /回避/.test(item.action || "")),
+    ...chaseItems
+  ];
+  const riskAvoidCodes = new Set(riskAvoid.map((item) => item.code).filter(Boolean));
+  const buyReview = synthesisItems
+    .filter((item) => /优先买入|小仓试探/.test(item.action || "") && !riskAvoidCodes.has(item.code))
+    .slice(0, 3);
+  const usedCodes = new Set([
+    ...riskAvoid.map((item) => item.code).filter(Boolean),
+    ...buyReview.map((item) => item.code).filter(Boolean)
+  ]);
+  const watchFocus = [
+    ...synthesisItems.filter((item) => !/优先买入|小仓试探|回避/.test(item.action || "")),
+    ...feeItems,
+    ...holdingsItems
+  ].filter((item) => item?.code && !usedCodes.has(item.code));
+  const buyDigest = uniquePortfolioRankingDigestItems(buyReview).slice(0, 3).map((item) => buildPortfolioRankingDigestItem(item, "先交叉确认，再小仓或分批。"));
+  const watchDigest = uniquePortfolioRankingDigestItems(watchFocus).slice(0, 4).map((item) => buildPortfolioRankingDigestItem(item, "补齐缺口后再升级。"));
+  const riskDigest = uniquePortfolioRankingDigestItems(riskAvoid).slice(0, 3).map((item) => buildPortfolioRankingDigestItem(item, "先降级观察，等回撤或降温。"));
+  return {
+    title: "客户视角摘要",
+    summary: [
+      buyDigest.length ? `可买复核${buyDigest.length}只` : "",
+      watchDigest.length ? `观察补证据${watchDigest.length}只` : "",
+      riskDigest.length ? `回避提醒${riskDigest.length}只` : ""
+    ].filter(Boolean).join("，") || "暂无可给客户直接说明的摘要。",
+    buyReview: buyDigest,
+    watchFocus: watchDigest,
+    riskAvoid: riskDigest
+  };
+}
+
+function uniquePortfolioRankingDigestItems(items = []) {
+  const byCode = new Map();
+  for (const item of items || []) {
+    const code = String(item?.code || "").match(/^\d{6}$/)?.[0] || "";
+    if (!code || byCode.has(code)) continue;
+    byCode.set(code, item);
+  }
+  return [...byCode.values()];
+}
+
+function buildPortfolioRankingDigestItem(item = {}, fallbackNext = "") {
+  const decision = item.decision || {};
+  return {
+    code: item.code || "",
+    name: item.name || "",
+    action: item.action || "复核",
+    reason: item.reason || selectPortfolioRankingFirstText(decision.highlights, decision.risks, decision.gaps) || "等待经理复核。",
+    nextStep: decision.nextStep || fallbackNext,
+    tags: normalizeStringArray(item.facts).slice(0, 3)
+  };
+}
+
 function buildPortfolioRankingItem({ code, name, userId = "", source = "", score = 0, action = "", reason = "", facts = [], decision = null, status = "" }) {
   return {
     code: String(code || ""),
@@ -9526,6 +9590,12 @@ function compactPortfolioRankingBoardForModel(board = {}) {
       actions: normalizeStringArray(board.health.actions).slice(0, 3)
     } : null,
     summary: board.summary || lists.map((list) => `${list.title || list.id}${list.items?.length || 0}只`).join("，"),
+    customerDigest: board.customerDigest ? {
+      summary: board.customerDigest.summary || "",
+      buyReview: (board.customerDigest.buyReview || []).slice(0, 3),
+      watchFocus: (board.customerDigest.watchFocus || []).slice(0, 4),
+      riskAvoid: (board.customerDigest.riskAvoid || []).slice(0, 3)
+    } : null,
     priorityQueue: priorityQueue.slice(0, 8).map((item) => ({
       queueRank: item.queueRank,
       code: item.code || "",

@@ -2285,8 +2285,16 @@ const requiredPatterns = [
     message: "portfolio decision prompts must include the ranking priority queue."
   },
   {
+    pattern: /buildPortfolioRankingCustomerDigest[\s\S]{0,2200}buyReview[\s\S]{0,2200}watchFocus[\s\S]{0,2200}riskAvoid/,
+    message: "manager ranking boards must translate multi-angle rankings into customer-facing buy/watch/avoid digest buckets."
+  },
+  {
     pattern: /renderManagerRankings/,
     message: "admin portfolio UI must render manager ranking boards."
+  },
+  {
+    pattern: /renderManagerCustomerDigest[\s\S]{0,1800}客户视角摘要/,
+    message: "admin manager ranking board must render the customer-facing digest before detailed lists."
   },
   {
     pattern: /renderManagerPriorityQueue[\s\S]{0,1200}今日优先处理/,

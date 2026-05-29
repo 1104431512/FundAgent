@@ -389,7 +389,7 @@ function renderManagerRankings(board = {}) {
     root.innerHTML = `<div class="empty">暂无榜单数据。自选池、持仓或用户持仓关注有数据后会自动生成。</div>`;
     return;
   }
-  root.innerHTML = `${renderManagerRankingHealth(board.health || {})}${renderManagerPriorityQueue(board.priorityQueue || [])}${renderManagerRankingOverview(lists)}${lists.map(renderManagerRankingList).join("")}`;
+  root.innerHTML = `${renderManagerRankingHealth(board.health || {})}${renderManagerCustomerDigest(board.customerDigest || {})}${renderManagerPriorityQueue(board.priorityQueue || [])}${renderManagerRankingOverview(lists)}${lists.map(renderManagerRankingList).join("")}`;
   if (!lists.some((list) => list.id === activeManagerRankingFilter)) activeManagerRankingFilter = "";
   setManagerRankingFilter(activeManagerRankingFilter);
 }
@@ -424,6 +424,48 @@ function renderManagerPriorityQueue(queue = []) {
         ${items.slice(0, 8).map(renderManagerPriorityItem).join("")}
       </div>
     </section>
+  `;
+}
+
+function renderManagerCustomerDigest(digest = {}) {
+  const groups = [
+    { key: "buyReview", title: "可买复核", empty: "暂无可买复核。", tone: "buy" },
+    { key: "watchFocus", title: "观察重点", empty: "暂无观察重点。", tone: "watch" },
+    { key: "riskAvoid", title: "回避提醒", empty: "暂无回避提醒。", tone: "sell" }
+  ];
+  const hasItems = groups.some((group) => Array.isArray(digest[group.key]) && digest[group.key].length);
+  if (!hasItems && !digest.summary) return "";
+  return `
+    <section class="ranking-customer-digest">
+      <div class="ranking-customer-head">
+        <strong>${escapeHtml(digest.title || "客户视角摘要")}</strong>
+        <small>${escapeHtml(digest.summary || "把榜单翻译成客户容易理解的买、看、避三类。")}</small>
+      </div>
+      <div class="ranking-customer-groups">
+        ${groups.map((group) => renderManagerCustomerDigestGroup(group, digest[group.key] || [])).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderManagerCustomerDigestGroup(group, items = []) {
+  return `
+    <div class="ranking-customer-group ranking-customer-${group.tone}">
+      <span>${escapeHtml(group.title)}</span>
+      ${items.length ? items.slice(0, 3).map(renderManagerCustomerDigestItem).join("") : `<small>${escapeHtml(group.empty)}</small>`}
+    </div>
+  `;
+}
+
+function renderManagerCustomerDigestItem(item = {}) {
+  const tags = Array.isArray(item.tags) ? item.tags : [];
+  return `
+    <article>
+      <strong>${escapeHtml(item.code || "")} ${escapeHtml(item.name || "")}</strong>
+      <p>${escapeHtml(item.reason || item.action || "等待复核。")}</p>
+      ${tags.length ? `<div>${tags.slice(0, 3).map((tag) => `<em>${escapeHtml(tag)}</em>`).join("")}</div>` : ""}
+      <small>${escapeHtml(item.nextStep || "下一轮继续复核。")}</small>
+    </article>
   `;
 }
 
