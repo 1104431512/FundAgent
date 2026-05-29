@@ -1093,8 +1093,20 @@ const requiredPatterns = [
     message: "admin portfolio overview must render a compact ranking radar so users can scan buy/watch/avoid signals without opening a long ranking report."
   },
   {
-    pattern: /data-portfolio-view-target="sectors"[\s\S]{0,700}portfolioNavSectorCount[\s\S]{0,5200}data-portfolio-view="sectors"/,
+    pattern: /data-portfolio-view-target="sectors"[\s\S]{0,700}portfolioNavSectorCount[\s\S]{0,7200}data-portfolio-view="sectors"/,
     message: "admin portfolio UI must expose a dedicated sector leaderboard entrance instead of burying theme and rotation choices in a long ranking page."
+  },
+  {
+    pattern: /data-portfolio-view-target="actions"[\s\S]{0,700}portfolioNavActionCount[\s\S]{0,5200}data-portfolio-view="actions"/,
+    message: "admin portfolio UI must expose a dedicated action desk entrance for buy, sell, watch, and order items."
+  },
+  {
+    pattern: /(?=[\s\S]*PORTFOLIO_ACTION_LANES[\s\S]{0,900}买入动作[\s\S]{0,900}卖出动作[\s\S]{0,900}观察动作[\s\S]{0,900}执行流转)(?=[\s\S]*function renderPortfolioActionDesk)/,
+    message: "admin portfolio action desk must split latest manager actions and active orders into executable lanes."
+  },
+  {
+    pattern: /(?=[\s\S]*\.action-terminal\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.action-lane-grid\s*\{[\s\S]*repeat\(4,\s*minmax\(0,\s*1fr\)\))(?=[\s\S]*\.action-item-list\s*\{[\s\S]*overflow:\s*auto)/,
+    message: "admin portfolio action desk must be a bounded four-lane terminal board."
   },
   {
     pattern: /(?=[\s\S]*PORTFOLIO_SECTOR_LANES[\s\S]{0,900}theme_allocation[\s\S]{0,900}rotation_opportunity[\s\S]{0,900}holdings_outlook[\s\S]{0,900}quality_score)(?=[\s\S]*function renderPortfolioSectorBoard)/,
@@ -2437,7 +2449,7 @@ const requiredPatterns = [
     message: "admin portfolio UI must render manager ranking boards."
   },
   {
-    pattern: /data-portfolio-view-target="opportunities"[\s\S]{0,700}portfolioNavOpportunityCount[\s\S]{0,4400}data-portfolio-view="opportunities"/,
+    pattern: /data-portfolio-view-target="opportunities"[\s\S]{0,700}portfolioNavOpportunityCount[\s\S]{0,7200}data-portfolio-view="opportunities"/,
     message: "admin portfolio UI must expose a dedicated observation-opportunity entrance instead of burying buy/watch candidates in a long page."
   },
   {

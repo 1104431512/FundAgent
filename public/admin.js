@@ -36,6 +36,12 @@ const PORTFOLIO_SECTOR_LANES = [
   { id: "holdings_outlook", title: "持仓前景", tone: "holdings", empty: "暂无前十大持仓前景线索。" },
   { id: "quality_score", title: "质量优选", tone: "quality", empty: "暂无风险收益质量线索。" }
 ];
+const PORTFOLIO_ACTION_LANES = [
+  { id: "buy", title: "买入动作", tone: "buy", empty: "暂无买入或试探动作。" },
+  { id: "sell", title: "卖出动作", tone: "sell", empty: "暂无卖出或减仓动作。" },
+  { id: "watch", title: "观察动作", tone: "watch", empty: "暂无观察或持有动作。" },
+  { id: "orders", title: "执行流转", tone: "order", empty: "暂无待确认订单。" }
+];
 const WATCHLIST_STATUS_LABELS = {
   ready: "接近可买",
   waiting_pullback: "等待回调",
@@ -452,6 +458,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   const equity = portfolio.recentEquity || [];
   const latestRun = runs[0] || null;
   const activeOrders = portfolio.activeOrders || [];
+  const actionDeskItems = collectPortfolioActionDeskItems(latestRun, activeOrders);
   const riskItems = collectPortfolioRiskBoardItems(portfolio.managerRankings || {});
   const sectorItems = collectPortfolioSectorBoardItems(portfolio.managerRankings || {});
   const ready = watchlist.filter((item) => item.status === "ready");
@@ -484,13 +491,15 @@ function renderPortfolioDashboard(portfolio = {}) {
   setText("#portfolioNavOrderCount", String(activeOrders.length + transactions.length + equity.length));
   setText("#portfolioNavOpportunityCount", String(ready.length + waiting.length + launchEve.length));
   setText("#portfolioNavDiagnosticCount", String(diagnosticCount));
+  setText("#portfolioNavActionCount", String(actionDeskItems.length));
   setText("#portfolioNavRiskCount", String(riskItems.length));
   setText("#portfolioNavSectorCount", String(sectorItems.length));
-  setText("#portfolioNavOverviewCount", "10");
+  setText("#portfolioNavOverviewCount", "11");
   updateRunStateBadge(latestRun, portfolio.scheduler || {});
 
   renderPortfolioWorkspaceCards(portfolio, { positions, watchlist, userPortfolios, runs, activeOrders, transactions, equity, ready, waiting, launchEve, blocked, diagnosticCount });
   renderPortfolioRankingRadar(portfolio.managerRankings || {});
+  renderPortfolioActionDesk(latestRun, activeOrders);
   renderPortfolioRiskBoard(portfolio.managerRankings || {});
   renderPortfolioSectorBoard(portfolio.managerRankings || {});
   renderPortfolioOpportunityBoard({ ready, waiting, launchEve, blocked });
@@ -531,7 +540,15 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
   const latestRun = runs[0] || null;
   const topPosition = [...positions].sort((a, b) => Number(b.weightPct || 0) - Number(a.weightPct || 0))[0] || null;
   const topWatch = ready[0] || waiting[0] || watchlist[0] || null;
+  const actionDeskItems = collectPortfolioActionDeskItems(latestRun, activeOrders);
   const cards = [
+    {
+      view: "actions",
+      label: "行动台",
+      value: `${actionDeskItems.length} 项`,
+      detail: actionDeskItems[0] ? `${actionDeskItems[0].action || actionDeskItems[0].laneTitle}：${actionDeskItems[0].code || ""} ${actionDeskItems[0].name || ""}`.trim() : "最近动作、待确认订单和执行状态",
+      meta: actionDeskItems[0]?.reason || "先看该做什么，再看为什么"
+    },
     {
       view: "rankings",
       label: "经理榜单",
@@ -706,6 +723,137 @@ function renderPortfolioRankingRadarPriority(queue = []) {
       `).join("")}
     </div>
   `;
+}
+
+function collectPortfolioActionDeskItems(latestRun = null, activeOrders = []) {
+  const actions = Array.isArray(latestRun?.actions) ? latestRun.actions : [];
+  const actionItems = actions.map((action, index) => {
+    const laneId = getPortfolioActionLaneId(action.action || action.side || action.reason || "");
+    return {
+      ...action,
+      laneId,
+      sourceType: "run_action",
+      sourceIndex: index,
+      action: action.action || "WATCH",
+      reason: action.reason || action.rankingBasis || "等待经理下一轮复核。"
+    };
+  });
+  const orderItems = (Array.isArray(activeOrders) ? activeOrders : []).map((order, index) => ({
+    ...order,
+    laneId: "orders",
+    sourceType: "active_order",
+    sourceIndex: index,
+    action: order.side || "ORDER",
+    reason: order.scheduleReason || order.limitCheck?.note || "订单正在确认或等待到账。"
+  }));
+  return [...actionItems, ...orderItems];
+}
+
+function getPortfolioActionLaneId(text = "") {
+  const value = String(text || "").toUpperCase();
+  if (/SELL|卖出|减仓|赎回|止盈|止损/.test(value)) return "sell";
+  if (/BUY|买入|申购|加仓|试探/.test(value)) return "buy";
+  return "watch";
+}
+
+function renderPortfolioActionDesk(latestRun = null, activeOrders = []) {
+  const root = document.querySelector("#portfolioActionDesk");
+  if (!root) return;
+  const items = collectPortfolioActionDeskItems(latestRun, activeOrders);
+  const runLabel = latestRun ? `${latestRun.date || "-"} ${latestRun.title || formatRunTypeLabel(latestRun.type)}` : "暂无运行记录";
+  setText("#portfolioActionState", items.length ? `${items.length} 个动作` : "暂无动作");
+  root.innerHTML = `
+    <section class="action-terminal">
+      <div class="action-terminal-head">
+        <div>
+          <strong>今天先看动作</strong>
+          <small>${escapeHtml(runLabel)}；动作卡只放结论、理由和风险线，完整推演留在时间线。</small>
+        </div>
+        <button type="button" class="secondary" data-portfolio-view-target="timeline">进入时间线</button>
+      </div>
+      <div class="action-lane-grid">
+        ${PORTFOLIO_ACTION_LANES.map((lane) => renderPortfolioActionLane(lane, items.filter((item) => item.laneId === lane.id))).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderPortfolioActionLane(lane = {}, items = []) {
+  return `
+    <section class="action-lane action-lane-${escapeHtml(lane.tone || "watch")}">
+      <div class="action-lane-head">
+        <div>
+          <strong>${escapeHtml(lane.title || "动作")}</strong>
+          <small>${escapeHtml(getPortfolioActionLaneHint(lane.id))}</small>
+        </div>
+        <span>${items.length}</span>
+      </div>
+      <div class="action-item-list">
+        ${items.length ? items.slice(0, 6).map((item) => renderPortfolioActionItem(item, lane)).join("") : `<div class="empty compact-empty">${escapeHtml(lane.empty || "暂无动作。")}</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function getPortfolioActionLaneHint(id = "") {
+  if (id === "buy") return "只放已经进入申购/试探复核的动作。";
+  if (id === "sell") return "优先看止盈、减仓、赎回和风控动作。";
+  if (id === "orders") return "显示确认日、到账日和流转状态。";
+  return "观察、持有和等待触发的基金。";
+}
+
+function renderPortfolioActionItem(item = {}, lane = {}) {
+  const code = String(item.code || "").trim();
+  const actionText = item.sourceType === "active_order"
+    ? `${item.action || "订单"} ${item.status || ""}`.trim()
+    : item.action || "观察";
+  const actionClass = getManagerRankingActionClass(`${actionText} ${item.reason || ""}`) || lane.tone || "watch";
+  const facts = buildPortfolioActionFacts(item);
+  return `
+    <article class="action-item">
+      <div class="action-item-title">
+        <strong>${escapeHtml([code, item.name].filter(Boolean).join(" ") || "组合动作")}</strong>
+        <span class="ranking-action ${actionClass}">${escapeHtml(actionText)}</span>
+      </div>
+      <p>${escapeHtml(item.reason || "等待经理下一轮复核。")}</p>
+      ${facts.length ? `<div class="action-facts">${facts.map((fact) => `<small>${escapeHtml(fact)}</small>`).join("")}</div>` : ""}
+      <footer>
+        <small>${escapeHtml(selectPortfolioActionNextStep(item))}</small>
+        <div>
+          ${code ? `<button type="button" class="ranking-detail-link" data-focus-watchlist-code="${escapeHtml(code)}">详情</button>` : ""}
+          <button type="button" class="ranking-detail-link" data-portfolio-view-target="${item.sourceType === "active_order" ? "orders" : "timeline"}">${item.sourceType === "active_order" ? "订单" : "时间线"}</button>
+        </div>
+      </footer>
+    </article>
+  `;
+}
+
+function buildPortfolioActionFacts(item = {}) {
+  if (item.sourceType === "active_order") {
+    return [
+      Number.isFinite(Number(item.amount)) ? `金额 ${formatMoney(item.amount)}` : "",
+      item.priceDate ? `估值日 ${item.priceDate}` : "",
+      item.confirmDate ? `确认 ${item.confirmDate}` : "",
+      item.settlementDate ? `到账 ${item.settlementDate}` : ""
+    ].filter(Boolean);
+  }
+  return [
+    item.targetWeightPct !== undefined && item.targetWeightPct !== null ? `目标仓位 ${formatNumber(item.targetWeightPct, 2)}%` : "",
+    item.amount !== undefined && item.amount !== null ? `金额 ${formatMoney(item.amount)}` : "",
+    item.rankingBasis ? "有榜单依据" : "",
+    item.riskControl || item.chaseRisk || item.positionCheck || ""
+  ].filter(Boolean).slice(0, 4);
+}
+
+function selectPortfolioActionNextStep(item = {}) {
+  if (item.sourceType === "active_order") {
+    return [item.tradingProfile?.kind, item.limitCheck?.note, formatOrderNavLine(item)].filter(Boolean).join("；") || "等待确认和到账后再复盘。";
+  }
+  return item.riskControl
+    || item.rankingBasis
+    || item.positionCheck
+    || item.rotationCheck
+    || "进入时间线查看完整依据。";
 }
 
 function collectPortfolioRiskBoardItems(board = {}) {
