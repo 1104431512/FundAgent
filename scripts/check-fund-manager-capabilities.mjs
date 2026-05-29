@@ -874,6 +874,8 @@ const capabilityProfileContext = manager.buildPortfolioManagerProfileContext({
 assert(capabilityProfileContext.includes("组合能力诊断") && capabilityProfileContext.includes("能力修复队列"), "manager profile context must carry capability diagnostics into every portfolio model call");
 assert(capabilityProfileContext.includes("历史回测诊断"), "manager profile context must carry historical backtest diagnostics into every portfolio model call");
 assert(serverSource.includes("能力修复队列（必须进入 team.主席、team.风控经理、actions 或 learningNotes）"), "portfolio decision prompt must force capability repair tasks into decisions");
+assert(serverSource.includes("经理多角度榜单（系统计算，必须先看榜单再决定）"), "portfolio decision prompt must force manager ranking boards into decisions");
+assert(serverSource.includes("rankingBasis"), "portfolio actions must preserve the ranking basis behind each recommendation");
 const portfolioDecisionCapabilitySource = serverSource.slice(
   serverSource.indexOf("async function executePortfolioDecision"),
   serverSource.indexOf("async function executePortfolioValuation")
@@ -881,6 +883,8 @@ const portfolioDecisionCapabilitySource = serverSource.slice(
 assert(portfolioDecisionCapabilitySource.includes("const capabilityDiagnostics = buildPortfolioCapabilityDiagnostics(db)"), "portfolio decision must compute full-ledger capability diagnostics after order lifecycle processing");
 assert(portfolioDecisionCapabilitySource.includes("const capabilityActionQueue = buildPortfolioCapabilityActionQueue(db)"), "portfolio decision must compute full-ledger capability repair tasks");
 assert(portfolioDecisionCapabilitySource.includes("capabilityDiagnostics,") && portfolioDecisionCapabilitySource.includes("capabilityActionQueue"), "portfolio decision must pass capability diagnostics and repair tasks into the model prompt");
+assert(portfolioDecisionCapabilitySource.includes("const managerRankings = buildPortfolioRankingBoard(db)"), "portfolio decision must compute current manager ranking boards before model calls");
+assert(portfolioDecisionCapabilitySource.includes("managerRankings"), "portfolio decision must pass manager ranking boards into the model prompt and run audit");
 const pollutedLocalStatsDiagnostics = manager.buildRuntimeDiagnostics({
   counters: {
     messageEvents: 0,

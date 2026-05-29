@@ -1349,6 +1349,14 @@ const requiredPatterns = [
     message: "portfolio decision prompt must force capability repair before new buy decisions."
   },
   {
+    pattern: /const managerRankings = buildPortfolioRankingBoard\(db\)[\s\S]{0,900}managerRankings/,
+    message: "portfolio decision runs must compute and pass manager ranking boards into the model prompt."
+  },
+  {
+    pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,900}rankingBasis[\s\S]{0,900}来源：manager_ranking_board/,
+    message: "portfolio decision prompts must force recommendations to cite the manager ranking board."
+  },
+  {
     pattern: /function buildPortfolioRedeploymentPlan[\s\S]{0,5200}pressureActive[\s\S]{0,5200}starter_buy[\s\S]{0,5200}实时估算时间/,
     message: "portfolio redeployment plan must force high-cash low-exposure portfolios to review starter buys with realtime valuation evidence."
   },

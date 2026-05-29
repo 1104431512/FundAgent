@@ -1270,6 +1270,7 @@ async function executePortfolioDecision(db, run, config) {
   const seedProfiles = watchlistSeedCandidates.length
     ? await enrichFunds(watchlistSeedCandidates.map((item) => item.code))
     : [];
+  const managerRankings = buildPortfolioRankingBoard(db);
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, `资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度生成今日操作。`);
   await yieldToEventLoop();
@@ -1286,7 +1287,8 @@ async function executePortfolioDecision(db, run, config) {
     missedFollowThroughQueue,
     starterBuyFollowUpQueue,
     capabilityDiagnostics,
-    capabilityActionQueue
+    capabilityActionQueue,
+    managerRankings
   });
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "模型已返回，正在解析投委会决策。");
@@ -1347,6 +1349,7 @@ async function executePortfolioDecision(db, run, config) {
   run.accountAfter = summarizePortfolioAccount(db.account);
   run.team = decision.team;
   run.actions = decision.actions;
+  run.managerRankings = managerRankings;
   run.watchlistUpdates = [...preDecisionWatchlistUpdates, ...watchlistUpdates];
   run.orders = execution.orders;
   run.transactions = transactions;
@@ -1675,13 +1678,15 @@ async function executePortfolioWeekly(db, run, config) {
   });
 }
 
-async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, watchlist = [], watchlistProfiles = [], watchlistSeedCandidates = [], seedProfiles = [], missedFollowThroughQueue = [], starterBuyFollowUpQueue = [], config, profileContext, capabilityDiagnostics = null, capabilityActionQueue = null }) {
+async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, watchlist = [], watchlistProfiles = [], watchlistSeedCandidates = [], seedProfiles = [], missedFollowThroughQueue = [], starterBuyFollowUpQueue = [], config, profileContext, capabilityDiagnostics = null, capabilityActionQueue = null, managerRankings = null }) {
   const exposureSummary = buildPortfolioExposureSummary(account.positions || []);
   const decisionCapabilityDiagnostics = capabilityDiagnostics || buildPortfolioCapabilityDiagnostics({ account, watchlist });
   const decisionCapabilityActionQueue = Array.isArray(capabilityActionQueue)
     ? capabilityActionQueue
     : buildPortfolioCapabilityActionQueue({ account, watchlist });
   const redeploymentPlan = buildPortfolioRedeploymentPlan(account, watchlist, mergePortfolioProfiles(watchlistProfiles, seedProfiles));
+  const decisionManagerRankings = managerRankings || buildPortfolioRankingBoard({ account, watchlist, userPortfolios: [] });
+  const compactManagerRankings = compactPortfolioRankingBoardForModel(decisionManagerRankings);
   const compactHeldProfiles = (heldProfiles || []).map(compactPortfolioReviewProfile);
   const compactWatchlistProfiles = (watchlistProfiles || []).map(compactPortfolioReviewProfile);
   const compactSeedProfiles = (seedProfiles || []).map(compactPortfolioReviewProfile);
@@ -1729,6 +1734,10 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "能力修复队列（必须进入 team.主席、team.风控经理、actions 或 learningNotes）：",
     JSON.stringify(decisionCapabilityActionQueue, null, 2),
     "要求：若能力诊断包含盈利承压、追涨暴露、历史回测缺口、数据质量缺口或成交净值待核验，必须先解释原因和修复动作；没有完成修复前，不得用现金多作为新增买入理由。",
+    "",
+    "经理多角度榜单（系统计算，必须先看榜单再决定）：",
+    JSON.stringify(compactManagerRankings, null, 2),
+    "要求：榜单是本轮决策前置清单。actions 必须优先覆盖 buy_preparation、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
     JSON.stringify((missedFollowThroughQueue || []).slice(0, 5), null, 2),
@@ -1794,6 +1803,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
             targetWeightPct: 0,
             reason: "为什么今天这么做",
             dataBasis: ["使用了哪些数据"],
+            rankingBasis: "引用的经理榜单、排名、采纳或不采纳理由",
             rotationCheck: "板块轮动、低位、拥挤度和新闻催化是否共同支持，不支持就写不买/少买原因",
             positionCheck: "基金/主题当前位置：低位轮动、回撤修复、正常确认、过热追涨之一",
             chaseRisk: "追涨和大回调风险如何处理",
@@ -2400,6 +2410,7 @@ function normalizePortfolioActions(value) {
         targetWeightPct: round(Number(item?.targetWeightPct || 0), 2) || 0,
         reason: normalizePortfolioUserFacingText(item?.reason || ""),
         dataBasis: normalizePortfolioUserFacingArray(item?.dataBasis, 8),
+        rankingBasis: normalizePortfolioUserFacingText(item?.rankingBasis || ""),
         rotationCheck: normalizePortfolioUserFacingText(item?.rotationCheck || ""),
         positionCheck: normalizePortfolioUserFacingText(item?.positionCheck || ""),
         chaseRisk: normalizePortfolioUserFacingText(item?.chaseRisk || ""),
@@ -7463,11 +7474,13 @@ function formatPortfolioCustomerActionLine(action = {}) {
   const why = shortenPortfolioCustomerText(action.reason || action.rotationCheck || "见投委会意见", 72);
   const boundary = shortenPortfolioCustomerText(action.riskControl || action.chaseRisk || "", 64);
   const fee = summarizePortfolioCustomerFeeText(action.feeCheck || "");
+  const ranking = shortenPortfolioCustomerText(action.rankingBasis || "", 64);
   return [
     `- ${formatPortfolioActionLabel(action.action)} ${name}${amount}${target}`,
     trend ? `  走势：${trend}` : "",
     why && why !== trend ? `  为什么：${why}` : "",
     boundary ? `  边界：${boundary}` : "",
+    ranking ? `  榜单：${ranking}` : "",
     fee ? `  费用：${fee}` : ""
   ].filter(Boolean).join("\n");
 }
@@ -8586,6 +8599,38 @@ function buildPortfolioRankingDecision(decision = null) {
     risks: normalizePortfolioUserFacingArray(value.risks, 3),
     gaps: normalizePortfolioUserFacingArray(value.gaps, 3),
     nextStep: normalizePortfolioUserFacingText(value.nextStep || "").slice(0, 180)
+  };
+}
+
+function compactPortfolioRankingBoardForModel(board = {}) {
+  const lists = Array.isArray(board.lists) ? board.lists : [];
+  return {
+    health: board.health ? {
+      level: board.health.level || "",
+      title: board.health.title || "",
+      summary: board.health.summary || "",
+      actions: normalizeStringArray(board.health.actions).slice(0, 3)
+    } : null,
+    summary: board.summary || lists.map((list) => `${list.title || list.id}${list.items?.length || 0}只`).join("，"),
+    lists: lists.map((list) => ({
+      id: list.id || "",
+      title: list.title || "",
+      nextAction: list.nextAction || "",
+      items: (list.items || []).slice(0, 4).map((item) => ({
+        rank: item.rank,
+        code: item.code || "",
+        name: item.name || "",
+        action: item.action || "",
+        reason: item.reason || "",
+        facts: normalizeStringArray(item.facts).slice(0, 4),
+        decision: {
+          highlights: normalizeStringArray(item.decision?.highlights).slice(0, 2),
+          risks: normalizeStringArray(item.decision?.risks).slice(0, 2),
+          gaps: normalizeStringArray(item.decision?.gaps).slice(0, 2),
+          nextStep: item.decision?.nextStep || ""
+        }
+      }))
+    }))
   };
 }
 
