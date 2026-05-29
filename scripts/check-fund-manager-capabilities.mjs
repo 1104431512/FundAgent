@@ -1415,6 +1415,7 @@ assert(adminSource.includes("/api/user-portfolios/holding"), "admin UI must save
 assert(adminHtmlSource.includes("经理榜单"), "admin UI must expose manager ranking boards");
 assert(adminHtmlSource.includes("data-portfolio-view-target=\"rankings\""), "admin portfolio UI must split the long virtual account page into ranking workspace entries");
 assert(adminHtmlSource.includes("data-portfolio-view=\"watchlist\""), "admin portfolio UI must expose watchlist as a dedicated workspace view instead of a long mixed page");
+assert(adminHtmlSource.includes("持仓终端"), "admin portfolio UI must present holdings as a focused terminal workspace");
 assert(adminHtmlSource.includes("data-portfolio-view-target=\"risk\""), "admin portfolio UI must expose a dedicated risk-defense workspace entrance instead of burying risk inside a long ranking page");
 assert(adminHtmlSource.includes("data-portfolio-view=\"risk\""), "admin portfolio UI must render risk defense as a dedicated workspace view");
 assert(adminHtmlSource.includes("data-portfolio-view-target=\"data\""), "admin portfolio UI must expose a dedicated data-confidence workspace entrance");
@@ -1439,6 +1440,7 @@ assert(adminSource.includes("renderPortfolioDataBoard"), "admin portfolio UI mus
 assert(adminSource.includes("renderPortfolioDecisionMatrixBoard"), "admin portfolio UI must render a compact decision matrix outside the full ranking page");
 assert(adminSource.includes("renderPortfolioActionDesk"), "admin portfolio UI must render a compact action desk outside the long run timeline");
 assert(adminSource.includes("renderPortfolioAlertBoard"), "admin portfolio UI must render a compact alert desk outside the long run timeline");
+assert(adminSource.includes("PORTFOLIO_POSITION_LANES"), "admin portfolio positions view must split holdings into risk, profit, core, and watch lanes");
 assert(adminStyleSource.includes("portfolio-ranking-radar-grid"), "admin portfolio ranking radar must be styled as a scannable three-lane board");
 assert(adminStyleSource.includes("portfolio-ranking-radar-priority"), "admin portfolio ranking radar must style the priority queue as a compact strip");
 assert(adminStyleSource.includes("risk-terminal"), "admin portfolio risk-defense board must be styled as a bounded terminal panel");
@@ -1451,6 +1453,8 @@ assert(adminStyleSource.includes("action-terminal"), "admin portfolio action des
 assert(adminStyleSource.includes("action-lane-grid"), "admin portfolio action desk must split buy, sell, watch, and active orders into lanes");
 assert(adminStyleSource.includes("alert-terminal"), "admin portfolio alert desk must be styled as a bounded terminal panel");
 assert(adminStyleSource.includes("alert-lane-grid"), "admin portfolio alert desk must split buy, sell/risk, data, and user alerts into lanes");
+assert(adminStyleSource.includes("position-terminal"), "admin portfolio positions view must be styled as a bounded terminal panel");
+assert(adminStyleSource.includes("position-lane-grid"), "admin portfolio positions view must split holdings into scannable lanes");
 assert(adminStyleSource.includes("matrix-terminal"), "admin portfolio decision matrix must be styled as a bounded terminal panel");
 assert(adminStyleSource.includes("matrix-table"), "admin portfolio decision matrix must render a horizontal buy-sector-risk-data comparison table");
 assert(adminHtmlSource.includes("综合决策"), "admin UI must describe integrated decision-synthesis rankings as a manager decision angle");
@@ -1511,6 +1515,7 @@ assert(adminSource.includes("renderPortfolioOpportunityBoard"), "admin portfolio
 assert(adminSource.includes("PORTFOLIO_SECTOR_LANES"), "admin portfolio sector board must define separate leaderboard lenses for theme, rotation, holdings, and quality");
 assert(adminSource.includes("PORTFOLIO_ACTION_LANES"), "admin portfolio action desk must define separate lanes for buy, sell, watch, and order flow");
 assert(adminSource.includes("PORTFOLIO_ALERT_LANES"), "admin portfolio alert desk must define separate lanes for buy, sell/risk, data, and user alerts");
+assert(adminSource.includes("PORTFOLIO_POSITION_LANES"), "admin portfolio positions view must define separate lanes for holding risk, profit, core, and watch states");
 assert(adminSource.includes("PORTFOLIO_DATA_LANES"), "admin portfolio data board must define separate lanes for NAV, fee, holdings, and source evidence");
 assert(adminSource.includes("collectPortfolioDecisionMatrixItems"), "admin portfolio decision matrix must derive rows from backend manager rankings");
 assert(/timeline-terminal-body[\s\S]{0,360}max-height:\s*calc\(var\(--portfolio-workspace-height/.test(adminStyleSource), "admin portfolio timeline must bound run history height");

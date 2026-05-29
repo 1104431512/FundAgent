@@ -48,6 +48,12 @@ const PORTFOLIO_ALERT_LANES = [
   { id: "data", title: "数据/费率补证", tone: "data", empty: "暂无关键数据或费率补证。" },
   { id: "user", title: "用户持仓提醒", tone: "user", empty: "暂无用户持仓提醒。" }
 ];
+const PORTFOLIO_POSITION_LANES = [
+  { id: "risk", title: "风险预警", tone: "risk", empty: "暂无需要立即处理的持仓风险。" },
+  { id: "profit", title: "止盈/回吐", tone: "profit", empty: "暂无明显止盈或浮盈回吐项。" },
+  { id: "core", title: "核心持有", tone: "core", empty: "暂无核心持仓。" },
+  { id: "watch", title: "小仓观察", tone: "watch", empty: "暂无小仓观察项。" }
+];
 const PORTFOLIO_DATA_LANES = [
   { id: "nav", title: "净值/走势", tone: "nav", empty: "暂无过期净值或走势缺口。" },
   { id: "fee", title: "份额/费率", tone: "fee", empty: "暂无份额或费率缺口。" },
@@ -2124,7 +2130,108 @@ function renderPositions(positions) {
     list.innerHTML = `<div class="empty">暂无持仓。第一次手动触发“生成今日操作”后，这里会显示虚拟买入/卖出后的账户。</div>`;
     return;
   }
-  list.innerHTML = `<div class="fund-card-grid">${positions.map(renderPositionCard).join("")}</div>`;
+  const lanes = buildPortfolioPositionLanes(positions);
+  const totalValue = positions.reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
+  const totalPnl = positions.reduce((sum, item) => sum + Number(item.unrealizedPnl || 0), 0);
+  const topWeight = [...positions].sort((a, b) => Number(b.weightPct || 0) - Number(a.weightPct || 0))[0] || null;
+  const riskCount = lanes.find((lane) => lane.id === "risk")?.items.length || 0;
+  list.innerHTML = `
+    <section class="position-terminal">
+      <div class="position-terminal-head">
+        <div>
+          <strong>持仓分屏</strong>
+          <small>先看风险和止盈，再看核心仓与小仓观察；每栏独立滚动，不再把所有持仓堆成一条长列表。</small>
+        </div>
+        <span>${positions.length} 只基金</span>
+      </div>
+      <div class="position-command-row">
+        <article>
+          <span>持仓市值</span>
+          <strong>${formatMoney(totalValue)}</strong>
+          <small>当前已投入基金估值</small>
+        </article>
+        <article class="${totalPnl >= 0 ? "ok" : "warn"}">
+          <span>持仓盈亏</span>
+          <strong>${formatSigned(totalPnl)}</strong>
+          <small>按持仓成本，不用初始本金做分母</small>
+        </article>
+        <article class="${riskCount ? "warn" : "ok"}">
+          <span>风险预警</span>
+          <strong>${riskCount} 项</strong>
+          <small>${riskCount ? "优先复核减仓、止损或降风险" : "暂无急需处理项"}</small>
+        </article>
+        <article>
+          <span>最大单仓</span>
+          <strong>${topWeight ? `${formatNumber(topWeight.weightPct || 0, 2)}%` : "-"}</strong>
+          <small>${topWeight ? `${topWeight.code || ""} ${topWeight.name || ""}`.trim() : "暂无"}</small>
+        </article>
+      </div>
+      <div class="position-lane-grid">
+        ${lanes.map(renderPortfolioPositionLane).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function buildPortfolioPositionLanes(positions = []) {
+  const buckets = new Map(PORTFOLIO_POSITION_LANES.map((lane) => [lane.id, []]));
+  for (const position of positions || []) {
+    const laneId = getPortfolioPositionLaneId(position);
+    buckets.get(laneId)?.push(position);
+  }
+  return PORTFOLIO_POSITION_LANES.map((lane) => ({
+    ...lane,
+    items: (buckets.get(lane.id) || []).sort(comparePortfolioPositionsForLane)
+  }));
+}
+
+function getPortfolioPositionLaneId(item = {}) {
+  const riskBudget = item.riskBudget || {};
+  const text = [
+    item.lastReason,
+    riskBudget.level,
+    riskBudget.label,
+    ...(Array.isArray(riskBudget.triggers) ? riskBudget.triggers : [])
+  ].filter(Boolean).join(" ");
+  const pnlPct = Number(item.unrealizedPnlPct);
+  const weightPct = Number(item.weightPct);
+  const peakPct = Number(item.peakUnrealizedPnlPct);
+  const givebackPct = Number(item.profitGivebackPct);
+  if (/severe|warning|风险|止损|减仓|卖出|防线|回撤/.test(text) || (Number.isFinite(pnlPct) && pnlPct <= -3)) return "risk";
+  if (/止盈|回吐|兑现/.test(text) || (Number.isFinite(givebackPct) && givebackPct >= 2.5) || (Number.isFinite(peakPct) && peakPct >= 4 && Number.isFinite(pnlPct) && pnlPct < peakPct - 2)) return "profit";
+  if (/观察|试探|卫星/.test(text) || (Number.isFinite(weightPct) && weightPct <= 3)) return "watch";
+  return "core";
+}
+
+function comparePortfolioPositionsForLane(a = {}, b = {}) {
+  return Number(b.weightPct || 0) - Number(a.weightPct || 0)
+    || Math.abs(Number(b.unrealizedPnlPct || 0)) - Math.abs(Number(a.unrealizedPnlPct || 0))
+    || String(a.code || "").localeCompare(String(b.code || ""));
+}
+
+function renderPortfolioPositionLane(lane = {}) {
+  const items = Array.isArray(lane.items) ? lane.items : [];
+  return `
+    <section class="position-lane position-lane-${escapeHtml(lane.tone || "core")}">
+      <div class="position-lane-head">
+        <div>
+          <strong>${escapeHtml(lane.title || "持仓")}</strong>
+          <small>${escapeHtml(getPortfolioPositionLaneHint(lane.id))}</small>
+        </div>
+        <span>${items.length}</span>
+      </div>
+      <div class="position-item-list">
+        ${items.length ? items.map(renderPositionCard).join("") : `<div class="empty compact-empty">${escapeHtml(lane.empty || "暂无持仓。")}</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function getPortfolioPositionLaneHint(id = "") {
+  if (id === "risk") return "亏损、回撤、防线或减仓信号先处理。";
+  if (id === "profit") return "浮盈回吐、止盈和兑现边界集中查看。";
+  if (id === "watch") return "小仓、卫星仓和试探仓单独盯。";
+  return "仓位较稳定的核心持有。";
 }
 
 function renderUserPortfolios(userPortfolios = []) {

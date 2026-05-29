@@ -4296,6 +4296,221 @@ button.danger-button:hover {
   overflow-wrap: anywhere;
 }
 
+.position-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.position-panel .panel-head p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+#positionList {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.position-terminal {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.position-terminal-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #dce5ed;
+  border-radius: 8px;
+  background: #f7fafc;
+}
+
+.position-terminal-head strong,
+.position-terminal-head small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.position-terminal-head strong {
+  color: #1d2d3b;
+  font-size: 15px;
+}
+
+.position-terminal-head small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.position-terminal-head > span {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid #d8e2ea;
+  border-radius: 999px;
+  color: #405263;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.position-command-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.position-command-row article {
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid #dfe7ee;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.position-command-row article.warn {
+  border-color: #f0c9a5;
+  background: #fff8ef;
+}
+
+.position-command-row article.ok {
+  border-color: #b9d9ca;
+  background: #f2fbf7;
+}
+
+.position-command-row span,
+.position-command-row strong,
+.position-command-row small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.position-command-row span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.position-command-row strong {
+  margin-top: 5px;
+  color: #1f2f3d;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.position-command-row small {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.position-lane-grid {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  overflow: hidden;
+}
+
+.position-lane {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid #e0e7ee;
+  border-top: 3px solid #8797a6;
+  border-radius: 8px;
+  background: #fbfcfd;
+  overflow: hidden;
+}
+
+.position-lane-risk {
+  border-top-color: #b3261e;
+}
+
+.position-lane-profit {
+  border-top-color: #b7791f;
+}
+
+.position-lane-core {
+  border-top-color: #2f855a;
+}
+
+.position-lane-watch {
+  border-top-color: #315f8d;
+}
+
+.position-lane-head {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 11px 12px;
+  border-bottom: 1px solid #e5ecf2;
+  background: #ffffff;
+}
+
+.position-lane-head strong,
+.position-lane-head small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.position-lane-head strong {
+  color: #263746;
+  font-size: 14px;
+}
+
+.position-lane-head small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.position-lane-head span {
+  min-width: 30px;
+  min-height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #405263;
+  background: #edf3f7;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.position-item-list {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  overflow: auto;
+  padding: 10px;
+}
+
+.position-item-list .fund-card-summary {
+  padding: 11px 12px;
+}
+
+.position-item-list .fund-card-detail {
+  padding: 12px;
+}
+
 .position-card {
   display: grid;
   gap: 12px;
@@ -5306,6 +5521,16 @@ button.danger-button:hover {
   .portfolio-workspace-view[data-portfolio-view="data"] .data-panel {
     height: 100%;
   }
+
+  .portfolio-workspace-view[data-portfolio-view="positions"].active {
+    grid-template-rows: minmax(0, 1fr);
+    align-content: stretch;
+    overflow: hidden;
+  }
+
+  .portfolio-workspace-view[data-portfolio-view="positions"] .position-panel {
+    height: 100%;
+  }
 }
 
 @media (max-width: 860px) {
@@ -5362,6 +5587,8 @@ button.danger-button:hover {
   .portfolio-diagnostic-grid,
   .action-lane-grid,
   .alert-lane-grid,
+  .position-command-row,
+  .position-lane-grid,
   .risk-lane-grid,
   .sector-lane-grid,
   .data-lane-grid,
@@ -5394,6 +5621,9 @@ button.danger-button:hover {
   .portfolio-workspace-view.active,
   .action-terminal,
   .alert-terminal,
+  .position-terminal,
+  #positionList,
+  .position-item-list,
   .matrix-terminal,
   .risk-terminal,
   .sector-terminal,

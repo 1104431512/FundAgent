@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FundAgent 管理</title>
-    <link rel="stylesheet" href="/public/styles.css?v=20260530-alert1" />
+    <link rel="stylesheet" href="/public/styles.css?v=20260530-position1" />
   </head>
   <body>
     <div class="app-shell">
@@ -488,16 +488,16 @@
               </section>
 
               <section class="portfolio-workspace-view" data-portfolio-view="positions">
-                <details class="panel section-panel" open>
-                  <summary class="section-summary">
-                    <h2>持仓</h2>
-                    <span>点击基金卡片查看完整信息</span>
-                  </summary>
-                  <div class="section-actions">
+                <div class="panel position-panel">
+                  <div class="panel-head tight">
+                    <div>
+                      <h2>持仓终端</h2>
+                      <p>按风险预警、止盈回吐、核心持有和小仓观察分屏查看；点击基金卡片展开净值、走势、风控和前十大持仓。</p>
+                    </div>
                     <button id="resetPortfolioBtn" type="button" class="secondary">重置组合</button>
                   </div>
                   <div id="positionList" class="table-list"></div>
-                </details>
+                </div>
               </section>
 
               <section class="portfolio-workspace-view" data-portfolio-view="users">
@@ -678,6 +678,6 @@
     </div>
 
     <div id="toast" class="toast hidden"></div>
-    <script src="/public/admin.js?v=20260530-alert1"></script>
+    <script src="/public/admin.js?v=20260530-position1"></script>
   </body>
 </html>

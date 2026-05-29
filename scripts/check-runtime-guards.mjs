@@ -1113,6 +1113,14 @@ const requiredPatterns = [
     message: "admin portfolio action desk must be a bounded four-lane terminal board."
   },
   {
+    pattern: /(?=[\s\S]*PORTFOLIO_POSITION_LANES[\s\S]{0,900}风险预警[\s\S]{0,900}止盈\/回吐[\s\S]{0,900}核心持有[\s\S]{0,900}小仓观察)(?=[\s\S]*function renderPositions[\s\S]{0,2200}position-terminal[\s\S]{0,2200}position-lane-grid)/,
+    message: "admin portfolio positions view must split holdings into risk, profit, core, and watch lanes instead of a long holding list."
+  },
+  {
+    pattern: /(?=[\s\S]*\.position-terminal\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.position-lane-grid\s*\{[\s\S]*repeat\(4,\s*minmax\(0,\s*1fr\)\))(?=[\s\S]*\.position-item-list\s*\{[\s\S]*overflow:\s*auto)/,
+    message: "admin portfolio positions view must be a bounded four-lane terminal board."
+  },
+  {
     pattern: /(?=[\s\S]*function renderPortfolioDecisionMatrixBoard)(?=[\s\S]*matrix-table)(?=[\s\S]*买点[\s\S]*板块\/质量[\s\S]*风险[\s\S]*数据\/费率)/,
     message: "admin portfolio decision matrix must compare buy point, sector, risk, and data columns in one trading-style board."
   },
