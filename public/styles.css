@@ -515,7 +515,8 @@ button:disabled {
 }
 
 .runtime-workspace-switcher button,
-.order-terminal-rail button {
+.order-terminal-rail button,
+.diagnostic-terminal-rail button {
   min-width: 0;
   min-height: 48px;
   display: grid;
@@ -537,13 +538,16 @@ button:disabled {
 .runtime-workspace-switcher button:hover,
 .runtime-workspace-switcher button.active,
 .order-terminal-rail button:hover,
-.order-terminal-rail button.active {
+.order-terminal-rail button.active,
+.diagnostic-terminal-rail button:hover,
+.diagnostic-terminal-rail button.active {
   border-color: #c9d8e4;
   background: #ffffff;
 }
 
 .runtime-workspace-switcher button.active,
-.order-terminal-rail button.active {
+.order-terminal-rail button.active,
+.diagnostic-terminal-rail button.active {
   border-color: #9fb7c9;
   color: #12384f;
   box-shadow: inset 3px 0 0 #0f766e, 0 1px 0 rgba(15, 23, 42, 0.04);
@@ -554,7 +558,10 @@ button:disabled {
 .runtime-workspace-switcher span,
 .order-terminal-rail b,
 .order-terminal-rail small,
-.order-terminal-rail span {
+.order-terminal-rail span,
+.diagnostic-terminal-rail b,
+.diagnostic-terminal-rail small,
+.diagnostic-terminal-rail span {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -563,13 +570,15 @@ button:disabled {
 }
 
 .runtime-workspace-switcher b,
-.order-terminal-rail b {
+.order-terminal-rail b,
+.diagnostic-terminal-rail b {
   grid-area: label;
   font-size: 13px;
 }
 
 .runtime-workspace-switcher small,
-.order-terminal-rail small {
+.order-terminal-rail small,
+.diagnostic-terminal-rail small {
   grid-area: hint;
   color: #70808f;
   font-size: 11px;
@@ -577,7 +586,8 @@ button:disabled {
 }
 
 .runtime-workspace-switcher span,
-.order-terminal-rail span {
+.order-terminal-rail span,
+.diagnostic-terminal-rail span {
   grid-area: count;
   min-width: 24px;
   padding: 2px 6px;
@@ -590,7 +600,8 @@ button:disabled {
 }
 
 .runtime-workspace-switcher button.active span,
-.order-terminal-rail button.active span {
+.order-terminal-rail button.active span,
+.diagnostic-terminal-rail button.active span {
   color: #0f5132;
   background: #dff3e8;
 }
@@ -2816,14 +2827,22 @@ button:disabled {
   grid-template-rows: auto minmax(0, 1fr);
 }
 
-.order-panel .panel-head p {
+.diagnostic-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.order-panel .panel-head p,
+.diagnostic-panel .panel-head p {
   margin-top: 5px;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.45;
 }
 
-.order-terminal {
+.order-terminal,
+.diagnostic-terminal {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(170px, 210px) minmax(0, 1fr);
@@ -2831,7 +2850,8 @@ button:disabled {
   overflow: hidden;
 }
 
-.order-terminal-rail {
+.order-terminal-rail,
+.diagnostic-terminal-rail {
   min-height: 0;
   display: grid;
   gap: 6px;
@@ -2843,7 +2863,8 @@ button:disabled {
   background: #f7fafc;
 }
 
-.order-terminal-stage {
+.order-terminal-stage,
+.diagnostic-terminal-stage {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -2852,11 +2873,13 @@ button:disabled {
   background: #ffffff;
 }
 
-.order-workspace-view {
+.order-workspace-view,
+.diagnostic-workspace-view {
   display: none;
 }
 
-.order-workspace-view.active {
+.order-workspace-view.active,
+.diagnostic-workspace-view.active {
   display: block;
   height: 100%;
   min-height: 0;
@@ -2864,10 +2887,52 @@ button:disabled {
   padding: 10px;
 }
 
+.diagnostic-workspace-view.active {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+}
+
 .order-workspace-view .output.compact {
   min-height: 100%;
   max-height: none;
   margin: 0;
+}
+
+.diagnostic-workspace-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e1e8ee;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.diagnostic-workspace-head strong,
+.diagnostic-workspace-head small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.diagnostic-workspace-head strong {
+  color: #1d2d3b;
+  font-size: 15px;
+}
+
+.diagnostic-workspace-head small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.42;
+}
+
+.diagnostic-workspace-view .insight-list,
+.diagnostic-workspace-view .capability-action-list {
+  min-height: 0;
+  overflow: auto;
+  align-content: start;
 }
 
 .alert-panel .panel-head p,
@@ -6192,6 +6257,16 @@ button.danger-button:hover {
   .portfolio-workspace-view[data-portfolio-view="orders"] .order-panel {
     height: 100%;
   }
+
+  .portfolio-workspace-view[data-portfolio-view="diagnostics"].active {
+    grid-template-rows: minmax(0, 1fr);
+    align-content: stretch;
+    overflow: hidden;
+  }
+
+  .portfolio-workspace-view[data-portfolio-view="diagnostics"] .diagnostic-panel {
+    height: 100%;
+  }
 }
 
 @media (max-width: 860px) {
@@ -6246,6 +6321,7 @@ button.danger-button:hover {
   .runtime-terminal-shell,
   .runtime-lane-grid,
   .order-terminal,
+  .diagnostic-terminal,
   .portfolio-command-panel,
   .portfolio-hero,
   .portfolio-kpi-grid,
@@ -6291,6 +6367,9 @@ button.danger-button:hover {
   .order-terminal,
   .order-terminal-stage,
   .order-workspace-view.active,
+  .diagnostic-terminal,
+  .diagnostic-terminal-stage,
+  .diagnostic-workspace-view.active,
   .portfolio-terminal-stage,
   .portfolio-workspace-view.active,
   .action-terminal,
@@ -6411,7 +6490,8 @@ button.danger-button:hover {
 
   .run-index-list,
   .watchlist-status-rail,
-  .order-terminal-rail {
+  .order-terminal-rail,
+  .diagnostic-terminal-rail {
     display: flex;
     max-height: none;
     overflow-x: auto;
@@ -6421,7 +6501,8 @@ button.danger-button:hover {
 
   .run-index-item,
   .watchlist-status-tab,
-  .order-terminal-rail button {
+  .order-terminal-rail button,
+  .diagnostic-terminal-rail button {
     flex: 0 0 260px;
     border-right: 1px solid #e8edf2;
     border-bottom: 0;
@@ -6429,7 +6510,8 @@ button.danger-button:hover {
 
   .run-index-item.active,
   .watchlist-status-tab.active,
-  .order-terminal-rail button.active {
+  .order-terminal-rail button.active,
+  .diagnostic-terminal-rail button.active {
     box-shadow: inset 0 -3px 0 #0f766e;
   }
 
@@ -6478,6 +6560,7 @@ button.danger-button:hover {
   .thought-section-head,
   .runtime-terminal-head,
   .runtime-board-head,
+  .diagnostic-workspace-head,
   .timeline-terminal-head,
   .watchlist-terminal-head,
   .run-detail-head,

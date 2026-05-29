@@ -833,6 +833,7 @@ assert(serverSource.includes("backtestDiagnostics: buildPortfolioBacktestDiagnos
 assert(adminSource.includes("buildCapabilityInsightItems") && adminHtmlSource.includes("portfolioCapabilitySummary"), "admin UI must render portfolio capability diagnostics");
 assert(adminSource.includes("renderCapabilityActionQueue") && adminHtmlSource.includes("portfolioCapabilityActionQueue"), "admin UI must render concrete capability repair tasks");
 assert(adminSource.includes("buildBacktestInsightItems") && adminHtmlSource.includes("portfolioBacktestSummary"), "admin UI must render historical backtest diagnostics");
+assert(adminSource.includes("setPortfolioDiagnosticView") && adminHtmlSource.includes("经理体检终端"), "admin UI must split manager diagnostics into a dedicated health terminal");
 const backtestFixture = {
   account: {
     cash: 88000,

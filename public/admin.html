@@ -646,29 +646,63 @@
               </section>
 
               <section class="portfolio-workspace-view" data-portfolio-view="diagnostics">
-                <div class="portfolio-diagnostic-grid">
-                  <section class="panel insight-card">
-                    <div class="panel-head tight">
-                      <h2>能力诊断</h2>
-                      <span id="portfolioCapabilityState" class="badge">待诊断</span>
+                <div class="panel diagnostic-panel">
+                  <div class="panel-head tight">
+                    <div>
+                      <h2>经理体检终端</h2>
+                      <p>把能力短板、修复队列、历史回测和榜单引用拆开处理；先看修复任务，再让经理进入下一次决策。</p>
                     </div>
-                    <div id="portfolioCapabilitySummary" class="insight-list"></div>
-                    <div id="portfolioCapabilityActionQueue" class="capability-action-list"></div>
-                  </section>
-                  <section class="panel insight-card">
-                    <div class="panel-head tight">
-                      <h2>历史回测</h2>
-                      <span id="portfolioBacktestState" class="badge">待回测</span>
+                    <span id="portfolioDiagnosticTerminalState" class="badge">未加载</span>
+                  </div>
+                  <div class="diagnostic-terminal portfolio-diagnostic-grid">
+                    <aside class="diagnostic-terminal-rail" aria-label="经理体检入口">
+                      <button type="button" class="active" data-diagnostic-view-target="capability"><b>能力短板</b><small>盈利 / 风控</small><span id="diagnosticNavCapabilityCount">0</span></button>
+                      <button type="button" data-diagnostic-view-target="actions"><b>修复队列</b><small>下一轮必须做</small><span id="diagnosticNavActionCount">0</span></button>
+                      <button type="button" data-diagnostic-view-target="backtest"><b>历史回测</b><small>复盘漏洞</small><span id="diagnosticNavBacktestCount">0</span></button>
+                      <button type="button" data-diagnostic-view-target="rankings"><b>榜单引用</b><small>动作是否有依据</small><span id="diagnosticNavRankingCount">0</span></button>
+                    </aside>
+                    <div class="diagnostic-terminal-stage">
+                      <section class="diagnostic-workspace-view active" data-diagnostic-view="capability">
+                        <div class="diagnostic-workspace-head">
+                          <div>
+                            <strong>能力诊断</strong>
+                            <small>从真实账本观察经理是否盈利承压、追涨、数据不足或过度观望。</small>
+                          </div>
+                          <span id="portfolioCapabilityState" class="badge">待诊断</span>
+                        </div>
+                        <div id="portfolioCapabilitySummary" class="insight-list"></div>
+                      </section>
+                      <section class="diagnostic-workspace-view" data-diagnostic-view="actions">
+                        <div class="diagnostic-workspace-head">
+                          <div>
+                            <strong>修复队列</strong>
+                            <small>这些任务会进入经理下一轮决策上下文，避免只写套话。</small>
+                          </div>
+                        </div>
+                        <div id="portfolioCapabilityActionQueue" class="capability-action-list"></div>
+                      </section>
+                      <section class="diagnostic-workspace-view" data-diagnostic-view="backtest">
+                        <div class="diagnostic-workspace-head">
+                          <div>
+                            <strong>历史回测</strong>
+                            <small>按历史运行与交易切片，检查重复成交、追高、卖出滞后和空仓等待。</small>
+                          </div>
+                          <span id="portfolioBacktestState" class="badge">待回测</span>
+                        </div>
+                        <div id="portfolioBacktestSummary" class="insight-list"></div>
+                      </section>
+                      <section class="diagnostic-workspace-view" data-diagnostic-view="rankings">
+                        <div class="diagnostic-workspace-head">
+                          <div>
+                            <strong>榜单引用</strong>
+                            <small>检查经理买卖动作是否引用了榜单、走势和风控边界。</small>
+                          </div>
+                          <span id="portfolioRankingAuditState" class="badge">待审计</span>
+                        </div>
+                        <div id="portfolioRankingAuditSummary" class="insight-list"></div>
+                      </section>
                     </div>
-                    <div id="portfolioBacktestSummary" class="insight-list"></div>
-                  </section>
-                  <section class="panel insight-card">
-                    <div class="panel-head tight">
-                      <h2>榜单引用</h2>
-                      <span id="portfolioRankingAuditState" class="badge">待审计</span>
-                    </div>
-                    <div id="portfolioRankingAuditSummary" class="insight-list"></div>
-                  </section>
+                  </div>
                 </div>
               </section>
             </div>

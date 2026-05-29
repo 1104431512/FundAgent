@@ -1081,7 +1081,7 @@ const requiredPatterns = [
     message: "admin portfolio workspace entries must switch focused views."
   },
   {
-    pattern: /renderPortfolioDashboard[\s\S]{0,3600}renderPortfolioWorkspaceCards[\s\S]{0,3200}renderPortfolioWorkspaceCard/,
+    pattern: /renderPortfolioDashboard[\s\S]{0,4800}renderPortfolioWorkspaceCards[\s\S]{0,5200}renderPortfolioWorkspaceCard/,
     message: "admin portfolio overview must show actionable workspace shortcut cards."
   },
   {
@@ -1157,7 +1157,7 @@ const requiredPatterns = [
     message: "admin portfolio terminal workspace must keep entry navigation in a stable left rail."
   },
   {
-    pattern: /@media \(max-width: 860px\)[\s\S]{0,2600}portfolio-workspace-switcher[\s\S]{0,600}overflow-x:\s*auto/,
+    pattern: /@media \(max-width: 860px\)[\s\S]{0,4200}portfolio-workspace-switcher[\s\S]{0,600}overflow-x:\s*auto/,
     message: "admin portfolio workspace switcher must remain usable on narrow screens."
   },
   {
@@ -2659,6 +2659,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*订单终端)(?=[\s\S]*data-order-view-target="transactions")(?=[\s\S]*setPortfolioOrderView)/,
     message: "admin portfolio orders must split orders, transactions, equity, and raw state into terminal entries."
+  },
+  {
+    pattern: /(?=[\s\S]*经理体检终端)(?=[\s\S]*data-diagnostic-view-target="actions")(?=[\s\S]*setPortfolioDiagnosticView)(?=[\s\S]*diagnosticNavBacktestCount)/,
+    message: "admin portfolio diagnostics must be a multi-entry manager health terminal, not a long mixed card block."
   },
   {
     pattern: /经理榜单/,

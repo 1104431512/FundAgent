@@ -17,6 +17,7 @@ let managerRankingFilterInitialized = false;
 let activePortfolioView = "overview";
 let activeRuntimeView = "overview";
 let activePortfolioOrderView = "active";
+let activePortfolioDiagnosticView = "capability";
 let activePortfolioRunKey = "";
 let activePortfolioRunPanel = "brief";
 let portfolioTimelineFullLoaded = false;
@@ -90,6 +91,7 @@ document.body.dataset.activeTab = document.querySelector("[data-tab].active")?.d
 setRuntimeView(localStorage.getItem("fundagent_runtime_view") || activeRuntimeView);
 setPortfolioView(localStorage.getItem("fundagent_portfolio_view") || activePortfolioView);
 setPortfolioOrderView(localStorage.getItem("fundagent_portfolio_order_view") || activePortfolioOrderView);
+setPortfolioDiagnosticView(localStorage.getItem("fundagent_portfolio_diagnostic_view") || activePortfolioDiagnosticView);
 
 document.querySelector("#saveTokenBtn").addEventListener("click", () => {
   localStorage.setItem("fundagent_admin_token", adminTokenInput.value.trim());
@@ -171,6 +173,11 @@ document.querySelector("[data-panel='portfolio']")?.addEventListener("click", (e
   const orderViewButton = event.target.closest("[data-order-view-target]");
   if (orderViewButton) {
     setPortfolioOrderView(orderViewButton.dataset.orderViewTarget || "active");
+    return;
+  }
+  const diagnosticViewButton = event.target.closest("[data-diagnostic-view-target]");
+  if (diagnosticViewButton) {
+    setPortfolioDiagnosticView(diagnosticViewButton.dataset.diagnosticViewTarget || "capability");
     return;
   }
   const rankingFilterButton = event.target.closest("[data-open-ranking-filter]");
@@ -280,6 +287,20 @@ function setPortfolioOrderView(view = "active") {
   });
   document.querySelectorAll("[data-order-view]").forEach((section) => {
     section.classList.toggle("active", section.dataset.orderView === nextView);
+  });
+}
+
+function setPortfolioDiagnosticView(view = "capability") {
+  const nextView = document.querySelector(`[data-diagnostic-view="${view}"]`) ? view : "capability";
+  activePortfolioDiagnosticView = nextView;
+  localStorage.setItem("fundagent_portfolio_diagnostic_view", nextView);
+  document.querySelectorAll("[data-diagnostic-view-target]").forEach((button) => {
+    const active = button.dataset.diagnosticViewTarget === nextView;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  document.querySelectorAll("[data-diagnostic-view]").forEach((section) => {
+    section.classList.toggle("active", section.dataset.diagnosticView === nextView);
   });
 }
 
@@ -695,11 +716,8 @@ function renderPortfolioDashboard(portfolio = {}) {
   const waiting = watchlist.filter((item) => item.status === "waiting_pullback");
   const launchEve = watchlist.filter(isWatchlistLaunchEveCandidate);
   const blocked = watchlist.filter((item) => item.status === "blocked");
-  const diagnosticCount = [
-    portfolio.capabilityDiagnostics?.title || portfolio.capabilityDiagnostics?.summary,
-    portfolio.backtestDiagnostics?.title || portfolio.backtestDiagnostics?.summary,
-    portfolio.rankingActionAudit?.coveragePct !== undefined || portfolio.rankingActionAudit?.summary
-  ].filter(Boolean).length;
+  const diagnosticCounts = buildPortfolioDiagnosticCounts(portfolio);
+  const diagnosticCount = diagnosticCounts.total;
 
   const briefParts = [
     portfolio.enabled ? "自动运行已启用" : "自动运行停用",
@@ -749,6 +767,59 @@ function renderPortfolioDashboard(portfolio = {}) {
   renderInsightList("#portfolioBacktestSummary", buildBacktestInsightItems(portfolio.backtestDiagnostics || {}), "暂无历史回测缺口。");
   updatePortfolioRankingAuditBadge(portfolio.rankingActionAudit || {});
   renderInsightList("#portfolioRankingAuditSummary", buildRankingAuditInsightItems(portfolio.rankingActionAudit || {}), "暂无榜单引用审计。");
+  renderPortfolioDiagnosticTerminal(portfolio, diagnosticCounts);
+}
+
+function buildPortfolioDiagnosticCounts(portfolio = {}) {
+  const capabilityItems = Array.isArray(portfolio.capabilityDiagnostics?.items)
+    ? portfolio.capabilityDiagnostics.items.length
+    : portfolio.capabilityDiagnostics?.summary ? 1 : 0;
+  const actionItems = Array.isArray(portfolio.capabilityActionQueue)
+    ? portfolio.capabilityActionQueue.length
+    : 0;
+  const backtestItems = Array.isArray(portfolio.backtestDiagnostics?.items)
+    ? portfolio.backtestDiagnostics.items.length
+    : portfolio.backtestDiagnostics?.summary ? 1 : 0;
+  const rankingMissing = Array.isArray(portfolio.rankingActionAudit?.missing)
+    ? portfolio.rankingActionAudit.missing.length
+    : 0;
+  const rankingTotal = Number(portfolio.rankingActionAudit?.totalActions || 0);
+  const rankingItems = rankingMissing || (rankingTotal ? 1 : portfolio.rankingActionAudit?.summary ? 1 : 0);
+  return {
+    capability: capabilityItems,
+    actions: actionItems,
+    backtest: backtestItems,
+    rankings: rankingItems,
+    total: capabilityItems + actionItems + backtestItems + rankingItems
+  };
+}
+
+function renderPortfolioDiagnosticTerminal(portfolio = {}, counts = buildPortfolioDiagnosticCounts(portfolio)) {
+  setText("#diagnosticNavCapabilityCount", String(counts.capability || 0));
+  setText("#diagnosticNavActionCount", String(counts.actions || 0));
+  setText("#diagnosticNavBacktestCount", String(counts.backtest || 0));
+  setText("#diagnosticNavRankingCount", String(counts.rankings || 0));
+  const level = getPortfolioDiagnosticLevel(portfolio);
+  const label = counts.total
+    ? `${counts.total} 项待复核`
+    : "体检正常";
+  setText("#portfolioDiagnosticTerminalState", label);
+  const node = document.querySelector("#portfolioDiagnosticTerminalState");
+  if (node) {
+    node.className = `badge ${level === "critical" ? "bad" : level === "warning" ? "warn" : "ok"}`;
+  }
+}
+
+function getPortfolioDiagnosticLevel(portfolio = {}) {
+  const levels = [
+    portfolio.capabilityDiagnostics?.level,
+    portfolio.backtestDiagnostics?.level,
+    portfolio.rankingActionAudit?.level
+  ].filter(Boolean);
+  if (levels.includes("critical")) return "critical";
+  if (levels.includes("warning")) return "warning";
+  if (levels.includes("info") || levels.includes("watch")) return "info";
+  return "ok";
 }
 
 function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
