@@ -862,6 +862,10 @@ button:disabled {
   border-left-color: #2b6cb0;
 }
 
+.ranking-overview-redeploy {
+  border-left-color: #15803d;
+}
+
 .ranking-overview-rotation {
   border-left-color: #4d7c0f;
 }
@@ -1217,6 +1221,10 @@ button:disabled {
   border-top: 3px solid #2b6cb0;
 }
 
+.ranking-list-redeploy {
+  border-top: 3px solid #15803d;
+}
+
 .ranking-list-rotation {
   border-top: 3px solid #4d7c0f;
 }
@@ -1388,6 +1396,11 @@ button:disabled {
 .ranking-action.rotation {
   color: #3f6212;
   background: #f1f8e8;
+}
+
+.ranking-action.redeploy {
+  color: #14532d;
+  background: #e8f7ed;
 }
 
 .ranking-action.chase {

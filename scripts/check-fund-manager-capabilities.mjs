@@ -53,7 +53,7 @@ assert.equal(normalizedUserPortfolios[0].holdings[0].visibleReturnLabel, "当日
 const rankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
   account: {
     initialCapital: 100000,
-    cash: 70000,
+    cash: 90000,
     positions: [
       {
         code: "008327",
@@ -192,6 +192,7 @@ const rankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfol
 assert(rankingBoard.lists.find((item) => item.id === "decision_synthesis")?.items.some((item) => item.code === "000005"), "manager ranking board must expose integrated decision-synthesis candidates");
 assert(rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.some((item) => item.code === "000001"), "manager ranking board must expose buy-preparation candidates");
 assert(rankingBoard.lists.find((item) => item.id === "launch_setup")?.items.some((item) => item.code === "000001"), "manager ranking board must expose low-position launch candidates");
+assert(rankingBoard.lists.find((item) => item.id === "cash_redeployment")?.items.some((item) => item.code === "000001"), "manager ranking board must expose high-cash redeployment candidates");
 assert(rankingBoard.lists.find((item) => item.id === "rotation_opportunity")?.items.some((item) => item.code === "000005"), "manager ranking board must expose sector-rotation opportunity candidates");
 assert(rankingBoard.lists.find((item) => item.id === "chase_risk")?.items.some((item) => item.code === "000006"), "manager ranking board must expose hot chase-risk candidates");
 assert(rankingBoard.lists.find((item) => item.id === "holdings_outlook")?.items.some((item) => item.code === "000003"), "manager ranking board must expose candidates with supportive top-ten holdings");
@@ -205,12 +206,14 @@ assert(rankingBoard.customerDigest?.watchFocus?.length || rankingBoard.customerD
 assert(rankingBoard.priorityQueue?.length >= 3, "manager ranking board must build a cross-list priority queue");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "008327" && item.listId === "sell_risk"), "priority queue must include urgent sell-risk items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000006" && item.listId === "chase_risk"), "priority queue must include chase-risk warning items");
+assert(rankingBoard.priorityQueue.some((item) => item.code === "000001" && item.listId === "cash_redeployment"), "priority queue must include cash-redeployment review items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000005" && item.listId === "rotation_opportunity"), "priority queue must include sector-rotation opportunity items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000004" && item.listId === "fee_suitability"), "priority queue must include fee-suitability review items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000003" && item.listId === "holdings_outlook"), "priority queue must include holdings-outlook review items");
 assert(rankingBoard.priorityQueue.every((item) => item.queueRank && item.nextStep), "priority queue items must be ranked and actionable");
 const synthesisRankingItem = rankingBoard.lists.find((item) => item.id === "decision_synthesis")?.items.find((item) => item.code === "000005");
 const buyRankingItem = rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.find((item) => item.code === "000001");
+const cashRedeploymentRankingItem = rankingBoard.lists.find((item) => item.id === "cash_redeployment")?.items.find((item) => item.code === "000001");
 const rotationRankingItem = rankingBoard.lists.find((item) => item.id === "rotation_opportunity")?.items.find((item) => item.code === "000005");
 const chaseRankingItem = rankingBoard.lists.find((item) => item.id === "chase_risk")?.items.find((item) => item.code === "000006");
 const holdingsRankingItem = rankingBoard.lists.find((item) => item.id === "holdings_outlook")?.items.find((item) => item.code === "000003");
@@ -220,6 +223,8 @@ assert(synthesisRankingItem?.decision?.highlights?.some((item) => item.includes(
 assert(/交叉确认|降级为观察|缺口/.test(synthesisRankingItem?.decision?.nextStep || ""), "decision-synthesis ranking items must tell the manager how to turn combined evidence into action");
 assert(buyRankingItem?.decision?.highlights?.length, "buy ranking items must explain the opportunity highlight");
 assert(buyRankingItem?.decision?.nextStep, "buy ranking items must include an actionable next step");
+assert(cashRedeploymentRankingItem?.reason.includes("现金偏高"), "cash-redeployment ranking items must explain why waiting is no longer enough");
+assert(/0\.5%-2\.5%|小仓/.test(cashRedeploymentRankingItem?.decision?.nextStep || ""), "cash-redeployment ranking items must force small starter-buy review instead of vague waiting");
 assert(rotationRankingItem?.facts.some((item) => item.includes("医药") || item.includes("轮动")), "rotation ranking items must expose readable sector-rotation facts");
 assert(/交叉复核|小仓/.test(rotationRankingItem?.decision?.nextStep || ""), "rotation ranking items must force cross-checking before small starter buys");
 assert(chaseRankingItem?.decision?.risks?.some((item) => item.includes("新闻热度") || item.includes("拥挤")), "chase-risk ranking items must explain why hot candidates cannot be chased");
@@ -1054,6 +1059,8 @@ assert(serverSource.includes("经理多角度榜单（系统计算，必须先�
 assert(serverSource.includes("rankingBasis"), "portfolio actions must preserve the ranking basis behind each recommendation");
 assert(serverSource.includes("buildPortfolioWatchRankingCitationMap"), "portfolio status replies must be able to cite which ranking lanes reference each watchlist fund");
 assert(serverSource.includes("formatPortfolioWatchRankingCitationText"), "portfolio status replies must format ranking citations in customer-readable watchlist lines");
+assert(serverSource.includes("buildPortfolioCashRedeploymentRanking"), "portfolio ranking board must include a cash-redeployment lane to fight over-conservative waiting");
+assert(serverSource.includes("cash_redeployment"), "portfolio decision prompt and ranking guards must reference the cash-redeployment lane");
 const portfolioDecisionCapabilitySource = serverSource.slice(
   serverSource.indexOf("async function executePortfolioDecision"),
   serverSource.indexOf("async function executePortfolioValuation")
@@ -1243,6 +1250,7 @@ assert(adminSource.includes("data-watchlist-code"), "admin UI watchlist cards mu
 assert(adminSource.includes("ranking-detail-link"), "admin UI ranking and priority items must expose compact watchlist detail actions");
 assert(adminSource.includes("renderWatchlistRankingRefs"), "admin UI watchlist details must show which manager ranking lanes cite each fund");
 assert(adminSource.includes("decision_synthesis"), "admin UI must render the decision-synthesis ranking lane");
+assert(adminSource.includes("cash_redeployment"), "admin UI must render the cash-redeployment ranking lane");
 assert(adminSource.includes("rotation_opportunity"), "admin UI must render the sector-rotation ranking lane");
 assert(adminSource.includes("chase_risk"), "admin UI must render the chase-risk ranking lane");
 assert(adminSource.includes("fee_suitability"), "admin UI must render the fee-suitability ranking lane");
@@ -1255,6 +1263,9 @@ assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must styl
 assert(adminStyleSource.includes("focused-from-ranking"), "admin UI must highlight watchlist cards opened from customer digest items");
 assert(adminStyleSource.includes("watchlist-ranking-refs"), "admin UI must style ranking citations inside watchlist fund details");
 assert(adminStyleSource.includes("ranking-overview-synthesis"), "admin UI must visually distinguish decision-synthesis overview cards");
+assert(adminStyleSource.includes("ranking-overview-redeploy"), "admin UI must visually distinguish cash-redeployment overview cards");
+assert(adminStyleSource.includes("ranking-list-redeploy"), "admin UI must visually distinguish cash-redeployment ranking lists");
+assert(adminStyleSource.includes("ranking-action.redeploy"), "admin UI must visually distinguish cash-redeployment action pills");
 assert(adminStyleSource.includes("ranking-overview-rotation"), "admin UI must visually distinguish sector-rotation overview cards");
 assert(adminStyleSource.includes("ranking-overview-chase"), "admin UI must visually distinguish chase-risk overview cards");
 assert(adminStyleSource.includes("ranking-overview-fee"), "admin UI must visually distinguish fee-suitability overview cards");

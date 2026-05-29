@@ -1741,7 +1741,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "经理多角度榜单（系统计算，必须先看榜单再决定）：",
     JSON.stringify(compactManagerRankings, null, 2),
     "客户视角要求：回答客户时优先使用 customerDigest 里的可买复核、观察重点和回避提醒，先讲原因和动作，再补必要数字；不要把所有榜单指标原样堆给客户。",
-    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、rotation_opportunity、chase_risk、fee_suitability、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
+    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、cash_redeployment、rotation_opportunity、chase_risk、fee_suitability、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
     JSON.stringify((missedFollowThroughQueue || []).slice(0, 5), null, 2),
@@ -3681,6 +3681,9 @@ function inferPortfolioRankingBoardReviewAction(list = {}, item = {}) {
   if (listId === "sell_risk") {
     return /优先卖出|卖出|减仓|止损|止盈|回吐/.test(actionText) ? "SELL" : "HOLD";
   }
+  if (listId === "cash_redeployment") {
+    return "WATCH";
+  }
   if (listId === "user_holding_alerts") return "WATCH";
   return "WATCH";
 }
@@ -3688,7 +3691,7 @@ function inferPortfolioRankingBoardReviewAction(list = {}, item = {}) {
 function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = []) {
   const lists = Array.isArray(board?.lists) ? board.lists : [];
   const existingCodes = new Set((existingActions || []).map((action) => action.code).filter(Boolean));
-  const watchedListIds = new Set(["decision_synthesis", "buy_preparation", "launch_setup", "rotation_opportunity", "chase_risk", "fee_suitability", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
+  const watchedListIds = new Set(["decision_synthesis", "buy_preparation", "launch_setup", "cash_redeployment", "rotation_opportunity", "chase_risk", "fee_suitability", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
   const actions = [];
   for (const list of lists) {
     if (!watchedListIds.has(String(list?.id || ""))) continue;
@@ -3896,12 +3899,12 @@ function selectPortfolioRankingBoardEntryForAction(action = {}, entries = []) {
   if (!entries.length) return null;
   const actionText = String(action.action || "").toUpperCase();
   const preferredIds = actionText === "BUY"
-    ? ["buy_preparation", "launch_setup", "decision_synthesis", "rotation_opportunity", "fee_suitability", "holdings_outlook", "opportunity_cost"]
+    ? ["buy_preparation", "cash_redeployment", "launch_setup", "decision_synthesis", "rotation_opportunity", "fee_suitability", "holdings_outlook", "opportunity_cost"]
     : actionText === "SELL"
       ? ["sell_risk", "chase_risk", "decision_synthesis", "opportunity_cost"]
       : actionText === "HOLD"
         ? ["sell_risk", "decision_synthesis", "holdings_outlook", "chase_risk"]
-        : ["buy_preparation", "launch_setup", "chase_risk", "decision_synthesis", "rotation_opportunity", "fee_suitability", "holdings_outlook"];
+        : ["buy_preparation", "cash_redeployment", "launch_setup", "chase_risk", "decision_synthesis", "rotation_opportunity", "fee_suitability", "holdings_outlook"];
   return [...entries].sort((a, b) => {
     const aRank = preferredIds.indexOf(String(a.list?.id || ""));
     const bRank = preferredIds.indexOf(String(b.list?.id || ""));
@@ -8530,6 +8533,7 @@ function buildPortfolioRankingBoard(db = {}) {
     buildPortfolioDecisionSynthesisRanking(watchlist),
     buildPortfolioBuyPreparationRanking(watchlist),
     buildPortfolioLaunchSetupRanking(watchlist),
+    buildPortfolioCashRedeploymentRanking(db, watchlist),
     buildPortfolioRotationOpportunityRanking(watchlist),
     buildPortfolioChaseRiskRanking(watchlist),
     buildPortfolioHoldingsOutlookRanking(watchlist),
@@ -8556,7 +8560,7 @@ function buildPortfolioRankingBoardHealth({ watchlist = [], positions = [], user
     return {
       level: "ok",
       title: "榜单已生成",
-      summary: `当前有 ${totalItems} 个可复核对象，经理可以按综合决策、买入、低位启动、板块轮动、追涨风险、持仓前景、费率适配、机会成本、卖出风险和用户持仓提醒分层处理。`,
+      summary: `当前有 ${totalItems} 个可复核对象，经理可以按综合决策、买入、低位启动、现金再部署、板块轮动、追涨风险、持仓前景、费率适配、机会成本、卖出风险和用户持仓提醒分层处理。`,
       actions: ["优先处理排名靠前项", "综合结论/买点/轮动/追涨/费率/持仓分开复核", "把用户真实持仓提醒放入每日跟踪"]
     };
   }
@@ -8749,6 +8753,76 @@ function buildPortfolioLaunchSetupRanking(watchlist = []) {
     emptyText: "暂无低位启动前夜候选。",
     nextAction: "下一步放宽行业召回范围，再用低位、回撤深度和持仓前景二次筛选。",
     items
+  });
+}
+
+function buildPortfolioCashRedeploymentRanking(db = {}, watchlist = []) {
+  const account = summarizePortfolioAccount(db.account || {});
+  const totalAsset = Number(account.totalAsset || 0);
+  const cash = Number(account.cash || 0);
+  const cashPct = totalAsset > 0 && Number.isFinite(cash) ? cash / totalAsset * 100 : null;
+  const positionWeight = Number(account.positionWeightPct || 0);
+  const pressureActive = Number.isFinite(cashPct)
+    && cashPct >= 55
+    && positionWeight <= 45
+    && !account.riskBudget?.blockNewBuys;
+  const items = pressureActive
+    ? (watchlist || [])
+      .filter((item) => ["ready", "waiting_pullback", "watch"].includes(item.status))
+      .map((item) => buildPortfolioCashRedeploymentRankingItem(item, { cashPct, positionWeight }))
+      .filter(Boolean)
+      .sort(compareRankingItems)
+      .slice(0, 6)
+    : [];
+  return buildPortfolioRankingList({
+    id: "cash_redeployment",
+    title: "现金再部署榜",
+    subtitle: "当可动用现金偏高、仓位偏低时，把接近买点的候选拉出来复核，防止经理长期只说等待。",
+    emptyText: pressureActive ? "现金压力存在，但暂无可进入再部署复核的候选。" : "当前现金或仓位不触发再部署压力。",
+    nextAction: pressureActive
+      ? "下一步对靠前候选给小仓试探、主动降级或明确复查时间，不能继续泛泛等待。"
+      : "若现金升至55%以上且仓位偏低，再用低位、回调完成、费率和追涨拦截筛选候选。",
+    items
+  });
+}
+
+function buildPortfolioCashRedeploymentRankingItem(item = {}, context = {}) {
+  const readinessScore = Number(item.readinessScore || 0);
+  const trend = item.lastSnapshot?.trendProfile || {};
+  const return20d = finiteMetricNumber(trend.return20dPct);
+  const low120 = finiteMetricNumber(trend.lowPositionPct120);
+  const highChase = hasHighChaseTheme(item.lastSnapshot || item)
+    || (Number.isFinite(return20d) && return20d > 12 && Number.isFinite(low120) && low120 > 80);
+  if (highChase || item.status === "blocked") return null;
+  const ready = item.status === "ready" && readinessScore >= 80;
+  const starter = item.status === "ready" || readinessScore >= 60;
+  if (!starter) return null;
+  const score = Math.max(0, Math.min(100,
+    readinessScore
+    + (ready ? 14 : 6)
+    + (Number.isFinite(context.cashPct) ? Math.min(16, Math.max(0, context.cashPct - 50) * 0.7) : 0)
+    + (Number.isFinite(low120) && low120 <= 55 ? 6 : 0)
+    - (Number.isFinite(return20d) && return20d > 8 ? 8 : 0)
+  ));
+  return buildRankingItemFromWatch(item, {
+    score,
+    action: ready ? "现金再部署买入复核" : "0.5%-2.5%试探复核",
+    reason: ready
+      ? "现金偏高且候选准备度较高，需要复核是否小仓启动，避免继续空泛观望。"
+      : "现金偏高但候选仍有缺口，只能进入小仓试探复核或写清下一次触发条件。",
+    highlights: [
+      Number.isFinite(context.cashPct) ? `可动用现金${formatFallbackPlainPct(context.cashPct)}` : "",
+      Number.isFinite(context.positionWeight) ? `当前仓位${formatFallbackPlainPct(context.positionWeight)}` : "",
+      item.readinessLabel ? `准备度${readinessScore}/${item.readinessLabel}` : ""
+    ].filter(Boolean),
+    risks: [
+      Number.isFinite(return20d) && return20d > 8 ? "近20日涨幅偏快，试探仓必须更小。" : "",
+      ...(item.riskNotes || [])
+    ].filter(Boolean),
+    gaps: item.readinessGaps || [],
+    nextStep: ready
+      ? "今日操作必须给 BUY 小仓复核或明确风控拦截理由；若买入，只允许0.5%-2.5%启动仓。"
+      : "下一次净值更新后复核缺口是否消失；若缺口消失，只允许0.5%-2.5%小仓试探，不能把它写成无限期等待。"
   });
 }
 
@@ -9478,6 +9552,7 @@ function buildPortfolioRankingPriorityQueue(lists = []) {
   const listWeight = {
     sell_risk: 42,
     chase_risk: 40,
+    cash_redeployment: 39,
     opportunity_cost: 38,
     rotation_opportunity: 36,
     buy_preparation: 34,
@@ -9528,6 +9603,7 @@ function buildPortfolioRankingPriorityQueue(lists = []) {
 function buildPortfolioRankingCustomerDigest(lists = []) {
   const listById = new Map((lists || []).map((list) => [list.id, list]));
   const synthesisItems = listById.get("decision_synthesis")?.items || [];
+  const cashRedeploymentItems = listById.get("cash_redeployment")?.items || [];
   const chaseItems = listById.get("chase_risk")?.items || [];
   const feeItems = listById.get("fee_suitability")?.items || [];
   const holdingsItems = listById.get("holdings_outlook")?.items || [];
@@ -9536,8 +9612,11 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
     ...chaseItems
   ];
   const riskAvoidCodes = new Set(riskAvoid.map((item) => item.code).filter(Boolean));
-  const buyReview = synthesisItems
-    .filter((item) => /优先买入|小仓试探/.test(item.action || "") && !riskAvoidCodes.has(item.code))
+  const buyReview = [
+    ...synthesisItems.filter((item) => /优先买入|小仓试探/.test(item.action || "")),
+    ...cashRedeploymentItems.filter((item) => /再部署|买入复核|试探/.test(item.action || ""))
+  ]
+    .filter((item) => item?.code && !riskAvoidCodes.has(item.code))
     .slice(0, 3);
   const usedCodes = new Set([
     ...riskAvoid.map((item) => item.code).filter(Boolean),
@@ -24735,6 +24814,7 @@ export {
   buildPortfolioRankingActionAudit,
   buildPortfolioRankingBoardReviewActions,
   buildPortfolioDecisionSynthesisRanking,
+  buildPortfolioCashRedeploymentRanking,
   buildPortfolioFeeSuitabilityRanking,
   buildPortfolioRotationOpportunityRanking,
   buildPortfolioChaseRiskRanking,
