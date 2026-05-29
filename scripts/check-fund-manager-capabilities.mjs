@@ -2131,6 +2131,38 @@ const detailedPositionLines = manager.buildPortfolioPositionStatusLines([
 assert(detailedPositionLines.includes("浮动盈亏"), "explicit position questions must still expose ledger PnL details");
 assert(detailedPositionLines.includes("份额 1234.56"), "explicit position questions must still expose units");
 assert(detailedPositionLines.includes("成本净值 1.23"), "explicit position questions must still expose average cost NAV");
+const compactDecisionLines = manager.buildPortfolioRecentDecisionStatusLines({
+  date: todayIso,
+  summary: "高位科技减仓复核，低位医药只观察，不追涨。",
+  card: [
+    "虚拟基金经理日报 2026-05-25",
+    "投委会意见：这里是很长的日报原文，不应该直接贴给客户。",
+    "今日操作：卖出和观察一长串。"
+  ].join("\n"),
+  actions: [
+    {
+      action: "SELL",
+      code: "008327",
+      name: "东财通信C",
+      amount: 11810.03,
+      reason: "通信链短期偏热，先降低同题材暴露。",
+      riskControl: "若后续回撤健康再评估，当前不追涨。",
+      rankingBasis: "卖出风险榜第1名，采纳减仓。"
+    },
+    {
+      action: "WATCH",
+      code: "012046",
+      name: "大成医药健康C",
+      reason: "低位修复但规模偏小，只能观察。",
+      riskControl: "等净值下钻确认后再小仓试探。"
+    }
+  ]
+}).join("\n");
+assert(compactDecisionLines.includes("动作摘要："), "recent decision status must expose a compact action summary");
+assert(compactDecisionLines.includes("卖出 008327 东财通信C"), "recent decision status must format SELL actions in customer-readable Chinese");
+assert(compactDecisionLines.includes("榜单："), "recent decision status must keep ranking basis in compact actions");
+assert(compactDecisionLines.includes("完整推演：后台"), "recent decision status must point full report readers to the timeline");
+assert(!compactDecisionLines.includes("投委会意见：这里是很长的日报原文"), "recent decision status must not paste raw report sections into customer replies");
 const workflowWatchlistInput = [
   {
     ...normalizedWatchDb.watchlist[0],

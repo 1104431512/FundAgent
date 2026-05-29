@@ -8067,6 +8067,36 @@ function normalizePortfolioPositionTrendForCustomer(text = "") {
   return shortenPortfolioCustomerText(value, 56);
 }
 
+function buildPortfolioRecentDecisionStatusLines(run = {}, options = {}) {
+  if (!run) return [];
+  const actions = Array.isArray(run.actions) ? run.actions : [];
+  const limit = Math.max(1, Number(options.limit || 5));
+  const lines = [`最近一次决策：${run.date || "未知日期"}`];
+  const summary = shortenPortfolioCustomerText(run.summary || run.title || "", 90);
+  if (summary) {
+    lines.push(`决策摘要：${summary}`);
+  }
+  if (actions.length) {
+    lines.push("动作摘要：");
+    for (const action of actions.slice(0, limit)) {
+      lines.push(formatPortfolioCustomerActionLine(action));
+    }
+    if (actions.length > limit) {
+      lines.push(`还有 ${actions.length - limit} 个动作可在后台时间线查看。`);
+    }
+    const boundary = actions
+      .map((action) => action.riskControl || action.chaseRisk || action.positionCheck || "")
+      .find(Boolean);
+    if (boundary) {
+      lines.push(`总边界：${shortenPortfolioCustomerText(boundary, 86)}`);
+    }
+  } else {
+    lines.push("动作摘要：本轮没有买入或卖出动作，经理只保留观察和等待触发。");
+  }
+  lines.push("完整推演：后台“虚拟组合 -> 时间线”可查看投委会、执行流转和原文。");
+  return lines;
+}
+
 function buildPortfolioWatchlistStatusLines(watchlist = [], options = {}) {
   const normalized = normalizePortfolioWatchlist(watchlist).filter((item) => item.status !== "removed");
   if (!normalized.length) return ["暂无自选基金。"];
@@ -8622,14 +8652,7 @@ function buildPortfolioStatusAnswer(userText, intent) {
 
     if (recentDecision) {
       lines.push("");
-      lines.push(`最近一次决策：${recentDecision.date}`);
-      if (recentDecision.card) {
-        lines.push(...recentDecision.card.split("\n").slice(2, 12));
-      } else if (recentDecision.actions?.length) {
-        for (const action of recentDecision.actions) {
-          lines.push(`${action.action} ${action.code || ""} ${action.name || ""} ${action.amount || 0}元：${action.reason || ""}`);
-        }
-      }
+      lines.push(...buildPortfolioRecentDecisionStatusLines(recentDecision, { limit: wantsOperation ? 6 : 4 }));
     }
   }
 
@@ -26979,6 +27002,7 @@ export {
   buildPortfolioDecisionCard,
   buildPortfolioDecisionReadinessQueue,
   buildPortfolioRedeploymentPlan,
+  buildPortfolioRecentDecisionStatusLines,
   buildPortfolioExposureSummary,
   buildPortfolioManagerProfileContext,
   buildPortfolioMissedFollowThroughReviewQueue,

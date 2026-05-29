@@ -1561,6 +1561,18 @@ const requiredPatterns = [
     message: "portfolio status answers must use compact holdings by default and reserve detailed ledger fields for explicit position questions."
   },
   {
+    pattern: /function buildPortfolioRecentDecisionStatusLines[\s\S]{0,700}动作摘要[\s\S]{0,900}formatPortfolioCustomerActionLine[\s\S]{0,900}完整推演/,
+    message: "portfolio operation status replies must summarize the latest decision as customer action lines instead of pasting a daily report excerpt."
+  },
+  {
+    pattern: /buildPortfolioStatusAnswer[\s\S]{0,6400}buildPortfolioRecentDecisionStatusLines\(recentDecision/,
+    message: "portfolio status answers must route recent decisions through the compact action-summary formatter."
+  },
+  {
+    pattern: /^(?=[\s\S]*buildPortfolioRecentDecisionStatusLines)(?![\s\S]*recentDecision\.card\.split\("\\n"\)\.slice)/,
+    message: "portfolio status answers must not slice raw recent decision report text into customer replies."
+  },
+  {
     pattern: /function buildPortfolioCustomerActionDeckStatusLines[\s\S]{0,1200}客户行动牌/,
     message: "portfolio status answers must format customer action cards in Chinese."
   },
