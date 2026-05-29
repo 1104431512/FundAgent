@@ -1386,6 +1386,8 @@ assert(adminHtmlSource.includes("data-portfolio-view-target=\"rankings\""), "adm
 assert(adminHtmlSource.includes("data-portfolio-view=\"watchlist\""), "admin portfolio UI must expose watchlist as a dedicated workspace view instead of a long mixed page");
 assert(adminHtmlSource.includes("data-portfolio-view-target=\"risk\""), "admin portfolio UI must expose a dedicated risk-defense workspace entrance instead of burying risk inside a long ranking page");
 assert(adminHtmlSource.includes("data-portfolio-view=\"risk\""), "admin portfolio UI must render risk defense as a dedicated workspace view");
+assert(adminHtmlSource.includes("data-portfolio-view-target=\"sectors\""), "admin portfolio UI must expose a dedicated sector leaderboard workspace entrance");
+assert(adminHtmlSource.includes("data-portfolio-view=\"sectors\""), "admin portfolio UI must render sector opportunities as a dedicated workspace view");
 assert(adminSource.includes("setPortfolioView"), "admin portfolio UI must switch between virtual account workspace views");
 assert(adminHtmlSource.includes("portfolioWorkspaceCards"), "admin portfolio overview must expose workspace shortcut cards");
 assert(adminSource.includes("renderPortfolioWorkspaceCards"), "admin portfolio overview must summarize each workspace with actionable shortcut cards");
@@ -1393,10 +1395,13 @@ assert(adminHtmlSource.includes("portfolioRankingRadar"), "admin portfolio overv
 assert(adminSource.includes("renderPortfolioRankingRadar"), "admin portfolio overview must render buy/watch/avoid ranking radar lanes");
 assert(adminSource.includes("renderPortfolioRankingRadarPriority"), "admin portfolio overview must expose the cross-ranking priority queue without opening the full ranking page");
 assert(adminSource.includes("renderPortfolioRiskBoard"), "admin portfolio UI must render a compact risk-defense board outside the full ranking page");
+assert(adminSource.includes("renderPortfolioSectorBoard"), "admin portfolio UI must render a compact sector leaderboard outside the full ranking page");
 assert(adminStyleSource.includes("portfolio-ranking-radar-grid"), "admin portfolio ranking radar must be styled as a scannable three-lane board");
 assert(adminStyleSource.includes("portfolio-ranking-radar-priority"), "admin portfolio ranking radar must style the priority queue as a compact strip");
 assert(adminStyleSource.includes("risk-terminal"), "admin portfolio risk-defense board must be styled as a bounded terminal panel");
 assert(adminStyleSource.includes("risk-lane-grid"), "admin portfolio risk-defense board must split drawdown, sell, chase, and user alerts into lanes");
+assert(adminStyleSource.includes("sector-terminal"), "admin portfolio sector leaderboard must be styled as a bounded terminal panel");
+assert(adminStyleSource.includes("sector-lane-grid"), "admin portfolio sector leaderboard must split theme, rotation, holdings outlook, and quality into lanes");
 assert(adminHtmlSource.includes("综合决策"), "admin UI must describe integrated decision-synthesis rankings as a manager decision angle");
 assert(adminHtmlSource.includes("机会成本"), "admin UI must describe opportunity-cost rankings as a manager decision angle");
 assert(adminHtmlSource.includes("板块轮动"), "admin UI must describe sector-rotation rankings as a manager decision angle");
@@ -1443,8 +1448,10 @@ assert(/portfolio-terminal-shell[\s\S]{0,260}--portfolio-workspace-height:\s*100
 assert(/portfolio-terminal-stage[\s\S]{0,320}overflow:\s*hidden/.test(adminStyleSource), "admin portfolio terminal stage must prevent long workspace content from stretching the whole page");
 assert(/portfolio-workspace-view\.active[\s\S]{0,360}overflow:\s*auto/.test(adminStyleSource), "admin portfolio active workspace view must scroll internally");
 assert(adminHtmlSource.includes('data-portfolio-view-target="opportunities"'), "admin portfolio UI must expose observation opportunities as a separate workspace entrance");
+assert(adminHtmlSource.includes('data-portfolio-view-target="sectors"'), "admin portfolio UI must expose sector leaderboards as a separate workspace entrance");
 assert(adminHtmlSource.includes('data-portfolio-view-target="diagnostics"'), "admin portfolio UI must expose diagnostics as a separate workspace entrance");
 assert(adminSource.includes("renderPortfolioOpportunityBoard"), "admin portfolio UI must render buy, pullback, and launch-eve observation opportunities outside the long watchlist page");
+assert(adminSource.includes("PORTFOLIO_SECTOR_LANES"), "admin portfolio sector board must define separate leaderboard lenses for theme, rotation, holdings, and quality");
 assert(/timeline-terminal-body[\s\S]{0,360}max-height:\s*calc\(var\(--portfolio-workspace-height/.test(adminStyleSource), "admin portfolio timeline must bound run history height");
 assert(/watchlist-terminal-body[\s\S]{0,360}max-height:\s*calc\(var\(--portfolio-workspace-height/.test(adminStyleSource), "admin portfolio watchlist must bound category-detail height");
 assert(adminStyleSource.includes("portfolio-workspace-card"), "admin portfolio overview shortcut cards must be visually scannable");

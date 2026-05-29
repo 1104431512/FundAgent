@@ -30,6 +30,12 @@ const PORTFOLIO_RISK_LANES = [
   { id: "chase_risk", title: "追涨风险", tone: "chase", empty: "暂无偏热追涨提醒。" },
   { id: "user_holding_alerts", title: "用户持仓提醒", tone: "user", empty: "暂无客户持仓提醒。" }
 ];
+const PORTFOLIO_SECTOR_LANES = [
+  { id: "theme_allocation", title: "主题配置", tone: "theme", empty: "暂无主题配置线索。" },
+  { id: "rotation_opportunity", title: "轮动启动", tone: "rotation", empty: "暂无低位轮动线索。" },
+  { id: "holdings_outlook", title: "持仓前景", tone: "holdings", empty: "暂无前十大持仓前景线索。" },
+  { id: "quality_score", title: "质量优选", tone: "quality", empty: "暂无风险收益质量线索。" }
+];
 const WATCHLIST_STATUS_LABELS = {
   ready: "接近可买",
   waiting_pullback: "等待回调",
@@ -447,6 +453,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   const latestRun = runs[0] || null;
   const activeOrders = portfolio.activeOrders || [];
   const riskItems = collectPortfolioRiskBoardItems(portfolio.managerRankings || {});
+  const sectorItems = collectPortfolioSectorBoardItems(portfolio.managerRankings || {});
   const ready = watchlist.filter((item) => item.status === "ready");
   const waiting = watchlist.filter((item) => item.status === "waiting_pullback");
   const launchEve = watchlist.filter(isWatchlistLaunchEveCandidate);
@@ -478,12 +485,14 @@ function renderPortfolioDashboard(portfolio = {}) {
   setText("#portfolioNavOpportunityCount", String(ready.length + waiting.length + launchEve.length));
   setText("#portfolioNavDiagnosticCount", String(diagnosticCount));
   setText("#portfolioNavRiskCount", String(riskItems.length));
-  setText("#portfolioNavOverviewCount", "9");
+  setText("#portfolioNavSectorCount", String(sectorItems.length));
+  setText("#portfolioNavOverviewCount", "10");
   updateRunStateBadge(latestRun, portfolio.scheduler || {});
 
   renderPortfolioWorkspaceCards(portfolio, { positions, watchlist, userPortfolios, runs, activeOrders, transactions, equity, ready, waiting, launchEve, blocked, diagnosticCount });
   renderPortfolioRankingRadar(portfolio.managerRankings || {});
   renderPortfolioRiskBoard(portfolio.managerRankings || {});
+  renderPortfolioSectorBoard(portfolio.managerRankings || {});
   renderPortfolioOpportunityBoard({ ready, waiting, launchEve, blocked });
   renderInsightList("#portfolioManagerSummary", buildManagerInsightItems(portfolio, latestRun, activeOrders), "暂无经理运行摘要。");
   renderInsightList("#portfolioHoldingSummary", buildHoldingInsightItems(account, positions, portfolio.exposureSummary || null), "暂无持仓暴露。");
@@ -516,6 +525,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
   const rankingLists = Array.isArray(portfolio.managerRankings?.lists) ? portfolio.managerRankings.lists : [];
   const rankingCount = rankingLists.reduce((sum, list) => sum + (Array.isArray(list.items) ? list.items.length : 0), 0);
   const riskItems = collectPortfolioRiskBoardItems(portfolio.managerRankings || {});
+  const sectorItems = collectPortfolioSectorBoardItems(portfolio.managerRankings || {});
   const priority = portfolio.managerRankings?.priorityQueue?.[0] || null;
   const userAlerts = userPortfolios.reduce((sum, item) => sum + Number(item.alertCount || 0), 0);
   const latestRun = runs[0] || null;
@@ -535,6 +545,13 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
       value: `${ready.length + waiting.length + launchEve.length} 项`,
       detail: ready[0] ? `${ready[0].code || ""} ${ready[0].name || ""} 接近可买` : waiting[0] ? `${waiting[0].code || ""} ${waiting[0].name || ""} 等待回调` : "把可买、回调、启动前夜拆开看",
       meta: `可买 ${ready.length} · 回调 ${waiting.length} · 启动前夜 ${launchEve.length}`
+    },
+    {
+      view: "sectors",
+      label: "板块榜",
+      value: `${sectorItems.length} 项`,
+      detail: sectorItems[0] ? `${sectorItems[0].listTitle || "板块"}：${sectorItems[0].code || ""} ${sectorItems[0].name || ""}`.trim() : "主题配置、轮动、持仓前景和质量优选",
+      meta: sectorItems[0]?.action || "先看方向，再选代表基金"
     },
     {
       view: "positions",
@@ -761,6 +778,87 @@ function renderPortfolioRiskItem(item = {}, lane = {}) {
       </div>
       <p>${escapeHtml(item.reason || "等待经理下一轮复核。")}</p>
       ${facts.length ? `<div class="risk-facts">${facts.map((fact) => `<small>${escapeHtml(fact)}</small>`).join("")}</div>` : ""}
+      <footer>
+        <small>${escapeHtml(nextStep)}</small>
+        <div>
+          ${code ? `<button type="button" class="ranking-detail-link" data-focus-watchlist-code="${escapeHtml(code)}">详情</button>` : ""}
+          <button type="button" class="ranking-detail-link" data-open-ranking-filter="${escapeHtml(lane.id || "")}">榜单</button>
+        </div>
+      </footer>
+    </article>
+  `;
+}
+
+function collectPortfolioSectorBoardItems(board = {}) {
+  const lists = Array.isArray(board.lists) ? board.lists : [];
+  const items = [];
+  for (const lane of PORTFOLIO_SECTOR_LANES) {
+    const list = lists.find((candidate) => candidate.id === lane.id);
+    for (const item of (Array.isArray(list?.items) ? list.items : []).slice(0, 4)) {
+      items.push({
+        ...item,
+        listId: lane.id,
+        listTitle: list?.title || lane.title,
+        laneTone: lane.tone
+      });
+    }
+  }
+  return items;
+}
+
+function renderPortfolioSectorBoard(board = {}) {
+  const root = document.querySelector("#portfolioSectorBoard");
+  if (!root) return;
+  const listById = new Map((Array.isArray(board.lists) ? board.lists : []).map((list) => [list.id, list]));
+  const total = collectPortfolioSectorBoardItems(board).length;
+  setText("#portfolioSectorState", total ? `${total} 个方向` : "暂无板块");
+  root.innerHTML = `
+    <section class="sector-terminal">
+      <div class="sector-terminal-head">
+        <div>
+          <strong>先看方向，再选基金</strong>
+          <small>把主题配置、轮动启动、持仓前景和基金质量合在一屏，减少新闻追涨和同题材重复买入。</small>
+        </div>
+        <button type="button" class="secondary" data-portfolio-view-target="rankings">进入完整榜单</button>
+      </div>
+      <div class="sector-lane-grid">
+        ${PORTFOLIO_SECTOR_LANES.map((lane) => renderPortfolioSectorLane(lane, listById.get(lane.id))).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderPortfolioSectorLane(lane = {}, list = {}) {
+  const items = Array.isArray(list?.items) ? list.items.slice(0, 3) : [];
+  return `
+    <section class="sector-lane sector-lane-${escapeHtml(lane.tone || "theme")}">
+      <div class="sector-lane-head">
+        <div>
+          <strong>${escapeHtml(lane.title || list?.title || "板块")}</strong>
+          <small>${escapeHtml(list?.subtitle || lane.empty || "")}</small>
+        </div>
+        <button type="button" data-open-ranking-filter="${escapeHtml(lane.id || "")}">${items.length}</button>
+      </div>
+      <div class="sector-item-list">
+        ${items.length ? items.map((item) => renderPortfolioSectorItem(item, lane)).join("") : `<div class="empty compact-empty">${escapeHtml(lane.empty || "暂无板块线索。")}</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderPortfolioSectorItem(item = {}, lane = {}) {
+  const code = String(item.code || "").trim();
+  const facts = Array.isArray(item.facts) ? item.facts.slice(0, 4) : [];
+  const actionClass = getManagerRankingActionClass(`${item.action || ""} ${item.reason || ""}`) || lane.tone || "watch";
+  const nextStep = item.decision?.nextStep || item.nextStep || "进入完整榜单查看代表基金、买点和风险边界。";
+  return `
+    <article class="sector-item">
+      <div class="sector-item-title">
+        <strong>${escapeHtml([code, item.name].filter(Boolean).join(" ") || lane.title || "板块项")}</strong>
+        <span class="ranking-action ${actionClass}">${escapeHtml(item.action || item.status || "复核")}</span>
+      </div>
+      <p>${escapeHtml(item.reason || "等待经理下一轮复核。")}</p>
+      ${facts.length ? `<div class="sector-facts">${facts.map((fact) => `<small>${escapeHtml(fact)}</small>`).join("")}</div>` : ""}
       <footer>
         <small>${escapeHtml(nextStep)}</small>
         <div>

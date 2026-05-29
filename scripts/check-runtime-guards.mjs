@@ -1093,6 +1093,18 @@ const requiredPatterns = [
     message: "admin portfolio overview must render a compact ranking radar so users can scan buy/watch/avoid signals without opening a long ranking report."
   },
   {
+    pattern: /data-portfolio-view-target="sectors"[\s\S]{0,700}portfolioNavSectorCount[\s\S]{0,5200}data-portfolio-view="sectors"/,
+    message: "admin portfolio UI must expose a dedicated sector leaderboard entrance instead of burying theme and rotation choices in a long ranking page."
+  },
+  {
+    pattern: /(?=[\s\S]*PORTFOLIO_SECTOR_LANES[\s\S]{0,900}theme_allocation[\s\S]{0,900}rotation_opportunity[\s\S]{0,900}holdings_outlook[\s\S]{0,900}quality_score)(?=[\s\S]*function renderPortfolioSectorBoard)/,
+    message: "admin portfolio sector board must split theme allocation, sector rotation, holdings outlook, and fund quality into separate lenses."
+  },
+  {
+    pattern: /(?=[\s\S]*\.sector-terminal\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.sector-lane-grid\s*\{[\s\S]*repeat\(4,\s*minmax\(0,\s*1fr\)\))(?=[\s\S]*\.sector-item-list\s*\{[\s\S]*overflow:\s*auto)/,
+    message: "admin portfolio sector leaderboard must be a bounded four-lane terminal board."
+  },
+  {
     pattern: /renderPortfolioRankingRadarItem[\s\S]{0,1400}data-focus-watchlist-code[\s\S]{0,900}renderPortfolioRankingRadarPriority/,
     message: "admin portfolio ranking radar must jump from radar items and priority queue entries to matching watchlist details."
   },

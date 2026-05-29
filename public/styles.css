@@ -910,6 +910,10 @@ button:disabled {
   border-left-color: #d97706;
 }
 
+.portfolio-workspace-card[data-portfolio-view-target="sectors"] {
+  border-left-color: #23797b;
+}
+
 .portfolio-workspace-card[data-portfolio-view-target="positions"] {
   border-left-color: #2b6cb0;
 }
@@ -1369,6 +1373,195 @@ button:disabled {
   font-weight: 750;
 }
 
+.portfolio-sector-board {
+  min-width: 0;
+  min-height: 0;
+}
+
+.sector-terminal {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.sector-terminal-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #dce5ed;
+  border-radius: 8px;
+  background: #f7fafc;
+}
+
+.sector-terminal-head strong,
+.sector-terminal-head small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.sector-terminal-head strong {
+  color: #1d2d3b;
+  font-size: 15px;
+}
+
+.sector-terminal-head small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.sector-lane-grid {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  overflow: hidden;
+}
+
+.sector-lane {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid #e0e7ee;
+  border-top: 3px solid #23797b;
+  border-radius: 8px;
+  background: #fbfcfd;
+  overflow: hidden;
+}
+
+.sector-lane-theme {
+  border-top-color: #23797b;
+}
+
+.sector-lane-rotation {
+  border-top-color: #2f855a;
+}
+
+.sector-lane-holdings {
+  border-top-color: #7c6d1f;
+}
+
+.sector-lane-quality {
+  border-top-color: #315f8d;
+}
+
+.sector-lane-head {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 11px 12px;
+  border-bottom: 1px solid #e5ecf2;
+  background: #ffffff;
+}
+
+.sector-lane-head strong,
+.sector-lane-head small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.sector-lane-head strong {
+  color: #263746;
+  font-size: 14px;
+}
+
+.sector-lane-head small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sector-lane-head button {
+  min-width: 30px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.sector-item-list {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  overflow: auto;
+  padding: 10px;
+}
+
+.sector-item {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #e5ebf1;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.sector-item-title,
+.sector-item footer,
+.sector-item footer div {
+  min-width: 0;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sector-item-title strong,
+.sector-item p,
+.sector-item footer small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.sector-item-title strong {
+  color: #1f2f3d;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.sector-item p,
+.sector-item footer small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.sector-item footer small {
+  min-width: 0;
+}
+
+.sector-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.sector-facts small {
+  min-height: 22px;
+  padding: 3px 7px;
+  border: 1px solid #d7e6e2;
+  border-radius: 999px;
+  color: #28514a;
+  background: #f2faf7;
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .portfolio-insight-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -1382,6 +1575,12 @@ button:disabled {
 }
 
 .risk-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.sector-panel {
   min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -4166,6 +4365,16 @@ button.danger-button:hover {
   .portfolio-workspace-view[data-portfolio-view="risk"] .risk-panel {
     height: 100%;
   }
+
+  .portfolio-workspace-view[data-portfolio-view="sectors"].active {
+    grid-template-rows: minmax(0, 1fr);
+    align-content: stretch;
+    overflow: hidden;
+  }
+
+  .portfolio-workspace-view[data-portfolio-view="sectors"] .sector-panel {
+    height: 100%;
+  }
 }
 
 @media (max-width: 860px) {
@@ -4221,6 +4430,7 @@ button.danger-button:hover {
   .portfolio-insight-grid,
   .portfolio-diagnostic-grid,
   .risk-lane-grid,
+  .sector-lane-grid,
   .opportunity-command-row,
   .opportunity-lane-grid,
   .position-body {
@@ -4249,6 +4459,7 @@ button.danger-button:hover {
   .portfolio-terminal-stage,
   .portfolio-workspace-view.active,
   .risk-terminal,
+  .sector-terminal,
   .ranking-board,
   .watchlist-terminal-body,
   .timeline-terminal-body,

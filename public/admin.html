@@ -327,12 +327,13 @@
               <div class="portfolio-workspace-switcher" aria-label="虚拟组合工作区">
                 <div class="portfolio-workspace-group">
                   <span>账户</span>
-                  <button type="button" class="active" data-portfolio-view-target="overview"><b>总览</b><small>账户看板</small><span id="portfolioNavOverviewCount">8</span></button>
+                  <button type="button" class="active" data-portfolio-view-target="overview"><b>总览</b><small>账户看板</small><span id="portfolioNavOverviewCount">10</span></button>
                   <button type="button" data-portfolio-view-target="positions"><b>持仓</b><small>仓位与收益</small><span id="portfolioNavPositionCount">0</span></button>
                   <button type="button" data-portfolio-view-target="users"><b>用户持仓</b><small>客户提醒</small><span id="portfolioNavUserCount">0</span></button>
                 </div>
                 <div class="portfolio-workspace-group">
                   <span>机会</span>
+                  <button type="button" data-portfolio-view-target="sectors"><b>板块榜</b><small>主题/轮动</small><span id="portfolioNavSectorCount">0</span></button>
                   <button type="button" data-portfolio-view-target="opportunities"><b>观察机会</b><small>可买/回调</small><span id="portfolioNavOpportunityCount">0</span></button>
                   <button type="button" data-portfolio-view-target="watchlist"><b>自选池</b><small>候选明细</small><span id="portfolioNavWatchlistCount">0</span></button>
                 </div>
@@ -414,6 +415,19 @@
                     <span id="portfolioOpportunityState" class="badge">未加载</span>
                   </div>
                   <div id="portfolioOpportunityBoard" class="portfolio-opportunity-board"></div>
+                </div>
+              </section>
+
+              <section class="portfolio-workspace-view" data-portfolio-view="sectors">
+                <div class="panel sector-panel">
+                  <div class="panel-head tight">
+                    <div>
+                      <h2>板块机会榜</h2>
+                      <p>先看主题、轮动、持仓前景和基金质量，再决定代表基金；避免只因为新闻热度买入。</p>
+                    </div>
+                    <span id="portfolioSectorState" class="badge">未加载</span>
+                  </div>
+                  <div id="portfolioSectorBoard" class="portfolio-sector-board"></div>
                 </div>
               </section>
 
