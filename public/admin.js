@@ -1715,9 +1715,6 @@ function renderManagerRankings(board = {}) {
     return;
   }
   root.innerHTML = `
-    ${renderManagerRankingHealth(board.health || {})}
-    ${renderManagerCustomerDigest(board.customerDigest || {})}
-    ${renderManagerPriorityQueue(board.priorityQueue || [])}
     <section class="ranking-terminal">
       <div class="ranking-terminal-head">
         <div>
@@ -1726,9 +1723,14 @@ function renderManagerRankings(board = {}) {
         </div>
         <span>${lists.length} 个视角</span>
       </div>
-      ${renderManagerRankingOverview(lists)}
-      <div class="ranking-detail-stage">
-        ${lists.map(renderManagerRankingList).join("")}
+      <div class="ranking-terminal-body">
+        ${renderManagerRankingOverview(lists)}
+        <div class="ranking-detail-stage">
+          <div class="ranking-list-stage">
+            ${lists.map(renderManagerRankingList).join("")}
+          </div>
+          ${renderManagerRankingDigestDeck(board)}
+        </div>
       </div>
     </section>
   `;
@@ -1748,6 +1750,16 @@ function getDefaultManagerRankingFilter(board = {}, lists = []) {
     .find((id) => available.has(id));
   if (priorityListId) return priorityListId;
   return (lists || []).find((list) => Array.isArray(list.items) && list.items.length)?.id || lists?.[0]?.id || "";
+}
+
+function renderManagerRankingDigestDeck(board = {}) {
+  return `
+    <div class="ranking-digest-deck">
+      ${renderManagerRankingHealth(board.health || {})}
+      ${renderManagerCustomerDigest(board.customerDigest || {})}
+      ${renderManagerPriorityQueue(board.priorityQueue || [])}
+    </div>
+  `;
 }
 
 function renderManagerRankingHealth(health = {}) {
@@ -1897,6 +1909,7 @@ function setManagerRankingFilter(rankingId = "") {
     const visible = !activeManagerRankingFilter || section.dataset.rankingId === activeManagerRankingFilter;
     section.classList.toggle("is-filtered-out", !visible);
   });
+  root.querySelector(".ranking-detail-stage")?.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function focusWatchlistFund(code = "") {

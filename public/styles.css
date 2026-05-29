@@ -3180,30 +3180,34 @@ button:disabled {
 .ranking-board {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 0;
   min-height: 0;
-  max-height: calc(var(--portfolio-workspace-height, 760px) - 86px);
-  overflow: auto;
-  padding-right: 2px;
+  height: 100%;
+  max-height: none;
+  overflow: hidden;
+  padding-right: 0;
 }
 
 .ranking-terminal {
+  min-height: 0;
+  height: 100%;
   display: grid;
-  grid-template-columns: minmax(230px, 300px) minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid #d8e3ec;
+  border-radius: 8px;
+  background: #ffffff;
 }
 
 .ranking-terminal-head {
-  grid-column: 1 / -1;
   display: flex;
   align-items: start;
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid #d8e3ec;
-  border-radius: 8px;
-  background: #ffffff;
+  border-bottom: 1px solid #e3ebf2;
+  background: #f7fafc;
 }
 
 .ranking-terminal-head strong,
@@ -3235,10 +3239,28 @@ button:disabled {
   font-weight: 850;
 }
 
+.ranking-terminal-body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(230px, 300px) minmax(0, 1fr);
+  overflow: hidden;
+}
+
 .ranking-detail-stage {
   min-width: 0;
+  min-height: 0;
   display: grid;
   gap: 12px;
+  align-content: start;
+  overflow: auto;
+  padding: 12px;
+}
+
+.ranking-digest-deck,
+.ranking-list-stage {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
 }
 
 .ranking-overview {
@@ -3248,14 +3270,14 @@ button:disabled {
 }
 
 .ranking-terminal .ranking-overview {
-  position: sticky;
-  top: 0;
   z-index: 2;
   grid-template-columns: 1fr;
-  max-height: calc(100vh - 150px);
+  min-height: 0;
+  max-height: none;
   overflow: auto;
-  padding-right: 2px;
-  background: #ffffff;
+  padding: 10px;
+  border-right: 1px solid #e3ebf2;
+  background: #fbfcfd;
 }
 
 .ranking-overview-card {
@@ -6222,6 +6244,16 @@ button.danger-button:hover {
     box-shadow: none;
   }
 
+  .portfolio-workspace-view[data-portfolio-view="rankings"].active {
+    grid-template-rows: minmax(0, 1fr);
+    align-content: stretch;
+    overflow: hidden;
+  }
+
+  .portfolio-workspace-view[data-portfolio-view="rankings"] .ranking-panel {
+    height: 100%;
+  }
+
   .portfolio-workspace-view[data-portfolio-view="actions"].active {
     grid-template-rows: minmax(0, 1fr);
     align-content: stretch;
@@ -6446,6 +6478,11 @@ button.danger-button:hover {
   .diagnostic-workspace-view.active,
   .portfolio-terminal-stage,
   .portfolio-workspace-view.active,
+  .ranking-panel,
+  .ranking-board,
+  .ranking-terminal,
+  .ranking-terminal-body,
+  .ranking-detail-stage,
   .watchlist-panel,
   .watchlist-panel .watchlist-list,
   .watchlist-terminal,
@@ -6554,6 +6591,10 @@ button.danger-button:hover {
 
   .ranking-terminal-head {
     display: grid;
+  }
+
+  .ranking-terminal-body {
+    grid-template-columns: 1fr;
   }
 
   .timeline-terminal-head,

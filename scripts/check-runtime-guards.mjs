@@ -2557,6 +2557,10 @@ const requiredPatterns = [
     message: "admin manager ranking boards must render as a terminal-style lane navigator with a separate focused detail stage."
   },
   {
+    pattern: /(?=[\s\S]*renderManagerRankingDigestDeck[\s\S]*ranking-digest-deck)(?=[\s\S]*ranking-terminal-body[\s\S]{0,360}overflow:\s*hidden)(?=[\s\S]*ranking-board[\s\S]{0,360}overflow:\s*hidden)(?=[\s\S]*ranking-detail-stage[\s\S]{0,360}overflow:\s*auto)/,
+    message: "admin manager ranking board must keep health, digest, priority queue, and selected list inside a bounded terminal stage."
+  },
+  {
     pattern: /getDefaultManagerRankingFilter[\s\S]{0,900}priorityQueue[\s\S]{0,900}listId/,
     message: "admin manager ranking boards must default to the highest-priority ranking lane instead of expanding all lists."
   },

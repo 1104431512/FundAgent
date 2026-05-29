@@ -1529,6 +1529,7 @@ assert(/watchlist-terminal-body[\s\S]{0,360}max-height:\s*calc\(var\(--portfolio
 assert(adminStyleSource.includes("portfolio-workspace-card"), "admin portfolio overview shortcut cards must be visually scannable");
 assert(adminStyleSource.includes("ranking-terminal"), "admin manager ranking board must be a focused terminal-style workspace instead of a long stacked report");
 assert(adminStyleSource.includes("ranking-detail-stage"), "admin manager ranking board must separate lane navigation from the active ranking detail");
+assert(adminStyleSource.includes("ranking-terminal-body") && adminStyleSource.includes("ranking-digest-deck"), "admin manager ranking board must keep digest and selected ranking list inside a bounded terminal body");
 assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must style customer-facing ranking digest as a first-class panel");
 assert(adminStyleSource.includes("focused-from-ranking"), "admin UI must highlight watchlist cards opened from customer digest items");
 assert(adminStyleSource.includes("watchlist-ranking-refs"), "admin UI must style ranking citations inside watchlist fund details");
