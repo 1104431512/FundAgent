@@ -468,6 +468,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   const riskItems = collectPortfolioRiskBoardItems(portfolio.managerRankings || {});
   const sectorItems = collectPortfolioSectorBoardItems(portfolio.managerRankings || {});
   const dataItems = collectPortfolioDataBoardItems(portfolio.managerRankings || {});
+  const matrixItems = collectPortfolioDecisionMatrixItems(portfolio.managerRankings || {});
   const ready = watchlist.filter((item) => item.status === "ready");
   const waiting = watchlist.filter((item) => item.status === "waiting_pullback");
   const launchEve = watchlist.filter(isWatchlistLaunchEveCandidate);
@@ -499,15 +500,17 @@ function renderPortfolioDashboard(portfolio = {}) {
   setText("#portfolioNavOpportunityCount", String(ready.length + waiting.length + launchEve.length));
   setText("#portfolioNavDiagnosticCount", String(diagnosticCount));
   setText("#portfolioNavActionCount", String(actionDeskItems.length));
+  setText("#portfolioNavMatrixCount", String(matrixItems.length));
   setText("#portfolioNavRiskCount", String(riskItems.length));
   setText("#portfolioNavSectorCount", String(sectorItems.length));
   setText("#portfolioNavDataCount", String(dataItems.length));
-  setText("#portfolioNavOverviewCount", "12");
+  setText("#portfolioNavOverviewCount", "13");
   updateRunStateBadge(latestRun, portfolio.scheduler || {});
 
   renderPortfolioWorkspaceCards(portfolio, { positions, watchlist, userPortfolios, runs, activeOrders, transactions, equity, ready, waiting, launchEve, blocked, diagnosticCount });
   renderPortfolioRankingRadar(portfolio.managerRankings || {});
   renderPortfolioActionDesk(latestRun, activeOrders);
+  renderPortfolioDecisionMatrixBoard(portfolio.managerRankings || {});
   renderPortfolioRiskBoard(portfolio.managerRankings || {});
   renderPortfolioSectorBoard(portfolio.managerRankings || {});
   renderPortfolioDataBoard(portfolio.managerRankings || {});
@@ -545,6 +548,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
   const riskItems = collectPortfolioRiskBoardItems(portfolio.managerRankings || {});
   const sectorItems = collectPortfolioSectorBoardItems(portfolio.managerRankings || {});
   const dataItems = collectPortfolioDataBoardItems(portfolio.managerRankings || {});
+  const matrixItems = collectPortfolioDecisionMatrixItems(portfolio.managerRankings || {});
   const priority = portfolio.managerRankings?.priorityQueue?.[0] || null;
   const userAlerts = userPortfolios.reduce((sum, item) => sum + Number(item.alertCount || 0), 0);
   const latestRun = runs[0] || null;
@@ -565,6 +569,13 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
       value: `${rankingCount} 项`,
       detail: priority ? `${priority.listTitle || "优先处理"}：${priority.code || ""} ${priority.name || ""}`.trim() : "综合、轮动、追涨、费率等多角度排序",
       meta: priority?.action || "辅助买入/卖出复核"
+    },
+    {
+      view: "matrix",
+      label: "决策矩阵",
+      value: `${matrixItems.length} 行`,
+      detail: matrixItems[0] ? `${matrixItems[0].code || ""} ${matrixItems[0].name || ""}：${matrixItems[0].action || "复核"}`.trim() : "买点、板块、风险、数据横向对比",
+      meta: matrixItems[0]?.nextStep || "先看冲突，再决定动作"
     },
     {
       view: "opportunities",
@@ -842,6 +853,91 @@ function renderPortfolioActionItem(item = {}, lane = {}) {
         </div>
       </footer>
     </article>
+  `;
+}
+
+function collectPortfolioDecisionMatrixItems(board = {}) {
+  return Array.isArray(board.decisionMatrix?.items) ? board.decisionMatrix.items : [];
+}
+
+function renderPortfolioDecisionMatrixBoard(board = {}) {
+  const root = document.querySelector("#portfolioDecisionMatrix");
+  if (!root) return;
+  const matrix = board.decisionMatrix || {};
+  const items = collectPortfolioDecisionMatrixItems(board);
+  setText("#portfolioMatrixState", items.length ? `${items.length} 只基金` : "暂无矩阵");
+  root.innerHTML = `
+    <section class="matrix-terminal">
+      <div class="matrix-terminal-head">
+        <div>
+          <strong>${escapeHtml(matrix.title || "决策矩阵")}</strong>
+          <small>${escapeHtml(matrix.summary || "把候选基金横向对齐，先看买点、板块、风险和数据是否互相支持。")}</small>
+        </div>
+        <button type="button" class="secondary" data-portfolio-view-target="rankings">进入经理榜单</button>
+      </div>
+      <div class="matrix-table" role="table" aria-label="基金决策矩阵">
+        <div class="matrix-row matrix-head" role="row">
+          <span>基金</span>
+          <span>结论</span>
+          <span>买点</span>
+          <span>板块/质量</span>
+          <span>风险</span>
+          <span>数据/费率</span>
+          <span>下一步</span>
+        </div>
+        <div class="matrix-body">
+          ${items.length ? items.slice(0, 12).map(renderPortfolioDecisionMatrixRow).join("") : `<div class="empty compact-empty">${escapeHtml(matrix.emptyText || "暂无决策矩阵。")}</div>`}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderPortfolioDecisionMatrixRow(item = {}) {
+  const actionClass = getManagerRankingActionClass(`${item.action || ""} ${item.reason || ""}`);
+  return `
+    <article class="matrix-row matrix-item" role="row">
+      <div class="matrix-fund">
+        <b>${escapeHtml(String(item.matrixRank || item.queueRank || "-"))}</b>
+        <div>
+          <strong>${escapeHtml([item.code, item.name].filter(Boolean).join(" "))}</strong>
+          <small>${escapeHtml(item.reason || "等待经理复核。")}</small>
+        </div>
+      </div>
+      <div class="matrix-verdict">
+        <span class="ranking-action ${actionClass}">${escapeHtml(item.action || "复核")}</span>
+        ${Number.isFinite(Number(item.matrixScore)) ? `<small>矩阵 ${formatNumber(item.matrixScore, 0)}</small>` : ""}
+      </div>
+      ${renderPortfolioDecisionMatrixCell(item.cells?.buy, "buy")}
+      ${renderPortfolioDecisionMatrixCell(item.cells?.sector, "sector")}
+      ${renderPortfolioDecisionMatrixCell(item.cells?.risk, "risk")}
+      ${renderPortfolioDecisionMatrixCell(item.cells?.data, "data")}
+      <div class="matrix-next">
+        <small>${escapeHtml(item.nextStep || "进入榜单查看完整依据。")}</small>
+        <div>
+          ${item.code ? `<button type="button" class="ranking-detail-link" data-focus-watchlist-code="${escapeHtml(item.code)}">详情</button>` : ""}
+          <button type="button" class="ranking-detail-link" data-portfolio-view-target="rankings">榜单</button>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function renderPortfolioDecisionMatrixCell(cell = null, tone = "watch") {
+  if (!cell) {
+    return `<div class="matrix-cell matrix-cell-empty"><span>未上榜</span><small>暂无对应证据。</small></div>`;
+  }
+  const actionClass = getManagerRankingActionClass(`${cell.action || ""} ${cell.text || ""}`) || tone;
+  return `
+    <div class="matrix-cell matrix-cell-${escapeHtml(tone)}">
+      <button type="button" data-open-ranking-filter="${escapeHtml(cell.listId || "")}">
+        <span>${escapeHtml(cell.listTitle || "榜单")}${cell.rank ? `#${escapeHtml(String(cell.rank))}` : ""}</span>
+        <strong>${escapeHtml(cell.action || "复核")}</strong>
+      </button>
+      <small>${escapeHtml(cell.text || cell.nextStep || "进入榜单查看。")}</small>
+      ${Number.isFinite(Number(cell.score)) ? `<em>${formatNumber(cell.score, 0)}</em>` : ""}
+      <i class="ranking-action ${actionClass}">${escapeHtml(cell.action || "复核")}</i>
+    </div>
   `;
 }
 

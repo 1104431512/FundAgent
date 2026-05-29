@@ -1101,12 +1101,24 @@ const requiredPatterns = [
     message: "admin portfolio UI must expose a dedicated action desk entrance for buy, sell, watch, and order items."
   },
   {
+    pattern: /data-portfolio-view-target="matrix"[\s\S]{0,700}portfolioNavMatrixCount[\s\S]{0,5600}data-portfolio-view="matrix"/,
+    message: "admin portfolio UI must expose a dedicated decision-matrix entrance instead of forcing users through a long ranking page."
+  },
+  {
     pattern: /(?=[\s\S]*PORTFOLIO_ACTION_LANES[\s\S]{0,900}买入动作[\s\S]{0,900}卖出动作[\s\S]{0,900}观察动作[\s\S]{0,900}执行流转)(?=[\s\S]*function renderPortfolioActionDesk)/,
     message: "admin portfolio action desk must split latest manager actions and active orders into executable lanes."
   },
   {
     pattern: /(?=[\s\S]*\.action-terminal\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.action-lane-grid\s*\{[\s\S]*repeat\(4,\s*minmax\(0,\s*1fr\)\))(?=[\s\S]*\.action-item-list\s*\{[\s\S]*overflow:\s*auto)/,
     message: "admin portfolio action desk must be a bounded four-lane terminal board."
+  },
+  {
+    pattern: /(?=[\s\S]*function renderPortfolioDecisionMatrixBoard)(?=[\s\S]*matrix-table)(?=[\s\S]*买点[\s\S]*板块\/质量[\s\S]*风险[\s\S]*数据\/费率)/,
+    message: "admin portfolio decision matrix must compare buy point, sector, risk, and data columns in one trading-style board."
+  },
+  {
+    pattern: /(?=[\s\S]*\.matrix-terminal\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.matrix-table\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.matrix-body\s*\{[\s\S]*overflow:\s*auto)/,
+    message: "admin portfolio decision matrix must be bounded with an internally scrollable table."
   },
   {
     pattern: /(?=[\s\S]*PORTFOLIO_SECTOR_LANES[\s\S]{0,900}theme_allocation[\s\S]{0,900}rotation_opportunity[\s\S]{0,900}holdings_outlook[\s\S]{0,900}quality_score)(?=[\s\S]*function renderPortfolioSectorBoard)/,
@@ -2445,8 +2457,12 @@ const requiredPatterns = [
     message: "manager ranking boards must build a cross-list priority queue before rendering or model calls."
   },
   {
-    pattern: /compactPortfolioRankingBoardForModel[\s\S]{0,1200}priorityQueue/,
-    message: "portfolio decision prompts must include the ranking priority queue."
+    pattern: /(?=[\s\S]*const decisionMatrix = buildPortfolioRankingDecisionMatrix\(lists,\s*priorityQueue\))(?=[\s\S]*function buildPortfolioRankingDecisionMatrix[\s\S]{0,2600}买点[\s\S]{0,2600}板块[\s\S]{0,2600}风险[\s\S]{0,2600}数据)/,
+    message: "manager ranking boards must build a cross-list decision matrix that aligns buy, sector, risk, and data evidence by fund."
+  },
+  {
+    pattern: /compactPortfolioRankingBoardForModel[\s\S]{0,1200}priorityQueue[\s\S]{0,1200}decisionMatrix/,
+    message: "portfolio decision prompts must include the ranking priority queue and decision matrix."
   },
   {
     pattern: /buildPortfolioRankingCustomerDigest[\s\S]{0,2200}buyReview[\s\S]{0,2200}watchFocus[\s\S]{0,2200}riskAvoid/,

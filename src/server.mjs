@@ -8564,13 +8564,15 @@ function buildPortfolioRankingBoard(db = {}) {
   ];
   const priorityQueue = buildPortfolioRankingPriorityQueue(lists);
   const customerDigest = buildPortfolioRankingCustomerDigest(lists);
+  const decisionMatrix = buildPortfolioRankingDecisionMatrix(lists, priorityQueue);
   return {
     updatedAt: new Date().toISOString(),
     lists,
     priorityQueue,
+    decisionMatrix,
     customerDigest,
     health: buildPortfolioRankingBoardHealth({ watchlist, positions, userPortfolios, lists }),
-    summary: `${lists.map((list) => `${list.title}${list.items.length}只`).join("，")}；今日优先${priorityQueue.length}项`
+    summary: `${lists.map((list) => `${list.title}${list.items.length}只`).join("，")}；矩阵${decisionMatrix.items.length}只；今日优先${priorityQueue.length}项`
   };
 }
 
@@ -10975,6 +10977,162 @@ function uniquePortfolioRankingDigestItems(items = []) {
   return [...byCode.values()];
 }
 
+function buildPortfolioRankingDecisionMatrix(lists = [], priorityQueue = []) {
+  const queueByCode = new Map((priorityQueue || []).map((item) => [String(item.code || ""), item]));
+  const rowsByCode = new Map();
+  for (const list of lists || []) {
+    const listId = String(list?.id || "");
+    const group = getPortfolioRankingDecisionMatrixGroup(listId);
+    if (!group) continue;
+    for (const item of Array.isArray(list?.items) ? list.items : []) {
+      const code = String(item?.code || "").match(/^\d{6}$/)?.[0] || "";
+      if (!code) continue;
+      const row = rowsByCode.get(code) || {
+        code,
+        name: item.name || "",
+        queueRank: queueByCode.get(code)?.queueRank || null,
+        priorityScore: Number(queueByCode.get(code)?.priorityScore || 0),
+        cells: {},
+        refs: []
+      };
+      if (!row.name && item.name) row.name = item.name;
+      const ref = buildPortfolioRankingDecisionMatrixRef(list, item, group);
+      row.refs.push(ref);
+      const current = row.cells[group];
+      if (!current || comparePortfolioDecisionMatrixRefs(ref, current) < 0) {
+        row.cells[group] = ref;
+      }
+      rowsByCode.set(code, row);
+    }
+  }
+  const items = [...rowsByCode.values()]
+    .map(finalizePortfolioRankingDecisionMatrixRow)
+    .sort((a, b) => {
+      const aQueue = Number(a.queueRank || 999);
+      const bQueue = Number(b.queueRank || 999);
+      return aQueue - bQueue
+        || Number(b.matrixScore || 0) - Number(a.matrixScore || 0)
+        || String(a.code || "").localeCompare(String(b.code || ""));
+    })
+    .slice(0, 12)
+    .map((item, index) => ({ ...item, matrixRank: index + 1 }));
+  return {
+    title: "决策矩阵",
+    summary: items.length
+      ? `把 ${items.length} 只基金按买点、板块、风险、数据和费用横向对齐，优先看结论冲突的位置。`
+      : "暂无可对齐的榜单候选；运行盘前观察或导入持仓后再生成。",
+    columns: [
+      { id: "buy", title: "买点" },
+      { id: "sector", title: "板块/质量" },
+      { id: "risk", title: "风险" },
+      { id: "data", title: "数据/费率" }
+    ],
+    items,
+    emptyText: "暂无决策矩阵。"
+  };
+}
+
+function getPortfolioRankingDecisionMatrixGroup(listId = "") {
+  if (["decision_synthesis", "buy_preparation", "launch_setup", "cash_redeployment", "position_sizing"].includes(listId)) return "buy";
+  if (["theme_allocation", "rotation_opportunity", "holdings_outlook", "quality_score", "manager_stability", "portfolio_fit"].includes(listId)) return "sector";
+  if (["chase_risk", "drawdown_defense", "sell_risk", "user_holding_alerts", "opportunity_cost"].includes(listId)) return "risk";
+  if (["data_confidence", "fee_suitability", "replacement_choice"].includes(listId)) return "data";
+  return "";
+}
+
+function buildPortfolioRankingDecisionMatrixRef(list = {}, item = {}, group = "") {
+  const decision = item.decision || {};
+  return {
+    group,
+    listId: String(list.id || ""),
+    listTitle: String(list.title || "经理榜单"),
+    rank: Number(item.rank || 99),
+    score: Number.isFinite(Number(item.score)) ? round(Number(item.score), 1) : 0,
+    action: item.action || item.status || "复核",
+    reason: item.reason || selectPortfolioRankingFirstText(decision.highlights, decision.risks, decision.gaps) || "",
+    facts: normalizeStringArray(item.facts).slice(0, 3),
+    highlights: normalizeStringArray(decision.highlights).slice(0, 2),
+    risks: normalizeStringArray(decision.risks).slice(0, 2),
+    gaps: normalizeStringArray(decision.gaps).slice(0, 2),
+    nextStep: decision.nextStep || list.nextAction || ""
+  };
+}
+
+function comparePortfolioDecisionMatrixRefs(a = {}, b = {}) {
+  const groupWeight = {
+    risk: 4,
+    data: 3,
+    buy: 2,
+    sector: 1
+  };
+  return Number(a.rank || 99) - Number(b.rank || 99)
+    || Number(b.score || 0) - Number(a.score || 0)
+    || Number(groupWeight[b.group] || 0) - Number(groupWeight[a.group] || 0);
+}
+
+function finalizePortfolioRankingDecisionMatrixRow(row = {}) {
+  const refs = Array.isArray(row.refs) ? row.refs : [];
+  const riskRef = row.cells?.risk || null;
+  const dataRef = row.cells?.data || null;
+  const buyRef = row.cells?.buy || null;
+  const sectorRef = row.cells?.sector || null;
+  const riskText = `${riskRef?.action || ""} ${riskRef?.reason || ""} ${riskRef?.gaps?.join(" ") || ""}`;
+  const dataText = `${dataRef?.action || ""} ${dataRef?.reason || ""} ${dataRef?.gaps?.join(" ") || ""}`;
+  const buyText = `${buyRef?.action || ""} ${buyRef?.reason || ""}`;
+  const hasHardRisk = /卖出|减仓|止损|止盈|回吐|追涨|回避|防线|风险/.test(riskText);
+  const hasDataBlock = /阻塞|过期|缺|补数据|补证/.test(dataText);
+  const hasBuyReview = /买入|试探|启动|再部署|复核/.test(buyText);
+  const action = hasHardRisk
+    ? "先处理风险"
+    : hasDataBlock
+      ? "先补证据"
+      : hasBuyReview
+        ? "买入复核"
+        : sectorRef
+          ? "方向观察"
+          : "继续观察";
+  const nextStep = hasHardRisk
+    ? riskRef?.nextStep || "先处理风险项，再讨论是否买入或持有。"
+    : hasDataBlock
+      ? dataRef?.nextStep || "先补齐净值、费率、份额和持仓证据。"
+      : buyRef?.nextStep || sectorRef?.nextStep || "继续等待下一轮榜单复核。";
+  const matrixScore = round(
+    Number(row.priorityScore || 0)
+    + refs.reduce((sum, ref) => sum + Math.max(0, 6 - Number(ref.rank || 6)) * 2 + Math.min(12, Number(ref.score || 0) / 12), 0),
+    1
+  );
+  return {
+    code: row.code || "",
+    name: row.name || "",
+    queueRank: row.queueRank || null,
+    priorityScore: Number.isFinite(Number(row.priorityScore)) ? round(Number(row.priorityScore), 1) : 0,
+    matrixScore,
+    action,
+    reason: selectPortfolioRankingFirstText(buyRef?.reason, riskRef?.reason, dataRef?.reason, sectorRef?.reason) || "等待经理复核。",
+    cells: {
+      buy: buildPortfolioRankingDecisionMatrixCell(buyRef),
+      sector: buildPortfolioRankingDecisionMatrixCell(sectorRef),
+      risk: buildPortfolioRankingDecisionMatrixCell(riskRef),
+      data: buildPortfolioRankingDecisionMatrixCell(dataRef)
+    },
+    nextStep,
+    tags: refs.map((ref) => `${ref.listTitle}#${ref.rank}`).slice(0, 5)
+  };
+}
+
+function buildPortfolioRankingDecisionMatrixCell(ref = null) {
+  if (!ref) return null;
+  return {
+    listId: ref.listId || "",
+    listTitle: ref.listTitle || "",
+    rank: ref.rank || null,
+    score: Number.isFinite(Number(ref.score)) ? round(Number(ref.score), 1) : 0,
+    action: ref.action || "",
+    text: selectPortfolioRankingFirstText(ref.reason, ref.highlights, ref.risks, ref.gaps, ref.facts) || "",
+    nextStep: ref.nextStep || ""
+  };
+}
+
 function buildPortfolioRankingDigestItem(item = {}, fallbackNext = "") {
   const decision = item.decision || {};
   return {
@@ -11040,6 +11198,18 @@ function compactPortfolioRankingBoardForModel(board = {}) {
       risk: item.risk || "",
       gap: item.gap || ""
     })),
+    decisionMatrix: {
+      summary: board.decisionMatrix?.summary || "",
+      items: (board.decisionMatrix?.items || []).slice(0, 8).map((item) => ({
+        matrixRank: item.matrixRank,
+        code: item.code || "",
+        name: item.name || "",
+        action: item.action || "",
+        reason: item.reason || "",
+        nextStep: item.nextStep || "",
+        cells: item.cells || {}
+      }))
+    },
     lists: lists.map((list) => ({
       id: list.id || "",
       title: list.title || "",
@@ -26148,6 +26318,7 @@ export {
   buildPortfolioChaseRiskRanking,
   buildPortfolioDrawdownDefenseRanking,
   buildPortfolioDataConfidenceRanking,
+  buildPortfolioRankingDecisionMatrix,
   buildPortfolioRankingPriorityQueue,
   buildPortfolioAccountRiskBudget,
   buildPortfolioReadyWatchlistReviewActions,
