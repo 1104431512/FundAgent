@@ -592,23 +592,29 @@
               </section>
 
               <section class="portfolio-workspace-view" data-portfolio-view="watchlist">
-                <details class="panel section-panel" open>
-                  <summary class="section-summary">
-                    <h2>自选基金池</h2>
+                <div class="panel watchlist-panel">
+                  <div class="panel-head tight">
+                    <div>
+                      <h2>自选池终端</h2>
+                      <p>按接近买点、等待回调、观察中、暂不买等状态分屏查看候选；每只基金保留上榜依据、买入缺口、风险边界和持仓看点。</p>
+                    </div>
                     <span id="watchlistCount" class="badge">0</span>
-                  </summary>
+                  </div>
                   <div id="watchlistList" class="watchlist-list"></div>
-                </details>
+                </div>
               </section>
 
               <section class="portfolio-workspace-view" data-portfolio-view="timeline">
-                <details class="panel section-panel" open>
-                  <summary class="section-summary">
-                    <h2>观察、决策与复盘</h2>
-                    <span>按时间轴查看经理分析</span>
-                  </summary>
+                <div class="panel timeline-panel">
+                  <div class="panel-head tight">
+                    <div>
+                      <h2>经理时间线终端</h2>
+                      <p>按记录选择经理日报、盘前观察和复盘；右侧只展开当前记录，原始长文收进独立入口。</p>
+                    </div>
+                    <span id="timelineCount" class="badge">0</span>
+                  </div>
                   <div id="runList" class="run-list"></div>
-                </details>
+                </div>
               </section>
 
               <section class="portfolio-workspace-view" data-portfolio-view="orders">

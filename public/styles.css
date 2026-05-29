@@ -2821,6 +2821,26 @@ button:disabled {
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+.watchlist-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.timeline-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.watchlist-panel .panel-head p,
+.timeline-panel .panel-head p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .order-panel {
   min-height: 0;
   display: grid;
@@ -4112,6 +4132,22 @@ button:disabled {
   gap: 10px;
 }
 
+.watchlist-panel .watchlist-list {
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.watchlist-panel .watchlist-list.is-empty {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.timeline-panel .run-list {
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
 .user-panel {
   min-height: 0;
   display: grid;
@@ -4569,8 +4605,11 @@ button.danger-button:hover {
 
 .watchlist-terminal {
   min-width: 0;
+  min-height: 0;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 0;
+  height: 100%;
   overflow: hidden;
   border: 1px solid #dce5ed;
   border-radius: 8px;
@@ -4620,9 +4659,13 @@ button.danger-button:hover {
 .watchlist-terminal-body {
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-  min-height: 360px;
+  min-height: 0;
   max-height: calc(var(--portfolio-workspace-height, 760px) - 82px);
   overflow: hidden;
+}
+
+.watchlist-panel .watchlist-terminal-body {
+  max-height: none;
 }
 
 .watchlist-status-rail {
@@ -5482,13 +5525,20 @@ button.danger-button:hover {
 
 .timeline-terminal {
   min-width: 0;
+  min-height: 0;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 0;
   margin-top: 14px;
+  height: 100%;
   overflow: hidden;
   border: 1px solid #dce5ed;
   border-radius: 8px;
   background: #ffffff;
+}
+
+.timeline-panel .timeline-terminal {
+  margin-top: 0;
 }
 
 .timeline-terminal-head {
@@ -5540,9 +5590,13 @@ button.danger-button:hover {
 .timeline-terminal-body {
   display: grid;
   grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
-  min-height: 360px;
+  min-height: 0;
   max-height: calc(var(--portfolio-workspace-height, 760px) - 82px);
   overflow: hidden;
+}
+
+.timeline-panel .timeline-terminal-body {
+  max-height: none;
 }
 
 .run-index-list {
@@ -6228,6 +6282,26 @@ button.danger-button:hover {
     height: 100%;
   }
 
+  .portfolio-workspace-view[data-portfolio-view="watchlist"].active {
+    grid-template-rows: minmax(0, 1fr);
+    align-content: stretch;
+    overflow: hidden;
+  }
+
+  .portfolio-workspace-view[data-portfolio-view="watchlist"] .watchlist-panel {
+    height: 100%;
+  }
+
+  .portfolio-workspace-view[data-portfolio-view="timeline"].active {
+    grid-template-rows: minmax(0, 1fr);
+    align-content: stretch;
+    overflow: hidden;
+  }
+
+  .portfolio-workspace-view[data-portfolio-view="timeline"] .timeline-panel {
+    height: 100%;
+  }
+
   .portfolio-workspace-view[data-portfolio-view="positions"].active {
     grid-template-rows: minmax(0, 1fr);
     align-content: stretch;
@@ -6372,6 +6446,12 @@ button.danger-button:hover {
   .diagnostic-workspace-view.active,
   .portfolio-terminal-stage,
   .portfolio-workspace-view.active,
+  .watchlist-panel,
+  .watchlist-panel .watchlist-list,
+  .watchlist-terminal,
+  .timeline-panel,
+  .timeline-panel .run-list,
+  .timeline-terminal,
   .action-terminal,
   .alert-terminal,
   .position-terminal,

@@ -1419,6 +1419,8 @@ assert(adminStyleSource.includes("user-portfolio-detail-stage"), "admin UI must 
 assert(adminHtmlSource.includes("经理榜单"), "admin UI must expose manager ranking boards");
 assert(adminHtmlSource.includes("data-portfolio-view-target=\"rankings\""), "admin portfolio UI must split the long virtual account page into ranking workspace entries");
 assert(adminHtmlSource.includes("data-portfolio-view=\"watchlist\""), "admin portfolio UI must expose watchlist as a dedicated workspace view instead of a long mixed page");
+assert(adminHtmlSource.includes("自选池终端") && adminStyleSource.includes("watchlist-panel"), "admin watchlist workspace must use a bounded terminal panel");
+assert(adminHtmlSource.includes("经理时间线终端") && adminStyleSource.includes("timeline-panel"), "admin timeline workspace must use a bounded terminal panel");
 assert(adminHtmlSource.includes("持仓终端"), "admin portfolio UI must present holdings as a focused terminal workspace");
 assert(adminHtmlSource.includes("data-portfolio-view-target=\"risk\""), "admin portfolio UI must expose a dedicated risk-defense workspace entrance instead of burying risk inside a long ranking page");
 assert(adminHtmlSource.includes("data-portfolio-view=\"risk\""), "admin portfolio UI must render risk defense as a dedicated workspace view");

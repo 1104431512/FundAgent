@@ -1169,6 +1169,10 @@ const requiredPatterns = [
     message: "admin watchlist must use focused status-category navigation instead of showing every candidate category as one long page."
   },
   {
+    pattern: /(?=[\s\S]*自选池终端)(?=[\s\S]*watchlist-panel[\s\S]{0,360}grid-template-rows:\s*auto minmax\(0,\s*1fr\))(?=[\s\S]*watchlist-panel \.watchlist-list[\s\S]{0,360}overflow:\s*hidden)/,
+    message: "admin portfolio watchlist workspace must be a bounded terminal panel, not an expandable long section."
+  },
+  {
     pattern: /watchlist-terminal[\s\S]{0,900}watchlist-status-rail[\s\S]{0,900}watchlist-status-stage/,
     message: "admin watchlist UI must keep category navigation and selected fund details in a terminal workspace."
   },
@@ -1183,6 +1187,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*function renderRuns[\s\S]*timeline-terminal[\s\S]*renderRunDetail)(?=[\s\S]*function renderRunIndexButton[\s\S]*data-run-select)(?=[\s\S]*function renderRunDetail[\s\S]*完整日报文本)/,
     message: "admin portfolio timeline must use a focused run selector instead of a long stacked run report list."
+  },
+  {
+    pattern: /(?=[\s\S]*经理时间线终端)(?=[\s\S]*timeline-panel[\s\S]{0,360}grid-template-rows:\s*auto minmax\(0,\s*1fr\))(?=[\s\S]*timeline-panel \.run-list[\s\S]{0,360}overflow:\s*hidden)/,
+    message: "admin portfolio timeline workspace must be a bounded terminal panel instead of an expandable long report section."
   },
   {
     pattern: /(?=[\s\S]*activePortfolioRunPanel)(?=[\s\S]*data-run-panel)(?=[\s\S]*function renderRunPanelSwitch[\s\S]*运行记录详情入口)(?=[\s\S]*function renderRunPanelContent[\s\S]*renderRunActionsPanel[\s\S]*renderRunCommitteePanel[\s\S]*renderRunExecutionPanel[\s\S]*renderRunReportPanel)/,

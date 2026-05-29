@@ -2802,11 +2802,7 @@ function renderWatchlist(items) {
   const list = document.querySelector("#watchlistList");
   const count = document.querySelector("#watchlistCount");
   count.textContent = `${items.length}`;
-  if (!items.length) {
-    activeWatchlistStatus = "";
-    list.innerHTML = `<div class="empty">暂无自选基金。盘前观察、今日操作或周总结会把值得等待的候选沉淀到这里。</div>`;
-    return;
-  }
+  list.classList.toggle("is-empty", !items.length);
   const groups = groupWatchlistItems(items);
   if (!activeWatchlistStatus || !(groups.get(activeWatchlistStatus)?.length)) {
     activeWatchlistStatus = getDefaultWatchlistStatus(groups);
@@ -2833,9 +2829,12 @@ function getDefaultWatchlistStatus(groups) {
 }
 
 function renderWatchlistTerminal(groups) {
-  const categories = getWatchlistCategories().filter((category) => groups.get(category.status)?.length);
+  const allCategories = getWatchlistCategories();
+  const populatedCategories = allCategories.filter((category) => groups.get(category.status)?.length);
+  const categories = populatedCategories.length ? populatedCategories : allCategories.filter((category) => ["ready", "waiting_pullback", "watch", "blocked"].includes(category.status));
   const activeCategory = categories.find((category) => category.status === activeWatchlistStatus) || categories[0];
   const activeItems = groups.get(activeCategory?.status) || [];
+  const emptyText = "暂无自选基金。盘前观察、今日操作或周总结会把值得等待的候选沉淀到这里。";
   return `
     <section class="watchlist-terminal">
       <div class="watchlist-terminal-head">
@@ -2843,14 +2842,14 @@ function renderWatchlistTerminal(groups) {
           <strong>自选池工作台</strong>
           <small>左侧按买点状态筛选，右侧只展开当前分类，避免候选基金铺成长页面。</small>
         </div>
-        <span>${categories.length} 类 · ${activeItems.length} 只当前候选</span>
+        <span>${populatedCategories.length || 0} 类 · ${activeItems.length} 只当前候选</span>
       </div>
       <div class="watchlist-terminal-body">
         <div class="watchlist-status-rail" role="list">
           ${categories.map((category) => renderWatchlistStatusButton(category, groups.get(category.status) || [])).join("")}
         </div>
         <div class="watchlist-status-stage">
-          ${activeCategory ? renderWatchlistCategory(activeCategory, activeItems) : `<div class="empty">暂无自选基金分类。</div>`}
+          ${activeItems.length ? renderWatchlistCategory(activeCategory, activeItems) : renderWatchlistEmptyCategory(activeCategory, emptyText)}
         </div>
       </div>
     </section>
@@ -2899,6 +2898,21 @@ function renderWatchlistCategory(category, items = []) {
       <div class="fund-card-grid compact-fund-grid">
         ${items.map(renderWatchlistItem).join("")}
       </div>
+    </section>
+  `;
+}
+
+function renderWatchlistEmptyCategory(category = {}, text = "暂无自选基金分类。") {
+  return `
+    <section class="watchlist-category">
+      <div class="watchlist-category-head">
+        <div>
+          <h3>${escapeHtml(category.title || "自选池")}</h3>
+          <p>${escapeHtml(category.hint || "等待经理把候选基金沉淀到这里。")}</p>
+        </div>
+        <span class="watchlist-pill ${getWatchlistStatusClass(category.status)}">0 只</span>
+      </div>
+      <div class="empty">${escapeHtml(text)}</div>
     </section>
   `;
 }
@@ -3239,8 +3253,33 @@ function renderWatchlistTags(values = []) {
 
 function renderRuns(runs) {
   const list = document.querySelector("#runList");
+  setText("#timelineCount", `${runs.length}`);
+  list.classList.toggle("is-empty", !runs.length);
   if (!runs.length) {
-    list.innerHTML = `<div class="empty">暂无决策记录。</div>`;
+    list.innerHTML = `
+      <div class="timeline-terminal">
+        <div class="timeline-terminal-head">
+          <div>
+            <strong>经理时间线</strong>
+            <small>暂无决策记录。盘前观察、今日操作和周总结会沉淀到这里。</small>
+          </div>
+          <div class="timeline-status-strip">
+            <span>记录 0</span>
+            <span>完成 0</span>
+            <span>运行 0</span>
+            <span>异常 0</span>
+          </div>
+        </div>
+        <div class="timeline-terminal-body">
+          <div class="run-index-list" role="list">
+            <div class="run-panel-empty">暂无记录</div>
+          </div>
+          <div class="run-stage">
+            <div class="run-panel-empty">经理运行后，会在这里展示摘要、操作、投委会、执行和原始日报入口。</div>
+          </div>
+        </div>
+      </div>
+    `;
     return;
   }
   const keyedRuns = runs.map((run, index) => ({ run, index, key: getRunKey(run, index) }));
