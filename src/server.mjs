@@ -1741,7 +1741,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "经理多角度榜单（系统计算，必须先看榜单再决定）：",
     JSON.stringify(compactManagerRankings, null, 2),
     "客户视角要求：回答客户时优先使用 customerDigest 里的可买复核、观察重点和回避提醒，先讲原因和动作，再补必要数字；不要把所有榜单指标原样堆给客户。",
-    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、cash_redeployment、position_sizing、quality_score、portfolio_fit、rotation_opportunity、chase_risk、fee_suitability、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
+    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、cash_redeployment、position_sizing、quality_score、manager_stability、portfolio_fit、rotation_opportunity、chase_risk、fee_suitability、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
     JSON.stringify((missedFollowThroughQueue || []).slice(0, 5), null, 2),
@@ -3691,7 +3691,7 @@ function inferPortfolioRankingBoardReviewAction(list = {}, item = {}) {
 function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = []) {
   const lists = Array.isArray(board?.lists) ? board.lists : [];
   const existingCodes = new Set((existingActions || []).map((action) => action.code).filter(Boolean));
-  const watchedListIds = new Set(["decision_synthesis", "buy_preparation", "launch_setup", "cash_redeployment", "position_sizing", "quality_score", "portfolio_fit", "rotation_opportunity", "chase_risk", "fee_suitability", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
+  const watchedListIds = new Set(["decision_synthesis", "buy_preparation", "launch_setup", "cash_redeployment", "position_sizing", "quality_score", "manager_stability", "portfolio_fit", "rotation_opportunity", "chase_risk", "fee_suitability", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
   const actions = [];
   for (const list of lists) {
     if (!watchedListIds.has(String(list?.id || ""))) continue;
@@ -3899,12 +3899,12 @@ function selectPortfolioRankingBoardEntryForAction(action = {}, entries = []) {
   if (!entries.length) return null;
   const actionText = String(action.action || "").toUpperCase();
   const preferredIds = actionText === "BUY"
-    ? ["buy_preparation", "cash_redeployment", "position_sizing", "launch_setup", "quality_score", "portfolio_fit", "decision_synthesis", "rotation_opportunity", "fee_suitability", "holdings_outlook", "opportunity_cost"]
+    ? ["buy_preparation", "cash_redeployment", "position_sizing", "launch_setup", "quality_score", "manager_stability", "portfolio_fit", "decision_synthesis", "rotation_opportunity", "fee_suitability", "holdings_outlook", "opportunity_cost"]
     : actionText === "SELL"
       ? ["sell_risk", "chase_risk", "decision_synthesis", "opportunity_cost"]
       : actionText === "HOLD"
         ? ["sell_risk", "decision_synthesis", "holdings_outlook", "chase_risk"]
-        : ["buy_preparation", "cash_redeployment", "position_sizing", "launch_setup", "quality_score", "portfolio_fit", "chase_risk", "decision_synthesis", "rotation_opportunity", "fee_suitability", "holdings_outlook"];
+        : ["buy_preparation", "cash_redeployment", "position_sizing", "launch_setup", "quality_score", "manager_stability", "portfolio_fit", "chase_risk", "decision_synthesis", "rotation_opportunity", "fee_suitability", "holdings_outlook"];
   return [...entries].sort((a, b) => {
     const aRank = preferredIds.indexOf(String(a.list?.id || ""));
     const bRank = preferredIds.indexOf(String(b.list?.id || ""));
@@ -8536,6 +8536,7 @@ function buildPortfolioRankingBoard(db = {}) {
     buildPortfolioCashRedeploymentRanking(db, watchlist),
     buildPortfolioPositionSizingRanking(db, watchlist),
     buildPortfolioQualityScoreRanking(watchlist),
+    buildPortfolioManagerStabilityRanking(watchlist),
     buildPortfolioFitRanking(db, watchlist),
     buildPortfolioRotationOpportunityRanking(watchlist),
     buildPortfolioChaseRiskRanking(watchlist),
@@ -8563,8 +8564,8 @@ function buildPortfolioRankingBoardHealth({ watchlist = [], positions = [], user
     return {
       level: "ok",
       title: "榜单已生成",
-      summary: `当前有 ${totalItems} 个可复核对象，经理可以按综合决策、买入、低位启动、现金再部署、仓位方案、基金质量、组合适配、板块轮动、追涨风险、持仓前景、费率适配、机会成本、卖出风险和用户持仓提醒分层处理。`,
-      actions: ["优先处理排名靠前项", "综合结论/买点/仓位/质量/组合适配/轮动/追涨/费率/持仓分开复核", "把用户真实持仓提醒放入每日跟踪"]
+      summary: `当前有 ${totalItems} 个可复核对象，经理可以按综合决策、买入、低位启动、现金再部署、仓位方案、基金质量、经理稳定、组合适配、板块轮动、追涨风险、持仓前景、费率适配、机会成本、卖出风险和用户持仓提醒分层处理。`,
+      actions: ["优先处理排名靠前项", "综合结论/买点/仓位/质量/经理稳定/组合适配/轮动/追涨/费率/持仓分开复核", "把用户真实持仓提醒放入每日跟踪"]
     };
   }
   if (!watchlist.length && !positions.length && !userPortfolios.length) {
@@ -9081,6 +9082,206 @@ function buildPortfolioQualityScoreReason({ bounded = 0, severeDrawdown = false,
   if (bounded >= 74) return "风险收益、回撤和规模证据相对完整，基金底子可进入买入前质量复核。";
   if (bounded >= 58) return "基金质量中性偏可观察，还需要和同类、费用、持仓前景继续比较。";
   return "质量证据偏弱或缺口较多，暂不适合作为主推荐。";
+}
+
+function buildPortfolioManagerStabilityRanking(watchlist = []) {
+  const items = (watchlist || [])
+    .filter((item) => item?.code && !["removed"].includes(item.status))
+    .map(buildPortfolioManagerStabilityRankingItem)
+    .filter(Boolean)
+    .sort(compareRankingItems)
+    .slice(0, 6);
+  return buildPortfolioRankingList({
+    id: "manager_stability",
+    title: "经理稳定榜",
+    subtitle: "按基金经理任期、任期收益、产品历史和规模复核产品可信度，避免刚换经理或历史太短的基金被短线买点误推。",
+    emptyText: "暂无足够基金经理任期或产品稳定性数据可排序的候选。",
+    nextAction: "下一步补齐基金经理任期、任期收益、产品成立时间和规模；经理稳定性不足的基金只能观察或小仓验证。",
+    items
+  });
+}
+
+function buildPortfolioManagerStabilityRankingItem(item = {}) {
+  const evidence = resolvePortfolioManagerStabilityEvidence(item);
+  if (!evidence.shouldSurface) return null;
+  return buildPortfolioRankingItem({
+    code: item.code,
+    name: item.name,
+    source: "经理稳定",
+    score: round(evidence.score, 1),
+    action: evidence.action,
+    reason: evidence.reason,
+    facts: evidence.facts,
+    decision: {
+      highlights: evidence.highlights,
+      risks: evidence.risks,
+      gaps: evidence.gaps,
+      nextStep: evidence.nextStep
+    },
+    status: evidence.status
+  });
+}
+
+function resolvePortfolioManagerStabilityEvidence(item = {}) {
+  const snapshot = item.lastSnapshot || {};
+  const managers = extractPortfolioManagerEvidence(item, snapshot);
+  const lead = managers[0] || {};
+  const leadTenureYears = managers
+    .map((manager) => parsePortfolioManagerTenureYears(manager))
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => b - a)[0];
+  const leadReturnPct = finiteMetricNumber(lead.currentFundProfitPct ?? lead.profitPct ?? lead.returnPct);
+  const scaleYi = getPortfolioWatchFundScaleYi(item, snapshot);
+  const fundAgeYears = resolvePortfolioFundAgeYears(item, snapshot);
+  const hasManager = managers.length > 0;
+  const hasEvidence = hasManager || Number.isFinite(leadTenureYears) || Number.isFinite(fundAgeYears) || Number.isFinite(scaleYi);
+  if (!hasEvidence) return { shouldSurface: false };
+
+  let score = 50;
+  if (Number.isFinite(leadTenureYears)) {
+    score += leadTenureYears >= 5 ? 22 : leadTenureYears >= 3 ? 16 : leadTenureYears >= 1 ? 5 : -14;
+  } else {
+    score -= 8;
+  }
+  if (Number.isFinite(leadReturnPct)) score += leadReturnPct >= 30 ? 8 : leadReturnPct >= 8 ? 4 : leadReturnPct < 0 ? -6 : 0;
+  if (Number.isFinite(fundAgeYears)) score += fundAgeYears >= 5 ? 8 : fundAgeYears >= 3 ? 5 : fundAgeYears >= 1 ? 0 : -8;
+  if (Number.isFinite(scaleYi)) score += scaleYi >= 5 ? 5 : scaleYi >= 1 ? 2 : scaleYi >= 0.5 ? -5 : -12;
+  if (!hasManager) score -= 10;
+
+  const bounded = Math.max(0, Math.min(100, score));
+  const shortTenure = Number.isFinite(leadTenureYears) && leadTenureYears < 1;
+  const missingTenure = !Number.isFinite(leadTenureYears);
+  const youngFund = Number.isFinite(fundAgeYears) && fundAgeYears < 1;
+  const tinyFund = Number.isFinite(scaleYi) && scaleYi < 0.5;
+  const riskFlag = shortTenure || youngFund || tinyFund;
+  const action = riskFlag
+    ? "经理稳定风险"
+    : bounded >= 74
+      ? "稳定主理复核"
+      : bounded >= 58
+        ? "经理稳定观察"
+        : "经理资料补证据";
+  const status = riskFlag ? "warning" : bounded >= 74 ? "ready" : "watch";
+  const managerName = lead.name || lead.manager || lead.fundManager || "";
+  return {
+    shouldSurface: true,
+    score: bounded,
+    action,
+    status,
+    reason: buildPortfolioManagerStabilityReason({ bounded, shortTenure, youngFund, tinyFund, missingTenure, managerName }),
+    facts: [
+      managerName ? `经理${managerName}` : "",
+      Number.isFinite(leadTenureYears) ? `任期${round(leadTenureYears, 1)}年` : "",
+      Number.isFinite(leadReturnPct) ? `任期收益${formatFallbackPlainPct(leadReturnPct)}` : "",
+      Number.isFinite(fundAgeYears) ? `产品${round(fundAgeYears, 1)}年` : "",
+      Number.isFinite(scaleYi) ? `规模${round(scaleYi, 2)}亿` : ""
+    ].filter(Boolean),
+    highlights: [
+      Number.isFinite(leadTenureYears) && leadTenureYears >= 3 ? "基金经理任期较长，历史业绩更有参考价值。" : "",
+      Number.isFinite(leadReturnPct) && leadReturnPct > 0 ? "任期内收益为正，可进入稳定性复核。" : "",
+      Number.isFinite(fundAgeYears) && fundAgeYears >= 3 ? "产品历史不短，适合与风险收益一起比较。" : ""
+    ].filter(Boolean),
+    risks: [
+      shortTenure ? "当前基金经理任期不足1年，旧业绩不能直接外推。" : "",
+      youngFund ? "产品成立时间不足1年，历史风险收益样本太短。" : "",
+      tinyFund ? "基金规模过小，稳定性和流动性都需要先复核。" : "",
+      Number.isFinite(leadReturnPct) && leadReturnPct < 0 ? "当前经理任期收益为负，需要解释回撤原因。" : ""
+    ].filter(Boolean),
+    gaps: [
+      !hasManager ? "缺基金经理信息" : "",
+      missingTenure ? "缺基金经理任期" : "",
+      !Number.isFinite(fundAgeYears) ? "缺产品成立时间" : ""
+    ].filter(Boolean),
+    nextStep: riskFlag
+      ? "先降级观察，补经理变动、任期收益和同类替代；稳定性风险未解除前不得作为主推荐。"
+      : bounded >= 74
+        ? "和基金质量、买入准备、持仓前景交叉确认；经理稳定只放行产品可信度，不替代买点。"
+        : "补齐基金经理任期、任期收益和产品历史后再决定是否进入买入准备。"
+  };
+}
+
+function extractPortfolioManagerEvidence(item = {}, snapshot = {}) {
+  const sources = [
+    item.managers,
+    item.manager ? [{ name: item.manager }] : null,
+    snapshot.managers,
+    snapshot.manager ? [{ name: snapshot.manager }] : null,
+    snapshot.managerInfo?.managers,
+    snapshot.currentManagers,
+    snapshot.fundManagers
+  ];
+  const managers = [];
+  for (const source of sources) {
+    if (!source) continue;
+    const list = Array.isArray(source) ? source : [source];
+    for (const manager of list) {
+      if (!manager) continue;
+      if (typeof manager === "string") {
+        managers.push({ name: manager });
+      } else if (typeof manager === "object") {
+        managers.push(manager);
+      }
+    }
+  }
+  const seen = new Set();
+  return managers
+    .map((manager) => ({
+      ...manager,
+      name: String(manager.name || manager.manager || manager.fundManager || "").trim()
+    }))
+    .filter((manager) => {
+      const key = `${manager.name}|${manager.workTime || manager.tenure || manager.tenureYears || ""}`;
+      if (!manager.name && !manager.workTime && !manager.tenure && !manager.tenureYears) return false;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 4);
+}
+
+function parsePortfolioManagerTenureYears(manager = {}) {
+  const direct = finiteMetricNumber(manager.tenureYears ?? manager.workYears ?? manager.years);
+  if (Number.isFinite(direct)) return direct;
+  const text = String(manager.workTime || manager.tenure || manager.manageTime || manager.duration || "").trim();
+  if (!text) return null;
+  const yearMatch = text.match(/(\d+(?:\.\d+)?)\s*年/);
+  const monthMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:个月|月)/);
+  const dayMatch = text.match(/(\d+(?:\.\d+)?)\s*天/);
+  const plain = finiteMetricNumber(text);
+  if (Number.isFinite(plain) && !/[年月天]/.test(text)) return plain;
+  const years = (yearMatch ? Number(yearMatch[1]) : 0)
+    + (monthMatch ? Number(monthMatch[1]) / 12 : 0)
+    + (dayMatch ? Number(dayMatch[1]) / 365 : 0);
+  return years > 0 ? years : null;
+}
+
+function resolvePortfolioFundAgeYears(item = {}, snapshot = {}) {
+  const direct = finiteMetricNumber(snapshot.fundAgeYears ?? snapshot.ageYears ?? item.fundAgeYears);
+  if (Number.isFinite(direct)) return direct;
+  const dateText = [
+    snapshot.establishDate,
+    snapshot.inceptionDate,
+    snapshot.foundDate,
+    snapshot.launchDate,
+    snapshot.startDate,
+    item.establishDate,
+    item.inceptionDate
+  ].map((value) => String(value || "").trim()).find(Boolean);
+  if (!dateText) return null;
+  const started = Date.parse(dateText.replace(/\./g, "-").replace(/\//g, "-"));
+  if (!Number.isFinite(started)) return null;
+  const years = (Date.now() - started) / (365.25 * 24 * 60 * 60 * 1000);
+  return years > 0 ? years : null;
+}
+
+function buildPortfolioManagerStabilityReason({ bounded = 0, shortTenure = false, youngFund = false, tinyFund = false, missingTenure = false, managerName = "" } = {}) {
+  if (shortTenure) return "基金经理任期太短，不能把历史业绩直接当成当前经理能力。";
+  if (youngFund) return "产品成立时间太短，历史风险收益样本不足。";
+  if (tinyFund) return "基金规模过小，产品稳定性和持续运营风险需要优先复核。";
+  if (missingTenure) return "缺少基金经理任期，不能确认当前业绩是否由现任经理贡献。";
+  if (bounded >= 74) return `${managerName ? `${managerName}任期` : "基金经理任期"}和产品历史相对稳定，可进入买入前可信度复核。`;
+  if (bounded >= 58) return "基金经理和产品稳定性中性偏可观察，还需要补同类和任期收益证据。";
+  return "经理稳定性证据偏弱或缺口较多，暂不适合作为主推荐。";
 }
 
 function buildPortfolioFitRanking(db = {}, watchlist = []) {
@@ -10006,6 +10207,7 @@ function buildPortfolioRankingPriorityQueue(lists = []) {
     rotation_opportunity: 36,
     position_sizing: 33,
     quality_score: 31,
+    manager_stability: 29,
     portfolio_fit: 23,
     buy_preparation: 34,
     fee_suitability: 32,
@@ -10058,6 +10260,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
   const cashRedeploymentItems = listById.get("cash_redeployment")?.items || [];
   const positionSizingItems = listById.get("position_sizing")?.items || [];
   const qualityItems = listById.get("quality_score")?.items || [];
+  const managerStabilityItems = listById.get("manager_stability")?.items || [];
   const portfolioFitItems = listById.get("portfolio_fit")?.items || [];
   const chaseItems = listById.get("chase_risk")?.items || [];
   const feeItems = listById.get("fee_suitability")?.items || [];
@@ -10072,6 +10275,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
     ...cashRedeploymentItems.filter((item) => /再部署|买入复核|试探/.test(item.action || "")),
     ...positionSizingItems.filter((item) => /启动仓|小仓试探/.test(item.action || "")),
     ...qualityItems.filter((item) => /质量支撑/.test(item.action || "")),
+    ...managerStabilityItems.filter((item) => /稳定主理/.test(item.action || "")),
     ...portfolioFitItems.filter((item) => /组合补位|首仓适配/.test(item.action || ""))
   ]
     .filter((item) => item?.code && !riskAvoidCodes.has(item.code))
@@ -10084,6 +10288,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
     ...synthesisItems.filter((item) => !/优先买入|小仓试探|回避/.test(item.action || "")),
     ...positionSizingItems,
     ...qualityItems,
+    ...managerStabilityItems,
     ...portfolioFitItems,
     ...feeItems,
     ...holdingsItems
@@ -25278,6 +25483,7 @@ export {
   buildPortfolioCashRedeploymentRanking,
   buildPortfolioPositionSizingRanking,
   buildPortfolioQualityScoreRanking,
+  buildPortfolioManagerStabilityRanking,
   buildPortfolioFitRanking,
   buildPortfolioFeeSuitabilityRanking,
   buildPortfolioRotationOpportunityRanking,

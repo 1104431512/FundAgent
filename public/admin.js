@@ -839,6 +839,7 @@ function getManagerRankingListClass(id = "") {
   if (id === "cash_redeployment") return "redeploy";
   if (id === "position_sizing") return "sizing";
   if (id === "quality_score") return "quality";
+  if (id === "manager_stability") return "manager";
   if (id === "portfolio_fit") return "fit";
   if (id === "rotation_opportunity") return "rotation";
   if (id === "chase_risk") return "chase";
@@ -856,6 +857,7 @@ function getManagerRankingActionClass(text = "") {
   if (/现金再部署|再部署|0\.5%-2\.5%试探/.test(text)) return "redeploy";
   if (/仓位|启动仓|0元观察|试探仓/.test(text)) return "sizing";
   if (/质量|夏普|回撤|风险收益/.test(text)) return "quality";
+  if (/经理|任期|主理|稳定|产品历史/.test(text)) return "manager";
   if (/组合|适配|补位|同线|重叠/.test(text)) return "fit";
   if (/追涨|偏热|高位|拥挤|过热/.test(text)) return "chase";
   if (/板块轮动|轮动启动|轮动观察|轮动降温|轮动/.test(text)) return "rotation";
