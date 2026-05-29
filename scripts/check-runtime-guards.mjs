@@ -1069,7 +1069,7 @@ const requiredPatterns = [
     message: "admin portfolio page must group stock-terminal workspace entries by account, opportunity, decision, and records instead of one long page."
   },
   {
-    pattern: /<div class="portfolio-terminal-shell">[\s\S]{0,500}<aside class="portfolio-terminal-rail"[\s\S]{0,1200}<div class="portfolio-workspace-switcher"[\s\S]{0,2600}<div class="portfolio-terminal-stage">/,
+    pattern: /<div class="portfolio-terminal-shell">[\s\S]{0,500}<aside class="portfolio-terminal-rail"[\s\S]{0,1200}<div class="portfolio-workspace-switcher"[\s\S]{0,3400}<div class="portfolio-terminal-stage">/,
     message: "admin portfolio page must use a left-rail terminal workspace instead of stacking all virtual-run sections."
   },
   {
@@ -1085,7 +1085,7 @@ const requiredPatterns = [
     message: "admin portfolio overview must show actionable workspace shortcut cards."
   },
   {
-    pattern: /renderPortfolioWorkspaceCards[\s\S]{0,3400}managerRankings[\s\S]{0,1600}ready[\s\S]{0,1800}userAlerts/,
+    pattern: /renderPortfolioWorkspaceCards[\s\S]{0,4200}managerRankings[\s\S]{0,2200}ready[\s\S]{0,2200}userAlerts/,
     message: "admin portfolio workspace cards must summarize rankings, watchlist readiness, and user alerts."
   },
   {
@@ -1115,6 +1115,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*\.sector-terminal\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.sector-lane-grid\s*\{[\s\S]*repeat\(4,\s*minmax\(0,\s*1fr\)\))(?=[\s\S]*\.sector-item-list\s*\{[\s\S]*overflow:\s*auto)/,
     message: "admin portfolio sector leaderboard must be a bounded four-lane terminal board."
+  },
+  {
+    pattern: /(?=[\s\S]*\.data-terminal\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.data-lane-grid\s*\{[\s\S]*repeat\(4,\s*minmax\(0,\s*1fr\)\))(?=[\s\S]*\.data-item-list\s*\{[\s\S]*overflow:\s*auto)/,
+    message: "admin portfolio data-confidence board must be a bounded four-lane terminal board."
   },
   {
     pattern: /renderPortfolioRankingRadarItem[\s\S]{0,1400}data-focus-watchlist-code[\s\S]{0,900}renderPortfolioRankingRadarPriority/,
@@ -1465,8 +1469,8 @@ const requiredPatterns = [
     message: "portfolio decision prompts must force recommendations to cite the manager ranking board."
   },
   {
-    pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,1900}cash_redeployment[\s\S]{0,500}position_sizing[\s\S]{0,500}quality_score[\s\S]{0,500}manager_stability[\s\S]{0,500}portfolio_fit[\s\S]{0,900}drawdown_defense[\s\S]{0,900}replacement_choice/,
-    message: "portfolio decision prompts must force the model to review the cash-redeployment, position-sizing, fund-quality, manager-stability, portfolio-fit, drawdown-defense, and replacement-choice ranking lanes."
+    pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,1900}cash_redeployment[\s\S]{0,500}position_sizing[\s\S]{0,500}quality_score[\s\S]{0,500}manager_stability[\s\S]{0,500}portfolio_fit[\s\S]{0,900}drawdown_defense[\s\S]{0,900}data_confidence[\s\S]{0,900}replacement_choice/,
+    message: "portfolio decision prompts must force the model to review the cash-redeployment, position-sizing, fund-quality, manager-stability, portfolio-fit, drawdown-defense, data-confidence, and replacement-choice ranking lanes."
   },
   {
     pattern: /buildPortfolioWatchlistStatusLines[\s\S]{0,1200}buildPortfolioWatchRankingCitationMap[\s\S]{0,1600}formatPortfolioWatchDetailLine/,
@@ -2381,8 +2385,8 @@ const requiredPatterns = [
     message: "ranking-board guards must add traceable fallback review actions when top ranked items are omitted."
   },
   {
-    pattern: /decision_synthesis[\s\S]*buy_preparation[\s\S]*launch_setup[\s\S]*cash_redeployment[\s\S]*position_sizing[\s\S]*quality_score[\s\S]*manager_stability[\s\S]*portfolio_fit[\s\S]*theme_allocation[\s\S]*rotation_opportunity[\s\S]*chase_risk[\s\S]*drawdown_defense[\s\S]*holdings_outlook[\s\S]*fee_suitability[\s\S]*replacement_choice[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
-    message: "manager ranking boards must cover decision synthesis, buy preparation, low-position launch, cash redeployment, position sizing, fund quality, manager stability, portfolio fit, theme allocation, sector rotation, chase risk, drawdown defense, holdings outlook, fee suitability, replacement choice, opportunity cost, sell risk, and user holding alerts."
+    pattern: /decision_synthesis[\s\S]*buy_preparation[\s\S]*launch_setup[\s\S]*cash_redeployment[\s\S]*position_sizing[\s\S]*quality_score[\s\S]*manager_stability[\s\S]*portfolio_fit[\s\S]*theme_allocation[\s\S]*rotation_opportunity[\s\S]*chase_risk[\s\S]*drawdown_defense[\s\S]*data_confidence[\s\S]*holdings_outlook[\s\S]*fee_suitability[\s\S]*replacement_choice[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
+    message: "manager ranking boards must cover decision synthesis, buy preparation, low-position launch, cash redeployment, position sizing, fund quality, manager stability, portfolio fit, theme allocation, sector rotation, chase risk, drawdown defense, data confidence, holdings outlook, fee suitability, replacement choice, opportunity cost, sell risk, and user holding alerts."
   },
   {
     pattern: /function buildPortfolioCashRedeploymentRanking[\s\S]{0,2600}现金再部署榜[\s\S]{0,2600}0\.5%-2\.5%/,
@@ -2425,6 +2429,10 @@ const requiredPatterns = [
     message: "manager ranking boards must include a drawdown-defense lane that protects profit and blocks averaging down as a substitute for risk control."
   },
   {
+    pattern: /function buildPortfolioDataConfidenceRanking[\s\S]{0,2600}数据体检榜[\s\S]{0,2600}净值[\s\S]{0,2600}份额[\s\S]{0,2600}前十大持仓/,
+    message: "manager ranking boards must include a data-confidence lane that checks NAV freshness, share class, fees, top holdings, and source completeness before buys."
+  },
+  {
     pattern: /function buildPortfolioFeeSuitabilityRanking[\s\S]{0,1800}A\/C\/D\/I[\s\S]{0,1800}每万/,
     message: "manager ranking boards must include a fee/share-class suitability lane with holding-period and per-10k cost evidence."
   },
@@ -2457,6 +2465,10 @@ const requiredPatterns = [
     message: "admin portfolio UI must expose a dedicated risk-defense entrance instead of burying drawdown and sell-risk items in a long page."
   },
   {
+    pattern: /data-portfolio-view-target="data"[\s\S]{0,700}portfolioNavDataCount[\s\S]{0,6200}data-portfolio-view="data"/,
+    message: "admin portfolio UI must expose a dedicated data-confidence entrance instead of burying data gaps in a long ranking page."
+  },
+  {
     pattern: /data-portfolio-view-target="diagnostics"[\s\S]{0,900}portfolioNavDiagnosticCount[\s\S]{0,12500}data-portfolio-view="diagnostics"/,
     message: "admin portfolio UI must expose diagnostics as a separate entrance instead of lengthening the overview page."
   },
@@ -2467,6 +2479,10 @@ const requiredPatterns = [
   {
     pattern: /function renderPortfolioOpportunityBoard[\s\S]{0,2200}接近可买[\s\S]{0,2200}等待回调[\s\S]{0,2200}启动前夜/,
     message: "admin portfolio UI must split observation opportunities into buy, pullback, and launch-eve entrances."
+  },
+  {
+    pattern: /(?=[\s\S]*PORTFOLIO_DATA_LANES[\s\S]{0,900}净值\/走势[\s\S]{0,900}份额\/费率[\s\S]{0,900}持仓\/前景[\s\S]{0,900}来源\/补证)(?=[\s\S]*function renderPortfolioDataBoard)/,
+    message: "admin portfolio UI must split data confidence into NAV, fee, holdings, and source lanes."
   },
   {
     pattern: /renderManagerCustomerDigest[\s\S]{0,1800}客户视角摘要/,
@@ -2551,6 +2567,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*ranking-overview-defense)(?=[\s\S]*ranking-list-defense)(?=[\s\S]*ranking-action\.defense)/,
     message: "admin ranking board must visually distinguish drawdown-defense cards, lists, and action pills."
+  },
+  {
+    pattern: /(?=[\s\S]*ranking-overview-data)(?=[\s\S]*ranking-list-data)(?=[\s\S]*ranking-action\.data)/,
+    message: "admin ranking board must visually distinguish data-confidence cards, lists, and action pills."
   },
   {
     pattern: /(?=[\s\S]*ranking-overview-rotation)(?=[\s\S]*ranking-list-rotation)(?=[\s\S]*ranking-action\.rotation)/,

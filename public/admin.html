@@ -341,6 +341,7 @@
                   <span>决策</span>
                   <button type="button" data-portfolio-view-target="actions"><b>行动台</b><small>买/卖/观察</small><span id="portfolioNavActionCount">0</span></button>
                   <button type="button" data-portfolio-view-target="risk"><b>风控防线</b><small>回撤/止盈</small><span id="portfolioNavRiskCount">0</span></button>
+                  <button type="button" data-portfolio-view-target="data"><b>数据体检</b><small>净值/费率</small><span id="portfolioNavDataCount">0</span></button>
                   <button type="button" data-portfolio-view-target="rankings"><b>经理榜单</b><small>多角度排序</small><span id="portfolioNavRankingCount">0</span></button>
                   <button type="button" data-portfolio-view-target="diagnostics"><b>诊断</b><small>能力/回测</small><span id="portfolioNavDiagnosticCount">0</span></button>
                 </div>
@@ -385,7 +386,7 @@
                   <div class="panel-head tight">
                     <div>
                       <h2>经理榜单</h2>
-                      <p>从综合决策、买入准备、低位启动、现金再部署、仓位方案、基金质量、经理稳定、组合适配、主题配置、板块轮动、追涨风险、回撤防线、持仓前景、费率适配、替代优选、机会成本、卖出风险和用户持仓提醒多个角度辅助决策。</p>
+                      <p>从综合决策、买入准备、低位启动、现金再部署、仓位方案、基金质量、经理稳定、组合适配、主题配置、板块轮动、追涨风险、回撤防线、数据体检、持仓前景、费率适配、替代优选、机会成本、卖出风险和用户持仓提醒多个角度辅助决策。</p>
                     </div>
                     <span id="managerRankingUpdatedAt" class="badge">未加载</span>
                   </div>
@@ -416,6 +417,19 @@
                     <span id="portfolioRiskState" class="badge">未加载</span>
                   </div>
                   <div id="portfolioRiskBoard" class="portfolio-risk-board"></div>
+                </div>
+              </section>
+
+              <section class="portfolio-workspace-view" data-portfolio-view="data">
+                <div class="panel data-panel">
+                  <div class="panel-head tight">
+                    <div>
+                      <h2>数据体检</h2>
+                      <p>把净值时效、走势证据、份额费率、前十大持仓和数据来源拆成四栏；证据没补齐前，不让经理把候选基金推进买入执行。</p>
+                    </div>
+                    <span id="portfolioDataState" class="badge">未加载</span>
+                  </div>
+                  <div id="portfolioDataBoard" class="portfolio-data-board"></div>
                 </div>
               </section>
 

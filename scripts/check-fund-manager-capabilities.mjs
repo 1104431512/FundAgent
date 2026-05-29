@@ -236,6 +236,23 @@ const rankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfol
       }
     },
     {
+      code: "000010",
+      name: "数据缺口低位基金C",
+      status: "ready",
+      priority: 1,
+      reason: "看起来像低位回调完成，但数据证据不完整，不能直接买。",
+      lastSnapshot: {
+        navDate: "2020-01-01",
+        trendProfile: { ok: false },
+        fees: {
+          feeImpact: {
+            missingFeeData: ["subscription_fee", "sales_service_fee", "redemption_rules"]
+          }
+        },
+        sources: []
+      }
+    },
+    {
       code: "000006",
       name: "高位热门科技基金C",
       shareClass: "C",
@@ -312,6 +329,7 @@ assert(rankingBoard.lists.find((item) => item.id === "rotation_opportunity")?.it
 assert(rankingBoard.lists.find((item) => item.id === "chase_risk")?.items.some((item) => item.code === "000006"), "manager ranking board must expose hot chase-risk candidates");
 assert(rankingBoard.lists.find((item) => item.id === "drawdown_defense")?.items.some((item) => item.code === "008327"), "manager ranking board must expose held-position drawdown-defense candidates");
 assert(rankingBoard.lists.find((item) => item.id === "drawdown_defense")?.items.some((item) => item.code === "000006"), "manager ranking board must expose high-drawdown watchlist candidates");
+assert(rankingBoard.lists.find((item) => item.id === "data_confidence")?.items.some((item) => item.code === "000010"), "manager ranking board must expose stale or incomplete data-confidence candidates");
 assert(rankingBoard.lists.find((item) => item.id === "holdings_outlook")?.items.some((item) => item.code === "000003"), "manager ranking board must expose candidates with supportive top-ten holdings");
 assert(rankingBoard.lists.find((item) => item.id === "fee_suitability")?.items.some((item) => item.code === "000004"), "manager ranking board must expose share-class fee suitability candidates");
 assert(rankingBoard.lists.find((item) => item.id === "replacement_choice")?.items.some((item) => item.code === "000004"), "manager ranking board must expose same-fund and same-exposure replacement-choice candidates");
@@ -325,6 +343,7 @@ assert(rankingBoard.priorityQueue?.length >= 3, "manager ranking board must buil
 assert(rankingBoard.priorityQueue.some((item) => item.code === "008327" && item.listId === "sell_risk"), "priority queue must include urgent sell-risk items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000006" && item.listId === "chase_risk"), "priority queue must include chase-risk warning items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000009" && item.listId === "drawdown_defense"), "priority queue must include drawdown-defense protection items");
+assert(rankingBoard.priorityQueue.some((item) => item.code === "000010" && item.listId === "data_confidence"), "priority queue must include data-confidence blockers before buy execution");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000001" && item.listId === "cash_redeployment"), "priority queue must include cash-redeployment review items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000005" && item.listId === "rotation_opportunity"), "priority queue must include sector-rotation opportunity items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000004" && item.listId === "fee_suitability"), "priority queue must include fee-suitability review items");
@@ -343,6 +362,7 @@ const rotationRankingItem = rankingBoard.lists.find((item) => item.id === "rotat
 const chaseRankingItem = rankingBoard.lists.find((item) => item.id === "chase_risk")?.items.find((item) => item.code === "000006");
 const drawdownDefensePositionItem = rankingBoard.lists.find((item) => item.id === "drawdown_defense")?.items.find((item) => item.code === "008327");
 const drawdownDefenseWatchItem = rankingBoard.lists.find((item) => item.id === "drawdown_defense")?.items.find((item) => item.code === "000006");
+const dataConfidenceRankingItem = rankingBoard.lists.find((item) => item.id === "data_confidence")?.items.find((item) => item.code === "000010");
 const holdingsRankingItem = rankingBoard.lists.find((item) => item.id === "holdings_outlook")?.items.find((item) => item.code === "000003");
 const feeRankingItem = rankingBoard.lists.find((item) => item.id === "fee_suitability")?.items.find((item) => item.code === "000004");
 const replacementRankingItem = rankingBoard.lists.find((item) => item.id === "replacement_choice")?.items.find((item) => item.code === "000004");
@@ -372,6 +392,9 @@ assert(chaseRankingItem?.decision?.nextStep.includes("降级为观察"), "chase-
 assert(drawdownDefensePositionItem?.decision?.risks?.some((item) => item.includes("补仓摊薄") || item.includes("回吐")), "drawdown-defense ranking items must protect held-position profits instead of allowing averaging down");
 assert(drawdownDefenseWatchItem?.facts?.some((item) => item.includes("最大回撤") || item.includes("年化波动")), "drawdown-defense ranking items must expose candidate drawdown or volatility facts");
 assert(drawdownDefenseWatchItem?.decision?.nextStep?.includes("止损") || drawdownDefenseWatchItem?.decision?.nextStep?.includes("防线"), "drawdown-defense ranking items must force buy-before-risk-boundary planning");
+assert(dataConfidenceRankingItem?.facts?.some((item) => /净值日期|距今|份额|费用|持仓|来源/.test(item)), "data-confidence ranking items must expose readable NAV, fee, holdings, and source facts");
+assert(dataConfidenceRankingItem?.decision?.gaps?.some((item) => /净值|过期|份额|申购费|销售服务费|持仓|来源/.test(item)), "data-confidence ranking items must expose stale NAV, share-class, fee, holdings, or source gaps");
+assert(dataConfidenceRankingItem?.decision?.nextStep?.includes("不能提交买入") || dataConfidenceRankingItem?.reason?.includes("不能"), "data-confidence ranking items must block buy execution until missing evidence is refreshed");
 assert(holdingsRankingItem?.reason.includes("持仓前景"), "holdings-outlook ranking items must explain top-ten holdings outlook");
 assert(holdingsRankingItem?.facts.some((item) => item.includes("新能源")), "holdings-outlook ranking items must expose the holding theme");
 assert(feeRankingItem?.facts.some((item) => item.includes("C类") || item.includes("每万")), "fee-suitability ranking items must expose readable share-class fee facts");
@@ -1386,6 +1409,8 @@ assert(adminHtmlSource.includes("data-portfolio-view-target=\"rankings\""), "adm
 assert(adminHtmlSource.includes("data-portfolio-view=\"watchlist\""), "admin portfolio UI must expose watchlist as a dedicated workspace view instead of a long mixed page");
 assert(adminHtmlSource.includes("data-portfolio-view-target=\"risk\""), "admin portfolio UI must expose a dedicated risk-defense workspace entrance instead of burying risk inside a long ranking page");
 assert(adminHtmlSource.includes("data-portfolio-view=\"risk\""), "admin portfolio UI must render risk defense as a dedicated workspace view");
+assert(adminHtmlSource.includes("data-portfolio-view-target=\"data\""), "admin portfolio UI must expose a dedicated data-confidence workspace entrance");
+assert(adminHtmlSource.includes("data-portfolio-view=\"data\""), "admin portfolio UI must render data confidence as a dedicated workspace view");
 assert(adminHtmlSource.includes("data-portfolio-view-target=\"sectors\""), "admin portfolio UI must expose a dedicated sector leaderboard workspace entrance");
 assert(adminHtmlSource.includes("data-portfolio-view=\"sectors\""), "admin portfolio UI must render sector opportunities as a dedicated workspace view");
 assert(adminHtmlSource.includes("data-portfolio-view-target=\"actions\""), "admin portfolio UI must expose a dedicated action desk workspace entrance");
@@ -1398,6 +1423,7 @@ assert(adminSource.includes("renderPortfolioRankingRadar"), "admin portfolio ove
 assert(adminSource.includes("renderPortfolioRankingRadarPriority"), "admin portfolio overview must expose the cross-ranking priority queue without opening the full ranking page");
 assert(adminSource.includes("renderPortfolioRiskBoard"), "admin portfolio UI must render a compact risk-defense board outside the full ranking page");
 assert(adminSource.includes("renderPortfolioSectorBoard"), "admin portfolio UI must render a compact sector leaderboard outside the full ranking page");
+assert(adminSource.includes("renderPortfolioDataBoard"), "admin portfolio UI must render a compact data-confidence board outside the full ranking page");
 assert(adminSource.includes("renderPortfolioActionDesk"), "admin portfolio UI must render a compact action desk outside the long run timeline");
 assert(adminStyleSource.includes("portfolio-ranking-radar-grid"), "admin portfolio ranking radar must be styled as a scannable three-lane board");
 assert(adminStyleSource.includes("portfolio-ranking-radar-priority"), "admin portfolio ranking radar must style the priority queue as a compact strip");
@@ -1405,12 +1431,15 @@ assert(adminStyleSource.includes("risk-terminal"), "admin portfolio risk-defense
 assert(adminStyleSource.includes("risk-lane-grid"), "admin portfolio risk-defense board must split drawdown, sell, chase, and user alerts into lanes");
 assert(adminStyleSource.includes("sector-terminal"), "admin portfolio sector leaderboard must be styled as a bounded terminal panel");
 assert(adminStyleSource.includes("sector-lane-grid"), "admin portfolio sector leaderboard must split theme, rotation, holdings outlook, and quality into lanes");
+assert(adminStyleSource.includes("data-terminal"), "admin portfolio data-confidence board must be styled as a bounded terminal panel");
+assert(adminStyleSource.includes("data-lane-grid"), "admin portfolio data-confidence board must split NAV, fee, holdings, and source checks into lanes");
 assert(adminStyleSource.includes("action-terminal"), "admin portfolio action desk must be styled as a bounded terminal panel");
 assert(adminStyleSource.includes("action-lane-grid"), "admin portfolio action desk must split buy, sell, watch, and active orders into lanes");
 assert(adminHtmlSource.includes("综合决策"), "admin UI must describe integrated decision-synthesis rankings as a manager decision angle");
 assert(adminHtmlSource.includes("机会成本"), "admin UI must describe opportunity-cost rankings as a manager decision angle");
 assert(adminHtmlSource.includes("板块轮动"), "admin UI must describe sector-rotation rankings as a manager decision angle");
 assert(adminHtmlSource.includes("追涨风险"), "admin UI must describe chase-risk rankings as a manager decision angle");
+assert(adminHtmlSource.includes("数据体检"), "admin UI must describe data-confidence rankings as a manager decision angle");
 assert(adminHtmlSource.includes("持仓前景"), "admin UI must describe top-ten holdings outlook rankings as a manager decision angle");
 assert(adminHtmlSource.includes("仓位方案"), "admin UI must describe position-sizing rankings as a manager decision angle");
 assert(adminHtmlSource.includes("基金质量"), "admin UI must describe fund-quality rankings as a manager decision angle");
@@ -1438,6 +1467,7 @@ assert(adminSource.includes("portfolio_fit"), "admin UI must render the portfoli
 assert(adminSource.includes("rotation_opportunity"), "admin UI must render the sector-rotation ranking lane");
 assert(adminSource.includes("chase_risk"), "admin UI must render the chase-risk ranking lane");
 assert(adminSource.includes("drawdown_defense"), "admin UI must render the drawdown-defense ranking lane");
+assert(adminSource.includes("data_confidence"), "admin UI must render the data-confidence ranking lane");
 assert(adminSource.includes("fee_suitability"), "admin UI must render the fee-suitability ranking lane");
 assert(adminSource.includes("replacement_choice"), "admin UI must render the replacement-choice ranking lane");
 assert(adminStyleSource.includes("ranking-list.is-filtered-out"), "admin UI must hide non-focused ranking lists when a ranking filter is active");
@@ -1455,10 +1485,12 @@ assert(/portfolio-workspace-view\.active[\s\S]{0,360}overflow:\s*auto/.test(admi
 assert(adminHtmlSource.includes('data-portfolio-view-target="opportunities"'), "admin portfolio UI must expose observation opportunities as a separate workspace entrance");
 assert(adminHtmlSource.includes('data-portfolio-view-target="sectors"'), "admin portfolio UI must expose sector leaderboards as a separate workspace entrance");
 assert(adminHtmlSource.includes('data-portfolio-view-target="actions"'), "admin portfolio UI must expose latest actions as a separate workspace entrance");
+assert(adminHtmlSource.includes('data-portfolio-view-target="data"'), "admin portfolio UI must expose data confidence as a separate workspace entrance");
 assert(adminHtmlSource.includes('data-portfolio-view-target="diagnostics"'), "admin portfolio UI must expose diagnostics as a separate workspace entrance");
 assert(adminSource.includes("renderPortfolioOpportunityBoard"), "admin portfolio UI must render buy, pullback, and launch-eve observation opportunities outside the long watchlist page");
 assert(adminSource.includes("PORTFOLIO_SECTOR_LANES"), "admin portfolio sector board must define separate leaderboard lenses for theme, rotation, holdings, and quality");
 assert(adminSource.includes("PORTFOLIO_ACTION_LANES"), "admin portfolio action desk must define separate lanes for buy, sell, watch, and order flow");
+assert(adminSource.includes("PORTFOLIO_DATA_LANES"), "admin portfolio data board must define separate lanes for NAV, fee, holdings, and source evidence");
 assert(/timeline-terminal-body[\s\S]{0,360}max-height:\s*calc\(var\(--portfolio-workspace-height/.test(adminStyleSource), "admin portfolio timeline must bound run history height");
 assert(/watchlist-terminal-body[\s\S]{0,360}max-height:\s*calc\(var\(--portfolio-workspace-height/.test(adminStyleSource), "admin portfolio watchlist must bound category-detail height");
 assert(adminStyleSource.includes("portfolio-workspace-card"), "admin portfolio overview shortcut cards must be visually scannable");
@@ -1485,6 +1517,9 @@ assert(adminStyleSource.includes("ranking-overview-chase"), "admin UI must visua
 assert(adminStyleSource.includes("ranking-overview-defense"), "admin UI must visually distinguish drawdown-defense overview cards");
 assert(adminStyleSource.includes("ranking-list-defense"), "admin UI must visually distinguish drawdown-defense ranking lists");
 assert(adminStyleSource.includes("ranking-action.defense"), "admin UI must visually distinguish drawdown-defense action pills");
+assert(adminStyleSource.includes("ranking-overview-data"), "admin UI must visually distinguish data-confidence overview cards");
+assert(adminStyleSource.includes("ranking-list-data"), "admin UI must visually distinguish data-confidence ranking lists");
+assert(adminStyleSource.includes("ranking-action.data"), "admin UI must visually distinguish data-confidence action pills");
 assert(adminStyleSource.includes("ranking-overview-fee"), "admin UI must visually distinguish fee-suitability overview cards");
 assert(adminStyleSource.includes("ranking-overview-replacement"), "admin UI must visually distinguish replacement-choice overview cards");
 assert(adminStyleSource.includes("ranking-list-replacement"), "admin UI must visually distinguish replacement-choice ranking lists");

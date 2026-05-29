@@ -42,6 +42,12 @@ const PORTFOLIO_ACTION_LANES = [
   { id: "watch", title: "观察动作", tone: "watch", empty: "暂无观察或持有动作。" },
   { id: "orders", title: "执行流转", tone: "order", empty: "暂无待确认订单。" }
 ];
+const PORTFOLIO_DATA_LANES = [
+  { id: "nav", title: "净值/走势", tone: "nav", empty: "暂无过期净值或走势缺口。" },
+  { id: "fee", title: "份额/费率", tone: "fee", empty: "暂无份额或费率缺口。" },
+  { id: "holdings", title: "持仓/前景", tone: "holdings", empty: "暂无前十大持仓缺口。" },
+  { id: "source", title: "来源/补证", tone: "source", empty: "暂无来源补证事项。" }
+];
 const WATCHLIST_STATUS_LABELS = {
   ready: "接近可买",
   waiting_pullback: "等待回调",
@@ -461,6 +467,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   const actionDeskItems = collectPortfolioActionDeskItems(latestRun, activeOrders);
   const riskItems = collectPortfolioRiskBoardItems(portfolio.managerRankings || {});
   const sectorItems = collectPortfolioSectorBoardItems(portfolio.managerRankings || {});
+  const dataItems = collectPortfolioDataBoardItems(portfolio.managerRankings || {});
   const ready = watchlist.filter((item) => item.status === "ready");
   const waiting = watchlist.filter((item) => item.status === "waiting_pullback");
   const launchEve = watchlist.filter(isWatchlistLaunchEveCandidate);
@@ -494,7 +501,8 @@ function renderPortfolioDashboard(portfolio = {}) {
   setText("#portfolioNavActionCount", String(actionDeskItems.length));
   setText("#portfolioNavRiskCount", String(riskItems.length));
   setText("#portfolioNavSectorCount", String(sectorItems.length));
-  setText("#portfolioNavOverviewCount", "11");
+  setText("#portfolioNavDataCount", String(dataItems.length));
+  setText("#portfolioNavOverviewCount", "12");
   updateRunStateBadge(latestRun, portfolio.scheduler || {});
 
   renderPortfolioWorkspaceCards(portfolio, { positions, watchlist, userPortfolios, runs, activeOrders, transactions, equity, ready, waiting, launchEve, blocked, diagnosticCount });
@@ -502,6 +510,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   renderPortfolioActionDesk(latestRun, activeOrders);
   renderPortfolioRiskBoard(portfolio.managerRankings || {});
   renderPortfolioSectorBoard(portfolio.managerRankings || {});
+  renderPortfolioDataBoard(portfolio.managerRankings || {});
   renderPortfolioOpportunityBoard({ ready, waiting, launchEve, blocked });
   renderInsightList("#portfolioManagerSummary", buildManagerInsightItems(portfolio, latestRun, activeOrders), "暂无经理运行摘要。");
   renderInsightList("#portfolioHoldingSummary", buildHoldingInsightItems(account, positions, portfolio.exposureSummary || null), "暂无持仓暴露。");
@@ -535,6 +544,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
   const rankingCount = rankingLists.reduce((sum, list) => sum + (Array.isArray(list.items) ? list.items.length : 0), 0);
   const riskItems = collectPortfolioRiskBoardItems(portfolio.managerRankings || {});
   const sectorItems = collectPortfolioSectorBoardItems(portfolio.managerRankings || {});
+  const dataItems = collectPortfolioDataBoardItems(portfolio.managerRankings || {});
   const priority = portfolio.managerRankings?.priorityQueue?.[0] || null;
   const userAlerts = userPortfolios.reduce((sum, item) => sum + Number(item.alertCount || 0), 0);
   const latestRun = runs[0] || null;
@@ -590,6 +600,13 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
       value: `${riskItems.length} 条`,
       detail: riskItems[0] ? `${riskItems[0].listTitle || "风险"}：${riskItems[0].code || ""} ${riskItems[0].name || ""}`.trim() : "回撤、止盈、追涨和客户持仓提醒",
       meta: riskItems[0]?.action || "先处理风险，再讨论买入"
+    },
+    {
+      view: "data",
+      label: "数据体检",
+      value: `${dataItems.length} 条`,
+      detail: dataItems[0] ? `${dataItems[0].laneTitle || "数据"}：${dataItems[0].code || ""} ${dataItems[0].name || ""}`.trim() : "净值、费率、持仓和来源先补齐",
+      meta: dataItems[0]?.action || "证据完整后再推进买入"
     },
     {
       view: "users",
@@ -1018,6 +1035,116 @@ function renderPortfolioSectorItem(item = {}, lane = {}) {
   `;
 }
 
+function collectPortfolioDataBoardItems(board = {}) {
+  const list = (Array.isArray(board.lists) ? board.lists : []).find((candidate) => candidate.id === "data_confidence");
+  const items = Array.isArray(list?.items) ? list.items : [];
+  const results = [];
+  for (const item of items.slice(0, 8)) {
+    for (const laneId of getPortfolioDataLaneIds(item)) {
+      const lane = PORTFOLIO_DATA_LANES.find((candidate) => candidate.id === laneId) || PORTFOLIO_DATA_LANES[3];
+      results.push({
+        ...item,
+        listId: "data_confidence",
+        listTitle: list?.title || "数据体检榜",
+        laneId,
+        laneTitle: lane.title,
+        laneTone: lane.tone
+      });
+    }
+  }
+  return results;
+}
+
+function getPortfolioDataLaneIds(item = {}) {
+  const text = [
+    item.action,
+    item.reason,
+    item.source,
+    ...(Array.isArray(item.facts) ? item.facts : []),
+    ...(Array.isArray(item.decision?.highlights) ? item.decision.highlights : []),
+    ...(Array.isArray(item.decision?.risks) ? item.decision.risks : []),
+    ...(Array.isArray(item.decision?.gaps) ? item.decision.gaps : []),
+    item.decision?.nextStep
+  ].filter(Boolean).join(" ");
+  const lanes = [];
+  if (/净值|走势|过期|NAV/i.test(text)) lanes.push("nav");
+  if (/份额|费率|费用|申购|销售服务费|赎回|A\/C|A类|C类|D类|I类/.test(text)) lanes.push("fee");
+  if (/持仓|前十大|行业|前景/.test(text)) lanes.push("holdings");
+  if (/来源|补证|证据|缺口|数据/.test(text)) lanes.push("source");
+  return lanes.length ? [...new Set(lanes)] : ["source"];
+}
+
+function renderPortfolioDataBoard(board = {}) {
+  const root = document.querySelector("#portfolioDataBoard");
+  if (!root) return;
+  const list = (Array.isArray(board.lists) ? board.lists : []).find((candidate) => candidate.id === "data_confidence") || {};
+  const items = collectPortfolioDataBoardItems(board);
+  setText("#portfolioDataState", items.length ? `${items.length} 条缺口` : "数据正常");
+  root.innerHTML = `
+    <section class="data-terminal">
+      <div class="data-terminal-head">
+        <div>
+          <strong>先体检，再推荐</strong>
+          <small>${escapeHtml(list.subtitle || "净值、走势、份额费率、持仓和来源会影响买入可信度，单独放在这里先处理。")}</small>
+        </div>
+        <button type="button" class="secondary" data-open-ranking-filter="data_confidence">进入完整榜单</button>
+      </div>
+      <div class="data-lane-grid">
+        ${PORTFOLIO_DATA_LANES.map((lane) => renderPortfolioDataLane(lane, items.filter((item) => item.laneId === lane.id), list)).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderPortfolioDataLane(lane = {}, items = [], list = {}) {
+  return `
+    <section class="data-lane data-lane-${escapeHtml(lane.tone || "source")}">
+      <div class="data-lane-head">
+        <div>
+          <strong>${escapeHtml(lane.title || "数据")}</strong>
+          <small>${escapeHtml(getPortfolioDataLaneHint(lane.id, list))}</small>
+        </div>
+        <button type="button" data-open-ranking-filter="data_confidence">${items.length}</button>
+      </div>
+      <div class="data-item-list">
+        ${items.length ? items.slice(0, 5).map((item) => renderPortfolioDataItem(item, lane)).join("") : `<div class="empty compact-empty">${escapeHtml(lane.empty || "暂无数据缺口。")}</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function getPortfolioDataLaneHint(id = "", list = {}) {
+  if (id === "nav") return "过期净值、走势缺失和启动信号不明先在这里处理。";
+  if (id === "fee") return "份额类别、申购费、销售服务费和赎回规则要先核验。";
+  if (id === "holdings") return "没有前十大持仓，就不要把行业前景说满。";
+  return list?.nextAction || "把来源和补证动作留痕，避免结论像凭感觉。";
+}
+
+function renderPortfolioDataItem(item = {}, lane = {}) {
+  const code = String(item.code || "").trim();
+  const facts = Array.isArray(item.facts) ? item.facts.slice(0, 4) : [];
+  const gaps = Array.isArray(item.decision?.gaps) ? item.decision.gaps.slice(0, 3) : [];
+  const actionClass = getManagerRankingActionClass(`${item.action || ""} ${item.reason || ""} ${facts.join(" ")}`) || "data";
+  return `
+    <article class="data-item">
+      <div class="data-item-title">
+        <strong>${escapeHtml([code, item.name].filter(Boolean).join(" ") || lane.title || "数据项")}</strong>
+        <span class="ranking-action ${actionClass}">${escapeHtml(item.action || item.status || "补证")}</span>
+      </div>
+      <p>${escapeHtml(item.reason || "等待经理补齐证据后再给结论。")}</p>
+      ${gaps.length ? `<div class="data-gaps">${gaps.map((gap) => `<em>${escapeHtml(gap)}</em>`).join("")}</div>` : ""}
+      ${facts.length ? `<div class="data-facts">${facts.map((fact) => `<small>${escapeHtml(fact)}</small>`).join("")}</div>` : ""}
+      <footer>
+        <small>${escapeHtml(item.decision?.nextStep || "进入完整榜单查看补证要求。")}</small>
+        <div>
+          ${code ? `<button type="button" class="ranking-detail-link" data-focus-watchlist-code="${escapeHtml(code)}">详情</button>` : ""}
+          <button type="button" class="ranking-detail-link" data-open-ranking-filter="data_confidence">榜单</button>
+        </div>
+      </footer>
+    </article>
+  `;
+}
+
 function renderPortfolioOpportunityBoard(context = {}) {
   const root = document.querySelector("#portfolioOpportunityBoard");
   if (!root) return;
@@ -1400,6 +1527,7 @@ function getManagerRankingListClass(id = "") {
   if (id === "rotation_opportunity") return "rotation";
   if (id === "chase_risk") return "chase";
   if (id === "drawdown_defense") return "defense";
+  if (id === "data_confidence") return "data";
   if (id === "holdings_outlook") return "holdings";
   if (id === "fee_suitability") return "fee";
   if (id === "replacement_choice") return "replacement";
@@ -1420,6 +1548,7 @@ function getManagerRankingActionClass(text = "") {
   if (/主题|赛道|配置|代表基金/.test(text)) return "theme";
   if (/追涨|偏热|高位|拥挤|过热/.test(text)) return "chase";
   if (/回撤防线|防线|利润保护|高回撤|回撤/.test(text)) return "defense";
+  if (/数据|证据|补证|净值|走势|过期|缺份额|缺费率|缺申购|缺销售服务费|缺数据来源/.test(text)) return "data";
   if (/板块轮动|轮动启动|轮动观察|轮动降温|轮动/.test(text)) return "rotation";
   if (/买入|启动|触发/.test(text)) return "buy";
   if (/持仓|前景|行业/.test(text)) return "holdings";
