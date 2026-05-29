@@ -474,7 +474,7 @@ assert(runtimeRelease && runtimeRelease.name && runtimeRelease.startedAt, "runti
 assert(Object.prototype.hasOwnProperty.call(runtimeRelease, "shortCommit"), "runtime release metadata must expose the deployed short commit when available");
 assert(serverSource.includes("release: getRuntimeRelease()"), "health/stats APIs must expose runtime release metadata");
 assert(serverSource.includes("readBuildReleaseMetadata") && serverSource.includes(".fundagent-release.json"), "runtime release metadata must fall back to a Docker build release file");
-assert(adminSource.includes("formatReleaseCommit") && adminHtmlSource.includes("statReleaseCommit"), "admin runtime UI must show the deployed commit");
+assert(adminSource.includes("formatReleaseCommit") && adminHtmlSource.includes("runtimeReleaseBoard"), "admin runtime UI must show the deployed commit");
 const pingzhongLatestNav = manager.parseFundPingzhongLatestNav(`
 var Data_netWorthTrend = [
   {"x":1779465600000,"y":2.4100,"equityReturn":0.11,"unitMoney":""},

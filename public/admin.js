@@ -15,6 +15,8 @@ let currentPortfolio = null;
 let activeManagerRankingFilter = "";
 let managerRankingFilterInitialized = false;
 let activePortfolioView = "overview";
+let activeRuntimeView = "overview";
+let activePortfolioOrderView = "active";
 let activePortfolioRunKey = "";
 let activePortfolioRunPanel = "brief";
 let portfolioTimelineFullLoaded = false;
@@ -85,7 +87,9 @@ if (initialTab) {
   activateTab(initialTab);
 }
 document.body.dataset.activeTab = document.querySelector("[data-tab].active")?.dataset.tab || "config";
+setRuntimeView(localStorage.getItem("fundagent_runtime_view") || activeRuntimeView);
 setPortfolioView(localStorage.getItem("fundagent_portfolio_view") || activePortfolioView);
+setPortfolioOrderView(localStorage.getItem("fundagent_portfolio_order_view") || activePortfolioOrderView);
 
 document.querySelector("#saveTokenBtn").addEventListener("click", () => {
   localStorage.setItem("fundagent_admin_token", adminTokenInput.value.trim());
@@ -95,6 +99,11 @@ document.querySelector("#saveTokenBtn").addEventListener("click", () => {
 
 document.querySelector("#reloadBtn").addEventListener("click", () => loadAll().catch(showError));
 document.querySelector("#refreshStatsBtn").addEventListener("click", () => loadStats().catch(showError));
+document.querySelector("[data-panel='runtime']")?.addEventListener("click", (event) => {
+  const viewButton = event.target.closest("[data-runtime-view-target]");
+  if (!viewButton) return;
+  setRuntimeView(viewButton.dataset.runtimeViewTarget || "overview");
+});
 document.querySelector("#refreshPortfolioBtn").addEventListener("click", () => loadPortfolio().catch(showError));
 document.querySelector("#runPremarketBtn").addEventListener("click", () => runPortfolioTask("premarket"));
 document.querySelector("#runDecisionBtn").addEventListener("click", () => runPortfolioTask("decision"));
@@ -157,6 +166,11 @@ document.querySelector("[data-panel='portfolio']")?.addEventListener("click", (e
   if (userPortfolioButton) {
     activeUserPortfolioId = userPortfolioButton.dataset.userPortfolioSelect || "";
     renderUserPortfolios(currentPortfolio?.userPortfolios || []);
+    return;
+  }
+  const orderViewButton = event.target.closest("[data-order-view-target]");
+  if (orderViewButton) {
+    setPortfolioOrderView(orderViewButton.dataset.orderViewTarget || "active");
     return;
   }
   const rankingFilterButton = event.target.closest("[data-open-ranking-filter]");
@@ -241,6 +255,34 @@ function setPortfolioView(view = "overview") {
   }
 }
 
+function setRuntimeView(view = "overview") {
+  const nextView = document.querySelector(`[data-runtime-view="${view}"]`) ? view : "overview";
+  activeRuntimeView = nextView;
+  localStorage.setItem("fundagent_runtime_view", nextView);
+  document.querySelectorAll("[data-runtime-view-target]").forEach((button) => {
+    const active = button.dataset.runtimeViewTarget === nextView;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  document.querySelectorAll("[data-runtime-view]").forEach((section) => {
+    section.classList.toggle("active", section.dataset.runtimeView === nextView);
+  });
+}
+
+function setPortfolioOrderView(view = "active") {
+  const nextView = document.querySelector(`[data-order-view="${view}"]`) ? view : "active";
+  activePortfolioOrderView = nextView;
+  localStorage.setItem("fundagent_portfolio_order_view", nextView);
+  document.querySelectorAll("[data-order-view-target]").forEach((button) => {
+    const active = button.dataset.orderViewTarget === nextView;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  document.querySelectorAll("[data-order-view]").forEach((section) => {
+    section.classList.toggle("active", section.dataset.orderView === nextView);
+  });
+}
+
 async function loadAll() {
   await loadConfig();
   await Promise.all([loadStats(), loadSkills(), loadPortfolio()]);
@@ -309,37 +351,8 @@ async function loadSkills() {
 async function loadStats() {
   const result = await apiFetch("/api/stats");
   const stats = result.stats || {};
-  const counters = stats.counters || {};
   const release = stats.release || {};
-  setText("#statConversations", counters.conversations || 0);
-  setText("#statImages", counters.imagesReceived || 0);
-  setText("#statAnswers", counters.answersSent || 0);
-  setText("#statChat", counters.conversationRequests || 0);
-  setText("#statScreening", counters.screeningRequests || 0);
-  setText("#statRecommendation", counters.fundRecommendationRequests || 0);
-  setText("#statQa", counters.fundQaRequests || 0);
-  setText("#statRouter", counters.intentRouterCalls || 0);
-  setText("#statProgress", counters.progressReplies || 0);
-  setText("#statModelCalls", counters.modelCalls || 0);
-  setText("#statAnalyst", counters.analystReviewCalls || 0);
-  setText("#statVote", counters.committeeVoteCalls || 0);
-  setText("#statManager", counters.managerReviewCalls || 0);
-  setText("#statMarket", counters.marketSnapshotCalls || 0);
-  setText("#statPreciousMetalQuotes", counters.preciousMetalQuoteFetches || 0);
-  setText("#statPreciousMetalFunds", counters.preciousMetalFundSearches || 0);
-  setText("#statEnrich", counters.fundEnrichmentSuccess || 0);
-  setText("#statFeePages", counters.fundFeePageFetches || 0);
-  setText("#statHoldings", counters.fundHoldingsFetches || 0);
-  setText("#statPortfolioStatus", counters.portfolioStatusRequests || 0);
-  setText("#statPortfolioRuns", counters.portfolioRuns || 0);
-  setText("#statPortfolioVerifiedTrades", counters.portfolioNavVerifiedTrades || 0);
-  setText("#statPortfolioPushes", counters.portfolioPushes || 0);
-  setText("#statErrors", counters.errors || 0);
-  setText("#statEvents", counters.messageEvents || 0);
-  setText("#statReleaseVersion", formatReleaseVersion(release));
-  setText("#statReleaseCommit", formatReleaseCommit(release));
-  setText("#statReleaseBranch", release.branch || "-");
-  setText("#statReleaseStartedAt", formatDateTime(release.startedAt || stats.startedAt));
+  renderRuntimeTerminal(stats);
   renderRuntimeDiagnostics(stats.diagnostics);
   document.querySelector("#statsOutput").textContent = JSON.stringify(
     {
@@ -348,11 +361,193 @@ async function loadStats() {
       release,
       diagnostics: stats.diagnostics,
       last: stats.last,
-      counters
+      counters: stats.counters || {}
     },
     null,
     2
   );
+}
+
+function renderRuntimeTerminal(stats = {}) {
+  const counters = stats.counters || {};
+  const diagnostics = stats.diagnostics || {};
+  const release = stats.release || {};
+  const diagnosticItems = Array.isArray(diagnostics.items) ? diagnostics.items : [];
+  const conversationTotal = getRuntimeCounter(counters, "conversations");
+  const dataSourceTotal = [
+    "marketSnapshotCalls",
+    "preciousMetalQuoteFetches",
+    "preciousMetalFundSearches",
+    "fundEnrichmentSuccess",
+    "fundFeePageFetches",
+    "fundHoldingsFetches"
+  ].reduce((sum, key) => sum + getRuntimeCounter(counters, key), 0);
+  const portfolioTotal = [
+    "portfolioStatusRequests",
+    "portfolioRuns",
+    "portfolioNavVerifiedTrades",
+    "portfolioPushes"
+  ].reduce((sum, key) => sum + getRuntimeCounter(counters, key), 0);
+
+  setText("#runtimeBrief", diagnostics.summary || "运行状态暂无明显异常。");
+  setText("#runtimeNavOverviewCount", diagnosticItems.length ? String(diagnosticItems.length) : "OK");
+  setText("#runtimeNavConversationCount", formatRuntimeCount(conversationTotal));
+  setText("#runtimeNavDataCount", formatRuntimeCount(dataSourceTotal));
+  setText("#runtimeNavPortfolioCount", formatRuntimeCount(portfolioTotal));
+  setText("#runtimeNavReleaseCount", release.branch || "-");
+
+  renderRuntimeCards("#runtimeOverviewCards", [
+    {
+      label: "健康状态",
+      value: formatRuntimeDiagnosticLevel(diagnostics.level),
+      meta: diagnostics.summary || "暂无明显异常",
+      tone: diagnostics.level === "critical" ? "bad" : diagnostics.level === "warning" ? "warn" : "ok"
+    },
+    {
+      label: "用户对话",
+      value: formatRuntimeCount(conversationTotal),
+      meta: `图片 ${formatRuntimeCount(getRuntimeCounter(counters, "imagesReceived"))} · 回答 ${formatRuntimeCount(getRuntimeCounter(counters, "answersSent"))}`,
+      tone: "info"
+    },
+    {
+      label: "模型链路",
+      value: formatRuntimeCount(getRuntimeCounter(counters, "modelCalls")),
+      meta: `路由 ${formatRuntimeCount(getRuntimeCounter(counters, "intentRouterCalls"))} · 错误 ${formatRuntimeCount(getRuntimeCounter(counters, "errors"))}`,
+      tone: getRuntimeCounter(counters, "errors") ? "warn" : "ok"
+    },
+    {
+      label: "经理自动化",
+      value: formatRuntimeCount(getRuntimeCounter(counters, "portfolioRuns")),
+      meta: `查询 ${formatRuntimeCount(getRuntimeCounter(counters, "portfolioStatusRequests"))} · 推送 ${formatRuntimeCount(getRuntimeCounter(counters, "portfolioPushes"))}`,
+      tone: "portfolio"
+    }
+  ]);
+
+  renderRuntimeLanes("#runtimeConversationBoard", [
+    {
+      title: "用户入口",
+      items: [
+        { label: "对话数", value: conversationTotal, meta: "所有进入机器人链路的会话" },
+        { label: "收到图片", value: getRuntimeCounter(counters, "imagesReceived"), meta: "截图识别与持仓导入入口" },
+        { label: "回答次数", value: getRuntimeCounter(counters, "answersSent"), meta: "已发送给用户的回复" },
+        { label: "进度消息", value: getRuntimeCounter(counters, "progressReplies"), meta: "长任务过程反馈" }
+      ]
+    },
+    {
+      title: "意图路由",
+      items: [
+        { label: "自然对话", value: getRuntimeCounter(counters, "conversationRequests"), meta: "不应强行触发基金分析" },
+        { label: "单基分析", value: getRuntimeCounter(counters, "screeningRequests"), meta: "具体基金画像与买卖建议" },
+        { label: "推荐发现", value: getRuntimeCounter(counters, "fundRecommendationRequests"), meta: "找基金、榜单、备选池" },
+        { label: "基金问答", value: getRuntimeCounter(counters, "fundQaRequests"), meta: "概念解释和客户追问" }
+      ]
+    },
+    {
+      title: "模型投委会",
+      items: [
+        { label: "意图路由", value: getRuntimeCounter(counters, "intentRouterCalls"), meta: "决定是否调用 skill" },
+        { label: "分析师阶段", value: getRuntimeCounter(counters, "analystReviewCalls"), meta: "多角色分析" },
+        { label: "投票阶段", value: getRuntimeCounter(counters, "committeeVoteCalls"), meta: "观点汇总" },
+        { label: "主席验收", value: getRuntimeCounter(counters, "managerReviewCalls"), meta: "最终质量控制" }
+      ]
+    }
+  ]);
+
+  renderRuntimeLanes("#runtimeDataBoard", [
+    {
+      title: "市场与贵金属",
+      items: [
+        { label: "市场快照", value: getRuntimeCounter(counters, "marketSnapshotCalls"), meta: "指数、板块、资金面" },
+        { label: "贵金属行情", value: getRuntimeCounter(counters, "preciousMetalQuoteFetches"), meta: "黄金、白银等行情补证" },
+        { label: "贵金属基金", value: getRuntimeCounter(counters, "preciousMetalFundSearches"), meta: "避免只凭叙事推荐黄金" }
+      ]
+    },
+    {
+      title: "基金资料",
+      items: [
+        { label: "联网补全", value: getRuntimeCounter(counters, "fundEnrichmentSuccess"), meta: "净值、规模、经理、风险" },
+        { label: "费率页", value: getRuntimeCounter(counters, "fundFeePageFetches"), meta: "A/C/D/I 份额费用" },
+        { label: "持仓补全", value: getRuntimeCounter(counters, "fundHoldingsFetches"), meta: "前十大持仓与行业前景" }
+      ]
+    }
+  ]);
+
+  renderRuntimeLanes("#runtimePortfolioBoard", [
+    {
+      title: "经理任务",
+      items: [
+        { label: "组合查询", value: getRuntimeCounter(counters, "portfolioStatusRequests"), meta: "用户询问经理持仓、仓位、操作" },
+        { label: "组合任务", value: getRuntimeCounter(counters, "portfolioRuns"), meta: "盘前、决策、估值、周总结" },
+        { label: "净值成交", value: getRuntimeCounter(counters, "portfolioNavVerifiedTrades"), meta: "按确认净值写入交易" },
+        { label: "主动推送", value: getRuntimeCounter(counters, "portfolioPushes"), meta: "日报和预警推送" }
+      ]
+    },
+    {
+      title: "运行风险",
+      items: [
+        { label: "错误数", value: getRuntimeCounter(counters, "errors"), meta: "接口、模型或执行异常", tone: getRuntimeCounter(counters, "errors") ? "warn" : "ok" },
+        { label: "飞书事件", value: getRuntimeCounter(counters, "messageEvents"), meta: "机器人收到的事件" },
+        { label: "启动时间", value: formatDateTime(release.startedAt || stats.startedAt), meta: "服务本轮启动时间" }
+      ]
+    }
+  ]);
+
+  renderRuntimeCards("#runtimeReleaseBoard", [
+    { label: "当前版本", value: formatReleaseVersion(release), meta: release.name || "FundAgent", tone: "info" },
+    { label: "当前提交", value: formatReleaseCommit(release), meta: "部署代码指纹", tone: "info" },
+    { label: "当前分支", value: release.branch || "-", meta: "线上运行分支", tone: "info" },
+    { label: "启动时间", value: formatDateTime(release.startedAt || stats.startedAt), meta: `更新 ${formatDateTime(stats.updatedAt)}`, tone: "info" }
+  ]);
+}
+
+function renderRuntimeCards(selector, items = []) {
+  const target = document.querySelector(selector);
+  if (!target) return;
+  target.innerHTML = items.map((item) => `
+    <article class="runtime-card ${escapeHtml(item.tone || "info")}">
+      <span>${escapeHtml(item.label || "")}</span>
+      <strong>${escapeHtml(item.value ?? "-")}</strong>
+      <small>${escapeHtml(item.meta || "")}</small>
+    </article>
+  `).join("");
+}
+
+function renderRuntimeLanes(selector, lanes = []) {
+  const target = document.querySelector(selector);
+  if (!target) return;
+  target.innerHTML = lanes.map((lane) => `
+    <section class="runtime-lane">
+      <div class="runtime-lane-head">
+        <strong>${escapeHtml(lane.title || "运行信号")}</strong>
+        <span>${(lane.items || []).length} 项</span>
+      </div>
+      <div class="runtime-lane-list">
+        ${(lane.items || []).map((item) => `
+          <article class="runtime-stat-row ${escapeHtml(item.tone || "")}">
+            <span>${escapeHtml(item.label || "")}</span>
+            <strong>${escapeHtml(Number.isFinite(Number(item.value)) ? formatRuntimeCount(item.value) : item.value ?? "-")}</strong>
+            <small>${escapeHtml(item.meta || "")}</small>
+          </article>
+        `).join("") || `<div class="empty compact-empty">暂无运行信号。</div>`}
+      </div>
+    </section>
+  `).join("");
+}
+
+function getRuntimeCounter(counters = {}, key) {
+  return Number(counters[key] || 0);
+}
+
+function formatRuntimeCount(value) {
+  return Number(value || 0).toLocaleString("zh-CN", { maximumFractionDigits: 0 });
+}
+
+function formatRuntimeDiagnosticLevel(level = "") {
+  return {
+    ok: "正常",
+    warning: "预警",
+    critical: "严重"
+  }[level] || "正常";
 }
 
 function renderRuntimeDiagnostics(diagnostics = {}) {
@@ -2096,6 +2291,8 @@ function updatePortfolioTaskButtons(inFlight) {
 
 function renderOrders(orders) {
   const list = document.querySelector("#orderList");
+  setText("#orderNavActiveCount", String(orders.length));
+  setText("#portfolioOrderTerminalState", orders.length ? `${orders.length} 笔待确认` : "无待确认");
   if (!orders.length) {
     list.innerHTML = `<div class="empty">暂无待确认订单。申购/赎回不会下单即成交，会在这里显示估值日、确认日和到账日。</div>`;
     return;
@@ -3352,6 +3549,7 @@ function formatRunStatus(status) {
 
 function renderTransactions(transactions) {
   const list = document.querySelector("#transactionList");
+  setText("#orderNavTransactionCount", String(transactions.length));
   if (!transactions.length) {
     list.innerHTML = `<div class="empty">暂无交易流水。</div>`;
     return;
@@ -3482,6 +3680,7 @@ function formatActionabilityAction(value) {
 
 function renderEquity(equity) {
   const list = document.querySelector("#equityList");
+  setText("#orderNavEquityCount", String(equity.length));
   if (!equity.length) {
     list.innerHTML = `<div class="empty">暂无估值记录。</div>`;
     return;

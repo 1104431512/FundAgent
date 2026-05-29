@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FundAgent 管理</title>
-    <link rel="stylesheet" href="/public/styles.css?v=20260530-users3" />
+    <link rel="stylesheet" href="/public/styles.css?v=20260530-runtime1" />
   </head>
   <body>
     <div class="app-shell">
@@ -230,50 +230,74 @@
         </section>
 
         <section class="tab-panel" data-panel="runtime">
-          <div class="panel">
-            <div class="panel-head">
-              <h2>运行情况</h2>
-              <button id="refreshStatsBtn" type="button" class="secondary">刷新</button>
-            </div>
-            <div class="metric-grid">
-              <div class="metric"><span>对话数</span><strong id="statConversations">0</strong></div>
-              <div class="metric"><span>收到图片</span><strong id="statImages">0</strong></div>
-              <div class="metric"><span>回答次数</span><strong id="statAnswers">0</strong></div>
-              <div class="metric"><span>自然对话</span><strong id="statChat">0</strong></div>
-              <div class="metric"><span>单基分析</span><strong id="statScreening">0</strong></div>
-              <div class="metric"><span>推荐发现</span><strong id="statRecommendation">0</strong></div>
-              <div class="metric"><span>基金问答</span><strong id="statQa">0</strong></div>
-              <div class="metric"><span>意图路由</span><strong id="statRouter">0</strong></div>
-              <div class="metric"><span>进度消息</span><strong id="statProgress">0</strong></div>
-              <div class="metric"><span>模型调用</span><strong id="statModelCalls">0</strong></div>
-              <div class="metric"><span>分析师阶段</span><strong id="statAnalyst">0</strong></div>
-              <div class="metric"><span>投票阶段</span><strong id="statVote">0</strong></div>
-              <div class="metric"><span>主席验收</span><strong id="statManager">0</strong></div>
-              <div class="metric"><span>市场快照</span><strong id="statMarket">0</strong></div>
-              <div class="metric"><span>贵金属行情</span><strong id="statPreciousMetalQuotes">0</strong></div>
-              <div class="metric"><span>贵金属基金</span><strong id="statPreciousMetalFunds">0</strong></div>
-              <div class="metric"><span>联网补全</span><strong id="statEnrich">0</strong></div>
-              <div class="metric"><span>费率页</span><strong id="statFeePages">0</strong></div>
-              <div class="metric"><span>持仓补全</span><strong id="statHoldings">0</strong></div>
-              <div class="metric"><span>组合查询</span><strong id="statPortfolioStatus">0</strong></div>
-              <div class="metric"><span>组合任务</span><strong id="statPortfolioRuns">0</strong></div>
-              <div class="metric"><span>净值成交</span><strong id="statPortfolioVerifiedTrades">0</strong></div>
-              <div class="metric"><span>主动推送</span><strong id="statPortfolioPushes">0</strong></div>
-              <div class="metric"><span>错误数</span><strong id="statErrors">0</strong></div>
-              <div class="metric"><span>飞书事件</span><strong id="statEvents">0</strong></div>
-              <div class="metric"><span>当前版本</span><strong id="statReleaseVersion">-</strong></div>
-              <div class="metric"><span>当前提交</span><strong id="statReleaseCommit">-</strong></div>
-              <div class="metric"><span>当前分支</span><strong id="statReleaseBranch">-</strong></div>
-              <div class="metric"><span>启动时间</span><strong id="statReleaseStartedAt">-</strong></div>
-            </div>
-            <div class="runtime-diagnostics">
-              <div class="section-title">
-                <h3>运行诊断</h3>
-                <small id="runtimeDiagnosticSummary">正在读取运行信号。</small>
+          <div class="runtime-terminal-shell">
+            <aside class="runtime-terminal-rail" aria-label="运行入口">
+              <div class="runtime-terminal-rail-head">
+                <span>系统运行</span>
+                <strong>按工作流分屏查看</strong>
               </div>
-              <div id="runtimeDiagnostics" class="diagnostic-grid"></div>
+              <nav class="runtime-workspace-switcher" aria-label="运行工作区">
+                <button type="button" class="active" data-runtime-view-target="overview"><b>运行总览</b><small>健康 / 流量</small><span id="runtimeNavOverviewCount">0</span></button>
+                <button type="button" data-runtime-view-target="conversation"><b>对话链路</b><small>意图 / 模型</small><span id="runtimeNavConversationCount">0</span></button>
+                <button type="button" data-runtime-view-target="data"><b>数据源</b><small>行情 / 费率</small><span id="runtimeNavDataCount">0</span></button>
+                <button type="button" data-runtime-view-target="portfolio"><b>组合自动化</b><small>经理任务</small><span id="runtimeNavPortfolioCount">0</span></button>
+                <button type="button" data-runtime-view-target="release"><b>版本原始</b><small>发布 / JSON</small><span id="runtimeNavReleaseCount">-</span></button>
+              </nav>
+            </aside>
+            <div class="runtime-terminal-stage">
+              <div class="runtime-terminal-head">
+                <div>
+                  <span class="eyebrow">运行终端</span>
+                  <h2>多入口监控</h2>
+                  <p id="runtimeBrief">正在读取运行信号。</p>
+                </div>
+                <button id="refreshStatsBtn" type="button" class="secondary">刷新</button>
+              </div>
+
+              <section class="runtime-workspace-view active" data-runtime-view="overview">
+                <div id="runtimeOverviewCards" class="runtime-card-grid"></div>
+                <section class="runtime-diagnostics-panel">
+                  <div class="section-title">
+                    <h3>运行诊断</h3>
+                    <small id="runtimeDiagnosticSummary">正在读取运行信号。</small>
+                  </div>
+                  <div id="runtimeDiagnostics" class="diagnostic-grid"></div>
+                </section>
+              </section>
+
+              <section class="runtime-workspace-view" data-runtime-view="conversation">
+                <div class="runtime-board-head">
+                  <strong>对话链路</strong>
+                  <small>把用户入口、意图路由和模型投委会拆开看，避免一屏塞满所有计数。</small>
+                </div>
+                <div id="runtimeConversationBoard" class="runtime-lane-grid"></div>
+              </section>
+
+              <section class="runtime-workspace-view" data-runtime-view="data">
+                <div class="runtime-board-head">
+                  <strong>数据源</strong>
+                  <small>单独观察行情、贵金属、联网补全、费率和持仓补全是否在工作。</small>
+                </div>
+                <div id="runtimeDataBoard" class="runtime-lane-grid"></div>
+              </section>
+
+              <section class="runtime-workspace-view" data-runtime-view="portfolio">
+                <div class="runtime-board-head">
+                  <strong>组合自动化</strong>
+                  <small>聚焦虚拟基金经理的查询、自动运行、净值成交和主动推送。</small>
+                </div>
+                <div id="runtimePortfolioBoard" class="runtime-lane-grid"></div>
+              </section>
+
+              <section class="runtime-workspace-view" data-runtime-view="release">
+                <div class="runtime-board-head">
+                  <strong>版本与原始数据</strong>
+                  <small>发布信息和完整 JSON 放到独立入口，平时不占用主屏。</small>
+                </div>
+                <div id="runtimeReleaseBoard" class="runtime-card-grid compact"></div>
+                <pre id="statsOutput" class="output compact"></pre>
+              </section>
             </div>
-            <pre id="statsOutput" class="output compact"></pre>
           </div>
         </section>
 
@@ -588,34 +612,37 @@
               </section>
 
               <section class="portfolio-workspace-view" data-portfolio-view="orders">
-                <details class="panel section-panel" open>
-                  <summary class="section-summary">
-                    <h2>订单进度</h2>
-                    <span>申购、赎回、确认与到账</span>
-                  </summary>
-                  <div id="orderList" class="table-list"></div>
-                </details>
-
-                <details class="panel section-panel" open>
-                  <summary class="section-summary">
-                    <h2>流水与估值</h2>
-                    <span>交易流水、估值记录和原始状态</span>
-                  </summary>
-                  <div class="split-grid">
+                <div class="panel order-panel">
+                  <div class="panel-head tight">
                     <div>
-                      <h3>交易流水</h3>
-                      <div id="transactionList" class="table-list"></div>
+                      <h2>订单终端</h2>
+                      <p>像交易软件一样把待确认订单、交易流水、估值记录和原始状态拆成入口；默认只看当前最需要处理的订单。</p>
                     </div>
-                    <div>
-                      <h3>估值记录</h3>
-                      <div id="equityList" class="table-list"></div>
+                    <span id="portfolioOrderTerminalState" class="badge">未加载</span>
+                  </div>
+                  <div class="order-terminal">
+                    <aside class="order-terminal-rail" aria-label="订单流水入口">
+                      <button type="button" class="active" data-order-view-target="active"><b>待确认</b><small>申购/赎回排队</small><span id="orderNavActiveCount">0</span></button>
+                      <button type="button" data-order-view-target="transactions"><b>交易流水</b><small>已确认成交</small><span id="orderNavTransactionCount">0</span></button>
+                      <button type="button" data-order-view-target="equity"><b>估值记录</b><small>净值与资产</small><span id="orderNavEquityCount">0</span></button>
+                      <button type="button" data-order-view-target="raw"><b>原始状态</b><small>调试 JSON</small><span id="orderNavRawCount">JSON</span></button>
+                    </aside>
+                    <div class="order-terminal-stage">
+                      <section class="order-workspace-view active" data-order-view="active">
+                        <div id="orderList" class="table-list"></div>
+                      </section>
+                      <section class="order-workspace-view" data-order-view="transactions">
+                        <div id="transactionList" class="table-list"></div>
+                      </section>
+                      <section class="order-workspace-view" data-order-view="equity">
+                        <div id="equityList" class="table-list"></div>
+                      </section>
+                      <section class="order-workspace-view" data-order-view="raw">
+                        <pre id="portfolioOutput" class="output compact"></pre>
+                      </section>
                     </div>
                   </div>
-                  <details class="raw-panel">
-                    <summary>原始数据</summary>
-                    <pre id="portfolioOutput" class="output compact"></pre>
-                  </details>
-                </details>
+                </div>
               </section>
 
               <section class="portfolio-workspace-view" data-portfolio-view="diagnostics">
@@ -687,6 +714,6 @@
     </div>
 
     <div id="toast" class="toast hidden"></div>
-    <script src="/public/admin.js?v=20260530-users3"></script>
+    <script src="/public/admin.js?v=20260530-runtime1"></script>
   </body>
 </html>

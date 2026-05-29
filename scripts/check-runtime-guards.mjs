@@ -1989,7 +1989,7 @@ const requiredPatterns = [
     message: "runtime diagnostics must highlight context-window failures."
   },
   {
-    pattern: /statReleaseCommit[\s\S]*formatReleaseCommit|formatReleaseCommit[\s\S]*statReleaseCommit/,
+    pattern: /runtimeReleaseBoard[\s\S]*formatReleaseCommit|formatReleaseCommit[\s\S]*runtimeReleaseBoard/,
     message: "admin runtime UI must show the currently deployed commit."
   },
   {
@@ -2651,6 +2651,14 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*榜单引用)(?=[\s\S]*portfolioRankingAuditSummary)(?=[\s\S]*buildRankingAuditInsightItems)/,
     message: "admin dashboard must render ranking citation coverage as a first-class insight card."
+  },
+  {
+    pattern: /(?=[\s\S]*runtime-terminal-shell)(?=[\s\S]*data-runtime-view-target="conversation")(?=[\s\S]*data-runtime-view-target="data")(?=[\s\S]*renderRuntimeTerminal)/,
+    message: "admin runtime page must use a multi-entry terminal instead of one long metric wall."
+  },
+  {
+    pattern: /(?=[\s\S]*订单终端)(?=[\s\S]*data-order-view-target="transactions")(?=[\s\S]*setPortfolioOrderView)/,
+    message: "admin portfolio orders must split orders, transactions, equity, and raw state into terminal entries."
   },
   {
     pattern: /经理榜单/,
