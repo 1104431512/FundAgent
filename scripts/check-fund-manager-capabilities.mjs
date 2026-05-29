@@ -1246,6 +1246,7 @@ assert(adminSource.includes("chase_risk"), "admin UI must render the chase-risk 
 assert(adminSource.includes("fee_suitability"), "admin UI must render the fee-suitability ranking lane");
 assert(adminStyleSource.includes("ranking-list.is-filtered-out"), "admin UI must hide non-focused ranking lists when a ranking filter is active");
 assert(adminStyleSource.includes("portfolio-workspace-switcher"), "admin portfolio workspace switcher must be styled as a first-class navigation surface");
+assert(/portfolio-workspace-switcher[\s\S]{0,240}position:\s*sticky/.test(adminStyleSource), "admin portfolio workspace switcher must remain reachable while long workspace views scroll");
 assert(adminStyleSource.includes("portfolio-workspace-view.active"), "admin portfolio workspace views must show one focused entry at a time");
 assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must style customer-facing ranking digest as a first-class panel");
 assert(adminStyleSource.includes("focused-from-ranking"), "admin UI must highlight watchlist cards opened from customer digest items");

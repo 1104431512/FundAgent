@@ -1069,6 +1069,14 @@ const requiredPatterns = [
     message: "admin portfolio workspace entries must switch focused views."
   },
   {
+    pattern: /portfolio-workspace-switcher[\s\S]{0,260}position:\s*sticky/,
+    message: "admin portfolio workspace switcher must stay reachable and remain usable on narrow screens."
+  },
+  {
+    pattern: /@media \(max-width: 860px\)[\s\S]{0,2600}portfolio-workspace-switcher[\s\S]{0,600}overflow-x:\s*auto/,
+    message: "admin portfolio workspace switcher must remain usable on narrow screens."
+  },
+  {
     pattern: /function focusWatchlistFund[\s\S]{0,500}setPortfolioView\("watchlist"\)/,
     message: "ranking-to-watchlist jumps must open the dedicated watchlist workspace."
   },

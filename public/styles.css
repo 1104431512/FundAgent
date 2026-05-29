@@ -584,6 +584,9 @@ button:disabled {
 }
 
 .portfolio-workspace-switcher {
+  position: sticky;
+  top: 12px;
+  z-index: 3;
   display: grid;
   grid-template-columns: repeat(7, minmax(96px, 1fr));
   gap: 8px;
@@ -591,6 +594,7 @@ button:disabled {
   border: 1px solid #dce5ed;
   border-radius: 8px;
   background: #f7fafc;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
 .portfolio-workspace-switcher button {
@@ -2528,6 +2532,17 @@ button.danger-button:hover {
 
   .portfolio-kpi strong {
     font-size: 23px;
+  }
+
+  .portfolio-workspace-switcher {
+    display: flex;
+    overflow-x: auto;
+    top: 10px;
+    padding: 7px;
+  }
+
+  .portfolio-workspace-switcher button {
+    flex: 0 0 132px;
   }
 
   .position-main {
