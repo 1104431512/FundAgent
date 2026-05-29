@@ -1384,6 +1384,108 @@ button:disabled {
   font-size: 12px;
 }
 
+.portfolio-ranking-command {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.95fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #dce7ef;
+  border-left: 4px solid #0f766e;
+  border-radius: 8px;
+  background: #f8fbfc;
+}
+
+.portfolio-ranking-command-main,
+.portfolio-ranking-command-actions {
+  min-width: 0;
+}
+
+.portfolio-ranking-command-main span,
+.portfolio-ranking-command-main strong,
+.portfolio-ranking-command-main small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portfolio-ranking-command-main span {
+  color: #657586;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.portfolio-ranking-command-main strong {
+  margin-top: 3px;
+  color: #1d2d3b;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.portfolio-ranking-command-main small {
+  margin-top: 3px;
+  color: #60707f;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.portfolio-ranking-command-lanes {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.portfolio-ranking-command-lanes button {
+  min-width: 0;
+  min-height: 48px;
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: 7px 8px;
+  border: 1px solid #dce5ec;
+  border-radius: 8px;
+  color: #314253;
+  background: #ffffff;
+  box-shadow: none;
+  text-align: left;
+}
+
+.portfolio-ranking-command-lanes button:hover {
+  border-color: #b7c9d8;
+  background: #f2f8fb;
+}
+
+.portfolio-ranking-command-lanes span,
+.portfolio-ranking-command-lanes strong {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portfolio-ranking-command-lanes span {
+  color: #68798a;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.portfolio-ranking-command-lanes strong {
+  color: #1f2f3d;
+  font-size: 17px;
+  line-height: 1.05;
+}
+
+.portfolio-ranking-command-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
 .portfolio-ranking-radar-grid {
   display: flex;
   gap: 10px;
@@ -7045,9 +7147,24 @@ button.danger-button:hover {
 
   .portfolio-ranking-radar-head,
   .portfolio-ranking-radar-empty,
+  .portfolio-ranking-command,
   .portfolio-ranking-radar-grid {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .portfolio-ranking-command-lanes {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .portfolio-ranking-command-lanes button {
+    flex: 0 0 92px;
+  }
+
+  .portfolio-ranking-command-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .portfolio-ranking-radar-priority button {

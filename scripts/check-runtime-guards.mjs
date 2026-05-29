@@ -1093,6 +1093,14 @@ const requiredPatterns = [
     message: "admin portfolio overview must render customer action cards so users can scan buy, wait, avoid, sell, and data signals without opening a long ranking report."
   },
   {
+    pattern: /renderPortfolioRankingCommandStrip[\s\S]{0,1800}今日买卖指挥[\s\S]{0,1200}完整榜单/,
+    message: "admin portfolio overview must expose a first-scan buy/sell command strip before the detailed ranking radar lanes."
+  },
+  {
+    pattern: /getPortfolioRankingRadarLensTarget[\s\S]{0,1200}buy_preparation[\s\S]{0,1200}launch_setup[\s\S]{0,1200}data_confidence/,
+    message: "admin portfolio ranking command strip must jump from lane counters into the corresponding ranking lenses."
+  },
+  {
     pattern: /(?=[\s\S]*data-portfolio-view-target="sectors")(?=[\s\S]*portfolioNavSectorCount)(?=[\s\S]*data-portfolio-view="sectors")/,
     message: "admin portfolio UI must expose a dedicated sector leaderboard entrance instead of burying theme and rotation choices in a long ranking page."
   },

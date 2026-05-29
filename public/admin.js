@@ -1073,6 +1073,7 @@ function renderPortfolioRankingRadar(board = {}) {
   const hasDigestItems = groups.some((group) => Array.isArray(digest[group.key]) && digest[group.key].length);
   const hasActionItems = groups.some((group) => Array.isArray(group.items) && group.items.length);
   const hasPriorityItems = priorityQueue.length > 0;
+  const command = buildPortfolioRankingCommandStrip({ groups, priorityQueue, actionDeck, digest });
   if (!hasActionItems && !hasDigestItems && !hasPriorityItems && !digest.summary && !actionDeck.summary) {
     root.innerHTML = `
       <div class="portfolio-ranking-radar-empty">
@@ -1095,10 +1096,72 @@ function renderPortfolioRankingRadar(board = {}) {
       </div>
       <button type="button" class="secondary" data-portfolio-view-target="rankings">进入经理榜单</button>
     </div>
+    ${renderPortfolioRankingCommandStrip(command)}
     <div class="portfolio-ranking-radar-grid">
       ${groups.map((group) => renderPortfolioRankingRadarGroup(group, group.items || digest[group.key] || [])).join("")}
     </div>
     ${hasPriorityItems ? renderPortfolioRankingRadarPriority(priorityQueue) : ""}
+  `;
+}
+
+function buildPortfolioRankingCommandStrip({ groups = [], priorityQueue = [], actionDeck = {}, digest = {} } = {}) {
+  const normalizedGroups = Array.isArray(groups) ? groups : [];
+  const priority = (Array.isArray(priorityQueue) ? priorityQueue : [])[0]
+    || normalizedGroups.map((group) => (Array.isArray(group.items) ? group.items[0] : null)).find(Boolean)
+    || null;
+  const lanes = normalizedGroups.map((group) => {
+    const items = Array.isArray(group.items) ? group.items : [];
+    return {
+      title: group.title || "行动",
+      tone: group.tone || group.id || "watch",
+      count: items.length,
+      filter: getPortfolioRankingRadarLensTarget(group),
+      emptyText: group.emptyText || group.empty || "暂无"
+    };
+  });
+  return {
+    priority,
+    lanes,
+    summary: actionDeck.summary || digest.summary || "把榜单转成今天先处理的买、等、避、卖和补证据。",
+    title: actionDeck.title || "今日买卖指挥"
+  };
+}
+
+function getPortfolioRankingRadarLensTarget(group = {}) {
+  const key = `${group.id || ""} ${group.key || ""} ${group.tone || ""} ${group.title || ""}`;
+  if (/buy|可买|买入/.test(key)) return "buy_preparation";
+  if (/wait|watch|等待|观察/.test(key)) return "launch_setup";
+  if (/avoid|回避|追涨/.test(key)) return "chase_risk";
+  if (/sell|卖出|减仓/.test(key)) return "sell_risk";
+  if (/data|证据|数据|补/.test(key)) return "data_confidence";
+  return "decision_synthesis";
+}
+
+function renderPortfolioRankingCommandStrip(command = {}) {
+  const priority = command.priority || null;
+  const code = String(priority?.code || "").trim();
+  const actionClass = getManagerRankingActionClass(priority?.action || priority?.listTitle || "");
+  return `
+    <section class="portfolio-ranking-command" aria-label="今日买卖指挥">
+      <div class="portfolio-ranking-command-main">
+        <span>${escapeHtml(command.title || "今日买卖指挥")}</span>
+        <strong>${escapeHtml(code ? `${code} ${priority?.name || ""}`.trim() : "暂无第一优先对象")}</strong>
+        <small>${escapeHtml(priority?.reason || command.summary || "等待经理生成榜单后给出第一处理对象。")}</small>
+      </div>
+      <div class="portfolio-ranking-command-lanes">
+        ${(command.lanes || []).map((lane) => `
+          <button type="button" data-open-ranking-filter="${escapeHtml(lane.filter || "decision_synthesis")}">
+            <span>${escapeHtml(lane.title)}</span>
+            <strong>${escapeHtml(String(lane.count || 0))}</strong>
+          </button>
+        `).join("")}
+      </div>
+      <div class="portfolio-ranking-command-actions">
+        <em class="ranking-action ${actionClass}">${escapeHtml(priority?.action || priority?.listTitle || "等待信号")}</em>
+        ${code ? `<button type="button" class="ranking-detail-link" data-focus-watchlist-code="${escapeHtml(code)}">自选详情</button>` : ""}
+        <button type="button" class="ranking-detail-link" data-portfolio-view-target="rankings">完整榜单</button>
+      </div>
+    </section>
   `;
 }
 
