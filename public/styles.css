@@ -623,6 +623,228 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.ranking-panel .panel-head p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ranking-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.ranking-health {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 13px 14px;
+  border: 1px solid #dbe7df;
+  border-radius: 8px;
+  background: #f7fbf8;
+}
+
+.ranking-health.warning {
+  border-color: #ead8b7;
+  background: #fffaf0;
+}
+
+.ranking-health.watch {
+  border-color: #d8e2ee;
+  background: #f7faff;
+}
+
+.ranking-health strong,
+.ranking-health p,
+.ranking-health span {
+  overflow-wrap: anywhere;
+}
+
+.ranking-health strong {
+  display: block;
+  color: #1f2d3d;
+  font-size: 15px;
+}
+
+.ranking-health p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ranking-health-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.ranking-health-actions span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #2f4050;
+  background: #ffffff;
+  border: 1px solid #e2e8ef;
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.ranking-list {
+  min-width: 0;
+  border: 1px solid #dbe4ec;
+  border-radius: 8px;
+  background: #fbfcfd;
+  overflow: hidden;
+}
+
+.ranking-list-buy {
+  border-top: 3px solid #2f855a;
+}
+
+.ranking-list-launch {
+  border-top: 3px solid #2b6cb0;
+}
+
+.ranking-list-sell {
+  border-top: 3px solid #c05621;
+}
+
+.ranking-list-user {
+  border-top: 3px solid #5f6f52;
+}
+
+.ranking-list-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 13px;
+  border-bottom: 1px solid var(--line);
+  background: #ffffff;
+}
+
+.ranking-list-head strong,
+.ranking-list-head small,
+.ranking-list-head span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.ranking-list-head small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ranking-list-head span {
+  flex: 0 0 auto;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #1f513f;
+  background: #eaf7ef;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.ranking-items {
+  display: grid;
+  gap: 0;
+}
+
+.ranking-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px 13px;
+  border-bottom: 1px solid #e8edf2;
+}
+
+.ranking-item:last-child {
+  border-bottom: 0;
+}
+
+.ranking-index {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: #375160;
+  background: #eef4f7;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.ranking-item.top .ranking-index {
+  color: #0f5132;
+  background: #dff3e8;
+}
+
+.ranking-body {
+  min-width: 0;
+}
+
+.ranking-title {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ranking-title strong {
+  overflow-wrap: anywhere;
+}
+
+.ranking-title span {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.ranking-body p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.ranking-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.ranking-meta small {
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: #344152;
+  background: #edf2f7;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.ranking-next {
+  min-height: 40px;
+  padding: 10px 13px;
+  border-top: 1px solid #e8edf2;
+  color: #3d4d5c;
+  background: #ffffff;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .compact-empty {
   padding: 11px 12px;
 }
@@ -1653,6 +1875,14 @@ button.danger-button:hover {
 
   .watchlist-action-grid {
     grid-template-columns: 1fr;
+  }
+
+  .ranking-health {
+    grid-template-columns: 1fr;
+  }
+
+  .ranking-health-actions {
+    justify-content: flex-start;
   }
 
   .watchlist-setup-item {

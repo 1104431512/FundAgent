@@ -8326,6 +8326,7 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
     backtestDiagnostics: buildPortfolioBacktestDiagnostics(db),
     capabilityDiagnostics: buildPortfolioCapabilityDiagnostics(db),
     capabilityActionQueue: buildPortfolioCapabilityActionQueue(db),
+    managerRankings: buildPortfolioRankingBoard(db),
     userPortfolios: summarizeUserPortfolios(db),
     positions: db.account.positions.map(summarizePosition),
     watchlist: getActivePortfolioWatchlist(db).slice(0, lightweight ? 12 : 50).map(summarizeWatch),
@@ -8336,6 +8337,226 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
     pendingSettlements: (db.settlements || []).filter((item) => item.status === "pending").slice(-20).reverse(),
     recentEquity: (db.dailyEquity || []).slice(-recentItemLimit).reverse().map(summarizeEquity)
   };
+}
+
+function buildPortfolioRankingBoard(db = {}) {
+  const watchlist = getActivePortfolioWatchlist(db).map(summarizePortfolioWatchItem).filter(Boolean);
+  const positions = (db.account?.positions || []).map(summarizePortfolioPosition).filter(Boolean);
+  const userPortfolios = summarizeUserPortfolios(db).filter(Boolean);
+  const lists = [
+    buildPortfolioBuyPreparationRanking(watchlist),
+    buildPortfolioLaunchSetupRanking(watchlist),
+    buildPortfolioSellRiskRanking(positions),
+    buildUserHoldingAlertRanking(userPortfolios)
+  ];
+  return {
+    updatedAt: new Date().toISOString(),
+    lists,
+    health: buildPortfolioRankingBoardHealth({ watchlist, positions, userPortfolios, lists }),
+    summary: lists.map((list) => `${list.title}${list.items.length}只`).join("，")
+  };
+}
+
+function buildPortfolioRankingBoardHealth({ watchlist = [], positions = [], userPortfolios = [], lists = [] } = {}) {
+  const totalItems = lists.reduce((sum, list) => sum + (list.items?.length || 0), 0);
+  if (totalItems > 0) {
+    return {
+      level: "ok",
+      title: "榜单已生成",
+      summary: `当前有 ${totalItems} 个可复核对象，经理可以按买入、低位启动、卖出风险和用户持仓提醒分层处理。`,
+      actions: ["优先处理排名靠前项", "买入和卖出分开复核", "把用户真实持仓提醒放入每日跟踪"]
+    };
+  }
+  if (!watchlist.length && !positions.length && !userPortfolios.length) {
+    return {
+      level: "warning",
+      title: "缺少榜单输入",
+      summary: "当前没有自选池、虚拟持仓和用户持仓数据，榜单只能显示空状态。",
+      actions: ["先运行一次盘前观察或今日操作", "从对话截图导入用户持仓", "补充低位启动候选池"]
+    };
+  }
+  return {
+    level: "watch",
+    title: "暂无触发项",
+    summary: "已有基础数据，但暂未出现买入、卖出或用户提醒触发项。",
+    actions: ["检查空仓等待诊断", "复核低位启动条件是否过严", "继续沉淀用户持仓成本和盈利点"]
+  };
+}
+
+function buildPortfolioBuyPreparationRanking(watchlist = []) {
+  const items = watchlist
+    .filter((item) => ["ready", "waiting_pullback"].includes(item.status))
+    .map((item) => {
+      const readinessScore = Number(item.readinessScore || 0);
+      const highReadiness = readinessScore >= 85;
+      const mediumReadiness = readinessScore >= 60;
+      return buildRankingItemFromWatch(item, {
+        score: readinessScore + (item.status === "ready" ? 12 : 0),
+        action: highReadiness ? "买入复核" : mediumReadiness ? "触发复核" : "补证据",
+        reason: highReadiness
+          ? "买入准备度较高，适合进入金额和触发条件复核。"
+          : selectPortfolioRankingFirstText(item.readinessGaps, item.buyTriggers, item.reason) || "方向可跟踪，但还需要补齐买点证据。"
+      });
+    })
+    .sort(compareRankingItems)
+    .slice(0, 6);
+  return buildPortfolioRankingList({
+    id: "buy_preparation",
+    title: "买入准备榜",
+    subtitle: "从自选池里挑出最接近执行的候选，辅助客户决定先看谁。",
+    emptyText: "暂无接近买点的候选。",
+    nextAction: "下一步刷新自选池，优先找回调完成且5日/10日刚转强的低位候选。",
+    items
+  });
+}
+
+function buildPortfolioLaunchSetupRanking(watchlist = []) {
+  const items = watchlist
+    .filter((item) => isLowBaseLaunchWatchSeed(item))
+    .filter((item) => !["blocked", "removed", "in_position"].includes(item.status))
+    .map((item) => buildRankingItemFromWatch(item, {
+      score: Number(item.readinessScore || 0) + 8 - Number(item.priority || 3),
+      action: "启动前夜复核",
+      reason: "低位启动前夜候选，只等净值和早期转强证据确认。"
+    }))
+    .sort(compareRankingItems)
+    .slice(0, 6);
+  return buildPortfolioRankingList({
+    id: "launch_setup",
+    title: "低位启动榜",
+    subtitle: "优先展示回调后准备启动的候选，避免只盯热门追涨。",
+    emptyText: "暂无低位启动前夜候选。",
+    nextAction: "下一步放宽行业召回范围，再用低位、回撤深度和持仓前景二次筛选。",
+    items
+  });
+}
+
+function buildPortfolioSellRiskRanking(positions = []) {
+  const items = positions
+    .map((position) => {
+      const budget = position.riskBudget || buildPortfolioPositionRiskBudget(position);
+      const giveback = Number(position.profitGivebackPct || 0);
+      const unrealized = Number(position.unrealizedPnlPct || 0);
+      const severity = budget.level === "severe" ? 100 : budget.level === "warning" ? 70 : 0;
+      const score = severity + Math.max(0, giveback) * 4 + Math.max(0, Number(position.weightPct || 0) - 8) * 2 + (unrealized < 0 ? 8 : 0);
+      return buildPortfolioRankingItem({
+        code: position.code,
+        name: position.name,
+        source: "虚拟组合持仓",
+        score: round(score, 1),
+        action: budget.level === "severe" ? "优先卖出复核" : budget.level === "warning" ? "减仓复核" : "继续观察",
+        reason: budget.triggers?.[0] || (giveback > 0 ? `浮盈回吐${round(giveback, 2)}个百分点，需防止利润回撤。` : "暂无强制卖出信号。"),
+        facts: [
+          `仓位${formatFallbackPlainPct(position.weightPct)}`,
+          `浮盈${formatFallbackPlainPct(position.unrealizedPnlPct)}`,
+          giveback > 0 ? `回吐${round(giveback, 2)}pct` : "",
+          budget.label || ""
+        ].filter(Boolean),
+        status: budget.level || "normal"
+      });
+    })
+    .filter((item) => item.score > 0 || item.status !== "normal")
+    .sort(compareRankingItems)
+    .slice(0, 6);
+  return buildPortfolioRankingList({
+    id: "sell_risk",
+    title: "卖出风险榜",
+    subtitle: "把回吐、止损和高仓位风险放到前面，提醒客户别只看买入。",
+    emptyText: "暂无需要优先卖出复核的持仓。",
+    nextAction: "下一步继续盯浮盈回吐、单仓过重和同题材重叠，触发后先减风险。",
+    items
+  });
+}
+
+function buildUserHoldingAlertRanking(userPortfolios = []) {
+  const items = [];
+  for (const user of userPortfolios || []) {
+    for (const alert of user.alerts || []) {
+      const levelScore = alert.level === "warning" ? 90 : alert.level === "positive" ? 65 : 35;
+      items.push(buildPortfolioRankingItem({
+        code: alert.code,
+        name: alert.name,
+        userId: user.userId,
+        source: `用户 ${user.displayName || user.userId}`,
+        score: levelScore,
+        action: alert.action || "继续观察",
+        reason: alert.reason || "已纳入用户持仓关注。",
+        facts: [alert.level === "warning" ? "优先提醒" : alert.level === "positive" ? "可复核加仓" : "观察"].filter(Boolean),
+        status: alert.level || "info"
+      }));
+    }
+  }
+  return buildPortfolioRankingList({
+    id: "user_holding_alerts",
+    title: "用户持仓提醒榜",
+    subtitle: "按客户真实持仓聚合提醒，方便经理主动提示卖出、减仓或复核加仓。",
+    emptyText: "暂无用户持仓提醒。",
+    nextAction: "下一步导入客户真实持仓截图，沉淀买入成本、盈利点和卖出提醒。",
+    items: items.sort(compareRankingItems).slice(0, 8)
+  });
+}
+
+function buildRankingItemFromWatch(item = {}, options = {}) {
+  const snapshot = item.lastSnapshot || {};
+  const trend = snapshot.trendProfile || {};
+  return buildPortfolioRankingItem({
+    code: item.code,
+    name: item.name,
+    source: "经理自选池",
+    score: round(Number(options.score || item.readinessScore || 0), 1),
+    action: options.action || item.statusText || formatPortfolioWatchStatus(item.status),
+    reason: options.reason || selectPortfolioRankingFirstText(item.readinessGaps, item.buyTriggers, item.reason),
+    facts: [
+      item.readinessLabel ? `准备度${item.readinessScore} ${item.readinessLabel}` : "",
+      Number.isFinite(Number(trend.return20dPct)) ? `20日${formatFallbackPlainPct(trend.return20dPct)}` : "",
+      Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置${round(Number(trend.lowPositionPct120), 1)}%` : "",
+      item.shareClass ? `${item.shareClass}类` : ""
+    ].filter(Boolean),
+    status: item.status || "watch"
+  });
+}
+
+function buildPortfolioRankingList({ id, title, subtitle, emptyText, nextAction, items }) {
+  return {
+    id,
+    title,
+    subtitle,
+    emptyText,
+    nextAction,
+    items: (items || []).map((item, index) => ({ ...item, rank: index + 1 }))
+  };
+}
+
+function buildPortfolioRankingItem({ code, name, userId = "", source = "", score = 0, action = "", reason = "", facts = [], status = "" }) {
+  return {
+    code: String(code || ""),
+    name: String(name || ""),
+    userId: String(userId || ""),
+    source: String(source || ""),
+    score: Number.isFinite(Number(score)) ? round(Number(score), 1) : 0,
+    action: normalizePortfolioUserFacingText(action || ""),
+    reason: normalizePortfolioUserFacingText(reason || "").slice(0, 260),
+    facts: normalizePortfolioUserFacingArray(facts, 5),
+    status: String(status || "")
+  };
+}
+
+function selectPortfolioRankingFirstText(...groups) {
+  for (const group of groups) {
+    if (Array.isArray(group)) {
+      const found = group.map((item) => String(item || "").trim()).find(Boolean);
+      if (found) return found;
+      continue;
+    }
+    const text = String(group || "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function compareRankingItems(a = {}, b = {}) {
+  return Number(b.score || 0) - Number(a.score || 0)
+    || String(a.code || "").localeCompare(String(b.code || ""));
 }
 
 function summarizePortfolioRunBrief(run, fallbackAccount = {}) {
@@ -23333,6 +23554,7 @@ export {
   buildPortfolioStarterBuyFollowUpQueue,
   buildPortfolioWatchlistSeedSearchText,
   buildPortfolioRunSummary,
+  buildPortfolioRankingBoard,
   buildPortfolioAccountRiskBudget,
   buildPortfolioReadyWatchlistReviewActions,
   buildPortfolioPositionRiskBudget,

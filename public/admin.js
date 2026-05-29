@@ -260,6 +260,7 @@ async function loadPortfolio() {
   );
   setText("#portfolioRetention", `${portfolio.retentionDays || 90} 天`);
   renderPortfolioDashboard(portfolio);
+  renderManagerRankings(portfolio.managerRankings || {});
   renderOrders(portfolio.activeOrders || []);
   renderPositions(portfolio.positions || []);
   renderUserPortfolios(portfolio.userPortfolios || []);
@@ -354,6 +355,91 @@ function renderPortfolioDashboard(portfolio = {}) {
   renderCapabilityActionQueue(portfolio.capabilityActionQueue || []);
   updatePortfolioBacktestBadge(portfolio.backtestDiagnostics || {});
   renderInsightList("#portfolioBacktestSummary", buildBacktestInsightItems(portfolio.backtestDiagnostics || {}), "暂无历史回测缺口。");
+}
+
+function renderManagerRankings(board = {}) {
+  const root = document.querySelector("#managerRankingBoard");
+  const updated = document.querySelector("#managerRankingUpdatedAt");
+  if (!root) return;
+  const lists = Array.isArray(board.lists) ? board.lists : [];
+  if (updated) {
+    updated.textContent = board.updatedAt ? `更新 ${formatDateTime(board.updatedAt)}` : "未加载";
+  }
+  if (!lists.length) {
+    root.innerHTML = `<div class="empty">暂无榜单数据。自选池、持仓或用户持仓关注有数据后会自动生成。</div>`;
+    return;
+  }
+  root.innerHTML = `${renderManagerRankingHealth(board.health || {})}${lists.map(renderManagerRankingList).join("")}`;
+}
+
+function renderManagerRankingHealth(health = {}) {
+  const actions = Array.isArray(health.actions) ? health.actions : [];
+  if (!health.title && !health.summary && !actions.length) return "";
+  return `
+    <div class="ranking-health ${getManagerRankingHealthClass(health.level)}">
+      <div>
+        <strong>${escapeHtml(health.title || "榜单状态")}</strong>
+        <p>${escapeHtml(health.summary || "等待经理下一次复核后更新。")}</p>
+      </div>
+      ${actions.length ? `<div class="ranking-health-actions">${actions.slice(0, 3).map((action) => `<span>${escapeHtml(action)}</span>`).join("")}</div>` : ""}
+    </div>
+  `;
+}
+
+function renderManagerRankingList(list = {}) {
+  const items = Array.isArray(list.items) ? list.items : [];
+  return `
+    <section class="ranking-list ranking-list-${getManagerRankingListClass(list.id)}" data-ranking-id="${escapeHtml(list.id || "")}">
+      <div class="ranking-list-head">
+        <div>
+          <strong>${escapeHtml(list.title || "榜单")}</strong>
+          <small>${escapeHtml(list.subtitle || "")}</small>
+        </div>
+        <span>${items.length} 只</span>
+      </div>
+      <div class="ranking-items">
+        ${items.length ? items.map(renderManagerRankingItem).join("") : `<div class="compact-empty">${escapeHtml(list.emptyText || "暂无候选。")}</div>`}
+      </div>
+      ${list.nextAction ? `<div class="ranking-next">${escapeHtml(list.nextAction)}</div>` : ""}
+    </section>
+  `;
+}
+
+function renderManagerRankingItem(item = {}) {
+  const rankClass = item.rank <= 3 ? "top" : "";
+  const facts = Array.isArray(item.facts) ? item.facts : [];
+  return `
+    <article class="ranking-item ${rankClass}">
+      <div class="ranking-index">${escapeHtml(String(item.rank || "-"))}</div>
+      <div class="ranking-body">
+        <div class="ranking-title">
+          <strong>${escapeHtml(item.code || "")} ${escapeHtml(item.name || "")}</strong>
+          <span>${escapeHtml(item.action || item.status || "")}</span>
+        </div>
+        <p>${escapeHtml(item.reason || "等待下一次复核。")}</p>
+        <div class="ranking-meta">
+          <small>${escapeHtml(item.source || "")}</small>
+          ${Number.isFinite(Number(item.score)) ? `<small>评分 ${formatNumber(item.score, 0)}</small>` : ""}
+          ${item.userId ? `<small>用户 ${escapeHtml(item.userId)}</small>` : ""}
+        </div>
+        ${facts.length ? `<div class="fact-strip compact">${facts.slice(0, 5).map((fact) => `<span>${escapeHtml(fact)}</span>`).join("")}</div>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function getManagerRankingHealthClass(level = "") {
+  if (level === "ok") return "ok";
+  if (level === "warning") return "warning";
+  return "watch";
+}
+
+function getManagerRankingListClass(id = "") {
+  if (id === "buy_preparation") return "buy";
+  if (id === "launch_setup") return "launch";
+  if (id === "sell_risk") return "sell";
+  if (id === "user_holding_alerts") return "user";
+  return "default";
 }
 
 function updateRunStateBadge(latestRun, scheduler = {}) {
@@ -1670,6 +1756,7 @@ function renderPortfolioResult(result) {
     setText("#portfolioPnl", formatPortfolioPnl(portfolio.account));
     setText("#portfolioSchedule", formatPortfolioSchedule(portfolio));
     renderPortfolioDashboard(portfolio);
+    renderManagerRankings(portfolio.managerRankings || {});
     renderOrders(portfolio.activeOrders || []);
     renderPositions(portfolio.positions || []);
     renderUserPortfolios(portfolio.userPortfolios || []);

@@ -49,6 +49,47 @@ const normalizedUserPortfolios = manager.normalizeUserPortfolios([
 ]);
 assert.equal(normalizedUserPortfolios[0].holdings[0].code, "021959", "user portfolios must keep screenshot holding codes");
 assert.equal(normalizedUserPortfolios[0].holdings[0].visibleReturnLabel, "当日涨幅", "user portfolios must keep the meaning of visible screenshot returns");
+const rankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
+  account: {
+    initialCapital: 100000,
+    cash: 70000,
+    positions: [
+      {
+        code: "008327",
+        name: "东财通信C",
+        costAmount: 10000,
+        currentValue: 9700,
+        weightPct: 9.7,
+        unrealizedPnlPct: -3,
+        peakUnrealizedPnlPct: 5,
+        profitGivebackPct: 8,
+        riskBudget: { level: "warning", label: "需减仓复核", triggers: ["曾浮盈后回吐，需要复核卖出"] }
+      }
+    ]
+  },
+  watchlist: [
+    {
+      code: "000001",
+      name: "低位启动基金C",
+      status: "ready",
+      priority: 1,
+      reason: "低位启动条件暂已满足。",
+      setupEvidence: ["低位启动前夜候选"],
+      lastSnapshot: { trendProfile: { ok: true, return20dPct: 1.2, lowPositionPct120: 18 } }
+    }
+  ],
+  userPortfolios: normalizedUserPortfolios
+}));
+assert(rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.some((item) => item.code === "000001"), "manager ranking board must expose buy-preparation candidates");
+assert(rankingBoard.lists.find((item) => item.id === "launch_setup")?.items.some((item) => item.code === "000001"), "manager ranking board must expose low-position launch candidates");
+assert(rankingBoard.lists.find((item) => item.id === "sell_risk")?.items.some((item) => item.code === "008327"), "manager ranking board must expose sell-risk positions");
+assert(rankingBoard.health?.summary, "manager ranking board must explain the current board state");
+assert(rankingBoard.lists.every((item) => item.nextAction), "manager ranking board empty states must include next actions");
+assert.notEqual(
+  rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.find((item) => item.code === "000001")?.action,
+  "买入复核",
+  "low-readiness ranking candidates must not be labeled as buy-review candidates"
+);
 assertSkillCoverage(intent.skillIds, [
   "fund-theme-radar",
   "theme-stage-analysis",
@@ -991,6 +1032,10 @@ await assertIntent({
 assert(serverSource.includes("pendingUserPortfolioImportRequests"), "text-first user holding import commands must wait for the next screenshot");
 assert(adminHtmlSource.includes("用户持仓关注"), "admin UI must expose user-level holding management");
 assert(adminSource.includes("/api/user-portfolios/holding"), "admin UI must save user-level holdings through the API");
+assert(adminHtmlSource.includes("经理榜单"), "admin UI must expose manager ranking boards");
+assert(adminSource.includes("renderManagerRankings"), "admin UI must render multi-angle ranking boards");
+assert(adminSource.includes("ranking-health"), "admin UI must render ranking board state guidance");
+assert(adminSource.includes("ranking-next"), "admin UI must render ranking next-action guidance");
 
 await assertIntent({
   userText: "我发的图里是我已经买的基金，告诉我大概多久卖",

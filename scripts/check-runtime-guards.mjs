@@ -2235,6 +2235,26 @@ const requiredPatterns = [
   {
     pattern: /用户持仓关注/,
     message: "admin UI must expose user-level holding watchlists."
+  },
+  {
+    pattern: /buildPortfolioRankingBoard/,
+    message: "portfolio public state must build multi-angle manager ranking boards."
+  },
+  {
+    pattern: /buy_preparation[\s\S]*launch_setup[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
+    message: "manager ranking boards must cover buy preparation, low-position launch, sell risk, and user holding alerts."
+  },
+  {
+    pattern: /renderManagerRankings/,
+    message: "admin portfolio UI must render manager ranking boards."
+  },
+  {
+    pattern: /ranking-health[\s\S]{0,1200}ranking-next/,
+    message: "manager ranking boards must explain empty states and next actions."
+  },
+  {
+    pattern: /经理榜单/,
+    message: "admin portfolio UI must include a visible manager ranking board section."
   }
 ];
 
