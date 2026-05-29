@@ -7918,6 +7918,29 @@ function formatPortfolioWatchLine(item = {}) {
   ].filter(Boolean).join("\n");
 }
 
+function buildPortfolioCustomerActionDeckStatusLines(deck = {}) {
+  const cards = Array.isArray(deck.cards) ? deck.cards : [];
+  if (!cards.length) return ["客户行动牌：暂无行动牌数据，先运行盘前观察或导入持仓。"];
+  const activeCards = cards.filter((card) => Number(card.count || 0) > 0);
+  if (!activeCards.length) {
+    return [
+      "客户行动牌：暂无直接买卖信号。",
+      deck.summary ? `摘要：${deck.summary}` : "下一步：先运行盘前观察或导入持仓，让经理沉淀可复核对象。"
+    ];
+  }
+  const lines = [`客户行动牌：${deck.summary || activeCards.map((card) => `${card.title}${card.count || 0}`).join("，")}。`];
+  for (const card of activeCards.slice(0, 5)) {
+    const items = Array.isArray(card.items) ? card.items.slice(0, 2) : [];
+    const itemText = items.length
+      ? items.map((item) => `${item.code || ""} ${item.name || ""}${item.action ? `（${item.action}）` : ""}`.trim()).join("；")
+      : card.emptyText || "暂无";
+    const firstReason = shortenPortfolioCustomerText(items[0]?.reason || card.summary || "", 54);
+    const nextStep = shortenPortfolioCustomerText(items[0]?.nextStep || card.nextStep || "", 64);
+    lines.push(`- ${card.title || "行动"}：${itemText}${firstReason ? `。原因：${firstReason}` : ""}${nextStep ? `。下一步：${nextStep}` : ""}`);
+  }
+  return lines;
+}
+
 function buildPortfolioWatchlistStatusLines(watchlist = [], options = {}) {
   const normalized = normalizePortfolioWatchlist(watchlist).filter((item) => item.status !== "removed");
   if (!normalized.length) return ["暂无自选基金。"];
@@ -8360,6 +8383,11 @@ function buildPortfolioStatusAnswer(userText, intent) {
     }
     lines.push(`当前仓位：${account.positionWeightPct}%`);
     lines.push(`累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（按实际投入基准 ${account.investedCostBasis || account.investedCost || 0} 元计 ${formatSignedNumber(account.cumulativePnlPct)}%）`);
+  }
+
+  if (!wantsOnlyProfileOrSchedule) {
+    lines.push("");
+    lines.push(...buildPortfolioCustomerActionDeckStatusLines(managerRankings.customerActionDeck || {}));
   }
 
   if (wantsPosition || (!wantsOperation && !wantsOnlyProfileOrSchedule && !wantsWatchlist)) {

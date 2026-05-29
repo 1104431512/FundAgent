@@ -1089,8 +1089,8 @@ const requiredPatterns = [
     message: "admin portfolio workspace cards must summarize rankings, watchlist readiness, and user alerts."
   },
   {
-    pattern: /(?=[\s\S]*portfolioRankingRadar)(?=[\s\S]*function renderPortfolioRankingRadar)(?=[\s\S]*buyReview)(?=[\s\S]*watchFocus)(?=[\s\S]*riskAvoid)/,
-    message: "admin portfolio overview must render a compact ranking radar so users can scan buy/watch/avoid signals without opening a long ranking report."
+    pattern: /(?=[\s\S]*portfolioRankingRadar)(?=[\s\S]*function renderPortfolioRankingRadar)(?=[\s\S]*customerActionDeck)(?=[\s\S]*可买复核)(?=[\s\S]*等待触发)(?=[\s\S]*先回避)/,
+    message: "admin portfolio overview must render customer action cards so users can scan buy, wait, avoid, sell, and data signals without opening a long ranking report."
   },
   {
     pattern: /data-portfolio-view-target="sectors"[\s\S]{0,700}portfolioNavSectorCount[\s\S]{0,8200}data-portfolio-view="sectors"/,
@@ -1145,8 +1145,8 @@ const requiredPatterns = [
     message: "admin portfolio ranking radar must jump from radar items and priority queue entries to matching watchlist details."
   },
   {
-    pattern: /(?=[\s\S]*\.portfolio-ranking-radar\s*\{)(?=[\s\S]*\.portfolio-ranking-radar-grid\s*\{[\s\S]*repeat\(3,\s*minmax\(0,\s*1fr\)\))(?=[\s\S]*\.portfolio-ranking-radar-priority\s*\{[\s\S]*overflow-x:\s*auto)/,
-    message: "admin portfolio ranking radar must be styled as a compact trading-console board with three lanes and a scrollable priority strip."
+    pattern: /(?=[\s\S]*\.portfolio-ranking-radar\s*\{)(?=[\s\S]*\.portfolio-ranking-radar-grid\s*\{[\s\S]*display:\s*flex[\s\S]*overflow-x:\s*auto)(?=[\s\S]*\.portfolio-ranking-radar-priority\s*\{[\s\S]*overflow-x:\s*auto)/,
+    message: "admin portfolio ranking radar must be styled as a compact horizontal action-card board with a scrollable priority strip."
   },
   {
     pattern: /portfolio-workspace-switcher[\s\S]{0,260}position:\s*sticky/,
@@ -1515,6 +1515,14 @@ const requiredPatterns = [
   {
     pattern: /buildPortfolioStatusAnswer[\s\S]{0,1800}managerRankings[\s\S]{0,5200}buildPortfolioWatchlistStatusLines[\s\S]{0,800}managerRankings/,
     message: "portfolio status answers must include current ranking-board citations in watchlist summaries."
+  },
+  {
+    pattern: /function buildPortfolioCustomerActionDeckStatusLines[\s\S]{0,1200}客户行动牌/,
+    message: "portfolio status answers must format customer action cards in Chinese."
+  },
+  {
+    pattern: /buildPortfolioStatusAnswer[\s\S]{0,5200}buildPortfolioCustomerActionDeckStatusLines/,
+    message: "portfolio status answers must lead with customer action cards before dense holdings and watchlist details."
   },
   {
     pattern: /function buildPortfolioRedeploymentPlan[\s\S]{0,5200}pressureActive[\s\S]{0,5200}starter_buy[\s\S]{0,5200}实时估算时间/,

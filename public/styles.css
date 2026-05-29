@@ -1381,12 +1381,14 @@ button:disabled {
 }
 
 .portfolio-ranking-radar-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
   gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
 }
 
 .portfolio-ranking-radar-lane {
+  flex: 0 0 220px;
   min-width: 0;
   display: grid;
   align-content: start;
@@ -1406,8 +1408,16 @@ button:disabled {
   border-top-color: #d97706;
 }
 
+.portfolio-ranking-radar-avoid {
+  border-top-color: #dc6b19;
+}
+
 .portfolio-ranking-radar-sell {
   border-top-color: #b3261e;
+}
+
+.portfolio-ranking-radar-data {
+  border-top-color: #475569;
 }
 
 .portfolio-ranking-radar-lane-head {
@@ -1437,8 +1447,8 @@ button:disabled {
 .portfolio-ranking-radar-item {
   min-width: 0;
   display: grid;
-  gap: 7px;
-  padding: 10px;
+  gap: 6px;
+  padding: 9px;
   border: 1px solid #e5ebf1;
   border-radius: 8px;
   background: #ffffff;
@@ -1472,6 +1482,14 @@ button:disabled {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.42;
+}
+
+.portfolio-ranking-radar-item p,
+.portfolio-ranking-radar-item footer small {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .portfolio-ranking-radar-item footer small {

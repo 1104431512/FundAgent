@@ -968,22 +968,25 @@ function renderPortfolioWorkspaceCard(card = {}) {
 function renderPortfolioRankingRadar(board = {}) {
   const root = document.querySelector("#portfolioRankingRadar");
   if (!root) return;
+  const actionDeck = board.customerActionDeck || {};
+  const actionCards = Array.isArray(actionDeck.cards) ? actionDeck.cards : [];
   const digest = board.customerDigest || {};
   const priorityQueue = Array.isArray(board.priorityQueue) ? board.priorityQueue : [];
-  const groups = [
-    { key: "buyReview", title: "可买复核", tone: "buy", empty: "暂无进入买入复核的候选。" },
-    { key: "watchFocus", title: "观察重点", tone: "watch", empty: "暂无需要重点盯盘的候选。" },
-    { key: "riskAvoid", title: "回避提醒", tone: "sell", empty: "暂无明确回避提醒。" }
+  const groups = actionCards.length ? actionCards : [
+    { id: "buy", key: "buyReview", title: "可买复核", tone: "buy", emptyText: "暂无进入买入复核的候选。", items: digest.buyReview || [] },
+    { id: "wait", key: "watchFocus", title: "等待触发", tone: "watch", emptyText: "暂无需要重点盯盘的候选。", items: digest.watchFocus || [] },
+    { id: "avoid", key: "riskAvoid", title: "先回避", tone: "avoid", emptyText: "暂无明确回避提醒。", items: digest.riskAvoid || [] }
   ];
   const hasDigestItems = groups.some((group) => Array.isArray(digest[group.key]) && digest[group.key].length);
+  const hasActionItems = groups.some((group) => Array.isArray(group.items) && group.items.length);
   const hasPriorityItems = priorityQueue.length > 0;
-  if (!hasDigestItems && !hasPriorityItems && !digest.summary) {
+  if (!hasActionItems && !hasDigestItems && !hasPriorityItems && !digest.summary && !actionDeck.summary) {
     root.innerHTML = `
       <div class="portfolio-ranking-radar-empty">
         <div>
-          <span>榜单雷达</span>
-          <strong>等待榜单信号</strong>
-          <small>经理生成自选池、持仓复核或用户持仓提醒后，这里会直接显示买、看、避三类入口。</small>
+          <span>客户行动牌</span>
+          <strong>等待行动信号</strong>
+          <small>经理生成自选池、持仓复核或用户持仓提醒后，这里会直接显示可买、等待、回避、卖出和补数据。</small>
         </div>
         <button type="button" class="secondary" data-portfolio-view-target="rankings">进入经理榜单</button>
       </div>
@@ -993,14 +996,14 @@ function renderPortfolioRankingRadar(board = {}) {
   root.innerHTML = `
     <div class="portfolio-ranking-radar-head">
       <div>
-        <span>榜单雷达</span>
-        <strong>${escapeHtml(digest.title || "今天先看这三类")}</strong>
-        <small>${escapeHtml(digest.summary || "从经理多角度榜单提炼出买、看、避，不在首页堆满指标。")}</small>
+        <span>客户行动牌</span>
+        <strong>${escapeHtml(actionDeck.title || "今天先看这五类")}</strong>
+        <small>${escapeHtml(actionDeck.summary || digest.summary || "从经理多角度榜单提炼出可买、等待、回避、卖出和补数据。")}</small>
       </div>
       <button type="button" class="secondary" data-portfolio-view-target="rankings">进入经理榜单</button>
     </div>
     <div class="portfolio-ranking-radar-grid">
-      ${groups.map((group) => renderPortfolioRankingRadarGroup(group, digest[group.key] || [])).join("")}
+      ${groups.map((group) => renderPortfolioRankingRadarGroup(group, group.items || digest[group.key] || [])).join("")}
     </div>
     ${hasPriorityItems ? renderPortfolioRankingRadarPriority(priorityQueue) : ""}
   `;
@@ -1008,13 +1011,14 @@ function renderPortfolioRankingRadar(board = {}) {
 
 function renderPortfolioRankingRadarGroup(group, items = []) {
   const values = Array.isArray(items) ? items.slice(0, 2) : [];
+  const tone = group.tone || group.id || "watch";
   return `
-    <section class="portfolio-ranking-radar-lane portfolio-ranking-radar-${escapeHtml(group.tone)}">
+    <section class="portfolio-ranking-radar-lane portfolio-ranking-radar-${escapeHtml(tone)}">
       <div class="portfolio-ranking-radar-lane-head">
         <strong>${escapeHtml(group.title)}</strong>
         <span>${values.length} 项</span>
       </div>
-      ${values.length ? values.map((item) => renderPortfolioRankingRadarItem(item, group.tone)).join("") : `<small class="portfolio-ranking-radar-empty-text">${escapeHtml(group.empty)}</small>`}
+      ${values.length ? values.map((item) => renderPortfolioRankingRadarItem(item, tone)).join("") : `<small class="portfolio-ranking-radar-empty-text">${escapeHtml(group.emptyText || group.empty || "暂无触发项。")}</small>`}
     </section>
   `;
 }

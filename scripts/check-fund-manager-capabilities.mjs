@@ -1444,7 +1444,7 @@ assert(adminSource.includes("setPortfolioView"), "admin portfolio UI must switch
 assert(adminHtmlSource.includes("portfolioWorkspaceCards"), "admin portfolio overview must expose workspace shortcut cards");
 assert(adminSource.includes("renderPortfolioWorkspaceCards"), "admin portfolio overview must summarize each workspace with actionable shortcut cards");
 assert(adminHtmlSource.includes("portfolioRankingRadar"), "admin portfolio overview must expose a compact ranking radar");
-assert(adminSource.includes("renderPortfolioRankingRadar"), "admin portfolio overview must render buy/watch/avoid ranking radar lanes");
+assert(adminSource.includes("renderPortfolioRankingRadar") && adminSource.includes("customerActionDeck"), "admin portfolio overview must render customer action cards from the manager ranking board");
 assert(adminSource.includes("renderPortfolioRankingRadarPriority"), "admin portfolio overview must expose the cross-ranking priority queue without opening the full ranking page");
 assert(adminSource.includes("renderPortfolioRiskBoard"), "admin portfolio UI must render a compact risk-defense board outside the full ranking page");
 assert(adminSource.includes("renderPortfolioSectorBoard"), "admin portfolio UI must render a compact sector leaderboard outside the full ranking page");
@@ -1453,7 +1453,7 @@ assert(adminSource.includes("renderPortfolioDecisionMatrixBoard"), "admin portfo
 assert(adminSource.includes("renderPortfolioActionDesk"), "admin portfolio UI must render a compact action desk outside the long run timeline");
 assert(adminSource.includes("renderPortfolioAlertBoard"), "admin portfolio UI must render a compact alert desk outside the long run timeline");
 assert(adminSource.includes("PORTFOLIO_POSITION_LANES"), "admin portfolio positions view must split holdings into risk, profit, core, and watch lanes");
-assert(adminStyleSource.includes("portfolio-ranking-radar-grid"), "admin portfolio ranking radar must be styled as a scannable three-lane board");
+assert(adminStyleSource.includes("portfolio-ranking-radar-grid") && adminStyleSource.includes("portfolio-ranking-radar-data"), "admin portfolio ranking radar must be styled as a scannable five-action-card board");
 assert(adminStyleSource.includes("portfolio-ranking-radar-priority"), "admin portfolio ranking radar must style the priority queue as a compact strip");
 assert(adminStyleSource.includes("risk-terminal"), "admin portfolio risk-defense board must be styled as a bounded terminal panel");
 assert(adminStyleSource.includes("risk-lane-grid"), "admin portfolio risk-defense board must split drawdown, sell, chase, and user alerts into lanes");
