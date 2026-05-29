@@ -1065,7 +1065,7 @@ const requiredPatterns = [
     message: "admin portfolio command header must be a compact trading-console strip instead of a tall stacked dashboard."
   },
   {
-    pattern: /portfolio-workspace-group[\s\S]{0,160}账户[\s\S]{0,900}data-portfolio-view-target="positions"[\s\S]{0,900}portfolio-workspace-group[\s\S]{0,160}机会[\s\S]{0,900}data-portfolio-view-target="watchlist"[\s\S]{0,900}portfolio-workspace-group[\s\S]{0,160}决策[\s\S]{0,900}data-portfolio-view-target="diagnostics"[\s\S]{0,900}portfolio-workspace-group[\s\S]{0,160}记录[\s\S]{0,900}data-portfolio-view-target="orders"/,
+    pattern: /portfolio-workspace-group[\s\S]{0,160}账户[\s\S]{0,900}data-portfolio-view-target="positions"[\s\S]{0,900}portfolio-workspace-group[\s\S]{0,160}机会[\s\S]{0,900}data-portfolio-view-target="watchlist"[\s\S]{0,900}portfolio-workspace-group[\s\S]{0,160}决策[\s\S]{0,1200}data-portfolio-view-target="diagnostics"[\s\S]{0,900}portfolio-workspace-group[\s\S]{0,160}记录[\s\S]{0,900}data-portfolio-view-target="orders"/,
     message: "admin portfolio page must group stock-terminal workspace entries by account, opportunity, decision, and records instead of one long page."
   },
   {
@@ -1093,7 +1093,7 @@ const requiredPatterns = [
     message: "admin portfolio overview must render a compact ranking radar so users can scan buy/watch/avoid signals without opening a long ranking report."
   },
   {
-    pattern: /data-portfolio-view-target="sectors"[\s\S]{0,700}portfolioNavSectorCount[\s\S]{0,7200}data-portfolio-view="sectors"/,
+    pattern: /data-portfolio-view-target="sectors"[\s\S]{0,700}portfolioNavSectorCount[\s\S]{0,8200}data-portfolio-view="sectors"/,
     message: "admin portfolio UI must expose a dedicated sector leaderboard entrance instead of burying theme and rotation choices in a long ranking page."
   },
   {
@@ -2461,8 +2461,12 @@ const requiredPatterns = [
     message: "manager ranking boards must build a cross-list decision matrix that aligns buy, sector, risk, and data evidence by fund."
   },
   {
-    pattern: /compactPortfolioRankingBoardForModel[\s\S]{0,1200}priorityQueue[\s\S]{0,1200}decisionMatrix/,
-    message: "portfolio decision prompts must include the ranking priority queue and decision matrix."
+    pattern: /(?=[\s\S]*const alertCenter = buildPortfolioRankingAlertCenter\(lists,\s*priorityQueue,\s*decisionMatrix\))(?=[\s\S]*function buildPortfolioRankingAlertCenter[\s\S]{0,2600}买入复核[\s\S]{0,2600}卖出\/风控[\s\S]{0,2600}数据\/费率补证[\s\S]{0,2600}用户持仓提醒)/,
+    message: "manager ranking boards must build a four-lane alert center for buy review, sell/risk, data/fee evidence, and user holdings."
+  },
+  {
+    pattern: /compactPortfolioRankingBoardForModel[\s\S]{0,1600}priorityQueue[\s\S]{0,1600}alertCenter[\s\S]{0,1600}decisionMatrix/,
+    message: "portfolio decision prompts must include the ranking priority queue, alert center, and decision matrix."
   },
   {
     pattern: /buildPortfolioRankingCustomerDigest[\s\S]{0,2200}buyReview[\s\S]{0,2200}watchFocus[\s\S]{0,2200}riskAvoid/,
@@ -2485,6 +2489,10 @@ const requiredPatterns = [
     message: "admin portfolio UI must expose a dedicated data-confidence entrance instead of burying data gaps in a long ranking page."
   },
   {
+    pattern: /data-portfolio-view-target="alerts"[\s\S]{0,700}portfolioNavAlertCount[\s\S]{0,5200}data-portfolio-view="alerts"/,
+    message: "admin portfolio UI must expose a dedicated alert desk entrance for today's must-handle items."
+  },
+  {
     pattern: /data-portfolio-view-target="diagnostics"[\s\S]{0,900}portfolioNavDiagnosticCount[\s\S]{0,12500}data-portfolio-view="diagnostics"/,
     message: "admin portfolio UI must expose diagnostics as a separate entrance instead of lengthening the overview page."
   },
@@ -2499,6 +2507,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*PORTFOLIO_DATA_LANES[\s\S]{0,900}净值\/走势[\s\S]{0,900}份额\/费率[\s\S]{0,900}持仓\/前景[\s\S]{0,900}来源\/补证)(?=[\s\S]*function renderPortfolioDataBoard)/,
     message: "admin portfolio UI must split data confidence into NAV, fee, holdings, and source lanes."
+  },
+  {
+    pattern: /(?=[\s\S]*PORTFOLIO_ALERT_LANES[\s\S]{0,900}买入复核[\s\S]{0,900}卖出\/风控[\s\S]{0,900}数据\/费率补证[\s\S]{0,900}用户持仓提醒)(?=[\s\S]*function renderPortfolioAlertBoard[\s\S]{0,1200}alert-terminal[\s\S]{0,1200}alert-lane-grid)/,
+    message: "admin portfolio UI must split alert desk items into buy, sell/risk, data, and user-holding lanes."
   },
   {
     pattern: /renderManagerCustomerDigest[\s\S]{0,1800}客户视角摘要/,

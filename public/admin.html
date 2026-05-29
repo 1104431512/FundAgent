@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FundAgent 管理</title>
-    <link rel="stylesheet" href="/public/styles.css?v=20260530-matrix2" />
+    <link rel="stylesheet" href="/public/styles.css?v=20260530-alert1" />
   </head>
   <body>
     <div class="app-shell">
@@ -327,7 +327,7 @@
               <div class="portfolio-workspace-switcher" aria-label="虚拟组合工作区">
                 <div class="portfolio-workspace-group">
                   <span>账户</span>
-                  <button type="button" class="active" data-portfolio-view-target="overview"><b>总览</b><small>账户看板</small><span id="portfolioNavOverviewCount">13</span></button>
+                  <button type="button" class="active" data-portfolio-view-target="overview"><b>总览</b><small>账户看板</small><span id="portfolioNavOverviewCount">14</span></button>
                   <button type="button" data-portfolio-view-target="positions"><b>持仓</b><small>仓位与收益</small><span id="portfolioNavPositionCount">0</span></button>
                   <button type="button" data-portfolio-view-target="users"><b>用户持仓</b><small>客户提醒</small><span id="portfolioNavUserCount">0</span></button>
                 </div>
@@ -340,6 +340,7 @@
                 <div class="portfolio-workspace-group">
                   <span>决策</span>
                   <button type="button" data-portfolio-view-target="actions"><b>行动台</b><small>买/卖/观察</small><span id="portfolioNavActionCount">0</span></button>
+                  <button type="button" data-portfolio-view-target="alerts"><b>预警台</b><small>必须处理</small><span id="portfolioNavAlertCount">0</span></button>
                   <button type="button" data-portfolio-view-target="matrix"><b>决策矩阵</b><small>横向对比</small><span id="portfolioNavMatrixCount">0</span></button>
                   <button type="button" data-portfolio-view-target="risk"><b>风控防线</b><small>回撤/止盈</small><span id="portfolioNavRiskCount">0</span></button>
                   <button type="button" data-portfolio-view-target="data"><b>数据体检</b><small>净值/费率</small><span id="portfolioNavDataCount">0</span></button>
@@ -405,6 +406,19 @@
                     <span id="portfolioActionState" class="badge">未加载</span>
                   </div>
                   <div id="portfolioActionDesk" class="portfolio-action-desk"></div>
+                </div>
+              </section>
+
+              <section class="portfolio-workspace-view" data-portfolio-view="alerts">
+                <div class="panel alert-panel">
+                  <div class="panel-head tight">
+                    <div>
+                      <h2>预警台</h2>
+                      <p>把买入复核、卖出风控、数据费率补证和用户持仓提醒放在同一屏；先处理预警，再进入矩阵或榜单看完整依据。</p>
+                    </div>
+                    <span id="portfolioAlertState" class="badge">未加载</span>
+                  </div>
+                  <div id="portfolioAlertBoard" class="portfolio-alert-board"></div>
                 </div>
               </section>
 
@@ -664,6 +678,6 @@
     </div>
 
     <div id="toast" class="toast hidden"></div>
-    <script src="/public/admin.js?v=20260530-matrix2"></script>
+    <script src="/public/admin.js?v=20260530-alert1"></script>
   </body>
 </html>

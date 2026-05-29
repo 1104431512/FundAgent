@@ -914,6 +914,10 @@ button:disabled {
   border-left-color: #315f8d;
 }
 
+.portfolio-workspace-card[data-portfolio-view-target="alerts"] {
+  border-left-color: #b3261e;
+}
+
 .portfolio-workspace-card[data-portfolio-view-target="opportunities"] {
   border-left-color: #d97706;
 }
@@ -1201,6 +1205,11 @@ button:disabled {
   min-height: 0;
 }
 
+.portfolio-alert-board {
+  min-width: 0;
+  min-height: 0;
+}
+
 .portfolio-matrix-board {
   min-width: 0;
   min-height: 0;
@@ -1384,6 +1393,200 @@ button:disabled {
 }
 
 .action-facts small {
+  min-height: 22px;
+  padding: 3px 7px;
+  border: 1px solid #dbe6ef;
+  border-radius: 999px;
+  color: #284052;
+  background: #f4f8fb;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.alert-terminal {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.alert-terminal-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #dce5ed;
+  border-radius: 8px;
+  background: #f7fafc;
+}
+
+.alert-terminal-head strong,
+.alert-terminal-head small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.alert-terminal-head strong {
+  color: #1d2d3b;
+  font-size: 15px;
+}
+
+.alert-terminal-head small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.alert-terminal-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+}
+
+.alert-lane-grid {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  overflow: hidden;
+}
+
+.alert-lane {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid #e0e7ee;
+  border-top: 3px solid #8797a6;
+  border-radius: 8px;
+  background: #fbfcfd;
+  overflow: hidden;
+}
+
+.alert-lane-buy {
+  border-top-color: #2f855a;
+}
+
+.alert-lane-sell {
+  border-top-color: #b3261e;
+}
+
+.alert-lane-data {
+  border-top-color: #64748b;
+}
+
+.alert-lane-user {
+  border-top-color: #5f6f52;
+}
+
+.alert-lane-head {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 11px 12px;
+  border-bottom: 1px solid #e5ecf2;
+  background: #ffffff;
+}
+
+.alert-lane-head strong,
+.alert-lane-head small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.alert-lane-head strong {
+  color: #263746;
+  font-size: 14px;
+}
+
+.alert-lane-head small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.alert-lane-head span {
+  min-width: 30px;
+  min-height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #405263;
+  background: #edf3f7;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.alert-item-list {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  overflow: auto;
+  padding: 10px;
+}
+
+.alert-item {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #e5ebf1;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.alert-item-title,
+.alert-item footer,
+.alert-item footer div {
+  min-width: 0;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.alert-item-title strong,
+.alert-item p,
+.alert-item footer small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.alert-item-title strong {
+  color: #1f2f3d;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.alert-item p,
+.alert-item footer small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.alert-item footer small {
+  min-width: 0;
+}
+
+.alert-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.alert-facts small {
   min-height: 22px;
   padding: 3px 7px;
   border: 1px solid #dbe6ef;
@@ -2230,6 +2433,12 @@ button:disabled {
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+.alert-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 .action-panel {
   min-height: 0;
   display: grid;
@@ -2254,6 +2463,7 @@ button:disabled {
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+.alert-panel .panel-head p,
 .opportunity-panel .panel-head p {
   margin-top: 5px;
   color: var(--muted);
@@ -5047,6 +5257,16 @@ button.danger-button:hover {
     height: 100%;
   }
 
+  .portfolio-workspace-view[data-portfolio-view="alerts"].active {
+    grid-template-rows: minmax(0, 1fr);
+    align-content: stretch;
+    overflow: hidden;
+  }
+
+  .portfolio-workspace-view[data-portfolio-view="alerts"] .alert-panel {
+    height: 100%;
+  }
+
   .portfolio-workspace-view[data-portfolio-view="matrix"].active {
     grid-template-rows: minmax(0, 1fr);
     align-content: stretch;
@@ -5141,6 +5361,7 @@ button.danger-button:hover {
   .portfolio-insight-grid,
   .portfolio-diagnostic-grid,
   .action-lane-grid,
+  .alert-lane-grid,
   .risk-lane-grid,
   .sector-lane-grid,
   .data-lane-grid,
@@ -5172,6 +5393,7 @@ button.danger-button:hover {
   .portfolio-terminal-stage,
   .portfolio-workspace-view.active,
   .action-terminal,
+  .alert-terminal,
   .matrix-terminal,
   .risk-terminal,
   .sector-terminal,

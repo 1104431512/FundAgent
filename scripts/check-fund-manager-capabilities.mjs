@@ -342,6 +342,11 @@ assert(rankingBoard.customerDigest?.watchFocus?.length || rankingBoard.customerD
 assert(rankingBoard.decisionMatrix?.items?.length, "manager ranking board must build a cross-list decision matrix");
 assert(rankingBoard.decisionMatrix.items.some((item) => item.code === "000005" && item.cells?.buy && item.cells?.sector), "decision matrix must align buy and sector evidence for the same fund");
 assert(rankingBoard.decisionMatrix.items.some((item) => item.code === "000010" && item.cells?.data && /补证据|补齐|不能提交买入|数据/.test(item.nextStep || item.action || "")), "decision matrix must surface data blockers before buy execution");
+assert(rankingBoard.alertCenter?.lanes?.length === 4, "manager ranking board must build a four-lane alert center");
+assert(rankingBoard.alertCenter.lanes.find((lane) => lane.id === "buy")?.items.some((item) => item.code === "000001" || item.code === "000005"), "alert center must surface buy-review items");
+assert(rankingBoard.alertCenter.lanes.find((lane) => lane.id === "sell")?.items.some((item) => item.code === "008327" || item.code === "000006"), "alert center must surface sell and risk-control items");
+assert(rankingBoard.alertCenter.lanes.find((lane) => lane.id === "data")?.items.some((item) => item.code === "000010"), "alert center must surface data and fee blockers");
+assert(rankingBoard.alertCenter.lanes.find((lane) => lane.id === "user")?.items.some((item) => item.code === "021959"), "alert center must surface user holding alerts");
 assert(rankingBoard.priorityQueue?.length >= 3, "manager ranking board must build a cross-list priority queue");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "008327" && item.listId === "sell_risk"), "priority queue must include urgent sell-risk items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000006" && item.listId === "chase_risk"), "priority queue must include chase-risk warning items");
@@ -1418,6 +1423,8 @@ assert(adminHtmlSource.includes("data-portfolio-view-target=\"sectors\""), "admi
 assert(adminHtmlSource.includes("data-portfolio-view=\"sectors\""), "admin portfolio UI must render sector opportunities as a dedicated workspace view");
 assert(adminHtmlSource.includes("data-portfolio-view-target=\"actions\""), "admin portfolio UI must expose a dedicated action desk workspace entrance");
 assert(adminHtmlSource.includes("data-portfolio-view=\"actions\""), "admin portfolio UI must render latest manager actions as a dedicated workspace view");
+assert(adminHtmlSource.includes("data-portfolio-view-target=\"alerts\""), "admin portfolio UI must expose a dedicated alert desk workspace entrance");
+assert(adminHtmlSource.includes("data-portfolio-view=\"alerts\""), "admin portfolio UI must render the alert desk as a dedicated workspace view");
 assert(adminHtmlSource.includes("data-portfolio-view-target=\"matrix\""), "admin portfolio UI must expose a dedicated decision-matrix workspace entrance");
 assert(adminHtmlSource.includes("data-portfolio-view=\"matrix\""), "admin portfolio UI must render the decision matrix as a dedicated workspace view");
 assert(adminSource.includes("setPortfolioView"), "admin portfolio UI must switch between virtual account workspace views");
@@ -1431,6 +1438,7 @@ assert(adminSource.includes("renderPortfolioSectorBoard"), "admin portfolio UI m
 assert(adminSource.includes("renderPortfolioDataBoard"), "admin portfolio UI must render a compact data-confidence board outside the full ranking page");
 assert(adminSource.includes("renderPortfolioDecisionMatrixBoard"), "admin portfolio UI must render a compact decision matrix outside the full ranking page");
 assert(adminSource.includes("renderPortfolioActionDesk"), "admin portfolio UI must render a compact action desk outside the long run timeline");
+assert(adminSource.includes("renderPortfolioAlertBoard"), "admin portfolio UI must render a compact alert desk outside the long run timeline");
 assert(adminStyleSource.includes("portfolio-ranking-radar-grid"), "admin portfolio ranking radar must be styled as a scannable three-lane board");
 assert(adminStyleSource.includes("portfolio-ranking-radar-priority"), "admin portfolio ranking radar must style the priority queue as a compact strip");
 assert(adminStyleSource.includes("risk-terminal"), "admin portfolio risk-defense board must be styled as a bounded terminal panel");
@@ -1441,6 +1449,8 @@ assert(adminStyleSource.includes("data-terminal"), "admin portfolio data-confide
 assert(adminStyleSource.includes("data-lane-grid"), "admin portfolio data-confidence board must split NAV, fee, holdings, and source checks into lanes");
 assert(adminStyleSource.includes("action-terminal"), "admin portfolio action desk must be styled as a bounded terminal panel");
 assert(adminStyleSource.includes("action-lane-grid"), "admin portfolio action desk must split buy, sell, watch, and active orders into lanes");
+assert(adminStyleSource.includes("alert-terminal"), "admin portfolio alert desk must be styled as a bounded terminal panel");
+assert(adminStyleSource.includes("alert-lane-grid"), "admin portfolio alert desk must split buy, sell/risk, data, and user alerts into lanes");
 assert(adminStyleSource.includes("matrix-terminal"), "admin portfolio decision matrix must be styled as a bounded terminal panel");
 assert(adminStyleSource.includes("matrix-table"), "admin portfolio decision matrix must render a horizontal buy-sector-risk-data comparison table");
 assert(adminHtmlSource.includes("综合决策"), "admin UI must describe integrated decision-synthesis rankings as a manager decision angle");
@@ -1493,12 +1503,14 @@ assert(/portfolio-workspace-view\.active[\s\S]{0,360}overflow:\s*auto/.test(admi
 assert(adminHtmlSource.includes('data-portfolio-view-target="opportunities"'), "admin portfolio UI must expose observation opportunities as a separate workspace entrance");
 assert(adminHtmlSource.includes('data-portfolio-view-target="sectors"'), "admin portfolio UI must expose sector leaderboards as a separate workspace entrance");
 assert(adminHtmlSource.includes('data-portfolio-view-target="actions"'), "admin portfolio UI must expose latest actions as a separate workspace entrance");
+assert(adminHtmlSource.includes('data-portfolio-view-target="alerts"'), "admin portfolio UI must expose alerts as a separate workspace entrance");
 assert(adminHtmlSource.includes('data-portfolio-view-target="matrix"'), "admin portfolio UI must expose the decision matrix as a separate workspace entrance");
 assert(adminHtmlSource.includes('data-portfolio-view-target="data"'), "admin portfolio UI must expose data confidence as a separate workspace entrance");
 assert(adminHtmlSource.includes('data-portfolio-view-target="diagnostics"'), "admin portfolio UI must expose diagnostics as a separate workspace entrance");
 assert(adminSource.includes("renderPortfolioOpportunityBoard"), "admin portfolio UI must render buy, pullback, and launch-eve observation opportunities outside the long watchlist page");
 assert(adminSource.includes("PORTFOLIO_SECTOR_LANES"), "admin portfolio sector board must define separate leaderboard lenses for theme, rotation, holdings, and quality");
 assert(adminSource.includes("PORTFOLIO_ACTION_LANES"), "admin portfolio action desk must define separate lanes for buy, sell, watch, and order flow");
+assert(adminSource.includes("PORTFOLIO_ALERT_LANES"), "admin portfolio alert desk must define separate lanes for buy, sell/risk, data, and user alerts");
 assert(adminSource.includes("PORTFOLIO_DATA_LANES"), "admin portfolio data board must define separate lanes for NAV, fee, holdings, and source evidence");
 assert(adminSource.includes("collectPortfolioDecisionMatrixItems"), "admin portfolio decision matrix must derive rows from backend manager rankings");
 assert(/timeline-terminal-body[\s\S]{0,360}max-height:\s*calc\(var\(--portfolio-workspace-height/.test(adminStyleSource), "admin portfolio timeline must bound run history height");
