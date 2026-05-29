@@ -1046,6 +1046,8 @@ assert(adminSource.includes("renderManagerRankings"), "admin UI must render mult
 assert(adminSource.includes("ranking-health"), "admin UI must render ranking board state guidance");
 assert(adminSource.includes("ranking-next"), "admin UI must render ranking next-action guidance");
 assert(adminSource.includes("renderManagerRankingDecision"), "admin UI must render per-fund ranking decision matrices");
+assert(adminSource.includes("renderRunActionAudit"), "admin run timeline must expose ranking, trend, and risk audit details for each action");
+assert(adminSource.includes("action.rankingBasis"), "admin run action audit must show the ranking basis behind manager recommendations");
 
 await assertIntent({
   userText: "我发的图里是我已经买的基金，告诉我大概多久卖",

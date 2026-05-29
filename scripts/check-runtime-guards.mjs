@@ -2265,6 +2265,10 @@ const requiredPatterns = [
     message: "manager ranking items must render opportunity, risk, gap, and next-step decision cells."
   },
   {
+    pattern: /function renderRunActionAudit[\s\S]{0,900}榜单[\s\S]{0,180}action\.rankingBasis[\s\S]{0,400}走势[\s\S]{0,400}边界/,
+    message: "admin run timeline must audit whether each manager action cites ranking, trend, and boundary evidence."
+  },
+  {
     pattern: /经理榜单/,
     message: "admin portfolio UI must include a visible manager ranking board section."
   }

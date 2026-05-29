@@ -1768,6 +1768,57 @@ button.danger-button:hover {
   overflow-wrap: anywhere;
 }
 
+.action-audit-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.action-audit-item {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 7px 8px;
+  border: 1px solid #e2e9ef;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.action-audit-item.ranking {
+  border-color: #d9eadf;
+  background: #f7fbf8;
+}
+
+.action-audit-item.trend {
+  border-color: #dce8f5;
+  background: #f7fbff;
+}
+
+.action-audit-item.risk {
+  border-color: #eadfcf;
+  background: #fffaf4;
+}
+
+.action-audit-item span,
+.action-audit-item strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.action-audit-item span {
+  color: #657485;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.action-audit-item strong {
+  margin: 0;
+  color: #263646;
+  font-size: 12px;
+  line-height: 1.42;
+}
+
 .raw-run-card {
   border-top: 1px solid var(--line);
 }

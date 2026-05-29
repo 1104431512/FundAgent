@@ -1412,7 +1412,7 @@ function renderRunThinkingCards(run = {}) {
       <span>${escapeHtml(action.action || "ACTION")}</span>
       <strong>${escapeHtml([action.code, action.name].filter(Boolean).join(" ") || "组合动作")}</strong>
       <p>${escapeHtml(action.reason || "暂无动作理由")}</p>
-      <small>${escapeHtml([action.rotationCheck, action.positionCheck, action.chaseRisk, action.riskControl].filter(Boolean).join("；"))}</small>
+      ${renderRunActionAudit(action)}
     </article>
   `);
   const teamCards = team.map((item) => `
@@ -1452,6 +1452,28 @@ function renderRunThinkingCards(run = {}) {
       <div class="thought-grid">
         ${[...teamCards, ...actionCards, ...operationalCards, ...fallbackCards].join("")}
       </div>
+    </div>
+  `;
+}
+
+function renderRunActionAudit(action = {}) {
+  const items = [
+    { label: "榜单", value: action.rankingBasis, className: "ranking" },
+    { label: "走势", value: action.positionCheck || action.rotationCheck, className: "trend" },
+    { label: "边界", value: action.riskControl || action.chaseRisk, className: "risk" }
+  ].filter((item) => String(item.value || "").trim());
+  if (!items.length) {
+    const fallback = [action.rotationCheck, action.positionCheck, action.chaseRisk, action.riskControl].filter(Boolean).join("；");
+    return fallback ? `<small>${escapeHtml(fallback)}</small>` : "";
+  }
+  return `
+    <div class="action-audit-list">
+      ${items.map((item) => `
+        <div class="action-audit-item ${escapeHtml(item.className)}">
+          <span>${escapeHtml(item.label)}</span>
+          <strong>${escapeHtml(item.value)}</strong>
+        </div>
+      `).join("")}
     </div>
   `;
 }
