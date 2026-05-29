@@ -1069,6 +1069,14 @@ const requiredPatterns = [
     message: "admin portfolio workspace entries must switch focused views."
   },
   {
+    pattern: /renderPortfolioDashboard[\s\S]{0,2800}renderPortfolioWorkspaceCards[\s\S]{0,2400}renderPortfolioWorkspaceCard/,
+    message: "admin portfolio overview must show actionable workspace shortcut cards."
+  },
+  {
+    pattern: /renderPortfolioWorkspaceCards[\s\S]{0,2600}managerRankings[\s\S]{0,1200}ready[\s\S]{0,1200}userAlerts/,
+    message: "admin portfolio workspace cards must summarize rankings, watchlist readiness, and user alerts."
+  },
+  {
     pattern: /portfolio-workspace-switcher[\s\S]{0,260}position:\s*sticky/,
     message: "admin portfolio workspace switcher must stay reachable and remain usable on narrow screens."
   },

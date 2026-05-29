@@ -653,6 +653,89 @@ button:disabled {
   gap: 16px;
 }
 
+.portfolio-workspace-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.portfolio-workspace-card {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  padding: 14px;
+  border: 1px solid #dfe7ef;
+  border-left: 4px solid #7d95aa;
+  border-radius: 8px;
+  color: var(--text);
+  background: #ffffff;
+  box-shadow: none;
+  text-align: left;
+}
+
+.portfolio-workspace-card:hover {
+  border-color: #c6d6e3;
+  background: #fbfdff;
+  transform: translateY(-1px);
+}
+
+.portfolio-workspace-card span,
+.portfolio-workspace-card strong,
+.portfolio-workspace-card small,
+.portfolio-workspace-card em {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-workspace-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.portfolio-workspace-card strong {
+  color: #1d2d3b;
+  font-size: 24px;
+  line-height: 1.05;
+}
+
+.portfolio-workspace-card small {
+  color: #344152;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.portfolio-workspace-card em {
+  color: #6a7a89;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.portfolio-workspace-card[data-portfolio-view-target="rankings"] {
+  border-left-color: #0f766e;
+}
+
+.portfolio-workspace-card[data-portfolio-view-target="positions"] {
+  border-left-color: #2b6cb0;
+}
+
+.portfolio-workspace-card[data-portfolio-view-target="watchlist"] {
+  border-left-color: #2f855a;
+}
+
+.portfolio-workspace-card[data-portfolio-view-target="users"] {
+  border-left-color: #5f6f52;
+}
+
+.portfolio-workspace-card[data-portfolio-view-target="timeline"] {
+  border-left-color: #7c6d1f;
+}
+
+.portfolio-workspace-card[data-portfolio-view-target="orders"] {
+  border-left-color: #b7791f;
+}
+
 .portfolio-insight-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));

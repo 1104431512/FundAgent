@@ -396,8 +396,10 @@ function renderPortfolioDashboard(portfolio = {}) {
   setText("#portfolioNavUserCount", String(userPortfolios.length));
   setText("#portfolioNavRunCount", String(runs.length));
   setText("#portfolioNavOrderCount", String(activeOrders.length + transactions.length + equity.length));
+  setText("#portfolioNavOverviewCount", "6");
   updateRunStateBadge(latestRun, portfolio.scheduler || {});
 
+  renderPortfolioWorkspaceCards(portfolio, { positions, watchlist, userPortfolios, runs, activeOrders, transactions, equity, ready, waiting, blocked });
   renderInsightList("#portfolioManagerSummary", buildManagerInsightItems(portfolio, latestRun, activeOrders), "暂无经理运行摘要。");
   renderInsightList("#portfolioHoldingSummary", buildHoldingInsightItems(account, positions, portfolio.exposureSummary || null), "暂无持仓暴露。");
   renderInsightList("#portfolioReadinessSummary", buildReadinessInsightItems({ ready, waiting, launchEve, blocked }), "暂无接近买点的候选。");
@@ -408,6 +410,85 @@ function renderPortfolioDashboard(portfolio = {}) {
   renderInsightList("#portfolioBacktestSummary", buildBacktestInsightItems(portfolio.backtestDiagnostics || {}), "暂无历史回测缺口。");
   updatePortfolioRankingAuditBadge(portfolio.rankingActionAudit || {});
   renderInsightList("#portfolioRankingAuditSummary", buildRankingAuditInsightItems(portfolio.rankingActionAudit || {}), "暂无榜单引用审计。");
+}
+
+function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
+  const root = document.querySelector("#portfolioWorkspaceCards");
+  if (!root) return;
+  const account = portfolio.account || {};
+  const positions = context.positions || [];
+  const watchlist = context.watchlist || [];
+  const userPortfolios = context.userPortfolios || [];
+  const runs = context.runs || [];
+  const activeOrders = context.activeOrders || [];
+  const transactions = context.transactions || [];
+  const equity = context.equity || [];
+  const ready = context.ready || [];
+  const waiting = context.waiting || [];
+  const blocked = context.blocked || [];
+  const rankingLists = Array.isArray(portfolio.managerRankings?.lists) ? portfolio.managerRankings.lists : [];
+  const rankingCount = rankingLists.reduce((sum, list) => sum + (Array.isArray(list.items) ? list.items.length : 0), 0);
+  const priority = portfolio.managerRankings?.priorityQueue?.[0] || null;
+  const userAlerts = userPortfolios.reduce((sum, item) => sum + Number(item.alertCount || 0), 0);
+  const latestRun = runs[0] || null;
+  const topPosition = [...positions].sort((a, b) => Number(b.weightPct || 0) - Number(a.weightPct || 0))[0] || null;
+  const topWatch = ready[0] || waiting[0] || watchlist[0] || null;
+  const cards = [
+    {
+      view: "rankings",
+      label: "经理榜单",
+      value: `${rankingCount} 项`,
+      detail: priority ? `${priority.listTitle || "优先处理"}：${priority.code || ""} ${priority.name || ""}`.trim() : "综合、轮动、追涨、费率等多角度排序",
+      meta: priority?.action || "辅助买入/卖出复核"
+    },
+    {
+      view: "positions",
+      label: "持仓",
+      value: `${positions.length} 只`,
+      detail: topPosition ? `${topPosition.code || ""} ${topPosition.name || ""}，仓位 ${formatNumber(topPosition.weightPct || 0, 2)}%` : "当前暂无基金持仓",
+      meta: `组合仓位 ${account.positionWeightPct || 0}%`
+    },
+    {
+      view: "watchlist",
+      label: "自选池",
+      value: `${watchlist.length} 只`,
+      detail: topWatch ? `${topWatch.code || ""} ${topWatch.name || ""}，${topWatch.statusText || formatWatchlistStatus(topWatch.status)}` : "等待盘前观察沉淀候选",
+      meta: `接近可买 ${ready.length} · 等待回调 ${waiting.length} · 暂不买 ${blocked.length}`
+    },
+    {
+      view: "users",
+      label: "用户持仓",
+      value: `${userPortfolios.length} 人`,
+      detail: userPortfolios[0] ? `${userPortfolios[0].displayName || userPortfolios[0].userId}：${userPortfolios[0].holdingCount || 0} 只持仓` : "可从截图或后台录入客户真实持仓",
+      meta: `${userAlerts} 条优先提醒`
+    },
+    {
+      view: "timeline",
+      label: "经理时间线",
+      value: `${runs.length} 条`,
+      detail: latestRun ? `${latestRun.date || "-"} ${latestRun.title || latestRun.type || "组合任务"}` : "暂无观察、决策或复盘记录",
+      meta: latestRun?.summary || "运行后沉淀经理分析"
+    },
+    {
+      view: "orders",
+      label: "订单流水",
+      value: `${activeOrders.length + transactions.length + equity.length} 条`,
+      detail: activeOrders.length ? `${activeOrders.length} 笔订单待确认` : "暂无待确认订单",
+      meta: `流水 ${transactions.length} · 估值 ${equity.length}`
+    }
+  ];
+  root.innerHTML = cards.map(renderPortfolioWorkspaceCard).join("");
+}
+
+function renderPortfolioWorkspaceCard(card = {}) {
+  return `
+    <button type="button" class="portfolio-workspace-card" data-portfolio-view-target="${escapeHtml(card.view || "overview")}">
+      <span>${escapeHtml(card.label || "")}</span>
+      <strong>${escapeHtml(card.value || "-")}</strong>
+      <small>${escapeHtml(card.detail || "")}</small>
+      <em>${escapeHtml(card.meta || "")}</em>
+    </button>
+  `;
 }
 
 function renderManagerRankings(board = {}) {
