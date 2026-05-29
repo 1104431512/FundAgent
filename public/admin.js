@@ -370,16 +370,29 @@ async function loadSkills() {
 }
 
 async function loadStats() {
-  const result = await apiFetch("/api/stats");
-  const stats = result.stats || {};
+  const [statsResult, deploymentResult] = await Promise.allSettled([
+    apiFetch("/api/stats"),
+    apiFetch("/api/deployment", { timeoutMs: 12000 })
+  ]);
+  if (statsResult.status === "rejected") throw statsResult.reason;
+  const stats = statsResult.value.stats || {};
+  const deployment = deploymentResult.status === "fulfilled" ? deploymentResult.value.deployment || null : {
+    status: "unknown",
+    label: "无法确认",
+    message: deploymentResult.reason?.message || "部署状态检查失败。",
+    updateHint: "稍后刷新，或在服务器运行部署检查。",
+    runtime: stats.release || {},
+    latest: {}
+  };
   const release = stats.release || {};
-  renderRuntimeTerminal(stats);
+  renderRuntimeTerminal(stats, deployment);
   renderRuntimeDiagnostics(stats.diagnostics);
   document.querySelector("#statsOutput").textContent = JSON.stringify(
     {
       startedAt: stats.startedAt,
       updatedAt: stats.updatedAt,
       release,
+      deployment,
       diagnostics: stats.diagnostics,
       last: stats.last,
       counters: stats.counters || {}
@@ -389,7 +402,7 @@ async function loadStats() {
   );
 }
 
-function renderRuntimeTerminal(stats = {}) {
+function renderRuntimeTerminal(stats = {}, deployment = null) {
   const counters = stats.counters || {};
   const diagnostics = stats.diagnostics || {};
   const release = stats.release || {};
@@ -410,12 +423,12 @@ function renderRuntimeTerminal(stats = {}) {
     "portfolioPushes"
   ].reduce((sum, key) => sum + getRuntimeCounter(counters, key), 0);
 
-  setText("#runtimeBrief", diagnostics.summary || "运行状态暂无明显异常。");
+  setText("#runtimeBrief", formatRuntimeBrief(diagnostics, deployment));
   setText("#runtimeNavOverviewCount", diagnosticItems.length ? String(diagnosticItems.length) : "OK");
   setText("#runtimeNavConversationCount", formatRuntimeCount(conversationTotal));
   setText("#runtimeNavDataCount", formatRuntimeCount(dataSourceTotal));
   setText("#runtimeNavPortfolioCount", formatRuntimeCount(portfolioTotal));
-  setText("#runtimeNavReleaseCount", release.branch || "-");
+  setText("#runtimeNavReleaseCount", deployment?.status === "stale" ? "旧版" : release.branch || "-");
 
   renderRuntimeCards("#runtimeOverviewCards", [
     {
@@ -514,6 +527,12 @@ function renderRuntimeTerminal(stats = {}) {
   ]);
 
   renderRuntimeCards("#runtimeReleaseBoard", [
+    {
+      label: "部署状态",
+      value: formatDeploymentStatus(deployment),
+      meta: formatDeploymentMeta(deployment),
+      tone: getDeploymentTone(deployment)
+    },
     { label: "当前版本", value: formatReleaseVersion(release), meta: release.name || "FundAgent", tone: "info" },
     { label: "当前提交", value: formatReleaseCommit(release), meta: "部署代码指纹", tone: "info" },
     { label: "当前分支", value: release.branch || "-", meta: "线上运行分支", tone: "info" },
@@ -569,6 +588,44 @@ function formatRuntimeDiagnosticLevel(level = "") {
     warning: "预警",
     critical: "严重"
   }[level] || "正常";
+}
+
+function formatRuntimeBrief(diagnostics = {}, deployment = null) {
+  if (deployment?.status === "stale") {
+    const current = deployment.runtime?.shortCommit || formatReleaseCommit(deployment.runtime || {});
+    const latest = deployment.latest?.shortCommit || "-";
+    return `部署落后：当前 ${current}，最新 ${latest}。请先更新服务器，否则后台页面和经理能力仍可能是旧版本。`;
+  }
+  if (deployment?.status === "unknown") {
+    return `${diagnostics.summary || "运行状态暂无明显异常。"} 部署状态暂时无法确认。`;
+  }
+  return diagnostics.summary || "运行状态暂无明显异常。";
+}
+
+function formatDeploymentStatus(deployment = null) {
+  if (!deployment) return "未检查";
+  return deployment.label || {
+    current: "已是最新",
+    stale: "部署落后",
+    unknown: "无法确认"
+  }[deployment.status] || "无法确认";
+}
+
+function formatDeploymentMeta(deployment = null) {
+  if (!deployment) return "等待部署检查。";
+  const current = deployment.runtime?.shortCommit || "-";
+  const latest = deployment.latest?.shortCommit || "-";
+  const branch = deployment.branch || "main";
+  const hint = deployment.status === "stale"
+    ? deployment.updateHint || "需要拉取最新镜像或重新构建。"
+    : deployment.message || deployment.updateHint || "部署检查完成。";
+  return `当前 ${current} · ${branch} 最新 ${latest}。${hint}`;
+}
+
+function getDeploymentTone(deployment = null) {
+  if (deployment?.status === "current") return "ok";
+  if (deployment?.status === "stale") return "bad";
+  return "warn";
 }
 
 function renderRuntimeDiagnostics(diagnostics = {}) {

@@ -481,6 +481,9 @@ assert(Object.prototype.hasOwnProperty.call(runtimeRelease, "shortCommit"), "run
 assert(serverSource.includes("release: getRuntimeRelease()"), "health/stats APIs must expose runtime release metadata");
 assert(serverSource.includes("readBuildReleaseMetadata") && serverSource.includes(".fundagent-release.json"), "runtime release metadata must fall back to a Docker build release file");
 assert(adminSource.includes("formatReleaseCommit") && adminHtmlSource.includes("runtimeReleaseBoard"), "admin runtime UI must show the deployed commit");
+assert(serverSource.includes('url.pathname === "/api/deployment"') && serverSource.includes("getDeploymentFreshness"), "admin API must expose deployment freshness checks");
+assert(serverSource.includes("api.github.com/repos") && serverSource.includes("部署落后"), "deployment freshness must compare runtime commit with the latest GitHub branch commit");
+assert(adminSource.includes('apiFetch("/api/deployment"') && adminSource.includes("formatDeploymentStatus"), "admin runtime UI must render a deployment freshness status card");
 const pingzhongLatestNav = manager.parseFundPingzhongLatestNav(`
 var Data_netWorthTrend = [
   {"x":1779465600000,"y":2.4100,"equityReturn":0.11,"unitMoney":""},

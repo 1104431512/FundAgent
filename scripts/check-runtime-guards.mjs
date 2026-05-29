@@ -1961,6 +1961,22 @@ const requiredPatterns = [
     message: "runtime stats must expose release metadata for the admin UI."
   },
   {
+    pattern: /\/api\/deployment[\s\S]{0,360}getDeploymentFreshness/,
+    message: "admin API must expose deployment freshness so stale server builds are visible from the UI."
+  },
+  {
+    pattern: /async function getDeploymentFreshness[\s\S]{0,1800}fetchDeploymentFreshnessSnapshot[\s\S]{0,2400}api\.github\.com\/repos/,
+    message: "deployment freshness must compare the running commit with the latest GitHub branch commit."
+  },
+  {
+    pattern: /loadStats[\s\S]{0,900}\/api\/deployment[\s\S]{0,1200}renderRuntimeTerminal\(stats,\s*deployment\)/,
+    message: "admin runtime UI must load deployment freshness without blocking the normal stats view."
+  },
+  {
+    pattern: /formatDeploymentStatus[\s\S]{0,800}部署落后[\s\S]{0,1200}formatDeploymentMeta[\s\S]{0,1200}getDeploymentTone/,
+    message: "admin runtime UI must render stale deployment status as a compact 1Panel-style status card."
+  },
+  {
     pattern: /function getRuntimeStats\(\)[\s\S]{0,260}shouldPersistRuntimeStats\(\)[\s\S]{0,180}runtimeStatsMemoryCache/,
     message: "capability checks must read in-memory runtime stats instead of polluted production stats."
   },

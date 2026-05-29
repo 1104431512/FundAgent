@@ -20,6 +20,8 @@ const SKILLS_DIR = path.join(ROOT, "skills");
 const STARTED_AT = new Date();
 const APP_RELEASE = resolveAppRelease();
 const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS || 120000);
+const DEPLOYMENT_CHECK_CACHE_MS = Number(process.env.DEPLOYMENT_CHECK_CACHE_MS || 5 * 60 * 1000);
+const DEFAULT_DEPLOYMENT_REPOSITORY = process.env.FUNDAGENT_REPOSITORY || process.env.GITHUB_REPOSITORY || "1104431512/FundAgent";
 const DEFAULT_MODEL_HTTP_TIMEOUT_MS = Number(process.env.MODEL_HTTP_TIMEOUT_MS ?? 0);
 const YANGJIBAO_PLUGIN_API_BASE = process.env.YANGJIBAO_PLUGIN_API_BASE || "http://browser-plug-api.yangjibao.com";
 const YANGJIBAO_PLUGIN_SIGN_SECRET = process.env.YANGJIBAO_PLUGIN_SIGN_SECRET || "YxmKSrQR4uoJ5lOoWIhcbd7SlUEh9OOc";
@@ -223,6 +225,7 @@ let portfolioDbLastFlushError = "";
 const portfolioProgressFlushTimes = new Map();
 let runtimeStatsMemoryCache = null;
 let haoetfQdiiValuationCache = { fetchedAtMs: 0, promise: null, rows: [] };
+let deploymentFreshnessCache = { fetchedAtMs: 0, value: null, promise: null, repository: "", branch: "" };
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
@@ -352,6 +355,13 @@ async function handleApiRequest(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/stats") {
     sendJson(res, 200, { ok: true, stats: getRuntimeStats() });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/deployment") {
+    const force = url.searchParams.get("force") === "1";
+    const deployment = await getDeploymentFreshness({ force });
+    sendJson(res, 200, { ok: true, deployment });
     return;
   }
 
@@ -25154,6 +25164,161 @@ function getRuntimeRelease() {
   return { ...APP_RELEASE };
 }
 
+async function getDeploymentFreshness(options = {}) {
+  const release = getRuntimeRelease();
+  const repository = normalizeGitHubRepository(options.repository || DEFAULT_DEPLOYMENT_REPOSITORY);
+  const branch = String(options.branch || process.env.FUNDAGENT_MAIN_BRANCH || release.branch || "main")
+    .replace(/^origin\//, "")
+    .trim() || "main";
+  const now = Date.now();
+  const cacheValid = !options.force
+    && deploymentFreshnessCache.value
+    && deploymentFreshnessCache.repository === repository
+    && deploymentFreshnessCache.branch === branch
+    && now - deploymentFreshnessCache.fetchedAtMs < DEPLOYMENT_CHECK_CACHE_MS;
+  if (cacheValid) return deploymentFreshnessCache.value;
+  if (!options.force && deploymentFreshnessCache.promise) return deploymentFreshnessCache.promise;
+
+  deploymentFreshnessCache.promise = fetchDeploymentFreshnessSnapshot({ release, repository, branch })
+    .then((value) => {
+      deploymentFreshnessCache = {
+        fetchedAtMs: Date.now(),
+        value,
+        promise: null,
+        repository,
+        branch
+      };
+      return value;
+    })
+    .catch((error) => {
+      const value = buildDeploymentFreshnessUnknown({
+        release,
+        repository,
+        branch,
+        reason: `无法连接 GitHub 主分支：${error.message}`
+      });
+      deploymentFreshnessCache = {
+        fetchedAtMs: Date.now(),
+        value,
+        promise: null,
+        repository,
+        branch
+      };
+      return value;
+    });
+  return deploymentFreshnessCache.promise;
+}
+
+async function fetchDeploymentFreshnessSnapshot({ release = {}, repository = "", branch = "main" } = {}) {
+  if (!repository) {
+    return buildDeploymentFreshnessUnknown({
+      release,
+      repository,
+      branch,
+      reason: "未配置 GitHub 仓库，无法比较部署版本。"
+    });
+  }
+  const runtimeCommit = normalizeGitCommit(release.commit || release.shortCommit || "");
+  const apiUrl = `https://api.github.com/repos/${repository}/commits/${encodeURIComponent(branch)}`;
+  const headers = {
+    accept: "application/vnd.github+json",
+    "user-agent": "FundAgent deployment freshness"
+  };
+  const token = String(process.env.FUNDAGENT_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "").trim();
+  if (token) headers.authorization = `Bearer ${token}`;
+  const response = await fetchWithTimeout(apiUrl, { headers }, Number(process.env.DEPLOYMENT_CHECK_TIMEOUT_MS || 8000));
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`GitHub HTTP ${response.status}: ${text.slice(0, 180)}`);
+  }
+  const json = text ? JSON.parse(text) : {};
+  const latestCommit = normalizeGitCommit(json.sha || "");
+  const latestShortCommit = latestCommit ? latestCommit.slice(0, 7) : "";
+  const latestUrl = json.html_url || `https://github.com/${repository}/commit/${latestCommit}`;
+  const latestDate = json.commit?.committer?.date || json.commit?.author?.date || "";
+  if (!runtimeCommit || !latestCommit) {
+    return buildDeploymentFreshnessUnknown({
+      release,
+      repository,
+      branch,
+      latestCommit,
+      latestShortCommit,
+      latestUrl,
+      latestDate,
+      reason: runtimeCommit ? "无法读取 GitHub 最新提交。" : "当前服务缺少运行提交指纹。"
+    });
+  }
+  const current = isSameGitCommit(runtimeCommit, latestCommit);
+  return {
+    status: current ? "current" : "stale",
+    label: current ? "已是最新" : "部署落后",
+    severity: current ? "ok" : "warning",
+    message: current
+      ? `当前服务已运行 ${branch} 最新提交 ${latestShortCommit}。`
+      : `当前服务运行 ${runtimeCommit.slice(0, 7)}，${branch} 最新为 ${latestShortCommit}。`,
+    updateHint: current ? "无需更新。" : "服务器需要拉取最新镜像或重新构建后重启服务。",
+    repository,
+    branch,
+    checkedAt: new Date().toISOString(),
+    runtime: {
+      commit: runtimeCommit,
+      shortCommit: runtimeCommit ? runtimeCommit.slice(0, 7) : "",
+      source: release.source || "",
+      builtAt: release.builtAt || "",
+      startedAt: release.startedAt || ""
+    },
+    latest: {
+      commit: latestCommit,
+      shortCommit: latestShortCommit,
+      url: latestUrl,
+      date: latestDate
+    }
+  };
+}
+
+function buildDeploymentFreshnessUnknown({ release = {}, repository = "", branch = "", latestCommit = "", latestShortCommit = "", latestUrl = "", latestDate = "", reason = "" } = {}) {
+  const runtimeCommit = normalizeGitCommit(release.commit || release.shortCommit || "");
+  return {
+    status: "unknown",
+    label: "无法确认",
+    severity: "warning",
+    message: reason || "暂时无法确认部署是否最新。",
+    updateHint: "可在服务器运行部署检查或稍后刷新。",
+    repository,
+    branch,
+    checkedAt: new Date().toISOString(),
+    runtime: {
+      commit: runtimeCommit,
+      shortCommit: runtimeCommit ? runtimeCommit.slice(0, 7) : "",
+      source: release.source || "",
+      builtAt: release.builtAt || "",
+      startedAt: release.startedAt || ""
+    },
+    latest: {
+      commit: latestCommit,
+      shortCommit: latestShortCommit || (latestCommit ? latestCommit.slice(0, 7) : ""),
+      url: latestUrl,
+      date: latestDate
+    }
+  };
+}
+
+function normalizeGitHubRepository(value = "") {
+  return String(value || "")
+    .trim()
+    .replace(/^https?:\/\/github\.com\//i, "")
+    .replace(/^git@github\.com:/i, "")
+    .replace(/\.git$/i, "")
+    .replace(/^\/+|\/+$/g, "");
+}
+
+function isSameGitCommit(left = "", right = "") {
+  const a = normalizeGitCommit(left).toLowerCase();
+  const b = normalizeGitCommit(right).toLowerCase();
+  if (!a || !b) return false;
+  return a === b || a.startsWith(b) || b.startsWith(a);
+}
+
 function resolveAppRelease() {
   const pkg = safeReadJson(path.join(ROOT, "package.json"));
   const envCommit = firstNonEmptyEnv([
@@ -26754,6 +26919,7 @@ export {
   getFundAnalysisSkillIds,
   getFundQaSkillIds,
   getFundRecommendationSkillIds,
+  getDeploymentFreshness,
   getPortfolioDecisionSkillIds,
   getPortfolioDiagnosticOrders,
   getPortfolioPremarketSkillIds,
