@@ -1740,7 +1740,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "经理多角度榜单（系统计算，必须先看榜单再决定）：",
     JSON.stringify(compactManagerRankings, null, 2),
-    "要求：榜单是本轮决策前置清单。actions 必须优先覆盖 buy_preparation、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
+    "要求：榜单是本轮决策前置清单。actions 必须优先覆盖 buy_preparation、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
     JSON.stringify((missedFollowThroughQueue || []).slice(0, 5), null, 2),
@@ -3687,7 +3687,7 @@ function inferPortfolioRankingBoardReviewAction(list = {}, item = {}) {
 function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = []) {
   const lists = Array.isArray(board?.lists) ? board.lists : [];
   const existingCodes = new Set((existingActions || []).map((action) => action.code).filter(Boolean));
-  const watchedListIds = new Set(["buy_preparation", "launch_setup", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
+  const watchedListIds = new Set(["buy_preparation", "launch_setup", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
   const actions = [];
   for (const list of lists) {
     if (!watchedListIds.has(String(list?.id || ""))) continue;
@@ -8476,6 +8476,7 @@ function buildPortfolioRankingBoard(db = {}) {
   const lists = [
     buildPortfolioBuyPreparationRanking(watchlist),
     buildPortfolioLaunchSetupRanking(watchlist),
+    buildPortfolioHoldingsOutlookRanking(watchlist),
     buildPortfolioOpportunityCostRanking(db, watchlist),
     buildPortfolioSellRiskRanking(positions),
     buildUserHoldingAlertRanking(userPortfolios)
@@ -8494,8 +8495,8 @@ function buildPortfolioRankingBoardHealth({ watchlist = [], positions = [], user
     return {
       level: "ok",
       title: "榜单已生成",
-      summary: `当前有 ${totalItems} 个可复核对象，经理可以按买入、低位启动、机会成本、卖出风险和用户持仓提醒分层处理。`,
-      actions: ["优先处理排名靠前项", "买入/错过/卖出分开复核", "把用户真实持仓提醒放入每日跟踪"]
+      summary: `当前有 ${totalItems} 个可复核对象，经理可以按买入、低位启动、持仓前景、机会成本、卖出风险和用户持仓提醒分层处理。`,
+      actions: ["优先处理排名靠前项", "买点/持仓/错过/卖出分开复核", "把用户真实持仓提醒放入每日跟踪"]
     };
   }
   if (!watchlist.length && !positions.length && !userPortfolios.length) {
@@ -8563,6 +8564,85 @@ function buildPortfolioLaunchSetupRanking(watchlist = []) {
     emptyText: "暂无低位启动前夜候选。",
     nextAction: "下一步放宽行业召回范围，再用低位、回撤深度和持仓前景二次筛选。",
     items
+  });
+}
+
+function buildPortfolioHoldingsOutlookRanking(watchlist = []) {
+  const items = normalizePortfolioWatchlist(watchlist)
+    .filter((item) => item.code && ["ready", "waiting_pullback", "watch"].includes(item.status))
+    .map((item) => {
+      const outlook = resolvePortfolioWatchHoldingsOutlook(item);
+      if (!outlook.hasHoldings) return null;
+      const score = Number(item.readinessScore || 0) + Number(outlook.score || 0) * 2;
+      const concentration = outlook.concentration || {};
+      return buildPortfolioRankingItem({
+        code: item.code,
+        name: item.name,
+        source: "前十大持仓",
+        score: round(score, 1),
+        action: outlook.score >= 14 ? "持仓支撑复核" : outlook.score >= 7 ? "前景复核" : "持仓风险复核",
+        reason: `持仓前景：${outlook.label || "已补齐"}；${outlook.evidence || "前十大持仓已补齐，需要和买点一起复核。"}`,
+        facts: [
+          Number.isFinite(Number(concentration.top10Pct)) ? `前十大${formatFallbackPlainPct(concentration.top10Pct)}` : "",
+          outlook.holdingTags?.length ? `行业${outlook.holdingTags.slice(0, 3).join("/")}` : "",
+          outlook.matchedTags?.length ? `匹配${outlook.matchedTags.slice(0, 3).join("/")}` : ""
+        ].filter(Boolean),
+        decision: {
+          highlights: normalizeStringArray(outlook.positives).length
+            ? normalizeStringArray(outlook.positives).slice(0, 3)
+            : [outlook.evidence || "前十大持仓已补齐"],
+          risks: normalizeStringArray(outlook.risks).slice(0, 3),
+          gaps: Number(outlook.score || 0) >= 7 ? [] : ["持仓前景还不能单独支撑买入，需要继续补行业和走势证据。"],
+          nextStep: "把前十大持仓、行业前景、集中度和当前买点一起复核，通过后才进入主推荐。"
+        },
+        status: outlook.label || ""
+      });
+    })
+    .filter(Boolean)
+    .sort(compareRankingItems)
+    .slice(0, 6);
+  return buildPortfolioRankingList({
+    id: "holdings_outlook",
+    title: "持仓前景榜",
+    subtitle: "从前十大持仓、行业匹配和集中度看基金是否真的值得买。",
+    emptyText: "暂无前十大持仓支撑明确的候选。",
+    nextAction: "下一步补齐候选基金前十大持仓和行业前景，避免只凭净值走势推荐。",
+    items
+  });
+}
+
+function resolvePortfolioWatchHoldingsOutlook(item = {}) {
+  const profile = item.lastSnapshot || {};
+  const embedded = profile.holdingsOutlook || profile.actionability?.holdingsOutlook;
+  if (embedded && typeof embedded === "object" && (embedded.hasHoldings || embedded.evidence || embedded.risks?.length)) {
+    return {
+      ok: embedded.ok !== false,
+      hasHoldings: embedded.hasHoldings !== false,
+      score: Number.isFinite(Number(embedded.score)) ? Number(embedded.score) : 0,
+      label: embedded.label || "",
+      evidence: embedded.evidence || "",
+      positives: normalizeStringArray(embedded.positives),
+      risks: normalizeStringArray(embedded.risks),
+      topHoldings: embedded.topHoldings || [],
+      holdingTags: normalizeStringArray(embedded.holdingTags),
+      matchedTags: normalizeStringArray(embedded.matchedTags),
+      concentration: embedded.concentration || {}
+    };
+  }
+  const topHoldings = normalizeStringArray(profile.topHoldings || profile.equityTopHoldings || []);
+  return buildHoldingsOutlookProfile({
+    ...profile,
+    code: item.code || profile.code,
+    name: item.name || profile.name,
+    seed: {
+      ...(profile.seed || {}),
+      name: item.name || profile.name,
+      keywords: mergeStringLists([item.reason], item.setupEvidence, item.buyTriggers, item.riskNotes)
+    },
+    topStocks: topHoldings.length ? topHoldings : profile.topStocks,
+    holdings: profile.holdings || {
+      equityTopHoldings: profile.equityTopHoldings || topHoldings
+    }
   });
 }
 

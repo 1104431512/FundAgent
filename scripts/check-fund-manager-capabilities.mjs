@@ -76,20 +76,47 @@ const rankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfol
       reason: "低位启动条件暂已满足。",
       setupEvidence: ["低位启动前夜候选"],
       lastSnapshot: { trendProfile: { ok: true, return20dPct: 1.2, lowPositionPct120: 18 } }
+    },
+    {
+      code: "000003",
+      name: "新能源低位基金C",
+      status: "waiting_pullback",
+      priority: 2,
+      reason: "新能源低位修复候选，前十大持仓支撑方向。",
+      buyTriggers: ["5日/10日温和转强后复核"],
+      lastSnapshot: {
+        holdings: {
+          equityDisclosureDate: "2099-03-31",
+          equityTopHoldings: [
+            "300750 宁德时代 4.2%",
+            "002594 比亚迪 3.9%",
+            "300014 亿纬锂能 3.1%",
+            "300274 阳光电源 2.8%",
+            "002812 恩捷股份 2.4%",
+            "601012 隆基绿能 2.1%",
+            "300124 汇川技术 1.9%",
+            "002460 赣锋锂业 1.7%"
+          ]
+        }
+      }
     }
   ],
   userPortfolios: normalizedUserPortfolios
 }));
 assert(rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.some((item) => item.code === "000001"), "manager ranking board must expose buy-preparation candidates");
 assert(rankingBoard.lists.find((item) => item.id === "launch_setup")?.items.some((item) => item.code === "000001"), "manager ranking board must expose low-position launch candidates");
+assert(rankingBoard.lists.find((item) => item.id === "holdings_outlook")?.items.some((item) => item.code === "000003"), "manager ranking board must expose candidates with supportive top-ten holdings");
 assert(rankingBoard.lists.find((item) => item.id === "opportunity_cost")?.nextAction, "manager ranking board must include an opportunity-cost list even when it is empty");
 assert(rankingBoard.lists.find((item) => item.id === "sell_risk")?.items.some((item) => item.code === "008327"), "manager ranking board must expose sell-risk positions");
 assert(rankingBoard.health?.summary, "manager ranking board must explain the current board state");
 assert(rankingBoard.lists.every((item) => item.nextAction), "manager ranking board empty states must include next actions");
 const buyRankingItem = rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.find((item) => item.code === "000001");
+const holdingsRankingItem = rankingBoard.lists.find((item) => item.id === "holdings_outlook")?.items.find((item) => item.code === "000003");
 const sellRankingItem = rankingBoard.lists.find((item) => item.id === "sell_risk")?.items.find((item) => item.code === "008327");
 assert(buyRankingItem?.decision?.highlights?.length, "buy ranking items must explain the opportunity highlight");
 assert(buyRankingItem?.decision?.nextStep, "buy ranking items must include an actionable next step");
+assert(holdingsRankingItem?.reason.includes("持仓前景"), "holdings-outlook ranking items must explain top-ten holdings outlook");
+assert(holdingsRankingItem?.facts.some((item) => item.includes("新能源")), "holdings-outlook ranking items must expose the holding theme");
 assert(sellRankingItem?.decision?.risks?.some((item) => item.includes("回吐")), "sell ranking items must expose risk reasons instead of only a score");
 const rankingActionAudit = manager.buildPortfolioRankingActionAudit({
   runs: [
@@ -1081,6 +1108,7 @@ assert(adminHtmlSource.includes("用户持仓关注"), "admin UI must expose use
 assert(adminSource.includes("/api/user-portfolios/holding"), "admin UI must save user-level holdings through the API");
 assert(adminHtmlSource.includes("经理榜单"), "admin UI must expose manager ranking boards");
 assert(adminHtmlSource.includes("机会成本"), "admin UI must describe opportunity-cost rankings as a manager decision angle");
+assert(adminHtmlSource.includes("持仓前景"), "admin UI must describe top-ten holdings outlook rankings as a manager decision angle");
 assert(adminSource.includes("renderManagerRankings"), "admin UI must render multi-angle ranking boards");
 assert(adminSource.includes("renderManagerRankingOverview"), "admin UI must render ranking board overview cards before detailed lists");
 assert(adminSource.includes("getManagerRankingActionClass"), "admin ranking items must color-code buy, watch, and sell style actions");

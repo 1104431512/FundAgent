@@ -2257,8 +2257,8 @@ const requiredPatterns = [
     message: "ranking-board guards must add traceable fallback review actions when top ranked items are omitted."
   },
   {
-    pattern: /buy_preparation[\s\S]*launch_setup[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
-    message: "manager ranking boards must cover buy preparation, low-position launch, opportunity cost, sell risk, and user holding alerts."
+    pattern: /buy_preparation[\s\S]*launch_setup[\s\S]*holdings_outlook[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
+    message: "manager ranking boards must cover buy preparation, low-position launch, holdings outlook, opportunity cost, sell risk, and user holding alerts."
   },
   {
     pattern: /renderManagerRankings/,
@@ -2269,8 +2269,8 @@ const requiredPatterns = [
     message: "admin manager rankings must include overview cards for quick scanning before detailed lists."
   },
   {
-    pattern: /getManagerRankingActionClass[\s\S]{0,700}卖出[\s\S]{0,700}买入[\s\S]{0,700}机会[\s\S]{0,700}观察/,
-    message: "admin ranking items must visually distinguish buy, opportunity-cost, watch, and sell style actions."
+    pattern: /getManagerRankingActionClass[\s\S]{0,900}卖出[\s\S]{0,900}买入[\s\S]{0,900}持仓[\s\S]{0,900}机会[\s\S]{0,900}观察/,
+    message: "admin ranking items must visually distinguish buy, holdings-outlook, opportunity-cost, watch, and sell style actions."
   },
   {
     pattern: /(?=[\s\S]*ranking-health)(?=[\s\S]*ranking-next)/,
