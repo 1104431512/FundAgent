@@ -1549,6 +1549,18 @@ const requiredPatterns = [
     message: "portfolio status answers must include current ranking-board citations in watchlist summaries."
   },
   {
+    pattern: /function buildPortfolioPositionStatusLines[\s\S]{0,900}const compact = Boolean\(options\.compact\)[\s\S]{0,900}持仓简版[\s\S]{0,1400}formatPortfolioPositionCompactLine/,
+    message: "portfolio default position status replies must support a compact customer-readable mode instead of dumping every ledger field."
+  },
+  {
+    pattern: /function formatPortfolioPositionCompactLine[\s\S]{0,900}关注：[\s\S]{0,500}下一步：[\s\S]{0,500}边界：/,
+    message: "portfolio compact position lines must emphasize focus, next step, and risk boundary."
+  },
+  {
+    pattern: /buildPortfolioStatusAnswer[\s\S]{0,5200}buildPortfolioPositionStatusLines\(positions[\s\S]{0,300}compact:\s*!wantsPosition/,
+    message: "portfolio status answers must use compact holdings by default and reserve detailed ledger fields for explicit position questions."
+  },
+  {
     pattern: /function buildPortfolioCustomerActionDeckStatusLines[\s\S]{0,1200}客户行动牌/,
     message: "portfolio status answers must format customer action cards in Chinese."
   },

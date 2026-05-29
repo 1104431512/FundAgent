@@ -7951,6 +7951,122 @@ function buildPortfolioCustomerActionDeckStatusLines(deck = {}) {
   return lines;
 }
 
+function buildPortfolioPositionStatusLines(positions = [], options = {}) {
+  const values = (positions || []).filter((position) => position?.code || position?.name);
+  if (!values.length) return ["暂无基金持仓，当前为 100% 现金。"];
+  const compact = Boolean(options.compact);
+  if (!compact) return buildPortfolioPositionDetailStatusLines(values);
+  const limit = Math.max(1, Number(options.limit || 4));
+  const ranked = values
+    .map((position) => ({ position, budget: position.riskBudget || buildPortfolioPositionRiskBudget(position) }))
+    .sort(comparePortfolioPositionStatusPriority);
+  const lines = [
+    "持仓简版：先看持有、减仓和止盈边界；完整账本字段和走势证据可在后台持仓终端展开。"
+  ];
+  for (const item of ranked.slice(0, limit)) {
+    lines.push(formatPortfolioPositionCompactLine(item.position, { budget: item.budget }));
+  }
+  if (ranked.length > limit) {
+    lines.push(`还有 ${ranked.length - limit} 只持仓可在后台持仓终端查看。`);
+  }
+  return lines;
+}
+
+function buildPortfolioPositionDetailStatusLines(positions = []) {
+  const lines = [];
+  for (const position of positions) {
+    lines.push(
+      `${position.code} ${position.name || ""}：${position.currentValue}元，占比 ${position.weightPct}%` +
+        `，浮动盈亏 ${formatSignedNumber(position.unrealizedPnl)}元（${formatSignedNumber(position.unrealizedPnlPct)}%）`
+    );
+    const snapshot = position.fundSnapshot || {};
+    const navLine = [
+      snapshot.nav ? `净值 ${snapshot.nav}` : position.lastNav ? `净值 ${position.lastNav}` : "",
+      snapshot.navDate || position.lastNavDate ? `日期 ${snapshot.navDate || position.lastNavDate}` : "",
+      position.units ? `份额 ${position.units}` : "",
+      position.averageCostNav ? `成本净值 ${position.averageCostNav}` : ""
+    ].filter(Boolean);
+    if (navLine.length) {
+      lines.push(navLine.join("，"));
+    }
+    if (snapshot.trendSummary) {
+      lines.push(`走势/风险：${snapshot.trendSummary}`);
+    }
+    if (position.lastReason) {
+      lines.push(`理由：${position.lastReason}`);
+    }
+  }
+  return lines;
+}
+
+function comparePortfolioPositionStatusPriority(a = {}, b = {}) {
+  const score = (item) => {
+    const budget = item.budget || {};
+    if (budget.level === "severe") return 0;
+    if (budget.reduceRisk || budget.level === "warning") return 1;
+    if (Number(item.position?.profitGivebackPct || budget.profitGivebackPct || 0) >= 2.5) return 2;
+    if (Number(item.position?.unrealizedPnlPct || 0) < 0) return 3;
+    return 4;
+  };
+  return score(a) - score(b)
+    || Number(b.position?.weightPct || 0) - Number(a.position?.weightPct || 0)
+    || String(a.position?.code || "").localeCompare(String(b.position?.code || ""));
+}
+
+function formatPortfolioPositionCompactLine(position = {}, options = {}) {
+  const budget = options.budget || position.riskBudget || buildPortfolioPositionRiskBudget(position);
+  const head = `${position.code || ""} ${position.name || ""}`.trim();
+  const status = formatPortfolioPositionCompactStatus(position, budget);
+  const focus = selectPortfolioPositionCompactFocus(position, budget);
+  const nextStep = selectPortfolioPositionCompactNextStep(position, budget);
+  const boundary = selectPortfolioPositionCompactBoundary(position, budget);
+  return `- ${head}${status ? `（${status}）` : ""}；关注：${shortenPortfolioCustomerText(focus, 56)}；下一步：${shortenPortfolioCustomerText(nextStep, 58)}；边界：${shortenPortfolioCustomerText(boundary, 58)}`;
+}
+
+function formatPortfolioPositionCompactStatus(position = {}, budget = {}) {
+  if (budget.level === "severe") return "止损风险";
+  if (budget.reduceRisk || budget.level === "warning") return "减仓复核";
+  const givebackPct = Number(position.profitGivebackPct || budget.profitGivebackPct || 0);
+  if (givebackPct >= 2.5) return "止盈复核";
+  if (Number(position.unrealizedPnlPct || 0) < 0) return "承压观察";
+  if (Number(position.weightPct || 0) >= 8) return "核心持有";
+  return "继续持有";
+}
+
+function selectPortfolioPositionCompactFocus(position = {}, budget = {}) {
+  const trigger = (budget.triggers || [])[0];
+  if (trigger) return trigger;
+  const trendText = normalizePortfolioPositionTrendForCustomer(position.fundSnapshot?.trendSummary || "");
+  if (trendText) return trendText;
+  if (position.lastReason) return position.lastReason;
+  return "暂未触发明确买卖信号，按仓位和风险线继续观察。";
+}
+
+function selectPortfolioPositionCompactNextStep(position = {}, budget = {}) {
+  if (budget.level === "severe") return "优先复核卖出或止损，不用补仓摊薄风险。";
+  if (budget.reduceRisk || budget.level === "warning") return "下一次决策先复核减仓或止盈，不新增同方向仓位。";
+  if (Number(position.profitGivebackPct || budget.profitGivebackPct || 0) >= 2.5) return "先确认是否锁定部分利润，再决定是否继续持有。";
+  if (Number(position.unrealizedPnlPct || 0) < 0) return "继续观察是否转强，若扩大亏损先降风险。";
+  return "继续持有观察，等盘前观察或今日操作复核是否需要调仓。";
+}
+
+function selectPortfolioPositionCompactBoundary(position = {}, budget = {}) {
+  const trigger = (budget.triggers || [])[0];
+  if (trigger) return trigger;
+  if (Number(position.unrealizedPnlPct || 0) < 0) return "若继续转弱或亏损扩大，优先复核减仓，不用加仓摊薄。";
+  if (Number(position.weightPct || 0) >= 8) return "单仓较重时不继续加仓，先等同题材拥挤度和走势确认。";
+  return "没有新的确认信号前，不因短期新闻热度追涨加仓。";
+}
+
+function normalizePortfolioPositionTrendForCustomer(text = "") {
+  const value = String(text || "").trim();
+  if (!value) return "";
+  if (/偏热|追涨|高位|extended|拥挤/.test(value)) return "走势偏热，先防利润回吐和同题材拥挤。";
+  if (/破位|转弱|weak|回撤扩大/.test(value)) return "走势转弱，先看止损、止盈或减仓边界。";
+  if (/回调|修复|低位|pullback/.test(value)) return "走势处在回调修复阶段，重点看能否重新转强。";
+  return shortenPortfolioCustomerText(value, 56);
+}
+
 function buildPortfolioWatchlistStatusLines(watchlist = [], options = {}) {
   const normalized = normalizePortfolioWatchlist(watchlist).filter((item) => item.status !== "removed");
   if (!normalized.length) return ["暂无自选基金。"];
@@ -8446,32 +8562,10 @@ function buildPortfolioStatusAnswer(userText, intent) {
   if (wantsPosition || (!wantsOperation && !wantsOnlyProfileOrSchedule && !wantsWatchlist)) {
     lines.push("");
     lines.push("当前持仓：");
-    if (positions.length) {
-      for (const position of positions) {
-        lines.push(
-          `${position.code} ${position.name || ""}：${position.currentValue}元，占比 ${position.weightPct}%` +
-            `，浮动盈亏 ${formatSignedNumber(position.unrealizedPnl)}元（${formatSignedNumber(position.unrealizedPnlPct)}%）`
-        );
-        const snapshot = position.fundSnapshot || {};
-        const navLine = [
-          snapshot.nav ? `净值 ${snapshot.nav}` : position.lastNav ? `净值 ${position.lastNav}` : "",
-          snapshot.navDate || position.lastNavDate ? `日期 ${snapshot.navDate || position.lastNavDate}` : "",
-          position.units ? `份额 ${position.units}` : "",
-          position.averageCostNav ? `成本净值 ${position.averageCostNav}` : ""
-        ].filter(Boolean);
-        if (navLine.length) {
-          lines.push(navLine.join("，"));
-        }
-        if (snapshot.trendSummary) {
-          lines.push(`走势/风险：${snapshot.trendSummary}`);
-        }
-        if (position.lastReason) {
-          lines.push(`理由：${position.lastReason}`);
-        }
-      }
-    } else {
-      lines.push("暂无基金持仓，当前为 100% 现金。");
-    }
+    lines.push(...buildPortfolioPositionStatusLines(positions, {
+      compact: !wantsPosition,
+      limit: wantsPosition ? 20 : 4
+    }));
   }
 
   const exposureSummary = buildPortfolioExposureSummary(account.positions || []);
@@ -26888,6 +26982,7 @@ export {
   buildPortfolioExposureSummary,
   buildPortfolioManagerProfileContext,
   buildPortfolioMissedFollowThroughReviewQueue,
+  buildPortfolioPositionStatusLines,
   buildPortfolioStarterBuyFollowUpQueue,
   buildPortfolioWatchlistSeedSearchText,
   buildPortfolioRunSummary,

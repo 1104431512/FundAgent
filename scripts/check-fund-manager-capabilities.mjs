@@ -2089,6 +2089,48 @@ assert(compactWatchlistLines.includes("边界："), "compact watchlist lines mus
 assert(compactWatchlistLines.includes("上榜：综合决策榜#1/小仓试探复核"), "compact watchlist lines must retain ranking evidence without forcing the full detail report");
 assert(!compactWatchlistLines.includes("费用/份额："), "compact watchlist lines should not dump fee details unless the user explicitly asks for the watchlist");
 assert(!compactWatchlistLines.includes("最新走势："), "compact watchlist lines should not dump raw trend fields unless the user explicitly asks for the watchlist");
+const compactPositionLines = manager.buildPortfolioPositionStatusLines([
+  {
+    code: "008327",
+    name: "东财通信C",
+    currentValue: 11810.03,
+    weightPct: 11.85,
+    unrealizedPnl: -158,
+    unrealizedPnlPct: -1.58,
+    peakUnrealizedPnlPct: 3.24,
+    units: 1234.56,
+    averageCostNav: 1.23,
+    lastReason: "通信链短期偏热，先做回吐保护。",
+    fundSnapshot: {
+      nav: 1.1988,
+      navDate: todayIso,
+      trendSummary: "近20日上涨偏热，高位趋势延伸，等待回撤。"
+    }
+  }
+], { compact: true }).join("\n");
+assert(compactPositionLines.includes("持仓简版："), "default position status mode must tell users it is a concise holding summary");
+assert(compactPositionLines.includes("关注："), "compact position lines must explain what to watch");
+assert(compactPositionLines.includes("下一步："), "compact position lines must show the next manager action");
+assert(compactPositionLines.includes("边界："), "compact position lines must show the risk boundary");
+assert(!compactPositionLines.includes("浮动盈亏"), "compact position lines should not dump ledger PnL fields by default");
+assert(!compactPositionLines.includes("份额"), "compact position lines should not dump fund units by default");
+assert(!compactPositionLines.includes("成本净值"), "compact position lines should not dump cost NAV by default");
+const detailedPositionLines = manager.buildPortfolioPositionStatusLines([
+  {
+    code: "008327",
+    name: "东财通信C",
+    currentValue: 11810.03,
+    weightPct: 11.85,
+    unrealizedPnl: -158,
+    unrealizedPnlPct: -1.58,
+    units: 1234.56,
+    averageCostNav: 1.23,
+    fundSnapshot: { nav: 1.1988, navDate: todayIso, trendSummary: "趋势偏热，等待回撤。" }
+  }
+], { compact: false }).join("\n");
+assert(detailedPositionLines.includes("浮动盈亏"), "explicit position questions must still expose ledger PnL details");
+assert(detailedPositionLines.includes("份额 1234.56"), "explicit position questions must still expose units");
+assert(detailedPositionLines.includes("成本净值 1.23"), "explicit position questions must still expose average cost NAV");
 const workflowWatchlistInput = [
   {
     ...normalizedWatchDb.watchlist[0],
