@@ -530,6 +530,7 @@ function getManagerRankingListClass(id = "") {
   if (id === "buy_preparation") return "buy";
   if (id === "launch_setup") return "launch";
   if (id === "holdings_outlook") return "holdings";
+  if (id === "fee_suitability") return "fee";
   if (id === "opportunity_cost") return "opportunity";
   if (id === "sell_risk") return "sell";
   if (id === "user_holding_alerts") return "user";
@@ -540,6 +541,7 @@ function getManagerRankingActionClass(text = "") {
   if (/卖出|减仓|止损|止盈|回吐/.test(text)) return "sell";
   if (/买入|启动|触发/.test(text)) return "buy";
   if (/持仓|前景|行业/.test(text)) return "holdings";
+  if (/费用|费率|份额|申购|销售服务费|赎回|持有期/.test(text)) return "fee";
   if (/机会|错过|复核|小仓/.test(text)) return "opportunity";
   if (/补证据|缺口|等待|观察/.test(text)) return "watch";
   return "default";

@@ -699,6 +699,10 @@ button:disabled {
   border-left-color: #23797b;
 }
 
+.ranking-overview-fee {
+  border-left-color: #b7791f;
+}
+
 .ranking-overview-opportunity {
   border-left-color: #7c6d1f;
 }
@@ -911,6 +915,10 @@ button:disabled {
   border-top: 3px solid #23797b;
 }
 
+.ranking-list-fee {
+  border-top: 3px solid #b7791f;
+}
+
 .ranking-list-opportunity {
   border-top: 3px solid #7c6d1f;
 }
@@ -1031,6 +1039,11 @@ button:disabled {
 .ranking-action.holdings {
   color: #166266;
   background: #e5f6f5;
+}
+
+.ranking-action.fee {
+  color: #7a4b12;
+  background: #fff6e6;
 }
 
 .ranking-action.opportunity {

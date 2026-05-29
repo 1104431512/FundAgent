@@ -1740,7 +1740,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "经理多角度榜单（系统计算，必须先看榜单再决定）：",
     JSON.stringify(compactManagerRankings, null, 2),
-    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 buy_preparation、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
+    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 buy_preparation、fee_suitability、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
     JSON.stringify((missedFollowThroughQueue || []).slice(0, 5), null, 2),
@@ -3687,7 +3687,7 @@ function inferPortfolioRankingBoardReviewAction(list = {}, item = {}) {
 function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = []) {
   const lists = Array.isArray(board?.lists) ? board.lists : [];
   const existingCodes = new Set((existingActions || []).map((action) => action.code).filter(Boolean));
-  const watchedListIds = new Set(["buy_preparation", "launch_setup", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
+  const watchedListIds = new Set(["buy_preparation", "launch_setup", "fee_suitability", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
   const actions = [];
   for (const list of lists) {
     if (!watchedListIds.has(String(list?.id || ""))) continue;
@@ -8477,6 +8477,7 @@ function buildPortfolioRankingBoard(db = {}) {
     buildPortfolioBuyPreparationRanking(watchlist),
     buildPortfolioLaunchSetupRanking(watchlist),
     buildPortfolioHoldingsOutlookRanking(watchlist),
+    buildPortfolioFeeSuitabilityRanking(watchlist),
     buildPortfolioOpportunityCostRanking(db, watchlist),
     buildPortfolioSellRiskRanking(positions),
     buildUserHoldingAlertRanking(userPortfolios)
@@ -8497,8 +8498,8 @@ function buildPortfolioRankingBoardHealth({ watchlist = [], positions = [], user
     return {
       level: "ok",
       title: "榜单已生成",
-      summary: `当前有 ${totalItems} 个可复核对象，经理可以按买入、低位启动、持仓前景、机会成本、卖出风险和用户持仓提醒分层处理。`,
-      actions: ["优先处理排名靠前项", "买点/持仓/错过/卖出分开复核", "把用户真实持仓提醒放入每日跟踪"]
+      summary: `当前有 ${totalItems} 个可复核对象，经理可以按买入、低位启动、持仓前景、费率适配、机会成本、卖出风险和用户持仓提醒分层处理。`,
+      actions: ["优先处理排名靠前项", "买点/费率/持仓/错过/卖出分开复核", "把用户真实持仓提醒放入每日跟踪"]
     };
   }
   if (!watchlist.length && !positions.length && !userPortfolios.length) {
@@ -8646,6 +8647,183 @@ function resolvePortfolioWatchHoldingsOutlook(item = {}) {
       equityTopHoldings: profile.equityTopHoldings || topHoldings
     }
   });
+}
+
+function buildPortfolioFeeSuitabilityRanking(watchlist = []) {
+  const items = (watchlist || [])
+    .filter((item) => item?.code && !["blocked", "removed"].includes(item.status))
+    .map(buildPortfolioFeeSuitabilityRankingItem)
+    .filter(Boolean)
+    .sort(compareRankingItems)
+    .slice(0, 6);
+  return buildPortfolioRankingList({
+    id: "fee_suitability",
+    title: "费率适配榜",
+    subtitle: "按 A/C/D/I 份额、每万成本和预计持有期，判断买哪类份额更合适。",
+    emptyText: "暂无费用/份额需要优先复核的候选。",
+    nextAction: "下一步补齐 A/C/D/I 替代份额、申购费、销售服务费、赎回费和预计持有期，再进入买入执行。",
+    items
+  });
+}
+
+function buildPortfolioFeeSuitabilityRankingItem(item = {}) {
+  const evidence = resolvePortfolioWatchFeeSuitabilityEvidence(item);
+  if (!evidence.shouldSurface) return null;
+  const readinessScore = Number(item.readinessScore || 0);
+  const statusScore = item.status === "ready" ? 24 : item.status === "waiting_pullback" ? 14 : item.status === "watch" ? 6 : 0;
+  const score = readinessScore
+    + statusScore
+    + (evidence.missingCritical ? 18 : 0)
+    + (evidence.alternativeCount ? 12 : 0)
+    + (evidence.highDrag ? 10 : 0)
+    + (evidence.specialShare ? 8 : 0);
+  return buildPortfolioRankingItem({
+    code: item.code,
+    name: item.name,
+    source: "费用/份额",
+    score: round(score, 1),
+    action: evidence.missingCritical
+      ? "费用补证据"
+      : evidence.alternativeCount
+        ? "份额对比复核"
+        : evidence.highDrag
+          ? "长期费率复核"
+          : evidence.specialShare
+            ? "渠道可买复核"
+            : "持有期适配复核",
+    reason: buildPortfolioFeeSuitabilityReason(evidence),
+    facts: buildPortfolioFeeSuitabilityFacts(evidence),
+    decision: {
+      highlights: [
+        evidence.feeNotes[0] || evidence.feeModel.selectionRule || evidence.feeModel.label || "",
+        evidence.feeDecisionRule || "",
+        evidence.alternativeCount ? `已有 ${evidence.alternativeCount} 个替代份额，适合做同基金份额比较。` : ""
+      ].filter(Boolean),
+      risks: [
+        evidence.highDrag ? "长期持有可能被持续费用拖累，不能只看短期买点。" : "",
+        evidence.specialShare ? "特殊/平台份额需确认普通客户是否可买和起购门槛。" : "",
+        evidence.missingLabels.length ? `缺少${evidence.missingLabels.slice(0, 2).join("、")}，买入前证据不足。` : ""
+      ].filter(Boolean),
+      gaps: [
+        evidence.alternativeCount ? "" : "缺少同基金 A/C/D/I 替代份额比较。",
+        ...evidence.missingLabels.map((label) => `缺${label}`)
+      ].filter(Boolean).slice(0, 3),
+      nextStep: evidence.missingCritical
+        ? "先补齐份额类别和关键费率，未完成前只能观察，不能提交虚拟申购。"
+        : "按预计持有期比较 A/C/D/I、赎回费和可买渠道，再决定小仓试探或继续观察。"
+    },
+    status: evidence.missingCritical ? "warning" : evidence.highDrag ? "watch" : item.status || "watch"
+  });
+}
+
+function resolvePortfolioWatchFeeSuitabilityEvidence(item = {}) {
+  const profile = item.lastSnapshot || {};
+  const fees = profile.fees || {};
+  const shareClass = String(
+    item.shareClass
+    || fees.shareClass
+    || profile.shareClass
+    || profile.seed?.shareClass
+    || inferFundShareClass(item.name || profile.name || profile.seed?.name || "")
+    || ""
+  ).trim().toUpperCase();
+  const feeModel = fees.shareClassFeeModel
+    || profile.shareClassFeeModel
+    || profile.seed?.shareClassFeeModel
+    || inferShareClassFeeModel(shareClass, fees);
+  const impact = fees.feeImpact || profile.feeImpact || profile.seed?.feeImpact || {};
+  const missing = normalizeStringArray(impact.missingFeeData || fees.missingFeeData);
+  const missingLabels = missing.map(formatPortfolioFeeMissingLabel).filter(Boolean);
+  const oneYearCost = toNumber(impact.oneYearCostPer10000);
+  const twoYearCost = toNumber(impact.twoYearCostPer10000);
+  const alternativeShareClasses = normalizePortfolioWatchAlternatives(item.alternativeShareClasses || []);
+  const feeNotes = mergeStringLists(
+    item.feeNotes,
+    fees.feeNotes,
+    profile.feeNotes,
+    profile.seed?.feeNotes,
+    alternativeShareClasses.flatMap((alt) => alt.feeNotes || [])
+  );
+  const criticalMissingKeys = new Set(["share_class", "subscription_or_sales_service_fee", "sales_service_fee", "subscription_fee"]);
+  const missingCritical = !shareClass
+    || !feeModel?.label
+    || feeModel.type === "unknown"
+    || missing.some((key) => criticalMissingKeys.has(key));
+  const specialShare = feeModel.type === "special_or_platform_class" || ["D", "I", "Y"].includes(shareClass);
+  const highDrag = impact.feeDragLevel === "high"
+    || impact.holdingPeriodFit === "short_term_only_high_long_holding_drag"
+    || (Number.isFinite(oneYearCost) && oneYearCost >= 80);
+  const statusSurface = ["ready", "waiting_pullback", "watch", "in_position"].includes(item.status);
+  return {
+    shareClass,
+    feeModel: feeModel || {},
+    impact,
+    oneYearCost,
+    twoYearCost,
+    missingLabels,
+    missingCritical,
+    specialShare,
+    highDrag,
+    alternativeCount: alternativeShareClasses.length,
+    feeNotes,
+    feeDecisionRule: impact.feeDecisionRule || feeModel?.selectionRule || "",
+    shouldSurface: Boolean(
+      statusSurface
+      && (missingCritical
+        || specialShare
+        || highDrag
+        || alternativeShareClasses.length
+        || feeNotes.length
+        || Number.isFinite(oneYearCost)
+        || shareClass)
+    )
+  };
+}
+
+function buildPortfolioFeeSuitabilityReason(evidence = {}) {
+  if (evidence.missingCritical) {
+    return "买入前缺少可验证费用/份额证据，不能只因为走势达标就下单。";
+  }
+  if (evidence.alternativeCount) {
+    return `存在 ${evidence.alternativeCount} 个同基金替代份额，需要按预计持有期选择更合适的份额。`;
+  }
+  if (evidence.highDrag) {
+    return "该份额可能有较明显费用拖累，长期持有前必须比较低费率替代。";
+  }
+  if (evidence.specialShare) {
+    return "该份额可能属于特殊、机构或平台份额，需要确认普通客户渠道和起购门槛。";
+  }
+  if (["C", "E"].includes(evidence.shareClass)) {
+    return "该份额偏持续销售服务费模型，适合短中期战术观察，长期持有要再比较 A 类或低费替代。";
+  }
+  if (["A", "B"].includes(evidence.shareClass)) {
+    return "该份额偏前端申购费模型，短线试仓要确认收益空间能覆盖申赎摩擦。";
+  }
+  return "已有费用线索，执行前仍需把份额类别、持有期和赎回规则合并复核。";
+}
+
+function buildPortfolioFeeSuitabilityFacts(evidence = {}) {
+  return [
+    evidence.shareClass ? `${evidence.shareClass}类` : "份额待核验",
+    evidence.feeModel?.label || "",
+    Number.isFinite(evidence.oneYearCost) ? `每万1年约${round(evidence.oneYearCost, 0)}元` : "",
+    Number.isFinite(evidence.twoYearCost) ? `2年约${round(evidence.twoYearCost, 0)}元` : "",
+    evidence.alternativeCount ? `替代份额${evidence.alternativeCount}个` : "",
+    evidence.missingLabels.length ? `缺${evidence.missingLabels.slice(0, 2).join("/")}` : ""
+  ].filter(Boolean);
+}
+
+function formatPortfolioFeeMissingLabel(key = "") {
+  const labels = {
+    share_class: "份额类别",
+    fee_page: "费率页",
+    subscription_or_sales_service_fee: "申购费或销售服务费",
+    sales_service_fee: "销售服务费",
+    subscription_fee: "申购费",
+    subscription_rules: "申购规则",
+    redemption_rules: "赎回规则"
+  };
+  return labels[String(key || "")] || String(key || "").trim();
 }
 
 function buildPortfolioOpportunityCostRanking(db = {}, watchlist = []) {
@@ -8828,6 +9006,7 @@ function buildPortfolioRankingPriorityQueue(lists = []) {
     sell_risk: 42,
     opportunity_cost: 38,
     buy_preparation: 34,
+    fee_suitability: 32,
     user_holding_alerts: 30,
     holdings_outlook: 24,
     launch_setup: 20
@@ -24012,6 +24191,7 @@ export {
   buildPortfolioRankingBoard,
   buildPortfolioRankingActionAudit,
   buildPortfolioRankingBoardReviewActions,
+  buildPortfolioFeeSuitabilityRanking,
   buildPortfolioRankingPriorityQueue,
   buildPortfolioAccountRiskBudget,
   buildPortfolioReadyWatchlistReviewActions,
