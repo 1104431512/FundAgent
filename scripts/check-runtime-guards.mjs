@@ -2249,6 +2249,14 @@ const requiredPatterns = [
     message: "portfolio public state must build multi-angle manager ranking boards."
   },
   {
+    pattern: /ensurePortfolioRankingBoardReviewed[\s\S]{0,1200}managerRankings/,
+    message: "portfolio decision runs must apply ranking-board coverage guards after model output."
+  },
+  {
+    pattern: /function ensurePortfolioRankingBoardReviewed(?=[\s\S]{0,2600}manager_ranking_board_guard)(?=[\s\S]{0,2600}来源：manager_ranking_board)/,
+    message: "ranking-board guards must add traceable fallback review actions when top ranked items are omitted."
+  },
+  {
     pattern: /buy_preparation[\s\S]*launch_setup[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
     message: "manager ranking boards must cover buy preparation, low-position launch, sell risk, and user holding alerts."
   },

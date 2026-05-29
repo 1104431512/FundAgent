@@ -106,6 +106,23 @@ const rankingActionAudit = manager.buildPortfolioRankingActionAudit({
 assert.equal(rankingActionAudit.totalActions, 2, "ranking action audit must count recent manager actions");
 assert.equal(rankingActionAudit.citedActions, 1, "ranking action audit must count actions that cite manager ranking boards");
 assert(rankingActionAudit.missing.some((item) => item.code === "000002"), "ranking action audit must expose actions missing ranking basis");
+const rankingGuardActions = manager.buildPortfolioRankingBoardReviewActions(rankingBoard, [
+  { action: "WATCH", code: "000001", name: "低位启动基金C" }
+]);
+assert(rankingGuardActions.some((item) => item.code === "008327"), "ranking board fallback must add omitted sell-risk ranking items for review");
+assert(rankingGuardActions.some((item) => item.dataBasis.includes("来源：manager_ranking_board")), "ranking board fallback must leave traceable data basis");
+const rankingReviewedDecision = manager.ensurePortfolioRankingBoardReviewed({
+  actions: [{ action: "WATCH", code: "000001", name: "低位启动基金C", reason: "模型已观察但未引用榜单" }],
+  watchlistUpdates: [],
+  learningNotes: [],
+  sources: []
+}, rankingBoard);
+const rankingReviewedBuyActions = rankingReviewedDecision.actions.filter((item) => item.code === "000001");
+assert.equal(rankingReviewedBuyActions.length, 1, "ranking board guard must enrich existing ranking actions instead of duplicating them");
+assert(rankingReviewedBuyActions[0].rankingBasis.includes("买入准备榜"), "ranking board guard must add ranking basis to existing actions");
+assert(rankingReviewedBuyActions[0].dataBasis.includes("来源：manager_ranking_board"), "ranking board guard must tag enriched actions with ranking-board source");
+assert(rankingReviewedDecision.actions.some((item) => item.code === "008327"), "ranking board guard must not silently omit top sell-risk ranking items");
+assert(rankingReviewedDecision.sources.includes("manager_ranking_board_guard"), "ranking board guard must be traceable in decision sources");
 assert.notEqual(
   rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.find((item) => item.code === "000001")?.action,
   "买入复核",

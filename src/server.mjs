@@ -1293,25 +1293,28 @@ async function executePortfolioDecision(db, run, config) {
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "模型已返回，正在解析投委会决策。");
   await yieldToEventLoop();
-  const decision = ensurePortfolioHeldPositionsReviewed(
-    ensurePortfolioMissedFollowThroughReviewed(
-      ensurePortfolioStarterBuyFollowUpReviewed(
-        ensurePortfolioRedeploymentPlanReviewed(
-          ensurePortfolioReadyWatchlistReviewed(
-            normalizePortfolioDecision(raw),
+  const decision = ensurePortfolioRankingBoardReviewed(
+    ensurePortfolioHeldPositionsReviewed(
+      ensurePortfolioMissedFollowThroughReviewed(
+        ensurePortfolioStarterBuyFollowUpReviewed(
+          ensurePortfolioRedeploymentPlanReviewed(
+            ensurePortfolioReadyWatchlistReviewed(
+              normalizePortfolioDecision(raw),
+              watchlist,
+              { profiles: watchlistProfiles }
+            ),
+            accountBefore,
             watchlist,
-            { profiles: watchlistProfiles }
+            { profiles: mergePortfolioProfiles(watchlistProfiles, seedProfiles) }
           ),
-          accountBefore,
-          watchlist,
-          { profiles: mergePortfolioProfiles(watchlistProfiles, seedProfiles) }
+          db
         ),
         db
       ),
-      db
+      db.account.positions,
+      { profiles: heldProfiles }
     ),
-    db.account.positions,
-    { profiles: heldProfiles }
+    managerRankings
   );
   markPortfolioRunProgress(db, run, `已解析 ${decision.actions.length} 条动作，正在补全拟交易基金净值。`);
   await yieldToEventLoop();
@@ -3662,6 +3665,70 @@ function buildPortfolioReadyWatchlistReviewActions(watchlist = [], existingActio
     });
 }
 
+function formatPortfolioRankingBoardReviewBasis(list = {}, item = {}) {
+  const rank = Number(item.rank || 0);
+  const title = list.title || list.id || "经理榜单";
+  const rankText = rank > 0 ? `第${rank}名` : "靠前项";
+  const actionText = item.action ? `，榜单动作：${item.action}` : "";
+  const reasonText = item.reason ? `；${item.reason}` : "";
+  return `${title}${rankText}，系统补充复核，防止榜单项被今日操作遗漏${actionText}${reasonText}`;
+}
+
+function inferPortfolioRankingBoardReviewAction(list = {}, item = {}) {
+  const listId = String(list.id || "");
+  const actionText = `${item.action || ""} ${item.reason || ""} ${item.decision?.nextStep || ""}`;
+  if (listId === "sell_risk") {
+    return /优先卖出|卖出|减仓|止损|止盈|回吐/.test(actionText) ? "SELL" : "HOLD";
+  }
+  if (listId === "user_holding_alerts") return "WATCH";
+  return "WATCH";
+}
+
+function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = []) {
+  const lists = Array.isArray(board?.lists) ? board.lists : [];
+  const existingCodes = new Set((existingActions || []).map((action) => action.code).filter(Boolean));
+  const watchedListIds = new Set(["buy_preparation", "launch_setup", "sell_risk", "user_holding_alerts"]);
+  const actions = [];
+  for (const list of lists) {
+    if (!watchedListIds.has(String(list?.id || ""))) continue;
+    for (const item of (Array.isArray(list.items) ? list.items : []).slice(0, 3)) {
+      const code = String(item?.code || "").match(/^\d{6}$/)?.[0] || "";
+      if (!code || existingCodes.has(code)) continue;
+      const reviewAction = inferPortfolioRankingBoardReviewAction(list, item);
+      const basis = formatPortfolioRankingBoardReviewBasis(list, item);
+      const decision = item.decision || {};
+      const highlights = normalizeStringArray(decision.highlights);
+      const risks = normalizeStringArray(decision.risks);
+      const gaps = normalizeStringArray(decision.gaps);
+      const facts = normalizeStringArray(item.facts);
+      actions.push({
+        action: reviewAction,
+        code,
+        name: item.name || "",
+        amount: 0,
+        targetWeightPct: 0,
+        rankingBasis: basis,
+        reason: `${basis}；本轮先给${reviewAction === "SELL" ? "分批减仓/卖出" : reviewAction === "HOLD" ? "持仓" : "观察"}复核，不允许静默跳过。`,
+        dataBasis: mergeStringLists([
+          "来源：manager_ranking_board",
+          item.source ? `榜单来源：${item.source}` : "",
+          item.score ? `榜单评分${item.score}` : "",
+          ...facts
+        ], highlights.slice(0, 2)),
+        rotationCheck: highlights[0] || item.reason || "按经理榜单复核轮动、低位和用户持仓提醒。",
+        positionCheck: facts.join("；") || item.reason || "等待走势和位置证据复核。",
+        chaseRisk: risks[0] || gaps[0] || "若榜单项缺少低位、转强或费用证据，保持观察，不追涨。",
+        feeCheck: facts.find((fact) => /[ACDI]类|费用|申购|销售服务费|赎回/.test(fact)) || "执行前仍需核验份额类别、申购费、销售服务费和赎回规则。",
+        riskControl: decision.nextStep || (reviewAction === "SELL"
+          ? "先复核赎回到账和减仓比例，禁止用补仓替代风控。"
+          : "下一轮继续跟踪榜单触发条件，未满足前不提交虚拟申购。")
+      });
+      existingCodes.add(code);
+    }
+  }
+  return actions;
+}
+
 function buildPortfolioHeldPositionReviewActions(positions = [], existingActions = [], options = {}) {
   const profiles = Array.isArray(options) ? options : options.profiles || [];
   const profileByCode = new Map((profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
@@ -3770,6 +3837,55 @@ function ensurePortfolioHeldPositionsReviewed(decision, positions = [], options 
       [`系统补充了 ${fallbackActions.length} 条已有持仓复查动作，防止每日决策忽略仓位风险。`]
     ),
     sources: mergeStringLists(normalized.sources, ["held_position_review_fallback"])
+  };
+}
+
+function ensurePortfolioRankingBoardReviewed(decision, managerRankings = {}) {
+  const normalized = {
+    ...decision,
+    actions: normalizePortfolioActions(decision?.actions),
+    watchlistUpdates: normalizePortfolioWatchlistUpdates(decision?.watchlistUpdates),
+    team: Array.isArray(decision?.team) ? decision.team : [],
+    riskNotes: Array.isArray(decision?.riskNotes) ? decision.riskNotes : [],
+    learningNotes: Array.isArray(decision?.learningNotes) ? decision.learningNotes : [],
+    sources: Array.isArray(decision?.sources) ? decision.sources : []
+  };
+  const lists = Array.isArray(managerRankings?.lists) ? managerRankings.lists : [];
+  if (!lists.length) return normalized;
+  const rankingItemsByCode = new Map();
+  for (const list of lists) {
+    for (const item of (Array.isArray(list.items) ? list.items : []).slice(0, 3)) {
+      const code = String(item?.code || "").match(/^\d{6}$/)?.[0] || "";
+      if (!code || rankingItemsByCode.has(code)) continue;
+      rankingItemsByCode.set(code, { list, item });
+    }
+  }
+  let enrichedCount = 0;
+  const enrichedActions = normalized.actions.map((action) => {
+    const entry = rankingItemsByCode.get(action.code);
+    if (!entry) return action;
+    const basis = action.rankingBasis || formatPortfolioRankingBoardReviewBasis(entry.list, entry.item);
+    const dataBasis = mergeStringLists(action.dataBasis, ["来源：manager_ranking_board"]);
+    if (basis !== action.rankingBasis || dataBasis.length !== action.dataBasis.length) enrichedCount += 1;
+    return {
+      ...action,
+      rankingBasis: basis,
+      dataBasis
+    };
+  });
+  const fallbackActions = buildPortfolioRankingBoardReviewActions(managerRankings, enrichedActions);
+  if (!fallbackActions.length && !enrichedCount) return normalized;
+  return {
+    ...normalized,
+    actions: [...enrichedActions, ...fallbackActions],
+    learningNotes: mergeStringLists(
+      normalized.learningNotes,
+      [
+        enrichedCount ? `系统为 ${enrichedCount} 条既有动作补充经理榜单依据。` : "",
+        fallbackActions.length ? `系统补充了 ${fallbackActions.length} 条经理榜单靠前项复核动作，防止榜单和今日操作割裂。` : ""
+      ]
+    ),
+    sources: mergeStringLists(normalized.sources, ["manager_ranking_board_guard"])
   };
 }
 
@@ -23707,6 +23823,7 @@ export {
   buildPortfolioRunSummary,
   buildPortfolioRankingBoard,
   buildPortfolioRankingActionAudit,
+  buildPortfolioRankingBoardReviewActions,
   buildPortfolioAccountRiskBudget,
   buildPortfolioReadyWatchlistReviewActions,
   buildPortfolioPositionRiskBudget,
@@ -23779,6 +23896,7 @@ export {
   hasPortfolioStarterBuySetup,
   ensurePortfolioHeldPositionsReviewed,
   ensurePortfolioMissedFollowThroughReviewed,
+  ensurePortfolioRankingBoardReviewed,
   ensurePortfolioRedeploymentPlanReviewed,
   ensurePortfolioReadyWatchlistReviewed,
   ensurePortfolioStarterBuyFollowUpReviewed,
