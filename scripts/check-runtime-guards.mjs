@@ -2317,6 +2317,14 @@ const requiredPatterns = [
     message: "admin customer digest items must expose a direct watchlist detail action."
   },
   {
+    pattern: /renderManagerPriorityItem[\s\S]{0,1000}ranking-detail-link[\s\S]{0,800}data-focus-watchlist-code/,
+    message: "admin priority queue items must expose a compact watchlist detail action."
+  },
+  {
+    pattern: /renderManagerRankingItem[\s\S]{0,1200}ranking-detail-link[\s\S]{0,800}data-focus-watchlist-code/,
+    message: "admin ranking list items must expose a compact watchlist detail action."
+  },
+  {
     pattern: /getManagerRankingActionClass[\s\S]{0,900}卖出[\s\S]{0,900}综合[\s\S]{0,900}追涨[\s\S]{0,900}轮动[\s\S]{0,900}买入[\s\S]{0,900}持仓[\s\S]{0,900}费用[\s\S]{0,900}机会[\s\S]{0,900}观察/,
     message: "admin ranking items must visually distinguish synthesis, buy, chase-risk, sector-rotation, holdings-outlook, fee-suitability, opportunity-cost, watch, and sell style actions."
   },

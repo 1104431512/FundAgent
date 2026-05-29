@@ -1180,7 +1180,16 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-.ranking-title .ranking-action {
+.ranking-title-actions {
+  flex: 0 0 auto;
+  max-width: 52%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.ranking-title-actions .ranking-action {
   flex: 0 0 auto;
   font-size: 12px;
   font-weight: 900;
@@ -1189,6 +1198,23 @@ button:disabled {
   border-radius: 999px;
   color: #2f4050;
   background: #edf2f7;
+}
+
+.ranking-detail-link {
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid #cbd9e5;
+  border-radius: 6px;
+  color: #245a7d;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.ranking-detail-link:hover {
+  border-color: #8eb2cc;
+  background: #eef7fc;
 }
 
 .ranking-action.buy {
@@ -2426,10 +2452,17 @@ button.danger-button:hover {
   .section-summary,
   .fund-card-title,
   .watchlist-category-head,
+  .ranking-title,
+  .ranking-priority-title,
   .thought-section-head,
   .run-item summary {
     align-items: start;
     flex-direction: column;
+  }
+
+  .ranking-title-actions {
+    max-width: 100%;
+    justify-content: flex-start;
   }
 
   .manager-timeline {

@@ -1233,6 +1233,7 @@ assert(adminSource.includes("data-ranking-filter"), "admin UI ranking overview c
 assert(adminSource.includes("focusWatchlistFund"), "admin UI customer digest must jump from ranking advice to watchlist fund details");
 assert(adminSource.includes("data-focus-watchlist-code"), "admin UI customer digest items must expose a watchlist focus action");
 assert(adminSource.includes("data-watchlist-code"), "admin UI watchlist cards must be addressable from ranking digest items");
+assert(adminSource.includes("ranking-detail-link"), "admin UI ranking and priority items must expose compact watchlist detail actions");
 assert(adminSource.includes("decision_synthesis"), "admin UI must render the decision-synthesis ranking lane");
 assert(adminSource.includes("rotation_opportunity"), "admin UI must render the sector-rotation ranking lane");
 assert(adminSource.includes("chase_risk"), "admin UI must render the chase-risk ranking lane");

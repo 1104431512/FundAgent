@@ -480,13 +480,17 @@ function renderManagerCustomerDigestItem(item = {}) {
 
 function renderManagerPriorityItem(item = {}) {
   const actionClass = getManagerRankingActionClass(`${item.action || ""} ${item.listTitle || ""}`);
+  const code = String(item.code || "").trim();
   return `
     <article class="ranking-priority-item">
       <div class="ranking-priority-rank">${escapeHtml(String(item.queueRank || "-"))}</div>
       <div class="ranking-priority-body">
         <div class="ranking-priority-title">
-          <strong>${escapeHtml(item.code || "")} ${escapeHtml(item.name || "")}</strong>
-          <span class="ranking-action ${actionClass}">${escapeHtml(item.action || item.listTitle || "复核")}</span>
+          <strong>${escapeHtml(code)} ${escapeHtml(item.name || "")}</strong>
+          <div class="ranking-title-actions">
+            <span class="ranking-action ${actionClass}">${escapeHtml(item.action || item.listTitle || "复核")}</span>
+            ${code ? `<button type="button" class="ranking-detail-link" data-focus-watchlist-code="${escapeHtml(code)}">详情</button>` : ""}
+          </div>
         </div>
         <p>${escapeHtml(item.reason || "等待经理复核。")}</p>
         <div class="ranking-priority-meta">
@@ -590,13 +594,17 @@ function renderManagerRankingItem(item = {}) {
   const rankClass = item.rank <= 3 ? "top" : "";
   const facts = Array.isArray(item.facts) ? item.facts : [];
   const actionClass = getManagerRankingActionClass(item.action || item.status || "");
+  const code = String(item.code || "").trim();
   return `
     <article class="ranking-item ${rankClass}">
       <div class="ranking-index">${escapeHtml(String(item.rank || "-"))}</div>
       <div class="ranking-body">
         <div class="ranking-title">
-          <strong>${escapeHtml(item.code || "")} ${escapeHtml(item.name || "")}</strong>
-          <span class="ranking-action ${actionClass}">${escapeHtml(item.action || item.status || "")}</span>
+          <strong>${escapeHtml(code)} ${escapeHtml(item.name || "")}</strong>
+          <div class="ranking-title-actions">
+            <span class="ranking-action ${actionClass}">${escapeHtml(item.action || item.status || "")}</span>
+            ${code ? `<button type="button" class="ranking-detail-link" data-focus-watchlist-code="${escapeHtml(code)}">详情</button>` : ""}
+          </div>
         </div>
         <p>${escapeHtml(item.reason || "等待下一次复核。")}</p>
         <div class="ranking-meta">
