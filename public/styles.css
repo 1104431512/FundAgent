@@ -119,6 +119,11 @@ small {
   display: grid;
 }
 
+.tab-panel[data-panel="portfolio"].active {
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: calc(100vh - 48px);
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -584,10 +589,13 @@ button:disabled {
 }
 
 .portfolio-terminal-shell {
+  --portfolio-workspace-height: clamp(520px, calc(100vh - 340px), 820px);
   display: grid;
   grid-template-columns: minmax(190px, 220px) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+  min-height: var(--portfolio-workspace-height);
+  max-height: var(--portfolio-workspace-height);
 }
 
 .portfolio-terminal-rail {
@@ -596,7 +604,8 @@ button:disabled {
   z-index: 3;
   display: grid;
   gap: 10px;
-  max-height: calc(100vh - 24px);
+  align-self: stretch;
+  max-height: var(--portfolio-workspace-height);
   overflow: auto;
   padding: 12px;
   border: 1px solid #dce5ed;
@@ -629,6 +638,9 @@ button:disabled {
   min-width: 0;
   display: grid;
   gap: 16px;
+  min-height: 0;
+  max-height: var(--portfolio-workspace-height);
+  overflow: hidden;
 }
 
 .portfolio-workspace-switcher {
@@ -698,6 +710,15 @@ button:disabled {
 .portfolio-workspace-view.active {
   display: grid;
   gap: 16px;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+.portfolio-workspace-view > .panel,
+.portfolio-workspace-view > .section-panel {
+  min-height: 0;
 }
 
 .portfolio-workspace-cards {
@@ -830,10 +851,20 @@ button:disabled {
   line-height: 1.45;
 }
 
+.ranking-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 .ranking-board {
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
+  min-height: 0;
+  max-height: calc(var(--portfolio-workspace-height, 760px) - 86px);
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .ranking-terminal {
@@ -898,11 +929,13 @@ button:disabled {
 
 .ranking-terminal .ranking-overview {
   position: sticky;
-  top: 124px;
+  top: 0;
+  z-index: 2;
   grid-template-columns: 1fr;
   max-height: calc(100vh - 150px);
   overflow: auto;
   padding-right: 2px;
+  background: #ffffff;
 }
 
 .ranking-overview-card {
@@ -1005,6 +1038,10 @@ button:disabled {
 
 .ranking-overview-fee {
   border-left-color: #b7791f;
+}
+
+.ranking-overview-replacement {
+  border-left-color: #0d9488;
 }
 
 .ranking-overview-opportunity {
@@ -1382,6 +1419,10 @@ button:disabled {
   border-top: 3px solid #b7791f;
 }
 
+.ranking-list-replacement {
+  border-top: 3px solid #0d9488;
+}
+
 .ranking-list-opportunity {
   border-top: 3px solid #7c6d1f;
 }
@@ -1577,6 +1618,11 @@ button:disabled {
 .ranking-action.fee {
   color: #7a4b12;
   background: #fff6e6;
+}
+
+.ranking-action.replacement {
+  color: #0f5f59;
+  background: #e3f7f4;
 }
 
 .ranking-action.opportunity {
@@ -2002,11 +2048,13 @@ button.danger-button:hover {
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   min-height: 360px;
+  max-height: calc(var(--portfolio-workspace-height, 760px) - 82px);
+  overflow: hidden;
 }
 
 .watchlist-status-rail {
   min-width: 0;
-  max-height: 760px;
+  max-height: none;
   overflow: auto;
   border-right: 1px solid #e3ebf2;
   background: #fbfcfd;
@@ -2070,6 +2118,7 @@ button.danger-button:hover {
 .watchlist-status-stage {
   min-width: 0;
   padding: 14px;
+  overflow: auto;
 }
 
 .watchlist-category {
@@ -2704,11 +2753,13 @@ button.danger-button:hover {
   display: grid;
   grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
   min-height: 360px;
+  max-height: calc(var(--portfolio-workspace-height, 760px) - 82px);
+  overflow: hidden;
 }
 
 .run-index-list {
   min-width: 0;
-  max-height: 680px;
+  max-height: none;
   overflow: auto;
   border-right: 1px solid #e3ebf2;
   background: #fbfcfd;
@@ -2796,6 +2847,7 @@ button.danger-button:hover {
 
 .run-stage {
   min-width: 0;
+  overflow: auto;
 }
 
 .run-detail-card {
@@ -2918,6 +2970,8 @@ button.danger-button:hover {
 
 .run-panel-stage {
   min-width: 0;
+  max-height: calc(var(--portfolio-workspace-height, 760px) - 250px);
+  overflow: auto;
   padding: 14px;
 }
 
@@ -3287,6 +3341,10 @@ button.danger-button:hover {
     padding: 14px;
   }
 
+  .tab-panel[data-panel="portfolio"].active {
+    min-height: auto;
+  }
+
   .grid.two,
   .test-grid,
   .metric-grid,
@@ -3316,6 +3374,20 @@ button.danger-button:hover {
     max-height: none;
     overflow: visible;
     padding: 10px;
+  }
+
+  .portfolio-terminal-shell,
+  .portfolio-terminal-stage,
+  .portfolio-workspace-view.active,
+  .ranking-board,
+  .watchlist-terminal-body,
+  .timeline-terminal-body,
+  .watchlist-status-stage,
+  .run-stage,
+  .run-panel-stage {
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
   }
 
   .portfolio-terminal-rail-head {

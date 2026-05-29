@@ -1069,6 +1069,10 @@ const requiredPatterns = [
     message: "admin portfolio page must use a left-rail terminal workspace instead of stacking all virtual-run sections."
   },
   {
+    pattern: /(?=[\s\S]*\.portfolio-terminal-shell\s*\{[\s\S]*--portfolio-workspace-height[\s\S]*max-height:\s*var\(--portfolio-workspace-height\))(?=[\s\S]*\.portfolio-terminal-stage\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.portfolio-workspace-view\.active\s*\{[\s\S]*overflow:\s*auto)/,
+    message: "admin portfolio terminal workspace must keep the virtual-run page bounded and scroll inside the active entry."
+  },
+  {
     pattern: /function setPortfolioView[\s\S]{0,1200}data-portfolio-view-target[\s\S]{0,1200}data-portfolio-view/,
     message: "admin portfolio workspace entries must switch focused views."
   },
@@ -1105,6 +1109,10 @@ const requiredPatterns = [
     message: "admin watchlist UI must keep category navigation and selected fund details in a terminal workspace."
   },
   {
+    pattern: /(?=[\s\S]*\.watchlist-terminal-body\s*\{[\s\S]*max-height:\s*calc\(var\(--portfolio-workspace-height[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.watchlist-status-stage\s*\{[\s\S]*overflow:\s*auto)/,
+    message: "admin watchlist workspace must scroll candidate details inside the selected category instead of stretching the whole page."
+  },
+  {
     pattern: /function ensurePortfolioTimelineDetails[\s\S]{0,900}\/api\/portfolio\?full=1[\s\S]{0,700}renderRuns/,
     message: "admin portfolio timeline must lazy-load full run details instead of losing complete daily report text in summary mode."
   },
@@ -1115,6 +1123,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*activePortfolioRunPanel)(?=[\s\S]*data-run-panel)(?=[\s\S]*function renderRunPanelSwitch[\s\S]*运行记录详情入口)(?=[\s\S]*function renderRunPanelContent[\s\S]*renderRunActionsPanel[\s\S]*renderRunCommitteePanel[\s\S]*renderRunExecutionPanel[\s\S]*renderRunReportPanel)/,
     message: "admin portfolio timeline must split a selected run into quote-terminal style detail entries instead of one long report page."
+  },
+  {
+    pattern: /(?=[\s\S]*\.timeline-terminal-body\s*\{[\s\S]*max-height:\s*calc\(var\(--portfolio-workspace-height[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.run-stage\s*\{[\s\S]*overflow:\s*auto)(?=[\s\S]*\.run-panel-stage\s*\{[\s\S]*overflow:\s*auto)/,
+    message: "admin portfolio timeline must keep run selection and detail panels inside a bounded trading-terminal stage."
   },
   {
     pattern: /holding-strip/,
@@ -1413,8 +1425,8 @@ const requiredPatterns = [
     message: "portfolio decision prompts must force recommendations to cite the manager ranking board."
   },
   {
-    pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,1900}cash_redeployment[\s\S]{0,500}position_sizing[\s\S]{0,500}quality_score[\s\S]{0,500}manager_stability[\s\S]{0,500}portfolio_fit/,
-    message: "portfolio decision prompts must force the model to review the cash-redeployment, position-sizing, fund-quality, manager-stability, and portfolio-fit ranking lanes."
+    pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,1900}cash_redeployment[\s\S]{0,500}position_sizing[\s\S]{0,500}quality_score[\s\S]{0,500}manager_stability[\s\S]{0,500}portfolio_fit[\s\S]{0,900}replacement_choice/,
+    message: "portfolio decision prompts must force the model to review the cash-redeployment, position-sizing, fund-quality, manager-stability, portfolio-fit, and replacement-choice ranking lanes."
   },
   {
     pattern: /buildPortfolioWatchlistStatusLines[\s\S]{0,1200}buildPortfolioWatchRankingCitationMap[\s\S]{0,1600}formatPortfolioWatchDetailLine/,
@@ -2329,8 +2341,8 @@ const requiredPatterns = [
     message: "ranking-board guards must add traceable fallback review actions when top ranked items are omitted."
   },
   {
-    pattern: /decision_synthesis[\s\S]*buy_preparation[\s\S]*launch_setup[\s\S]*cash_redeployment[\s\S]*position_sizing[\s\S]*quality_score[\s\S]*manager_stability[\s\S]*portfolio_fit[\s\S]*rotation_opportunity[\s\S]*chase_risk[\s\S]*holdings_outlook[\s\S]*fee_suitability[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
-    message: "manager ranking boards must cover decision synthesis, buy preparation, low-position launch, cash redeployment, position sizing, fund quality, manager stability, portfolio fit, sector rotation, chase risk, holdings outlook, fee suitability, opportunity cost, sell risk, and user holding alerts."
+    pattern: /decision_synthesis[\s\S]*buy_preparation[\s\S]*launch_setup[\s\S]*cash_redeployment[\s\S]*position_sizing[\s\S]*quality_score[\s\S]*manager_stability[\s\S]*portfolio_fit[\s\S]*rotation_opportunity[\s\S]*chase_risk[\s\S]*holdings_outlook[\s\S]*fee_suitability[\s\S]*replacement_choice[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
+    message: "manager ranking boards must cover decision synthesis, buy preparation, low-position launch, cash redeployment, position sizing, fund quality, manager stability, portfolio fit, sector rotation, chase risk, holdings outlook, fee suitability, replacement choice, opportunity cost, sell risk, and user holding alerts."
   },
   {
     pattern: /function buildPortfolioCashRedeploymentRanking[\s\S]{0,2600}现金再部署榜[\s\S]{0,2600}0\.5%-2\.5%/,
@@ -2367,6 +2379,10 @@ const requiredPatterns = [
   {
     pattern: /function buildPortfolioFeeSuitabilityRanking[\s\S]{0,1800}A\/C\/D\/I[\s\S]{0,1800}每万/,
     message: "manager ranking boards must include a fee/share-class suitability lane with holding-period and per-10k cost evidence."
+  },
+  {
+    pattern: /function buildPortfolioReplacementChoiceRanking[\s\S]{0,2600}替代优选榜[\s\S]{0,2600}A\/C\/D\/I[\s\S]{0,2600}同指数\/同题材/,
+    message: "manager ranking boards must include a replacement-choice lane that compares same-fund share classes and same-exposure alternatives before buying."
   },
   {
     pattern: /(?=[\s\S]*const priorityQueue = buildPortfolioRankingPriorityQueue\(lists\))(?=[\s\S]*function buildPortfolioRankingPriorityQueue)/,
@@ -2433,8 +2449,8 @@ const requiredPatterns = [
     message: "admin watchlist ranking citations must derive from the current manager ranking board."
   },
   {
-    pattern: /getManagerRankingActionClass[\s\S]{0,900}卖出[\s\S]{0,900}综合[\s\S]{0,900}再部署[\s\S]{0,900}仓位[\s\S]{0,900}质量[\s\S]{0,900}经理[\s\S]{0,900}组合[\s\S]{0,900}追涨[\s\S]{0,900}轮动[\s\S]{0,900}买入[\s\S]{0,900}持仓[\s\S]{0,900}费用[\s\S]{0,900}机会[\s\S]{0,900}观察/,
-    message: "admin ranking items must visually distinguish synthesis, cash-redeployment, position-sizing, fund-quality, manager-stability, portfolio-fit, buy, chase-risk, sector-rotation, holdings-outlook, fee-suitability, opportunity-cost, watch, and sell style actions."
+    pattern: /getManagerRankingActionClass[\s\S]{0,900}卖出[\s\S]{0,900}综合[\s\S]{0,900}再部署[\s\S]{0,900}仓位[\s\S]{0,900}质量[\s\S]{0,900}经理[\s\S]{0,900}组合[\s\S]{0,900}追涨[\s\S]{0,900}轮动[\s\S]{0,900}买入[\s\S]{0,900}持仓[\s\S]{0,900}替代[\s\S]{0,900}费用[\s\S]{0,900}机会[\s\S]{0,900}观察/,
+    message: "admin ranking items must visually distinguish synthesis, cash-redeployment, position-sizing, fund-quality, manager-stability, portfolio-fit, buy, chase-risk, sector-rotation, holdings-outlook, replacement-choice, fee-suitability, opportunity-cost, watch, and sell style actions."
   },
   {
     pattern: /(?=[\s\S]*ranking-overview-redeploy)(?=[\s\S]*ranking-list-redeploy)(?=[\s\S]*ranking-action\.redeploy)/,
@@ -2467,6 +2483,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*ranking-overview-fee)(?=[\s\S]*ranking-list-fee)(?=[\s\S]*ranking-action\.fee)/,
     message: "admin ranking board must visually distinguish fee-suitability cards, lists, and action pills."
+  },
+  {
+    pattern: /(?=[\s\S]*ranking-overview-replacement)(?=[\s\S]*ranking-list-replacement)(?=[\s\S]*ranking-action\.replacement)/,
+    message: "admin ranking board must visually distinguish replacement-choice cards, lists, and action pills."
   },
   {
     pattern: /(?=[\s\S]*ranking-health)(?=[\s\S]*ranking-next)/,

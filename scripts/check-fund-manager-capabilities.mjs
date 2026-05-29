@@ -117,7 +117,10 @@ const rankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfol
       reason: "低位修复但需要比较 A/C 份额。",
       feeNotes: ["C类销售服务费0.40%/年，每万元1年约40元，适合短中期战术观察。"],
       alternativeShareClasses: [
-        { code: "000104", name: "低费率对比基金A", shareClass: "A", feeNotes: ["A类适合更长持有期。"] }
+        { code: "000104", name: "低费率对比基金A", shareClass: "A", feeImpact: { oneYearCostPer10000: 15 }, feeNotes: ["A类每万元1年约15元，适合更长持有期。"] }
+      ],
+      sameExposureAlternatives: [
+        { code: "000204", name: "同指数低费率联接C", shareClass: "C", feeImpact: { oneYearCostPer10000: 25 }, feeNotes: ["同类C份额每万元1年约25元，需比较规模和流动性。"] }
       ],
       lastSnapshot: {
         trendProfile: { ok: true, return20dPct: 2.1, lowPositionPct120: 25 },
@@ -184,6 +187,55 @@ const rankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfol
       }
     },
     {
+      code: "000007",
+      name: "同类替代优选基金C",
+      shareClass: "C",
+      status: "blocked",
+      priority: 1,
+      readinessScore: 100,
+      reason: "买点接近，但同指数产品里有更低费率替代。",
+      feeNotes: ["C类销售服务费0.60%/年，每万元1年约60元。"],
+      alternativeShareClasses: [
+        { code: "000107", name: "同类替代优选基金A", shareClass: "A", feeImpact: { oneYearCostPer10000: 18 }, feeNotes: ["A类每万元1年约18元，更适合较长持有。"] }
+      ],
+      sameExposureAlternatives: [
+        { code: "000207", name: "同指数低费ETF联接C", shareClass: "C", feeImpact: { oneYearCostPer10000: 20 }, feeNotes: ["同指数低费份额每万元1年约20元。"] }
+      ],
+      lastSnapshot: {
+        trendProfile: { ok: true, return20dPct: 1.8, lowPositionPct120: 28 },
+        fees: {
+          shareClass: "C",
+          shareClassFeeModel: { type: "sales_service_fee", label: "C类：偏销售服务费模型", selectionRule: "适合短中期，长期需比较A类或低费替代。" },
+          feeImpact: {
+            oneYearCostPer10000: 60,
+            twoYearCostPer10000: 120,
+            feeDragLevel: "medium",
+            missingFeeData: []
+          }
+        }
+      }
+    },
+    {
+      code: "000008",
+      name: "特殊份额费率核验基金D",
+      shareClass: "D",
+      status: "watch",
+      priority: 2,
+      reason: "买点待复核，但D类份额渠道和费率缺口明显。",
+      lastSnapshot: {
+        fees: {
+          shareClass: "D",
+          shareClassFeeModel: { type: "special_or_platform_class", label: "D类：特殊/平台份额", selectionRule: "推荐前要确认渠道、起购门槛和普通客户是否可买。" },
+          feeImpact: {
+            oneYearCostPer10000: 130,
+            twoYearCostPer10000: 260,
+            feeDragLevel: "high",
+            missingFeeData: ["subscription_fee", "subscription_rules", "redemption_rules"]
+          }
+        }
+      }
+    },
+    {
       code: "000006",
       name: "高位热门科技基金C",
       shareClass: "C",
@@ -227,6 +279,7 @@ assert(rankingBoard.lists.find((item) => item.id === "rotation_opportunity")?.it
 assert(rankingBoard.lists.find((item) => item.id === "chase_risk")?.items.some((item) => item.code === "000006"), "manager ranking board must expose hot chase-risk candidates");
 assert(rankingBoard.lists.find((item) => item.id === "holdings_outlook")?.items.some((item) => item.code === "000003"), "manager ranking board must expose candidates with supportive top-ten holdings");
 assert(rankingBoard.lists.find((item) => item.id === "fee_suitability")?.items.some((item) => item.code === "000004"), "manager ranking board must expose share-class fee suitability candidates");
+assert(rankingBoard.lists.find((item) => item.id === "replacement_choice")?.items.some((item) => item.code === "000004"), "manager ranking board must expose same-fund and same-exposure replacement-choice candidates");
 assert(rankingBoard.lists.find((item) => item.id === "opportunity_cost")?.nextAction, "manager ranking board must include an opportunity-cost list even when it is empty");
 assert(rankingBoard.lists.find((item) => item.id === "sell_risk")?.items.some((item) => item.code === "008327"), "manager ranking board must expose sell-risk positions");
 assert(rankingBoard.health?.summary, "manager ranking board must explain the current board state");
@@ -239,6 +292,7 @@ assert(rankingBoard.priorityQueue.some((item) => item.code === "000006" && item.
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000001" && item.listId === "cash_redeployment"), "priority queue must include cash-redeployment review items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000005" && item.listId === "rotation_opportunity"), "priority queue must include sector-rotation opportunity items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000004" && item.listId === "fee_suitability"), "priority queue must include fee-suitability review items");
+assert(rankingBoard.priorityQueue.some((item) => item.code === "000007" && item.listId === "replacement_choice"), "priority queue must include replacement-choice review items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000003" && item.listId === "holdings_outlook"), "priority queue must include holdings-outlook review items");
 assert(rankingBoard.priorityQueue.every((item) => item.queueRank && item.nextStep), "priority queue items must be ranked and actionable");
 const synthesisRankingItem = rankingBoard.lists.find((item) => item.id === "decision_synthesis")?.items.find((item) => item.code === "000005");
@@ -252,6 +306,7 @@ const rotationRankingItem = rankingBoard.lists.find((item) => item.id === "rotat
 const chaseRankingItem = rankingBoard.lists.find((item) => item.id === "chase_risk")?.items.find((item) => item.code === "000006");
 const holdingsRankingItem = rankingBoard.lists.find((item) => item.id === "holdings_outlook")?.items.find((item) => item.code === "000003");
 const feeRankingItem = rankingBoard.lists.find((item) => item.id === "fee_suitability")?.items.find((item) => item.code === "000004");
+const replacementRankingItem = rankingBoard.lists.find((item) => item.id === "replacement_choice")?.items.find((item) => item.code === "000004");
 const sellRankingItem = rankingBoard.lists.find((item) => item.id === "sell_risk")?.items.find((item) => item.code === "008327");
 assert(synthesisRankingItem?.decision?.highlights?.some((item) => item.includes("板块轮动") || item.includes("准备度") || item.includes("回调")), "decision-synthesis ranking items must combine readable positive evidence");
 assert(/交叉确认|降级为观察|缺口/.test(synthesisRankingItem?.decision?.nextStep || ""), "decision-synthesis ranking items must tell the manager how to turn combined evidence into action");
@@ -274,7 +329,9 @@ assert(chaseRankingItem?.decision?.nextStep.includes("降级为观察"), "chase-
 assert(holdingsRankingItem?.reason.includes("持仓前景"), "holdings-outlook ranking items must explain top-ten holdings outlook");
 assert(holdingsRankingItem?.facts.some((item) => item.includes("新能源")), "holdings-outlook ranking items must expose the holding theme");
 assert(feeRankingItem?.facts.some((item) => item.includes("C类") || item.includes("每万")), "fee-suitability ranking items must expose readable share-class fee facts");
-assert(/A\/C|持有期/.test(feeRankingItem?.decision?.nextStep || ""), "fee-suitability ranking items must force share-class and holding-period comparison");
+assert(/A\/C|持有期|份额类别|关键费率|渠道/.test(feeRankingItem?.decision?.nextStep || ""), "fee-suitability ranking items must force share-class and holding-period comparison");
+assert(replacementRankingItem?.facts.some((item) => item.includes("同基金") || item.includes("同类替代")), "replacement-choice ranking items must expose same-fund or same-exposure alternatives");
+assert(/不混买A\/C|代表|替代/.test(replacementRankingItem?.decision?.nextStep || ""), "replacement-choice ranking items must force one final product/share-class choice before buying");
 assert(sellRankingItem?.decision?.risks?.some((item) => item.includes("回吐")), "sell ranking items must expose risk reasons instead of only a score");
 const rankingActionAudit = manager.buildPortfolioRankingActionAudit({
   runs: [
@@ -1110,6 +1167,8 @@ assert(serverSource.includes("quality_score"), "portfolio decision prompt and ra
 assert(serverSource.includes("buildPortfolioManagerStabilityRanking"), "portfolio ranking board must include a manager-stability lane to avoid buying products with unstable manager history");
 assert(serverSource.includes("manager_stability"), "portfolio decision prompt and ranking guards must reference the manager-stability lane");
 assert(serverSource.includes("buildPortfolioFitRanking"), "portfolio ranking board must include a portfolio-fit lane to prevent duplicate same-theme buying");
+assert(serverSource.includes("buildPortfolioReplacementChoiceRanking"), "portfolio ranking board must include a replacement-choice lane to compare same-fund share classes and same-exposure alternatives");
+assert(serverSource.includes("replacement_choice"), "portfolio decision prompt and ranking guards must reference the replacement-choice lane");
 assert(serverSource.includes("portfolio_fit"), "portfolio decision prompt and ranking guards must reference the portfolio-fit lane");
 const portfolioDecisionCapabilitySource = serverSource.slice(
   serverSource.indexOf("async function executePortfolioDecision"),
@@ -1291,6 +1350,7 @@ assert(adminHtmlSource.includes("仓位方案"), "admin UI must describe positio
 assert(adminHtmlSource.includes("基金质量"), "admin UI must describe fund-quality rankings as a manager decision angle");
 assert(adminHtmlSource.includes("组合适配"), "admin UI must describe portfolio-fit rankings as a manager decision angle");
 assert(adminHtmlSource.includes("费率适配"), "admin UI must describe share-class fee suitability rankings as a manager decision angle");
+assert(adminHtmlSource.includes("替代优选"), "admin UI must describe replacement-choice rankings as a manager decision angle");
 assert(adminSource.includes("renderManagerRankings"), "admin UI must render multi-angle ranking boards");
 assert(adminSource.includes("renderManagerCustomerDigest"), "admin UI must render customer-facing ranking digest before detailed lists");
 assert(adminSource.includes("renderManagerPriorityQueue"), "admin UI must render the cross-ranking priority queue");
@@ -1312,11 +1372,17 @@ assert(adminSource.includes("portfolio_fit"), "admin UI must render the portfoli
 assert(adminSource.includes("rotation_opportunity"), "admin UI must render the sector-rotation ranking lane");
 assert(adminSource.includes("chase_risk"), "admin UI must render the chase-risk ranking lane");
 assert(adminSource.includes("fee_suitability"), "admin UI must render the fee-suitability ranking lane");
+assert(adminSource.includes("replacement_choice"), "admin UI must render the replacement-choice ranking lane");
 assert(adminStyleSource.includes("ranking-list.is-filtered-out"), "admin UI must hide non-focused ranking lists when a ranking filter is active");
 assert(adminStyleSource.includes("ranking-list-manager"), "admin UI must style manager-stability ranking lanes distinctly");
 assert(adminStyleSource.includes("portfolio-workspace-switcher"), "admin portfolio workspace switcher must be styled as a first-class navigation surface");
 assert(/portfolio-workspace-switcher[\s\S]{0,240}position:\s*sticky/.test(adminStyleSource), "admin portfolio workspace switcher must remain reachable while long workspace views scroll");
 assert(adminStyleSource.includes("portfolio-workspace-view.active"), "admin portfolio workspace views must show one focused entry at a time");
+assert(/portfolio-terminal-shell[\s\S]{0,260}--portfolio-workspace-height[\s\S]{0,520}max-height:\s*var\(--portfolio-workspace-height\)/.test(adminStyleSource), "admin portfolio terminal shell must bound the virtual-run workspace height like a trading terminal");
+assert(/portfolio-terminal-stage[\s\S]{0,320}overflow:\s*hidden/.test(adminStyleSource), "admin portfolio terminal stage must prevent long workspace content from stretching the whole page");
+assert(/portfolio-workspace-view\.active[\s\S]{0,360}overflow:\s*auto/.test(adminStyleSource), "admin portfolio active workspace view must scroll internally");
+assert(/timeline-terminal-body[\s\S]{0,360}max-height:\s*calc\(var\(--portfolio-workspace-height/.test(adminStyleSource), "admin portfolio timeline must bound run history height");
+assert(/watchlist-terminal-body[\s\S]{0,360}max-height:\s*calc\(var\(--portfolio-workspace-height/.test(adminStyleSource), "admin portfolio watchlist must bound category-detail height");
 assert(adminStyleSource.includes("portfolio-workspace-card"), "admin portfolio overview shortcut cards must be visually scannable");
 assert(adminStyleSource.includes("ranking-terminal"), "admin manager ranking board must be a focused terminal-style workspace instead of a long stacked report");
 assert(adminStyleSource.includes("ranking-detail-stage"), "admin manager ranking board must separate lane navigation from the active ranking detail");
@@ -1339,6 +1405,9 @@ assert(adminStyleSource.includes("ranking-action.fit"), "admin UI must visually 
 assert(adminStyleSource.includes("ranking-overview-rotation"), "admin UI must visually distinguish sector-rotation overview cards");
 assert(adminStyleSource.includes("ranking-overview-chase"), "admin UI must visually distinguish chase-risk overview cards");
 assert(adminStyleSource.includes("ranking-overview-fee"), "admin UI must visually distinguish fee-suitability overview cards");
+assert(adminStyleSource.includes("ranking-overview-replacement"), "admin UI must visually distinguish replacement-choice overview cards");
+assert(adminStyleSource.includes("ranking-list-replacement"), "admin UI must visually distinguish replacement-choice ranking lists");
+assert(adminStyleSource.includes("ranking-action.replacement"), "admin UI must visually distinguish replacement-choice action pills");
 assert(adminSource.includes("getManagerRankingActionClass"), "admin ranking items must color-code buy, watch, and sell style actions");
 assert(adminSource.includes("ranking-health"), "admin UI must render ranking board state guidance");
 assert(adminSource.includes("ranking-next"), "admin UI must render ranking next-action guidance");

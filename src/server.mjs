@@ -1741,7 +1741,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "经理多角度榜单（系统计算，必须先看榜单再决定）：",
     JSON.stringify(compactManagerRankings, null, 2),
     "客户视角要求：回答客户时优先使用 customerDigest 里的可买复核、观察重点和回避提醒，先讲原因和动作，再补必要数字；不要把所有榜单指标原样堆给客户。",
-    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、cash_redeployment、position_sizing、quality_score、manager_stability、portfolio_fit、rotation_opportunity、chase_risk、fee_suitability、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
+    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、cash_redeployment、position_sizing、quality_score、manager_stability、portfolio_fit、rotation_opportunity、chase_risk、fee_suitability、replacement_choice、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
     JSON.stringify((missedFollowThroughQueue || []).slice(0, 5), null, 2),
@@ -2641,6 +2641,17 @@ function normalizePortfolioWatchAlternatives(value) {
       statusText: item.statusText || (item.status ? formatPortfolioWatchStatus(item.status) : ""),
       priority: item.priority === undefined || item.priority === null || item.priority === "" ? null : normalizePortfolioWatchPriority(item.priority),
       reason: String(item.reason || "").trim().slice(0, 260),
+      shareClassFeeModel: item.shareClassFeeModel && typeof item.shareClassFeeModel === "object" ? {
+        type: String(item.shareClassFeeModel.type || "").trim(),
+        label: String(item.shareClassFeeModel.label || "").trim().slice(0, 120),
+        selectionRule: String(item.shareClassFeeModel.selectionRule || "").trim().slice(0, 220)
+      } : null,
+      feeImpact: item.feeImpact && typeof item.feeImpact === "object" ? {
+        oneYearCostPer10000: finiteMetricNumber(item.feeImpact.oneYearCostPer10000),
+        twoYearCostPer10000: finiteMetricNumber(item.feeImpact.twoYearCostPer10000),
+        feeDragLevel: String(item.feeImpact.feeDragLevel || "").trim(),
+        holdingPeriodFit: String(item.feeImpact.holdingPeriodFit || "").trim()
+      } : null,
       feeNotes: normalizeStringArray(item.feeNotes).slice(0, 3),
       riskNotes: normalizeStringArray(item.riskNotes).slice(0, 3),
       source: String(item.source || "").trim().slice(0, 120),
@@ -3684,6 +3695,7 @@ function inferPortfolioRankingBoardReviewAction(list = {}, item = {}) {
   if (listId === "cash_redeployment") {
     return "WATCH";
   }
+  if (listId === "replacement_choice") return "WATCH";
   if (listId === "user_holding_alerts") return "WATCH";
   return "WATCH";
 }
@@ -3691,7 +3703,7 @@ function inferPortfolioRankingBoardReviewAction(list = {}, item = {}) {
 function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = []) {
   const lists = Array.isArray(board?.lists) ? board.lists : [];
   const existingCodes = new Set((existingActions || []).map((action) => action.code).filter(Boolean));
-  const watchedListIds = new Set(["decision_synthesis", "buy_preparation", "launch_setup", "cash_redeployment", "position_sizing", "quality_score", "manager_stability", "portfolio_fit", "rotation_opportunity", "chase_risk", "fee_suitability", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
+  const watchedListIds = new Set(["decision_synthesis", "buy_preparation", "launch_setup", "cash_redeployment", "position_sizing", "quality_score", "manager_stability", "portfolio_fit", "rotation_opportunity", "chase_risk", "fee_suitability", "replacement_choice", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
   const actions = [];
   for (const list of lists) {
     if (!watchedListIds.has(String(list?.id || ""))) continue;
@@ -3899,12 +3911,12 @@ function selectPortfolioRankingBoardEntryForAction(action = {}, entries = []) {
   if (!entries.length) return null;
   const actionText = String(action.action || "").toUpperCase();
   const preferredIds = actionText === "BUY"
-    ? ["buy_preparation", "cash_redeployment", "position_sizing", "launch_setup", "quality_score", "manager_stability", "portfolio_fit", "decision_synthesis", "rotation_opportunity", "fee_suitability", "holdings_outlook", "opportunity_cost"]
+    ? ["buy_preparation", "cash_redeployment", "position_sizing", "launch_setup", "quality_score", "manager_stability", "portfolio_fit", "decision_synthesis", "rotation_opportunity", "fee_suitability", "replacement_choice", "holdings_outlook", "opportunity_cost"]
     : actionText === "SELL"
       ? ["sell_risk", "chase_risk", "decision_synthesis", "opportunity_cost"]
       : actionText === "HOLD"
         ? ["sell_risk", "decision_synthesis", "holdings_outlook", "chase_risk"]
-        : ["buy_preparation", "cash_redeployment", "position_sizing", "launch_setup", "quality_score", "manager_stability", "portfolio_fit", "chase_risk", "decision_synthesis", "rotation_opportunity", "fee_suitability", "holdings_outlook"];
+        : ["buy_preparation", "cash_redeployment", "position_sizing", "launch_setup", "quality_score", "manager_stability", "portfolio_fit", "chase_risk", "decision_synthesis", "rotation_opportunity", "fee_suitability", "replacement_choice", "holdings_outlook"];
   return [...entries].sort((a, b) => {
     const aRank = preferredIds.indexOf(String(a.list?.id || ""));
     const bRank = preferredIds.indexOf(String(b.list?.id || ""));
@@ -8542,6 +8554,7 @@ function buildPortfolioRankingBoard(db = {}) {
     buildPortfolioChaseRiskRanking(watchlist),
     buildPortfolioHoldingsOutlookRanking(watchlist),
     buildPortfolioFeeSuitabilityRanking(watchlist),
+    buildPortfolioReplacementChoiceRanking(watchlist),
     buildPortfolioOpportunityCostRanking(db, watchlist),
     buildPortfolioSellRiskRanking(positions),
     buildUserHoldingAlertRanking(userPortfolios)
@@ -8564,8 +8577,8 @@ function buildPortfolioRankingBoardHealth({ watchlist = [], positions = [], user
     return {
       level: "ok",
       title: "榜单已生成",
-      summary: `当前有 ${totalItems} 个可复核对象，经理可以按综合决策、买入、低位启动、现金再部署、仓位方案、基金质量、经理稳定、组合适配、板块轮动、追涨风险、持仓前景、费率适配、机会成本、卖出风险和用户持仓提醒分层处理。`,
-      actions: ["优先处理排名靠前项", "综合结论/买点/仓位/质量/经理稳定/组合适配/轮动/追涨/费率/持仓分开复核", "把用户真实持仓提醒放入每日跟踪"]
+      summary: `当前有 ${totalItems} 个可复核对象，经理可以按综合决策、买入、低位启动、现金再部署、仓位方案、基金质量、经理稳定、组合适配、板块轮动、追涨风险、持仓前景、费率适配、替代优选、机会成本、卖出风险和用户持仓提醒分层处理。`,
+      actions: ["优先处理排名靠前项", "综合结论/买点/仓位/质量/经理稳定/组合适配/轮动/追涨/费率/替代/持仓分开复核", "把用户真实持仓提醒放入每日跟踪"]
     };
   }
   if (!watchlist.length && !positions.length && !userPortfolios.length) {
@@ -10023,6 +10036,153 @@ function formatPortfolioFeeMissingLabel(key = "") {
   return labels[String(key || "")] || String(key || "").trim();
 }
 
+function buildPortfolioReplacementChoiceRanking(watchlist = []) {
+  const items = (watchlist || [])
+    .filter((item) => item?.code && !["removed"].includes(item.status))
+    .map(buildPortfolioReplacementChoiceRankingItem)
+    .filter(Boolean)
+    .sort(compareRankingItems)
+    .slice(0, 6);
+  return buildPortfolioRankingList({
+    id: "replacement_choice",
+    title: "替代优选榜",
+    subtitle: "把同基金 A/C/D/I 份额和同指数/同题材替代品放在一起比较，避免客户买到更贵或重复的产品。",
+    emptyText: "暂无替代份额或同类替代需要优先复核的候选。",
+    nextAction: "下一步为候选补齐同基金份额、同指数低费替代、规模和费率；买入前只保留一个代表产品，不把替代品当新增推荐名额。",
+    items
+  });
+}
+
+function buildPortfolioReplacementChoiceRankingItem(item = {}) {
+  const evidence = resolvePortfolioReplacementChoiceEvidence(item);
+  if (!evidence.shouldSurface) return null;
+  return buildPortfolioRankingItem({
+    code: item.code,
+    name: item.name,
+    source: "替代优选",
+    score: round(evidence.score, 1),
+    action: evidence.action,
+    reason: evidence.reason,
+    facts: evidence.facts,
+    decision: {
+      highlights: evidence.highlights,
+      risks: evidence.risks,
+      gaps: evidence.gaps,
+      nextStep: evidence.nextStep
+    },
+    status: evidence.status
+  });
+}
+
+function resolvePortfolioReplacementChoiceEvidence(item = {}) {
+  const fee = resolvePortfolioWatchFeeSuitabilityEvidence(item);
+  const shareAlternatives = normalizePortfolioWatchAlternatives(item.alternativeShareClasses || []);
+  const exposureAlternatives = normalizePortfolioWatchAlternatives(item.sameExposureAlternatives || []);
+  const currentShareClass = fee.shareClass || String(item.shareClass || inferFundShareClass(item.name || "") || "").toUpperCase();
+  const shareClasses = collectPortfolioReplacementShareClasses(shareAlternatives);
+  const currentOneYearCost = finiteMetricNumber(fee.oneYearCost);
+  const alternativeCostValues = [...shareAlternatives, ...exposureAlternatives]
+    .map(resolvePortfolioReplacementAlternativeCost)
+    .filter((value) => Number.isFinite(value));
+  const lowerCostAlternative = Number.isFinite(currentOneYearCost)
+    && alternativeCostValues.some((value) => value < currentOneYearCost);
+  const missingAlternativeFees = [...shareAlternatives, ...exposureAlternatives]
+    .some((alt) => !Number.isFinite(resolvePortfolioReplacementAlternativeCost(alt)) && !normalizeStringArray(alt.feeNotes).length);
+  const hasAlternatives = Boolean(shareAlternatives.length || exposureAlternatives.length);
+  if (!hasAlternatives) return { shouldSurface: false };
+
+  const readinessScore = Number(item.readinessScore || 0);
+  const score = Math.max(0, Math.min(100,
+    readinessScore * 0.35
+    + shareAlternatives.length * 14
+    + exposureAlternatives.length * 10
+    + (lowerCostAlternative ? 16 : 0)
+    + (fee.highDrag ? 12 : 0)
+    + (fee.missingCritical ? 10 : 0)
+    - (missingAlternativeFees ? 6 : 0)
+  ));
+  const action = shareAlternatives.length && exposureAlternatives.length
+    ? "份额/同类替代优选"
+    : shareAlternatives.length
+      ? "A/C份额优选"
+      : "同类低费替代";
+  const status = fee.missingCritical || missingAlternativeFees ? "warning" : lowerCostAlternative ? "ready" : item.status || "watch";
+  const alternativeLabel = formatPortfolioReplacementAlternativeLabel(shareAlternatives, exposureAlternatives);
+  return {
+    shouldSurface: true,
+    score,
+    action,
+    status,
+    reason: buildPortfolioReplacementChoiceReason({ shareAlternatives, exposureAlternatives, lowerCostAlternative, fee }),
+    facts: [
+      currentShareClass ? `当前${currentShareClass}类` : "当前份额待核验",
+      shareClasses.length ? `同基金${shareClasses.join("/")}` : "",
+      exposureAlternatives.length ? `同类替代${exposureAlternatives.length}个` : "",
+      Number.isFinite(currentOneYearCost) ? `当前每万1年约${round(currentOneYearCost, 0)}元` : "",
+      lowerCostAlternative ? "发现可能低费替代" : ""
+    ].filter(Boolean),
+    highlights: [
+      shareAlternatives.length ? `已有同基金${shareClasses.join("/") || "替代"}份额，适合按持有期二选一。` : "",
+      exposureAlternatives.length ? `已有同类替代：${alternativeLabel}，需要比较费率、规模和流动性。` : "",
+      lowerCostAlternative ? "替代项里存在估算费用更低的选择，买入前应优先复核。" : ""
+    ].filter(Boolean),
+    risks: [
+      fee.highDrag ? "当前份额费用拖累偏高，长期持有可能不划算。" : "",
+      exposureAlternatives.length ? "同指数/同题材替代不是新的分散仓位，不能把多个壳当成多个机会。" : "",
+      fee.missingCritical ? "当前基金费用/份额关键证据仍不完整。" : "",
+      missingAlternativeFees ? "部分替代项缺费率或规模证据，不能直接切换。" : ""
+    ].filter(Boolean),
+    gaps: [
+      shareAlternatives.length ? "" : "缺同基金 A/C/D/I 份额比较",
+      exposureAlternatives.length ? "" : "缺同指数或同题材低费替代比较",
+      missingAlternativeFees ? "替代项缺完整费率/规模" : ""
+    ].filter(Boolean).slice(0, 3),
+    nextStep: "买入前必须写清最终选择的代码和份额类别；同基金和同类替代只保留一个代表，不混买A/C，也不把同类替代当新增推荐名额。"
+  };
+}
+
+function collectPortfolioReplacementShareClasses(alternatives = []) {
+  return [...new Set((alternatives || [])
+    .map((item) => String(item.shareClass || inferFundShareClass(item.name || "") || "").toUpperCase())
+    .filter(Boolean))]
+    .slice(0, 5);
+}
+
+function resolvePortfolioReplacementAlternativeCost(item = {}) {
+  const direct = finiteMetricNumber(
+    item.feeImpact?.oneYearCostPer10000
+    ?? item.oneYearCostPer10000
+    ?? item.oneYearCost
+  );
+  if (Number.isFinite(direct)) return direct;
+  const text = [
+    ...normalizeStringArray(item.feeNotes),
+    item.reason,
+    item.shareClassFeeModel?.selectionRule,
+    item.shareClassFeeModel?.label
+  ].filter(Boolean).join("；");
+  const match = text.match(/(?:每\s*(?:1)?万(?:元)?|1年|一年)[^0-9]{0,12}(\d+(?:\.\d+)?)\s*元/)
+    || text.match(/(\d+(?:\.\d+)?)\s*元[^，。；]{0,12}(?:每\s*(?:1)?万|1年|一年)/);
+  return match ? finiteMetricNumber(match[1]) : null;
+}
+
+function formatPortfolioReplacementAlternativeLabel(shareAlternatives = [], exposureAlternatives = []) {
+  const items = [...shareAlternatives, ...exposureAlternatives]
+    .map((item) => `${item.code || ""} ${item.name || ""}${item.shareClass ? ` ${item.shareClass}类` : ""}`.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  return items.join(" / ") || "替代项";
+}
+
+function buildPortfolioReplacementChoiceReason({ shareAlternatives = [], exposureAlternatives = [], lowerCostAlternative = false, fee = {} } = {}) {
+  if (lowerCostAlternative) return "同基金或同类替代里出现可能更低费率的选择，买入前应先选对产品壳和份额。";
+  if (fee.highDrag) return "当前份额费用拖累偏高，需要比较替代份额或同类低费产品后再买。";
+  if (shareAlternatives.length && exposureAlternatives.length) return "同时存在同基金份额和同类替代，必须先做优选，不能把替代项拆成多个推荐名额。";
+  if (shareAlternatives.length) return "存在同基金不同份额，必须按持有期和费用选择A/C/D/I之一，避免混买。";
+  if (exposureAlternatives.length) return "存在同指数或同题材替代，需要比较费率、规模、流动性和渠道后只保留一个代表。";
+  return "替代选择证据不足，买入前仍需补齐同类比较。";
+}
+
 function buildPortfolioOpportunityCostRanking(db = {}, watchlist = []) {
   const account = db.account || {};
   const totalAsset = Number(account.totalAsset || 0);
@@ -10211,6 +10371,7 @@ function buildPortfolioRankingPriorityQueue(lists = []) {
     portfolio_fit: 23,
     buy_preparation: 34,
     fee_suitability: 32,
+    replacement_choice: 25,
     decision_synthesis: 22,
     user_holding_alerts: 30,
     holdings_outlook: 24,
@@ -10264,6 +10425,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
   const portfolioFitItems = listById.get("portfolio_fit")?.items || [];
   const chaseItems = listById.get("chase_risk")?.items || [];
   const feeItems = listById.get("fee_suitability")?.items || [];
+  const replacementItems = listById.get("replacement_choice")?.items || [];
   const holdingsItems = listById.get("holdings_outlook")?.items || [];
   const riskAvoid = [
     ...synthesisItems.filter((item) => /回避/.test(item.action || "")),
@@ -10276,7 +10438,8 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
     ...positionSizingItems.filter((item) => /启动仓|小仓试探/.test(item.action || "")),
     ...qualityItems.filter((item) => /质量支撑/.test(item.action || "")),
     ...managerStabilityItems.filter((item) => /稳定主理/.test(item.action || "")),
-    ...portfolioFitItems.filter((item) => /组合补位|首仓适配/.test(item.action || ""))
+    ...portfolioFitItems.filter((item) => /组合补位|首仓适配/.test(item.action || "")),
+    ...replacementItems.filter((item) => /低费|优选/.test(item.action || ""))
   ]
     .filter((item) => item?.code && !riskAvoidCodes.has(item.code))
     .slice(0, 3);
@@ -10291,6 +10454,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
     ...managerStabilityItems,
     ...portfolioFitItems,
     ...feeItems,
+    ...replacementItems,
     ...holdingsItems
   ].filter((item) => item?.code && !usedCodes.has(item.code));
   const buyDigest = uniquePortfolioRankingDigestItems(buyReview).slice(0, 3).map((item) => buildPortfolioRankingDigestItem(item, "先交叉确认，再小仓或分批。"));
@@ -25486,6 +25650,7 @@ export {
   buildPortfolioManagerStabilityRanking,
   buildPortfolioFitRanking,
   buildPortfolioFeeSuitabilityRanking,
+  buildPortfolioReplacementChoiceRanking,
   buildPortfolioRotationOpportunityRanking,
   buildPortfolioChaseRiskRanking,
   buildPortfolioRankingPriorityQueue,
