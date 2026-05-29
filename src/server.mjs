@@ -1741,7 +1741,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "经理多角度榜单（系统计算，必须先看榜单再决定）：",
     JSON.stringify(compactManagerRankings, null, 2),
     "客户视角要求：回答客户时优先使用 customerDigest 里的可买复核、观察重点和回避提醒，先讲原因和动作，再补必要数字；不要把所有榜单指标原样堆给客户。",
-    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、cash_redeployment、rotation_opportunity、chase_risk、fee_suitability、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
+    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、cash_redeployment、portfolio_fit、rotation_opportunity、chase_risk、fee_suitability、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
     JSON.stringify((missedFollowThroughQueue || []).slice(0, 5), null, 2),
@@ -3691,7 +3691,7 @@ function inferPortfolioRankingBoardReviewAction(list = {}, item = {}) {
 function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = []) {
   const lists = Array.isArray(board?.lists) ? board.lists : [];
   const existingCodes = new Set((existingActions || []).map((action) => action.code).filter(Boolean));
-  const watchedListIds = new Set(["decision_synthesis", "buy_preparation", "launch_setup", "cash_redeployment", "rotation_opportunity", "chase_risk", "fee_suitability", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
+  const watchedListIds = new Set(["decision_synthesis", "buy_preparation", "launch_setup", "cash_redeployment", "portfolio_fit", "rotation_opportunity", "chase_risk", "fee_suitability", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
   const actions = [];
   for (const list of lists) {
     if (!watchedListIds.has(String(list?.id || ""))) continue;
@@ -3899,12 +3899,12 @@ function selectPortfolioRankingBoardEntryForAction(action = {}, entries = []) {
   if (!entries.length) return null;
   const actionText = String(action.action || "").toUpperCase();
   const preferredIds = actionText === "BUY"
-    ? ["buy_preparation", "cash_redeployment", "launch_setup", "decision_synthesis", "rotation_opportunity", "fee_suitability", "holdings_outlook", "opportunity_cost"]
+    ? ["buy_preparation", "cash_redeployment", "launch_setup", "portfolio_fit", "decision_synthesis", "rotation_opportunity", "fee_suitability", "holdings_outlook", "opportunity_cost"]
     : actionText === "SELL"
       ? ["sell_risk", "chase_risk", "decision_synthesis", "opportunity_cost"]
       : actionText === "HOLD"
         ? ["sell_risk", "decision_synthesis", "holdings_outlook", "chase_risk"]
-        : ["buy_preparation", "cash_redeployment", "launch_setup", "chase_risk", "decision_synthesis", "rotation_opportunity", "fee_suitability", "holdings_outlook"];
+        : ["buy_preparation", "cash_redeployment", "launch_setup", "portfolio_fit", "chase_risk", "decision_synthesis", "rotation_opportunity", "fee_suitability", "holdings_outlook"];
   return [...entries].sort((a, b) => {
     const aRank = preferredIds.indexOf(String(a.list?.id || ""));
     const bRank = preferredIds.indexOf(String(b.list?.id || ""));
@@ -8534,6 +8534,7 @@ function buildPortfolioRankingBoard(db = {}) {
     buildPortfolioBuyPreparationRanking(watchlist),
     buildPortfolioLaunchSetupRanking(watchlist),
     buildPortfolioCashRedeploymentRanking(db, watchlist),
+    buildPortfolioFitRanking(db, watchlist),
     buildPortfolioRotationOpportunityRanking(watchlist),
     buildPortfolioChaseRiskRanking(watchlist),
     buildPortfolioHoldingsOutlookRanking(watchlist),
@@ -8560,8 +8561,8 @@ function buildPortfolioRankingBoardHealth({ watchlist = [], positions = [], user
     return {
       level: "ok",
       title: "榜单已生成",
-      summary: `当前有 ${totalItems} 个可复核对象，经理可以按综合决策、买入、低位启动、现金再部署、板块轮动、追涨风险、持仓前景、费率适配、机会成本、卖出风险和用户持仓提醒分层处理。`,
-      actions: ["优先处理排名靠前项", "综合结论/买点/轮动/追涨/费率/持仓分开复核", "把用户真实持仓提醒放入每日跟踪"]
+      summary: `当前有 ${totalItems} 个可复核对象，经理可以按综合决策、买入、低位启动、现金再部署、组合适配、板块轮动、追涨风险、持仓前景、费率适配、机会成本、卖出风险和用户持仓提醒分层处理。`,
+      actions: ["优先处理排名靠前项", "综合结论/买点/组合适配/轮动/追涨/费率/持仓分开复核", "把用户真实持仓提醒放入每日跟踪"]
     };
   }
   if (!watchlist.length && !positions.length && !userPortfolios.length) {
@@ -8824,6 +8825,198 @@ function buildPortfolioCashRedeploymentRankingItem(item = {}, context = {}) {
       ? "今日操作必须给 BUY 小仓复核或明确风控拦截理由；若买入，只允许0.5%-2.5%启动仓。"
       : "下一次净值更新后复核缺口是否消失；若缺口消失，只允许0.5%-2.5%小仓试探，不能把它写成无限期等待。"
   });
+}
+
+function buildPortfolioFitRanking(db = {}, watchlist = []) {
+  const context = buildPortfolioFitContext(db);
+  const items = (watchlist || [])
+    .filter((item) => item?.code && ["ready", "waiting_pullback", "watch"].includes(item.status))
+    .map((item) => buildPortfolioFitRankingItem(item, context))
+    .filter(Boolean)
+    .sort(compareRankingItems)
+    .slice(0, 6);
+  return buildPortfolioRankingList({
+    id: "portfolio_fit",
+    title: "组合适配榜",
+    subtitle: "从当前持仓出发，看候选基金是补组合短板，还是同题材、同底层重复占用风险预算。",
+    emptyText: "暂无可判断组合适配度的候选。",
+    nextAction: "下一步把组合补位、同题材重叠和底层持仓重复作为买入前置复核，不再只按单只基金走势推荐。",
+    items
+  });
+}
+
+function buildPortfolioFitContext(db = {}) {
+  const positions = db.account?.positions || [];
+  const exposureSummary = buildPortfolioExposureSummary(positions);
+  const themeClusters = exposureSummary.themeClusters || [];
+  const holdingMap = new Map();
+  for (const position of positions || []) {
+    const fundLabel = `${position.code || ""} ${position.name || ""}`.trim();
+    for (const holding of collectPortfolioPositionHoldingItems(position)) {
+      const key = normalizePortfolioFitHoldingKey(holding);
+      if (!key) continue;
+      const current = holdingMap.get(key) || { holding, funds: [] };
+      current.funds = mergeStringLists(current.funds, [fundLabel].filter(Boolean)).slice(0, 5);
+      holdingMap.set(key, current);
+    }
+  }
+  return {
+    positions,
+    exposureSummary,
+    themeClusters,
+    holdingMap,
+    topTheme: themeClusters[0] || null
+  };
+}
+
+function buildPortfolioFitRankingItem(item = {}, context = {}) {
+  const tags = collectPortfolioWatchFitThemeTags(item);
+  const holdings = collectPortfolioWatchHoldingItems(item);
+  const relatedClusters = findPortfolioFitRelatedThemeClusters(tags, context.themeClusters || []);
+  const topRelated = relatedClusters[0] || null;
+  const overlappingHoldings = holdings
+    .map((holding) => ({ holding, match: context.holdingMap?.get(normalizePortfolioFitHoldingKey(holding)) }))
+    .filter((entry) => entry.match);
+  const readinessScore = Number(item.readinessScore || 0);
+  const trend = item.lastSnapshot?.trendProfile || {};
+  const return20d = finiteMetricNumber(trend.return20dPct);
+  const low120 = finiteMetricNumber(trend.lowPositionPct120);
+  const highChase = hasHighChaseTheme(item.lastSnapshot || item)
+    || (Number.isFinite(return20d) && return20d > 12 && Number.isFinite(low120) && low120 > 80);
+  const existingWeight = Number(topRelated?.positionWeightPct || 0);
+  const hasThemeEvidence = tags.length > 0;
+  const diversifies = hasThemeEvidence && (!topRelated || existingWeight < 8);
+  const overlapPenalty = overlappingHoldings.length ? Math.min(24, overlappingHoldings.length * 8) : 0;
+  const sameThemePenalty = existingWeight >= 25 ? 24 : existingWeight >= 18 ? 14 : existingWeight >= 8 ? 6 : 0;
+  const diversifyBonus = diversifies ? 24 : !topRelated && !context.positions?.length ? 12 : 0;
+  const score = Math.max(0, Math.min(100,
+    readinessScore * 0.45
+    + diversifyBonus
+    + (Number.isFinite(low120) && low120 <= 60 ? 8 : 0)
+    + (!highChase ? 8 : -18)
+    - sameThemePenalty
+    - overlapPenalty
+  ));
+  const shouldSurface = Boolean(hasThemeEvidence || holdings.length || topRelated || overlappingHoldings.length);
+  if (!shouldSurface) return null;
+  const action = highChase
+    ? "适配降温观察"
+    : overlappingHoldings.length || existingWeight >= 18
+      ? "同线重叠复核"
+      : diversifies
+        ? "组合补位复核"
+        : "适配观察";
+  const facts = [
+    tags.length ? `候选方向${tags.slice(0, 3).join("/")}` : "",
+    topRelated ? `已有${topRelated.theme}${formatFallbackPlainPct(topRelated.positionWeightPct)}` : context.positions?.length ? "组合暂无同线暴露" : "当前接近空仓",
+    overlappingHoldings.length ? `底层重叠${formatPortfolioFitHoldingList(overlappingHoldings)}` : "",
+    Number.isFinite(low120) ? `120日位置${round(low120, 1)}%` : ""
+  ].filter(Boolean);
+  return buildPortfolioRankingItem({
+    code: item.code,
+    name: item.name,
+    source: "组合适配",
+    score: round(score, 1),
+    action,
+    reason: buildPortfolioFitReason({ diversifies, topRelated, overlappingHoldings, highChase }),
+    facts,
+    decision: {
+      highlights: [
+        diversifies ? "能补当前组合未覆盖方向，适合进入买入前置复核。" : "",
+        !context.positions?.length ? "当前组合接近空仓，可作为首仓适配候选复核。" : "",
+        Number.isFinite(low120) && low120 <= 60 ? "位置不高，适合和买点榜交叉确认。" : ""
+      ].filter(Boolean),
+      risks: [
+        topRelated && existingWeight >= 18 ? `已有${topRelated.theme}暴露偏高，不能继续同线加仓。` : "",
+        overlappingHoldings.length ? `与持仓底层重复：${formatPortfolioFitHoldingList(overlappingHoldings)}。` : "",
+        highChase ? "组合适配不能覆盖追涨风险，需等降温。" : ""
+      ].filter(Boolean),
+      gaps: [
+        !tags.length ? "缺候选行业/题材标签" : "",
+        !holdings.length ? "缺前十大持仓穿透" : "",
+        highChase ? "缺追涨降温证据" : ""
+      ].filter(Boolean),
+      nextStep: overlappingHoldings.length || existingWeight >= 18
+        ? "先和追涨风险、持仓前景、同题材暴露交叉复核；重叠未解除前不得作为主买入。"
+        : "和买入准备、低位启动、费率适配交叉确认；若通过，只按0.5%-2.5%小仓补位。"
+    },
+    status: highChase ? "warning" : diversifies ? "ready" : item.status || "watch"
+  });
+}
+
+function buildPortfolioFitReason({ diversifies = false, topRelated = null, overlappingHoldings = [], highChase = false } = {}) {
+  if (highChase) return "候选可能能补组合方向，但追涨或高位风险未解除，暂时只能降温观察。";
+  if (overlappingHoldings.length) return "候选与已有持仓存在底层重复，买入前必须证明不是重复占用同一风险。";
+  if (topRelated && Number(topRelated.positionWeightPct || 0) >= 18) return "组合中同题材暴露已经偏高，新增同线基金必须先通过严格复核。";
+  if (diversifies) return "候选能补当前组合未覆盖或低暴露方向，适合放入买入前置复核。";
+  if (!topRelated) return "当前组合未见明显同线暴露，但候选仍需补齐买点、费用和持仓证据。";
+  return "候选与组合已有方向有一定关联，需要确认是补位而不是重复加仓。";
+}
+
+function collectPortfolioWatchFitThemeTags(item = {}) {
+  const profile = item.lastSnapshot || {};
+  const outlook = profile.holdingsOutlook || profile.actionability?.holdingsOutlook || {};
+  const matchedThemes = [
+    ...(profile.matchedThemes || []),
+    ...(profile.seed?.matchedThemes || []),
+    ...(item.matchedThemes || [])
+  ];
+  const holdings = collectPortfolioWatchHoldingItems(item);
+  const text = mergeStringLists(
+    [item.name, item.type, item.reason, profile.name, profile.type, profile.seed?.name],
+    item.setupEvidence,
+    item.buyTriggers,
+    item.riskNotes,
+    outlook.holdingTags,
+    outlook.matchedTags,
+    matchedThemes.flatMap((theme) => [theme.name, theme.id]),
+    holdings.map((holding) => `${holding.code || ""} ${holding.name || ""} ${holding.text || ""}`)
+  ).join(" ");
+  return [...new Set([
+    ...matchedThemes.flatMap((theme) => [theme.name, theme.id]).filter(Boolean),
+    ...normalizeStringArray(outlook.holdingTags),
+    ...normalizeStringArray(outlook.matchedTags),
+    ...inferHoldingThemeTags(text)
+  ].map(normalizePortfolioFitThemeLabel).filter(Boolean))].slice(0, 6);
+}
+
+function collectPortfolioWatchHoldingItems(item = {}) {
+  const profile = item.lastSnapshot || {};
+  const source = Array.isArray(profile.topHoldings) && profile.topHoldings.length
+    ? profile.topHoldings
+    : profile.holdings?.equityTopHoldings?.length
+      ? profile.holdings.equityTopHoldings
+      : profile.holdings?.bondTopHoldings?.length
+        ? profile.holdings.bondTopHoldings
+        : profile.actionability?.holdingsOutlook?.topHoldings || profile.holdingsOutlook?.topHoldings || [];
+  return normalizeHoldingItems(source).slice(0, 10);
+}
+
+function findPortfolioFitRelatedThemeClusters(tags = [], clusters = []) {
+  return (clusters || [])
+    .filter((cluster) => tags.some((tag) => areThemeTermsRelated(tag, cluster.theme)))
+    .sort((a, b) => Number(b.positionWeightPct || 0) - Number(a.positionWeightPct || 0));
+}
+
+function normalizePortfolioFitThemeLabel(value = "") {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const matched = HOLDING_THEME_GROUPS.find((group) => group.some((term) => text.includes(term)));
+  return matched?.[0] || text;
+}
+
+function normalizePortfolioFitHoldingKey(holding = {}) {
+  const code = String(holding.code || "").trim();
+  const name = String(holding.name || "").trim();
+  return code || name;
+}
+
+function formatPortfolioFitHoldingList(entries = []) {
+  return entries
+    .slice(0, 3)
+    .map((entry) => [entry.holding?.code, entry.holding?.name].filter(Boolean).join(" ") || entry.holding?.text || "")
+    .filter(Boolean)
+    .join("、");
 }
 
 function buildPortfolioRotationOpportunityRanking(watchlist = []) {
@@ -9555,6 +9748,7 @@ function buildPortfolioRankingPriorityQueue(lists = []) {
     cash_redeployment: 39,
     opportunity_cost: 38,
     rotation_opportunity: 36,
+    portfolio_fit: 23,
     buy_preparation: 34,
     fee_suitability: 32,
     decision_synthesis: 22,
@@ -9604,6 +9798,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
   const listById = new Map((lists || []).map((list) => [list.id, list]));
   const synthesisItems = listById.get("decision_synthesis")?.items || [];
   const cashRedeploymentItems = listById.get("cash_redeployment")?.items || [];
+  const portfolioFitItems = listById.get("portfolio_fit")?.items || [];
   const chaseItems = listById.get("chase_risk")?.items || [];
   const feeItems = listById.get("fee_suitability")?.items || [];
   const holdingsItems = listById.get("holdings_outlook")?.items || [];
@@ -9614,7 +9809,8 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
   const riskAvoidCodes = new Set(riskAvoid.map((item) => item.code).filter(Boolean));
   const buyReview = [
     ...synthesisItems.filter((item) => /优先买入|小仓试探/.test(item.action || "")),
-    ...cashRedeploymentItems.filter((item) => /再部署|买入复核|试探/.test(item.action || ""))
+    ...cashRedeploymentItems.filter((item) => /再部署|买入复核|试探/.test(item.action || "")),
+    ...portfolioFitItems.filter((item) => /组合补位|首仓适配/.test(item.action || ""))
   ]
     .filter((item) => item?.code && !riskAvoidCodes.has(item.code))
     .slice(0, 3);
@@ -9624,6 +9820,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
   ]);
   const watchFocus = [
     ...synthesisItems.filter((item) => !/优先买入|小仓试探|回避/.test(item.action || "")),
+    ...portfolioFitItems,
     ...feeItems,
     ...holdingsItems
   ].filter((item) => item?.code && !usedCodes.has(item.code));
@@ -24815,6 +25012,7 @@ export {
   buildPortfolioRankingBoardReviewActions,
   buildPortfolioDecisionSynthesisRanking,
   buildPortfolioCashRedeploymentRanking,
+  buildPortfolioFitRanking,
   buildPortfolioFeeSuitabilityRanking,
   buildPortfolioRotationOpportunityRanking,
   buildPortfolioChaseRiskRanking,
