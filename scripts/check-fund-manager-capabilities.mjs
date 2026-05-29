@@ -1230,12 +1230,16 @@ assert(adminSource.includes("renderManagerPriorityQueue"), "admin UI must render
 assert(adminSource.includes("renderManagerRankingOverview"), "admin UI must render ranking board overview cards before detailed lists");
 assert(adminSource.includes("setManagerRankingFilter"), "admin UI must allow focusing one manager ranking lane from overview cards");
 assert(adminSource.includes("data-ranking-filter"), "admin UI ranking overview cards must work as compact filters");
+assert(adminSource.includes("focusWatchlistFund"), "admin UI customer digest must jump from ranking advice to watchlist fund details");
+assert(adminSource.includes("data-focus-watchlist-code"), "admin UI customer digest items must expose a watchlist focus action");
+assert(adminSource.includes("data-watchlist-code"), "admin UI watchlist cards must be addressable from ranking digest items");
 assert(adminSource.includes("decision_synthesis"), "admin UI must render the decision-synthesis ranking lane");
 assert(adminSource.includes("rotation_opportunity"), "admin UI must render the sector-rotation ranking lane");
 assert(adminSource.includes("chase_risk"), "admin UI must render the chase-risk ranking lane");
 assert(adminSource.includes("fee_suitability"), "admin UI must render the fee-suitability ranking lane");
 assert(adminStyleSource.includes("ranking-list.is-filtered-out"), "admin UI must hide non-focused ranking lists when a ranking filter is active");
 assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must style customer-facing ranking digest as a first-class panel");
+assert(adminStyleSource.includes("focused-from-ranking"), "admin UI must highlight watchlist cards opened from customer digest items");
 assert(adminStyleSource.includes("ranking-overview-synthesis"), "admin UI must visually distinguish decision-synthesis overview cards");
 assert(adminStyleSource.includes("ranking-overview-rotation"), "admin UI must visually distinguish sector-rotation overview cards");
 assert(adminStyleSource.includes("ranking-overview-chase"), "admin UI must visually distinguish chase-risk overview cards");

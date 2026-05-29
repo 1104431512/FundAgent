@@ -73,6 +73,11 @@ document.querySelector("#userPortfolioList")?.addEventListener("click", (event) 
   }
 });
 document.querySelector("#managerRankingBoard")?.addEventListener("click", (event) => {
+  const focusButton = event.target.closest("[data-focus-watchlist-code]");
+  if (focusButton) {
+    focusWatchlistFund(focusButton.dataset.focusWatchlistCode || "");
+    return;
+  }
   const filterButton = event.target.closest("[data-ranking-filter]");
   if (filterButton) {
     const nextFilter = filterButton.dataset.rankingFilter || "";
@@ -459,12 +464,16 @@ function renderManagerCustomerDigestGroup(group, items = []) {
 
 function renderManagerCustomerDigestItem(item = {}) {
   const tags = Array.isArray(item.tags) ? item.tags : [];
+  const code = String(item.code || "").trim();
   return `
     <article>
-      <strong>${escapeHtml(item.code || "")} ${escapeHtml(item.name || "")}</strong>
+      <strong>${escapeHtml(code)} ${escapeHtml(item.name || "")}</strong>
       <p>${escapeHtml(item.reason || item.action || "等待复核。")}</p>
       ${tags.length ? `<div>${tags.slice(0, 3).map((tag) => `<em>${escapeHtml(tag)}</em>`).join("")}</div>` : ""}
-      <small>${escapeHtml(item.nextStep || "下一轮继续复核。")}</small>
+      <div class="ranking-customer-foot">
+        <small>${escapeHtml(item.nextStep || "下一轮继续复核。")}</small>
+        ${code ? `<button type="button" class="ranking-customer-focus" data-focus-watchlist-code="${escapeHtml(code)}">查看自选池</button>` : ""}
+      </div>
     </article>
   `;
 }
@@ -533,6 +542,29 @@ function setManagerRankingFilter(rankingId = "") {
     const visible = !activeManagerRankingFilter || section.dataset.rankingId === activeManagerRankingFilter;
     section.classList.toggle("is-filtered-out", !visible);
   });
+}
+
+function focusWatchlistFund(code = "") {
+  const normalizedCode = String(code || "").trim();
+  if (!normalizedCode) return;
+  activateTab("portfolio");
+  const cards = [...document.querySelectorAll("[data-watchlist-code]")];
+  const target = cards.find((card) => card.dataset.watchlistCode === normalizedCode);
+  if (!target) {
+    showToast(`自选池暂未找到 ${normalizedCode}`);
+    return;
+  }
+  document.querySelectorAll(".focused-from-ranking").forEach((card) => card.classList.remove("focused-from-ranking"));
+  if ("open" in target) {
+    target.open = true;
+  }
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  target.classList.add("focused-from-ranking");
+  clearTimeout(focusWatchlistFund.timer);
+  focusWatchlistFund.timer = setTimeout(() => {
+    target.classList.remove("focused-from-ranking");
+  }, 4200);
+  showToast(`已定位到 ${normalizedCode} 自选池详情`);
 }
 
 function renderManagerRankingList(list = {}) {
@@ -1439,7 +1471,7 @@ function renderWatchlistItem(item) {
   const facts = renderWatchlistFactStrip(item, snapshot);
   const holdings = renderHoldingChips(getSnapshotTopHoldings(snapshot), "持仓看点");
   return `
-    <details class="fund-card watchlist-fund-card">
+    <details class="fund-card watchlist-fund-card" data-watchlist-code="${escapeHtml(item.code || "")}">
       <summary class="fund-card-summary">
         <div class="fund-card-title">
           <strong>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</strong>

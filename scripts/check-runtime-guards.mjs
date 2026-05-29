@@ -2309,6 +2309,14 @@ const requiredPatterns = [
     message: "admin manager ranking overview cards must focus one ranking lane and hide non-focused lists."
   },
   {
+    pattern: /focusWatchlistFund[\s\S]{0,1400}data-watchlist-code[\s\S]{0,1400}focused-from-ranking/,
+    message: "admin customer digest must jump to, open, and highlight matching watchlist fund cards."
+  },
+  {
+    pattern: /renderManagerCustomerDigestItem[\s\S]{0,1200}data-focus-watchlist-code[\s\S]{0,1200}查看自选池/,
+    message: "admin customer digest items must expose a direct watchlist detail action."
+  },
+  {
     pattern: /getManagerRankingActionClass[\s\S]{0,900}卖出[\s\S]{0,900}综合[\s\S]{0,900}追涨[\s\S]{0,900}轮动[\s\S]{0,900}买入[\s\S]{0,900}持仓[\s\S]{0,900}费用[\s\S]{0,900}机会[\s\S]{0,900}观察/,
     message: "admin ranking items must visually distinguish synthesis, buy, chase-risk, sector-rotation, holdings-outlook, fee-suitability, opportunity-cost, watch, and sell style actions."
   },
