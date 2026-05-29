@@ -1565,8 +1565,20 @@ const requiredPatterns = [
     message: "portfolio operation status replies must summarize the latest decision as customer action lines instead of pasting a daily report excerpt."
   },
   {
+    pattern: /function buildPortfolioTodayOperationStatusLines[\s\S]{0,900}今日成交简版[\s\S]{0,700}formatPortfolioCustomerTransactionLine[\s\S]{0,900}formatPortfolioTransactionDetailStatusLine/,
+    message: "portfolio today-operation status replies must use customer-readable transaction summaries by default while preserving explicit detail mode."
+  },
+  {
+    pattern: /function buildPortfolioActiveOrderStatusLines[\s\S]{0,900}订单简版[\s\S]{0,700}formatPortfolioCustomerOrderLine[\s\S]{0,900}formatPortfolioOrderDetailStatusLine/,
+    message: "portfolio active-order status replies must use customer-readable order flow summaries by default while preserving explicit detail mode."
+  },
+  {
     pattern: /buildPortfolioStatusAnswer[\s\S]{0,6400}buildPortfolioRecentDecisionStatusLines\(recentDecision/,
     message: "portfolio status answers must route recent decisions through the compact action-summary formatter."
+  },
+  {
+    pattern: /buildPortfolioStatusAnswer[\s\S]{0,6800}buildPortfolioTodayOperationStatusLines[\s\S]{0,600}compact:\s*!wantsOperation[\s\S]{0,900}buildPortfolioActiveOrderStatusLines[\s\S]{0,600}compact:\s*!wantsOperation/,
+    message: "portfolio status answers must reserve raw transaction and order fields for explicit operation questions."
   },
   {
     pattern: /^(?=[\s\S]*buildPortfolioRecentDecisionStatusLines)(?![\s\S]*recentDecision\.card\.split\("\\n"\)\.slice)/,

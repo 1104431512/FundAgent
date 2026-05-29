@@ -2163,6 +2163,54 @@ assert(compactDecisionLines.includes("卖出 008327 东财通信C"), "recent dec
 assert(compactDecisionLines.includes("榜单："), "recent decision status must keep ranking basis in compact actions");
 assert(compactDecisionLines.includes("完整推演：后台"), "recent decision status must point full report readers to the timeline");
 assert(!compactDecisionLines.includes("投委会意见：这里是很长的日报原文"), "recent decision status must not paste raw report sections into customer replies");
+const compactOperationLines = manager.buildPortfolioTodayOperationStatusLines({
+  today: todayIso,
+  transactions: [
+    {
+      date: todayIso,
+      side: "SELL",
+      code: "008327",
+      name: "东财通信C",
+      amount: 8024.95,
+      nav: 1.1988,
+      units: 6694.3,
+      reason: "高位通信链减仓复核。"
+    }
+  ]
+}, { compact: true }).join("\n");
+assert(compactOperationLines.includes("今日成交简版："), "default today-operation status must label compact transaction summaries");
+assert(compactOperationLines.includes("卖出 008327 东财通信C"), "compact today-operation status must use customer-readable transaction lines");
+assert(!compactOperationLines.includes("净值1.1988"), "compact today-operation status must not dump NAV fields by default");
+assert(!compactOperationLines.includes("份额6694.3"), "compact today-operation status must not dump units by default");
+const detailOperationLines = manager.buildPortfolioTodayOperationStatusLines({
+  today: todayIso,
+  transactions: [
+    { date: todayIso, side: "SELL", code: "008327", name: "东财通信C", amount: 8024.95, nav: 1.1988, units: 6694.3, reason: "高位通信链减仓复核。" }
+  ]
+}, { compact: false }).join("\n");
+assert(detailOperationLines.includes("净值1.1988"), "explicit operation status must still expose transaction NAV");
+assert(detailOperationLines.includes("份额6694.3"), "explicit operation status must still expose transaction units");
+const compactOrderLines = manager.buildPortfolioActiveOrderStatusLines([
+  {
+    side: "SELL",
+    code: "008327",
+    name: "东财通信C",
+    amount: 8024.95,
+    status: "submitted",
+    priceDate: todayIso,
+    confirmDate: "2026-05-26",
+    settlementDate: "2026-05-29",
+    scheduleReason: "15:00 前提交，按当日估值日排队。"
+  }
+], { compact: true }).join("\n");
+assert(compactOrderLines.includes("订单简版："), "default active-order status must label compact order-flow summaries");
+assert(compactOrderLines.includes("卖出 008327 东财通信C"), "compact active-order status must use customer-readable order lines");
+assert(!compactOrderLines.includes("估值日 2026"), "compact active-order status must not dump raw valuation-date fields by default");
+const detailOrderLines = manager.buildPortfolioActiveOrderStatusLines([
+  { side: "SELL", code: "008327", name: "东财通信C", amount: 8024.95, status: "submitted", priceDate: todayIso, confirmDate: "2026-05-26", settlementDate: "2026-05-29" }
+], { compact: false }).join("\n");
+assert(detailOrderLines.includes("估值日 "), "explicit active-order status must still expose valuation date");
+assert(detailOrderLines.includes("确认日 2026-05-26"), "explicit active-order status must still expose confirmation date");
 const workflowWatchlistInput = [
   {
     ...normalizedWatchDb.watchlist[0],

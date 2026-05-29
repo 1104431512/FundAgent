@@ -8097,6 +8097,61 @@ function buildPortfolioRecentDecisionStatusLines(run = {}, options = {}) {
   return lines;
 }
 
+function buildPortfolioTodayOperationStatusLines({ today = "", transactions = [], recentDecision = null } = {}, options = {}) {
+  const compact = Boolean(options.compact);
+  const limit = Math.max(1, Number(options.limit || (compact ? 4 : 8)));
+  const lines = [`今日操作 ${today}：`];
+  const values = Array.isArray(transactions) ? transactions : [];
+  if (values.length) {
+    if (compact) {
+      lines.push("今日成交简版：先看动作含义，净值、份额和完整流水可在后台订单终端展开。");
+    }
+    for (const item of values.slice(0, limit)) {
+      lines.push(compact ? `- ${formatPortfolioCustomerTransactionLine(item)}` : formatPortfolioTransactionDetailStatusLine(item));
+    }
+    if (values.length > limit) {
+      lines.push(`还有 ${values.length - limit} 笔成交可在后台订单终端查看。`);
+    }
+  } else if (recentDecision?.date === today) {
+    lines.push("今天已生成投委会决策，但买入/卖出需要经过申购/赎回申请、估值日净值、确认日，不会下单即成交。");
+  } else {
+    lines.push("今天还没有生成新的买入/卖出流水。可以在后台“虚拟组合”页点击“生成今日操作”，或等定时任务自动运行。");
+  }
+  return lines;
+}
+
+function buildPortfolioActiveOrderStatusLines(orders = [], options = {}) {
+  const values = Array.isArray(orders) ? orders : [];
+  if (!values.length) return [];
+  const compact = Boolean(options.compact);
+  const limit = Math.max(1, Number(options.limit || (compact ? 4 : 8)));
+  const lines = ["待处理订单："];
+  if (compact) {
+    lines.push("订单简版：只看还在确认还是等待到账；完整估值日、确认日和金额可在后台订单终端展开。");
+  }
+  for (const order of values.slice(0, limit)) {
+    lines.push(compact ? `- ${formatPortfolioCustomerOrderLine(order)}` : formatPortfolioOrderDetailStatusLine(order));
+  }
+  if (values.length > limit) {
+    lines.push(`还有 ${values.length - limit} 笔待处理订单可在后台订单终端查看。`);
+  }
+  return lines;
+}
+
+function formatPortfolioTransactionDetailStatusLine(item = {}) {
+  const tradeDetail = [
+    `${item.side} ${item.code || ""} ${item.name || ""} ${item.amount}元`,
+    item.nav ? `净值${item.nav}` : "",
+    item.units ? `份额${item.units}` : ""
+  ].filter(Boolean).join("，");
+  return `${tradeDetail}：${item.reason || "见当日投委会记录"}`;
+}
+
+function formatPortfolioOrderDetailStatusLine(order = {}) {
+  return `${order.side} ${order.code} ${order.name} ${order.amount}元：${order.status}，估值日 ${order.priceDate}，确认日 ${order.confirmDate}` +
+    `${order.settlementDate ? `，到账日 ${order.settlementDate}` : ""}`;
+}
+
 function buildPortfolioWatchlistStatusLines(watchlist = [], options = {}) {
   const normalized = normalizePortfolioWatchlist(watchlist).filter((item) => item.status !== "removed");
   if (!normalized.length) return ["暂无自选基金。"];
@@ -8622,32 +8677,22 @@ function buildPortfolioStatusAnswer(userText, intent) {
 
   if (wantsOperation || todayRuns.length || todayTransactions.length) {
     lines.push("");
-    lines.push(`今日操作 ${today}：`);
-    if (todayTransactions.length) {
-      for (const item of todayTransactions) {
-        const tradeDetail = [
-          `${item.side} ${item.code || ""} ${item.name || ""} ${item.amount}元`,
-          item.nav ? `净值${item.nav}` : "",
-          item.units ? `份额${item.units}` : ""
-        ].filter(Boolean).join("，");
-        lines.push(`${tradeDetail}：${item.reason || "见当日投委会记录"}`);
-      }
-    } else if (recentDecision?.date === today) {
-      lines.push("今天已生成投委会决策，但买入/卖出需要经过申购/赎回申请、估值日净值、确认日，不会下单即成交。");
-    } else {
-      lines.push("今天还没有生成新的买入/卖出流水。可以在后台“虚拟组合”页点击“生成今日操作”，或等定时任务自动运行。");
-    }
+    lines.push(...buildPortfolioTodayOperationStatusLines({
+      today,
+      transactions: todayTransactions,
+      recentDecision
+    }, {
+      compact: !wantsOperation,
+      limit: wantsOperation ? 8 : 4
+    }));
 
     const activeOrders = (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status));
     if (activeOrders.length) {
       lines.push("");
-      lines.push("待处理订单：");
-      for (const order of activeOrders.slice(0, 8)) {
-        lines.push(
-          `${order.side} ${order.code} ${order.name} ${order.amount}元：${order.status}，估值日 ${order.priceDate}，确认日 ${order.confirmDate}` +
-            `${order.settlementDate ? `，到账日 ${order.settlementDate}` : ""}`
-        );
-      }
+      lines.push(...buildPortfolioActiveOrderStatusLines(activeOrders, {
+        compact: !wantsOperation,
+        limit: wantsOperation ? 8 : 4
+      }));
     }
 
     if (recentDecision) {
@@ -27001,8 +27046,10 @@ export {
   buildPortfolioCapabilityActionQueue,
   buildPortfolioDecisionCard,
   buildPortfolioDecisionReadinessQueue,
+  buildPortfolioActiveOrderStatusLines,
   buildPortfolioRedeploymentPlan,
   buildPortfolioRecentDecisionStatusLines,
+  buildPortfolioTodayOperationStatusLines,
   buildPortfolioExposureSummary,
   buildPortfolioManagerProfileContext,
   buildPortfolioMissedFollowThroughReviewQueue,
