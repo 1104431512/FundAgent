@@ -408,7 +408,7 @@
                   <div class="panel-head tight">
                     <div>
                       <h2>虚拟运行台</h2>
-                      <p>把盘前、今日操作、晚间估值和周总结拆成独立入口；左侧发起任务，右侧只看当前状态、最近结论和下一步。</p>
+                      <p>任务、结论、执行和原始状态分入口查看。</p>
                     </div>
                     <span id="portfolioRunConsoleState" class="badge">待运行</span>
                   </div>
@@ -422,7 +422,25 @@
                       <button id="prunePortfolioBtn" type="button" class="run-task-button secondary"><b>清理数据</b><small>归档过期记录</small></button>
                     </aside>
                     <div class="run-console-stage">
-                      <div id="portfolioRunConsoleSummary" class="run-console-grid"></div>
+                      <nav class="runner-workspace-switcher" aria-label="运行台入口">
+                        <button type="button" class="active" data-runner-view-target="control"><b>任务控制</b><small>现在做什么</small><span id="runnerNavControlCount">待运行</span></button>
+                        <button type="button" data-runner-view-target="latest"><b>最新结论</b><small>经理判断</small><span id="runnerNavLatestCount">0</span></button>
+                        <button type="button" data-runner-view-target="execution"><b>执行流转</b><small>订单/净值</small><span id="runnerNavExecutionCount">0</span></button>
+                        <button type="button" data-runner-view-target="raw"><b>原始状态</b><small>调试摘要</small><span id="runnerNavRawCount">摘要</span></button>
+                      </nav>
+                      <section class="runner-workspace-view active" data-runner-view="control">
+                        <div id="portfolioRunCommandStrip" class="run-command-strip"></div>
+                        <div id="portfolioRunConsoleSummary" class="run-console-grid"></div>
+                      </section>
+                      <section class="runner-workspace-view" data-runner-view="latest">
+                        <div id="portfolioRunLatestBoard" class="runner-latest-board"></div>
+                      </section>
+                      <section class="runner-workspace-view" data-runner-view="execution">
+                        <div id="portfolioRunExecutionBoard" class="runner-execution-board"></div>
+                      </section>
+                      <section class="runner-workspace-view" data-runner-view="raw">
+                        <pre id="portfolioRunOutput" class="output compact runner-output"></pre>
+                      </section>
                     </div>
                   </div>
                 </div>
@@ -775,6 +793,6 @@
     </div>
 
     <div id="toast" class="toast hidden"></div>
-    <script src="/public/admin.js?v=20260530-terminal2"></script>
+    <script src="/public/admin.js?v=20260530-runner-terminal"></script>
   </body>
 </html>

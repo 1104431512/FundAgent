@@ -481,6 +481,8 @@ assert(Object.prototype.hasOwnProperty.call(runtimeRelease, "shortCommit"), "run
 assert(serverSource.includes("release: getRuntimeRelease()"), "health/stats APIs must expose runtime release metadata");
 assert(serverSource.includes("readBuildReleaseMetadata") && serverSource.includes(".fundagent-release.json"), "runtime release metadata must fall back to a Docker build release file");
 assert(adminSource.includes("formatReleaseCommit") && adminHtmlSource.includes("runtimeReleaseBoard"), "admin runtime UI must show the deployed commit");
+assert(adminHtmlSource.includes('data-runner-view-target="latest"') && adminSource.includes("setPortfolioRunnerView"), "admin virtual runner must split task control, latest conclusion, execution, and raw status into dedicated entries");
+assert(adminSource.includes("renderPortfolioRunCommandStrip") && adminStyleSource.includes(".runner-workspace-switcher"), "admin virtual runner must keep the first action and internal entries above long run details");
 assert(serverSource.includes('url.pathname === "/api/deployment"') && serverSource.includes("getDeploymentFreshness"), "admin API must expose deployment freshness checks");
 assert(serverSource.includes("api.github.com/repos") && serverSource.includes("部署落后"), "deployment freshness must compare runtime commit with the latest GitHub branch commit");
 assert(adminSource.includes('apiFetch("/api/deployment"') && adminSource.includes("formatDeploymentStatus"), "admin runtime UI must render a deployment freshness status card");

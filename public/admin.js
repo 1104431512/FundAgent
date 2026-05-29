@@ -18,6 +18,7 @@ let activePortfolioView = "overview";
 let activeRuntimeView = "overview";
 let activePortfolioOrderView = "active";
 let activePortfolioDiagnosticView = "capability";
+let activePortfolioRunnerView = "control";
 let activePortfolioRunKey = "";
 let activePortfolioRunPanel = "brief";
 let portfolioTimelineFullLoaded = false;
@@ -118,6 +119,7 @@ setRuntimeView(localStorage.getItem("fundagent_runtime_view") || activeRuntimeVi
 setPortfolioView(localStorage.getItem("fundagent_portfolio_view") || activePortfolioView);
 setPortfolioOrderView(localStorage.getItem("fundagent_portfolio_order_view") || activePortfolioOrderView);
 setPortfolioDiagnosticView(localStorage.getItem("fundagent_portfolio_diagnostic_view") || activePortfolioDiagnosticView);
+setPortfolioRunnerView(localStorage.getItem("fundagent_portfolio_runner_view") || activePortfolioRunnerView);
 
 document.querySelector("#saveTokenBtn").addEventListener("click", () => {
   localStorage.setItem("fundagent_admin_token", adminTokenInput.value.trim());
@@ -178,6 +180,9 @@ document.querySelector("[data-panel='portfolio']")?.addEventListener("click", (e
   const runPanelButton = event.target.closest("[data-run-panel]");
   if (runPanelButton) {
     activePortfolioRunPanel = runPanelButton.dataset.runPanel || "brief";
+    if (runPanelButton.dataset.portfolioViewTarget) {
+      setPortfolioView(runPanelButton.dataset.portfolioViewTarget);
+    }
     renderRuns(currentPortfolio?.recentRuns || []);
     if (activePortfolioRunPanel === "report") {
       ensurePortfolioTimelineDetails().catch(showError);
@@ -204,6 +209,11 @@ document.querySelector("[data-panel='portfolio']")?.addEventListener("click", (e
   const diagnosticViewButton = event.target.closest("[data-diagnostic-view-target]");
   if (diagnosticViewButton) {
     setPortfolioDiagnosticView(diagnosticViewButton.dataset.diagnosticViewTarget || "capability");
+    return;
+  }
+  const runnerViewButton = event.target.closest("[data-runner-view-target]");
+  if (runnerViewButton) {
+    setPortfolioRunnerView(runnerViewButton.dataset.runnerViewTarget || "control");
     return;
   }
   const rankingFilterButton = event.target.closest("[data-open-ranking-filter]");
@@ -327,6 +337,20 @@ function setPortfolioDiagnosticView(view = "capability") {
   });
   document.querySelectorAll("[data-diagnostic-view]").forEach((section) => {
     section.classList.toggle("active", section.dataset.diagnosticView === nextView);
+  });
+}
+
+function setPortfolioRunnerView(view = "control") {
+  const nextView = document.querySelector(`[data-runner-view="${view}"]`) ? view : "control";
+  activePortfolioRunnerView = nextView;
+  localStorage.setItem("fundagent_portfolio_runner_view", nextView);
+  document.querySelectorAll("[data-runner-view-target]").forEach((button) => {
+    const active = button.dataset.runnerViewTarget === nextView;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  document.querySelectorAll("[data-runner-view]").forEach((section) => {
+    section.classList.toggle("active", section.dataset.runnerView === nextView);
   });
 }
 
@@ -2461,6 +2485,10 @@ function updateRunStateBadge(latestRun, scheduler = {}) {
 function renderPortfolioRunConsole(portfolio = {}, latestRun = null, context = {}) {
   const root = document.querySelector("#portfolioRunConsoleSummary");
   if (!root) return;
+  const commandRoot = document.querySelector("#portfolioRunCommandStrip");
+  const latestRoot = document.querySelector("#portfolioRunLatestBoard");
+  const executionRoot = document.querySelector("#portfolioRunExecutionBoard");
+  const outputRoot = document.querySelector("#portfolioRunOutput");
   const scheduler = portfolio.scheduler || {};
   const status = scheduler.inFlight ? "running" : latestRun?.status || "idle";
   const label = {
@@ -2480,6 +2508,14 @@ function renderPortfolioRunConsole(portfolio = {}, latestRun = null, context = {
   const activeOrders = Array.isArray(context.activeOrders) ? context.activeOrders : [];
   const transactions = Array.isArray(context.transactions) ? context.transactions : [];
   const equity = Array.isArray(context.equity) ? context.equity : [];
+  const executionCount = activeOrders.length + transactions.length + equity.length;
+  setText("#runnerNavControlCount", scheduler.inFlight ? "运行中" : portfolio.enabled ? "启用" : "停用");
+  setText("#runnerNavLatestCount", latestRun ? "1" : "0");
+  setText("#runnerNavExecutionCount", String(executionCount));
+  setText("#runnerNavRawCount", portfolio.lightweight ? "摘要" : "完整");
+  if (commandRoot) {
+    commandRoot.innerHTML = renderPortfolioRunCommandStrip({ portfolio, latestRun, scheduler, status, label, activeOrders, runs });
+  }
   const cards = [
     {
       label: "当前任务",
@@ -2526,6 +2562,137 @@ function renderPortfolioRunConsole(portfolio = {}, latestRun = null, context = {
       <button type="button" class="secondary" data-portfolio-view-target="${escapeHtml(card.target || "timeline")}">${escapeHtml(card.action || "查看")}</button>
     </article>
   `).join("");
+  if (latestRoot) {
+    latestRoot.innerHTML = renderPortfolioRunLatestBoard(latestRun);
+  }
+  if (executionRoot) {
+    executionRoot.innerHTML = renderPortfolioRunExecutionBoard({ activeOrders, transactions, equity });
+  }
+  if (outputRoot) {
+    outputRoot.textContent = formatPortfolioOutput(portfolio);
+  }
+}
+
+function renderPortfolioRunCommandStrip({ portfolio = {}, latestRun = null, scheduler = {}, status = "idle", label = "待运行", activeOrders = [], runs = [] } = {}) {
+  const nextAction = scheduler.inFlight
+    ? "等待后台任务完成"
+    : activeOrders.length
+      ? "先复核订单"
+      : latestRun
+        ? "查看最近结论"
+        : "先运行盘前观察";
+  const tone = status === "failed" || status === "interrupted" ? "bad" : status === "running" ? "warn" : "ok";
+  return `
+    <div class="run-command-main ${tone}">
+      <span>运行指挥</span>
+      <strong>${escapeHtml(nextAction)}</strong>
+      <small>${escapeHtml(scheduler.inFlight ? `本轮开始 ${formatDateTime(scheduler.activeRunStartedAt)}` : latestRun?.summary || formatPortfolioSchedule(portfolio))}</small>
+    </div>
+    <div class="run-command-facts">
+      <span><b>${escapeHtml(label)}</b><small>当前状态</small></span>
+      <span><b>${escapeHtml(String(activeOrders.length))}</b><small>待确认</small></span>
+      <span><b>${escapeHtml(String(runs.length))}</b><small>运行记录</small></span>
+    </div>
+    <div class="run-command-actions">
+      <button type="button" data-runner-view-target="latest">看结论</button>
+      <button type="button" class="secondary" data-runner-view-target="execution">看执行</button>
+      <button type="button" class="secondary" data-portfolio-view-target="timeline">时间线</button>
+    </div>
+  `;
+}
+
+function renderPortfolioRunLatestBoard(latestRun = null) {
+  if (!latestRun) {
+    return `
+      <div class="runner-empty-state">
+        <strong>暂无经理结论</strong>
+        <p>先在任务控制里运行盘前观察或今日操作，运行完成后这里只展示最新一条结论。</p>
+      </div>
+    `;
+  }
+  const actions = Array.isArray(latestRun.actions) ? latestRun.actions : [];
+  const team = Array.isArray(latestRun.team) ? latestRun.team : [];
+  const orders = Array.isArray(latestRun.orders) ? latestRun.orders : [];
+  const statusClass = getRunStatusClass(latestRun.status);
+  return `
+    <article class="runner-latest-card">
+      <div class="runner-latest-head">
+        <div>
+          <span>${escapeHtml(formatRunTypeLabel(latestRun.type))}</span>
+          <strong>${escapeHtml(latestRun.date || "")} · ${escapeHtml(latestRun.title || formatRunTypeLabel(latestRun.type))}</strong>
+          <p>${escapeHtml(latestRun.summary || "暂无摘要")}</p>
+        </div>
+        <em class="${statusClass}">${escapeHtml(formatRunStatus(latestRun.status))}</em>
+      </div>
+      <div class="runner-latest-grid">
+        <button type="button" data-portfolio-view-target="timeline"><span>完整时间线</span><strong>打开记录</strong><small>查看日报分面板</small></button>
+        <button type="button" data-run-panel="actions" data-portfolio-view-target="timeline"><span>本次操作</span><strong>${actions.length} 项</strong><small>${escapeHtml(actions[0] ? `${actions[0].action || ""} ${actions[0].code || ""} ${actions[0].name || ""}`.trim() : "暂无买卖动作")}</small></button>
+        <button type="button" data-run-panel="committee" data-portfolio-view-target="timeline"><span>投委会</span><strong>${team.length} 人</strong><small>${escapeHtml(team[0] ? `${team[0].agent || "角色"}：${team[0].stance || "中"}` : "暂无角色观点")}</small></button>
+        <button type="button" data-run-panel="execution" data-portfolio-view-target="timeline"><span>执行</span><strong>${orders.length} 笔</strong><small>${escapeHtml(orders[0] ? `${orders[0].side || ""} ${orders[0].code || ""}`.trim() : "暂无运行内订单")}</small></button>
+      </div>
+    </article>
+  `;
+}
+
+function renderPortfolioRunExecutionBoard({ activeOrders = [], transactions = [], equity = [] } = {}) {
+  const latestEquity = equity[0] || null;
+  const lanes = [
+    {
+      title: "待确认订单",
+      count: activeOrders.length,
+      empty: "暂无申购或赎回排队。",
+      items: activeOrders.slice(0, 5).map((item) => ({
+        title: `${item.side || ""} ${item.code || ""} ${item.name || ""}`.trim(),
+        meta: `${formatMoney(item.amount)} · ${item.status || ""}`,
+        foot: `确认 ${item.confirmDate || "-"} · 到账 ${item.settleDate || "-"}`
+      }))
+    },
+    {
+      title: "最近成交",
+      count: transactions.length,
+      empty: "暂无已确认成交。",
+      items: transactions.slice(0, 5).map((item) => ({
+        title: `${item.side || ""} ${item.code || ""} ${item.name || ""}`.trim(),
+        meta: `${formatMoney(item.amount)} · 净值 ${item.nav ? formatNumber(item.nav, 4) : "-"}`,
+        foot: item.date || item.confirmDate || ""
+      }))
+    },
+    {
+      title: "估值快照",
+      count: equity.length,
+      empty: "暂无估值记录。",
+      items: latestEquity ? [{
+        title: latestEquity.date || "最新估值",
+        meta: `总资产 ${formatMoney(latestEquity.totalAsset)} · 仓位 ${formatNumber(latestEquity.positionWeightPct || 0, 2)}%`,
+        foot: `现金 ${formatMoney(latestEquity.cash)} · 盈亏 ${formatSigned(latestEquity.cumulativePnlPct || 0)}%`
+      }] : []
+    }
+  ];
+  return `
+    <div class="runner-execution-lanes">
+      ${lanes.map((lane) => `
+        <section class="runner-execution-lane">
+          <div class="runner-execution-head">
+            <strong>${escapeHtml(lane.title)}</strong>
+            <span>${escapeHtml(String(lane.count || 0))}</span>
+          </div>
+          <div class="runner-execution-list">
+            ${lane.items.length ? lane.items.map((item) => `
+              <article>
+                <strong>${escapeHtml(item.title || "-")}</strong>
+                <p>${escapeHtml(item.meta || "")}</p>
+                <small>${escapeHtml(item.foot || "")}</small>
+              </article>
+            `).join("") : `<div class="compact-empty">${escapeHtml(lane.empty)}</div>`}
+          </div>
+        </section>
+      `).join("")}
+    </div>
+    <div class="runner-execution-actions">
+      <button type="button" data-portfolio-view-target="orders">进入订单终端</button>
+      <button type="button" class="secondary" data-runner-view-target="raw">看原始状态</button>
+    </div>
+  `;
 }
 
 function buildManagerInsightItems(portfolio, latestRun, activeOrders) {

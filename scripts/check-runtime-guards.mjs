@@ -2753,6 +2753,10 @@ const requiredPatterns = [
     message: "admin portfolio orders must split orders, transactions, equity, and raw state into terminal entries."
   },
   {
+    pattern: /(?=[\s\S]*虚拟运行台)(?=[\s\S]*data-runner-view-target="latest")(?=[\s\S]*data-runner-view-target="execution")(?=[\s\S]*setPortfolioRunnerView)(?=[\s\S]*portfolioRunCommandStrip)/,
+    message: "admin portfolio runner must split virtual execution into task, conclusion, execution, and raw-state entries."
+  },
+  {
     pattern: /(?=[\s\S]*经理体检终端)(?=[\s\S]*data-diagnostic-view-target="actions")(?=[\s\S]*setPortfolioDiagnosticView)(?=[\s\S]*diagnosticNavBacktestCount)/,
     message: "admin portfolio diagnostics must be a multi-entry manager health terminal, not a long mixed card block."
   },

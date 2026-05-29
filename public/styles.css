@@ -6073,6 +6073,7 @@ button.danger-button:hover {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(210px, 250px) minmax(0, 1fr);
+  height: 100%;
   border: 1px solid #dde7ef;
   border-radius: 8px;
   overflow: hidden;
@@ -6124,14 +6125,206 @@ button.danger-button:hover {
 .run-console-stage {
   min-width: 0;
   min-height: 0;
-  overflow: auto;
-  padding: 12px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  padding: 0;
 }
 
 .run-console-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 10px;
+}
+
+.runner-workspace-switcher {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  border-bottom: 1px solid #e3ebf2;
+  background: #f7fafc;
+}
+
+.runner-workspace-switcher button {
+  min-width: 0;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "label count" "hint count";
+  gap: 2px 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 0;
+  border-right: 1px solid #e3ebf2;
+  border-radius: 0;
+  color: #344152;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+
+.runner-workspace-switcher button:last-child {
+  border-right: 0;
+}
+
+.runner-workspace-switcher button:hover,
+.runner-workspace-switcher button.active {
+  background: #ffffff;
+}
+
+.runner-workspace-switcher button.active {
+  box-shadow: inset 0 -3px 0 #0f766e;
+}
+
+.runner-workspace-switcher b,
+.runner-workspace-switcher small,
+.runner-workspace-switcher span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runner-workspace-switcher b {
+  grid-area: label;
+  font-size: 13px;
+}
+
+.runner-workspace-switcher small {
+  grid-area: hint;
+  color: #70808f;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.runner-workspace-switcher span {
+  grid-area: count;
+  min-width: 24px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: #0f5132;
+  background: #dff3e8;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.runner-workspace-view {
+  display: none;
+}
+
+.runner-workspace-view.active {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  overflow: auto;
+  padding: 12px;
+}
+
+.run-command-strip {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(260px, 0.9fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #dce7ef;
+  border-left: 4px solid #0f766e;
+  border-radius: 8px;
+  background: #f8fbfc;
+}
+
+.run-command-main,
+.run-command-facts,
+.run-command-actions {
+  min-width: 0;
+}
+
+.run-command-main span,
+.run-command-main strong,
+.run-command-main small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-command-main span {
+  color: #657586;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.run-command-main strong {
+  color: #1d2d3b;
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.run-command-main small {
+  color: #60707f;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.run-command-main.warn strong {
+  color: #8a5400;
+}
+
+.run-command-main.bad strong {
+  color: #b3261e;
+}
+
+.run-command-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.run-command-facts span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 8px 9px;
+  border: 1px solid #dce5ec;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.run-command-facts b,
+.run-command-facts small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-command-facts b {
+  color: #1f2f3d;
+  font-size: 14px;
+}
+
+.run-command-facts small {
+  color: #657586;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.run-command-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.run-command-actions button {
+  min-height: 30px;
+  padding: 6px 9px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .run-console-card {
@@ -6191,6 +6384,221 @@ button.danger-button:hover {
   min-height: 30px;
   padding: 6px 9px;
   font-size: 12px;
+}
+
+.runner-latest-card,
+.runner-empty-state {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid #e1e8ee;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.runner-latest-head {
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e7edf3;
+}
+
+.runner-latest-head span,
+.runner-latest-head strong,
+.runner-latest-head p,
+.runner-latest-head em,
+.runner-empty-state strong,
+.runner-empty-state p {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.runner-latest-head span {
+  color: #657586;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.runner-latest-head strong {
+  margin-top: 3px;
+  color: #1d2d3b;
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.runner-latest-head p,
+.runner-empty-state p {
+  margin-top: 5px;
+  color: #405263;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.runner-latest-head em {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.runner-latest-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 9px;
+}
+
+.runner-latest-grid button {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid #dde7ef;
+  border-left: 4px solid #7d95aa;
+  border-radius: 8px;
+  color: var(--text);
+  background: #fbfcfd;
+  box-shadow: none;
+  text-align: left;
+}
+
+.runner-latest-grid button:hover {
+  border-color: #c5d2de;
+  background: #ffffff;
+}
+
+.runner-latest-grid span,
+.runner-latest-grid strong,
+.runner-latest-grid small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runner-latest-grid span {
+  color: #657586;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.runner-latest-grid strong {
+  color: #1d2d3b;
+  font-size: 17px;
+}
+
+.runner-latest-grid small {
+  color: #60707f;
+  font-size: 12px;
+}
+
+.runner-execution-lanes {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.runner-execution-lane {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid #e0e7ee;
+  border-top: 3px solid #8797a6;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fbfcfd;
+}
+
+.runner-execution-head {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 11px;
+  border-bottom: 1px solid #e5ecf2;
+  background: #ffffff;
+}
+
+.runner-execution-head strong,
+.runner-execution-head span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.runner-execution-head strong {
+  color: #263746;
+  font-size: 13px;
+}
+
+.runner-execution-head span {
+  min-width: 28px;
+  min-height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #405263;
+  background: #edf3f7;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.runner-execution-list {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  overflow: auto;
+  padding: 9px;
+}
+
+.runner-execution-list article {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 9px;
+  border: 1px solid #e5ebf1;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.runner-execution-list strong,
+.runner-execution-list p,
+.runner-execution-list small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.runner-execution-list strong {
+  color: #1f2f3d;
+  font-size: 13px;
+}
+
+.runner-execution-list p,
+.runner-execution-list small {
+  color: #60707f;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.runner-execution-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.runner-output {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
 }
 
 .timeline-terminal {
@@ -7220,7 +7628,9 @@ button.danger-button:hover {
   .portfolio-ranking-radar-head,
   .portfolio-ranking-radar-empty,
   .portfolio-ranking-command,
-  .portfolio-ranking-radar-grid {
+  .portfolio-ranking-radar-grid,
+  .run-command-strip,
+  .runner-execution-lanes {
     display: grid;
     grid-template-columns: 1fr;
   }
@@ -7253,6 +7663,22 @@ button.danger-button:hover {
   }
 
   .opportunity-command-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .runner-workspace-switcher {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .runner-workspace-switcher button {
+    flex: 0 0 132px;
+    border-bottom: 0;
+  }
+
+  .run-command-actions,
+  .runner-execution-actions {
     justify-content: flex-start;
     flex-wrap: wrap;
   }
