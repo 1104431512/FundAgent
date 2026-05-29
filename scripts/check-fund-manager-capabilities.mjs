@@ -275,6 +275,7 @@ assert(rankingBoard.lists.find((item) => item.id === "position_sizing")?.items.s
 assert(rankingBoard.lists.find((item) => item.id === "quality_score")?.items.some((item) => item.code === "000005"), "manager ranking board must expose risk-adjusted fund quality candidates");
 assert(rankingBoard.lists.find((item) => item.id === "manager_stability")?.items.some((item) => item.code === "000005"), "manager ranking board must expose fund-manager stability candidates");
 assert(rankingBoard.lists.find((item) => item.id === "portfolio_fit")?.items.some((item) => item.code === "000005"), "manager ranking board must expose portfolio-fit candidates that diversify current exposure");
+assert(rankingBoard.lists.find((item) => item.id === "theme_allocation")?.items.some((item) => item.code === "000005"), "manager ranking board must expose theme-allocation candidates before choosing representative funds");
 assert(rankingBoard.lists.find((item) => item.id === "rotation_opportunity")?.items.some((item) => item.code === "000005"), "manager ranking board must expose sector-rotation opportunity candidates");
 assert(rankingBoard.lists.find((item) => item.id === "chase_risk")?.items.some((item) => item.code === "000006"), "manager ranking board must expose hot chase-risk candidates");
 assert(rankingBoard.lists.find((item) => item.id === "holdings_outlook")?.items.some((item) => item.code === "000003"), "manager ranking board must expose candidates with supportive top-ten holdings");
@@ -302,6 +303,7 @@ const positionSizingRankingItem = rankingBoard.lists.find((item) => item.id === 
 const qualityRankingItem = rankingBoard.lists.find((item) => item.id === "quality_score")?.items.find((item) => item.code === "000005");
 const managerStabilityRankingItem = rankingBoard.lists.find((item) => item.id === "manager_stability")?.items.find((item) => item.code === "000005");
 const portfolioFitRankingItem = rankingBoard.lists.find((item) => item.id === "portfolio_fit")?.items.find((item) => item.code === "000005");
+const themeAllocationRankingItem = rankingBoard.lists.find((item) => item.id === "theme_allocation")?.items.find((item) => item.code === "000005");
 const rotationRankingItem = rankingBoard.lists.find((item) => item.id === "rotation_opportunity")?.items.find((item) => item.code === "000005");
 const chaseRankingItem = rankingBoard.lists.find((item) => item.id === "chase_risk")?.items.find((item) => item.code === "000006");
 const holdingsRankingItem = rankingBoard.lists.find((item) => item.id === "holdings_outlook")?.items.find((item) => item.code === "000003");
@@ -322,6 +324,10 @@ assert(managerStabilityRankingItem?.facts?.some((item) => /经理|任期|产品/
 assert(/基金质量|买入准备|稳定/.test(managerStabilityRankingItem?.decision?.nextStep || ""), "manager-stability ranking items must force manager tenure to be cross-checked before buying");
 assert(/组合|补位|适配/.test(portfolioFitRankingItem?.reason || portfolioFitRankingItem?.action || ""), "portfolio-fit ranking items must explain how a candidate fits the current portfolio before buying");
 assert(portfolioFitRankingItem?.decision?.nextStep?.includes("买入准备"), "portfolio-fit ranking items must force cross-checking with buy-preparation evidence");
+assert(themeAllocationRankingItem?.facts?.some((item) => item.includes("医药") || item.includes("代表基金")), "theme-allocation ranking items must expose the theme and representative fund");
+assert(themeAllocationRankingItem?.facts?.some((item) => item.includes("低位")), "theme-allocation ranking items must expose low-position evidence at the theme level");
+assert(themeAllocationRankingItem?.decision?.nextStep?.includes("先选主题") && themeAllocationRankingItem?.decision?.nextStep?.includes("代表基金"), "theme-allocation ranking items must force choosing the theme before the representative fund");
+assert(themeAllocationRankingItem?.decision?.risks?.some((item) => item.includes("同一主题") || item.includes("拥挤")), "theme-allocation ranking items must prevent buying multiple same-theme funds blindly");
 assert(rotationRankingItem?.facts.some((item) => item.includes("医药") || item.includes("轮动")), "rotation ranking items must expose readable sector-rotation facts");
 assert(/交叉复核|小仓/.test(rotationRankingItem?.decision?.nextStep || ""), "rotation ranking items must force cross-checking before small starter buys");
 assert(chaseRankingItem?.decision?.risks?.some((item) => item.includes("新闻热度") || item.includes("拥挤")), "chase-risk ranking items must explain why hot candidates cannot be chased");
@@ -1375,13 +1381,14 @@ assert(adminSource.includes("fee_suitability"), "admin UI must render the fee-su
 assert(adminSource.includes("replacement_choice"), "admin UI must render the replacement-choice ranking lane");
 assert(adminStyleSource.includes("ranking-list.is-filtered-out"), "admin UI must hide non-focused ranking lists when a ranking filter is active");
 assert(adminStyleSource.includes("ranking-list-manager"), "admin UI must style manager-stability ranking lanes distinctly");
+assert(adminHtmlSource.includes("portfolio-workspace-group"), "admin portfolio workspace entries must be grouped like a stock terminal navigation rail");
 assert(/portfolio-command-panel[\s\S]{0,420}grid-template-areas:\s*"hero kpis status"/.test(adminStyleSource), "admin portfolio command header must use a compact trading-console grid");
 assert(/portfolio-hero \.actions[\s\S]{0,260}overflow-x:\s*auto/.test(adminStyleSource), "admin portfolio command actions must stay compact instead of wrapping into a tall toolbar on desktop");
 assert(/portfolio-command-panel \.info-grid[\s\S]{0,260}grid-area:\s*status/.test(adminStyleSource), "admin portfolio schedule and push metadata must live in the compact command header status column");
 assert(adminStyleSource.includes("portfolio-workspace-switcher"), "admin portfolio workspace switcher must be styled as a first-class navigation surface");
 assert(/portfolio-workspace-switcher[\s\S]{0,240}position:\s*sticky/.test(adminStyleSource), "admin portfolio workspace switcher must remain reachable while long workspace views scroll");
 assert(adminStyleSource.includes("portfolio-workspace-view.active"), "admin portfolio workspace views must show one focused entry at a time");
-assert(/portfolio-terminal-shell[\s\S]{0,260}--portfolio-workspace-height:\s*100%[\s\S]{0,520}height:\s*var\(--portfolio-workspace-height\)[\s\S]{0,260}max-height:\s*none/.test(adminStyleSource), "admin portfolio terminal shell must bound the virtual-run workspace height like a trading terminal");
+assert(/portfolio-terminal-shell[\s\S]{0,260}--portfolio-workspace-height:\s*100%[\s\S]{0,520}height:\s*var\(--portfolio-workspace-height\)[\s\S]{0,260}max-height:\s*100%[\s\S]{0,180}overflow:\s*hidden/.test(adminStyleSource), "admin portfolio terminal shell must bound the virtual-run workspace height like a trading terminal");
 assert(/portfolio-terminal-stage[\s\S]{0,320}overflow:\s*hidden/.test(adminStyleSource), "admin portfolio terminal stage must prevent long workspace content from stretching the whole page");
 assert(/portfolio-workspace-view\.active[\s\S]{0,360}overflow:\s*auto/.test(adminStyleSource), "admin portfolio active workspace view must scroll internally");
 assert(adminHtmlSource.includes('data-portfolio-view-target="opportunities"'), "admin portfolio UI must expose observation opportunities as a separate workspace entrance");

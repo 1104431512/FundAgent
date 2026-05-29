@@ -1741,7 +1741,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "经理多角度榜单（系统计算，必须先看榜单再决定）：",
     JSON.stringify(compactManagerRankings, null, 2),
     "客户视角要求：回答客户时优先使用 customerDigest 里的可买复核、观察重点和回避提醒，先讲原因和动作，再补必要数字；不要把所有榜单指标原样堆给客户。",
-    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、cash_redeployment、position_sizing、quality_score、manager_stability、portfolio_fit、rotation_opportunity、chase_risk、fee_suitability、replacement_choice、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
+    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、cash_redeployment、position_sizing、quality_score、manager_stability、portfolio_fit、theme_allocation、rotation_opportunity、chase_risk、fee_suitability、replacement_choice、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。主题配置榜必须先回答哪个主题值得看，再选代表基金，不得把同主题多个基金全买。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
     JSON.stringify((missedFollowThroughQueue || []).slice(0, 5), null, 2),
@@ -3703,7 +3703,7 @@ function inferPortfolioRankingBoardReviewAction(list = {}, item = {}) {
 function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = []) {
   const lists = Array.isArray(board?.lists) ? board.lists : [];
   const existingCodes = new Set((existingActions || []).map((action) => action.code).filter(Boolean));
-  const watchedListIds = new Set(["decision_synthesis", "buy_preparation", "launch_setup", "cash_redeployment", "position_sizing", "quality_score", "manager_stability", "portfolio_fit", "rotation_opportunity", "chase_risk", "fee_suitability", "replacement_choice", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
+  const watchedListIds = new Set(["decision_synthesis", "buy_preparation", "launch_setup", "cash_redeployment", "position_sizing", "quality_score", "manager_stability", "portfolio_fit", "theme_allocation", "rotation_opportunity", "chase_risk", "fee_suitability", "replacement_choice", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
   const actions = [];
   for (const list of lists) {
     if (!watchedListIds.has(String(list?.id || ""))) continue;
@@ -3911,12 +3911,12 @@ function selectPortfolioRankingBoardEntryForAction(action = {}, entries = []) {
   if (!entries.length) return null;
   const actionText = String(action.action || "").toUpperCase();
   const preferredIds = actionText === "BUY"
-    ? ["buy_preparation", "cash_redeployment", "position_sizing", "launch_setup", "quality_score", "manager_stability", "portfolio_fit", "decision_synthesis", "rotation_opportunity", "fee_suitability", "replacement_choice", "holdings_outlook", "opportunity_cost"]
+    ? ["buy_preparation", "cash_redeployment", "position_sizing", "launch_setup", "quality_score", "manager_stability", "portfolio_fit", "theme_allocation", "decision_synthesis", "rotation_opportunity", "fee_suitability", "replacement_choice", "holdings_outlook", "opportunity_cost"]
     : actionText === "SELL"
       ? ["sell_risk", "chase_risk", "decision_synthesis", "opportunity_cost"]
       : actionText === "HOLD"
         ? ["sell_risk", "decision_synthesis", "holdings_outlook", "chase_risk"]
-        : ["buy_preparation", "cash_redeployment", "position_sizing", "launch_setup", "quality_score", "manager_stability", "portfolio_fit", "chase_risk", "decision_synthesis", "rotation_opportunity", "fee_suitability", "replacement_choice", "holdings_outlook"];
+        : ["buy_preparation", "cash_redeployment", "position_sizing", "launch_setup", "quality_score", "manager_stability", "portfolio_fit", "theme_allocation", "chase_risk", "decision_synthesis", "rotation_opportunity", "fee_suitability", "replacement_choice", "holdings_outlook"];
   return [...entries].sort((a, b) => {
     const aRank = preferredIds.indexOf(String(a.list?.id || ""));
     const bRank = preferredIds.indexOf(String(b.list?.id || ""));
@@ -8550,6 +8550,7 @@ function buildPortfolioRankingBoard(db = {}) {
     buildPortfolioQualityScoreRanking(watchlist),
     buildPortfolioManagerStabilityRanking(watchlist),
     buildPortfolioFitRanking(db, watchlist),
+    buildPortfolioThemeAllocationRanking(watchlist),
     buildPortfolioRotationOpportunityRanking(watchlist),
     buildPortfolioChaseRiskRanking(watchlist),
     buildPortfolioHoldingsOutlookRanking(watchlist),
@@ -8577,8 +8578,8 @@ function buildPortfolioRankingBoardHealth({ watchlist = [], positions = [], user
     return {
       level: "ok",
       title: "榜单已生成",
-      summary: `当前有 ${totalItems} 个可复核对象，经理可以按综合决策、买入、低位启动、现金再部署、仓位方案、基金质量、经理稳定、组合适配、板块轮动、追涨风险、持仓前景、费率适配、替代优选、机会成本、卖出风险和用户持仓提醒分层处理。`,
-      actions: ["优先处理排名靠前项", "综合结论/买点/仓位/质量/经理稳定/组合适配/轮动/追涨/费率/替代/持仓分开复核", "把用户真实持仓提醒放入每日跟踪"]
+      summary: `当前有 ${totalItems} 个可复核对象，经理可以按综合决策、买入、低位启动、现金再部署、仓位方案、基金质量、经理稳定、组合适配、主题配置、板块轮动、追涨风险、持仓前景、费率适配、替代优选、机会成本、卖出风险和用户持仓提醒分层处理。`,
+      actions: ["优先处理排名靠前项", "综合结论/买点/仓位/质量/经理稳定/组合适配/主题配置/轮动/追涨/费率/替代/持仓分开复核", "把用户真实持仓提醒放入每日跟踪"]
     };
   }
   if (!watchlist.length && !positions.length && !userPortfolios.length) {
@@ -9421,6 +9422,170 @@ function buildPortfolioFitReason({ diversifies = false, topRelated = null, overl
   if (diversifies) return "候选能补当前组合未覆盖或低暴露方向，适合放入买入前置复核。";
   if (!topRelated) return "当前组合未见明显同线暴露，但候选仍需补齐买点、费用和持仓证据。";
   return "候选与组合已有方向有一定关联，需要确认是补位而不是重复加仓。";
+}
+
+function buildPortfolioThemeAllocationRanking(watchlist = []) {
+  const items = buildPortfolioThemeAllocationGroups(watchlist)
+    .map(buildPortfolioThemeAllocationRankingItem)
+    .filter(Boolean)
+    .sort(compareRankingItems)
+    .slice(0, 6);
+  return buildPortfolioRankingList({
+    id: "theme_allocation",
+    title: "主题配置榜",
+    subtitle: "先判断哪个主题/赛道值得配置，再选代表基金，防止同一方向买成一篮子重复仓位。",
+    emptyText: "暂无可形成主题配置判断的候选。",
+    nextAction: "下一步先选主题，再选代表基金；同一主题只留一个主代表和一只备选，不把同主题多个基金全买。",
+    items
+  });
+}
+
+function buildPortfolioThemeAllocationGroups(watchlist = []) {
+  const groups = new Map();
+  for (const item of watchlist || []) {
+    if (!item?.code || !["ready", "waiting_pullback", "watch"].includes(item.status)) continue;
+    const themes = collectPortfolioThemeAllocationTags(item);
+    for (const theme of themes.slice(0, 3)) {
+      const key = normalizePortfolioFitThemeLabel(theme);
+      if (!key) continue;
+      const group = groups.get(key) || { theme: key, candidates: [] };
+      if (!group.candidates.some((candidate) => candidate.item.code === item.code)) {
+        group.candidates.push({ item, score: scorePortfolioThemeAllocationCandidate(item) });
+      }
+      groups.set(key, group);
+    }
+  }
+  return [...groups.values()].filter((group) => group.candidates.length);
+}
+
+function collectPortfolioThemeAllocationTags(item = {}) {
+  const profile = item.lastSnapshot || {};
+  const themeSignals = getCandidateThemeSignals({
+    ...profile,
+    name: item.name || profile.name,
+    type: item.type || profile.type,
+    matchedThemes: profile.matchedThemes || item.matchedThemes || [],
+    seed: {
+      ...(profile.seed || {}),
+      name: item.name || profile.seed?.name || profile.name,
+      matchedThemes: profile.seed?.matchedThemes || profile.matchedThemes || item.matchedThemes || []
+    }
+  });
+  return [...new Set([
+    ...themeSignals.flatMap((theme) => [theme.name, theme.id]),
+    ...collectPortfolioWatchFitThemeTags(item),
+    ...inferHoldingThemeTags(`${item.name || ""} ${profile.name || ""} ${item.type || ""}`)
+  ].map(normalizePortfolioFitThemeLabel).filter(Boolean))];
+}
+
+function scorePortfolioThemeAllocationCandidate(item = {}) {
+  const trend = item.lastSnapshot?.trendProfile || {};
+  const readinessScore = Number(item.readinessScore || 0);
+  const rotation = resolvePortfolioRotationOpportunityEvidence(item);
+  const chase = resolvePortfolioChaseRiskEvidence(item);
+  const outlook = resolvePortfolioWatchHoldingsOutlook(item);
+  const fee = resolvePortfolioWatchFeeSuitabilityEvidence(item);
+  const low120 = finiteMetricNumber(trend.lowPositionPct120);
+  const low250 = finiteMetricNumber(trend.lowPositionPct250);
+  const setupSignal = trend.pullbackSetup?.signal || "";
+  return Math.max(0, Math.min(100,
+    readinessScore * 0.28
+    + (item.status === "ready" ? 10 : item.status === "waiting_pullback" ? 5 : 0)
+    + (rotation.strong ? 22 : rotation.shouldSurface && !rotation.highChase ? 12 : 0)
+    + (["pullback_complete", "launch_setup"].includes(setupSignal) ? 14 : 0)
+    + (Number.isFinite(low120) && low120 <= 55 ? 10 : 0)
+    + (Number.isFinite(low250) && low250 <= 65 ? 6 : 0)
+    + (outlook.hasHoldings ? Math.max(0, Number(outlook.score || 0)) * 0.75 : -8)
+    + (!fee.missingCritical ? 4 : -8)
+    - (chase.shouldSurface ? Math.min(34, Math.max(14, Number(chase.score || 0) * 0.42)) : 0)
+  ));
+}
+
+function buildPortfolioThemeAllocationRankingItem(group = {}) {
+  const candidates = (group.candidates || [])
+    .map((entry) => ({ ...entry, score: Number(entry.score || 0) }))
+    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0)
+      || Number(a.item.priority || 3) - Number(b.item.priority || 3)
+      || String(a.item.code || "").localeCompare(String(b.item.code || "")));
+  const representative = candidates[0]?.item || null;
+  if (!representative) return null;
+  const candidateScores = candidates.map((entry) => ({
+    item: entry.item,
+    score: Number(entry.score || 0),
+    rotation: resolvePortfolioRotationOpportunityEvidence(entry.item),
+    chase: resolvePortfolioChaseRiskEvidence(entry.item),
+    outlook: resolvePortfolioWatchHoldingsOutlook(entry.item)
+  }));
+  const lowEvidenceCount = candidateScores.filter((entry) => hasPortfolioThemeLowEvidence(entry.item, entry.rotation)).length;
+  const hotCount = candidateScores.filter((entry) => entry.chase.shouldSurface || entry.rotation.highChase).length;
+  const holdingsCount = candidateScores.filter((entry) => entry.outlook.hasHoldings).length;
+  const representativeScore = Number(candidateScores[0]?.score || 0);
+  const score = Math.max(0, Math.min(100,
+    representativeScore
+    + Math.min(8, Math.max(0, candidates.length - 1) * 3)
+    + Math.min(8, lowEvidenceCount * 2)
+    + Math.min(6, holdingsCount * 1.5)
+    - Math.min(18, hotCount * 7)
+  ));
+  const deployable = score >= 64 && hotCount === 0 && lowEvidenceCount > 0;
+  const action = hotCount > 0
+    ? "主题降温观察"
+    : deployable
+      ? "主题配置复核"
+      : "主题观察";
+  const themeName = group.theme || "未命名主题";
+  const representativeLabel = `${representative.code || ""} ${representative.name || ""}`.trim();
+  const backup = candidates.find((entry) => entry.item.code !== representative.code)?.item || null;
+  return buildPortfolioRankingItem({
+    code: representative.code,
+    name: representative.name,
+    source: "主题配置",
+    score: round(score, 1),
+    action,
+    reason: hotCount > 0
+      ? `${themeName}主题已有拥挤或追涨风险，先降温观察，不把同主题基金包装成机会。`
+      : `${themeName}主题有配置线索，先选主题，再用代表基金做买点、费率和持仓前景复核。`,
+    facts: [
+      `主题${themeName}`,
+      `代表基金 ${representativeLabel}`,
+      backup ? `备选${backup.code || ""} ${backup.name || ""}`.trim() : "",
+      `低位证据${lowEvidenceCount}只`,
+      `拥挤风险${hotCount}只`
+    ].filter(Boolean),
+    decision: {
+      highlights: [
+        `${themeName}进入主题配置榜，候选${candidates.length}只。`,
+        lowEvidenceCount ? `低位/回调修复证据覆盖${lowEvidenceCount}只。` : "",
+        representativeLabel ? `代表基金：${representativeLabel}。` : ""
+      ].filter(Boolean),
+      risks: [
+        hotCount ? `${hotCount}只候选有拥挤或追涨风险，主题不能直接加仓。` : "",
+        candidates.length > 1 ? "同一主题不能多只一起买，避免重复占用风险预算。" : "同一主题后续只补代表基金或备选，不因为主题名字相同就重复买入。",
+        holdingsCount < candidates.length ? "部分候选缺前十大持仓/行业前景验证。" : ""
+      ].filter(Boolean),
+      gaps: [
+        !lowEvidenceCount ? "缺低位或回调完成证据" : "",
+        !holdingsCount ? "缺前十大持仓/行业前景验证" : "",
+        hotCount ? "缺拥挤度降温证据" : ""
+      ].filter(Boolean),
+      nextStep: deployable
+        ? "先选主题，再选代表基金；只让代表基金进入买入准备复核，备选只观察，不把同主题多个基金全买。"
+        : "先补齐低位、拥挤度和前十大持仓证据，再决定代表基金；未通过前只保留主题观察。"
+    },
+    status: hotCount ? "warning" : deployable ? "ready" : "watch"
+  });
+}
+
+function hasPortfolioThemeLowEvidence(item = {}, rotation = {}) {
+  const trend = item.lastSnapshot?.trendProfile || {};
+  const low120 = finiteMetricNumber(trend.lowPositionPct120);
+  const low250 = finiteMetricNumber(trend.lowPositionPct250);
+  const signal = trend.pullbackSetup?.signal || "";
+  return rotation?.strong
+    || ["pullback_complete", "launch_setup"].includes(signal)
+    || (Number.isFinite(low120) && low120 <= 55)
+    || (Number.isFinite(low250) && low250 <= 65)
+    || /低位|回调完成|启动前夜|轮动/.test(mergeStringLists(item.setupEvidence, item.buyTriggers, item.reason).join(" "));
 }
 
 function collectPortfolioWatchFitThemeTags(item = {}) {
@@ -10369,6 +10534,7 @@ function buildPortfolioRankingPriorityQueue(lists = []) {
     quality_score: 31,
     manager_stability: 29,
     portfolio_fit: 23,
+    theme_allocation: 21,
     buy_preparation: 34,
     fee_suitability: 32,
     replacement_choice: 25,
@@ -10423,6 +10589,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
   const qualityItems = listById.get("quality_score")?.items || [];
   const managerStabilityItems = listById.get("manager_stability")?.items || [];
   const portfolioFitItems = listById.get("portfolio_fit")?.items || [];
+  const themeAllocationItems = listById.get("theme_allocation")?.items || [];
   const chaseItems = listById.get("chase_risk")?.items || [];
   const feeItems = listById.get("fee_suitability")?.items || [];
   const replacementItems = listById.get("replacement_choice")?.items || [];
@@ -10439,6 +10606,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
     ...qualityItems.filter((item) => /质量支撑/.test(item.action || "")),
     ...managerStabilityItems.filter((item) => /稳定主理/.test(item.action || "")),
     ...portfolioFitItems.filter((item) => /组合补位|首仓适配/.test(item.action || "")),
+    ...themeAllocationItems.filter((item) => /主题配置复核/.test(item.action || "")),
     ...replacementItems.filter((item) => /低费|优选/.test(item.action || ""))
   ]
     .filter((item) => item?.code && !riskAvoidCodes.has(item.code))
@@ -10453,6 +10621,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
     ...qualityItems,
     ...managerStabilityItems,
     ...portfolioFitItems,
+    ...themeAllocationItems,
     ...feeItems,
     ...replacementItems,
     ...holdingsItems
@@ -25649,6 +25818,7 @@ export {
   buildPortfolioQualityScoreRanking,
   buildPortfolioManagerStabilityRanking,
   buildPortfolioFitRanking,
+  buildPortfolioThemeAllocationRanking,
   buildPortfolioFeeSuitabilityRanking,
   buildPortfolioReplacementChoiceRanking,
   buildPortfolioRotationOpportunityRanking,
