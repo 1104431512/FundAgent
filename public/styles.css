@@ -3458,11 +3458,54 @@ button:disabled {
   background: #fbfcfd;
 }
 
+.ranking-overview-all-card {
+  border-left-color: #64748b;
+}
+
+.ranking-overview-group {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid #e2eaf1;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.ranking-overview-group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ranking-overview-group-head strong,
+.ranking-overview-group-head span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.ranking-overview-group-head strong {
+  color: #213343;
+  font-size: 13px;
+}
+
+.ranking-overview-group-head span {
+  color: #6a7886;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.ranking-overview-group-list {
+  display: grid;
+  gap: 6px;
+}
+
 .ranking-overview-card {
   min-width: 0;
   display: grid;
   gap: 5px;
-  padding: 10px 11px;
+  padding: 8px 9px;
   border: 1px solid #dde6ee;
   border-left: 4px solid #8aa1b5;
   border-radius: 8px;
@@ -6824,6 +6867,16 @@ button.danger-button:hover {
     max-height: none;
     overflow-x: auto;
     padding: 0 0 4px;
+  }
+
+  .ranking-terminal .ranking-overview-group {
+    flex: 0 0 270px;
+  }
+
+  .ranking-terminal .ranking-overview-group-list {
+    display: flex;
+    overflow-x: auto;
+    gap: 8px;
   }
 
   .ranking-terminal .ranking-overview-card {

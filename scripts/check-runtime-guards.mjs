@@ -2589,6 +2589,14 @@ const requiredPatterns = [
     message: "admin manager rankings must include overview cards for quick scanning before detailed lists."
   },
   {
+    pattern: /MANAGER_RANKING_GROUPS[\s\S]{0,1200}行动[\s\S]{0,1200}机会[\s\S]{0,1200}风控[\s\S]{0,1200}证据/,
+    message: "admin manager ranking lenses must be grouped into trading-terminal views instead of one long lens list."
+  },
+  {
+    pattern: /buildManagerRankingOverviewGroups[\s\S]{0,1600}renderManagerRankingOverviewGroup[\s\S]{0,1600}ranking-overview-group/,
+    message: "admin manager ranking overview must render grouped lens sections."
+  },
+  {
     pattern: /renderManagerRankings[\s\S]{0,1800}ranking-terminal[\s\S]{0,900}ranking-detail-stage/,
     message: "admin manager ranking boards must render as a terminal-style lane navigator with a separate focused detail stage."
   },

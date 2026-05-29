@@ -1488,6 +1488,7 @@ assert(adminSource.includes("renderManagerCustomerDigest"), "admin UI must rende
 assert(adminSource.includes("renderManagerRankingActionDeck"), "admin UI must render customer action cards before detailed ranking lists");
 assert(adminSource.includes("renderManagerPriorityQueue"), "admin UI must render the cross-ranking priority queue");
 assert(adminSource.includes("renderManagerRankingOverview"), "admin UI must render ranking board overview cards before detailed lists");
+assert(adminSource.includes("MANAGER_RANKING_GROUPS") && adminSource.includes("buildManagerRankingOverviewGroups"), "admin UI must group manager ranking lenses into action, opportunity, risk, and evidence sections");
 assert(adminSource.includes("setManagerRankingFilter"), "admin UI must allow focusing one manager ranking lane from overview cards");
 assert(adminSource.includes("getDefaultManagerRankingFilter"), "admin UI must open the manager ranking board on the highest-priority lane instead of expanding every list by default");
 assert(adminSource.includes("data-ranking-filter"), "admin UI ranking overview cards must work as compact filters");
@@ -1539,6 +1540,7 @@ assert(/watchlist-terminal-body[\s\S]{0,360}max-height:\s*calc\(var\(--portfolio
 assert(adminStyleSource.includes("portfolio-workspace-card"), "admin portfolio overview shortcut cards must be visually scannable");
 assert(adminStyleSource.includes("ranking-terminal"), "admin manager ranking board must be a focused terminal-style workspace instead of a long stacked report");
 assert(adminStyleSource.includes("ranking-detail-stage"), "admin manager ranking board must separate lane navigation from the active ranking detail");
+assert(adminStyleSource.includes("ranking-overview-group") && adminStyleSource.includes("ranking-overview-group-list"), "admin manager ranking overview groups must be styled as compact terminal sections");
 assert(adminStyleSource.includes("ranking-terminal-body") && adminStyleSource.includes("ranking-digest-deck"), "admin manager ranking board must keep digest and selected ranking list inside a bounded terminal body");
 assert(adminStyleSource.includes("ranking-action-deck") && adminStyleSource.includes("ranking-action-card-sell"), "admin manager ranking board must style customer action cards with distinct buy, wait, avoid, sell, and data lanes");
 assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must style customer-facing ranking digest as a first-class panel");

@@ -64,6 +64,32 @@ const PORTFOLIO_DATA_LANES = [
   { id: "holdings", title: "持仓/前景", tone: "holdings", empty: "暂无前十大持仓缺口。" },
   { id: "source", title: "来源/补证", tone: "source", empty: "暂无来源补证事项。" }
 ];
+const MANAGER_RANKING_GROUPS = [
+  {
+    id: "action",
+    title: "行动",
+    hint: "买卖与仓位",
+    listIds: ["decision_synthesis", "buy_preparation", "cash_redeployment", "position_sizing", "sell_risk", "opportunity_cost"]
+  },
+  {
+    id: "opportunity",
+    title: "机会",
+    hint: "低位与轮动",
+    listIds: ["launch_setup", "theme_allocation", "rotation_opportunity", "holdings_outlook"]
+  },
+  {
+    id: "risk",
+    title: "风控",
+    hint: "追涨与回撤",
+    listIds: ["chase_risk", "drawdown_defense", "portfolio_fit", "user_holding_alerts"]
+  },
+  {
+    id: "evidence",
+    title: "证据",
+    hint: "质量与费率",
+    listIds: ["quality_score", "manager_stability", "data_confidence", "fee_suitability", "replacement_choice"]
+  }
+];
 const WATCHLIST_STATUS_LABELS = {
   ready: "接近可买",
   waiting_pullback: "等待回调",
@@ -1978,25 +2004,58 @@ function renderManagerPriorityItem(item = {}) {
 function renderManagerRankingOverview(lists = []) {
   if (!lists.length) return "";
   const totalItems = lists.reduce((sum, list) => sum + (Array.isArray(list.items) ? list.items.length : 0), 0);
+  const groups = buildManagerRankingOverviewGroups(lists);
   return `
     <div class="ranking-overview">
-      <button class="ranking-overview-card ranking-overview-all" type="button" data-ranking-filter="">
+      <button class="ranking-overview-card ranking-overview-all ranking-overview-all-card" type="button" data-ranking-filter="">
         <span>全部榜单</span>
         <strong>${lists.length} 类</strong>
         <small>${totalItems} 个复核对象</small>
       </button>
-      ${lists.map((list) => {
-        const items = Array.isArray(list.items) ? list.items : [];
-        const top = items[0] || null;
-        return `
-          <button class="ranking-overview-card ranking-overview-${getManagerRankingListClass(list.id)}" type="button" data-ranking-filter="${escapeHtml(list.id || "")}" data-scroll-target="${escapeHtml(list.id || "")}">
-            <span>${escapeHtml(list.title || "榜单")}</span>
-            <strong>${items.length} 只</strong>
-            <small>${top ? `${top.code || ""} ${top.name || ""}`.trim() : (list.emptyText || "暂无触发项")}</small>
-          </button>
-        `;
-      }).join("")}
+      ${groups.map(renderManagerRankingOverviewGroup).join("")}
     </div>
+  `;
+}
+
+function buildManagerRankingOverviewGroups(lists = []) {
+  const byId = new Map((lists || []).map((list) => [list.id, list]));
+  const used = new Set();
+  const groups = MANAGER_RANKING_GROUPS.map((group) => {
+    const groupLists = group.listIds.map((id) => byId.get(id)).filter(Boolean);
+    groupLists.forEach((list) => used.add(list.id));
+    return { ...group, lists: groupLists };
+  }).filter((group) => group.lists.length);
+  const otherLists = (lists || []).filter((list) => !used.has(list.id));
+  if (otherLists.length) {
+    groups.push({ id: "other", title: "其他", hint: "补充视角", lists: otherLists });
+  }
+  return groups;
+}
+
+function renderManagerRankingOverviewGroup(group = {}) {
+  const count = (group.lists || []).reduce((sum, list) => sum + (Array.isArray(list.items) ? list.items.length : 0), 0);
+  return `
+    <section class="ranking-overview-group ranking-overview-group-${escapeHtml(group.id || "other")}">
+      <div class="ranking-overview-group-head">
+        <strong>${escapeHtml(group.title || "榜单")}</strong>
+        <span>${escapeHtml(group.hint || "")} · ${count} 项</span>
+      </div>
+      <div class="ranking-overview-group-list">
+        ${(group.lists || []).map(renderManagerRankingOverviewCard).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderManagerRankingOverviewCard(list = {}) {
+  const items = Array.isArray(list.items) ? list.items : [];
+  const top = items[0] || null;
+  return `
+    <button class="ranking-overview-card ranking-overview-${getManagerRankingListClass(list.id)}" type="button" data-ranking-filter="${escapeHtml(list.id || "")}" data-scroll-target="${escapeHtml(list.id || "")}">
+      <span>${escapeHtml(list.title || "榜单")}</span>
+      <strong>${items.length} 只</strong>
+      <small>${top ? `${top.code || ""} ${top.name || ""}`.trim() : (list.emptyText || "暂无触发项")}</small>
+    </button>
   `;
 }
 
