@@ -15,6 +15,9 @@ let currentPortfolio = null;
 let activeManagerRankingFilter = "";
 let managerRankingFilterInitialized = false;
 let activePortfolioView = "overview";
+let activePortfolioRunKey = "";
+let portfolioTimelineFullLoaded = false;
+let portfolioTimelineFullLoading = false;
 
 const WATCHLIST_STATUS_ORDER = ["ready", "waiting_pullback", "watch", "blocked", "in_position", "removed"];
 const TOP_HOLDINGS_DISPLAY_LIMIT = 10;
@@ -76,6 +79,12 @@ document.querySelector("#userPortfolioList")?.addEventListener("click", (event) 
   }
 });
 document.querySelector("[data-panel='portfolio']")?.addEventListener("click", (event) => {
+  const runButton = event.target.closest("[data-run-select]");
+  if (runButton) {
+    activePortfolioRunKey = runButton.dataset.runSelect || "";
+    renderRuns(currentPortfolio?.recentRuns || []);
+    return;
+  }
   const viewButton = event.target.closest("[data-portfolio-view-target]");
   if (!viewButton) return;
   setPortfolioView(viewButton.dataset.portfolioViewTarget || "overview");
@@ -146,6 +155,9 @@ function setPortfolioView(view = "overview") {
   document.querySelectorAll("[data-portfolio-view]").forEach((section) => {
     section.classList.toggle("active", section.dataset.portfolioView === nextView);
   });
+  if (nextView === "timeline") {
+    ensurePortfolioTimelineDetails().catch(showError);
+  }
 }
 
 async function loadAll() {
@@ -290,6 +302,8 @@ async function loadPortfolio() {
   const result = await apiFetch("/api/portfolio?summary=1", { timeoutMs: 45000 });
   const portfolio = result.portfolio || {};
   currentPortfolio = portfolio;
+  portfolioTimelineFullLoaded = !portfolio.lightweight;
+  portfolioTimelineFullLoading = false;
   const account = portfolio.account || {};
   setText("#portfolioTotalAsset", formatMoney(account.totalAsset));
   setText("#portfolioCash", formatMoney(account.cash));
@@ -321,6 +335,27 @@ async function loadPortfolio() {
     stopPortfolioPolling();
   }
   portfolioOutput.textContent = formatPortfolioOutput(portfolio);
+  if (activePortfolioView === "timeline") {
+    ensurePortfolioTimelineDetails().catch(showError);
+  }
+}
+
+async function ensurePortfolioTimelineDetails() {
+  if (!currentPortfolio || portfolioTimelineFullLoaded || portfolioTimelineFullLoading || !currentPortfolio.lightweight) return;
+  portfolioTimelineFullLoading = true;
+  renderRuns(currentPortfolio.recentRuns || []);
+  try {
+    const result = await apiFetch("/api/portfolio?full=1", { timeoutMs: 60000 });
+    currentPortfolio = result.portfolio || currentPortfolio;
+    portfolioTimelineFullLoaded = !currentPortfolio.lightweight;
+    renderRuns(currentPortfolio.recentRuns || []);
+    portfolioOutput.textContent = formatPortfolioOutput(currentPortfolio);
+  } finally {
+    portfolioTimelineFullLoading = false;
+    if (!portfolioTimelineFullLoaded) {
+      renderRuns(currentPortfolio?.recentRuns || []);
+    }
+  }
 }
 
 function formatPortfolioOutput(portfolio) {
@@ -1805,46 +1840,121 @@ function renderRuns(runs) {
     list.innerHTML = `<div class="empty">暂无决策记录。</div>`;
     return;
   }
-  list.innerHTML = `<div class="manager-timeline">${runs
-    .map((run) => {
-      const statusClass = run.status === "failed" || run.status === "interrupted" ? "bad-text" : run.status === "running" ? "warn-text" : "ok-text";
-      const orders = run.orders?.length ? run.orders.map((item) => `${item.side} ${item.code} ${item.status}`).join(" · ") : "";
-      const transactions = run.transactions?.length ? `${run.transactions.length} 笔确认成交` : "";
-      const notes = run.executionNotes?.length ? `${run.executionNotes.length} 条执行说明` : "";
-      const durationSeconds = run.durationMs
-        ? Math.round(run.durationMs / 1000)
-        : run.status === "running" && run.startedAt
-          ? Math.max(0, Math.round((Date.now() - new Date(run.startedAt).getTime()) / 1000))
-          : 0;
-      return `
-        <details class="run-item timeline-card">
-          <summary>
-            <div class="timeline-marker"></div>
-            <div>
-              <strong>${escapeHtml(run.date || "")} · ${escapeHtml(run.title || formatRunTypeLabel(run.type))}</strong>
-              <p>${escapeHtml(run.summary || "无摘要")}</p>
-              <small>${escapeHtml([orders, transactions, notes].filter(Boolean).join(" · ") || "点击查看经理分析、动作和原始日报")}</small>
-            </div>
-            <strong class="${statusClass}">${escapeHtml(formatRunStatus(run.status))}</strong>
-          </summary>
-          <div class="run-detail">
-            <div class="run-meta">
-              <span>开始：${escapeHtml(formatDateTime(run.startedAt))}</span>
-              <span>进度：${escapeHtml(formatDateTime(run.progressAt))}</span>
-              <span>结束：${escapeHtml(formatDateTime(run.completedAt))}</span>
-              <span>耗时：${durationSeconds}s</span>
-            </div>
-            ${run.error ? `<p class="bad-text">${escapeHtml(run.error)}</p>` : ""}
-            ${renderRunThinkingCards(run)}
-            <details class="raw-run-card">
-              <summary>完整日报文本</summary>
-              <pre>${escapeHtml(run.card || run.summary || (run.status === "running" ? "任务仍在运行，刷新后查看最新状态。" : "无内容"))}</pre>
-            </details>
-          </div>
+  const keyedRuns = runs.map((run, index) => ({ run, index, key: getRunKey(run, index) }));
+  if (!activePortfolioRunKey || !keyedRuns.some((item) => item.key === activePortfolioRunKey)) {
+    activePortfolioRunKey = keyedRuns[0].key;
+  }
+  const active = keyedRuns.find((item) => item.key === activePortfolioRunKey) || keyedRuns[0];
+  const statusCounts = buildRunStatusCounts(runs);
+  list.innerHTML = `
+    <div class="timeline-terminal">
+      <div class="timeline-terminal-head">
+        <div>
+          <strong>经理时间线</strong>
+          <small>${escapeHtml(getTimelineDetailStateText())}</small>
+        </div>
+        <div class="timeline-status-strip">
+          <span>记录 ${runs.length}</span>
+          <span>完成 ${statusCounts.completed || 0}</span>
+          <span>运行 ${statusCounts.running || 0}</span>
+          <span>异常 ${(statusCounts.failed || 0) + (statusCounts.interrupted || 0)}</span>
+        </div>
+      </div>
+      <div class="timeline-terminal-body">
+        <div class="run-index-list" role="list">
+          ${keyedRuns.map((item) => renderRunIndexButton(item, item.key === activePortfolioRunKey)).join("")}
+        </div>
+        <div class="run-stage">
+          ${renderRunDetail(active.run)}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function getRunKey(run = {}, index = 0) {
+  return String(run.id || [run.date, run.type, run.startedAt, index].filter(Boolean).join("-") || index);
+}
+
+function buildRunStatusCounts(runs = []) {
+  return runs.reduce((counts, run) => {
+    const key = run.status || "unknown";
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function getTimelineDetailStateText() {
+  if (portfolioTimelineFullLoading) return "正在按需加载完整日报，先展示轻量摘要。";
+  if (currentPortfolio?.lightweight && !portfolioTimelineFullLoaded) return "当前为轻量摘要，进入时间线后自动加载完整日报。";
+  return "左侧选择记录，右侧查看经理分析、执行依据和完整日报。";
+}
+
+function getRunStatusClass(status = "") {
+  if (status === "failed" || status === "interrupted") return "bad-text";
+  if (status === "running") return "warn-text";
+  return "ok-text";
+}
+
+function buildRunCompactMeta(run = {}) {
+  const orders = run.orders?.length ? `${run.orders.length} 笔订单` : "";
+  const transactions = run.transactions?.length ? `${run.transactions.length} 笔确认成交` : "";
+  const notes = run.executionNotes?.length ? `${run.executionNotes.length} 条执行说明` : "";
+  return [orders, transactions, notes].filter(Boolean).join(" · ") || "查看经理分析、动作和原始日报";
+}
+
+function renderRunIndexButton(item = {}, active = false) {
+  const run = item.run || {};
+  const statusClass = getRunStatusClass(run.status);
+  return `
+    <button type="button" class="run-index-item${active ? " active" : ""}" data-run-select="${escapeHtml(item.key || "")}">
+      <span class="run-index-dot ${statusClass}"></span>
+      <span class="run-index-main">
+        <strong>${escapeHtml(run.date || "")} · ${escapeHtml(run.title || formatRunTypeLabel(run.type))}</strong>
+        <small>${escapeHtml(run.summary || "无摘要")}</small>
+        <em>${escapeHtml(buildRunCompactMeta(run))}</em>
+      </span>
+      <span class="run-index-status ${statusClass}">${escapeHtml(formatRunStatus(run.status))}</span>
+    </button>
+  `;
+}
+
+function renderRunDetail(run = {}) {
+  const statusClass = getRunStatusClass(run.status);
+  const durationSeconds = run.durationMs
+    ? Math.round(run.durationMs / 1000)
+    : run.status === "running" && run.startedAt
+      ? Math.max(0, Math.round((Date.now() - new Date(run.startedAt).getTime()) / 1000))
+      : 0;
+  const report = run.card
+    || run.summary
+    || (portfolioTimelineFullLoading ? "完整日报正在加载，稍后会自动刷新。" : run.status === "running" ? "任务仍在运行，刷新后查看最新状态。" : "无内容");
+  return `
+    <article class="run-detail-card">
+      <div class="run-detail-head">
+        <div>
+          <span>${escapeHtml(formatRunTypeLabel(run.type))}</span>
+          <strong>${escapeHtml(run.date || "")} · ${escapeHtml(run.title || formatRunTypeLabel(run.type))}</strong>
+          <p>${escapeHtml(run.summary || "暂无摘要")}</p>
+        </div>
+        <strong class="${statusClass}">${escapeHtml(formatRunStatus(run.status))}</strong>
+      </div>
+      <div class="run-detail">
+        <div class="run-meta">
+          <span>开始：${escapeHtml(formatDateTime(run.startedAt))}</span>
+          <span>进度：${escapeHtml(formatDateTime(run.progressAt))}</span>
+          <span>结束：${escapeHtml(formatDateTime(run.completedAt))}</span>
+          <span>耗时：${durationSeconds}s</span>
+        </div>
+        ${run.error ? `<p class="bad-text">${escapeHtml(run.error)}</p>` : ""}
+        ${renderRunThinkingCards(run)}
+        <details class="raw-run-card">
+          <summary>${currentPortfolio?.lightweight && !portfolioTimelineFullLoaded ? "日报摘要" : "完整日报文本"}</summary>
+          <pre>${escapeHtml(report)}</pre>
         </details>
-      `;
-    })
-    .join("")}</div>`;
+      </div>
+    </article>
+  `;
 }
 
 function renderRunThinkingCards(run = {}) {
@@ -2235,6 +2345,8 @@ function fillUserHoldingForm(userId, code) {
 function renderPortfolioResult(result) {
   const portfolio = result.portfolio || result;
   currentPortfolio = portfolio;
+  portfolioTimelineFullLoaded = !portfolio.lightweight;
+  portfolioTimelineFullLoading = false;
   loadStats().catch(showError);
   if (portfolio.account) {
     setText("#portfolioTotalAsset", formatMoney(portfolio.account.totalAsset));
@@ -2263,6 +2375,9 @@ function renderPortfolioResult(result) {
     setTimeout(() => loadPortfolio().catch(showError), 0);
   }
   portfolioOutput.textContent = formatPortfolioOutput(portfolio);
+  if (activePortfolioView === "timeline") {
+    ensurePortfolioTimelineDetails().catch(showError);
+  }
 }
 
 async function runTest(type) {

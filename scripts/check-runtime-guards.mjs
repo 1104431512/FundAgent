@@ -1097,6 +1097,14 @@ const requiredPatterns = [
     message: "ranking-to-watchlist jumps must open the dedicated watchlist workspace."
   },
   {
+    pattern: /function ensurePortfolioTimelineDetails[\s\S]{0,900}\/api\/portfolio\?full=1[\s\S]{0,700}renderRuns/,
+    message: "admin portfolio timeline must lazy-load full run details instead of losing complete daily report text in summary mode."
+  },
+  {
+    pattern: /(?=[\s\S]*function renderRuns[\s\S]*timeline-terminal[\s\S]*renderRunDetail)(?=[\s\S]*function renderRunIndexButton[\s\S]*data-run-select)(?=[\s\S]*function renderRunDetail[\s\S]*完整日报文本)/,
+    message: "admin portfolio timeline must use a focused run selector instead of a long stacked run report list."
+  },
+  {
     pattern: /holding-strip/,
     message: "admin portfolio UI must expose top holdings as readable chips on positions and watchlist candidates."
   },
