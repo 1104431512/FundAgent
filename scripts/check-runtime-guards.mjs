@@ -2389,8 +2389,20 @@ const requiredPatterns = [
     message: "admin UI/API must manage per-user holding funds."
   },
   {
-    pattern: /用户持仓关注/,
+    pattern: /用户持仓(?:关注|终端)/,
     message: "admin UI must expose user-level holding watchlists."
+  },
+  {
+    pattern: /data-portfolio-view="users"[\s\S]{0,5000}user-terminal[\s\S]{0,3600}userPortfolioRail[\s\S]{0,600}userPortfolioList/,
+    message: "admin user holdings UI must use a focused user terminal instead of rendering every user's holdings as one long page."
+  },
+  {
+    pattern: /function renderUserPortfolios[\s\S]{0,1800}user-portfolio-terminal[\s\S]{0,2200}function renderUserPortfolioTab[\s\S]{0,900}data-user-portfolio-select/,
+    message: "admin user holdings UI must switch one selected user into the detail terminal."
+  },
+  {
+    pattern: /\.user-terminal\s*\{[\s\S]{0,360}grid-template-columns:\s*minmax\(250px,\s*310px\)\s*minmax\(0,\s*1fr\)[\s\S]{0,260}overflow:\s*hidden[\s\S]{0,1600}\.user-portfolio-tab-list\s*\{[\s\S]{0,320}overflow:\s*auto[\s\S]{0,2600}\.user-portfolio-detail-stage\s*\{[\s\S]{0,320}overflow:\s*auto/,
+    message: "admin user holdings terminal must bound the editor/user rail and selected-user detail stage."
   },
   {
     pattern: /buildPortfolioRankingBoard/,
@@ -2501,7 +2513,7 @@ const requiredPatterns = [
     message: "admin portfolio UI must expose a dedicated alert desk entrance for today's must-handle items."
   },
   {
-    pattern: /data-portfolio-view-target="diagnostics"[\s\S]{0,900}portfolioNavDiagnosticCount[\s\S]{0,12500}data-portfolio-view="diagnostics"/,
+    pattern: /data-portfolio-view-target="diagnostics"[\s\S]{0,900}portfolioNavDiagnosticCount[\s\S]{0,15500}data-portfolio-view="diagnostics"/,
     message: "admin portfolio UI must expose diagnostics as a separate entrance instead of lengthening the overview page."
   },
   {

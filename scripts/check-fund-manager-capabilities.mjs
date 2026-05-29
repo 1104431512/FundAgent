@@ -1410,8 +1410,11 @@ await assertIntent({
   requiredSkills: ["fund-vision", "fund-data-enrichment", "fund-actionability-evaluation", "fund-answer-quality"]
 });
 assert(serverSource.includes("pendingUserPortfolioImportRequests"), "text-first user holding import commands must wait for the next screenshot");
-assert(adminHtmlSource.includes("用户持仓关注"), "admin UI must expose user-level holding management");
+assert(adminHtmlSource.includes("用户持仓终端"), "admin UI must expose user-level holding management as a focused terminal");
 assert(adminSource.includes("/api/user-portfolios/holding"), "admin UI must save user-level holdings through the API");
+assert(adminSource.includes("data-user-portfolio-select"), "admin UI must switch between user holding accounts without rendering every user as one long page");
+assert(adminStyleSource.includes("user-terminal"), "admin UI must style user holding management as a bounded terminal workspace");
+assert(adminStyleSource.includes("user-portfolio-detail-stage"), "admin UI must keep selected user holdings in an internally scrollable detail stage");
 assert(adminHtmlSource.includes("经理榜单"), "admin UI must expose manager ranking boards");
 assert(adminHtmlSource.includes("data-portfolio-view-target=\"rankings\""), "admin portfolio UI must split the long virtual account page into ranking workspace entries");
 assert(adminHtmlSource.includes("data-portfolio-view=\"watchlist\""), "admin portfolio UI must expose watchlist as a dedicated workspace view instead of a long mixed page");

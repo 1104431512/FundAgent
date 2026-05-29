@@ -20,6 +20,7 @@ let activePortfolioRunPanel = "brief";
 let portfolioTimelineFullLoaded = false;
 let portfolioTimelineFullLoading = false;
 let activeWatchlistStatus = "";
+let activeUserPortfolioId = "";
 
 const WATCHLIST_STATUS_ORDER = ["ready", "waiting_pullback", "watch", "blocked", "in_position", "removed"];
 const TOP_HOLDINGS_DISPLAY_LIMIT = 10;
@@ -118,6 +119,13 @@ document.querySelector("#userPortfolioList")?.addEventListener("click", (event) 
     fillUserHoldingForm(editButton.dataset.userId, editButton.dataset.code);
   }
 });
+document.querySelector("#userPortfolioRail")?.addEventListener("click", (event) => {
+  const userPortfolioButton = event.target.closest("[data-user-portfolio-select]");
+  if (!userPortfolioButton) return;
+  event.stopPropagation();
+  activeUserPortfolioId = userPortfolioButton.dataset.userPortfolioSelect || "";
+  renderUserPortfolios(currentPortfolio?.userPortfolios || []);
+});
 document.querySelector("[data-panel='portfolio']")?.addEventListener("click", (event) => {
   const focusButton = event.target.closest("[data-focus-watchlist-code]");
   if (focusButton) {
@@ -143,6 +151,12 @@ document.querySelector("[data-panel='portfolio']")?.addEventListener("click", (e
   if (watchlistStatusButton) {
     activeWatchlistStatus = watchlistStatusButton.dataset.watchlistStatusFilter || "";
     renderWatchlist(currentPortfolio?.watchlist || []);
+    return;
+  }
+  const userPortfolioButton = event.target.closest("[data-user-portfolio-select]");
+  if (userPortfolioButton) {
+    activeUserPortfolioId = userPortfolioButton.dataset.userPortfolioSelect || "";
+    renderUserPortfolios(currentPortfolio?.userPortfolios || []);
     return;
   }
   const rankingFilterButton = event.target.closest("[data-open-ranking-filter]");
@@ -2236,16 +2250,81 @@ function getPortfolioPositionLaneHint(id = "") {
 
 function renderUserPortfolios(userPortfolios = []) {
   const list = document.querySelector("#userPortfolioList");
+  const rail = document.querySelector("#userPortfolioRail");
   const count = document.querySelector("#userPortfolioCount");
   if (!list || !count) return;
   const users = Array.isArray(userPortfolios) ? userPortfolios : [];
   const holdingCount = users.reduce((sum, item) => sum + Number(item.holdingCount || item.holdings?.length || 0), 0);
   count.textContent = `${users.length} 个用户 / ${holdingCount} 只`;
   if (!users.length) {
+    if (rail) {
+      rail.innerHTML = `<div class="empty compact-empty">暂无用户。</div>`;
+    }
     list.innerHTML = `<div class="empty">暂无用户持仓。可以在这里手动添加，也可以在飞书里说“建立用户admin的持仓情况”后发送截图。</div>`;
     return;
   }
-  list.innerHTML = users.map(renderUserPortfolioCard).join("");
+  const selected = resolveActiveUserPortfolio(users);
+  if (rail) {
+    rail.innerHTML = `
+      <div class="user-portfolio-rail-head">
+        <strong>用户列表</strong>
+        <span>${users.length}</span>
+      </div>
+      <div class="user-portfolio-tab-list">
+        ${users.map((user) => renderUserPortfolioTab(user, selected?.userId)).join("")}
+      </div>
+    `;
+  }
+  list.innerHTML = `
+    <section class="user-portfolio-terminal">
+      <div class="user-portfolio-terminal-head">
+        <div>
+          <strong>${escapeHtml(selected?.displayName || selected?.userId || "用户持仓")}</strong>
+          <small>${escapeHtml(buildUserPortfolioTerminalSubtitle(selected))}</small>
+        </div>
+        <span>${selected?.updatedAt ? `更新 ${escapeHtml(formatDateTime(selected.updatedAt))}` : "等待更新"}</span>
+      </div>
+      <div class="user-portfolio-detail-stage">
+        ${selected ? renderUserPortfolioCard(selected) : `<div class="empty compact-empty">请选择一个用户。</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function resolveActiveUserPortfolio(users = []) {
+  if (!users.length) {
+    activeUserPortfolioId = "";
+    return null;
+  }
+  const selected = users.find((user) => user.userId === activeUserPortfolioId) || users[0];
+  activeUserPortfolioId = selected.userId || "";
+  return selected;
+}
+
+function buildUserPortfolioTerminalSubtitle(user = {}) {
+  if (!user) return "暂无用户持仓。";
+  const holdings = Array.isArray(user.holdings) ? user.holdings : [];
+  const alerts = Array.isArray(user.alerts) ? user.alerts : [];
+  const warningCount = alerts.filter((item) => item.level === "warning").length;
+  return `${holdings.length} 只持仓，${warningCount} 条优先提醒；右侧卡片可直接编辑或移出基金。`;
+}
+
+function renderUserPortfolioTab(user = {}, selectedId = "") {
+  const holdings = Array.isArray(user.holdings) ? user.holdings : [];
+  const alerts = Array.isArray(user.alerts) ? user.alerts : [];
+  const warningCount = alerts.filter((item) => item.level === "warning").length;
+  const active = user.userId === selectedId;
+  const firstAlert = alerts[0] || null;
+  return `
+    <button type="button" class="user-portfolio-tab${active ? " active" : ""}" data-user-portfolio-select="${escapeHtml(user.userId || "")}" aria-pressed="${active ? "true" : "false"}">
+      <div>
+        <strong>${escapeHtml(user.displayName || user.userId || "用户")}</strong>
+        <small>${escapeHtml(user.userId || "")} · ${holdings.length} 只持仓</small>
+      </div>
+      <span class="${warningCount ? "warn" : ""}">${warningCount}</span>
+      <em>${escapeHtml(firstAlert?.action || firstAlert?.reason || "暂无优先提醒")}</em>
+    </button>
+  `;
 }
 
 function renderUserPortfolioCard(user = {}) {
