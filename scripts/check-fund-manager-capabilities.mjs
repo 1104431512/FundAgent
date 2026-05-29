@@ -1243,6 +1243,7 @@ assert(adminSource.includes("renderManagerCustomerDigest"), "admin UI must rende
 assert(adminSource.includes("renderManagerPriorityQueue"), "admin UI must render the cross-ranking priority queue");
 assert(adminSource.includes("renderManagerRankingOverview"), "admin UI must render ranking board overview cards before detailed lists");
 assert(adminSource.includes("setManagerRankingFilter"), "admin UI must allow focusing one manager ranking lane from overview cards");
+assert(adminSource.includes("getDefaultManagerRankingFilter"), "admin UI must open the manager ranking board on the highest-priority lane instead of expanding every list by default");
 assert(adminSource.includes("data-ranking-filter"), "admin UI ranking overview cards must work as compact filters");
 assert(adminSource.includes("focusWatchlistFund"), "admin UI customer digest must jump from ranking advice to watchlist fund details");
 assert(adminSource.includes("data-focus-watchlist-code"), "admin UI customer digest items must expose a watchlist focus action");
@@ -1259,6 +1260,8 @@ assert(adminStyleSource.includes("portfolio-workspace-switcher"), "admin portfol
 assert(/portfolio-workspace-switcher[\s\S]{0,240}position:\s*sticky/.test(adminStyleSource), "admin portfolio workspace switcher must remain reachable while long workspace views scroll");
 assert(adminStyleSource.includes("portfolio-workspace-view.active"), "admin portfolio workspace views must show one focused entry at a time");
 assert(adminStyleSource.includes("portfolio-workspace-card"), "admin portfolio overview shortcut cards must be visually scannable");
+assert(adminStyleSource.includes("ranking-terminal"), "admin manager ranking board must be a focused terminal-style workspace instead of a long stacked report");
+assert(adminStyleSource.includes("ranking-detail-stage"), "admin manager ranking board must separate lane navigation from the active ranking detail");
 assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must style customer-facing ranking digest as a first-class panel");
 assert(adminStyleSource.includes("focused-from-ranking"), "admin UI must highlight watchlist cards opened from customer digest items");
 assert(adminStyleSource.includes("watchlist-ranking-refs"), "admin UI must style ranking citations inside watchlist fund details");

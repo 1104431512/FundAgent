@@ -2353,6 +2353,14 @@ const requiredPatterns = [
     message: "admin manager rankings must include overview cards for quick scanning before detailed lists."
   },
   {
+    pattern: /renderManagerRankings[\s\S]{0,1800}ranking-terminal[\s\S]{0,900}ranking-detail-stage/,
+    message: "admin manager ranking boards must render as a terminal-style lane navigator with a separate focused detail stage."
+  },
+  {
+    pattern: /getDefaultManagerRankingFilter[\s\S]{0,900}priorityQueue[\s\S]{0,900}listId/,
+    message: "admin manager ranking boards must default to the highest-priority ranking lane instead of expanding all lists."
+  },
+  {
     pattern: /setManagerRankingFilter[\s\S]{0,1600}data-ranking-filter[\s\S]{0,1600}is-filtered-out/,
     message: "admin manager ranking overview cards must focus one ranking lane and hide non-focused lists."
   },

@@ -785,22 +785,84 @@ button:disabled {
 
 .ranking-board {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.ranking-terminal {
+  display: grid;
+  grid-template-columns: minmax(230px, 300px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.ranking-terminal-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #d8e3ec;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.ranking-terminal-head strong,
+.ranking-terminal-head small,
+.ranking-terminal-head span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.ranking-terminal-head strong {
+  color: #1d2d3b;
+  font-size: 15px;
+}
+
+.ranking-terminal-head small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ranking-terminal-head > span {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #1f513f;
+  background: #eaf7ef;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.ranking-detail-stage {
+  min-width: 0;
+  display: grid;
   gap: 12px;
 }
 
 .ranking-overview {
-  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 10px;
+}
+
+.ranking-terminal .ranking-overview {
+  position: sticky;
+  top: 124px;
+  grid-template-columns: 1fr;
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .ranking-overview-card {
   min-width: 0;
   display: grid;
   gap: 5px;
-  padding: 12px;
+  padding: 10px 11px;
   border: 1px solid #dde6ee;
   border-left: 4px solid #8aa1b5;
   border-radius: 8px;
@@ -836,7 +898,7 @@ button:disabled {
 
 .ranking-overview-card strong {
   color: #1d2d3b;
-  font-size: 22px;
+  font-size: 18px;
   line-height: 1.05;
 }
 
@@ -2659,6 +2721,26 @@ button.danger-button:hover {
 
   .ranking-health-actions {
     justify-content: flex-start;
+  }
+
+  .ranking-terminal {
+    grid-template-columns: 1fr;
+  }
+
+  .ranking-terminal-head {
+    display: grid;
+  }
+
+  .ranking-terminal .ranking-overview {
+    position: static;
+    display: flex;
+    max-height: none;
+    overflow-x: auto;
+    padding: 0 0 4px;
+  }
+
+  .ranking-terminal .ranking-overview-card {
+    flex: 0 0 170px;
   }
 
   .watchlist-setup-item {

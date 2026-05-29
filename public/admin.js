@@ -13,6 +13,7 @@ let portfolioPollTimer = null;
 let portfolioPollFailures = 0;
 let currentPortfolio = null;
 let activeManagerRankingFilter = "";
+let managerRankingFilterInitialized = false;
 let activePortfolioView = "overview";
 
 const WATCHLIST_STATUS_ORDER = ["ready", "waiting_pullback", "watch", "blocked", "in_position", "removed"];
@@ -88,7 +89,7 @@ document.querySelector("#managerRankingBoard")?.addEventListener("click", (event
   const filterButton = event.target.closest("[data-ranking-filter]");
   if (filterButton) {
     const nextFilter = filterButton.dataset.rankingFilter || "";
-    setManagerRankingFilter(nextFilter === activeManagerRankingFilter ? "" : nextFilter);
+    setManagerRankingFilter(nextFilter);
     if (activeManagerRankingFilter) {
       const target = [...document.querySelectorAll("[data-ranking-id]")].find((node) => node.dataset.rankingId === activeManagerRankingFilter);
       target?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -504,9 +505,40 @@ function renderManagerRankings(board = {}) {
     root.innerHTML = `<div class="empty">暂无榜单数据。自选池、持仓或用户持仓关注有数据后会自动生成。</div>`;
     return;
   }
-  root.innerHTML = `${renderManagerRankingHealth(board.health || {})}${renderManagerCustomerDigest(board.customerDigest || {})}${renderManagerPriorityQueue(board.priorityQueue || [])}${renderManagerRankingOverview(lists)}${lists.map(renderManagerRankingList).join("")}`;
-  if (!lists.some((list) => list.id === activeManagerRankingFilter)) activeManagerRankingFilter = "";
+  root.innerHTML = `
+    ${renderManagerRankingHealth(board.health || {})}
+    ${renderManagerCustomerDigest(board.customerDigest || {})}
+    ${renderManagerPriorityQueue(board.priorityQueue || [])}
+    <section class="ranking-terminal">
+      <div class="ranking-terminal-head">
+        <div>
+          <strong>榜单中枢</strong>
+          <small>左侧选择决策视角，右侧只展开当前榜单；需要总览时再点全部榜单。</small>
+        </div>
+        <span>${lists.length} 个视角</span>
+      </div>
+      ${renderManagerRankingOverview(lists)}
+      <div class="ranking-detail-stage">
+        ${lists.map(renderManagerRankingList).join("")}
+      </div>
+    </section>
+  `;
+  if (!managerRankingFilterInitialized) {
+    activeManagerRankingFilter = getDefaultManagerRankingFilter(board, lists);
+    managerRankingFilterInitialized = true;
+  } else if (activeManagerRankingFilter && !lists.some((list) => list.id === activeManagerRankingFilter)) {
+    activeManagerRankingFilter = getDefaultManagerRankingFilter(board, lists);
+  }
   setManagerRankingFilter(activeManagerRankingFilter);
+}
+
+function getDefaultManagerRankingFilter(board = {}, lists = []) {
+  const available = new Set((lists || []).map((list) => list.id).filter(Boolean));
+  const priorityListId = (Array.isArray(board.priorityQueue) ? board.priorityQueue : [])
+    .map((item) => item.listId)
+    .find((id) => available.has(id));
+  if (priorityListId) return priorityListId;
+  return (lists || []).find((list) => Array.isArray(list.items) && list.items.length)?.id || lists?.[0]?.id || "";
 }
 
 function renderManagerRankingHealth(health = {}) {
