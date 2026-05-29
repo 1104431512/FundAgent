@@ -12,6 +12,7 @@ let currentSkills = [];
 let portfolioPollTimer = null;
 let portfolioPollFailures = 0;
 let currentPortfolio = null;
+let activeManagerRankingFilter = "";
 
 const WATCHLIST_STATUS_ORDER = ["ready", "waiting_pullback", "watch", "blocked", "in_position", "removed"];
 const TOP_HOLDINGS_DISPLAY_LIMIT = 10;
@@ -72,6 +73,16 @@ document.querySelector("#userPortfolioList")?.addEventListener("click", (event) 
   }
 });
 document.querySelector("#managerRankingBoard")?.addEventListener("click", (event) => {
+  const filterButton = event.target.closest("[data-ranking-filter]");
+  if (filterButton) {
+    const nextFilter = filterButton.dataset.rankingFilter || "";
+    setManagerRankingFilter(nextFilter === activeManagerRankingFilter ? "" : nextFilter);
+    if (activeManagerRankingFilter) {
+      const target = [...document.querySelectorAll("[data-ranking-id]")].find((node) => node.dataset.rankingId === activeManagerRankingFilter);
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    return;
+  }
   const button = event.target.closest("[data-scroll-target]");
   if (!button) return;
   const scrollTarget = button.dataset.scrollTarget || "";
@@ -379,6 +390,8 @@ function renderManagerRankings(board = {}) {
     return;
   }
   root.innerHTML = `${renderManagerRankingHealth(board.health || {})}${renderManagerPriorityQueue(board.priorityQueue || [])}${renderManagerRankingOverview(lists)}${lists.map(renderManagerRankingList).join("")}`;
+  if (!lists.some((list) => list.id === activeManagerRankingFilter)) activeManagerRankingFilter = "";
+  setManagerRankingFilter(activeManagerRankingFilter);
 }
 
 function renderManagerRankingHealth(health = {}) {
@@ -437,13 +450,19 @@ function renderManagerPriorityItem(item = {}) {
 
 function renderManagerRankingOverview(lists = []) {
   if (!lists.length) return "";
+  const totalItems = lists.reduce((sum, list) => sum + (Array.isArray(list.items) ? list.items.length : 0), 0);
   return `
     <div class="ranking-overview">
+      <button class="ranking-overview-card ranking-overview-all" type="button" data-ranking-filter="">
+        <span>全部榜单</span>
+        <strong>${lists.length} 类</strong>
+        <small>${totalItems} 个复核对象</small>
+      </button>
       ${lists.map((list) => {
         const items = Array.isArray(list.items) ? list.items : [];
         const top = items[0] || null;
         return `
-          <button class="ranking-overview-card ranking-overview-${getManagerRankingListClass(list.id)}" type="button" data-scroll-target="${escapeHtml(list.id || "")}">
+          <button class="ranking-overview-card ranking-overview-${getManagerRankingListClass(list.id)}" type="button" data-ranking-filter="${escapeHtml(list.id || "")}" data-scroll-target="${escapeHtml(list.id || "")}">
             <span>${escapeHtml(list.title || "榜单")}</span>
             <strong>${items.length} 只</strong>
             <small>${top ? `${top.code || ""} ${top.name || ""}`.trim() : (list.emptyText || "暂无触发项")}</small>
@@ -452,6 +471,26 @@ function renderManagerRankingOverview(lists = []) {
       }).join("")}
     </div>
   `;
+}
+
+function setManagerRankingFilter(rankingId = "") {
+  const root = document.querySelector("#managerRankingBoard");
+  if (!root) return;
+  activeManagerRankingFilter = String(rankingId || "");
+  if (activeManagerRankingFilter) {
+    root.dataset.activeRanking = activeManagerRankingFilter;
+  } else {
+    delete root.dataset.activeRanking;
+  }
+  root.querySelectorAll("[data-ranking-filter]").forEach((button) => {
+    const active = (button.dataset.rankingFilter || "") === activeManagerRankingFilter;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  root.querySelectorAll("[data-ranking-id]").forEach((section) => {
+    const visible = !activeManagerRankingFilter || section.dataset.rankingId === activeManagerRankingFilter;
+    section.classList.toggle("is-filtered-out", !visible);
+  });
 }
 
 function renderManagerRankingList(list = {}) {

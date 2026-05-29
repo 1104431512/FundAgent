@@ -662,6 +662,12 @@ button:disabled {
   background: #fbfdff;
 }
 
+.ranking-overview-card.active {
+  border-color: #9fb3c3;
+  background: #f6fafc;
+  box-shadow: inset 0 0 0 1px #c9d8e4;
+}
+
 .ranking-overview-card span,
 .ranking-overview-card strong,
 .ranking-overview-card small {
@@ -685,6 +691,10 @@ button:disabled {
   color: #435363;
   font-size: 12px;
   line-height: 1.35;
+}
+
+.ranking-overview-all {
+  border-left-color: #64748b;
 }
 
 .ranking-overview-buy {
@@ -937,6 +947,10 @@ button:disabled {
 
 .ranking-list-user {
   border-top: 3px solid #5f6f52;
+}
+
+.ranking-list.is-filtered-out {
+  display: none;
 }
 
 .ranking-list-head {

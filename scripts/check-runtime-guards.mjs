@@ -2289,6 +2289,10 @@ const requiredPatterns = [
     message: "admin manager rankings must include overview cards for quick scanning before detailed lists."
   },
   {
+    pattern: /setManagerRankingFilter[\s\S]{0,1600}data-ranking-filter[\s\S]{0,1600}is-filtered-out/,
+    message: "admin manager ranking overview cards must focus one ranking lane and hide non-focused lists."
+  },
+  {
     pattern: /getManagerRankingActionClass[\s\S]{0,900}卖出[\s\S]{0,900}轮动[\s\S]{0,900}买入[\s\S]{0,900}持仓[\s\S]{0,900}费用[\s\S]{0,900}机会[\s\S]{0,900}观察/,
     message: "admin ranking items must visually distinguish buy, sector-rotation, holdings-outlook, fee-suitability, opportunity-cost, watch, and sell style actions."
   },
