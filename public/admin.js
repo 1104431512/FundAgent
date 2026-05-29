@@ -468,6 +468,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   updateRunStateBadge(latestRun, portfolio.scheduler || {});
 
   renderPortfolioWorkspaceCards(portfolio, { positions, watchlist, userPortfolios, runs, activeOrders, transactions, equity, ready, waiting, launchEve, blocked, diagnosticCount });
+  renderPortfolioRankingRadar(portfolio.managerRankings || {});
   renderPortfolioOpportunityBoard({ ready, waiting, launchEve, blocked });
   renderInsightList("#portfolioManagerSummary", buildManagerInsightItems(portfolio, latestRun, activeOrders), "暂无经理运行摘要。");
   renderInsightList("#portfolioHoldingSummary", buildHoldingInsightItems(account, positions, portfolio.exposureSummary || null), "暂无持仓暴露。");
@@ -573,6 +574,97 @@ function renderPortfolioWorkspaceCard(card = {}) {
       <small>${escapeHtml(card.detail || "")}</small>
       <em>${escapeHtml(card.meta || "")}</em>
     </button>
+  `;
+}
+
+function renderPortfolioRankingRadar(board = {}) {
+  const root = document.querySelector("#portfolioRankingRadar");
+  if (!root) return;
+  const digest = board.customerDigest || {};
+  const priorityQueue = Array.isArray(board.priorityQueue) ? board.priorityQueue : [];
+  const groups = [
+    { key: "buyReview", title: "可买复核", tone: "buy", empty: "暂无进入买入复核的候选。" },
+    { key: "watchFocus", title: "观察重点", tone: "watch", empty: "暂无需要重点盯盘的候选。" },
+    { key: "riskAvoid", title: "回避提醒", tone: "sell", empty: "暂无明确回避提醒。" }
+  ];
+  const hasDigestItems = groups.some((group) => Array.isArray(digest[group.key]) && digest[group.key].length);
+  const hasPriorityItems = priorityQueue.length > 0;
+  if (!hasDigestItems && !hasPriorityItems && !digest.summary) {
+    root.innerHTML = `
+      <div class="portfolio-ranking-radar-empty">
+        <div>
+          <span>榜单雷达</span>
+          <strong>等待榜单信号</strong>
+          <small>经理生成自选池、持仓复核或用户持仓提醒后，这里会直接显示买、看、避三类入口。</small>
+        </div>
+        <button type="button" class="secondary" data-portfolio-view-target="rankings">进入经理榜单</button>
+      </div>
+    `;
+    return;
+  }
+  root.innerHTML = `
+    <div class="portfolio-ranking-radar-head">
+      <div>
+        <span>榜单雷达</span>
+        <strong>${escapeHtml(digest.title || "今天先看这三类")}</strong>
+        <small>${escapeHtml(digest.summary || "从经理多角度榜单提炼出买、看、避，不在首页堆满指标。")}</small>
+      </div>
+      <button type="button" class="secondary" data-portfolio-view-target="rankings">进入经理榜单</button>
+    </div>
+    <div class="portfolio-ranking-radar-grid">
+      ${groups.map((group) => renderPortfolioRankingRadarGroup(group, digest[group.key] || [])).join("")}
+    </div>
+    ${hasPriorityItems ? renderPortfolioRankingRadarPriority(priorityQueue) : ""}
+  `;
+}
+
+function renderPortfolioRankingRadarGroup(group, items = []) {
+  const values = Array.isArray(items) ? items.slice(0, 2) : [];
+  return `
+    <section class="portfolio-ranking-radar-lane portfolio-ranking-radar-${escapeHtml(group.tone)}">
+      <div class="portfolio-ranking-radar-lane-head">
+        <strong>${escapeHtml(group.title)}</strong>
+        <span>${values.length} 项</span>
+      </div>
+      ${values.length ? values.map((item) => renderPortfolioRankingRadarItem(item, group.tone)).join("") : `<small class="portfolio-ranking-radar-empty-text">${escapeHtml(group.empty)}</small>`}
+    </section>
+  `;
+}
+
+function renderPortfolioRankingRadarItem(item = {}, tone = "watch") {
+  const code = String(item.code || "").trim();
+  const actionClass = getManagerRankingActionClass(`${item.action || ""} ${item.reason || ""}`) || tone;
+  const tags = Array.isArray(item.tags) ? item.tags.slice(0, 3) : [];
+  return `
+    <article class="portfolio-ranking-radar-item">
+      <div>
+        <strong>${escapeHtml(code)} ${escapeHtml(item.name || "")}</strong>
+        <span class="ranking-action ${actionClass}">${escapeHtml(item.action || item.status || "复核")}</span>
+      </div>
+      <p>${escapeHtml(item.reason || "等待经理下一轮复核。")}</p>
+      ${tags.length ? `<div class="portfolio-ranking-radar-tags">${tags.map((tag) => `<em>${escapeHtml(tag)}</em>`).join("")}</div>` : ""}
+      <footer>
+        <small>${escapeHtml(item.nextStep || "进入榜单查看完整依据。")}</small>
+        ${code ? `<button type="button" class="ranking-detail-link" data-focus-watchlist-code="${escapeHtml(code)}">自选详情</button>` : ""}
+      </footer>
+    </article>
+  `;
+}
+
+function renderPortfolioRankingRadarPriority(queue = []) {
+  const items = (Array.isArray(queue) ? queue : []).slice(0, 4);
+  if (!items.length) return "";
+  return `
+    <div class="portfolio-ranking-radar-priority">
+      <span>优先队列</span>
+      ${items.map((item) => `
+        <button type="button" data-focus-watchlist-code="${escapeHtml(item.code || "")}">
+          <b>${escapeHtml(item.queueRank || item.rank || "-")}</b>
+          <strong>${escapeHtml([item.code, item.name].filter(Boolean).join(" "))}</strong>
+          <small>${escapeHtml(item.listTitle || item.action || "经理榜单")}</small>
+        </button>
+      `).join("")}
+    </div>
   `;
 }
 

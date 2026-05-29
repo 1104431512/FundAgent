@@ -1347,6 +1347,11 @@ assert(adminHtmlSource.includes("data-portfolio-view=\"watchlist\""), "admin por
 assert(adminSource.includes("setPortfolioView"), "admin portfolio UI must switch between virtual account workspace views");
 assert(adminHtmlSource.includes("portfolioWorkspaceCards"), "admin portfolio overview must expose workspace shortcut cards");
 assert(adminSource.includes("renderPortfolioWorkspaceCards"), "admin portfolio overview must summarize each workspace with actionable shortcut cards");
+assert(adminHtmlSource.includes("portfolioRankingRadar"), "admin portfolio overview must expose a compact ranking radar");
+assert(adminSource.includes("renderPortfolioRankingRadar"), "admin portfolio overview must render buy/watch/avoid ranking radar lanes");
+assert(adminSource.includes("renderPortfolioRankingRadarPriority"), "admin portfolio overview must expose the cross-ranking priority queue without opening the full ranking page");
+assert(adminStyleSource.includes("portfolio-ranking-radar-grid"), "admin portfolio ranking radar must be styled as a scannable three-lane board");
+assert(adminStyleSource.includes("portfolio-ranking-radar-priority"), "admin portfolio ranking radar must style the priority queue as a compact strip");
 assert(adminHtmlSource.includes("综合决策"), "admin UI must describe integrated decision-synthesis rankings as a manager decision angle");
 assert(adminHtmlSource.includes("机会成本"), "admin UI must describe opportunity-cost rankings as a manager decision angle");
 assert(adminHtmlSource.includes("板块轮动"), "admin UI must describe sector-rotation rankings as a manager decision angle");

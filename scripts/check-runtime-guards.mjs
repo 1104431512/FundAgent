@@ -1089,6 +1089,18 @@ const requiredPatterns = [
     message: "admin portfolio workspace cards must summarize rankings, watchlist readiness, and user alerts."
   },
   {
+    pattern: /(?=[\s\S]*portfolioRankingRadar)(?=[\s\S]*function renderPortfolioRankingRadar)(?=[\s\S]*buyReview)(?=[\s\S]*watchFocus)(?=[\s\S]*riskAvoid)/,
+    message: "admin portfolio overview must render a compact ranking radar so users can scan buy/watch/avoid signals without opening a long ranking report."
+  },
+  {
+    pattern: /renderPortfolioRankingRadarItem[\s\S]{0,1400}data-focus-watchlist-code[\s\S]{0,900}renderPortfolioRankingRadarPriority/,
+    message: "admin portfolio ranking radar must jump from radar items and priority queue entries to matching watchlist details."
+  },
+  {
+    pattern: /(?=[\s\S]*\.portfolio-ranking-radar\s*\{)(?=[\s\S]*\.portfolio-ranking-radar-grid\s*\{[\s\S]*repeat\(3,\s*minmax\(0,\s*1fr\)\))(?=[\s\S]*\.portfolio-ranking-radar-priority\s*\{[\s\S]*overflow-x:\s*auto)/,
+    message: "admin portfolio ranking radar must be styled as a compact trading-console board with three lanes and a scrollable priority strip."
+  },
+  {
     pattern: /portfolio-workspace-switcher[\s\S]{0,260}position:\s*sticky/,
     message: "admin portfolio workspace switcher must stay reachable and remain usable on narrow screens."
   },
