@@ -423,8 +423,31 @@ function renderManagerRankingItem(item = {}) {
           ${item.userId ? `<small>用户 ${escapeHtml(item.userId)}</small>` : ""}
         </div>
         ${facts.length ? `<div class="fact-strip compact">${facts.slice(0, 5).map((fact) => `<span>${escapeHtml(fact)}</span>`).join("")}</div>` : ""}
+        ${renderManagerRankingDecision(item.decision || {})}
       </div>
     </article>
+  `;
+}
+
+function renderManagerRankingDecision(decision = {}) {
+  const cells = [
+    buildRankingDecisionCell("看点", decision.highlights),
+    buildRankingDecisionCell("风险", decision.risks),
+    buildRankingDecisionCell("缺口", decision.gaps),
+    buildRankingDecisionCell("下一步", decision.nextStep)
+  ].filter(Boolean);
+  if (!cells.length) return "";
+  return `<div class="ranking-decision">${cells.join("")}</div>`;
+}
+
+function buildRankingDecisionCell(label, value) {
+  const items = Array.isArray(value) ? value.filter(Boolean).slice(0, 2) : String(value || "").trim() ? [String(value).trim()] : [];
+  if (!items.length) return "";
+  return `
+    <div class="ranking-decision-cell">
+      <span>${escapeHtml(label)}</span>
+      <div>${items.map((item) => `<strong>${escapeHtml(item)}</strong>`).join("")}</div>
+    </div>
   `;
 }
 

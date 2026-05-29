@@ -85,6 +85,11 @@ assert(rankingBoard.lists.find((item) => item.id === "launch_setup")?.items.some
 assert(rankingBoard.lists.find((item) => item.id === "sell_risk")?.items.some((item) => item.code === "008327"), "manager ranking board must expose sell-risk positions");
 assert(rankingBoard.health?.summary, "manager ranking board must explain the current board state");
 assert(rankingBoard.lists.every((item) => item.nextAction), "manager ranking board empty states must include next actions");
+const buyRankingItem = rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.find((item) => item.code === "000001");
+const sellRankingItem = rankingBoard.lists.find((item) => item.id === "sell_risk")?.items.find((item) => item.code === "008327");
+assert(buyRankingItem?.decision?.highlights?.length, "buy ranking items must explain the opportunity highlight");
+assert(buyRankingItem?.decision?.nextStep, "buy ranking items must include an actionable next step");
+assert(sellRankingItem?.decision?.risks?.some((item) => item.includes("回吐")), "sell ranking items must expose risk reasons instead of only a score");
 assert.notEqual(
   rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.find((item) => item.code === "000001")?.action,
   "买入复核",
@@ -1036,6 +1041,7 @@ assert(adminHtmlSource.includes("经理榜单"), "admin UI must expose manager r
 assert(adminSource.includes("renderManagerRankings"), "admin UI must render multi-angle ranking boards");
 assert(adminSource.includes("ranking-health"), "admin UI must render ranking board state guidance");
 assert(adminSource.includes("ranking-next"), "admin UI must render ranking next-action guidance");
+assert(adminSource.includes("renderManagerRankingDecision"), "admin UI must render per-fund ranking decision matrices");
 
 await assertIntent({
   userText: "我发的图里是我已经买的基金，告诉我大概多久卖",

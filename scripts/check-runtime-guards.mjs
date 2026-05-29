@@ -2253,6 +2253,10 @@ const requiredPatterns = [
     message: "manager ranking boards must explain empty states and next actions."
   },
   {
+    pattern: /renderManagerRankingDecision[\s\S]{0,1600}看点[\s\S]{0,1200}风险[\s\S]{0,1200}缺口[\s\S]{0,1200}下一步/,
+    message: "manager ranking items must render opportunity, risk, gap, and next-step decision cells."
+  },
+  {
     pattern: /经理榜单/,
     message: "admin portfolio UI must include a visible manager ranking board section."
   }

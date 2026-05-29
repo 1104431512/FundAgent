@@ -8395,7 +8395,10 @@ function buildPortfolioBuyPreparationRanking(watchlist = []) {
         action: highReadiness ? "买入复核" : mediumReadiness ? "触发复核" : "补证据",
         reason: highReadiness
           ? "买入准备度较高，适合进入金额和触发条件复核。"
-          : selectPortfolioRankingFirstText(item.readinessGaps, item.buyTriggers, item.reason) || "方向可跟踪，但还需要补齐买点证据。"
+          : selectPortfolioRankingFirstText(item.readinessGaps, item.buyTriggers, item.reason) || "方向可跟踪，但还需要补齐买点证据。",
+        nextStep: highReadiness
+          ? "复核金额、份额类别和15:00前交易规则，再决定小仓或分批。"
+          : "等待缺口消失后再升级，避免把备选误当成买入。"
       });
     })
     .sort(compareRankingItems)
@@ -8417,7 +8420,8 @@ function buildPortfolioLaunchSetupRanking(watchlist = []) {
     .map((item) => buildRankingItemFromWatch(item, {
       score: Number(item.readinessScore || 0) + 8 - Number(item.priority || 3),
       action: "启动前夜复核",
-      reason: "低位启动前夜候选，只等净值和早期转强证据确认。"
+      reason: "低位启动前夜候选，只等净值和早期转强证据确认。",
+      nextStep: "只盯回调完成后的第一段转强，不用提前重仓。"
     }))
     .sort(compareRankingItems)
     .slice(0, 6);
@@ -8452,6 +8456,14 @@ function buildPortfolioSellRiskRanking(positions = []) {
           giveback > 0 ? `回吐${round(giveback, 2)}pct` : "",
           budget.label || ""
         ].filter(Boolean),
+        decision: {
+          highlights: [budget.label || "持仓风险进入复核队列"],
+          risks: budget.triggers || [],
+          gaps: position.lastRiskControl ? [position.lastRiskControl] : [],
+          nextStep: budget.level === "normal"
+            ? "继续观察，不用因为短期波动频繁操作。"
+            : "先复核减仓金额和赎回到账时间，避免用补仓替代风控。"
+        },
         status: budget.level || "normal"
       });
     })
@@ -8482,6 +8494,14 @@ function buildUserHoldingAlertRanking(userPortfolios = []) {
         action: alert.action || "继续观察",
         reason: alert.reason || "已纳入用户持仓关注。",
         facts: [alert.level === "warning" ? "优先提醒" : alert.level === "positive" ? "可复核加仓" : "观察"].filter(Boolean),
+        decision: {
+          highlights: [alert.action || "继续观察"],
+          risks: [alert.reason || "已纳入用户持仓关注。"],
+          gaps: [],
+          nextStep: alert.level === "warning"
+            ? "优先推送给对应用户，提醒其复核卖出或减仓。"
+            : "跟随用户真实成本继续观察，等触发点再提醒。"
+        },
         status: alert.level || "info"
       }));
     }
@@ -8512,8 +8532,25 @@ function buildRankingItemFromWatch(item = {}, options = {}) {
       Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置${round(Number(trend.lowPositionPct120), 1)}%` : "",
       item.shareClass ? `${item.shareClass}类` : ""
     ].filter(Boolean),
+    decision: {
+      highlights: options.highlights || [
+        ...normalizeStringArray(item.setupEvidence),
+        ...normalizeStringArray(item.buyTriggers)
+      ],
+      risks: options.risks || item.riskNotes || [],
+      gaps: options.gaps || item.readinessGaps || [],
+      nextStep: options.nextStep || buildPortfolioWatchRankingNextStep(item)
+    },
     status: item.status || "watch"
   });
+}
+
+function buildPortfolioWatchRankingNextStep(item = {}) {
+  if (item.status === "ready") return "复核金额、份额类别和15:00前交易规则，再决定小仓或分批。";
+  if (item.status === "waiting_pullback") return "继续等回调完成和5日/10日转强，不把备选当买点。";
+  if (item.status === "blocked") return "先修复规模、费用、持仓或数据缺口，再恢复观察。";
+  if (item.status === "in_position") return "纳入持仓复盘，重点盯回吐、仓位和同题材重叠。";
+  return "补齐走势、持仓、费用和行业前景后再进入买入准备。";
 }
 
 function buildPortfolioRankingList({ id, title, subtitle, emptyText, nextAction, items }) {
@@ -8527,7 +8564,7 @@ function buildPortfolioRankingList({ id, title, subtitle, emptyText, nextAction,
   };
 }
 
-function buildPortfolioRankingItem({ code, name, userId = "", source = "", score = 0, action = "", reason = "", facts = [], status = "" }) {
+function buildPortfolioRankingItem({ code, name, userId = "", source = "", score = 0, action = "", reason = "", facts = [], decision = null, status = "" }) {
   return {
     code: String(code || ""),
     name: String(name || ""),
@@ -8537,7 +8574,18 @@ function buildPortfolioRankingItem({ code, name, userId = "", source = "", score
     action: normalizePortfolioUserFacingText(action || ""),
     reason: normalizePortfolioUserFacingText(reason || "").slice(0, 260),
     facts: normalizePortfolioUserFacingArray(facts, 5),
+    decision: buildPortfolioRankingDecision(decision),
     status: String(status || "")
+  };
+}
+
+function buildPortfolioRankingDecision(decision = null) {
+  const value = decision && typeof decision === "object" ? decision : {};
+  return {
+    highlights: normalizePortfolioUserFacingArray(value.highlights, 3),
+    risks: normalizePortfolioUserFacingArray(value.risks, 3),
+    gaps: normalizePortfolioUserFacingArray(value.gaps, 3),
+    nextStep: normalizePortfolioUserFacingText(value.nextStep || "").slice(0, 180)
   };
 }
 
