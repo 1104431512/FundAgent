@@ -6,10 +6,12 @@ const modelStatus = document.querySelector("#modelStatus");
 const feishuStatus = document.querySelector("#feishuStatus");
 const authPanel = document.querySelector("#authPanel");
 const adminTokenInput = document.querySelector("#adminToken");
+const userHoldingForm = document.querySelector("#userHoldingForm");
 
 let currentSkills = [];
 let portfolioPollTimer = null;
 let portfolioPollFailures = 0;
+let currentPortfolio = null;
 
 const WATCHLIST_STATUS_ORDER = ["ready", "waiting_pullback", "watch", "blocked", "in_position", "removed"];
 const TOP_HOLDINGS_DISPLAY_LIMIT = 10;
@@ -55,6 +57,20 @@ document.querySelector("#prunePortfolioBtn").addEventListener("click", () => pru
 document.querySelector("#resetPortfolioBtn").addEventListener("click", () => resetPortfolio());
 document.querySelector("#testModelBtn").addEventListener("click", () => runTest("model"));
 document.querySelector("#testFeishuBtn").addEventListener("click", () => runTest("feishu"));
+if (userHoldingForm) {
+  userHoldingForm.addEventListener("submit", (event) => saveUserHolding(event));
+}
+document.querySelector("#userPortfolioList")?.addEventListener("click", (event) => {
+  const removeButton = event.target.closest("[data-remove-user-holding]");
+  if (removeButton) {
+    removeUserHolding(removeButton.dataset.userId, removeButton.dataset.code);
+    return;
+  }
+  const editButton = event.target.closest("[data-edit-user-holding]");
+  if (editButton) {
+    fillUserHoldingForm(editButton.dataset.userId, editButton.dataset.code);
+  }
+});
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -228,6 +244,7 @@ function renderRuntimeDiagnostics(diagnostics = {}) {
 async function loadPortfolio() {
   const result = await apiFetch("/api/portfolio?summary=1", { timeoutMs: 45000 });
   const portfolio = result.portfolio || {};
+  currentPortfolio = portfolio;
   const account = portfolio.account || {};
   setText("#portfolioTotalAsset", formatMoney(account.totalAsset));
   setText("#portfolioCash", formatMoney(account.cash));
@@ -245,6 +262,7 @@ async function loadPortfolio() {
   renderPortfolioDashboard(portfolio);
   renderOrders(portfolio.activeOrders || []);
   renderPositions(portfolio.positions || []);
+  renderUserPortfolios(portfolio.userPortfolios || []);
   renderWatchlist(portfolio.watchlist || []);
   renderRuns(portfolio.recentRuns || []);
   renderTransactions(portfolio.recentTransactions || []);
@@ -286,6 +304,13 @@ function formatPortfolioOutput(portfolio) {
     lines.push("");
     lines.push(`自选基金池：${watchlist.length} 只，接近可买 ${ready} 只，等待回调 ${waiting} 只。`);
   }
+  const userPortfolios = portfolio.userPortfolios || [];
+  if (userPortfolios.length) {
+    const holdings = userPortfolios.reduce((sum, item) => sum + Number(item.holdingCount || item.holdings?.length || 0), 0);
+    const alerts = userPortfolios.reduce((sum, item) => sum + Number(item.alertCount || 0), 0);
+    lines.push("");
+    lines.push(`用户持仓关注：${userPortfolios.length} 个用户，${holdings} 只基金，${alerts} 条优先提醒。`);
+  }
   return lines.join("\n");
 }
 
@@ -297,6 +322,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   const account = portfolio.account || {};
   const positions = portfolio.positions || [];
   const watchlist = portfolio.watchlist || [];
+  const userPortfolios = portfolio.userPortfolios || [];
   const runs = portfolio.recentRuns || [];
   const latestRun = runs[0] || null;
   const activeOrders = portfolio.activeOrders || [];
@@ -308,6 +334,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   const briefParts = [
     portfolio.enabled ? "自动运行已启用" : "自动运行停用",
     `${positions.length} 只持仓`,
+    userPortfolios.length ? `${userPortfolios.length} 个用户持仓关注` : "",
     `${watchlist.length} 只自选候选`,
     latestRun ? `最近：${latestRun.title || latestRun.type || "组合任务"} ${latestRun.status || ""}` : "暂无运行记录"
   ];
@@ -652,6 +679,106 @@ function renderPositions(positions) {
     return;
   }
   list.innerHTML = `<div class="fund-card-grid">${positions.map(renderPositionCard).join("")}</div>`;
+}
+
+function renderUserPortfolios(userPortfolios = []) {
+  const list = document.querySelector("#userPortfolioList");
+  const count = document.querySelector("#userPortfolioCount");
+  if (!list || !count) return;
+  const users = Array.isArray(userPortfolios) ? userPortfolios : [];
+  const holdingCount = users.reduce((sum, item) => sum + Number(item.holdingCount || item.holdings?.length || 0), 0);
+  count.textContent = `${users.length} 个用户 / ${holdingCount} 只`;
+  if (!users.length) {
+    list.innerHTML = `<div class="empty">暂无用户持仓。可以在这里手动添加，也可以在飞书里说“建立用户admin的持仓情况”后发送截图。</div>`;
+    return;
+  }
+  list.innerHTML = users.map(renderUserPortfolioCard).join("");
+}
+
+function renderUserPortfolioCard(user = {}) {
+  const alerts = Array.isArray(user.alerts) ? user.alerts : [];
+  const holdings = Array.isArray(user.holdings) ? user.holdings : [];
+  const warningCount = alerts.filter((item) => item.level === "warning").length;
+  return `
+    <section class="user-portfolio-card">
+      <div class="user-portfolio-head">
+        <div>
+          <strong>${escapeHtml(user.displayName || user.userId || "用户")}</strong>
+          <span>${escapeHtml(user.userId || "")} · ${holdings.length} 只持仓 · ${warningCount} 条优先提醒</span>
+        </div>
+        <small>${user.updatedAt ? `更新 ${escapeHtml(formatDateTime(user.updatedAt))}` : ""}</small>
+      </div>
+      ${alerts.length ? `<div class="user-alert-strip">${alerts.slice(0, 4).map(renderUserPortfolioAlert).join("")}</div>` : ""}
+      <div class="fund-card-grid compact-fund-grid">
+        ${holdings.map((holding) => renderUserHoldingCard(user, holding)).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderUserPortfolioAlert(alert = {}) {
+  const cls = alert.level === "warning" ? "warn" : alert.level === "positive" ? "ok" : "";
+  return `
+    <div class="user-alert ${cls}">
+      <strong>${escapeHtml(alert.code || "")} ${escapeHtml(alert.name || "")}</strong>
+      <span>${escapeHtml(alert.action || "观察")}</span>
+      <small>${escapeHtml(alert.reason || "")}</small>
+    </div>
+  `;
+}
+
+function renderUserHoldingCard(user = {}, holding = {}) {
+  const snapshot = holding.lastSnapshot || {};
+  const trend = getFundSnapshotTrendText(snapshot);
+  const facts = renderSnapshotFactStrip(snapshot, {
+    leadingFacts: buildUserHoldingLeadingFacts(holding),
+    includeAction: true
+  });
+  const alertClass = /卖出|减仓|回落|风险|止盈|止损/.test(holding.alertHint || "") ? "bad-text" : "ok-text";
+  return `
+    <details class="fund-card user-holding-card">
+      <summary class="fund-card-summary">
+        <div class="fund-card-title">
+          <strong>${escapeHtml(holding.code)} ${escapeHtml(holding.name || "")}</strong>
+          <span>${escapeHtml(formatUserHoldingStatus(holding.status))}</span>
+        </div>
+        <div class="fund-card-kpis">
+          ${Number.isFinite(Number(holding.visibleReturnPct)) ? `<span>${escapeHtml(holding.visibleReturnLabel || "截图涨跌幅")} ${formatSigned(holding.visibleReturnPct)}%</span>` : ""}
+          ${holding.currentNav ? `<span>净值 ${formatNumber(holding.currentNav, 4)}</span>` : ""}
+          ${holding.shareClass ? `<span>${escapeHtml(holding.shareClass)}类</span>` : ""}
+        </div>
+        <small class="${alertClass}">${escapeHtml(holding.alertHint || trend || "已纳入持仓关注")}</small>
+      </summary>
+      <div class="fund-card-detail">
+        ${facts}
+        ${holding.managerNote ? `<p>${escapeHtml(holding.managerNote)}</p>` : ""}
+        ${holding.userNote ? `<p>备注：${escapeHtml(holding.userNote)}</p>` : ""}
+        ${holding.rowText ? `<small>截图行：${escapeHtml(holding.rowText)}</small>` : ""}
+        <div class="user-holding-actions">
+          <button type="button" class="secondary" data-edit-user-holding="1" data-user-id="${escapeHtml(user.userId || "")}" data-code="${escapeHtml(holding.code || "")}">编辑</button>
+          <button type="button" class="secondary danger-button" data-remove-user-holding="1" data-user-id="${escapeHtml(user.userId || "")}" data-code="${escapeHtml(holding.code || "")}">移出</button>
+        </div>
+      </div>
+    </details>
+  `;
+}
+
+function buildUserHoldingLeadingFacts(holding = {}) {
+  return [
+    holding.visibleReturnLabel && Number.isFinite(Number(holding.visibleReturnPct))
+      ? `${holding.visibleReturnLabel} ${formatSigned(holding.visibleReturnPct)}%`
+      : "",
+    holding.relatedTheme
+      ? `${holding.relatedTheme}${Number.isFinite(Number(holding.relatedThemeReturnPct)) ? ` ${formatSigned(holding.relatedThemeReturnPct)}%` : ""}`
+      : "",
+    holding.source ? `来源 ${holding.source}` : ""
+  ].filter(Boolean);
+}
+
+function formatUserHoldingStatus(status) {
+  if (status === "watch") return "观察";
+  if (status === "removed") return "已移出";
+  return "持有";
 }
 
 function renderPositionCard(item) {
@@ -1487,8 +1614,53 @@ async function resetPortfolio() {
   renderPortfolioResult(result);
 }
 
+async function saveUserHolding(event) {
+  event.preventDefault();
+  const formData = new FormData(userHoldingForm);
+  const payload = Object.fromEntries(formData.entries());
+  payload.visibleReturnPct = payload.visibleReturnPct === "" ? null : Number(payload.visibleReturnPct);
+  payload.currentNav = payload.currentNav === "" ? null : Number(payload.currentNav);
+  const result = await apiFetch("/api/user-portfolios/holding", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+  showToast("用户持仓已保存");
+  renderPortfolioResult(result);
+  userHoldingForm.reset();
+}
+
+async function removeUserHolding(userId, code) {
+  if (!userId || !code) return;
+  if (!confirm(`确定从用户 ${userId} 的持仓关注中移出 ${code} 吗？`)) {
+    return;
+  }
+  const result = await apiFetch("/api/user-portfolios/holding", {
+    method: "POST",
+    body: JSON.stringify({ userId, code, operation: "REMOVE" })
+  });
+  showToast("用户持仓已移出");
+  renderPortfolioResult(result);
+}
+
+function fillUserHoldingForm(userId, code) {
+  const user = (currentPortfolio?.userPortfolios || []).find((item) => item.userId === userId);
+  const holding = (user?.holdings || []).find((item) => item.code === code);
+  if (!user || !holding || !userHoldingForm) return;
+  userHoldingForm.elements.userId.value = user.userId || "";
+  userHoldingForm.elements.displayName.value = user.displayName || "";
+  userHoldingForm.elements.code.value = holding.code || "";
+  userHoldingForm.elements.name.value = holding.name || "";
+  userHoldingForm.elements.visibleReturnPct.value = holding.visibleReturnPct ?? "";
+  userHoldingForm.elements.visibleReturnLabel.value = holding.visibleReturnLabel || "";
+  userHoldingForm.elements.currentNav.value = holding.currentNav ?? "";
+  userHoldingForm.elements.status.value = holding.status || "holding";
+  userHoldingForm.elements.userNote.value = holding.userNote || "";
+  userHoldingForm.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
 function renderPortfolioResult(result) {
   const portfolio = result.portfolio || result;
+  currentPortfolio = portfolio;
   loadStats().catch(showError);
   if (portfolio.account) {
     setText("#portfolioTotalAsset", formatMoney(portfolio.account.totalAsset));
@@ -1500,6 +1672,7 @@ function renderPortfolioResult(result) {
     renderPortfolioDashboard(portfolio);
     renderOrders(portfolio.activeOrders || []);
     renderPositions(portfolio.positions || []);
+    renderUserPortfolios(portfolio.userPortfolios || []);
     renderWatchlist(portfolio.watchlist || []);
     renderRuns(portfolio.recentRuns || []);
     renderTransactions(portfolio.recentTransactions || []);

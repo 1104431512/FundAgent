@@ -378,6 +378,62 @@
 
           <details class="panel section-panel" open>
             <summary class="section-summary">
+              <h2>用户持仓关注</h2>
+              <span id="userPortfolioCount" class="badge">0 个用户</span>
+            </summary>
+            <div class="user-portfolio-editor">
+              <form id="userHoldingForm" class="user-holding-form">
+                <div class="grid two">
+                  <label>
+                    <span>用户</span>
+                    <input name="userId" type="text" placeholder="admin" />
+                  </label>
+                  <label>
+                    <span>显示名</span>
+                    <input name="displayName" type="text" placeholder="可留空，默认同用户" />
+                  </label>
+                  <label>
+                    <span>基金代码</span>
+                    <input name="code" type="text" inputmode="numeric" placeholder="6 位代码" />
+                  </label>
+                  <label>
+                    <span>基金名称</span>
+                    <input name="name" type="text" placeholder="例如 南方黄金股指数C" />
+                  </label>
+                  <label>
+                    <span>截图涨跌幅/收益</span>
+                    <input name="visibleReturnPct" type="number" step="0.01" placeholder="可选，例如 3.07" />
+                  </label>
+                  <label>
+                    <span>字段含义</span>
+                    <input name="visibleReturnLabel" type="text" placeholder="当日涨幅 / 持仓收益" />
+                  </label>
+                  <label>
+                    <span>当前净值</span>
+                    <input name="currentNav" type="number" step="0.0001" placeholder="可选" />
+                  </label>
+                  <label>
+                    <span>状态</span>
+                    <select name="status">
+                      <option value="holding">持有</option>
+                      <option value="watch">观察</option>
+                    </select>
+                  </label>
+                  <label class="wide-field">
+                    <span>备注</span>
+                    <textarea name="userNote" rows="2" placeholder="成本、仓位、买入原因或你希望经理盯住的条件"></textarea>
+                  </label>
+                </div>
+                <div class="actions compact-actions">
+                  <button type="submit">保存用户持仓</button>
+                </div>
+              </form>
+              <div id="userPortfolioList" class="user-portfolio-list"></div>
+            </div>
+          </details>
+
+          <details class="panel section-panel" open>
+            <summary class="section-summary">
               <h2>自选基金池</h2>
               <span id="watchlistCount" class="badge">0</span>
             </summary>

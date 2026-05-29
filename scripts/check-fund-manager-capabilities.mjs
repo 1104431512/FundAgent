@@ -32,6 +32,23 @@ assert.equal(
   true,
   "image captions that ask when to sell an already-bought fund must be recognized as held-position sell timing"
 );
+assert.equal(
+  manager.isUserPortfolioImportRequest("建立用户“admin”的持仓情况"),
+  true,
+  "text commands must recognize user-level holding imports"
+);
+assert.equal(manager.extractUserPortfolioId("建立用户“admin”的持仓情况"), "admin", "user holding import must parse quoted user ids");
+const normalizedUserPortfolios = manager.normalizeUserPortfolios([
+  {
+    userId: "admin",
+    displayName: "admin",
+    holdings: [
+      { code: "021959", name: "南方黄金股指数C", visibleReturnPct: -3.07, visibleReturnLabel: "当日涨幅" }
+    ]
+  }
+]);
+assert.equal(normalizedUserPortfolios[0].holdings[0].code, "021959", "user portfolios must keep screenshot holding codes");
+assert.equal(normalizedUserPortfolios[0].holdings[0].visibleReturnLabel, "当日涨幅", "user portfolios must keep the meaning of visible screenshot returns");
 assertSkillCoverage(intent.skillIds, [
   "fund-theme-radar",
   "theme-stage-analysis",
@@ -954,6 +971,26 @@ assert.deepEqual(
   ["黄金", "贵金属"],
   "explicit precious-metal setup requests must still search precious-metal funds"
 );
+
+await assertIntent({
+  userText: "建立用户“admin”的持仓情况",
+  expectedWorkflow: "user_portfolio_import",
+  expectedReason: "text_requests_user_portfolio_import",
+  expectedMode: "awaiting_user_holdings_screenshot",
+  requiredSkills: ["fund-vision", "fund-data-enrichment", "fund-answer-quality"]
+});
+await assertIntent({
+  userText: "建立用户admin的持仓情况",
+  imageKeys: ["img_user_portfolio"],
+  messageType: "image",
+  expectedWorkflow: "user_portfolio_import",
+  expectedReason: "message_contains_image_user_portfolio_import_request",
+  expectedMode: "screenshot_user_holdings_import",
+  requiredSkills: ["fund-vision", "fund-data-enrichment", "fund-actionability-evaluation", "fund-answer-quality"]
+});
+assert(serverSource.includes("pendingUserPortfolioImportRequests"), "text-first user holding import commands must wait for the next screenshot");
+assert(adminHtmlSource.includes("用户持仓关注"), "admin UI must expose user-level holding management");
+assert(adminSource.includes("/api/user-portfolios/holding"), "admin UI must save user-level holdings through the API");
 
 await assertIntent({
   userText: "我发的图里是我已经买的基金，告诉我大概多久卖",

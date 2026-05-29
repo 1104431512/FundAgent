@@ -27,6 +27,7 @@ const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 12000;
 const DEFAULT_MODEL_MAX_INPUT_CHARS = 120000;
 const DEFAULT_REPLY_MAX_CHARS = 18000;
 const FEISHU_IMAGE_TEXT_MERGE_WINDOW_MS = Number(process.env.FEISHU_IMAGE_TEXT_MERGE_WINDOW_MS || 4500);
+const USER_PORTFOLIO_IMPORT_IMAGE_WAIT_MS = Number(process.env.USER_PORTFOLIO_IMPORT_IMAGE_WAIT_MS || 10 * 60 * 1000);
 const MIN_FUND_EXTRACTION_OUTPUT_TOKENS = 1800;
 const MIN_FUND_ANALYST_OUTPUT_TOKENS = 7200;
 const MIN_FUND_COMMITTEE_OUTPUT_TOKENS = 6400;
@@ -43,6 +44,7 @@ const DEFAULT_PORTFOLIO_REPORT_IMAGE_MIN = 8;
 const DEFAULT_PORTFOLIO_REPORT_IMAGE_LIMIT = 8;
 const PUBLIC_DATA_TIMEOUT_MS = Number(process.env.PUBLIC_DATA_TIMEOUT_MS || 20000);
 const pendingImageMessages = new Map();
+const pendingUserPortfolioImportRequests = new Map();
 const DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS = [
   "沪深300",
   "中证500",
@@ -399,6 +401,13 @@ async function handleApiRequest(req, res, url) {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/user-portfolios/holding") {
+    const body = await readJsonBody(req);
+    const result = updateUserPortfolioHoldingFromAdmin(body);
+    sendJson(res, 200, { ok: true, portfolio: result });
+    return;
+  }
+
   sendJson(res, 404, { ok: false, error: "api_not_found" });
 }
 
@@ -460,6 +469,30 @@ async function handleMessageEvent(payload) {
   const imageKeys = extractImageKeys(parsedContent);
   const userText = extractUserText(message.message_type, parsedContent);
   const mergeKey = getFeishuImageTextMergeKey(payload);
+  const pendingPortfolioImport = mergeKey ? takePendingUserPortfolioImportForImage(mergeKey, imageKeys, userText) : null;
+  if (pendingPortfolioImport) {
+    await processFeishuFundMessage({
+      message,
+      imageKeys,
+      imageEntries: buildMessageImageEntries(message.message_id, imageKeys),
+      userText: [pendingPortfolioImport.userText, userText].filter(Boolean).join("\n"),
+      messageType: message.message_type,
+      parsedContent,
+      mergedFromPendingImages: true
+    });
+    return;
+  }
+
+  if (shouldBufferUserPortfolioImportText({ imageKeys, userText })) {
+    bufferPendingUserPortfolioImportRequest({ key: mergeKey, message, userText });
+    await replyToMessage(
+      message.message_id,
+      `已准备为用户「${extractUserPortfolioId(userText) || "未命名用户"}」建立持仓关注。请继续发送持仓截图，我会把截图里的基金保存到该用户的持仓列表。`,
+      { kind: "progress" }
+    );
+    return;
+  }
+
   const pendingImageMessage = mergeKey ? takePendingImageMessageForText(mergeKey, userText) : null;
 
   if (pendingImageMessage) {
@@ -524,6 +557,43 @@ function getFeishuImageTextMergeKey(payload) {
 
 function shouldBufferImageOnlyMessage({ imageKeys = [], userText = "" }) {
   return FEISHU_IMAGE_TEXT_MERGE_WINDOW_MS > 0 && imageKeys.length > 0 && !String(userText || "").trim();
+}
+
+function shouldBufferUserPortfolioImportText({ imageKeys = [], userText = "" }) {
+  return USER_PORTFOLIO_IMPORT_IMAGE_WAIT_MS > 0
+    && !imageKeys.length
+    && isUserPortfolioImportRequest(userText);
+}
+
+function takePendingUserPortfolioImportForImage(key, imageKeys = [], userText = "") {
+  if (!key || !imageKeys.length) return null;
+  const pending = pendingUserPortfolioImportRequests.get(key);
+  if (!pending) return null;
+  if (pending.timer) clearTimeout(pending.timer);
+  pendingUserPortfolioImportRequests.delete(key);
+  updateStats({ counters: { mergedUserPortfolioImportImages: 1 } });
+  return {
+    ...pending,
+    userText: [pending.userText, userText].filter(Boolean).join("\n")
+  };
+}
+
+function bufferPendingUserPortfolioImportRequest({ key, message, userText }) {
+  const mergeKey = key || `message:${message.message_id}`;
+  const previous = pendingUserPortfolioImportRequests.get(mergeKey);
+  if (previous?.timer) clearTimeout(previous.timer);
+  const timer = setTimeout(() => {
+    pendingUserPortfolioImportRequests.delete(mergeKey);
+  }, Math.max(0, USER_PORTFOLIO_IMPORT_IMAGE_WAIT_MS));
+  timer.unref?.();
+  pendingUserPortfolioImportRequests.set(mergeKey, {
+    messageId: message.message_id,
+    userText,
+    userId: extractUserPortfolioId(userText),
+    createdAt: new Date().toISOString(),
+    timer
+  });
+  updateStats({ counters: { pendingUserPortfolioImports: 1 } });
 }
 
 function takePendingImageMessageForText(key, userText) {
@@ -628,6 +698,17 @@ async function processFeishuFundMessage({
 
     if (intent.workflow === "fund_qa") {
       await handleFundQaWorkflow({ message, userText, intent });
+      return;
+    }
+
+    if (intent.workflow === "user_portfolio_import") {
+      await handleUserPortfolioImportWorkflow({
+        message,
+        userText,
+        intent,
+        imageEntries: normalizedImageEntries,
+        messageType
+      });
       return;
     }
 
@@ -765,6 +846,54 @@ async function processFeishuFundMessage({
       { kind: "error" }
     );
   }
+}
+
+async function handleUserPortfolioImportWorkflow({ message, userText, intent, imageEntries = [], messageType }) {
+  const userId = extractUserPortfolioId(userText) || "default";
+  if (!imageEntries.length) {
+    await replyToMessage(
+      message.message_id,
+      `已识别为用户持仓导入。请继续发送用户「${userId}」的持仓截图，我会识别基金代码、名称和截图里的持有状态。`,
+      { kind: "progress" }
+    );
+    return;
+  }
+
+  await replyToMessage(
+    message.message_id,
+    `进度：正在识别用户「${userId}」的持仓截图，识别到的基金会保存到用户持仓关注列表。`,
+    { kind: "progress" }
+  ).catch((error) => {
+    console.error("[progress-reply-error]", error);
+    recordError(error, { replyFailures: 1 });
+  });
+
+  const images = [];
+  for (const entry of imageEntries) {
+    images.push(await downloadMessageImage(entry.messageId, entry.imageKey));
+  }
+
+  const extracted = await extractFundFactsWithModel({ images, userText, messageType, intent });
+  const fundCodes = mergeFundCodes(
+    extractFundCodes(userText),
+    extracted.fundCodes,
+    (extracted.screenshotHoldings || []).map((item) => item.code)
+  );
+  const enrichments = fundCodes.length ? await enrichFunds(fundCodes) : [];
+  const result = upsertUserPortfolioFromExtractedHoldings({
+    userId,
+    displayName: extractUserPortfolioDisplayName(userText) || userId,
+    userText,
+    extracted,
+    enrichments,
+    source: "feishu_screenshot_import"
+  });
+
+  await replyToMessage(
+    message.message_id,
+    buildUserPortfolioImportReply(result, { imageCount: images.length, userText }),
+    { kind: "answer" }
+  );
 }
 
 async function handleConversationWorkflow({ message, userText, intent }) {
@@ -8197,6 +8326,7 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
     backtestDiagnostics: buildPortfolioBacktestDiagnostics(db),
     capabilityDiagnostics: buildPortfolioCapabilityDiagnostics(db),
     capabilityActionQueue: buildPortfolioCapabilityActionQueue(db),
+    userPortfolios: summarizeUserPortfolios(db),
     positions: db.account.positions.map(summarizePosition),
     watchlist: getActivePortfolioWatchlist(db).slice(0, lightweight ? 12 : 50).map(summarizeWatch),
     activeOrders: (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status)).map(summarizePortfolioOrder),
@@ -9783,6 +9913,11 @@ function compactPortfolioDbForStorage(db) {
       .slice(0, maxWatchlist)
       .map(compactStoredPortfolioSnapshotFields);
   }
+  if (Array.isArray(db.userPortfolios)) {
+    db.userPortfolios = normalizeUserPortfolios(db.userPortfolios)
+      .slice(0, 50)
+      .map(compactStoredUserPortfolio);
+  }
   if (db.account?.positions) {
     db.account = compactStoredPortfolioAccount(db.account);
   }
@@ -9843,6 +9978,7 @@ function normalizePortfolioDb(value) {
     account: createPortfolioAccount(config),
     pushTargets: [],
     watchlist: [],
+    userPortfolios: [],
     runs: [],
     orders: [],
     transactions: [],
@@ -9853,6 +9989,7 @@ function normalizePortfolioDb(value) {
   };
   db.pushTargets = Array.isArray(db.pushTargets) ? db.pushTargets : [];
   db.watchlist = normalizePortfolioWatchlist(db.watchlist || db.selfSelectedFunds || db.candidatePool || []);
+  db.userPortfolios = normalizeUserPortfolios(db.userPortfolios || db.userAccounts || []);
   db.runs = Array.isArray(db.runs) ? db.runs : [];
   db.orders = Array.isArray(db.orders) ? db.orders : [];
   db.transactions = Array.isArray(db.transactions) ? db.transactions : [];
@@ -9864,6 +10001,349 @@ function normalizePortfolioDb(value) {
     db[PORTFOLIO_DB_REPAIRED] = true;
   }
   return db;
+}
+
+function normalizeUserPortfolios(value) {
+  const input = Array.isArray(value)
+    ? value
+    : value && typeof value === "object"
+      ? Object.entries(value).map(([userId, portfolio]) => ({ ...(portfolio || {}), userId }))
+      : [];
+  const byId = new Map();
+  for (const item of input) {
+    const normalized = normalizeUserPortfolio(item);
+    if (!normalized) continue;
+    byId.set(normalized.userId, normalized);
+  }
+  return [...byId.values()].sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+}
+
+function normalizeUserPortfolio(item = {}) {
+  const userId = sanitizeUserPortfolioId(item.userId || item.id || item.name || "");
+  if (!userId) return null;
+  const now = new Date().toISOString();
+  return {
+    userId,
+    displayName: String(item.displayName || item.name || userId).trim().slice(0, 80),
+    source: String(item.source || "").trim().slice(0, 120),
+    notes: normalizeStringArray(item.notes).slice(0, 20),
+    holdings: normalizeUserPortfolioHoldings(item.holdings || item.positions || []),
+    watchlist: normalizePortfolioWatchlist(item.watchlist || []),
+    alerts: normalizeUserPortfolioAlerts(item.alerts || []),
+    createdAt: String(item.createdAt || now),
+    updatedAt: String(item.updatedAt || now)
+  };
+}
+
+function normalizeUserPortfolioHoldings(value) {
+  const byCode = new Map();
+  for (const item of Array.isArray(value) ? value : []) {
+    const normalized = normalizeUserPortfolioHolding(item);
+    if (!normalized) continue;
+    const existing = byCode.get(normalized.code);
+    if (!existing || Date.parse(normalized.updatedAt || "") >= Date.parse(existing.updatedAt || "")) {
+      byCode.set(normalized.code, normalized);
+    }
+  }
+  return [...byCode.values()].sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+}
+
+function normalizeUserPortfolioHolding(item = {}) {
+  const code = String(item?.code || "").match(/^\d{6}$/)?.[0] || "";
+  if (!code) return null;
+  const now = new Date().toISOString();
+  const visibleReturnPct = finiteMetricNumber(item.visibleReturnPct ?? item.observedReturnPct ?? item.profitPct);
+  const currentNav = finiteMetricNumber(item.currentNav ?? item.lastNav ?? item.nav);
+  const relatedThemeReturnPct = finiteMetricNumber(item.relatedThemeReturnPct);
+  return {
+    code,
+    name: String(item.name || "").trim(),
+    shareClass: String(item.shareClass || inferFundShareClass(item.name || "") || "").trim().toUpperCase(),
+    status: normalizeUserPortfolioHoldingStatus(item.status || item.holdingStatus || "holding"),
+    monitoring: item.monitoring !== false,
+    currentNav: Number.isFinite(currentNav) ? round(currentNav, 4) : null,
+    visibleReturnPct: Number.isFinite(visibleReturnPct) ? round(visibleReturnPct, 2) : null,
+    visibleReturnLabel: String(item.visibleReturnLabel || "").trim().slice(0, 80),
+    relatedTheme: String(item.relatedTheme || "").trim().slice(0, 80),
+    relatedThemeReturnPct: Number.isFinite(relatedThemeReturnPct) ? round(relatedThemeReturnPct, 2) : null,
+    costAmount: round(Number(item.costAmount || 0), 2),
+    currentValue: round(Number(item.currentValue || 0), 2),
+    units: round(Number(item.units || 0), 6),
+    averageCostNav: item.averageCostNav ? round(Number(item.averageCostNav), 4) : null,
+    userNote: String(item.userNote || item.note || "").trim().slice(0, 600),
+    managerNote: String(item.managerNote || "").trim().slice(0, 800),
+    alertHint: String(item.alertHint || "").trim().slice(0, 300),
+    source: String(item.source || "").trim().slice(0, 120),
+    rowText: String(item.rowText || "").trim().slice(0, 500),
+    lastSnapshot: item.lastSnapshot || null,
+    addedAt: String(item.addedAt || now),
+    updatedAt: String(item.updatedAt || now)
+  };
+}
+
+function normalizeUserPortfolioHoldingStatus(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (["removed", "delete", "sold", "closed"].includes(text) || /移出|已卖|清仓|删除/.test(text)) return "removed";
+  if (["watch", "observe"].includes(text) || /观察|关注/.test(text)) return "watch";
+  return "holding";
+}
+
+function normalizeUserPortfolioAlerts(value) {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => ({
+      code: String(item?.code || "").match(/^\d{6}$/)?.[0] || "",
+      name: String(item?.name || "").trim(),
+      level: String(item?.level || "info").trim(),
+      action: String(item?.action || "").trim(),
+      reason: String(item?.reason || "").trim().slice(0, 600),
+      createdAt: String(item?.createdAt || new Date().toISOString())
+    }))
+    .filter((item) => item.code && item.reason)
+    .slice(0, 100);
+}
+
+function compactStoredUserPortfolio(portfolio = {}) {
+  return {
+    ...portfolio,
+    holdings: (portfolio.holdings || []).slice(0, 120).map((holding) => ({
+      ...holding,
+      lastSnapshot: compactPublicFundSnapshot(holding.lastSnapshot)
+    })),
+    watchlist: normalizePortfolioWatchlist(portfolio.watchlist || []).slice(0, 80).map(compactStoredPortfolioSnapshotFields),
+    alerts: normalizeUserPortfolioAlerts(portfolio.alerts).slice(0, 80)
+  };
+}
+
+function ensureUserPortfolio(db, userId, displayName = "") {
+  db.userPortfolios = normalizeUserPortfolios(db.userPortfolios || []);
+  const id = sanitizeUserPortfolioId(userId || "default") || "default";
+  let portfolio = db.userPortfolios.find((item) => item.userId === id);
+  if (!portfolio) {
+    const now = new Date().toISOString();
+    portfolio = normalizeUserPortfolio({
+      userId: id,
+      displayName: displayName || id,
+      holdings: [],
+      watchlist: [],
+      alerts: [],
+      source: "manual",
+      createdAt: now,
+      updatedAt: now
+    });
+    db.userPortfolios.push(portfolio);
+  } else if (displayName && portfolio.displayName !== displayName) {
+    portfolio.displayName = String(displayName).trim().slice(0, 80);
+  }
+  return portfolio;
+}
+
+function upsertUserPortfolioFromExtractedHoldings({ userId, displayName = "", userText = "", extracted = {}, enrichments = [], source = "feishu_screenshot_import" }) {
+  const db = readPortfolioDb();
+  const portfolio = ensureUserPortfolio(db, userId, displayName);
+  const profileByCode = new Map((enrichments || []).filter(Boolean).map((profile) => [profile.code, profile]));
+  const extractedHoldings = (extracted.screenshotHoldings?.length
+    ? extracted.screenshotHoldings
+    : buildScreenshotHoldingsFromCodes(mergeFundCodes(extracted.fundCodes || []), []));
+  const holdings = extractedHoldings.map((holding) => {
+    const profile = profileByCode.get(holding.code);
+    return buildUserPortfolioHoldingFromExtracted(holding, profile, { source, userText });
+  }).filter(Boolean);
+  const applied = upsertUserPortfolioHoldings(db, portfolio.userId, holdings, { displayName: portfolio.displayName, source });
+  writePortfolioDb(db);
+  return {
+    user: summarizeUserPortfolio(portfolio),
+    applied,
+    missingFields: extracted.missingFields || []
+  };
+}
+
+function updateUserPortfolioHoldingFromAdmin(body = {}) {
+  const db = readPortfolioDb();
+  const userId = sanitizeUserPortfolioId(body.userId || body.userPortfolioId || "default") || "default";
+  const displayName = String(body.displayName || userId).trim();
+  const portfolio = ensureUserPortfolio(db, userId, displayName);
+  const operation = String(body.operation || "UPSERT").trim().toUpperCase();
+  const holding = normalizeUserPortfolioHolding({
+    ...(body.holding || body),
+    status: operation === "REMOVE" ? "removed" : (body.status || body.holding?.status || "holding"),
+    source: "admin"
+  });
+  if (!holding) {
+    throw new Error("需要提供 6 位基金代码。");
+  }
+  const applied = upsertUserPortfolioHoldings(db, portfolio.userId, [holding], { displayName, source: "admin" });
+  writePortfolioDb(db);
+  return getPortfolioPublicState(db);
+}
+
+function buildUserPortfolioHoldingFromExtracted(holding = {}, profile = null, options = {}) {
+  const snapshot = profile ? buildPortfolioFundSnapshot(profile) : null;
+  const name = holding.name || profile?.name || "";
+  const currentNav = holding.currentNav || snapshot?.nav || null;
+  return normalizeUserPortfolioHolding({
+    ...holding,
+    name,
+    shareClass: holding.shareClass || profile?.fees?.shareClass || profile?.shareClass || inferFundShareClass(name),
+    status: "holding",
+    currentNav,
+    visibleReturnLabel: holding.visibleReturnLabel || "截图可见涨跌幅",
+    source: options.source || "feishu_screenshot_import",
+    lastSnapshot: snapshot,
+    managerNote: buildUserPortfolioHoldingManagerNote(holding, profile),
+    alertHint: buildUserPortfolioHoldingAlertHint(holding, profile),
+    userNote: options.userText || ""
+  });
+}
+
+function upsertUserPortfolioHoldings(db, userId, holdings = [], options = {}) {
+  const portfolio = ensureUserPortfolio(db, userId, options.displayName || "");
+  const now = new Date().toISOString();
+  const byCode = new Map((portfolio.holdings || []).map((item) => [item.code, item]));
+  const applied = [];
+  for (const holding of holdings) {
+    const normalized = normalizeUserPortfolioHolding({
+      ...holding,
+      source: holding.source || options.source || "",
+      updatedAt: now
+    });
+    if (!normalized) continue;
+    const existing = byCode.get(normalized.code);
+    const merged = normalizeUserPortfolioHolding({
+      ...(existing || {}),
+      ...normalized,
+      name: normalized.name || existing?.name || "",
+      shareClass: normalized.shareClass || existing?.shareClass || "",
+      addedAt: existing?.addedAt || normalized.addedAt || now,
+      updatedAt: now
+    });
+    byCode.set(merged.code, merged);
+    applied.push(merged);
+  }
+  portfolio.holdings = normalizeUserPortfolioHoldings([...byCode.values()]);
+  portfolio.alerts = buildUserPortfolioAlerts(portfolio);
+  portfolio.updatedAt = now;
+  db.userPortfolios = normalizeUserPortfolios(db.userPortfolios);
+  db.updatedAt = now;
+  return applied.map(summarizeUserPortfolioHolding);
+}
+
+function buildUserPortfolioHoldingManagerNote(holding = {}, profile = null) {
+  const parts = [];
+  if (holding.holdingStatus) parts.push(`截图状态：${holding.holdingStatus}`);
+  if (Number.isFinite(Number(holding.visibleReturnPct))) {
+    parts.push(`${holding.visibleReturnLabel || "截图涨跌幅"} ${formatSignedNumber(holding.visibleReturnPct)}%`);
+  }
+  if (holding.relatedTheme) {
+    parts.push(`关联板块：${holding.relatedTheme}${Number.isFinite(Number(holding.relatedThemeReturnPct)) ? ` ${formatSignedNumber(holding.relatedThemeReturnPct)}%` : ""}`);
+  }
+  const action = profile?.actionability?.action;
+  if (action) parts.push(`经理下钻倾向：${normalizePortfolioActionabilityText(action)}`);
+  return parts.join("；").slice(0, 800);
+}
+
+function buildUserPortfolioHoldingAlertHint(holding = {}, profile = null) {
+  const action = String(profile?.actionability?.action || "");
+  const trend = profile?.trendProfile || {};
+  if (/avoid|sell|reduce|回避|减仓|止盈|止损/.test(action)) return "需要优先复核是否减仓或卖出。";
+  if (Number(trend.return20dPct || 0) >= 15 && Number(trend.lowPositionPct120 || 0) >= 85) return "短期涨幅偏热，重点防止冲高回落。";
+  if (/buy|staged|ready|分批|买入/.test(action)) return "可作为继续持有或加仓候选复核。";
+  return "已纳入持仓关注，等待下一次走势和主题复核。";
+}
+
+function buildUserPortfolioAlerts(portfolio = {}) {
+  return (portfolio.holdings || [])
+    .filter((holding) => holding.status !== "removed" && holding.monitoring !== false)
+    .map((holding) => {
+      const actionability = holding.lastSnapshot?.actionability || {};
+      const trend = holding.lastSnapshot?.trendProfile || {};
+      const action = String(actionability.action || "");
+      let level = "info";
+      let actionText = "继续观察";
+      let reason = holding.alertHint || "已纳入持仓关注。";
+      if (/avoid|sell|reduce|回避|减仓|止盈|止损/.test(action)) {
+        level = "warning";
+        actionText = "复核卖出/减仓";
+        reason = "下钻倾向偏防守，需要优先确认是否卖出或降低仓位。";
+      } else if (Number(trend.return20dPct || 0) >= 15 && Number(trend.lowPositionPct120 || 0) >= 85) {
+        level = "warning";
+        actionText = "防冲高回落";
+        reason = "短期涨幅和区间位置偏高，适合设置止盈或回撤保护。";
+      } else if (/buy|staged|ready|分批|买入/.test(action)) {
+        level = "positive";
+        actionText = "可复核加仓";
+        reason = "下钻倾向偏正面，可结合用户仓位和买入成本复核是否加仓。";
+      }
+      return {
+        code: holding.code,
+        name: holding.name,
+        level,
+        action: actionText,
+        reason,
+        createdAt: new Date().toISOString()
+      };
+    })
+    .slice(0, 50);
+}
+
+function summarizeUserPortfolios(dbOrList = {}) {
+  const list = Array.isArray(dbOrList) ? dbOrList : dbOrList.userPortfolios || [];
+  return normalizeUserPortfolios(list).map(summarizeUserPortfolio);
+}
+
+function summarizeUserPortfolio(portfolio = {}) {
+  const normalized = normalizeUserPortfolio(portfolio);
+  if (!normalized) return null;
+  const holdings = normalized.holdings.filter((item) => item.status !== "removed");
+  const alerts = buildUserPortfolioAlerts({ ...normalized, holdings });
+  return {
+    userId: normalized.userId,
+    displayName: normalized.displayName,
+    holdingCount: holdings.length,
+    alertCount: alerts.filter((item) => item.level === "warning").length,
+    updatedAt: normalized.updatedAt,
+    holdings: holdings.map(summarizeUserPortfolioHolding),
+    watchlist: normalized.watchlist.map(summarizePortfolioWatchItemBrief),
+    alerts
+  };
+}
+
+function summarizeUserPortfolioHolding(holding = {}) {
+  const normalized = normalizeUserPortfolioHolding(holding);
+  if (!normalized) return null;
+  return {
+    ...normalized,
+    lastSnapshot: compactPublicFundSnapshot(normalized.lastSnapshot)
+  };
+}
+
+function buildUserPortfolioImportReply(result = {}, options = {}) {
+  const user = result.user || {};
+  const applied = (result.applied || []).filter(Boolean);
+  const lines = [
+    `已为用户「${user.displayName || user.userId || "default"}」保存 ${applied.length} 只持仓基金。`,
+    options.imageCount ? `本次来源：${options.imageCount} 张持仓截图。` : ""
+  ].filter(Boolean);
+  for (const holding of applied.slice(0, 8)) {
+    const visibleReturn = Number.isFinite(Number(holding.visibleReturnPct))
+      ? `，${holding.visibleReturnLabel || "截图涨跌幅"} ${formatSignedNumber(holding.visibleReturnPct)}%`
+      : "";
+    lines.push(`- ${holding.code} ${holding.name || ""}${visibleReturn}：${holding.alertHint || "已纳入关注。"}`);
+  }
+  const warnings = (user.alerts || []).filter((item) => item.level === "warning");
+  if (warnings.length) {
+    lines.push("");
+    lines.push("优先提醒：");
+    for (const alert of warnings.slice(0, 3)) {
+      lines.push(`- ${alert.code} ${alert.name || ""}：${alert.action}，${alert.reason}`);
+    }
+  }
+  if (result.missingFields?.length) {
+    lines.push("");
+    lines.push(`识别缺口：${result.missingFields.slice(0, 3).join("；")}`);
+  }
+  lines.push("");
+  lines.push("你可以在后台“用户持仓关注”里继续编辑每个用户的持仓。");
+  return lines.join("\n");
 }
 
 function repairStalePortfolioRuns(db) {
@@ -11753,6 +12233,7 @@ async function extractFundFactsWithModel({ images, userText, messageType, intent
       visibleFacts: userText ? [userText] : [],
       userInstruction: String(userText || ""),
       positionIntent,
+      screenshotHoldings: buildScreenshotHoldingsFromCodes(mergeFundCodes(fundCodes, resolvedCodes), resolvedFunds),
       visiblePositionFacts: [],
       missingFields: [],
       textResolvedFunds: resolvedFunds
@@ -11763,6 +12244,7 @@ async function extractFundFactsWithModel({ images, userText, messageType, intent
   const systemText = [
     "你只负责从基金截图中提取可见事实，不做投资评价。",
     "如果用户文字提出任务，例如“我已经买了，告诉我多久卖”，必须把这段文字记录为 userInstruction 和 positionIntent；不要把图片和文字拆成两个独立问题。",
+    "如果截图是基金自选/持有列表，必须按行提取 screenshotHoldings；看到“持有”说明用户已持仓。截图里的“当日涨幅/关联板块涨幅”不是用户累计收益，必须保留 label，不能误写成已盈利。",
     "请只返回 JSON，不要 Markdown，不要解释。",
     "如果看不清，不要猜。基金代码必须是截图中可见或用户文字中明确出现的 6 位数字。",
     "",
@@ -11774,7 +12256,7 @@ async function extractFundFactsWithModel({ images, userText, messageType, intent
     `图片数量：${images.length}`,
     "",
     "返回 JSON 结构：",
-    '{"fundCodes":["000001"],"fundNames":["示例基金"],"visibleFacts":["截图中可见的关键事实"],"userInstruction":"用户文字原意","positionIntent":"held_position_sell_timing 或空字符串","visiblePositionFacts":["截图中可见的已买、持仓、收益、成本、仓位等事实"],"missingFields":["看不清或缺失字段"]}'
+    '{"fundCodes":["000001"],"fundNames":["示例基金"],"visibleFacts":["截图中可见的关键事实"],"userInstruction":"用户文字原意","positionIntent":"held_position_sell_timing 或空字符串","screenshotHoldings":[{"code":"000001","name":"示例基金","shareClass":"C","holdingStatus":"持有","currentNav":1.2345,"visibleReturnPct":1.23,"visibleReturnLabel":"当日涨幅","relatedTheme":"半导体","relatedThemeReturnPct":2.34,"rowText":"截图中该行原文"}],"visiblePositionFacts":["截图中可见的已买、持仓、收益、成本、仓位等事实"],"missingFields":["看不清或缺失字段"]}'
   ].join("\n");
 
   try {
@@ -11786,16 +12268,18 @@ async function extractFundFactsWithModel({ images, userText, messageType, intent
     });
     const parsed = parseJsonFromModel(raw);
     const fundCodes = mergeFundCodes(extractFundCodes(userText), parsed.fundCodes || []);
+    const screenshotHoldings = normalizeExtractedScreenshotHoldings(parsed.screenshotHoldings, parsed.fundNames);
     updateStats({
-      counters: { extractionCalls: 1, extractedFundCodes: fundCodes.length },
+      counters: { extractionCalls: 1, extractedFundCodes: fundCodes.length, extractedScreenshotHoldings: screenshotHoldings.length },
       last: { lastExtractionAt: new Date().toISOString() }
     });
     return {
-      fundCodes,
+      fundCodes: mergeFundCodes(fundCodes, screenshotHoldings.map((item) => item.code)),
       fundNames: Array.isArray(parsed.fundNames) ? parsed.fundNames.map(String).filter(Boolean) : [],
       visibleFacts: Array.isArray(parsed.visibleFacts) ? parsed.visibleFacts.map(String).filter(Boolean) : [],
       userInstruction: String(parsed.userInstruction || userText || ""),
       positionIntent: String(parsed.positionIntent || positionIntent || ""),
+      screenshotHoldings,
       visiblePositionFacts: Array.isArray(parsed.visiblePositionFacts) ? parsed.visiblePositionFacts.map(String).filter(Boolean) : [],
       missingFields: Array.isArray(parsed.missingFields) ? parsed.missingFields.map(String).filter(Boolean) : [],
       raw: raw.slice(0, 2000)
@@ -11808,11 +12292,60 @@ async function extractFundFactsWithModel({ images, userText, messageType, intent
       visibleFacts: userText ? [userText] : [],
       userInstruction: String(userText || ""),
       positionIntent,
+      screenshotHoldings: buildScreenshotHoldingsFromCodes(extractFundCodes(userText), []),
       visiblePositionFacts: [],
       missingFields: ["截图事实提取失败，已退回到可见文字/图片整体分析。"],
       extractionError: error.message
     };
   }
+}
+
+function buildScreenshotHoldingsFromCodes(codes = [], funds = []) {
+  const fundByCode = new Map((funds || []).filter((item) => item?.code).map((item) => [item.code, item]));
+  return mergeFundCodes(codes).map((code) => {
+    const fund = fundByCode.get(code) || {};
+    return normalizeExtractedScreenshotHolding({
+      code,
+      name: fund.name || "",
+      shareClass: fund.shareClass || inferFundShareClass(fund.name || "")
+    });
+  }).filter(Boolean);
+}
+
+function normalizeExtractedScreenshotHoldings(value = [], fundNames = []) {
+  const input = Array.isArray(value) ? value : [];
+  const byCode = new Map();
+  input.forEach((item, index) => {
+    const fallbackName = Array.isArray(fundNames) ? fundNames[index] : "";
+    const normalized = normalizeExtractedScreenshotHolding(item, { fallbackName });
+    if (!normalized) return;
+    byCode.set(normalized.code, {
+      ...(byCode.get(normalized.code) || {}),
+      ...normalized
+    });
+  });
+  return [...byCode.values()];
+}
+
+function normalizeExtractedScreenshotHolding(item = {}, options = {}) {
+  const code = String(item?.code || "").match(/^\d{6}$/)?.[0] || "";
+  if (!code) return null;
+  const name = String(item.name || options.fallbackName || "").trim();
+  const visibleReturnPct = finiteMetricNumber(item.visibleReturnPct ?? item.dailyReturnPct ?? item.profitPct);
+  const relatedThemeReturnPct = finiteMetricNumber(item.relatedThemeReturnPct ?? item.themeReturnPct);
+  const currentNav = finiteMetricNumber(item.currentNav ?? item.nav ?? item.unitNav);
+  return {
+    code,
+    name,
+    shareClass: String(item.shareClass || inferFundShareClass(name) || "").trim().toUpperCase(),
+    holdingStatus: String(item.holdingStatus || item.status || "").trim(),
+    currentNav: Number.isFinite(currentNav) ? round(currentNav, 4) : null,
+    visibleReturnPct: Number.isFinite(visibleReturnPct) ? round(visibleReturnPct, 2) : null,
+    visibleReturnLabel: String(item.visibleReturnLabel || (Number.isFinite(visibleReturnPct) ? "截图可见涨跌幅" : "")).trim(),
+    relatedTheme: String(item.relatedTheme || item.theme || item.sector || "").trim(),
+    relatedThemeReturnPct: Number.isFinite(relatedThemeReturnPct) ? round(relatedThemeReturnPct, 2) : null,
+    rowText: String(item.rowText || "").trim().slice(0, 500)
+  };
 }
 
 async function resolveFundMentionsFromText(userText, limit = 4) {
@@ -21714,6 +22247,42 @@ function isHeldFundSellTimingAsk(text) {
   return asksSellTiming && (hasHeldPositionContext || hasImageOrSpecificContext);
 }
 
+function isUserPortfolioImportRequest(text) {
+  const normalized = normalizeIntentText(text);
+  if (!normalized) return false;
+  const hasUser = /(用户|客户|账户|账号|user|admin)/i.test(normalized);
+  const hasPosition = /(持仓|持有|已买|买了|基金列表|自选.*持有|实际组合)/.test(normalized);
+  const hasCreate = /(建立|创建|新建|记录|保存|导入|同步|更新|录入|添加)/.test(normalized);
+  return hasPosition && (hasCreate || hasUser) && !/(虚拟组合|经理自己|经理的持仓)/.test(normalized);
+}
+
+function extractUserPortfolioId(text) {
+  const raw = String(text || "");
+  const patterns = [
+    /用户[“"']?([A-Za-z0-9_\-\u4e00-\u9fa5]{1,32})[”"']?/i,
+    /客户[“"']?([A-Za-z0-9_\-\u4e00-\u9fa5]{1,32})[”"']?/i,
+    /账户[“"']?([A-Za-z0-9_\-\u4e00-\u9fa5]{1,32})[”"']?/i,
+    /账号[“"']?([A-Za-z0-9_\-\u4e00-\u9fa5]{1,32})[”"']?/i,
+    /\buser[:：\s]+([A-Za-z0-9_\-]{1,32})\b/i
+  ];
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    if (match?.[1]) return sanitizeUserPortfolioId(match[1]);
+  }
+  if (/admin/i.test(raw)) return "admin";
+  return "";
+}
+
+function extractUserPortfolioDisplayName(text) {
+  return extractUserPortfolioId(text);
+}
+
+function sanitizeUserPortfolioId(value) {
+  return String(value || "")
+    .replace(/[^\w\-\u4e00-\u9fa5]/g, "")
+    .slice(0, 32);
+}
+
 async function classifyMessageIntent({ imageKeys = [], userText = "", messageType = "" }) {
   const text = normalizeIntentText(userText);
   const fundCodes = extractFundCodes(text);
@@ -21750,6 +22319,17 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
   ]);
 
   if (imageKeys.length) {
+    if (isUserPortfolioImportRequest(text)) {
+      return {
+        workflow: "user_portfolio_import",
+        mode: "screenshot_user_holdings_import",
+        reason: "message_contains_image_user_portfolio_import_request",
+        fundCodes,
+        userPortfolioId: extractUserPortfolioId(text),
+        skillIds: ["fund-vision", "fund-data-enrichment", "fund-trend-analysis", "fund-risk-analysis", "fund-actionability-evaluation", "fund-answer-quality"],
+        messageType
+      };
+    }
     if (isHeldFundSellTimingAsk(text)) {
       return {
         workflow: "fund_screening",
@@ -21780,6 +22360,18 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
       reason: "no_text_after_parsing",
       fundCodes,
       skillIds: [],
+      messageType
+    };
+  }
+
+  if (isUserPortfolioImportRequest(text)) {
+    return {
+      workflow: "user_portfolio_import",
+      mode: "awaiting_user_holdings_screenshot",
+      reason: "text_requests_user_portfolio_import",
+      fundCodes,
+      userPortfolioId: extractUserPortfolioId(text),
+      skillIds: ["fund-vision", "fund-data-enrichment", "fund-answer-quality"],
       messageType
     };
   }
@@ -21942,6 +22534,7 @@ async function classifyTextIntentWithModel({ userText, messageType }) {
     "- fund_recommendation：用户让你推荐几个基金、按最近题材/市场/热点找基金、给配置清单。",
     "- fund_screening：用户提供具体基金名称/代码、问某只基金能买吗/要不要卖/评分/对比。",
     "- fund_qa：基金知识、市场题材解释、投资方法问题，但没有要求给候选基金清单。",
+    "- user_portfolio_import：用户要求为某个用户/客户建立、导入、保存真实持仓截图。",
     "如果要加载技能，只能从 availableSkills 里选择 id。"
   ].join("\n");
   const userPrompt = [
@@ -21952,7 +22545,7 @@ async function classifyTextIntentWithModel({ userText, messageType }) {
     JSON.stringify(skills, null, 2),
     "",
     "返回 JSON：",
-    '{"workflow":"conversation|portfolio_status|fund_recommendation|fund_screening|fund_qa","mode":"short label","reason":"brief reason","skillIds":["fund-recommendation"],"confidence":0.0}'
+    '{"workflow":"conversation|portfolio_status|fund_recommendation|fund_screening|fund_qa|user_portfolio_import","mode":"short label","reason":"brief reason","skillIds":["fund-recommendation"],"confidence":0.0}'
   ].join("\n");
 
   const raw = await callModel({ systemText, userPrompt, images: [], maxTokens: 500 });
@@ -21964,7 +22557,7 @@ async function classifyTextIntentWithModel({ userText, messageType }) {
 }
 
 function normalizeIntentResult(intent, defaults = {}) {
-  const validWorkflows = new Set(["conversation", "portfolio_status", "fund_recommendation", "fund_screening", "fund_qa"]);
+  const validWorkflows = new Set(["conversation", "portfolio_status", "fund_recommendation", "fund_screening", "fund_qa", "user_portfolio_import"]);
   const workflow = validWorkflows.has(String(intent.workflow || "")) ? String(intent.workflow) : "fund_qa";
   const availableSkillIds = new Set(allowedSkillIdsForWorkflow(workflow).filter((id) =>
     listSkills(false).some((skill) => skill.id === id)
@@ -21993,6 +22586,7 @@ function defaultSkillIdsForWorkflow(workflow) {
   if (workflow === "fund_recommendation") return getFundRecommendationSkillIds();
   if (workflow === "fund_screening") return getFundAnalysisSkillIds(["fund-synthesis"]);
   if (workflow === "fund_qa") return getFundQaSkillIds();
+  if (workflow === "user_portfolio_import") return ["fund-vision", "fund-data-enrichment", "fund-answer-quality"];
   return [];
 }
 
@@ -22012,7 +22606,8 @@ function allowedSkillIdsForWorkflow(workflow) {
       "fund-portfolio-execution",
       "fund-screening"
     ],
-    fund_qa: ["fund-data-enrichment", ...getFundQaSkillIds()]
+    fund_qa: ["fund-data-enrichment", ...getFundQaSkillIds()],
+    user_portfolio_import: ["fund-vision", "fund-data-enrichment", "fund-trend-analysis", "fund-risk-analysis", "fund-actionability-evaluation", "fund-answer-quality"]
   };
   return byWorkflow[workflow] || [];
 }
@@ -22024,6 +22619,7 @@ function recordWorkflowIntent(intent) {
   if (intent.workflow === "fund_recommendation") counters.fundRecommendationRequests = 1;
   if (intent.workflow === "fund_qa") counters.fundQaRequests = 1;
   if (intent.workflow === "portfolio_status") counters.portfolioStatusRequests = 1;
+  if (intent.workflow === "user_portfolio_import") counters.userPortfolioImportRequests = 1;
   updateStats({
     counters,
     last: {
@@ -22325,6 +22921,11 @@ function buildSkillFocusDirective(intent = {}, skills = []) {
   } else if (workflow === "portfolio_status") {
     lines.push(
       "本次任务焦点：解释虚拟组合操作和复盘，不把组合任务扩写成普通基金推荐；所有动作必须有数据来源、纪律检查和风险边界。"
+    );
+  } else if (workflow === "user_portfolio_import") {
+    lines.push(
+      "本次任务焦点：为具体用户建立真实持仓关注列表。截图只提取可见事实，持仓导入后用于提醒卖出/减仓/继续观察。",
+      "回答纪律：截图里的当日涨幅、关联板块涨幅必须保留字段含义，不能误当成用户累计盈利。"
     );
   }
 
@@ -22816,6 +23417,8 @@ export {
   isGenericPullbackSetupRequest,
   isHeldFundSellTimingAsk,
   isPullbackSetupRequest,
+  isUserPortfolioImportRequest,
+  extractUserPortfolioId,
   isFundChartGlossaryQuestion,
   isStaleFundValuation,
   mergeCandidateFunds,
@@ -22831,6 +23434,7 @@ export {
   normalizeYangjibaoFundSearchValuation,
   normalizeYangjibaoIndexData,
   normalizePortfolioDb,
+  normalizeUserPortfolios,
   normalizeEastmoneyChinaIndexQuote,
   normalizePortfolioInvestedCostReturnText,
   normalizePortfolioReview,

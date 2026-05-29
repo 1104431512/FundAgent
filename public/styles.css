@@ -682,6 +682,113 @@ button:disabled {
   gap: 10px;
 }
 
+.user-portfolio-editor {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.user-holding-form {
+  padding: 14px;
+  border: 1px solid #dce5ec;
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.user-portfolio-list {
+  display: grid;
+  gap: 12px;
+}
+
+.user-portfolio-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.user-portfolio-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.user-portfolio-head strong,
+.user-portfolio-head span,
+.user-portfolio-head small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.user-portfolio-head span,
+.user-portfolio-head small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.user-alert-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.user-alert {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #d7e4ef;
+  border-radius: 8px;
+  background: #f5faff;
+}
+
+.user-alert.warn {
+  border-color: #f2c9a2;
+  background: #fff7ed;
+}
+
+.user-alert.ok {
+  border-color: #b6d7ca;
+  background: #f2fbf7;
+}
+
+.user-alert strong,
+.user-alert span,
+.user-alert small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.user-alert span {
+  margin: 4px 0;
+  font-weight: 850;
+}
+
+.user-alert small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.user-holding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+button.danger-button {
+  color: #7f1d1d;
+  background: #fee2e2;
+}
+
+button.danger-button:hover {
+  background: #fecaca;
+}
+
 .fund-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));

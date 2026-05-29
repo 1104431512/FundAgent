@@ -2215,6 +2215,26 @@ const requiredPatterns = [
   {
     pattern: /图文同一需求：截图事实和用户文字必须合并成一个问题/,
     message: "fund screening prompts must explicitly fuse screenshot facts with the user's text instruction."
+  },
+  {
+    pattern: /userPortfolios/,
+    message: "portfolio DB must persist user-level real holding watchlists separately from the manager virtual account."
+  },
+  {
+    pattern: /pendingUserPortfolioImportRequests/,
+    message: "text-first user holding import commands must wait for the next screenshot."
+  },
+  {
+    pattern: /screenshotHoldings/,
+    message: "fund screenshot extraction must preserve row-level user holding facts."
+  },
+  {
+    pattern: /\/api\/user-portfolios\/holding/,
+    message: "admin UI/API must manage per-user holding funds."
+  },
+  {
+    pattern: /用户持仓关注/,
+    message: "admin UI must expose user-level holding watchlists."
   }
 ];
 
