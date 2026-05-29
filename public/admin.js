@@ -18,6 +18,7 @@ let activePortfolioView = "overview";
 let activePortfolioRunKey = "";
 let portfolioTimelineFullLoaded = false;
 let portfolioTimelineFullLoading = false;
+let activeWatchlistStatus = "";
 
 const WATCHLIST_STATUS_ORDER = ["ready", "waiting_pullback", "watch", "blocked", "in_position", "removed"];
 const TOP_HOLDINGS_DISPLAY_LIMIT = 10;
@@ -83,6 +84,12 @@ document.querySelector("[data-panel='portfolio']")?.addEventListener("click", (e
   if (runButton) {
     activePortfolioRunKey = runButton.dataset.runSelect || "";
     renderRuns(currentPortfolio?.recentRuns || []);
+    return;
+  }
+  const watchlistStatusButton = event.target.closest("[data-watchlist-status-filter]");
+  if (watchlistStatusButton) {
+    activeWatchlistStatus = watchlistStatusButton.dataset.watchlistStatusFilter || "";
+    renderWatchlist(currentPortfolio?.watchlist || []);
     return;
   }
   const viewButton = event.target.closest("[data-portfolio-view-target]");
@@ -1451,18 +1458,22 @@ function renderWatchlist(items) {
   const count = document.querySelector("#watchlistCount");
   count.textContent = `${items.length}`;
   if (!items.length) {
+    activeWatchlistStatus = "";
     list.innerHTML = `<div class="empty">暂无自选基金。盘前观察、今日操作或周总结会把值得等待的候选沉淀到这里。</div>`;
     return;
   }
   const groups = groupWatchlistItems(items);
+  if (!activeWatchlistStatus || !(groups.get(activeWatchlistStatus)?.length)) {
+    activeWatchlistStatus = getDefaultWatchlistStatus(groups);
+  }
   list.innerHTML = [
     renderWatchlistSummary(items),
-    renderWatchlistCategoryDeck(groups)
+    renderWatchlistTerminal(groups)
   ].join("");
 }
 
-function renderWatchlistCategoryDeck(groups) {
-  const categories = [
+function getWatchlistCategories() {
+  return [
     { status: "ready", title: "接近买点", hint: "低位、费用和买入触发基本满足" },
     { status: "waiting_pullback", title: "等待回调", hint: "方向可跟踪，但还没到执行价格或形态" },
     { status: "watch", title: "观察中", hint: "有研究价值，继续补数据和等确认" },
@@ -1470,6 +1481,53 @@ function renderWatchlistCategoryDeck(groups) {
     { status: "in_position", title: "已持仓", hint: "与当前组合已有暴露相关" },
     { status: "removed", title: "已移出", hint: "历史候选，暂不参与决策" }
   ];
+}
+
+function getDefaultWatchlistStatus(groups) {
+  return getWatchlistCategories().find((category) => groups.get(category.status)?.length)?.status || "watch";
+}
+
+function renderWatchlistTerminal(groups) {
+  const categories = getWatchlistCategories().filter((category) => groups.get(category.status)?.length);
+  const activeCategory = categories.find((category) => category.status === activeWatchlistStatus) || categories[0];
+  const activeItems = groups.get(activeCategory?.status) || [];
+  return `
+    <section class="watchlist-terminal">
+      <div class="watchlist-terminal-head">
+        <div>
+          <strong>自选池工作台</strong>
+          <small>左侧按买点状态筛选，右侧只展开当前分类，避免候选基金铺成长页面。</small>
+        </div>
+        <span>${categories.length} 类 · ${activeItems.length} 只当前候选</span>
+      </div>
+      <div class="watchlist-terminal-body">
+        <div class="watchlist-status-rail" role="list">
+          ${categories.map((category) => renderWatchlistStatusButton(category, groups.get(category.status) || [])).join("")}
+        </div>
+        <div class="watchlist-status-stage">
+          ${activeCategory ? renderWatchlistCategory(activeCategory, activeItems) : `<div class="empty">暂无自选基金分类。</div>`}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderWatchlistStatusButton(category, items = []) {
+  const statusClass = getWatchlistStatusClass(category.status);
+  const best = items[0];
+  const active = category.status === activeWatchlistStatus;
+  return `
+    <button type="button" class="watchlist-status-tab${active ? " active" : ""}" data-watchlist-status-filter="${escapeHtml(category.status)}">
+      <span class="watchlist-pill ${statusClass}">${items.length} 只</span>
+      <strong>${escapeHtml(category.title)}</strong>
+      <small>${escapeHtml(best ? `${best.code || ""} ${best.name || ""}`.trim() : category.hint)}</small>
+      <em>${escapeHtml(best ? selectWatchlistPrimaryGap(best) : category.hint)}</em>
+    </button>
+  `;
+}
+
+function renderWatchlistCategoryDeck(groups) {
+  const categories = getWatchlistCategories();
   return `
     <div class="watchlist-category-deck">
       ${categories

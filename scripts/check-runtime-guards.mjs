@@ -1097,6 +1097,14 @@ const requiredPatterns = [
     message: "ranking-to-watchlist jumps must open the dedicated watchlist workspace."
   },
   {
+    pattern: /(?=[\s\S]*function renderWatchlist[\s\S]*renderWatchlistTerminal)(?=[\s\S]*function renderWatchlistTerminal[\s\S]*watchlist-terminal[\s\S]*watchlist-status-stage)(?=[\s\S]*function renderWatchlistStatusButton[\s\S]*data-watchlist-status-filter)/,
+    message: "admin watchlist must use focused status-category navigation instead of showing every candidate category as one long page."
+  },
+  {
+    pattern: /watchlist-terminal[\s\S]{0,900}watchlist-status-rail[\s\S]{0,900}watchlist-status-stage/,
+    message: "admin watchlist UI must keep category navigation and selected fund details in a terminal workspace."
+  },
+  {
     pattern: /function ensurePortfolioTimelineDetails[\s\S]{0,900}\/api\/portfolio\?full=1[\s\S]{0,700}renderRuns/,
     message: "admin portfolio timeline must lazy-load full run details instead of losing complete daily report text in summary mode."
   },
