@@ -1381,9 +1381,12 @@ assert(/portfolio-command-panel \.info-grid[\s\S]{0,260}grid-area:\s*status/.tes
 assert(adminStyleSource.includes("portfolio-workspace-switcher"), "admin portfolio workspace switcher must be styled as a first-class navigation surface");
 assert(/portfolio-workspace-switcher[\s\S]{0,240}position:\s*sticky/.test(adminStyleSource), "admin portfolio workspace switcher must remain reachable while long workspace views scroll");
 assert(adminStyleSource.includes("portfolio-workspace-view.active"), "admin portfolio workspace views must show one focused entry at a time");
-assert(/portfolio-terminal-shell[\s\S]{0,260}--portfolio-workspace-height[\s\S]{0,520}max-height:\s*var\(--portfolio-workspace-height\)/.test(adminStyleSource), "admin portfolio terminal shell must bound the virtual-run workspace height like a trading terminal");
+assert(/portfolio-terminal-shell[\s\S]{0,260}--portfolio-workspace-height:\s*100%[\s\S]{0,520}height:\s*var\(--portfolio-workspace-height\)[\s\S]{0,260}max-height:\s*none/.test(adminStyleSource), "admin portfolio terminal shell must bound the virtual-run workspace height like a trading terminal");
 assert(/portfolio-terminal-stage[\s\S]{0,320}overflow:\s*hidden/.test(adminStyleSource), "admin portfolio terminal stage must prevent long workspace content from stretching the whole page");
 assert(/portfolio-workspace-view\.active[\s\S]{0,360}overflow:\s*auto/.test(adminStyleSource), "admin portfolio active workspace view must scroll internally");
+assert(adminHtmlSource.includes('data-portfolio-view-target="opportunities"'), "admin portfolio UI must expose observation opportunities as a separate workspace entrance");
+assert(adminHtmlSource.includes('data-portfolio-view-target="diagnostics"'), "admin portfolio UI must expose diagnostics as a separate workspace entrance");
+assert(adminSource.includes("renderPortfolioOpportunityBoard"), "admin portfolio UI must render buy, pullback, and launch-eve observation opportunities outside the long watchlist page");
 assert(/timeline-terminal-body[\s\S]{0,360}max-height:\s*calc\(var\(--portfolio-workspace-height/.test(adminStyleSource), "admin portfolio timeline must bound run history height");
 assert(/watchlist-terminal-body[\s\S]{0,360}max-height:\s*calc\(var\(--portfolio-workspace-height/.test(adminStyleSource), "admin portfolio watchlist must bound category-detail height");
 assert(adminStyleSource.includes("portfolio-workspace-card"), "admin portfolio overview shortcut cards must be visually scannable");

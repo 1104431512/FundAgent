@@ -1065,15 +1065,15 @@ const requiredPatterns = [
     message: "admin portfolio command header must be a compact trading-console strip instead of a tall stacked dashboard."
   },
   {
-    pattern: /data-portfolio-view-target="overview"[\s\S]{0,1100}data-portfolio-view-target="rankings"[\s\S]{0,1100}data-portfolio-view-target="watchlist"[\s\S]{0,1100}data-portfolio-view-target="timeline"/,
+    pattern: /data-portfolio-view-target="overview"[\s\S]{0,900}data-portfolio-view-target="rankings"[\s\S]{0,900}data-portfolio-view-target="opportunities"[\s\S]{0,900}data-portfolio-view-target="watchlist"[\s\S]{0,1200}data-portfolio-view-target="timeline"[\s\S]{0,900}data-portfolio-view-target="diagnostics"/,
     message: "admin portfolio page must use stock-terminal style workspace entries instead of one long page."
   },
   {
-    pattern: /portfolio-terminal-shell[\s\S]{0,600}portfolio-terminal-rail[\s\S]{0,900}portfolio-workspace-switcher[\s\S]{0,1200}portfolio-terminal-stage/,
+    pattern: /<div class="portfolio-terminal-shell">[\s\S]{0,500}<aside class="portfolio-terminal-rail"[\s\S]{0,1200}<div class="portfolio-workspace-switcher"[\s\S]{0,2600}<div class="portfolio-terminal-stage">/,
     message: "admin portfolio page must use a left-rail terminal workspace instead of stacking all virtual-run sections."
   },
   {
-    pattern: /(?=[\s\S]*\.portfolio-terminal-shell\s*\{[\s\S]*--portfolio-workspace-height[\s\S]*max-height:\s*var\(--portfolio-workspace-height\))(?=[\s\S]*\.portfolio-terminal-stage\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.portfolio-workspace-view\.active\s*\{[\s\S]*overflow:\s*auto)/,
+    pattern: /\.portfolio-terminal-shell\s*\{[\s\S]{0,420}--portfolio-workspace-height:\s*100%[\s\S]{0,420}height:\s*var\(--portfolio-workspace-height\)[\s\S]{0,420}max-height:\s*none[\s\S]{0,1600}\.portfolio-terminal-stage\s*\{[\s\S]{0,520}overflow:\s*hidden[\s\S]{0,2400}\.portfolio-workspace-view\.active\s*\{[\s\S]{0,520}overflow:\s*auto/,
     message: "admin portfolio terminal workspace must keep the virtual-run page bounded and scroll inside the active entry."
   },
   {
@@ -2403,6 +2403,22 @@ const requiredPatterns = [
   {
     pattern: /renderManagerRankings/,
     message: "admin portfolio UI must render manager ranking boards."
+  },
+  {
+    pattern: /data-portfolio-view-target="opportunities"[\s\S]{0,700}portfolioNavOpportunityCount[\s\S]{0,4400}data-portfolio-view="opportunities"/,
+    message: "admin portfolio UI must expose a dedicated observation-opportunity entrance instead of burying buy/watch candidates in a long page."
+  },
+  {
+    pattern: /data-portfolio-view-target="diagnostics"[\s\S]{0,900}portfolioNavDiagnosticCount[\s\S]{0,9200}data-portfolio-view="diagnostics"/,
+    message: "admin portfolio UI must expose diagnostics as a separate entrance instead of lengthening the overview page."
+  },
+  {
+    pattern: /body\[data-active-tab="portfolio"\][\s\S]{0,260}overflow:\s*hidden[\s\S]{0,1200}\.tab-panel\[data-panel="portfolio"\]\.active[\s\S]{0,360}height:\s*calc\(100vh - 48px\)/,
+    message: "admin portfolio UI must be constrained to a viewport-sized terminal workspace on desktop."
+  },
+  {
+    pattern: /function renderPortfolioOpportunityBoard[\s\S]{0,2200}接近可买[\s\S]{0,2200}等待回调[\s\S]{0,2200}启动前夜/,
+    message: "admin portfolio UI must split observation opportunities into buy, pullback, and launch-eve entrances."
   },
   {
     pattern: /renderManagerCustomerDigest[\s\S]{0,1800}客户视角摘要/,

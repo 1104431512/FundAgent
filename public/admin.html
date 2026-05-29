@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FundAgent 管理</title>
-    <link rel="stylesheet" href="/public/styles.css?v=20260530-command" />
+    <link rel="stylesheet" href="/public/styles.css?v=20260530-terminal" />
   </head>
   <body>
     <div class="app-shell">
@@ -325,13 +325,15 @@
                 <strong>按交易软件分屏查看</strong>
               </div>
               <div class="portfolio-workspace-switcher" aria-label="虚拟组合工作区">
-                <button type="button" class="active" data-portfolio-view-target="overview">总览<span id="portfolioNavOverviewCount">6</span></button>
-                <button type="button" data-portfolio-view-target="rankings">经理榜单<span id="portfolioNavRankingCount">0</span></button>
-                <button type="button" data-portfolio-view-target="positions">持仓<span id="portfolioNavPositionCount">0</span></button>
-                <button type="button" data-portfolio-view-target="watchlist">自选池<span id="portfolioNavWatchlistCount">0</span></button>
-                <button type="button" data-portfolio-view-target="users">用户持仓<span id="portfolioNavUserCount">0</span></button>
-                <button type="button" data-portfolio-view-target="timeline">时间线<span id="portfolioNavRunCount">0</span></button>
-                <button type="button" data-portfolio-view-target="orders">订单流水<span id="portfolioNavOrderCount">0</span></button>
+                <button type="button" class="active" data-portfolio-view-target="overview"><b>总览</b><small>账户看板</small><span id="portfolioNavOverviewCount">8</span></button>
+                <button type="button" data-portfolio-view-target="rankings"><b>经理榜单</b><small>多角度排序</small><span id="portfolioNavRankingCount">0</span></button>
+                <button type="button" data-portfolio-view-target="opportunities"><b>观察机会</b><small>可买/回调</small><span id="portfolioNavOpportunityCount">0</span></button>
+                <button type="button" data-portfolio-view-target="positions"><b>持仓</b><small>仓位与收益</small><span id="portfolioNavPositionCount">0</span></button>
+                <button type="button" data-portfolio-view-target="watchlist"><b>自选池</b><small>候选明细</small><span id="portfolioNavWatchlistCount">0</span></button>
+                <button type="button" data-portfolio-view-target="users"><b>用户持仓</b><small>客户提醒</small><span id="portfolioNavUserCount">0</span></button>
+                <button type="button" data-portfolio-view-target="timeline"><b>时间线</b><small>复盘记录</small><span id="portfolioNavRunCount">0</span></button>
+                <button type="button" data-portfolio-view-target="orders"><b>订单流水</b><small>确认/到账</small><span id="portfolioNavOrderCount">0</span></button>
+                <button type="button" data-portfolio-view-target="diagnostics"><b>诊断</b><small>能力/回测</small><span id="portfolioNavDiagnosticCount">0</span></button>
               </div>
             </aside>
             <div class="portfolio-terminal-stage">
@@ -359,28 +361,6 @@
                   </div>
                   <div id="portfolioReadinessSummary" class="insight-list"></div>
                   </section>
-                  <section class="panel insight-card">
-                  <div class="panel-head tight">
-                    <h2>能力诊断</h2>
-                    <span id="portfolioCapabilityState" class="badge">待诊断</span>
-                  </div>
-                  <div id="portfolioCapabilitySummary" class="insight-list"></div>
-                  <div id="portfolioCapabilityActionQueue" class="capability-action-list"></div>
-                  </section>
-                  <section class="panel insight-card">
-                  <div class="panel-head tight">
-                    <h2>历史回测</h2>
-                    <span id="portfolioBacktestState" class="badge">待回测</span>
-                  </div>
-                  <div id="portfolioBacktestSummary" class="insight-list"></div>
-                  </section>
-                  <section class="panel insight-card">
-                  <div class="panel-head tight">
-                    <h2>榜单引用</h2>
-                    <span id="portfolioRankingAuditState" class="badge">待审计</span>
-                  </div>
-                  <div id="portfolioRankingAuditSummary" class="insight-list"></div>
-                  </section>
                 </div>
               </section>
 
@@ -394,6 +374,19 @@
                     <span id="managerRankingUpdatedAt" class="badge">未加载</span>
                   </div>
                   <div id="managerRankingBoard" class="ranking-board"></div>
+                </div>
+              </section>
+
+              <section class="portfolio-workspace-view" data-portfolio-view="opportunities">
+                <div class="panel opportunity-panel">
+                  <div class="panel-head tight">
+                    <div>
+                      <h2>观察机会</h2>
+                      <p>把接近可买、等待回调、启动前夜分开看；先判断能不能买，再进入自选池看完整证据。</p>
+                    </div>
+                    <span id="portfolioOpportunityState" class="badge">未加载</span>
+                  </div>
+                  <div id="portfolioOpportunityBoard" class="portfolio-opportunity-board"></div>
                 </div>
               </section>
 
@@ -517,6 +510,33 @@
                     <pre id="portfolioOutput" class="output compact"></pre>
                   </details>
                 </details>
+              </section>
+
+              <section class="portfolio-workspace-view" data-portfolio-view="diagnostics">
+                <div class="portfolio-diagnostic-grid">
+                  <section class="panel insight-card">
+                    <div class="panel-head tight">
+                      <h2>能力诊断</h2>
+                      <span id="portfolioCapabilityState" class="badge">待诊断</span>
+                    </div>
+                    <div id="portfolioCapabilitySummary" class="insight-list"></div>
+                    <div id="portfolioCapabilityActionQueue" class="capability-action-list"></div>
+                  </section>
+                  <section class="panel insight-card">
+                    <div class="panel-head tight">
+                      <h2>历史回测</h2>
+                      <span id="portfolioBacktestState" class="badge">待回测</span>
+                    </div>
+                    <div id="portfolioBacktestSummary" class="insight-list"></div>
+                  </section>
+                  <section class="panel insight-card">
+                    <div class="panel-head tight">
+                      <h2>榜单引用</h2>
+                      <span id="portfolioRankingAuditState" class="badge">待审计</span>
+                    </div>
+                    <div id="portfolioRankingAuditSummary" class="insight-list"></div>
+                  </section>
+                </div>
               </section>
             </div>
           </div>

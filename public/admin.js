@@ -47,6 +47,7 @@ const initialTab = new URLSearchParams(location.search).get("tab") || location.h
 if (initialTab) {
   activateTab(initialTab);
 }
+document.body.dataset.activeTab = document.querySelector("[data-tab].active")?.dataset.tab || "config";
 setPortfolioView(localStorage.getItem("fundagent_portfolio_view") || activePortfolioView);
 
 document.querySelector("#saveTokenBtn").addEventListener("click", () => {
@@ -82,6 +83,11 @@ document.querySelector("#userPortfolioList")?.addEventListener("click", (event) 
   }
 });
 document.querySelector("[data-panel='portfolio']")?.addEventListener("click", (event) => {
+  const focusButton = event.target.closest("[data-focus-watchlist-code]");
+  if (focusButton) {
+    focusWatchlistFund(focusButton.dataset.focusWatchlistCode || "");
+    return;
+  }
   const runButton = event.target.closest("[data-run-select]");
   if (runButton) {
     activePortfolioRunKey = runButton.dataset.runSelect || "";
@@ -153,6 +159,7 @@ form.addEventListener("submit", async (event) => {
 loadAll().catch(showError);
 
 function activateTab(tab) {
+  document.body.dataset.activeTab = tab || "config";
   document.querySelectorAll("[data-tab]").forEach((button) => {
     button.classList.toggle("active", button.dataset.tab === tab);
   });
@@ -431,6 +438,11 @@ function renderPortfolioDashboard(portfolio = {}) {
   const waiting = watchlist.filter((item) => item.status === "waiting_pullback");
   const launchEve = watchlist.filter(isWatchlistLaunchEveCandidate);
   const blocked = watchlist.filter((item) => item.status === "blocked");
+  const diagnosticCount = [
+    portfolio.capabilityDiagnostics?.title || portfolio.capabilityDiagnostics?.summary,
+    portfolio.backtestDiagnostics?.title || portfolio.backtestDiagnostics?.summary,
+    portfolio.rankingActionAudit?.coveragePct !== undefined || portfolio.rankingActionAudit?.summary
+  ].filter(Boolean).length;
 
   const briefParts = [
     portfolio.enabled ? "自动运行已启用" : "自动运行停用",
@@ -450,10 +462,13 @@ function renderPortfolioDashboard(portfolio = {}) {
   setText("#portfolioNavUserCount", String(userPortfolios.length));
   setText("#portfolioNavRunCount", String(runs.length));
   setText("#portfolioNavOrderCount", String(activeOrders.length + transactions.length + equity.length));
-  setText("#portfolioNavOverviewCount", "6");
+  setText("#portfolioNavOpportunityCount", String(ready.length + waiting.length + launchEve.length));
+  setText("#portfolioNavDiagnosticCount", String(diagnosticCount));
+  setText("#portfolioNavOverviewCount", "8");
   updateRunStateBadge(latestRun, portfolio.scheduler || {});
 
-  renderPortfolioWorkspaceCards(portfolio, { positions, watchlist, userPortfolios, runs, activeOrders, transactions, equity, ready, waiting, blocked });
+  renderPortfolioWorkspaceCards(portfolio, { positions, watchlist, userPortfolios, runs, activeOrders, transactions, equity, ready, waiting, launchEve, blocked, diagnosticCount });
+  renderPortfolioOpportunityBoard({ ready, waiting, launchEve, blocked });
   renderInsightList("#portfolioManagerSummary", buildManagerInsightItems(portfolio, latestRun, activeOrders), "暂无经理运行摘要。");
   renderInsightList("#portfolioHoldingSummary", buildHoldingInsightItems(account, positions, portfolio.exposureSummary || null), "暂无持仓暴露。");
   renderInsightList("#portfolioReadinessSummary", buildReadinessInsightItems({ ready, waiting, launchEve, blocked }), "暂无接近买点的候选。");
@@ -479,7 +494,9 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
   const equity = context.equity || [];
   const ready = context.ready || [];
   const waiting = context.waiting || [];
+  const launchEve = context.launchEve || [];
   const blocked = context.blocked || [];
+  const diagnosticCount = context.diagnosticCount || 0;
   const rankingLists = Array.isArray(portfolio.managerRankings?.lists) ? portfolio.managerRankings.lists : [];
   const rankingCount = rankingLists.reduce((sum, list) => sum + (Array.isArray(list.items) ? list.items.length : 0), 0);
   const priority = portfolio.managerRankings?.priorityQueue?.[0] || null;
@@ -494,6 +511,13 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
       value: `${rankingCount} 项`,
       detail: priority ? `${priority.listTitle || "优先处理"}：${priority.code || ""} ${priority.name || ""}`.trim() : "综合、轮动、追涨、费率等多角度排序",
       meta: priority?.action || "辅助买入/卖出复核"
+    },
+    {
+      view: "opportunities",
+      label: "观察机会",
+      value: `${ready.length + waiting.length + launchEve.length} 项`,
+      detail: ready[0] ? `${ready[0].code || ""} ${ready[0].name || ""} 接近可买` : waiting[0] ? `${waiting[0].code || ""} ${waiting[0].name || ""} 等待回调` : "把可买、回调、启动前夜拆开看",
+      meta: `可买 ${ready.length} · 回调 ${waiting.length} · 启动前夜 ${launchEve.length}`
     },
     {
       view: "positions",
@@ -529,6 +553,13 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
       value: `${activeOrders.length + transactions.length + equity.length} 条`,
       detail: activeOrders.length ? `${activeOrders.length} 笔订单待确认` : "暂无待确认订单",
       meta: `流水 ${transactions.length} · 估值 ${equity.length}`
+    },
+    {
+      view: "diagnostics",
+      label: "诊断",
+      value: `${diagnosticCount} 项`,
+      detail: "能力诊断、历史回测、榜单引用单独归档",
+      meta: "修复经理能力时优先看这里"
     }
   ];
   root.innerHTML = cards.map(renderPortfolioWorkspaceCard).join("");
@@ -542,6 +573,77 @@ function renderPortfolioWorkspaceCard(card = {}) {
       <small>${escapeHtml(card.detail || "")}</small>
       <em>${escapeHtml(card.meta || "")}</em>
     </button>
+  `;
+}
+
+function renderPortfolioOpportunityBoard(context = {}) {
+  const root = document.querySelector("#portfolioOpportunityBoard");
+  if (!root) return;
+  const ready = context.ready || [];
+  const waiting = context.waiting || [];
+  const launchEve = context.launchEve || [];
+  const blocked = context.blocked || [];
+  const total = ready.length + waiting.length + launchEve.length;
+  setText("#portfolioOpportunityState", total ? `${total} 个观察入口` : "暂无机会");
+  root.innerHTML = `
+    <section class="opportunity-command-row">
+      <article>
+        <span>先看</span>
+        <strong>接近可买</strong>
+        <small>只展示通过基础买点复核的候选。</small>
+      </article>
+      <article>
+        <span>再等</span>
+        <strong>等待回调</strong>
+        <small>适合盯回撤完成，不在这里追涨。</small>
+      </article>
+      <article>
+        <span>警惕</span>
+        <strong>暂不买</strong>
+        <small>把风险候选放在独立区域，避免混进推荐。</small>
+      </article>
+    </section>
+    <div class="opportunity-lane-grid">
+      ${renderOpportunityLane("接近可买", ready, "buy", "暂无可买复核候选。")}
+      ${renderOpportunityLane("等待回调", waiting, "watch", "暂无等待回调候选。")}
+      ${renderOpportunityLane("启动前夜", launchEve, "launch", "暂无低位启动前夜候选。")}
+      ${renderOpportunityLane("暂不买", blocked, "risk", "暂无被拦截候选。", 4)}
+    </div>
+  `;
+}
+
+function renderOpportunityLane(title, items = [], tone = "watch", empty = "暂无候选。", limit = 5) {
+  const values = (items || []).slice(0, limit);
+  return `
+    <section class="opportunity-lane opportunity-lane-${escapeHtml(tone)}">
+      <div class="opportunity-lane-head">
+        <strong>${escapeHtml(title)}</strong>
+        <span>${values.length} 只</span>
+      </div>
+      ${values.length ? values.map((item) => renderOpportunityCard(item, tone)).join("") : `<div class="empty compact-empty">${escapeHtml(empty)}</div>`}
+    </section>
+  `;
+}
+
+function renderOpportunityCard(item = {}, tone = "watch") {
+  const snapshot = item.lastSnapshot || {};
+  const trend = getFundSnapshotTrendText(snapshot);
+  const gap = selectWatchlistPrimaryGap(item);
+  const trigger = item.buyTriggers?.[0] || item.positionPlan || item.reason || "等待下一次复查";
+  const statusText = item.statusText || formatWatchlistStatus(item.status);
+  const readiness = formatWatchlistReadiness(item);
+  return `
+    <article class="opportunity-card opportunity-card-${escapeHtml(tone)}">
+      <div class="opportunity-card-head">
+        <strong>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</strong>
+        <span>${escapeHtml(statusText)}</span>
+      </div>
+      ${readiness ? `<small>${readiness}</small>` : ""}
+      <p>${escapeHtml(trigger)}</p>
+      ${trend && trend !== "走势数据不足" ? `<small>${escapeHtml(trend)}</small>` : ""}
+      <em>${escapeHtml(gap)}</em>
+      <button type="button" class="secondary" data-focus-watchlist-code="${escapeHtml(item.code || "")}">查看自选池</button>
+    </article>
   `;
 }
 
