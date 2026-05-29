@@ -421,7 +421,7 @@ function renderManagerPriorityQueue(queue = []) {
         <span>${items.length} 项</span>
       </div>
       <div class="ranking-priority-items">
-        ${items.slice(0, 6).map(renderManagerPriorityItem).join("")}
+        ${items.slice(0, 8).map(renderManagerPriorityItem).join("")}
       </div>
     </section>
   `;
@@ -569,6 +569,7 @@ function getManagerRankingListClass(id = "") {
   if (id === "buy_preparation") return "buy";
   if (id === "launch_setup") return "launch";
   if (id === "rotation_opportunity") return "rotation";
+  if (id === "chase_risk") return "chase";
   if (id === "holdings_outlook") return "holdings";
   if (id === "fee_suitability") return "fee";
   if (id === "opportunity_cost") return "opportunity";
@@ -579,6 +580,7 @@ function getManagerRankingListClass(id = "") {
 
 function getManagerRankingActionClass(text = "") {
   if (/卖出|减仓|止损|止盈|回吐/.test(text)) return "sell";
+  if (/追涨|偏热|高位|拥挤|过热/.test(text)) return "chase";
   if (/板块轮动|轮动启动|轮动观察|轮动降温|轮动/.test(text)) return "rotation";
   if (/买入|启动|触发/.test(text)) return "buy";
   if (/持仓|前景|行业/.test(text)) return "holdings";

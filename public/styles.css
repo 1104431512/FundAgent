@@ -709,6 +709,10 @@ button:disabled {
   border-left-color: #4d7c0f;
 }
 
+.ranking-overview-chase {
+  border-left-color: #dc6b19;
+}
+
 .ranking-overview-holdings {
   border-left-color: #23797b;
 }
@@ -929,6 +933,10 @@ button:disabled {
   border-top: 3px solid #4d7c0f;
 }
 
+.ranking-list-chase {
+  border-top: 3px solid #dc6b19;
+}
+
 .ranking-list-holdings {
   border-top: 3px solid #23797b;
 }
@@ -1061,6 +1069,11 @@ button:disabled {
 .ranking-action.rotation {
   color: #3f6212;
   background: #f1f8e8;
+}
+
+.ranking-action.chase {
+  color: #9a3412;
+  background: #fff4e5;
 }
 
 .ranking-action.holdings {
