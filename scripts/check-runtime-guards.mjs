@@ -629,7 +629,7 @@ const requiredPatterns = [
     message: "portfolio decision prompts must distinguish deployable cash from unsettled redemption receivables."
   },
   {
-    pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,2200}compactHeldProfiles = \(heldProfiles \|\| \[\]\)\.map\(compactPortfolioReviewProfile\)[\s\S]{0,4200}JSON\.stringify\(compactHeldProfiles, null, 2\)/,
+    pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,2400}compactHeldProfiles = \(heldProfiles \|\| \[\]\)\.map\(compactPortfolioReviewProfile\)[\s\S]{0,5600}JSON\.stringify\(compactHeldProfiles, null, 2\)/,
     message: "portfolio decisions must compact held fund profiles before model prompts."
   },
   {
@@ -1385,8 +1385,8 @@ const requiredPatterns = [
     message: "portfolio decision prompts must force recommendations to cite the manager ranking board."
   },
   {
-    pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,1600}cash_redeployment[\s\S]{0,500}portfolio_fit/,
-    message: "portfolio decision prompts must force the model to review the cash-redeployment and portfolio-fit ranking lanes."
+    pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,1700}cash_redeployment[\s\S]{0,500}position_sizing[\s\S]{0,500}portfolio_fit/,
+    message: "portfolio decision prompts must force the model to review the cash-redeployment, position-sizing, and portfolio-fit ranking lanes."
   },
   {
     pattern: /buildPortfolioWatchlistStatusLines[\s\S]{0,1200}buildPortfolioWatchRankingCitationMap[\s\S]{0,1600}formatPortfolioWatchDetailLine/,
@@ -2301,12 +2301,16 @@ const requiredPatterns = [
     message: "ranking-board guards must add traceable fallback review actions when top ranked items are omitted."
   },
   {
-    pattern: /decision_synthesis[\s\S]*buy_preparation[\s\S]*launch_setup[\s\S]*cash_redeployment[\s\S]*portfolio_fit[\s\S]*rotation_opportunity[\s\S]*chase_risk[\s\S]*holdings_outlook[\s\S]*fee_suitability[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
-    message: "manager ranking boards must cover decision synthesis, buy preparation, low-position launch, cash redeployment, portfolio fit, sector rotation, chase risk, holdings outlook, fee suitability, opportunity cost, sell risk, and user holding alerts."
+    pattern: /decision_synthesis[\s\S]*buy_preparation[\s\S]*launch_setup[\s\S]*cash_redeployment[\s\S]*position_sizing[\s\S]*portfolio_fit[\s\S]*rotation_opportunity[\s\S]*chase_risk[\s\S]*holdings_outlook[\s\S]*fee_suitability[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
+    message: "manager ranking boards must cover decision synthesis, buy preparation, low-position launch, cash redeployment, position sizing, portfolio fit, sector rotation, chase risk, holdings outlook, fee suitability, opportunity cost, sell risk, and user holding alerts."
   },
   {
     pattern: /function buildPortfolioCashRedeploymentRanking[\s\S]{0,2600}现金再部署榜[\s\S]{0,2600}0\.5%-2\.5%/,
     message: "manager ranking boards must include a cash-redeployment lane that fights over-conservative high-cash waiting with small starter-buy reviews."
+  },
+  {
+    pattern: /function buildPortfolioPositionSizingRanking[\s\S]{0,2600}仓位方案榜[\s\S]{0,2600}0元观察[\s\S]{0,2600}2\.5%启动仓/,
+    message: "manager ranking boards must include a position-sizing lane that turns buy candidates into explicit 0 yuan watch or starter weight ranges."
   },
   {
     pattern: /function buildPortfolioFitRanking[\s\S]{0,2600}组合适配榜[\s\S]{0,2600}同题材[\s\S]{0,2600}底层/,
@@ -2393,12 +2397,16 @@ const requiredPatterns = [
     message: "admin watchlist ranking citations must derive from the current manager ranking board."
   },
   {
-    pattern: /getManagerRankingActionClass[\s\S]{0,900}卖出[\s\S]{0,900}综合[\s\S]{0,900}再部署[\s\S]{0,900}组合[\s\S]{0,900}追涨[\s\S]{0,900}轮动[\s\S]{0,900}买入[\s\S]{0,900}持仓[\s\S]{0,900}费用[\s\S]{0,900}机会[\s\S]{0,900}观察/,
-    message: "admin ranking items must visually distinguish synthesis, cash-redeployment, portfolio-fit, buy, chase-risk, sector-rotation, holdings-outlook, fee-suitability, opportunity-cost, watch, and sell style actions."
+    pattern: /getManagerRankingActionClass[\s\S]{0,900}卖出[\s\S]{0,900}综合[\s\S]{0,900}再部署[\s\S]{0,900}仓位[\s\S]{0,900}组合[\s\S]{0,900}追涨[\s\S]{0,900}轮动[\s\S]{0,900}买入[\s\S]{0,900}持仓[\s\S]{0,900}费用[\s\S]{0,900}机会[\s\S]{0,900}观察/,
+    message: "admin ranking items must visually distinguish synthesis, cash-redeployment, position-sizing, portfolio-fit, buy, chase-risk, sector-rotation, holdings-outlook, fee-suitability, opportunity-cost, watch, and sell style actions."
   },
   {
     pattern: /(?=[\s\S]*ranking-overview-redeploy)(?=[\s\S]*ranking-list-redeploy)(?=[\s\S]*ranking-action\.redeploy)/,
     message: "admin ranking board must visually distinguish cash-redeployment cards, lists, and action pills."
+  },
+  {
+    pattern: /(?=[\s\S]*ranking-overview-sizing)(?=[\s\S]*ranking-list-sizing)(?=[\s\S]*ranking-action\.sizing)/,
+    message: "admin ranking board must visually distinguish position-sizing cards, lists, and action pills."
   },
   {
     pattern: /(?=[\s\S]*ranking-overview-fit)(?=[\s\S]*ranking-list-fit)(?=[\s\S]*ranking-action\.fit)/,

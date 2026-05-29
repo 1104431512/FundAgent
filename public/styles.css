@@ -928,6 +928,10 @@ button:disabled {
   border-left-color: #15803d;
 }
 
+.ranking-overview-sizing {
+  border-left-color: #2563eb;
+}
+
 .ranking-overview-fit {
   border-left-color: #0e7490;
 }
@@ -1291,6 +1295,10 @@ button:disabled {
   border-top: 3px solid #15803d;
 }
 
+.ranking-list-sizing {
+  border-top: 3px solid #2563eb;
+}
+
 .ranking-list-fit {
   border-top: 3px solid #0e7490;
 }
@@ -1471,6 +1479,11 @@ button:disabled {
 .ranking-action.redeploy {
   color: #14532d;
   background: #e8f7ed;
+}
+
+.ranking-action.sizing {
+  color: #1e40af;
+  background: #eaf1ff;
 }
 
 .ranking-action.fit {
