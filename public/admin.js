@@ -91,6 +91,12 @@ const MANAGER_RANKING_GROUPS = [
     listIds: ["quality_score", "manager_stability", "data_confidence", "fee_suitability", "replacement_choice"]
   }
 ];
+const PORTFOLIO_WORKSPACE_OVERVIEW_GROUPS = [
+  { id: "account", title: "账户", hint: "持仓与客户", focusViews: ["positions", "users"] },
+  { id: "opportunity", title: "机会", hint: "低位、轮动与自选", focusViews: ["opportunities", "sectors", "watchlist"] },
+  { id: "decision", title: "决策", hint: "行动、预警、榜单与风控", focusViews: ["alerts", "actions", "rankings", "matrix"] },
+  { id: "records", title: "记录", hint: "时间线与订单", focusViews: ["timeline", "orders"] }
+];
 const WATCHLIST_STATUS_LABELS = {
   ready: "接近可买",
   waiting_pullback: "等待回调",
@@ -964,6 +970,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
   const cards = [
     {
       view: "runner",
+      group: "decision",
       label: "运行台",
       value: scheduler.inFlight ? "运行中" : latestRun ? formatRunStatus(latestRun.status) : "待运行",
       detail: scheduler.inFlight ? "后台任务正在执行，页面会自动刷新" : "盘前、今日操作、估值、周总结集中控制",
@@ -971,6 +978,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
     },
     {
       view: "actions",
+      group: "decision",
       label: "行动台",
       value: `${actionDeskItems.length} 项`,
       detail: actionDeskItems[0] ? `${actionDeskItems[0].action || actionDeskItems[0].laneTitle}：${actionDeskItems[0].code || ""} ${actionDeskItems[0].name || ""}`.trim() : "最近动作、待确认订单和执行状态",
@@ -978,6 +986,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
     },
     {
       view: "alerts",
+      group: "decision",
       label: "预警台",
       value: `${alertItems.length} 项`,
       detail: alertItems[0] ? `${alertItems[0].laneTitle || "预警"}：${alertItems[0].code || ""} ${alertItems[0].name || ""}`.trim() : "买入、卖出、数据和用户持仓预警",
@@ -985,6 +994,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
     },
     {
       view: "rankings",
+      group: "decision",
       label: "经理榜单",
       value: `${rankingCount} 项`,
       detail: priority ? `${priority.listTitle || "优先处理"}：${priority.code || ""} ${priority.name || ""}`.trim() : "综合、轮动、追涨、费率等多角度排序",
@@ -992,6 +1002,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
     },
     {
       view: "matrix",
+      group: "decision",
       label: "决策矩阵",
       value: `${matrixItems.length} 行`,
       detail: matrixItems[0] ? `${matrixItems[0].code || ""} ${matrixItems[0].name || ""}：${matrixItems[0].action || "复核"}`.trim() : "买点、板块、风险、数据横向对比",
@@ -999,6 +1010,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
     },
     {
       view: "opportunities",
+      group: "opportunity",
       label: "观察机会",
       value: `${ready.length + waiting.length + launchEve.length} 项`,
       detail: ready[0] ? `${ready[0].code || ""} ${ready[0].name || ""} 接近可买` : waiting[0] ? `${waiting[0].code || ""} ${waiting[0].name || ""} 等待回调` : "把可买、回调、启动前夜拆开看",
@@ -1006,6 +1018,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
     },
     {
       view: "sectors",
+      group: "opportunity",
       label: "板块榜",
       value: `${sectorItems.length} 项`,
       detail: sectorItems[0] ? `${sectorItems[0].listTitle || "板块"}：${sectorItems[0].code || ""} ${sectorItems[0].name || ""}`.trim() : "主题配置、轮动、持仓前景和质量优选",
@@ -1013,6 +1026,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
     },
     {
       view: "positions",
+      group: "account",
       label: "持仓",
       value: `${positions.length} 只`,
       detail: topPosition ? `${topPosition.code || ""} ${topPosition.name || ""}，仓位 ${formatNumber(topPosition.weightPct || 0, 2)}%` : "当前暂无基金持仓",
@@ -1020,6 +1034,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
     },
     {
       view: "watchlist",
+      group: "opportunity",
       label: "自选池",
       value: `${watchlist.length} 只`,
       detail: topWatch ? `${topWatch.code || ""} ${topWatch.name || ""}，${topWatch.statusText || formatWatchlistStatus(topWatch.status)}` : "等待盘前观察沉淀候选",
@@ -1027,6 +1042,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
     },
     {
       view: "risk",
+      group: "decision",
       label: "风控防线",
       value: `${riskItems.length} 条`,
       detail: riskItems[0] ? `${riskItems[0].listTitle || "风险"}：${riskItems[0].code || ""} ${riskItems[0].name || ""}`.trim() : "回撤、止盈、追涨和客户持仓提醒",
@@ -1034,6 +1050,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
     },
     {
       view: "data",
+      group: "decision",
       label: "数据体检",
       value: `${dataItems.length} 条`,
       detail: dataItems[0] ? `${dataItems[0].laneTitle || "数据"}：${dataItems[0].code || ""} ${dataItems[0].name || ""}`.trim() : "净值、费率、持仓和来源先补齐",
@@ -1041,6 +1058,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
     },
     {
       view: "users",
+      group: "account",
       label: "用户持仓",
       value: `${userPortfolios.length} 人`,
       detail: userPortfolios[0] ? `${userPortfolios[0].displayName || userPortfolios[0].userId}：${userPortfolios[0].holdingCount || 0} 只持仓` : "可从截图或后台录入客户真实持仓",
@@ -1048,6 +1066,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
     },
     {
       view: "timeline",
+      group: "records",
       label: "经理时间线",
       value: `${runs.length} 条`,
       detail: latestRun ? `${latestRun.date || "-"} ${latestRun.title || latestRun.type || "组合任务"}` : "暂无观察、决策或复盘记录",
@@ -1055,6 +1074,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
     },
     {
       view: "orders",
+      group: "records",
       label: "订单流水",
       value: `${activeOrders.length + transactions.length + equity.length} 条`,
       detail: activeOrders.length ? `${activeOrders.length} 笔订单待确认` : "暂无待确认订单",
@@ -1062,13 +1082,51 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
     },
     {
       view: "diagnostics",
+      group: "decision",
       label: "诊断",
       value: `${diagnosticCount} 项`,
       detail: "能力诊断、历史回测、榜单引用单独归档",
       meta: "修复经理能力时优先看这里"
     }
   ];
-  root.innerHTML = cards.map(renderPortfolioWorkspaceCard).join("");
+  root.innerHTML = renderPortfolioWorkspaceGroups(cards);
+}
+
+function renderPortfolioWorkspaceGroups(cards = []) {
+  return PORTFOLIO_WORKSPACE_OVERVIEW_GROUPS.map((group) => {
+    const items = cards.filter((card) => card.group === group.id);
+    if (!items.length) return "";
+    const focus = selectPortfolioWorkspaceGroupFocus(group, items);
+    const secondary = items.filter((card) => card !== focus);
+    return `
+      <section class="portfolio-workspace-cluster portfolio-workspace-cluster-${escapeHtml(group.id)}">
+        <div class="portfolio-workspace-cluster-head">
+          <div>
+            <span>${escapeHtml(group.title)}</span>
+            <strong>${escapeHtml(group.hint)}</strong>
+          </div>
+          <em>${items.length} 个入口</em>
+        </div>
+        ${renderPortfolioWorkspaceCard(focus, { primary: true })}
+        <div class="portfolio-workspace-mini-list">
+          ${secondary.map(renderPortfolioWorkspaceMiniButton).join("")}
+        </div>
+      </section>
+    `;
+  }).join("");
+}
+
+function selectPortfolioWorkspaceGroupFocus(group = {}, items = []) {
+  const byView = new Map(items.map((item) => [item.view, item]));
+  for (const view of group.focusViews || []) {
+    if (byView.has(view)) return byView.get(view);
+  }
+  return items.find(hasPortfolioWorkspaceCardSignal) || items[0] || {};
+}
+
+function hasPortfolioWorkspaceCardSignal(card = {}) {
+  const value = String(card.value || "");
+  return Boolean(value && !/^0(?:\s|只|项|条|人|行|$)/.test(value) && !/待运行|控制/.test(value));
 }
 
 function renderPortfolioWorkspaceCard(card = {}) {
@@ -1078,6 +1136,15 @@ function renderPortfolioWorkspaceCard(card = {}) {
       <strong>${escapeHtml(card.value || "-")}</strong>
       <small>${escapeHtml(card.detail || "")}</small>
       <em>${escapeHtml(card.meta || "")}</em>
+    </button>
+  `;
+}
+
+function renderPortfolioWorkspaceMiniButton(card = {}) {
+  return `
+    <button type="button" class="portfolio-workspace-mini" data-portfolio-view-target="${escapeHtml(card.view || "overview")}">
+      <span>${escapeHtml(card.label || "")}</span>
+      <strong>${escapeHtml(card.value || "-")}</strong>
     </button>
   `;
 }

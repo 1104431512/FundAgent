@@ -1529,6 +1529,8 @@ assert(/portfolio-command-panel \.info-grid[\s\S]{0,260}grid-area:\s*status/.tes
 assert(adminStyleSource.includes("portfolio-workspace-switcher"), "admin portfolio workspace switcher must be styled as a first-class navigation surface");
 assert(/portfolio-workspace-switcher[\s\S]{0,240}position:\s*sticky/.test(adminStyleSource), "admin portfolio workspace switcher must remain reachable while long workspace views scroll");
 assert(adminStyleSource.includes("portfolio-workspace-view.active"), "admin portfolio workspace views must show one focused entry at a time");
+assert(adminSource.includes("PORTFOLIO_WORKSPACE_OVERVIEW_GROUPS") && adminSource.includes("renderPortfolioWorkspaceGroups"), "admin portfolio overview shortcuts must be grouped by account, opportunity, decision, and records");
+assert(adminStyleSource.includes("portfolio-workspace-cluster") && adminStyleSource.includes("portfolio-workspace-mini-list"), "admin portfolio overview must style grouped shortcut zones instead of a flat card strip");
 assert(/portfolio-terminal-shell[\s\S]{0,260}--portfolio-workspace-height:\s*100%[\s\S]{0,520}height:\s*var\(--portfolio-workspace-height\)[\s\S]{0,260}max-height:\s*100%[\s\S]{0,180}overflow:\s*hidden/.test(adminStyleSource), "admin portfolio terminal shell must bound the virtual-run workspace height like a trading terminal");
 assert(/portfolio-terminal-stage[\s\S]{0,320}overflow:\s*hidden/.test(adminStyleSource), "admin portfolio terminal stage must prevent long workspace content from stretching the whole page");
 assert(/portfolio-workspace-view\.active[\s\S]{0,360}overflow:\s*auto/.test(adminStyleSource), "admin portfolio active workspace view must scroll internally");

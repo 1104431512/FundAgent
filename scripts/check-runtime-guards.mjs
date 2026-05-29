@@ -1085,7 +1085,11 @@ const requiredPatterns = [
     message: "admin portfolio overview must show actionable workspace shortcut cards."
   },
   {
-    pattern: /renderPortfolioWorkspaceCards[\s\S]{0,4200}managerRankings[\s\S]{0,2200}ready[\s\S]{0,2200}userAlerts/,
+    pattern: /(?=[\s\S]*PORTFOLIO_WORKSPACE_OVERVIEW_GROUPS)(?=[\s\S]*账户)(?=[\s\S]*机会)(?=[\s\S]*决策)(?=[\s\S]*记录)(?=[\s\S]*renderPortfolioWorkspaceGroups)(?=[\s\S]*portfolio-workspace-cluster)/,
+    message: "admin portfolio overview must group shortcut entries into account, opportunity, decision, and record zones instead of a flat strip."
+  },
+  {
+    pattern: /(?=[\s\S]*function renderPortfolioWorkspaceCards)(?=[\s\S]*managerRankings)(?=[\s\S]*ready)(?=[\s\S]*waiting)(?=[\s\S]*userAlerts)(?=[\s\S]*renderPortfolioWorkspaceGroups)/,
     message: "admin portfolio workspace cards must summarize rankings, watchlist readiness, and user alerts."
   },
   {

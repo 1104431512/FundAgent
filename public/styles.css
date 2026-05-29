@@ -1203,8 +1203,62 @@ button:disabled {
 
 .portfolio-workspace-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.portfolio-workspace-cluster {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #dfe7ef;
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.portfolio-workspace-cluster-head {
+  min-width: 0;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.portfolio-workspace-cluster-head div {
+  min-width: 0;
+}
+
+.portfolio-workspace-cluster-head span,
+.portfolio-workspace-cluster-head strong,
+.portfolio-workspace-cluster-head em {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-workspace-cluster-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.portfolio-workspace-cluster-head strong {
+  margin-top: 3px;
+  color: #1d2d3b;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.portfolio-workspace-cluster-head em {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: #405263;
+  background: #edf3f7;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
 }
 
 .portfolio-workspace-card {
@@ -1258,6 +1312,52 @@ button:disabled {
   font-size: 12px;
   font-style: normal;
   line-height: 1.35;
+}
+
+.portfolio-workspace-mini-list {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-content: start;
+  max-height: 72px;
+  overflow: auto;
+}
+
+.portfolio-workspace-mini {
+  min-width: 0;
+  min-height: 30px;
+  display: inline-grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 8px;
+  border: 1px solid #dce5ec;
+  border-radius: 999px;
+  color: #344152;
+  background: #ffffff;
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.portfolio-workspace-mini:hover {
+  border-color: #b7c9d8;
+  background: #f4f8fb;
+}
+
+.portfolio-workspace-mini span,
+.portfolio-workspace-mini strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portfolio-workspace-mini strong {
+  color: #1d2d3b;
+  font-weight: 900;
 }
 
 .portfolio-workspace-card[data-portfolio-view-target="rankings"] {
@@ -7250,35 +7350,42 @@ button.danger-button:hover {
 
   #portfolioWorkspaceCards {
     grid-area: entries;
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    padding-bottom: 2px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    overflow: hidden;
   }
 
   .portfolio-workspace-card {
-    flex: 0 0 168px;
-    min-height: 94px;
-    padding: 10px;
+    min-height: 78px;
+    padding: 8px;
     gap: 5px;
   }
 
   .portfolio-workspace-card strong {
-    font-size: 20px;
+    font-size: 18px;
   }
 
   .portfolio-workspace-card small {
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 1;
     -webkit-box-orient: vertical;
-    min-height: 2.8em;
+    min-height: 1.4em;
     overflow: hidden;
   }
 
   .portfolio-workspace-card em {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: none;
+  }
+
+  .portfolio-workspace-cluster {
+    min-height: 156px;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .portfolio-workspace-mini-list {
+    max-height: 52px;
   }
 
   #portfolioRankingRadar {
@@ -7629,6 +7736,7 @@ button.danger-button:hover {
   .portfolio-ranking-radar-empty,
   .portfolio-ranking-command,
   .portfolio-ranking-radar-grid,
+  .portfolio-workspace-cards,
   .run-command-strip,
   .runner-execution-lanes {
     display: grid;
