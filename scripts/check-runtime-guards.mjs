@@ -2325,6 +2325,14 @@ const requiredPatterns = [
     message: "admin ranking list items must expose a compact watchlist detail action."
   },
   {
+    pattern: /renderWatchlistItem[\s\S]{0,2400}renderWatchlistRankingRefs[\s\S]{0,2800}上榜依据/,
+    message: "admin watchlist cards must show which ranking lanes cite each fund."
+  },
+  {
+    pattern: /collectWatchlistRankingRefs[\s\S]{0,1200}currentPortfolio\?\.managerRankings\?\.lists[\s\S]{0,900}item\.rank/,
+    message: "admin watchlist ranking citations must derive from the current manager ranking board."
+  },
+  {
     pattern: /getManagerRankingActionClass[\s\S]{0,900}卖出[\s\S]{0,900}综合[\s\S]{0,900}追涨[\s\S]{0,900}轮动[\s\S]{0,900}买入[\s\S]{0,900}持仓[\s\S]{0,900}费用[\s\S]{0,900}机会[\s\S]{0,900}观察/,
     message: "admin ranking items must visually distinguish synthesis, buy, chase-risk, sector-rotation, holdings-outlook, fee-suitability, opportunity-cost, watch, and sell style actions."
   },

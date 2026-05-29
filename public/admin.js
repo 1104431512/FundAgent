@@ -1478,6 +1478,7 @@ function renderWatchlistItem(item) {
   const setupBadge = isWatchlistLaunchEveCandidate(item) ? `<span class="watchlist-setup-badge">启动前夜</span>` : "";
   const facts = renderWatchlistFactStrip(item, snapshot);
   const holdings = renderHoldingChips(getSnapshotTopHoldings(snapshot), "持仓看点");
+  const rankingRefs = renderWatchlistRankingRefs(item.code);
   return `
     <details class="fund-card watchlist-fund-card" data-watchlist-code="${escapeHtml(item.code || "")}">
       <summary class="fund-card-summary">
@@ -1495,6 +1496,7 @@ function renderWatchlistItem(item) {
         <p>${escapeHtml(item.reason || "暂无备选理由")}</p>
         ${trend && trend !== "走势数据不足" ? `<p>${escapeHtml(trend)}</p>` : ""}
         ${facts}
+        ${rankingRefs}
         ${renderWatchlistObservationGapPanel(observationGaps)}
         ${trendChart}
         ${holdings}
@@ -1514,6 +1516,43 @@ function renderWatchlistItem(item) {
       </div>
     </details>
   `;
+}
+
+function renderWatchlistRankingRefs(code = "") {
+  const refs = collectWatchlistRankingRefs(code);
+  if (!refs.length) return "";
+  return `
+    <div class="watchlist-ranking-refs">
+      <strong>上榜依据</strong>
+      <div>
+        ${refs.map((ref) => `
+          <span class="watchlist-ranking-ref ranking-ref-${getManagerRankingListClass(ref.listId)}">
+            <small>${escapeHtml(ref.title)}${ref.rank ? ` #${escapeHtml(String(ref.rank))}` : ""}</small>
+            <em class="ranking-action ${getManagerRankingActionClass(ref.action)}">${escapeHtml(ref.action || "复核")}</em>
+          </span>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function collectWatchlistRankingRefs(code = "") {
+  const targetCode = String(code || "").trim();
+  if (!targetCode) return [];
+  const lists = Array.isArray(currentPortfolio?.managerRankings?.lists) ? currentPortfolio.managerRankings.lists : [];
+  const refs = [];
+  for (const list of lists) {
+    const items = Array.isArray(list?.items) ? list.items : [];
+    const item = items.find((candidate) => String(candidate?.code || "").trim() === targetCode);
+    if (!item) continue;
+    refs.push({
+      listId: list.id || "",
+      title: list.title || "经理榜单",
+      rank: item.rank || "",
+      action: item.action || item.status || ""
+    });
+  }
+  return refs.slice(0, 6);
 }
 
 function formatWatchlistReadiness(item = {}) {

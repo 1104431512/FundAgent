@@ -1234,6 +1234,7 @@ assert(adminSource.includes("focusWatchlistFund"), "admin UI customer digest mus
 assert(adminSource.includes("data-focus-watchlist-code"), "admin UI customer digest items must expose a watchlist focus action");
 assert(adminSource.includes("data-watchlist-code"), "admin UI watchlist cards must be addressable from ranking digest items");
 assert(adminSource.includes("ranking-detail-link"), "admin UI ranking and priority items must expose compact watchlist detail actions");
+assert(adminSource.includes("renderWatchlistRankingRefs"), "admin UI watchlist details must show which manager ranking lanes cite each fund");
 assert(adminSource.includes("decision_synthesis"), "admin UI must render the decision-synthesis ranking lane");
 assert(adminSource.includes("rotation_opportunity"), "admin UI must render the sector-rotation ranking lane");
 assert(adminSource.includes("chase_risk"), "admin UI must render the chase-risk ranking lane");
@@ -1241,6 +1242,7 @@ assert(adminSource.includes("fee_suitability"), "admin UI must render the fee-su
 assert(adminStyleSource.includes("ranking-list.is-filtered-out"), "admin UI must hide non-focused ranking lists when a ranking filter is active");
 assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must style customer-facing ranking digest as a first-class panel");
 assert(adminStyleSource.includes("focused-from-ranking"), "admin UI must highlight watchlist cards opened from customer digest items");
+assert(adminStyleSource.includes("watchlist-ranking-refs"), "admin UI must style ranking citations inside watchlist fund details");
 assert(adminStyleSource.includes("ranking-overview-synthesis"), "admin UI must visually distinguish decision-synthesis overview cards");
 assert(adminStyleSource.includes("ranking-overview-rotation"), "admin UI must visually distinguish sector-rotation overview cards");
 assert(adminStyleSource.includes("ranking-overview-chase"), "admin UI must visually distinguish chase-risk overview cards");
