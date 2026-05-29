@@ -697,6 +697,10 @@ button:disabled {
   border-left-color: #64748b;
 }
 
+.ranking-overview-synthesis {
+  border-left-color: #0f766e;
+}
+
 .ranking-overview-buy {
   border-left-color: #2f855a;
 }
@@ -921,6 +925,10 @@ button:disabled {
   overflow: hidden;
 }
 
+.ranking-list-synthesis {
+  border-top: 3px solid #0f766e;
+}
+
 .ranking-list-buy {
   border-top: 3px solid #2f855a;
 }
@@ -1064,6 +1072,11 @@ button:disabled {
 .ranking-action.sell {
   color: #8b3217;
   background: #fff1e8;
+}
+
+.ranking-action.synthesis {
+  color: #0f5f59;
+  background: #e4f7f3;
 }
 
 .ranking-action.rotation {

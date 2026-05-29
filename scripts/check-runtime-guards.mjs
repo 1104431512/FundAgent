@@ -2257,8 +2257,12 @@ const requiredPatterns = [
     message: "ranking-board guards must add traceable fallback review actions when top ranked items are omitted."
   },
   {
-    pattern: /buy_preparation[\s\S]*launch_setup[\s\S]*rotation_opportunity[\s\S]*chase_risk[\s\S]*holdings_outlook[\s\S]*fee_suitability[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
-    message: "manager ranking boards must cover buy preparation, low-position launch, sector rotation, chase risk, holdings outlook, fee suitability, opportunity cost, sell risk, and user holding alerts."
+    pattern: /decision_synthesis[\s\S]*buy_preparation[\s\S]*launch_setup[\s\S]*rotation_opportunity[\s\S]*chase_risk[\s\S]*holdings_outlook[\s\S]*fee_suitability[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
+    message: "manager ranking boards must cover decision synthesis, buy preparation, low-position launch, sector rotation, chase risk, holdings outlook, fee suitability, opportunity cost, sell risk, and user holding alerts."
+  },
+  {
+    pattern: /function buildPortfolioDecisionSynthesisRanking[\s\S]{0,2200}买点[\s\S]{0,2200}费率[\s\S]{0,2200}持仓前景/,
+    message: "manager ranking boards must include an integrated decision-synthesis lane combining buy point, rotation, chase risk, fees, and holdings outlook."
   },
   {
     pattern: /function buildPortfolioRotationOpportunityRanking[\s\S]{0,2200}板块轮动[\s\S]{0,2200}拥挤度/,
@@ -2297,8 +2301,12 @@ const requiredPatterns = [
     message: "admin manager ranking overview cards must focus one ranking lane and hide non-focused lists."
   },
   {
-    pattern: /getManagerRankingActionClass[\s\S]{0,900}卖出[\s\S]{0,900}追涨[\s\S]{0,900}轮动[\s\S]{0,900}买入[\s\S]{0,900}持仓[\s\S]{0,900}费用[\s\S]{0,900}机会[\s\S]{0,900}观察/,
-    message: "admin ranking items must visually distinguish buy, chase-risk, sector-rotation, holdings-outlook, fee-suitability, opportunity-cost, watch, and sell style actions."
+    pattern: /getManagerRankingActionClass[\s\S]{0,900}卖出[\s\S]{0,900}综合[\s\S]{0,900}追涨[\s\S]{0,900}轮动[\s\S]{0,900}买入[\s\S]{0,900}持仓[\s\S]{0,900}费用[\s\S]{0,900}机会[\s\S]{0,900}观察/,
+    message: "admin ranking items must visually distinguish synthesis, buy, chase-risk, sector-rotation, holdings-outlook, fee-suitability, opportunity-cost, watch, and sell style actions."
+  },
+  {
+    pattern: /(?=[\s\S]*ranking-overview-synthesis)(?=[\s\S]*ranking-list-synthesis)(?=[\s\S]*ranking-action\.synthesis)/,
+    message: "admin ranking board must visually distinguish decision-synthesis cards, lists, and action pills."
   },
   {
     pattern: /(?=[\s\S]*ranking-overview-chase)(?=[\s\S]*ranking-list-chase)(?=[\s\S]*ranking-action\.chase)/,

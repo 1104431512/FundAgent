@@ -1740,7 +1740,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "经理多角度榜单（系统计算，必须先看榜单再决定）：",
     JSON.stringify(compactManagerRankings, null, 2),
-    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 buy_preparation、rotation_opportunity、chase_risk、fee_suitability、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
+    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、rotation_opportunity、chase_risk、fee_suitability、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
     JSON.stringify((missedFollowThroughQueue || []).slice(0, 5), null, 2),
@@ -3687,7 +3687,7 @@ function inferPortfolioRankingBoardReviewAction(list = {}, item = {}) {
 function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = []) {
   const lists = Array.isArray(board?.lists) ? board.lists : [];
   const existingCodes = new Set((existingActions || []).map((action) => action.code).filter(Boolean));
-  const watchedListIds = new Set(["buy_preparation", "launch_setup", "rotation_opportunity", "chase_risk", "fee_suitability", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
+  const watchedListIds = new Set(["decision_synthesis", "buy_preparation", "launch_setup", "rotation_opportunity", "chase_risk", "fee_suitability", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
   const actions = [];
   for (const list of lists) {
     if (!watchedListIds.has(String(list?.id || ""))) continue;
@@ -3856,13 +3856,15 @@ function ensurePortfolioRankingBoardReviewed(decision, managerRankings = {}) {
   for (const list of lists) {
     for (const item of (Array.isArray(list.items) ? list.items : []).slice(0, 3)) {
       const code = String(item?.code || "").match(/^\d{6}$/)?.[0] || "";
-      if (!code || rankingItemsByCode.has(code)) continue;
-      rankingItemsByCode.set(code, { list, item });
+      if (!code) continue;
+      const entries = rankingItemsByCode.get(code) || [];
+      entries.push({ list, item });
+      rankingItemsByCode.set(code, entries);
     }
   }
   let enrichedCount = 0;
   const enrichedActions = normalized.actions.map((action) => {
-    const entry = rankingItemsByCode.get(action.code);
+    const entry = selectPortfolioRankingBoardEntryForAction(action, rankingItemsByCode.get(action.code) || []);
     if (!entry) return action;
     const basis = action.rankingBasis || formatPortfolioRankingBoardReviewBasis(entry.list, entry.item);
     const dataBasis = mergeStringLists(action.dataBasis, ["来源：manager_ranking_board"]);
@@ -3887,6 +3889,24 @@ function ensurePortfolioRankingBoardReviewed(decision, managerRankings = {}) {
     ),
     sources: mergeStringLists(normalized.sources, ["manager_ranking_board_guard"])
   };
+}
+
+function selectPortfolioRankingBoardEntryForAction(action = {}, entries = []) {
+  if (!entries.length) return null;
+  const actionText = String(action.action || "").toUpperCase();
+  const preferredIds = actionText === "BUY"
+    ? ["buy_preparation", "launch_setup", "decision_synthesis", "rotation_opportunity", "fee_suitability", "holdings_outlook", "opportunity_cost"]
+    : actionText === "SELL"
+      ? ["sell_risk", "chase_risk", "decision_synthesis", "opportunity_cost"]
+      : actionText === "HOLD"
+        ? ["sell_risk", "decision_synthesis", "holdings_outlook", "chase_risk"]
+        : ["buy_preparation", "launch_setup", "chase_risk", "decision_synthesis", "rotation_opportunity", "fee_suitability", "holdings_outlook"];
+  return [...entries].sort((a, b) => {
+    const aRank = preferredIds.indexOf(String(a.list?.id || ""));
+    const bRank = preferredIds.indexOf(String(b.list?.id || ""));
+    return (aRank === -1 ? 99 : aRank) - (bRank === -1 ? 99 : bRank)
+      || Number(a.item?.rank || 99) - Number(b.item?.rank || 99);
+  })[0] || null;
 }
 
 function inferPortfolioWatchStatusFromAnswerProfile(profile = {}, role = "buy_reference") {
@@ -8474,6 +8494,7 @@ function buildPortfolioRankingBoard(db = {}) {
   const positions = (db.account?.positions || []).map(summarizePortfolioPosition).filter(Boolean);
   const userPortfolios = summarizeUserPortfolios(db).filter(Boolean);
   const lists = [
+    buildPortfolioDecisionSynthesisRanking(watchlist),
     buildPortfolioBuyPreparationRanking(watchlist),
     buildPortfolioLaunchSetupRanking(watchlist),
     buildPortfolioRotationOpportunityRanking(watchlist),
@@ -8500,8 +8521,8 @@ function buildPortfolioRankingBoardHealth({ watchlist = [], positions = [], user
     return {
       level: "ok",
       title: "榜单已生成",
-      summary: `当前有 ${totalItems} 个可复核对象，经理可以按买入、低位启动、板块轮动、追涨风险、持仓前景、费率适配、机会成本、卖出风险和用户持仓提醒分层处理。`,
-      actions: ["优先处理排名靠前项", "买点/轮动/追涨/费率/持仓/错过/卖出分开复核", "把用户真实持仓提醒放入每日跟踪"]
+      summary: `当前有 ${totalItems} 个可复核对象，经理可以按综合决策、买入、低位启动、板块轮动、追涨风险、持仓前景、费率适配、机会成本、卖出风险和用户持仓提醒分层处理。`,
+      actions: ["优先处理排名靠前项", "综合结论/买点/轮动/追涨/费率/持仓分开复核", "把用户真实持仓提醒放入每日跟踪"]
     };
   }
   if (!watchlist.length && !positions.length && !userPortfolios.length) {
@@ -8518,6 +8539,130 @@ function buildPortfolioRankingBoardHealth({ watchlist = [], positions = [], user
     summary: "已有基础数据，但暂未出现买入、卖出或用户提醒触发项。",
     actions: ["检查空仓等待诊断", "复核低位启动条件是否过严", "继续沉淀用户持仓成本和盈利点"]
   };
+}
+
+function buildPortfolioDecisionSynthesisRanking(watchlist = []) {
+  const items = (watchlist || [])
+    .filter((item) => item?.code && ["ready", "waiting_pullback", "watch"].includes(item.status))
+    .map(buildPortfolioDecisionSynthesisRankingItem)
+    .filter(Boolean)
+    .sort(compareRankingItems)
+    .slice(0, 6);
+  return buildPortfolioRankingList({
+    id: "decision_synthesis",
+    title: "综合决策榜",
+    subtitle: "把买点、轮动、追涨风险、费率和持仓前景合成一张客户可读的候选排序。",
+    emptyText: "暂无可形成综合结论的候选。",
+    nextAction: "下一步补齐走势、题材轮动、前十大持仓和费率证据，再把候选升为可买、观察或回避。",
+    items
+  });
+}
+
+function buildPortfolioDecisionSynthesisRankingItem(item = {}) {
+  const evidence = resolvePortfolioDecisionSynthesisEvidence(item);
+  if (!evidence.shouldSurface) return null;
+  return buildPortfolioRankingItem({
+    code: item.code,
+    name: item.name,
+    source: "综合决策",
+    score: round(evidence.score, 1),
+    action: evidence.action,
+    reason: evidence.reason,
+    facts: evidence.facts,
+    decision: {
+      highlights: evidence.highlights,
+      risks: evidence.risks,
+      gaps: evidence.gaps,
+      nextStep: evidence.nextStep
+    },
+    status: evidence.level
+  });
+}
+
+function resolvePortfolioDecisionSynthesisEvidence(item = {}) {
+  const trend = item.lastSnapshot?.trendProfile || {};
+  const rotation = resolvePortfolioRotationOpportunityEvidence(item);
+  const chase = resolvePortfolioChaseRiskEvidence(item);
+  const fee = resolvePortfolioWatchFeeSuitabilityEvidence(item);
+  const outlook = resolvePortfolioWatchHoldingsOutlook(item);
+  const readinessScore = Number(item.readinessScore || 0);
+  const setupSignal = trend.pullbackSetup?.signal || "";
+  const low120 = Number(trend.lowPositionPct120);
+  const scoreParts = [
+    Math.min(34, readinessScore * 0.34),
+    rotation.strong ? 18 : rotation.shouldSurface && !rotation.highChase ? 10 : 0,
+    ["pullback_complete", "launch_setup"].includes(setupSignal) ? 14 : 0,
+    Number.isFinite(low120) && low120 <= 55 ? 8 : 0,
+    Number(outlook.score || 0) >= 10 ? 10 : Number(outlook.score || 0) >= 5 ? 5 : 0,
+    fee.missingCritical ? -14 : fee.highDrag ? -6 : 5,
+    chase.shouldSurface ? -Math.min(38, Math.max(16, Number(chase.score || 0) * 0.45)) : 0
+  ];
+  const score = Math.max(0, Math.min(100, scoreParts.reduce((sum, value) => sum + value, 0)));
+  const hasPositiveEvidence = readinessScore >= 45
+    || rotation.shouldSurface
+    || ["pullback_complete", "launch_setup"].includes(setupSignal)
+    || Number(outlook.score || 0) > 0;
+  const shouldSurface = hasPositiveEvidence || chase.shouldSurface || fee.shouldSurface;
+  const buyable = score >= 70 && !chase.shouldSurface && !fee.missingCritical;
+  const starter = score >= 55 && !chase.shouldSurface && !fee.missingCritical;
+  const action = chase.shouldSurface
+    ? "综合回避"
+    : buyable
+      ? "优先买入复核"
+      : starter
+        ? "小仓试探复核"
+        : "继续观察";
+  const level = chase.shouldSurface ? "warning" : buyable ? "ready" : starter ? "watch" : item.status || "watch";
+  const highlights = [
+    readinessScore ? `准备度${round(readinessScore, 0)}` : "",
+    rotation.shouldSurface && !rotation.highChase ? "板块轮动或低位修复有支撑" : "",
+    trend.pullbackSetup?.signalText || "",
+    Number(outlook.score || 0) >= 5 ? "前十大持仓有复核价值" : "",
+    !fee.missingCritical ? "份额费用可进入复核" : ""
+  ].filter(Boolean).slice(0, 3);
+  const risks = [
+    chase.shouldSurface ? "追涨风险未解除" : "",
+    fee.missingCritical ? "费用/份额证据不足" : "",
+    fee.highDrag ? "持有期费用拖累偏高" : "",
+    outlook.risks?.[0] || ""
+  ].filter(Boolean).slice(0, 3);
+  const gaps = [
+    !["pullback_complete", "launch_setup"].includes(setupSignal) ? "缺回调完成或启动信号" : "",
+    rotation.missingTheme ? "缺板块轮动证据" : "",
+    fee.missingCritical ? "缺费用/份额关键证据" : "",
+    !outlook.hasHoldings ? "缺前十大持仓" : ""
+  ].filter(Boolean).slice(0, 3);
+  return {
+    score,
+    shouldSurface,
+    action,
+    level,
+    reason: buildPortfolioDecisionSynthesisReason({ buyable, starter, chase, fee, rotation }),
+    facts: [
+      readinessScore ? `准备度${round(readinessScore, 0)}` : "",
+      rotation.themeName ? `轮动${rotation.themeName}` : "",
+      chase.shouldSurface ? "追涨拦截" : "",
+      fee.shareClass ? `${fee.shareClass}类` : "",
+      Number.isFinite(low120) ? `120日位置${round(low120, 1)}%` : ""
+    ].filter(Boolean),
+    highlights,
+    risks,
+    gaps,
+    nextStep: chase.shouldSurface
+      ? "先按追涨风险榜降级观察，等回撤和拥挤度降温后再恢复买入复核。"
+      : buyable || starter
+        ? "再和买入准备、费率适配、持仓前景三项交叉确认，通过后只允许小仓或分批。"
+        : "继续补齐缺口，不把单一亮点包装成主推荐。"
+  };
+}
+
+function buildPortfolioDecisionSynthesisReason({ buyable = false, starter = false, chase = {}, fee = {}, rotation = {} } = {}) {
+  if (chase.shouldSurface) return "综合看追涨风险压过买点证据，本轮不应作为主推荐。";
+  if (fee.missingCritical) return "综合证据尚可，但费用/份额证据不足，买入前必须补齐。";
+  if (buyable) return "买点、轮动和费用证据相对完整，适合进入优先买入复核。";
+  if (starter) return "有低位或轮动线索，但仍需小仓试探和交叉确认。";
+  if (rotation.shouldSurface) return "已有轮动或低位线索，但综合证据还不足以直接买入。";
+  return "综合证据偏弱，暂时只保留观察，不进入主推荐。";
 }
 
 function buildPortfolioBuyPreparationRanking(watchlist = []) {
@@ -9302,6 +9447,7 @@ function buildPortfolioRankingPriorityQueue(lists = []) {
     rotation_opportunity: 36,
     buy_preparation: 34,
     fee_suitability: 32,
+    decision_synthesis: 22,
     user_holding_alerts: 30,
     holdings_outlook: 24,
     launch_setup: 20
@@ -24486,6 +24632,7 @@ export {
   buildPortfolioRankingBoard,
   buildPortfolioRankingActionAudit,
   buildPortfolioRankingBoardReviewActions,
+  buildPortfolioDecisionSynthesisRanking,
   buildPortfolioFeeSuitabilityRanking,
   buildPortfolioRotationOpportunityRanking,
   buildPortfolioChaseRiskRanking,
