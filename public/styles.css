@@ -918,6 +918,10 @@ button:disabled {
   border-left-color: #2f855a;
 }
 
+.portfolio-workspace-card[data-portfolio-view-target="risk"] {
+  border-left-color: #b91c1c;
+}
+
 .portfolio-workspace-card[data-portfolio-view-target="users"] {
   border-left-color: #5f6f52;
 }
@@ -1176,6 +1180,195 @@ button:disabled {
   font-size: 12px;
 }
 
+.portfolio-risk-board {
+  min-width: 0;
+  min-height: 0;
+}
+
+.risk-terminal {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.risk-terminal-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #dce5ed;
+  border-radius: 8px;
+  background: #f7fafc;
+}
+
+.risk-terminal-head strong,
+.risk-terminal-head small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.risk-terminal-head strong {
+  color: #1d2d3b;
+  font-size: 15px;
+}
+
+.risk-terminal-head small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.risk-lane-grid {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  overflow: hidden;
+}
+
+.risk-lane {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid #e0e7ee;
+  border-top: 3px solid #8797a6;
+  border-radius: 8px;
+  background: #fbfcfd;
+  overflow: hidden;
+}
+
+.risk-lane-defense {
+  border-top-color: #b91c1c;
+}
+
+.risk-lane-sell {
+  border-top-color: #b3261e;
+}
+
+.risk-lane-chase {
+  border-top-color: #dc6b19;
+}
+
+.risk-lane-user {
+  border-top-color: #5f6f52;
+}
+
+.risk-lane-head {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 11px 12px;
+  border-bottom: 1px solid #e5ecf2;
+  background: #ffffff;
+}
+
+.risk-lane-head strong,
+.risk-lane-head small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.risk-lane-head strong {
+  color: #263746;
+  font-size: 14px;
+}
+
+.risk-lane-head small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.risk-lane-head button {
+  min-width: 30px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.risk-item-list {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  overflow: auto;
+  padding: 10px;
+}
+
+.risk-item {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #e5ebf1;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.risk-item-title,
+.risk-item footer,
+.risk-item footer div {
+  min-width: 0;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.risk-item-title strong,
+.risk-item p,
+.risk-item footer small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.risk-item-title strong {
+  color: #1f2f3d;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.risk-item p,
+.risk-item footer small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.risk-item footer small {
+  min-width: 0;
+}
+
+.risk-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.risk-facts small {
+  min-height: 22px;
+  padding: 3px 7px;
+  border: 1px solid #e2e8ef;
+  border-radius: 999px;
+  color: #385065;
+  background: #f5f8fb;
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .portfolio-insight-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -1186,6 +1379,12 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
+}
+
+.risk-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .opportunity-panel .panel-head p {
@@ -1588,6 +1787,10 @@ button:disabled {
   border-left-color: #dc6b19;
 }
 
+.ranking-overview-defense {
+  border-left-color: #b91c1c;
+}
+
 .ranking-overview-holdings {
   border-left-color: #23797b;
 }
@@ -1971,6 +2174,10 @@ button:disabled {
   border-top: 3px solid #dc6b19;
 }
 
+.ranking-list-defense {
+  border-top: 3px solid #b91c1c;
+}
+
 .ranking-list-holdings {
   border-top: 3px solid #23797b;
 }
@@ -2173,6 +2380,11 @@ button:disabled {
 .ranking-action.chase {
   color: #9a3412;
   background: #fff4e5;
+}
+
+.ranking-action.defense {
+  color: #991b1b;
+  background: #fee8e8;
 }
 
 .ranking-action.holdings {
@@ -3882,6 +4094,80 @@ button.danger-button:hover {
   display: none;
 }
 
+@media (min-width: 861px) {
+  .portfolio-workspace-view[data-portfolio-view="overview"].active {
+    grid-template-areas:
+      "entries entries"
+      "radar insights";
+    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.75fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 12px;
+    overflow: hidden;
+  }
+
+  #portfolioWorkspaceCards {
+    grid-area: entries;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .portfolio-workspace-card {
+    flex: 0 0 168px;
+    min-height: 94px;
+    padding: 10px;
+    gap: 5px;
+  }
+
+  .portfolio-workspace-card strong {
+    font-size: 20px;
+  }
+
+  .portfolio-workspace-card small {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    min-height: 2.8em;
+    overflow: hidden;
+  }
+
+  .portfolio-workspace-card em {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #portfolioRankingRadar {
+    grid-area: radar;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .portfolio-workspace-view[data-portfolio-view="overview"] .portfolio-insight-grid {
+    grid-area: insights;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .portfolio-workspace-view[data-portfolio-view="overview"] .insight-card {
+    padding: 14px;
+    box-shadow: none;
+  }
+
+  .portfolio-workspace-view[data-portfolio-view="risk"].active {
+    grid-template-rows: minmax(0, 1fr);
+    align-content: stretch;
+    overflow: hidden;
+  }
+
+  .portfolio-workspace-view[data-portfolio-view="risk"] .risk-panel {
+    height: 100%;
+  }
+}
+
 @media (max-width: 860px) {
   body[data-active-tab="portfolio"] {
     overflow: auto;
@@ -3934,6 +4220,7 @@ button.danger-button:hover {
   .portfolio-terminal-shell,
   .portfolio-insight-grid,
   .portfolio-diagnostic-grid,
+  .risk-lane-grid,
   .opportunity-command-row,
   .opportunity-lane-grid,
   .position-body {
@@ -3961,6 +4248,7 @@ button.danger-button:hover {
   .portfolio-terminal-shell,
   .portfolio-terminal-stage,
   .portfolio-workspace-view.active,
+  .risk-terminal,
   .ranking-board,
   .watchlist-terminal-body,
   .timeline-terminal-body,

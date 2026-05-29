@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FundAgent 管理</title>
-    <link rel="stylesheet" href="/public/styles.css?v=20260530-terminal" />
+    <link rel="stylesheet" href="/public/styles.css?v=20260530-workspace" />
   </head>
   <body>
     <div class="app-shell">
@@ -338,6 +338,7 @@
                 </div>
                 <div class="portfolio-workspace-group">
                   <span>决策</span>
+                  <button type="button" data-portfolio-view-target="risk"><b>风控防线</b><small>回撤/止盈</small><span id="portfolioNavRiskCount">0</span></button>
                   <button type="button" data-portfolio-view-target="rankings"><b>经理榜单</b><small>多角度排序</small><span id="portfolioNavRankingCount">0</span></button>
                   <button type="button" data-portfolio-view-target="diagnostics"><b>诊断</b><small>能力/回测</small><span id="portfolioNavDiagnosticCount">0</span></button>
                 </div>
@@ -382,11 +383,24 @@
                   <div class="panel-head tight">
                     <div>
                       <h2>经理榜单</h2>
-                      <p>从综合决策、买入准备、低位启动、现金再部署、仓位方案、基金质量、经理稳定、组合适配、主题配置、板块轮动、追涨风险、持仓前景、费率适配、替代优选、机会成本、卖出风险和用户持仓提醒多个角度辅助决策。</p>
+                      <p>从综合决策、买入准备、低位启动、现金再部署、仓位方案、基金质量、经理稳定、组合适配、主题配置、板块轮动、追涨风险、回撤防线、持仓前景、费率适配、替代优选、机会成本、卖出风险和用户持仓提醒多个角度辅助决策。</p>
                     </div>
                     <span id="managerRankingUpdatedAt" class="badge">未加载</span>
                   </div>
                   <div id="managerRankingBoard" class="ranking-board"></div>
+                </div>
+              </section>
+
+              <section class="portfolio-workspace-view" data-portfolio-view="risk">
+                <div class="panel risk-panel">
+                  <div class="panel-head tight">
+                    <div>
+                      <h2>风控防线</h2>
+                      <p>单独查看回撤防线、卖出风险、追涨风险和用户持仓提醒；先处理风险，再讨论买入。</p>
+                    </div>
+                    <span id="portfolioRiskState" class="badge">未加载</span>
+                  </div>
+                  <div id="portfolioRiskBoard" class="portfolio-risk-board"></div>
                 </div>
               </section>
 

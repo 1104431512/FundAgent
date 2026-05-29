@@ -24,6 +24,12 @@ let activeWatchlistStatus = "";
 const WATCHLIST_STATUS_ORDER = ["ready", "waiting_pullback", "watch", "blocked", "in_position", "removed"];
 const TOP_HOLDINGS_DISPLAY_LIMIT = 10;
 const RUN_DETAIL_PANEL_ORDER = ["brief", "actions", "committee", "execution", "report"];
+const PORTFOLIO_RISK_LANES = [
+  { id: "drawdown_defense", title: "回撤防线", tone: "defense", empty: "暂无需要单独拉响的回撤防线。" },
+  { id: "sell_risk", title: "卖出风险", tone: "sell", empty: "暂无明确卖出风险。" },
+  { id: "chase_risk", title: "追涨风险", tone: "chase", empty: "暂无偏热追涨提醒。" },
+  { id: "user_holding_alerts", title: "用户持仓提醒", tone: "user", empty: "暂无客户持仓提醒。" }
+];
 const WATCHLIST_STATUS_LABELS = {
   ready: "接近可买",
   waiting_pullback: "等待回调",
@@ -107,6 +113,12 @@ document.querySelector("[data-panel='portfolio']")?.addEventListener("click", (e
   if (watchlistStatusButton) {
     activeWatchlistStatus = watchlistStatusButton.dataset.watchlistStatusFilter || "";
     renderWatchlist(currentPortfolio?.watchlist || []);
+    return;
+  }
+  const rankingFilterButton = event.target.closest("[data-open-ranking-filter]");
+  if (rankingFilterButton) {
+    setPortfolioView("rankings");
+    setManagerRankingFilter(rankingFilterButton.dataset.openRankingFilter || "");
     return;
   }
   const viewButton = event.target.closest("[data-portfolio-view-target]");
@@ -434,6 +446,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   const equity = portfolio.recentEquity || [];
   const latestRun = runs[0] || null;
   const activeOrders = portfolio.activeOrders || [];
+  const riskItems = collectPortfolioRiskBoardItems(portfolio.managerRankings || {});
   const ready = watchlist.filter((item) => item.status === "ready");
   const waiting = watchlist.filter((item) => item.status === "waiting_pullback");
   const launchEve = watchlist.filter(isWatchlistLaunchEveCandidate);
@@ -464,11 +477,13 @@ function renderPortfolioDashboard(portfolio = {}) {
   setText("#portfolioNavOrderCount", String(activeOrders.length + transactions.length + equity.length));
   setText("#portfolioNavOpportunityCount", String(ready.length + waiting.length + launchEve.length));
   setText("#portfolioNavDiagnosticCount", String(diagnosticCount));
-  setText("#portfolioNavOverviewCount", "8");
+  setText("#portfolioNavRiskCount", String(riskItems.length));
+  setText("#portfolioNavOverviewCount", "9");
   updateRunStateBadge(latestRun, portfolio.scheduler || {});
 
   renderPortfolioWorkspaceCards(portfolio, { positions, watchlist, userPortfolios, runs, activeOrders, transactions, equity, ready, waiting, launchEve, blocked, diagnosticCount });
   renderPortfolioRankingRadar(portfolio.managerRankings || {});
+  renderPortfolioRiskBoard(portfolio.managerRankings || {});
   renderPortfolioOpportunityBoard({ ready, waiting, launchEve, blocked });
   renderInsightList("#portfolioManagerSummary", buildManagerInsightItems(portfolio, latestRun, activeOrders), "暂无经理运行摘要。");
   renderInsightList("#portfolioHoldingSummary", buildHoldingInsightItems(account, positions, portfolio.exposureSummary || null), "暂无持仓暴露。");
@@ -500,6 +515,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
   const diagnosticCount = context.diagnosticCount || 0;
   const rankingLists = Array.isArray(portfolio.managerRankings?.lists) ? portfolio.managerRankings.lists : [];
   const rankingCount = rankingLists.reduce((sum, list) => sum + (Array.isArray(list.items) ? list.items.length : 0), 0);
+  const riskItems = collectPortfolioRiskBoardItems(portfolio.managerRankings || {});
   const priority = portfolio.managerRankings?.priorityQueue?.[0] || null;
   const userAlerts = userPortfolios.reduce((sum, item) => sum + Number(item.alertCount || 0), 0);
   const latestRun = runs[0] || null;
@@ -533,6 +549,13 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
       value: `${watchlist.length} 只`,
       detail: topWatch ? `${topWatch.code || ""} ${topWatch.name || ""}，${topWatch.statusText || formatWatchlistStatus(topWatch.status)}` : "等待盘前观察沉淀候选",
       meta: `接近可买 ${ready.length} · 等待回调 ${waiting.length} · 暂不买 ${blocked.length}`
+    },
+    {
+      view: "risk",
+      label: "风控防线",
+      value: `${riskItems.length} 条`,
+      detail: riskItems[0] ? `${riskItems[0].listTitle || "风险"}：${riskItems[0].code || ""} ${riskItems[0].name || ""}`.trim() : "回撤、止盈、追涨和客户持仓提醒",
+      meta: riskItems[0]?.action || "先处理风险，再讨论买入"
     },
     {
       view: "users",
@@ -665,6 +688,87 @@ function renderPortfolioRankingRadarPriority(queue = []) {
         </button>
       `).join("")}
     </div>
+  `;
+}
+
+function collectPortfolioRiskBoardItems(board = {}) {
+  const lists = Array.isArray(board.lists) ? board.lists : [];
+  const items = [];
+  for (const lane of PORTFOLIO_RISK_LANES) {
+    const list = lists.find((candidate) => candidate.id === lane.id);
+    for (const item of (Array.isArray(list?.items) ? list.items : []).slice(0, 4)) {
+      items.push({
+        ...item,
+        listId: lane.id,
+        listTitle: list?.title || lane.title,
+        laneTone: lane.tone
+      });
+    }
+  }
+  return items;
+}
+
+function renderPortfolioRiskBoard(board = {}) {
+  const root = document.querySelector("#portfolioRiskBoard");
+  if (!root) return;
+  const listById = new Map((Array.isArray(board.lists) ? board.lists : []).map((list) => [list.id, list]));
+  const total = collectPortfolioRiskBoardItems(board).length;
+  setText("#portfolioRiskState", total ? `${total} 条风险线` : "暂无风险");
+  root.innerHTML = `
+    <section class="risk-terminal">
+      <div class="risk-terminal-head">
+        <div>
+          <strong>先防守，再进攻</strong>
+          <small>这里把长榜单中的风险项抽出来，适合开盘前快速确认该卖、该等还是该盯。</small>
+        </div>
+        <button type="button" class="secondary" data-portfolio-view-target="rankings">进入完整榜单</button>
+      </div>
+      <div class="risk-lane-grid">
+        ${PORTFOLIO_RISK_LANES.map((lane) => renderPortfolioRiskLane(lane, listById.get(lane.id))).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderPortfolioRiskLane(lane = {}, list = {}) {
+  const items = Array.isArray(list?.items) ? list.items.slice(0, 3) : [];
+  return `
+    <section class="risk-lane risk-lane-${escapeHtml(lane.tone || "watch")}">
+      <div class="risk-lane-head">
+        <div>
+          <strong>${escapeHtml(lane.title || list?.title || "风险")}</strong>
+          <small>${escapeHtml(list?.subtitle || lane.empty || "")}</small>
+        </div>
+        <button type="button" data-open-ranking-filter="${escapeHtml(lane.id || "")}">${items.length}</button>
+      </div>
+      <div class="risk-item-list">
+        ${items.length ? items.map((item) => renderPortfolioRiskItem(item, lane)).join("") : `<div class="empty compact-empty">${escapeHtml(lane.empty || "暂无风险项。")}</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderPortfolioRiskItem(item = {}, lane = {}) {
+  const code = String(item.code || "").trim();
+  const facts = Array.isArray(item.facts) ? item.facts.slice(0, 3) : [];
+  const nextStep = item.decision?.nextStep || item.nextStep || facts[0] || "进入完整榜单查看处理边界。";
+  const actionClass = getManagerRankingActionClass(`${item.action || ""} ${item.reason || ""}`) || lane.tone || "watch";
+  return `
+    <article class="risk-item">
+      <div class="risk-item-title">
+        <strong>${escapeHtml([code, item.name].filter(Boolean).join(" ") || lane.title || "风险项")}</strong>
+        <span class="ranking-action ${actionClass}">${escapeHtml(item.action || item.status || "复核")}</span>
+      </div>
+      <p>${escapeHtml(item.reason || "等待经理下一轮复核。")}</p>
+      ${facts.length ? `<div class="risk-facts">${facts.map((fact) => `<small>${escapeHtml(fact)}</small>`).join("")}</div>` : ""}
+      <footer>
+        <small>${escapeHtml(nextStep)}</small>
+        <div>
+          ${code ? `<button type="button" class="ranking-detail-link" data-focus-watchlist-code="${escapeHtml(code)}">详情</button>` : ""}
+          <button type="button" class="ranking-detail-link" data-open-ranking-filter="${escapeHtml(lane.id || "")}">榜单</button>
+        </div>
+      </footer>
+    </article>
   `;
 }
 
@@ -1049,6 +1153,7 @@ function getManagerRankingListClass(id = "") {
   if (id === "theme_allocation") return "theme";
   if (id === "rotation_opportunity") return "rotation";
   if (id === "chase_risk") return "chase";
+  if (id === "drawdown_defense") return "defense";
   if (id === "holdings_outlook") return "holdings";
   if (id === "fee_suitability") return "fee";
   if (id === "replacement_choice") return "replacement";
@@ -1068,6 +1173,7 @@ function getManagerRankingActionClass(text = "") {
   if (/组合|适配|补位|同线|重叠/.test(text)) return "fit";
   if (/主题|赛道|配置|代表基金/.test(text)) return "theme";
   if (/追涨|偏热|高位|拥挤|过热/.test(text)) return "chase";
+  if (/回撤防线|防线|利润保护|高回撤|回撤/.test(text)) return "defense";
   if (/板块轮动|轮动启动|轮动观察|轮动降温|轮动/.test(text)) return "rotation";
   if (/买入|启动|触发/.test(text)) return "buy";
   if (/持仓|前景|行业/.test(text)) return "holdings";
