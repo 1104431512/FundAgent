@@ -2261,8 +2261,20 @@ const requiredPatterns = [
     message: "manager ranking boards must cover buy preparation, low-position launch, holdings outlook, opportunity cost, sell risk, and user holding alerts."
   },
   {
+    pattern: /(?=[\s\S]*const priorityQueue = buildPortfolioRankingPriorityQueue\(lists\))(?=[\s\S]*function buildPortfolioRankingPriorityQueue)/,
+    message: "manager ranking boards must build a cross-list priority queue before rendering or model calls."
+  },
+  {
+    pattern: /compactPortfolioRankingBoardForModel[\s\S]{0,1200}priorityQueue/,
+    message: "portfolio decision prompts must include the ranking priority queue."
+  },
+  {
     pattern: /renderManagerRankings/,
     message: "admin portfolio UI must render manager ranking boards."
+  },
+  {
+    pattern: /renderManagerPriorityQueue[\s\S]{0,1200}今日优先处理/,
+    message: "admin manager ranking board must render a first-class priority queue."
   },
   {
     pattern: /renderManagerRankingOverview[\s\S]{0,1400}ranking-overview-card/,

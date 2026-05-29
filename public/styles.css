@@ -769,6 +769,128 @@ button:disabled {
   font-weight: 780;
 }
 
+.ranking-priority {
+  grid-column: 1 / -1;
+  border: 1px solid #d8e3ec;
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.ranking-priority-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e7edf3;
+  background: #fbfcfd;
+}
+
+.ranking-priority-head strong,
+.ranking-priority-head small,
+.ranking-priority-head span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.ranking-priority-head strong {
+  font-size: 15px;
+}
+
+.ranking-priority-head small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ranking-priority-head > span {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #1f513f;
+  background: #eaf7ef;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.ranking-priority-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0;
+}
+
+.ranking-priority-item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px 14px;
+  border-right: 1px solid #e8edf2;
+  border-bottom: 1px solid #e8edf2;
+}
+
+.ranking-priority-rank {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: #0f5132;
+  background: #dff3e8;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.ranking-priority-body {
+  min-width: 0;
+}
+
+.ranking-priority-title {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ranking-priority-title strong,
+.ranking-priority-body p,
+.ranking-priority-body small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.ranking-priority-body p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ranking-priority-body small {
+  margin-top: 7px;
+  color: #3d4d5c;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ranking-priority-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.ranking-priority-meta span {
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: #344152;
+  background: #edf2f7;
+  font-size: 12px;
+  font-weight: 760;
+}
+
 .ranking-list {
   min-width: 0;
   border: 1px solid #dbe4ec;

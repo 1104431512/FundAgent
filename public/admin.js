@@ -378,7 +378,7 @@ function renderManagerRankings(board = {}) {
     root.innerHTML = `<div class="empty">暂无榜单数据。自选池、持仓或用户持仓关注有数据后会自动生成。</div>`;
     return;
   }
-  root.innerHTML = `${renderManagerRankingHealth(board.health || {})}${renderManagerRankingOverview(lists)}${lists.map(renderManagerRankingList).join("")}`;
+  root.innerHTML = `${renderManagerRankingHealth(board.health || {})}${renderManagerPriorityQueue(board.priorityQueue || [])}${renderManagerRankingOverview(lists)}${lists.map(renderManagerRankingList).join("")}`;
 }
 
 function renderManagerRankingHealth(health = {}) {
@@ -392,6 +392,46 @@ function renderManagerRankingHealth(health = {}) {
       </div>
       ${actions.length ? `<div class="ranking-health-actions">${actions.slice(0, 3).map((action) => `<span>${escapeHtml(action)}</span>`).join("")}</div>` : ""}
     </div>
+  `;
+}
+
+function renderManagerPriorityQueue(queue = []) {
+  const items = Array.isArray(queue) ? queue : [];
+  if (!items.length) return "";
+  return `
+    <section class="ranking-priority">
+      <div class="ranking-priority-head">
+        <div>
+          <strong>今日优先处理</strong>
+          <small>跨榜单排序，先复核最影响买入、卖出和客户提醒的对象。</small>
+        </div>
+        <span>${items.length} 项</span>
+      </div>
+      <div class="ranking-priority-items">
+        ${items.slice(0, 6).map(renderManagerPriorityItem).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderManagerPriorityItem(item = {}) {
+  const actionClass = getManagerRankingActionClass(`${item.action || ""} ${item.listTitle || ""}`);
+  return `
+    <article class="ranking-priority-item">
+      <div class="ranking-priority-rank">${escapeHtml(String(item.queueRank || "-"))}</div>
+      <div class="ranking-priority-body">
+        <div class="ranking-priority-title">
+          <strong>${escapeHtml(item.code || "")} ${escapeHtml(item.name || "")}</strong>
+          <span class="ranking-action ${actionClass}">${escapeHtml(item.action || item.listTitle || "复核")}</span>
+        </div>
+        <p>${escapeHtml(item.reason || "等待经理复核。")}</p>
+        <div class="ranking-priority-meta">
+          <span>${escapeHtml(item.listTitle || "经理榜单")}${item.rank ? ` #${escapeHtml(String(item.rank))}` : ""}</span>
+          ${Number.isFinite(Number(item.priorityScore)) ? `<span>优先级 ${formatNumber(item.priorityScore, 0)}</span>` : ""}
+        </div>
+        ${item.nextStep ? `<small>${escapeHtml(item.nextStep)}</small>` : ""}
+      </div>
+    </article>
   `;
 }
 

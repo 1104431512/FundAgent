@@ -1740,7 +1740,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "经理多角度榜单（系统计算，必须先看榜单再决定）：",
     JSON.stringify(compactManagerRankings, null, 2),
-    "要求：榜单是本轮决策前置清单。actions 必须优先覆盖 buy_preparation、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
+    "要求：榜单是本轮决策前置清单。必须先处理 priorityQueue 前5项；actions 必须优先覆盖 buy_preparation、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
     JSON.stringify((missedFollowThroughQueue || []).slice(0, 5), null, 2),
@@ -8481,11 +8481,13 @@ function buildPortfolioRankingBoard(db = {}) {
     buildPortfolioSellRiskRanking(positions),
     buildUserHoldingAlertRanking(userPortfolios)
   ];
+  const priorityQueue = buildPortfolioRankingPriorityQueue(lists);
   return {
     updatedAt: new Date().toISOString(),
     lists,
+    priorityQueue,
     health: buildPortfolioRankingBoardHealth({ watchlist, positions, userPortfolios, lists }),
-    summary: lists.map((list) => `${list.title}${list.items.length}只`).join("，")
+    summary: `${lists.map((list) => `${list.title}${list.items.length}只`).join("，")}；今日优先${priorityQueue.length}项`
   };
 }
 
@@ -8821,6 +8823,53 @@ function buildPortfolioRankingList({ id, title, subtitle, emptyText, nextAction,
   };
 }
 
+function buildPortfolioRankingPriorityQueue(lists = []) {
+  const listWeight = {
+    sell_risk: 42,
+    opportunity_cost: 38,
+    buy_preparation: 34,
+    user_holding_alerts: 30,
+    holdings_outlook: 24,
+    launch_setup: 20
+  };
+  const byCode = new Map();
+  for (const list of lists || []) {
+    const items = Array.isArray(list?.items) ? list.items : [];
+    for (const item of items.slice(0, 4)) {
+      const code = String(item?.code || "").match(/^\d{6}$/)?.[0] || "";
+      if (!code) continue;
+      const rank = Number(item.rank || 99);
+      const score = Number(item.score || 0);
+      const priorityScore = round((listWeight[list.id] || 10) + Math.max(0, 5 - rank) * 4 + Math.min(30, Math.max(0, score) / 4), 1);
+      const candidate = {
+        code,
+        name: item.name || "",
+        action: item.action || "",
+        reason: item.reason || "",
+        facts: normalizeStringArray(item.facts).slice(0, 4),
+        listId: list.id || "",
+        listTitle: list.title || "经理榜单",
+        rank,
+        score: Number.isFinite(score) ? round(score, 1) : 0,
+        priorityScore,
+        nextStep: item.decision?.nextStep || list.nextAction || "",
+        risk: normalizeStringArray(item.decision?.risks)[0] || "",
+        gap: normalizeStringArray(item.decision?.gaps)[0] || ""
+      };
+      const existing = byCode.get(code);
+      if (!existing || candidate.priorityScore > existing.priorityScore) {
+        byCode.set(code, candidate);
+      }
+    }
+  }
+  return [...byCode.values()]
+    .sort((a, b) => Number(b.priorityScore || 0) - Number(a.priorityScore || 0)
+      || Number(a.rank || 99) - Number(b.rank || 99)
+      || String(a.code || "").localeCompare(String(b.code || "")))
+    .slice(0, 6)
+    .map((item, index) => ({ ...item, queueRank: index + 1 }));
+}
+
 function buildPortfolioRankingItem({ code, name, userId = "", source = "", score = 0, action = "", reason = "", facts = [], decision = null, status = "" }) {
   return {
     code: String(code || ""),
@@ -8848,6 +8897,7 @@ function buildPortfolioRankingDecision(decision = null) {
 
 function compactPortfolioRankingBoardForModel(board = {}) {
   const lists = Array.isArray(board.lists) ? board.lists : [];
+  const priorityQueue = Array.isArray(board.priorityQueue) ? board.priorityQueue : [];
   return {
     health: board.health ? {
       level: board.health.level || "",
@@ -8856,6 +8906,17 @@ function compactPortfolioRankingBoardForModel(board = {}) {
       actions: normalizeStringArray(board.health.actions).slice(0, 3)
     } : null,
     summary: board.summary || lists.map((list) => `${list.title || list.id}${list.items?.length || 0}只`).join("，"),
+    priorityQueue: priorityQueue.slice(0, 6).map((item) => ({
+      queueRank: item.queueRank,
+      code: item.code || "",
+      name: item.name || "",
+      action: item.action || "",
+      listTitle: item.listTitle || "",
+      reason: item.reason || "",
+      nextStep: item.nextStep || "",
+      risk: item.risk || "",
+      gap: item.gap || ""
+    })),
     lists: lists.map((list) => ({
       id: list.id || "",
       title: list.title || "",
@@ -23951,6 +24012,7 @@ export {
   buildPortfolioRankingBoard,
   buildPortfolioRankingActionAudit,
   buildPortfolioRankingBoardReviewActions,
+  buildPortfolioRankingPriorityQueue,
   buildPortfolioAccountRiskBudget,
   buildPortfolioReadyWatchlistReviewActions,
   buildPortfolioPositionRiskBudget,
