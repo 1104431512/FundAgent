@@ -316,200 +316,210 @@
                 <strong id="portfolioRetention">90 天</strong>
               </div>
             </div>
-            <div class="portfolio-workspace-switcher" aria-label="虚拟组合工作区">
-              <button type="button" class="active" data-portfolio-view-target="overview">总览<span id="portfolioNavOverviewCount">6</span></button>
-              <button type="button" data-portfolio-view-target="rankings">经理榜单<span id="portfolioNavRankingCount">0</span></button>
-              <button type="button" data-portfolio-view-target="positions">持仓<span id="portfolioNavPositionCount">0</span></button>
-              <button type="button" data-portfolio-view-target="watchlist">自选池<span id="portfolioNavWatchlistCount">0</span></button>
-              <button type="button" data-portfolio-view-target="users">用户持仓<span id="portfolioNavUserCount">0</span></button>
-              <button type="button" data-portfolio-view-target="timeline">时间线<span id="portfolioNavRunCount">0</span></button>
-              <button type="button" data-portfolio-view-target="orders">订单流水<span id="portfolioNavOrderCount">0</span></button>
-            </div>
           </div>
 
-          <section class="portfolio-workspace-view active" data-portfolio-view="overview">
-            <div id="portfolioWorkspaceCards" class="portfolio-workspace-cards"></div>
-            <div class="portfolio-insight-grid">
-              <section class="panel insight-card">
-              <div class="panel-head tight">
-                <h2>经理摘要</h2>
-                <span id="portfolioRunState" class="badge">未运行</span>
+          <div class="portfolio-terminal-shell">
+            <aside class="portfolio-terminal-rail" aria-label="虚拟组合入口">
+              <div class="portfolio-terminal-rail-head">
+                <span>工作区入口</span>
+                <strong>按交易软件分屏查看</strong>
               </div>
-              <div id="portfolioManagerSummary" class="insight-list"></div>
+              <div class="portfolio-workspace-switcher" aria-label="虚拟组合工作区">
+                <button type="button" class="active" data-portfolio-view-target="overview">总览<span id="portfolioNavOverviewCount">6</span></button>
+                <button type="button" data-portfolio-view-target="rankings">经理榜单<span id="portfolioNavRankingCount">0</span></button>
+                <button type="button" data-portfolio-view-target="positions">持仓<span id="portfolioNavPositionCount">0</span></button>
+                <button type="button" data-portfolio-view-target="watchlist">自选池<span id="portfolioNavWatchlistCount">0</span></button>
+                <button type="button" data-portfolio-view-target="users">用户持仓<span id="portfolioNavUserCount">0</span></button>
+                <button type="button" data-portfolio-view-target="timeline">时间线<span id="portfolioNavRunCount">0</span></button>
+                <button type="button" data-portfolio-view-target="orders">订单流水<span id="portfolioNavOrderCount">0</span></button>
+              </div>
+            </aside>
+            <div class="portfolio-terminal-stage">
+              <section class="portfolio-workspace-view active" data-portfolio-view="overview">
+                <div id="portfolioWorkspaceCards" class="portfolio-workspace-cards"></div>
+                <div class="portfolio-insight-grid">
+                  <section class="panel insight-card">
+                  <div class="panel-head tight">
+                    <h2>经理摘要</h2>
+                    <span id="portfolioRunState" class="badge">未运行</span>
+                  </div>
+                  <div id="portfolioManagerSummary" class="insight-list"></div>
+                  </section>
+                  <section class="panel insight-card">
+                  <div class="panel-head tight">
+                    <h2>持仓暴露</h2>
+                    <span id="portfolioPositionCount" class="badge">0 只</span>
+                  </div>
+                  <div id="portfolioHoldingSummary" class="insight-list"></div>
+                  </section>
+                  <section class="panel insight-card">
+                  <div class="panel-head tight">
+                    <h2>买入准备</h2>
+                    <span id="portfolioReadinessCount" class="badge">0 只</span>
+                  </div>
+                  <div id="portfolioReadinessSummary" class="insight-list"></div>
+                  </section>
+                  <section class="panel insight-card">
+                  <div class="panel-head tight">
+                    <h2>能力诊断</h2>
+                    <span id="portfolioCapabilityState" class="badge">待诊断</span>
+                  </div>
+                  <div id="portfolioCapabilitySummary" class="insight-list"></div>
+                  <div id="portfolioCapabilityActionQueue" class="capability-action-list"></div>
+                  </section>
+                  <section class="panel insight-card">
+                  <div class="panel-head tight">
+                    <h2>历史回测</h2>
+                    <span id="portfolioBacktestState" class="badge">待回测</span>
+                  </div>
+                  <div id="portfolioBacktestSummary" class="insight-list"></div>
+                  </section>
+                  <section class="panel insight-card">
+                  <div class="panel-head tight">
+                    <h2>榜单引用</h2>
+                    <span id="portfolioRankingAuditState" class="badge">待审计</span>
+                  </div>
+                  <div id="portfolioRankingAuditSummary" class="insight-list"></div>
+                  </section>
+                </div>
               </section>
-              <section class="panel insight-card">
-              <div class="panel-head tight">
-                <h2>持仓暴露</h2>
-                <span id="portfolioPositionCount" class="badge">0 只</span>
-              </div>
-              <div id="portfolioHoldingSummary" class="insight-list"></div>
+
+              <section class="portfolio-workspace-view" data-portfolio-view="rankings">
+                <div class="panel ranking-panel">
+                  <div class="panel-head tight">
+                    <div>
+                      <h2>经理榜单</h2>
+                      <p>从综合决策、买入准备、低位启动、现金再部署、仓位方案、基金质量、组合适配、板块轮动、追涨风险、持仓前景、费率适配、机会成本、卖出风险和用户持仓提醒多个角度辅助决策。</p>
+                    </div>
+                    <span id="managerRankingUpdatedAt" class="badge">未加载</span>
+                  </div>
+                  <div id="managerRankingBoard" class="ranking-board"></div>
+                </div>
               </section>
-              <section class="panel insight-card">
-              <div class="panel-head tight">
-                <h2>买入准备</h2>
-                <span id="portfolioReadinessCount" class="badge">0 只</span>
-              </div>
-              <div id="portfolioReadinessSummary" class="insight-list"></div>
+
+              <section class="portfolio-workspace-view" data-portfolio-view="positions">
+                <details class="panel section-panel" open>
+                  <summary class="section-summary">
+                    <h2>持仓</h2>
+                    <span>点击基金卡片查看完整信息</span>
+                  </summary>
+                  <div class="section-actions">
+                    <button id="resetPortfolioBtn" type="button" class="secondary">重置组合</button>
+                  </div>
+                  <div id="positionList" class="table-list"></div>
+                </details>
               </section>
-              <section class="panel insight-card">
-              <div class="panel-head tight">
-                <h2>能力诊断</h2>
-                <span id="portfolioCapabilityState" class="badge">待诊断</span>
-              </div>
-              <div id="portfolioCapabilitySummary" class="insight-list"></div>
-              <div id="portfolioCapabilityActionQueue" class="capability-action-list"></div>
+
+              <section class="portfolio-workspace-view" data-portfolio-view="users">
+                <details class="panel section-panel" open>
+                  <summary class="section-summary">
+                    <h2>用户持仓关注</h2>
+                    <span id="userPortfolioCount" class="badge">0 个用户</span>
+                  </summary>
+                  <div class="user-portfolio-editor">
+                  <form id="userHoldingForm" class="user-holding-form">
+                    <div class="grid two">
+                      <label>
+                        <span>用户</span>
+                        <input name="userId" type="text" placeholder="admin" />
+                      </label>
+                      <label>
+                        <span>显示名</span>
+                        <input name="displayName" type="text" placeholder="可留空，默认同用户" />
+                      </label>
+                      <label>
+                        <span>基金代码</span>
+                        <input name="code" type="text" inputmode="numeric" placeholder="6 位代码" />
+                      </label>
+                      <label>
+                        <span>基金名称</span>
+                        <input name="name" type="text" placeholder="例如 南方黄金股指数C" />
+                      </label>
+                      <label>
+                        <span>截图涨跌幅/收益</span>
+                        <input name="visibleReturnPct" type="number" step="0.01" placeholder="可选，例如 3.07" />
+                      </label>
+                      <label>
+                        <span>字段含义</span>
+                        <input name="visibleReturnLabel" type="text" placeholder="当日涨幅 / 持仓收益" />
+                      </label>
+                      <label>
+                        <span>当前净值</span>
+                        <input name="currentNav" type="number" step="0.0001" placeholder="可选" />
+                      </label>
+                      <label>
+                        <span>状态</span>
+                        <select name="status">
+                          <option value="holding">持有</option>
+                          <option value="watch">观察</option>
+                        </select>
+                      </label>
+                      <label class="wide-field">
+                        <span>备注</span>
+                        <textarea name="userNote" rows="2" placeholder="成本、仓位、买入原因或你希望经理盯住的条件"></textarea>
+                      </label>
+                    </div>
+                    <div class="actions compact-actions">
+                      <button type="submit">保存用户持仓</button>
+                    </div>
+                  </form>
+                  <div id="userPortfolioList" class="user-portfolio-list"></div>
+                  </div>
+                </details>
               </section>
-              <section class="panel insight-card">
-              <div class="panel-head tight">
-                <h2>历史回测</h2>
-                <span id="portfolioBacktestState" class="badge">待回测</span>
-              </div>
-              <div id="portfolioBacktestSummary" class="insight-list"></div>
+
+              <section class="portfolio-workspace-view" data-portfolio-view="watchlist">
+                <details class="panel section-panel" open>
+                  <summary class="section-summary">
+                    <h2>自选基金池</h2>
+                    <span id="watchlistCount" class="badge">0</span>
+                  </summary>
+                  <div id="watchlistList" class="watchlist-list"></div>
+                </details>
               </section>
-              <section class="panel insight-card">
-              <div class="panel-head tight">
-                <h2>榜单引用</h2>
-                <span id="portfolioRankingAuditState" class="badge">待审计</span>
-              </div>
-              <div id="portfolioRankingAuditSummary" class="insight-list"></div>
+
+              <section class="portfolio-workspace-view" data-portfolio-view="timeline">
+                <details class="panel section-panel" open>
+                  <summary class="section-summary">
+                    <h2>观察、决策与复盘</h2>
+                    <span>按时间轴查看经理分析</span>
+                  </summary>
+                  <div id="runList" class="run-list"></div>
+                </details>
+              </section>
+
+              <section class="portfolio-workspace-view" data-portfolio-view="orders">
+                <details class="panel section-panel" open>
+                  <summary class="section-summary">
+                    <h2>订单进度</h2>
+                    <span>申购、赎回、确认与到账</span>
+                  </summary>
+                  <div id="orderList" class="table-list"></div>
+                </details>
+
+                <details class="panel section-panel" open>
+                  <summary class="section-summary">
+                    <h2>流水与估值</h2>
+                    <span>交易流水、估值记录和原始状态</span>
+                  </summary>
+                  <div class="split-grid">
+                    <div>
+                      <h3>交易流水</h3>
+                      <div id="transactionList" class="table-list"></div>
+                    </div>
+                    <div>
+                      <h3>估值记录</h3>
+                      <div id="equityList" class="table-list"></div>
+                    </div>
+                  </div>
+                  <details class="raw-panel">
+                    <summary>原始数据</summary>
+                    <pre id="portfolioOutput" class="output compact"></pre>
+                  </details>
+                </details>
               </section>
             </div>
-          </section>
-
-          <section class="portfolio-workspace-view" data-portfolio-view="rankings">
-            <div class="panel ranking-panel">
-              <div class="panel-head tight">
-                <div>
-                  <h2>经理榜单</h2>
-                  <p>从综合决策、买入准备、低位启动、现金再部署、仓位方案、基金质量、组合适配、板块轮动、追涨风险、持仓前景、费率适配、机会成本、卖出风险和用户持仓提醒多个角度辅助决策。</p>
-                </div>
-                <span id="managerRankingUpdatedAt" class="badge">未加载</span>
-              </div>
-              <div id="managerRankingBoard" class="ranking-board"></div>
-            </div>
-          </section>
-
-          <section class="portfolio-workspace-view" data-portfolio-view="positions">
-            <details class="panel section-panel" open>
-              <summary class="section-summary">
-                <h2>持仓</h2>
-                <span>点击基金卡片查看完整信息</span>
-              </summary>
-              <div class="section-actions">
-                <button id="resetPortfolioBtn" type="button" class="secondary">重置组合</button>
-              </div>
-              <div id="positionList" class="table-list"></div>
-            </details>
-          </section>
-
-          <section class="portfolio-workspace-view" data-portfolio-view="users">
-            <details class="panel section-panel" open>
-              <summary class="section-summary">
-                <h2>用户持仓关注</h2>
-                <span id="userPortfolioCount" class="badge">0 个用户</span>
-              </summary>
-              <div class="user-portfolio-editor">
-              <form id="userHoldingForm" class="user-holding-form">
-                <div class="grid two">
-                  <label>
-                    <span>用户</span>
-                    <input name="userId" type="text" placeholder="admin" />
-                  </label>
-                  <label>
-                    <span>显示名</span>
-                    <input name="displayName" type="text" placeholder="可留空，默认同用户" />
-                  </label>
-                  <label>
-                    <span>基金代码</span>
-                    <input name="code" type="text" inputmode="numeric" placeholder="6 位代码" />
-                  </label>
-                  <label>
-                    <span>基金名称</span>
-                    <input name="name" type="text" placeholder="例如 南方黄金股指数C" />
-                  </label>
-                  <label>
-                    <span>截图涨跌幅/收益</span>
-                    <input name="visibleReturnPct" type="number" step="0.01" placeholder="可选，例如 3.07" />
-                  </label>
-                  <label>
-                    <span>字段含义</span>
-                    <input name="visibleReturnLabel" type="text" placeholder="当日涨幅 / 持仓收益" />
-                  </label>
-                  <label>
-                    <span>当前净值</span>
-                    <input name="currentNav" type="number" step="0.0001" placeholder="可选" />
-                  </label>
-                  <label>
-                    <span>状态</span>
-                    <select name="status">
-                      <option value="holding">持有</option>
-                      <option value="watch">观察</option>
-                    </select>
-                  </label>
-                  <label class="wide-field">
-                    <span>备注</span>
-                    <textarea name="userNote" rows="2" placeholder="成本、仓位、买入原因或你希望经理盯住的条件"></textarea>
-                  </label>
-                </div>
-                <div class="actions compact-actions">
-                  <button type="submit">保存用户持仓</button>
-                </div>
-              </form>
-              <div id="userPortfolioList" class="user-portfolio-list"></div>
-              </div>
-            </details>
-          </section>
-
-          <section class="portfolio-workspace-view" data-portfolio-view="watchlist">
-            <details class="panel section-panel" open>
-              <summary class="section-summary">
-                <h2>自选基金池</h2>
-                <span id="watchlistCount" class="badge">0</span>
-              </summary>
-              <div id="watchlistList" class="watchlist-list"></div>
-            </details>
-          </section>
-
-          <section class="portfolio-workspace-view" data-portfolio-view="timeline">
-            <details class="panel section-panel" open>
-              <summary class="section-summary">
-                <h2>观察、决策与复盘</h2>
-                <span>按时间轴查看经理分析</span>
-              </summary>
-              <div id="runList" class="run-list"></div>
-            </details>
-          </section>
-
-          <section class="portfolio-workspace-view" data-portfolio-view="orders">
-            <details class="panel section-panel" open>
-              <summary class="section-summary">
-                <h2>订单进度</h2>
-                <span>申购、赎回、确认与到账</span>
-              </summary>
-              <div id="orderList" class="table-list"></div>
-            </details>
-
-            <details class="panel section-panel" open>
-              <summary class="section-summary">
-                <h2>流水与估值</h2>
-                <span>交易流水、估值记录和原始状态</span>
-              </summary>
-              <div class="split-grid">
-                <div>
-                  <h3>交易流水</h3>
-                  <div id="transactionList" class="table-list"></div>
-                </div>
-                <div>
-                  <h3>估值记录</h3>
-                  <div id="equityList" class="table-list"></div>
-                </div>
-              </div>
-              <details class="raw-panel">
-                <summary>原始数据</summary>
-                <pre id="portfolioOutput" class="output compact"></pre>
-              </details>
-            </details>
-          </section>
+          </div>
         </section>
 
         <section class="tab-panel" data-panel="tests">

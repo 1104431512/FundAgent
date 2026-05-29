@@ -1065,6 +1065,10 @@ const requiredPatterns = [
     message: "admin portfolio page must use stock-terminal style workspace entries instead of one long page."
   },
   {
+    pattern: /portfolio-terminal-shell[\s\S]{0,600}portfolio-terminal-rail[\s\S]{0,900}portfolio-workspace-switcher[\s\S]{0,1200}portfolio-terminal-stage/,
+    message: "admin portfolio page must use a left-rail terminal workspace instead of stacking all virtual-run sections."
+  },
+  {
     pattern: /function setPortfolioView[\s\S]{0,1200}data-portfolio-view-target[\s\S]{0,1200}data-portfolio-view/,
     message: "admin portfolio workspace entries must switch focused views."
   },
@@ -1079,6 +1083,10 @@ const requiredPatterns = [
   {
     pattern: /portfolio-workspace-switcher[\s\S]{0,260}position:\s*sticky/,
     message: "admin portfolio workspace switcher must stay reachable and remain usable on narrow screens."
+  },
+  {
+    pattern: /portfolio-terminal-shell[\s\S]{0,260}grid-template-columns:\s*minmax\(190px,\s*220px\)\s*minmax\(0,\s*1fr\)[\s\S]{0,900}portfolio-terminal-rail[\s\S]{0,260}position:\s*sticky/,
+    message: "admin portfolio terminal workspace must keep entry navigation in a stable left rail."
   },
   {
     pattern: /@media \(max-width: 860px\)[\s\S]{0,2600}portfolio-workspace-switcher[\s\S]{0,600}overflow-x:\s*auto/,

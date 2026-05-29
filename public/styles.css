@@ -583,23 +583,70 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-.portfolio-workspace-switcher {
+.portfolio-terminal-shell {
+  display: grid;
+  grid-template-columns: minmax(190px, 220px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.portfolio-terminal-rail {
   position: sticky;
   top: 12px;
   z-index: 3;
   display: grid;
-  grid-template-columns: repeat(7, minmax(96px, 1fr));
-  gap: 8px;
-  padding: 8px;
+  gap: 10px;
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  padding: 12px;
   border: 1px solid #dce5ed;
   border-radius: 8px;
   background: #f7fafc;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
+.portfolio-terminal-rail-head {
+  display: grid;
+  gap: 4px;
+  padding: 2px 2px 8px;
+  border-bottom: 1px solid #e2eaf1;
+}
+
+.portfolio-terminal-rail-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.portfolio-terminal-rail-head strong {
+  color: #1d2d3b;
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-terminal-stage {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.portfolio-workspace-switcher {
+  position: sticky;
+  top: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .portfolio-workspace-switcher button {
   min-width: 0;
-  min-height: 42px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -624,7 +671,7 @@ button:disabled {
   border-color: #9fb7c9;
   color: #12384f;
   background: #ffffff;
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+  box-shadow: inset 3px 0 0 #0f766e, 0 1px 0 rgba(15, 23, 42, 0.04);
 }
 
 .portfolio-workspace-switcher span {
@@ -2717,7 +2764,7 @@ button.danger-button:hover {
   .data-row,
   .portfolio-hero,
   .portfolio-kpi-grid,
-  .portfolio-workspace-switcher,
+  .portfolio-terminal-shell,
   .portfolio-insight-grid,
   .position-body {
     grid-template-columns: 1fr;
@@ -2731,15 +2778,31 @@ button.danger-button:hover {
     font-size: 23px;
   }
 
+  .portfolio-terminal-rail {
+    position: sticky;
+    top: 10px;
+    max-height: none;
+    overflow: visible;
+    padding: 10px;
+  }
+
+  .portfolio-terminal-rail-head {
+    display: none;
+  }
+
   .portfolio-workspace-switcher {
     display: flex;
     overflow-x: auto;
-    top: 10px;
-    padding: 7px;
+    top: 0;
   }
 
   .portfolio-workspace-switcher button {
     flex: 0 0 132px;
+    box-shadow: none;
+  }
+
+  .portfolio-workspace-switcher button.active {
+    box-shadow: inset 0 -3px 0 #0f766e;
   }
 
   .position-main {
