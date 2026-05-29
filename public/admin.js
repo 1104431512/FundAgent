@@ -16,12 +16,14 @@ let activeManagerRankingFilter = "";
 let managerRankingFilterInitialized = false;
 let activePortfolioView = "overview";
 let activePortfolioRunKey = "";
+let activePortfolioRunPanel = "brief";
 let portfolioTimelineFullLoaded = false;
 let portfolioTimelineFullLoading = false;
 let activeWatchlistStatus = "";
 
 const WATCHLIST_STATUS_ORDER = ["ready", "waiting_pullback", "watch", "blocked", "in_position", "removed"];
 const TOP_HOLDINGS_DISPLAY_LIMIT = 10;
+const RUN_DETAIL_PANEL_ORDER = ["brief", "actions", "committee", "execution", "report"];
 const WATCHLIST_STATUS_LABELS = {
   ready: "接近可买",
   waiting_pullback: "等待回调",
@@ -84,6 +86,15 @@ document.querySelector("[data-panel='portfolio']")?.addEventListener("click", (e
   if (runButton) {
     activePortfolioRunKey = runButton.dataset.runSelect || "";
     renderRuns(currentPortfolio?.recentRuns || []);
+    return;
+  }
+  const runPanelButton = event.target.closest("[data-run-panel]");
+  if (runPanelButton) {
+    activePortfolioRunPanel = runPanelButton.dataset.runPanel || "brief";
+    renderRuns(currentPortfolio?.recentRuns || []);
+    if (activePortfolioRunPanel === "report") {
+      ensurePortfolioTimelineDetails().catch(showError);
+    }
     return;
   }
   const watchlistStatusButton = event.target.closest("[data-watchlist-status-filter]");
@@ -1989,6 +2000,7 @@ function renderRunDetail(run = {}) {
   const report = run.card
     || run.summary
     || (portfolioTimelineFullLoading ? "完整日报正在加载，稍后会自动刷新。" : run.status === "running" ? "任务仍在运行，刷新后查看最新状态。" : "无内容");
+  const panel = getActiveRunDetailPanel(run);
   return `
     <article class="run-detail-card">
       <div class="run-detail-head">
@@ -2007,13 +2019,177 @@ function renderRunDetail(run = {}) {
           <span>耗时：${durationSeconds}s</span>
         </div>
         ${run.error ? `<p class="bad-text">${escapeHtml(run.error)}</p>` : ""}
-        ${renderRunThinkingCards(run)}
-        <details class="raw-run-card">
-          <summary>${currentPortfolio?.lightweight && !portfolioTimelineFullLoaded ? "日报摘要" : "完整日报文本"}</summary>
-          <pre>${escapeHtml(report)}</pre>
-        </details>
+        <div class="run-detail-console">
+          ${renderRunPanelSwitch(run, panel)}
+          <div class="run-panel-stage">
+            ${renderRunPanelContent(run, panel, report)}
+          </div>
+        </div>
       </div>
     </article>
+  `;
+}
+
+function getActiveRunDetailPanel(run = {}) {
+  const panels = buildRunDetailPanels(run);
+  const available = new Set(panels.map((panel) => panel.id));
+  if (available.has(activePortfolioRunPanel)) return activePortfolioRunPanel;
+  return panels.find((panel) => panel.id !== "report" && panel.count)?.id || "brief";
+}
+
+function buildRunDetailPanels(run = {}) {
+  const actions = Array.isArray(run.actions) ? run.actions.length : 0;
+  const committee = Array.isArray(run.team) ? run.team.length : 0;
+  const execution = (Array.isArray(run.orders) ? run.orders.length : 0) + (Array.isArray(run.executionNotes) ? run.executionNotes.length : 0);
+  const panels = {
+    brief: { id: "brief", label: "摘要", hint: "先看结论", count: null },
+    actions: { id: "actions", label: "操作", hint: "买卖依据", count: actions },
+    committee: { id: "committee", label: "投委会", hint: "多角色观点", count: committee },
+    execution: { id: "execution", label: "执行", hint: "订单/说明", count: execution },
+    report: { id: "report", label: currentPortfolio?.lightweight && !portfolioTimelineFullLoaded ? "日报摘要" : "原文", hint: "隐藏长文", count: null }
+  };
+  return RUN_DETAIL_PANEL_ORDER.map((id) => panels[id]).filter(Boolean);
+}
+
+function renderRunPanelSwitch(run = {}, activePanel = "brief") {
+  const panels = buildRunDetailPanels(run);
+  return `
+    <nav class="run-panel-switcher" aria-label="运行记录详情入口">
+      ${panels.map((panel) => `
+        <button type="button" class="${panel.id === activePanel ? "active" : ""}" data-run-panel="${escapeHtml(panel.id)}" aria-pressed="${panel.id === activePanel ? "true" : "false"}">
+          <span>${escapeHtml(panel.label)}</span>
+          <small>${escapeHtml(Number.isFinite(panel.count) ? `${panel.count} 项` : panel.hint)}</small>
+        </button>
+      `).join("")}
+    </nav>
+  `;
+}
+
+function renderRunPanelContent(run = {}, panel = "brief", report = "") {
+  if (panel === "actions") return renderRunActionsPanel(run);
+  if (panel === "committee") return renderRunCommitteePanel(run);
+  if (panel === "execution") return renderRunExecutionPanel(run);
+  if (panel === "report") return renderRunReportPanel(report);
+  return renderRunBriefPanel(run, report);
+}
+
+function renderRunBriefPanel(run = {}, report = "") {
+  const actions = Array.isArray(run.actions) ? run.actions : [];
+  const team = Array.isArray(run.team) ? run.team : [];
+  const orders = Array.isArray(run.orders) ? run.orders : [];
+  const notes = Array.isArray(run.executionNotes) ? run.executionNotes : [];
+  const cardPreview = String(report || "").split("\n").filter(Boolean).slice(0, 2).join(" ");
+  const cards = [
+    {
+      label: "经理结论",
+      value: run.summary || cardPreview || "暂无摘要",
+      meta: run.title || formatRunTypeLabel(run.type)
+    },
+    {
+      label: "本次操作",
+      value: actions.length ? `${actions.length} 个动作需要看` : "暂无买卖动作",
+      meta: actions[0] ? `${actions[0].action || ""} ${actions[0].code || ""} ${actions[0].name || ""}`.trim() : "没有触发买入、卖出或观察动作"
+    },
+    {
+      label: "投委会",
+      value: team.length ? `${team.length} 个角色给出观点` : "暂无角色意见",
+      meta: team[0] ? `${team[0].agent || "投委会"}：${team[0].stance || "中"}` : "等待经理生成复盘"
+    },
+    {
+      label: "执行状态",
+      value: orders.length ? `${orders.length} 笔订单` : "无待执行订单",
+      meta: notes[0]?.reason || formatRunStatus(run.status) || "查看执行入口了解细节"
+    }
+  ];
+  return `
+    <div class="run-brief-grid">
+      ${cards.map((card) => `
+        <article class="run-brief-card">
+          <span>${escapeHtml(card.label)}</span>
+          <strong>${escapeHtml(card.value)}</strong>
+          <p>${escapeHtml(card.meta || "")}</p>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderRunActionsPanel(run = {}) {
+  const actions = Array.isArray(run.actions) ? run.actions : [];
+  if (!actions.length) {
+    return `<div class="run-panel-empty">这条记录没有买入、卖出或观察动作。</div>`;
+  }
+  return `
+    <div class="run-action-board">
+      ${actions.map((action) => `
+        <article class="run-action-row">
+          <div>
+            <span>${escapeHtml(action.action || "操作")}</span>
+            <strong>${escapeHtml([action.code, action.name].filter(Boolean).join(" ") || "组合动作")}</strong>
+          </div>
+          <p>${escapeHtml(action.reason || "暂无动作理由")}</p>
+          ${renderRunActionAudit(action)}
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderRunCommitteePanel(run = {}) {
+  const team = Array.isArray(run.team) ? run.team : [];
+  if (!team.length) {
+    return `<div class="run-panel-empty">这条记录没有投委会角色观点。</div>`;
+  }
+  return `
+    <div class="run-committee-grid">
+      ${team.map((item) => `
+        <article class="thought-card">
+          <span>${escapeHtml(item.agent || "投委会")}</span>
+          <strong>${escapeHtml(item.stance || "中")}</strong>
+          <p>${escapeHtml(item.reason || "暂无观点")}</p>
+          <small>${escapeHtml((item.dataBasis || []).join("；"))}</small>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderRunExecutionPanel(run = {}) {
+  const orders = Array.isArray(run.orders) ? run.orders : [];
+  const notes = Array.isArray(run.executionNotes) ? run.executionNotes : [];
+  if (!orders.length && !notes.length) {
+    return `<div class="run-panel-empty">暂无订单或执行说明。</div>`;
+  }
+  return `
+    <div class="run-execution-grid">
+      ${orders.map((order) => `
+        <article class="thought-card">
+          <span>订单</span>
+          <strong>${escapeHtml(order.side || "")} ${escapeHtml(order.code || "")}</strong>
+          <p>${escapeHtml(`${formatMoney(order.amount)} · ${order.status || ""}`)}</p>
+          <small>${escapeHtml(`估值日 ${order.priceDate || "-"}，确认日 ${order.confirmDate || "-"}`)}</small>
+        </article>
+      `).join("")}
+      ${notes.map((note) => `
+        <article class="thought-card">
+          <span>执行说明</span>
+          <strong>${escapeHtml([note.action, note.code].filter(Boolean).join(" ") || "说明")}</strong>
+          <p>${escapeHtml(note.reason || "")}</p>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderRunReportPanel(report = "") {
+  return `
+    <div class="run-report-card">
+      <div>
+        <strong>${currentPortfolio?.lightweight && !portfolioTimelineFullLoaded ? "日报摘要" : "完整日报文本"}</strong>
+        <span>${portfolioTimelineFullLoading ? "正在加载完整日报" : "原始内容只在这里展开，避免时间线默认变成长文页面。"}</span>
+      </div>
+      <pre>${escapeHtml(report || "无内容")}</pre>
+    </div>
   `;
 }
 

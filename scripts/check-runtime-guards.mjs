@@ -1113,6 +1113,10 @@ const requiredPatterns = [
     message: "admin portfolio timeline must use a focused run selector instead of a long stacked run report list."
   },
   {
+    pattern: /(?=[\s\S]*activePortfolioRunPanel)(?=[\s\S]*data-run-panel)(?=[\s\S]*function renderRunPanelSwitch[\s\S]*运行记录详情入口)(?=[\s\S]*function renderRunPanelContent[\s\S]*renderRunActionsPanel[\s\S]*renderRunCommitteePanel[\s\S]*renderRunExecutionPanel[\s\S]*renderRunReportPanel)/,
+    message: "admin portfolio timeline must split a selected run into quote-terminal style detail entries instead of one long report page."
+  },
+  {
     pattern: /holding-strip/,
     message: "admin portfolio UI must expose top holdings as readable chips on positions and watchlist candidates."
   },

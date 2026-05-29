@@ -1345,6 +1345,11 @@ assert(adminSource.includes("ranking-next"), "admin UI must render ranking next-
 assert(adminSource.includes("renderManagerRankingDecision"), "admin UI must render per-fund ranking decision matrices");
 assert(adminSource.includes("renderRunActionAudit"), "admin run timeline must expose ranking, trend, and risk audit details for each action");
 assert(adminSource.includes("action.rankingBasis"), "admin run action audit must show the ranking basis behind manager recommendations");
+assert(adminSource.includes("activePortfolioRunPanel"), "admin run timeline must remember the selected run-detail entry");
+assert(adminSource.includes("data-run-panel"), "admin run timeline must split one virtual run into multiple detail entries instead of a long page");
+assert(adminSource.includes("renderRunPanelSwitch"), "admin run timeline must render a quote-terminal style detail switcher");
+assert(adminStyleSource.includes("run-panel-switcher"), "admin run timeline detail switcher must be styled as a first-class navigation surface");
+assert(adminStyleSource.includes("run-panel-stage"), "admin run timeline must place selected run detail content in a bounded stage");
 assert(adminHtmlSource.includes("榜单引用"), "admin portfolio dashboard must expose ranking citation coverage");
 assert(adminSource.includes("buildRankingAuditInsightItems"), "admin portfolio dashboard must render ranking citation coverage insights");
 

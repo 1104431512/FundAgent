@@ -2857,6 +2857,207 @@ button.danger-button:hover {
   margin-top: 10px;
 }
 
+.run-detail-console {
+  display: grid;
+  min-width: 0;
+  border-top: 1px solid #e3ebf2;
+}
+
+.run-panel-switcher {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  min-width: 0;
+  background: #f7fafc;
+  border-bottom: 1px solid #e3ebf2;
+}
+
+.run-panel-switcher button {
+  min-width: 0;
+  min-height: 52px;
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  padding: 9px 12px;
+  border: 0;
+  border-right: 1px solid #e3ebf2;
+  border-radius: 0;
+  color: #344152;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+
+.run-panel-switcher button:hover,
+.run-panel-switcher button.active {
+  background: #ffffff;
+}
+
+.run-panel-switcher button.active {
+  box-shadow: inset 0 -3px 0 #0f766e;
+}
+
+.run-panel-switcher span,
+.run-panel-switcher small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-panel-switcher span {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.run-panel-switcher small {
+  color: #6a7a89;
+  font-size: 12px;
+}
+
+.run-panel-stage {
+  min-width: 0;
+  padding: 14px;
+}
+
+.run-brief-grid,
+.run-committee-grid,
+.run-execution-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.run-brief-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #e1e8ee;
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.run-brief-card span,
+.run-brief-card strong,
+.run-brief-card p {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.run-brief-card span {
+  color: #6a7a89;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.run-brief-card strong {
+  margin-top: 6px;
+  color: #1d2d3b;
+  font-size: 15px;
+  line-height: 1.38;
+}
+
+.run-brief-card p {
+  margin-top: 7px;
+  color: #405263;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.run-action-board {
+  display: grid;
+  gap: 10px;
+}
+
+.run-action-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(150px, 210px) minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e1e8ee;
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.run-action-row span,
+.run-action-row strong,
+.run-action-row p {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.run-action-row span {
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.run-action-row strong {
+  margin-top: 5px;
+  color: #1d2d3b;
+  font-size: 14px;
+  line-height: 1.38;
+}
+
+.run-action-row p {
+  color: #344152;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.run-panel-empty {
+  padding: 14px;
+  border: 1px dashed #d8e2ea;
+  border-radius: 8px;
+  color: #6a7a89;
+  background: #fbfcfd;
+}
+
+.run-report-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.run-report-card > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.run-report-card strong,
+.run-report-card span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.run-report-card strong {
+  color: #1d2d3b;
+  font-size: 15px;
+}
+
+.run-report-card span {
+  color: #6a7a89;
+  font-size: 12px;
+}
+
+.run-report-card pre {
+  max-height: 520px;
+  margin: 0;
+  padding: 13px 14px;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--text);
+  background: #ffffff;
+  border: 1px solid #e1e8ee;
+  border-radius: 8px;
+  font-family: inherit;
+  line-height: 1.58;
+  overflow-wrap: anywhere;
+}
+
 .thought-section {
   display: grid;
   gap: 10px;
@@ -3213,6 +3414,19 @@ button.danger-button:hover {
     flex: 0 0 170px;
   }
 
+  .run-panel-switcher {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .run-panel-switcher button {
+    flex: 0 0 118px;
+  }
+
+  .run-action-row {
+    grid-template-columns: 1fr;
+  }
+
   .watchlist-setup-item {
     grid-template-columns: 1fr;
   }
@@ -3230,6 +3444,7 @@ button.danger-button:hover {
   .timeline-terminal-head,
   .watchlist-terminal-head,
   .run-detail-head,
+  .run-report-card > div,
   .run-item summary {
     align-items: start;
     flex-direction: column;
