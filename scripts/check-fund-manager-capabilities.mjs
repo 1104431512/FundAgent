@@ -1375,6 +1375,9 @@ assert(adminSource.includes("fee_suitability"), "admin UI must render the fee-su
 assert(adminSource.includes("replacement_choice"), "admin UI must render the replacement-choice ranking lane");
 assert(adminStyleSource.includes("ranking-list.is-filtered-out"), "admin UI must hide non-focused ranking lists when a ranking filter is active");
 assert(adminStyleSource.includes("ranking-list-manager"), "admin UI must style manager-stability ranking lanes distinctly");
+assert(/portfolio-command-panel[\s\S]{0,420}grid-template-areas:\s*"hero kpis status"/.test(adminStyleSource), "admin portfolio command header must use a compact trading-console grid");
+assert(/portfolio-hero \.actions[\s\S]{0,260}overflow-x:\s*auto/.test(adminStyleSource), "admin portfolio command actions must stay compact instead of wrapping into a tall toolbar on desktop");
+assert(/portfolio-command-panel \.info-grid[\s\S]{0,260}grid-area:\s*status/.test(adminStyleSource), "admin portfolio schedule and push metadata must live in the compact command header status column");
 assert(adminStyleSource.includes("portfolio-workspace-switcher"), "admin portfolio workspace switcher must be styled as a first-class navigation surface");
 assert(/portfolio-workspace-switcher[\s\S]{0,240}position:\s*sticky/.test(adminStyleSource), "admin portfolio workspace switcher must remain reachable while long workspace views scroll");
 assert(adminStyleSource.includes("portfolio-workspace-view.active"), "admin portfolio workspace views must show one focused entry at a time");

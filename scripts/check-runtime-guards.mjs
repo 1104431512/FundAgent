@@ -1061,6 +1061,10 @@ const requiredPatterns = [
     message: "admin portfolio UI must provide a manager dashboard with summary, holdings exposure, and buy-preparation panels."
   },
   {
+    pattern: /portfolio-command-panel[\s\S]{0,420}grid-template-areas:\s*"hero kpis status"[\s\S]{0,900}portfolio-hero \.actions[\s\S]{0,260}overflow-x:\s*auto[\s\S]{0,900}portfolio-command-panel \.info-grid[\s\S]{0,260}grid-area:\s*status/,
+    message: "admin portfolio command header must be a compact trading-console strip instead of a tall stacked dashboard."
+  },
+  {
     pattern: /data-portfolio-view-target="overview"[\s\S]{0,1100}data-portfolio-view-target="rankings"[\s\S]{0,1100}data-portfolio-view-target="watchlist"[\s\S]{0,1100}data-portfolio-view-target="timeline"/,
     message: "admin portfolio page must use stock-terminal style workspace entries instead of one long page."
   },
