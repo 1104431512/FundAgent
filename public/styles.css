@@ -1272,6 +1272,10 @@ button:disabled {
   border-left-color: #315f8d;
 }
 
+.portfolio-workspace-card[data-portfolio-view-target="runner"] {
+  border-left-color: #111827;
+}
+
 .portfolio-workspace-card[data-portfolio-view-target="alerts"] {
   border-left-color: #b3261e;
 }
@@ -2851,8 +2855,15 @@ button:disabled {
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+.run-console-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 .watchlist-panel .panel-head p,
-.timeline-panel .panel-head p {
+.timeline-panel .panel-head p,
+.run-console-panel .panel-head p {
   margin-top: 5px;
   color: var(--muted);
   font-size: 13px;
@@ -3499,6 +3510,53 @@ button:disabled {
 .ranking-overview-group-list {
   display: grid;
   gap: 6px;
+}
+
+.ranking-overview-group-focus {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 8px 9px;
+  border: 1px solid #d8e5ee;
+  border-left: 4px solid #0f766e;
+  border-radius: 8px;
+  color: var(--text);
+  background: #f7fbf9;
+  box-shadow: none;
+  text-align: left;
+}
+
+.ranking-overview-group-focus:hover,
+.ranking-overview-group-focus.active {
+  border-color: #aacbbc;
+  background: #eef8f3;
+}
+
+.ranking-overview-group-focus span,
+.ranking-overview-group-focus strong,
+.ranking-overview-group-focus small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ranking-overview-group-focus span {
+  color: #247456;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.ranking-overview-group-focus strong {
+  color: #1d2d3b;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.ranking-overview-group-focus small {
+  color: #5d6f7d;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .ranking-overview-card {
@@ -5766,6 +5824,131 @@ button.danger-button:hover {
   overflow-wrap: anywhere;
 }
 
+.run-console-terminal {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(210px, 250px) minmax(0, 1fr);
+  border: 1px solid #dde7ef;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.run-task-rail {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 10px;
+  overflow: auto;
+  border-right: 1px solid #e3ebf2;
+  background: #f7fafc;
+}
+
+.run-task-button {
+  width: 100%;
+  min-width: 0;
+  min-height: 58px;
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  padding: 10px 11px;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.run-task-button b,
+.run-task-button small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-task-button b {
+  font-size: 14px;
+}
+
+.run-task-button small {
+  color: currentColor;
+  font-size: 12px;
+  opacity: 0.76;
+}
+
+.run-console-stage {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.run-console-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.run-console-card {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 13px;
+  border: 1px solid #e1e8ee;
+  border-left: 4px solid #7d95aa;
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.run-console-card.ok {
+  border-left-color: #0f766e;
+  background: #f5fbf8;
+}
+
+.run-console-card.warn {
+  border-left-color: #b7791f;
+  background: #fffaf0;
+}
+
+.run-console-card.bad {
+  border-left-color: #c53030;
+  background: #fff6f6;
+}
+
+.run-console-card span,
+.run-console-card strong,
+.run-console-card p {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.run-console-card span {
+  color: #657586;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.run-console-card strong {
+  color: #1d2d3b;
+  font-size: 17px;
+  line-height: 1.35;
+}
+
+.run-console-card p {
+  color: #405263;
+  font-size: 13px;
+  line-height: 1.48;
+}
+
+.run-console-card button {
+  justify-self: start;
+  min-height: 30px;
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
 .timeline-terminal {
   min-width: 0;
   min-height: 0;
@@ -6475,6 +6658,16 @@ button.danger-button:hover {
     height: 100%;
   }
 
+  .portfolio-workspace-view[data-portfolio-view="runner"].active {
+    grid-template-rows: minmax(0, 1fr);
+    align-content: stretch;
+    overflow: hidden;
+  }
+
+  .portfolio-workspace-view[data-portfolio-view="runner"] .run-console-panel {
+    height: 100%;
+  }
+
   .portfolio-workspace-view[data-portfolio-view="actions"].active {
     grid-template-rows: minmax(0, 1fr);
     align-content: stretch;
@@ -6647,6 +6840,7 @@ button.danger-button:hover {
   .data-row,
   .runtime-terminal-shell,
   .runtime-lane-grid,
+  .run-console-terminal,
   .order-terminal,
   .diagnostic-terminal,
   .portfolio-command-panel,
@@ -6709,6 +6903,10 @@ button.danger-button:hover {
   .watchlist-terminal,
   .timeline-panel,
   .timeline-panel .run-list,
+  .run-console-panel,
+  .run-console-terminal,
+  .run-task-rail,
+  .run-console-stage,
   .timeline-terminal,
   .action-terminal,
   .alert-terminal,
@@ -6831,6 +7029,7 @@ button.danger-button:hover {
   }
 
   .run-index-list,
+  .run-task-rail,
   .watchlist-status-rail,
   .order-terminal-rail,
   .diagnostic-terminal-rail {
@@ -6842,6 +7041,7 @@ button.danger-button:hover {
   }
 
   .run-index-item,
+  .run-task-button,
   .watchlist-status-tab,
   .order-terminal-rail button,
   .diagnostic-terminal-rail button {
@@ -6877,6 +7077,10 @@ button.danger-button:hover {
     display: flex;
     overflow-x: auto;
     gap: 8px;
+  }
+
+  .ranking-terminal .ranking-overview-group-focus {
+    min-height: 76px;
   }
 
   .ranking-terminal .ranking-overview-card {

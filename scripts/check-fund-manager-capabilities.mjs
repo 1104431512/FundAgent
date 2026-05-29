@@ -1425,6 +1425,9 @@ assert(adminSource.includes("/api/user-portfolios/holding"), "admin UI must save
 assert(adminSource.includes("data-user-portfolio-select"), "admin UI must switch between user holding accounts without rendering every user as one long page");
 assert(adminStyleSource.includes("user-terminal"), "admin UI must style user holding management as a bounded terminal workspace");
 assert(adminStyleSource.includes("user-portfolio-detail-stage"), "admin UI must keep selected user holdings in an internally scrollable detail stage");
+assert(adminHtmlSource.includes("虚拟运行台") && adminHtmlSource.includes("data-portfolio-view-target=\"runner\""), "admin portfolio UI must split virtual run controls into a dedicated trading-terminal entry");
+assert(adminSource.includes("renderPortfolioRunConsole"), "admin portfolio UI must render virtual run status as a focused console instead of crowding the top page");
+assert(adminStyleSource.includes("run-console-terminal") && adminStyleSource.includes("run-task-rail"), "admin virtual run console must use a bounded task rail and detail stage");
 assert(adminHtmlSource.includes("经理榜单"), "admin UI must expose manager ranking boards");
 assert(adminHtmlSource.includes("data-portfolio-view-target=\"rankings\""), "admin portfolio UI must split the long virtual account page into ranking workspace entries");
 assert(adminHtmlSource.includes("data-portfolio-view=\"watchlist\""), "admin portfolio UI must expose watchlist as a dedicated workspace view instead of a long mixed page");
@@ -1489,6 +1492,7 @@ assert(adminSource.includes("renderManagerRankingActionDeck"), "admin UI must re
 assert(adminSource.includes("renderManagerPriorityQueue"), "admin UI must render the cross-ranking priority queue");
 assert(adminSource.includes("renderManagerRankingOverview"), "admin UI must render ranking board overview cards before detailed lists");
 assert(adminSource.includes("MANAGER_RANKING_GROUPS") && adminSource.includes("buildManagerRankingOverviewGroups"), "admin UI must group manager ranking lenses into action, opportunity, risk, and evidence sections");
+assert(adminSource.includes("selectManagerRankingGroupFocus") && adminSource.includes("renderManagerRankingGroupFocus"), "admin UI must give each manager ranking group a one-click focus item");
 assert(adminSource.includes("setManagerRankingFilter"), "admin UI must allow focusing one manager ranking lane from overview cards");
 assert(adminSource.includes("getDefaultManagerRankingFilter"), "admin UI must open the manager ranking board on the highest-priority lane instead of expanding every list by default");
 assert(adminSource.includes("data-ranking-filter"), "admin UI ranking overview cards must work as compact filters");
@@ -1541,6 +1545,7 @@ assert(adminStyleSource.includes("portfolio-workspace-card"), "admin portfolio o
 assert(adminStyleSource.includes("ranking-terminal"), "admin manager ranking board must be a focused terminal-style workspace instead of a long stacked report");
 assert(adminStyleSource.includes("ranking-detail-stage"), "admin manager ranking board must separate lane navigation from the active ranking detail");
 assert(adminStyleSource.includes("ranking-overview-group") && adminStyleSource.includes("ranking-overview-group-list"), "admin manager ranking overview groups must be styled as compact terminal sections");
+assert(adminStyleSource.includes("ranking-overview-group-focus"), "admin manager ranking group focus items must be visibly styled");
 assert(adminStyleSource.includes("ranking-terminal-body") && adminStyleSource.includes("ranking-digest-deck"), "admin manager ranking board must keep digest and selected ranking list inside a bounded terminal body");
 assert(adminStyleSource.includes("ranking-action-deck") && adminStyleSource.includes("ranking-action-card-sell"), "admin manager ranking board must style customer action cards with distinct buy, wait, avoid, sell, and data lanes");
 assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must style customer-facing ranking digest as a first-class panel");

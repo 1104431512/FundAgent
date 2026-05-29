@@ -828,8 +828,10 @@ function renderPortfolioDashboard(portfolio = {}) {
   setText("#portfolioNavRiskCount", String(riskItems.length));
   setText("#portfolioNavSectorCount", String(sectorItems.length));
   setText("#portfolioNavDataCount", String(dataItems.length));
-  setText("#portfolioNavOverviewCount", "14");
+  setText("#portfolioNavOverviewCount", "15");
+  setText("#portfolioNavRunnerCount", portfolio.scheduler?.inFlight ? "运行中" : latestRun ? formatRunStatus(latestRun.status) : "控制");
   updateRunStateBadge(latestRun, portfolio.scheduler || {});
+  renderPortfolioRunConsole(portfolio, latestRun, { runs, activeOrders, transactions, equity });
 
   renderPortfolioWorkspaceCards(portfolio, { positions, watchlist, userPortfolios, runs, activeOrders, transactions, equity, ready, waiting, launchEve, blocked, diagnosticCount, alertItems });
   renderPortfolioRankingRadar(portfolio.managerRankings || {});
@@ -931,10 +933,18 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
   const priority = portfolio.managerRankings?.priorityQueue?.[0] || null;
   const userAlerts = userPortfolios.reduce((sum, item) => sum + Number(item.alertCount || 0), 0);
   const latestRun = runs[0] || null;
+  const scheduler = portfolio.scheduler || {};
   const topPosition = [...positions].sort((a, b) => Number(b.weightPct || 0) - Number(a.weightPct || 0))[0] || null;
   const topWatch = ready[0] || waiting[0] || watchlist[0] || null;
   const actionDeskItems = collectPortfolioActionDeskItems(latestRun, activeOrders);
   const cards = [
+    {
+      view: "runner",
+      label: "运行台",
+      value: scheduler.inFlight ? "运行中" : latestRun ? formatRunStatus(latestRun.status) : "待运行",
+      detail: scheduler.inFlight ? "后台任务正在执行，页面会自动刷新" : "盘前、今日操作、估值、周总结集中控制",
+      meta: latestRun?.summary || formatPortfolioSchedule(portfolio)
+    },
     {
       view: "actions",
       label: "行动台",
@@ -2034,16 +2044,44 @@ function buildManagerRankingOverviewGroups(lists = []) {
 
 function renderManagerRankingOverviewGroup(group = {}) {
   const count = (group.lists || []).reduce((sum, list) => sum + (Array.isArray(list.items) ? list.items.length : 0), 0);
+  const focus = selectManagerRankingGroupFocus(group);
   return `
     <section class="ranking-overview-group ranking-overview-group-${escapeHtml(group.id || "other")}">
       <div class="ranking-overview-group-head">
         <strong>${escapeHtml(group.title || "榜单")}</strong>
         <span>${escapeHtml(group.hint || "")} · ${count} 项</span>
       </div>
+      ${renderManagerRankingGroupFocus(focus, group)}
       <div class="ranking-overview-group-list">
         ${(group.lists || []).map(renderManagerRankingOverviewCard).join("")}
       </div>
     </section>
+  `;
+}
+
+function selectManagerRankingGroupFocus(group = {}) {
+  const lists = Array.isArray(group.lists) ? group.lists : [];
+  const nonEmpty = lists.find((list) => Array.isArray(list.items) && list.items.length);
+  const list = nonEmpty || lists[0] || null;
+  if (!list) return null;
+  const item = Array.isArray(list.items) ? list.items[0] : null;
+  return {
+    listId: list.id || "",
+    listTitle: list.title || "榜单",
+    label: item ? `${item.code || ""} ${item.name || ""}`.trim() : list.emptyText || "暂无触发项",
+    action: item?.action || list.nextAction || "查看榜单",
+    count: Array.isArray(list.items) ? list.items.length : 0
+  };
+}
+
+function renderManagerRankingGroupFocus(focus = null, group = {}) {
+  if (!focus) return "";
+  return `
+    <button class="ranking-overview-group-focus" type="button" data-ranking-filter="${escapeHtml(focus.listId || "")}" data-scroll-target="${escapeHtml(focus.listId || "")}">
+      <span>${escapeHtml(group.title || "分组")}重点</span>
+      <strong>${escapeHtml(focus.label || "暂无触发项")}</strong>
+      <small>${escapeHtml(focus.listTitle || "榜单")} · ${escapeHtml(focus.action || "查看榜单")} · ${escapeHtml(String(focus.count || 0))} 项</small>
+    </button>
   `;
 }
 
@@ -2239,6 +2277,76 @@ function updateRunStateBadge(latestRun, scheduler = {}) {
   }[status] || status;
   node.textContent = label;
   node.className = `badge ${status === "failed" || status === "interrupted" ? "bad" : status === "running" ? "warn" : "ok"}`;
+}
+
+function renderPortfolioRunConsole(portfolio = {}, latestRun = null, context = {}) {
+  const root = document.querySelector("#portfolioRunConsoleSummary");
+  if (!root) return;
+  const scheduler = portfolio.scheduler || {};
+  const status = scheduler.inFlight ? "running" : latestRun?.status || "idle";
+  const label = {
+    running: "运行中",
+    completed: "已完成",
+    failed: "异常",
+    interrupted: "已中断",
+    cancelled: "已结束",
+    idle: "待运行"
+  }[status] || status;
+  const stateNode = document.querySelector("#portfolioRunConsoleState");
+  if (stateNode) {
+    stateNode.textContent = label;
+    stateNode.className = `badge ${status === "failed" || status === "interrupted" ? "bad" : status === "running" ? "warn" : "ok"}`;
+  }
+  const runs = Array.isArray(context.runs) ? context.runs : [];
+  const activeOrders = Array.isArray(context.activeOrders) ? context.activeOrders : [];
+  const transactions = Array.isArray(context.transactions) ? context.transactions : [];
+  const equity = Array.isArray(context.equity) ? context.equity : [];
+  const cards = [
+    {
+      label: "当前任务",
+      value: scheduler.inFlight ? "任务正在后台执行" : portfolio.enabled ? "自动运行已启用" : "自动运行停用",
+      meta: scheduler.inFlight
+        ? `开始于 ${formatDateTime(scheduler.activeRunStartedAt)}，页面会自动刷新`
+        : formatPortfolioSchedule(portfolio),
+      tone: scheduler.inFlight ? "warn" : portfolio.enabled ? "ok" : "muted",
+      target: "timeline",
+      action: "查看时间线"
+    },
+    {
+      label: "最近结论",
+      value: latestRun?.summary || "暂无经理结论",
+      meta: latestRun ? `${latestRun.date || "-"} · ${latestRun.title || formatRunTypeLabel(latestRun.type)}` : "先从左侧选择盘前观察或今日操作",
+      tone: latestRun?.status === "failed" || latestRun?.status === "interrupted" ? "bad" : "info",
+      target: "timeline",
+      action: "打开记录"
+    },
+    {
+      label: "执行流转",
+      value: activeOrders.length ? `${activeOrders.length} 笔待确认订单` : "暂无待确认订单",
+      meta: activeOrders[0]
+        ? `${activeOrders[0].side || ""} ${activeOrders[0].code || ""} ${activeOrders[0].name || ""}`.trim()
+        : `已确认成交 ${transactions.length} 笔，估值记录 ${equity.length} 条`,
+      tone: activeOrders.length ? "warn" : "ok",
+      target: "orders",
+      action: "看订单"
+    },
+    {
+      label: "记录规模",
+      value: `${runs.length} 条运行记录`,
+      meta: portfolio.lightweight && !portfolioTimelineFullLoaded ? "当前先加载轻量摘要，打开原文时再取完整日报" : "记录已按时间线收纳，不再铺成长页面",
+      tone: "info",
+      target: "diagnostics",
+      action: "看体检"
+    }
+  ];
+  root.innerHTML = cards.map((card) => `
+    <article class="run-console-card ${escapeHtml(card.tone || "info")}">
+      <span>${escapeHtml(card.label)}</span>
+      <strong>${escapeHtml(card.value)}</strong>
+      <p>${escapeHtml(card.meta || "")}</p>
+      <button type="button" class="secondary" data-portfolio-view-target="${escapeHtml(card.target || "timeline")}">${escapeHtml(card.action || "查看")}</button>
+    </article>
+  `).join("");
 }
 
 function buildManagerInsightItems(portfolio, latestRun, activeOrders) {
@@ -2534,11 +2642,12 @@ function formatWeekday(value) {
 }
 
 function updatePortfolioTaskButtons(inFlight) {
-  document.querySelector("#runPremarketBtn").disabled = inFlight;
-  document.querySelector("#runDecisionBtn").disabled = inFlight;
-  document.querySelector("#runValuationBtn").disabled = inFlight;
-  document.querySelector("#runWeeklyBtn").disabled = inFlight;
-  document.querySelector("#cancelPortfolioBtn").disabled = !inFlight;
+  ["#runPremarketBtn", "#runDecisionBtn", "#runValuationBtn", "#runWeeklyBtn"].forEach((selector) => {
+    const button = document.querySelector(selector);
+    if (button) button.disabled = inFlight;
+  });
+  const cancelButton = document.querySelector("#cancelPortfolioBtn");
+  if (cancelButton) cancelButton.disabled = !inFlight;
 }
 
 function renderOrders(orders) {
@@ -3997,7 +4106,7 @@ async function runPortfolioTask(type) {
     weekly: "#runWeeklyBtn"
   };
   const button = document.querySelector(buttonByType[type] || "#runDecisionBtn");
-  button.disabled = true;
+  if (button) button.disabled = true;
   portfolioOutput.textContent = "任务已提交，后台运行中。页面会自动刷新，不需要一直等待请求返回。";
   try {
     const result = await apiFetch("/api/portfolio/run", {
@@ -4011,7 +4120,7 @@ async function runPortfolioTask(type) {
     showError(error);
   } finally {
     await loadPortfolio().catch(() => {
-      button.disabled = false;
+      if (button) button.disabled = false;
     });
   }
 }

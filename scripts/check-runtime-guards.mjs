@@ -1093,15 +1093,15 @@ const requiredPatterns = [
     message: "admin portfolio overview must render customer action cards so users can scan buy, wait, avoid, sell, and data signals without opening a long ranking report."
   },
   {
-    pattern: /data-portfolio-view-target="sectors"[\s\S]{0,700}portfolioNavSectorCount[\s\S]{0,8200}data-portfolio-view="sectors"/,
+    pattern: /(?=[\s\S]*data-portfolio-view-target="sectors")(?=[\s\S]*portfolioNavSectorCount)(?=[\s\S]*data-portfolio-view="sectors")/,
     message: "admin portfolio UI must expose a dedicated sector leaderboard entrance instead of burying theme and rotation choices in a long ranking page."
   },
   {
-    pattern: /data-portfolio-view-target="actions"[\s\S]{0,700}portfolioNavActionCount[\s\S]{0,5200}data-portfolio-view="actions"/,
+    pattern: /(?=[\s\S]*data-portfolio-view-target="actions")(?=[\s\S]*portfolioNavActionCount)(?=[\s\S]*data-portfolio-view="actions")/,
     message: "admin portfolio UI must expose a dedicated action desk entrance for buy, sell, watch, and order items."
   },
   {
-    pattern: /data-portfolio-view-target="matrix"[\s\S]{0,700}portfolioNavMatrixCount[\s\S]{0,5600}data-portfolio-view="matrix"/,
+    pattern: /(?=[\s\S]*data-portfolio-view-target="matrix")(?=[\s\S]*portfolioNavMatrixCount)(?=[\s\S]*data-portfolio-view="matrix")/,
     message: "admin portfolio UI must expose a dedicated decision-matrix entrance instead of forcing users through a long ranking page."
   },
   {
@@ -1191,6 +1191,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*经理时间线终端)(?=[\s\S]*timeline-panel[\s\S]{0,360}grid-template-rows:\s*auto minmax\(0,\s*1fr\))(?=[\s\S]*timeline-panel \.run-list[\s\S]{0,360}overflow:\s*hidden)/,
     message: "admin portfolio timeline workspace must be a bounded terminal panel instead of an expandable long report section."
+  },
+  {
+    pattern: /(?=[\s\S]*虚拟运行台)(?=[\s\S]*data-portfolio-view-target="runner")(?=[\s\S]*renderPortfolioRunConsole)(?=[\s\S]*run-console-terminal[\s\S]{0,900}run-task-rail[\s\S]{0,900}run-console-stage)/,
+    message: "admin portfolio virtual run controls must live in a dedicated trading-terminal console with task entries and a bounded detail stage."
   },
   {
     pattern: /(?=[\s\S]*activePortfolioRunPanel)(?=[\s\S]*data-run-panel)(?=[\s\S]*function renderRunPanelSwitch[\s\S]*运行记录详情入口)(?=[\s\S]*function renderRunPanelContent[\s\S]*renderRunActionsPanel[\s\S]*renderRunCommitteePanel[\s\S]*renderRunExecutionPanel[\s\S]*renderRunReportPanel)/,
@@ -2533,23 +2537,23 @@ const requiredPatterns = [
     message: "admin portfolio UI must render manager ranking boards."
   },
   {
-    pattern: /data-portfolio-view-target="opportunities"[\s\S]{0,700}portfolioNavOpportunityCount[\s\S]{0,7200}data-portfolio-view="opportunities"/,
+    pattern: /(?=[\s\S]*data-portfolio-view-target="opportunities")(?=[\s\S]*portfolioNavOpportunityCount)(?=[\s\S]*data-portfolio-view="opportunities")/,
     message: "admin portfolio UI must expose a dedicated observation-opportunity entrance instead of burying buy/watch candidates in a long page."
   },
   {
-    pattern: /data-portfolio-view-target="risk"[\s\S]{0,700}portfolioNavRiskCount[\s\S]{0,5200}data-portfolio-view="risk"/,
+    pattern: /(?=[\s\S]*data-portfolio-view-target="risk")(?=[\s\S]*portfolioNavRiskCount)(?=[\s\S]*data-portfolio-view="risk")/,
     message: "admin portfolio UI must expose a dedicated risk-defense entrance instead of burying drawdown and sell-risk items in a long page."
   },
   {
-    pattern: /data-portfolio-view-target="data"[\s\S]{0,700}portfolioNavDataCount[\s\S]{0,6200}data-portfolio-view="data"/,
+    pattern: /(?=[\s\S]*data-portfolio-view-target="data")(?=[\s\S]*portfolioNavDataCount)(?=[\s\S]*data-portfolio-view="data")/,
     message: "admin portfolio UI must expose a dedicated data-confidence entrance instead of burying data gaps in a long ranking page."
   },
   {
-    pattern: /data-portfolio-view-target="alerts"[\s\S]{0,700}portfolioNavAlertCount[\s\S]{0,5200}data-portfolio-view="alerts"/,
+    pattern: /(?=[\s\S]*data-portfolio-view-target="alerts")(?=[\s\S]*portfolioNavAlertCount)(?=[\s\S]*data-portfolio-view="alerts")/,
     message: "admin portfolio UI must expose a dedicated alert desk entrance for today's must-handle items."
   },
   {
-    pattern: /data-portfolio-view-target="diagnostics"[\s\S]{0,900}portfolioNavDiagnosticCount[\s\S]{0,15500}data-portfolio-view="diagnostics"/,
+    pattern: /(?=[\s\S]*data-portfolio-view-target="diagnostics")(?=[\s\S]*portfolioNavDiagnosticCount)(?=[\s\S]*data-portfolio-view="diagnostics")/,
     message: "admin portfolio UI must expose diagnostics as a separate entrance instead of lengthening the overview page."
   },
   {
@@ -2595,6 +2599,10 @@ const requiredPatterns = [
   {
     pattern: /buildManagerRankingOverviewGroups[\s\S]{0,1600}renderManagerRankingOverviewGroup[\s\S]{0,1600}ranking-overview-group/,
     message: "admin manager ranking overview must render grouped lens sections."
+  },
+  {
+    pattern: /selectManagerRankingGroupFocus[\s\S]{0,1400}renderManagerRankingGroupFocus[\s\S]{0,1200}ranking-overview-group-focus/,
+    message: "admin manager ranking groups must expose a one-click focus item for the most relevant lens in each group."
   },
   {
     pattern: /renderManagerRankings[\s\S]{0,1800}ranking-terminal[\s\S]{0,900}ranking-detail-stage/,
