@@ -2269,6 +2269,14 @@ const requiredPatterns = [
     message: "admin run timeline must audit whether each manager action cites ranking, trend, and boundary evidence."
   },
   {
+    pattern: /rankingActionAudit:\s*buildPortfolioRankingActionAudit\(db\)[\s\S]*function buildPortfolioRankingActionAudit[\s\S]{0,2600}coveragePct/,
+    message: "portfolio API must expose ranking-board citation coverage for recent manager actions."
+  },
+  {
+    pattern: /(?=[\s\S]*榜单引用)(?=[\s\S]*portfolioRankingAuditSummary)(?=[\s\S]*buildRankingAuditInsightItems)/,
+    message: "admin dashboard must render ranking citation coverage as a first-class insight card."
+  },
+  {
     pattern: /经理榜单/,
     message: "admin portfolio UI must include a visible manager ranking board section."
   }

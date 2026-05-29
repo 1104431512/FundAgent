@@ -355,6 +355,8 @@ function renderPortfolioDashboard(portfolio = {}) {
   renderCapabilityActionQueue(portfolio.capabilityActionQueue || []);
   updatePortfolioBacktestBadge(portfolio.backtestDiagnostics || {});
   renderInsightList("#portfolioBacktestSummary", buildBacktestInsightItems(portfolio.backtestDiagnostics || {}), "暂无历史回测缺口。");
+  updatePortfolioRankingAuditBadge(portfolio.rankingActionAudit || {});
+  renderInsightList("#portfolioRankingAuditSummary", buildRankingAuditInsightItems(portfolio.rankingActionAudit || {}), "暂无榜单引用审计。");
 }
 
 function renderManagerRankings(board = {}) {
@@ -662,6 +664,50 @@ function buildBacktestInsightItems(diagnostics = {}) {
     })),
     ...phaseItems
   ].slice(0, 6);
+}
+
+function updatePortfolioRankingAuditBadge(audit = {}) {
+  const node = document.querySelector("#portfolioRankingAuditState");
+  if (!node) return;
+  const level = audit.level || "watch";
+  const label = {
+    critical: "断裂",
+    warning: "待补",
+    watch: "待审计",
+    ok: "已引用"
+  }[level] || "待审计";
+  node.textContent = label;
+  node.className = `badge ${level === "critical" ? "bad" : level === "warning" ? "warn" : "ok"}`;
+}
+
+function buildRankingAuditInsightItems(audit = {}) {
+  const total = Number(audit.totalActions || 0);
+  const coverage = Number(audit.coveragePct);
+  const items = [{
+    label: "覆盖率",
+    value: total ? `${audit.citedActions || 0}/${total}` : "暂无动作",
+    meta: total && Number.isFinite(coverage) ? `最近动作榜单引用率 ${formatNumber(coverage, 1)}%` : audit.summary || "等待今日操作生成后审计"
+  }];
+  const missing = Array.isArray(audit.missing) ? audit.missing : [];
+  const cited = Array.isArray(audit.citedSamples) ? audit.citedSamples : [];
+  if (missing.length) {
+    items.push(...missing.slice(0, 3).map((item) => ({
+      label: "未引用",
+      value: [item.action, item.code, item.name].filter(Boolean).join(" "),
+      meta: item.reason || "动作缺少榜单依据，下一轮需要补 rankingBasis"
+    })));
+  } else if (cited.length) {
+    items.push(...cited.slice(0, 2).map((item) => ({
+      label: "已引用",
+      value: [item.action, item.code, item.name].filter(Boolean).join(" "),
+      meta: item.rankingBasis || "已引用经理榜单"
+    })));
+  }
+  const next = Array.isArray(audit.nextActions) ? audit.nextActions[0] : "";
+  if (next) {
+    items.push({ label: "下一步", value: next, meta: audit.summary || "" });
+  }
+  return items.slice(0, 5);
 }
 
 function renderCapabilityActionQueue(tasks = []) {

@@ -8340,6 +8340,7 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
     capabilityDiagnostics: buildPortfolioCapabilityDiagnostics(db),
     capabilityActionQueue: buildPortfolioCapabilityActionQueue(db),
     managerRankings: buildPortfolioRankingBoard(db),
+    rankingActionAudit: buildPortfolioRankingActionAudit(db),
     userPortfolios: summarizeUserPortfolios(db),
     positions: db.account.positions.map(summarizePosition),
     watchlist: getActivePortfolioWatchlist(db).slice(0, lightweight ? 12 : 50).map(summarizeWatch),
@@ -8631,6 +8632,63 @@ function compactPortfolioRankingBoardForModel(board = {}) {
         }
       }))
     }))
+  };
+}
+
+function buildPortfolioRankingActionAudit(db = {}, options = {}) {
+  const maxRuns = Math.max(1, Number(options.maxRuns || 12));
+  const runs = (Array.isArray(db.runs) ? db.runs : [])
+    .filter((run) => Array.isArray(run.actions) && run.actions.length)
+    .slice(-maxRuns)
+    .reverse();
+  const actions = [];
+  for (const run of runs) {
+    for (const action of run.actions || []) {
+      const actionName = String(action?.action || "").trim();
+      if (!actionName) continue;
+      const rankingBasis = normalizePortfolioUserFacingText(action.rankingBasis || "");
+      const dataBasis = normalizeStringArray(action.dataBasis);
+      const cited = Boolean(rankingBasis) || dataBasis.some((item) => /manager_ranking_board|经理榜单|榜单/.test(item));
+      actions.push({
+        runId: String(run.id || ""),
+        date: String(run.date || ""),
+        type: String(run.type || ""),
+        action: normalizePortfolioUserFacingText(actionName),
+        code: String(action.code || ""),
+        name: String(action.name || ""),
+        cited,
+        rankingBasis,
+        reason: normalizePortfolioUserFacingText(action.reason || "").slice(0, 160)
+      });
+    }
+  }
+  const total = actions.length;
+  const citedCount = actions.filter((item) => item.cited).length;
+  const coveragePct = total ? round(citedCount * 100 / total, 1) : null;
+  const missing = actions.filter((item) => !item.cited).slice(0, 6);
+  const citedSamples = actions.filter((item) => item.cited).slice(0, 4);
+  const level = !total
+    ? "watch"
+    : coveragePct >= 80
+      ? "ok"
+      : coveragePct >= 50
+        ? "warning"
+        : "critical";
+  return {
+    level,
+    summary: total
+      ? `最近 ${total} 个动作中 ${citedCount} 个引用了经理榜单，覆盖率 ${coveragePct}%。`
+      : "最近没有可审计的组合动作，等待下一次今日操作。",
+    totalActions: total,
+    citedActions: citedCount,
+    coveragePct,
+    missing,
+    citedSamples,
+    nextActions: missing.length
+      ? ["复核未引用榜单的动作", "下一次今日操作必须写 rankingBasis", "后台运行记录展开后逐条核对榜单依据"]
+      : total
+        ? ["继续保持动作和榜单一致", "复核榜单是否覆盖买入、卖出和用户持仓提醒"]
+        : ["先生成今日操作或盘前观察", "沉淀自选池和用户持仓后再审计"]
   };
 }
 
@@ -23648,6 +23706,7 @@ export {
   buildPortfolioWatchlistSeedSearchText,
   buildPortfolioRunSummary,
   buildPortfolioRankingBoard,
+  buildPortfolioRankingActionAudit,
   buildPortfolioAccountRiskBudget,
   buildPortfolioReadyWatchlistReviewActions,
   buildPortfolioPositionRiskBudget,

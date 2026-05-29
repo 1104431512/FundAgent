@@ -90,6 +90,22 @@ const sellRankingItem = rankingBoard.lists.find((item) => item.id === "sell_risk
 assert(buyRankingItem?.decision?.highlights?.length, "buy ranking items must explain the opportunity highlight");
 assert(buyRankingItem?.decision?.nextStep, "buy ranking items must include an actionable next step");
 assert(sellRankingItem?.decision?.risks?.some((item) => item.includes("回吐")), "sell ranking items must expose risk reasons instead of only a score");
+const rankingActionAudit = manager.buildPortfolioRankingActionAudit({
+  runs: [
+    {
+      id: "run_audit_1",
+      date: "2026-05-29",
+      type: "decision",
+      actions: [
+        { action: "BUY", code: "000001", name: "低位启动基金C", rankingBasis: "买入准备榜第1名，采纳小仓试探。", dataBasis: ["来源：manager_ranking_board"] },
+        { action: "WATCH", code: "000002", name: "缺依据基金C", reason: "模型直接观察，未说明榜单。" }
+      ]
+    }
+  ]
+});
+assert.equal(rankingActionAudit.totalActions, 2, "ranking action audit must count recent manager actions");
+assert.equal(rankingActionAudit.citedActions, 1, "ranking action audit must count actions that cite manager ranking boards");
+assert(rankingActionAudit.missing.some((item) => item.code === "000002"), "ranking action audit must expose actions missing ranking basis");
 assert.notEqual(
   rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.find((item) => item.code === "000001")?.action,
   "买入复核",
@@ -1048,6 +1064,8 @@ assert(adminSource.includes("ranking-next"), "admin UI must render ranking next-
 assert(adminSource.includes("renderManagerRankingDecision"), "admin UI must render per-fund ranking decision matrices");
 assert(adminSource.includes("renderRunActionAudit"), "admin run timeline must expose ranking, trend, and risk audit details for each action");
 assert(adminSource.includes("action.rankingBasis"), "admin run action audit must show the ranking basis behind manager recommendations");
+assert(adminHtmlSource.includes("榜单引用"), "admin portfolio dashboard must expose ranking citation coverage");
+assert(adminSource.includes("buildRankingAuditInsightItems"), "admin portfolio dashboard must render ranking citation coverage insights");
 
 await assertIntent({
   userText: "我发的图里是我已经买的基金，告诉我大概多久卖",
