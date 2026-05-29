@@ -2070,6 +2070,25 @@ const rankingAwareWatchlistLines = manager.buildPortfolioWatchlistStatusLines([n
   }
 }).join("\n");
 assert(rankingAwareWatchlistLines.includes("上榜依据：综合决策榜#1/小仓试探复核；板块轮动榜#2/低位轮动观察"), "portfolio status answer must cite ranking lanes inside watchlist detail lines");
+const compactWatchlistLines = manager.buildPortfolioWatchlistStatusLines([normalizedWatchDb.watchlist[0]], {
+  compact: true,
+  limitPerStatus: 1,
+  managerRankings: {
+    lists: [
+      {
+        title: "综合决策榜",
+        items: [{ code: normalizedWatchDb.watchlist[0].code, rank: 1, action: "小仓试探复核" }]
+      }
+    ]
+  }
+}).join("\n");
+assert(compactWatchlistLines.includes("自选池简版："), "default portfolio status watchlist mode must tell users it is a concise action summary");
+assert(compactWatchlistLines.includes("关注："), "compact watchlist lines must explain why a fund matters");
+assert(compactWatchlistLines.includes("下一步："), "compact watchlist lines must show the trigger or next action");
+assert(compactWatchlistLines.includes("边界："), "compact watchlist lines must show the risk boundary");
+assert(compactWatchlistLines.includes("上榜：综合决策榜#1/小仓试探复核"), "compact watchlist lines must retain ranking evidence without forcing the full detail report");
+assert(!compactWatchlistLines.includes("费用/份额："), "compact watchlist lines should not dump fee details unless the user explicitly asks for the watchlist");
+assert(!compactWatchlistLines.includes("最新走势："), "compact watchlist lines should not dump raw trend fields unless the user explicitly asks for the watchlist");
 const workflowWatchlistInput = [
   {
     ...normalizedWatchDb.watchlist[0],

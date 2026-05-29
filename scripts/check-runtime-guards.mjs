@@ -1533,11 +1533,19 @@ const requiredPatterns = [
     message: "portfolio watchlist status replies must pass ranking citation context into detail lines."
   },
   {
+    pattern: /function buildPortfolioWatchlistStatusLines[\s\S]{0,900}const compact = Boolean\(options\.compact\)[\s\S]{0,1200}自选池简版[\s\S]{0,1400}formatPortfolioWatchCompactLine/,
+    message: "portfolio default watchlist status replies must support a compact customer-readable mode instead of dumping every detail."
+  },
+  {
+    pattern: /function formatPortfolioWatchCompactLine[\s\S]{0,1600}关注：[\s\S]{0,600}下一步：[\s\S]{0,600}边界：[\s\S]{0,600}上榜：/,
+    message: "portfolio compact watchlist lines must emphasize reason, next step, risk boundary, and ranking evidence."
+  },
+  {
     pattern: /formatPortfolioWatchDetailLine[\s\S]{0,2200}上榜依据：/,
     message: "portfolio watchlist detail lines must cite ranking lanes when available."
   },
   {
-    pattern: /buildPortfolioStatusAnswer[\s\S]{0,1800}managerRankings[\s\S]{0,5200}buildPortfolioWatchlistStatusLines[\s\S]{0,800}managerRankings/,
+    pattern: /buildPortfolioStatusAnswer[\s\S]{0,1800}managerRankings[\s\S]{0,5200}buildPortfolioWatchlistStatusLines[\s\S]{0,900}managerRankings[\s\S]{0,500}compact:\s*!wantsWatchlist/,
     message: "portfolio status answers must include current ranking-board citations in watchlist summaries."
   },
   {

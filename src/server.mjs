@@ -7955,6 +7955,7 @@ function buildPortfolioWatchlistStatusLines(watchlist = [], options = {}) {
   const normalized = normalizePortfolioWatchlist(watchlist).filter((item) => item.status !== "removed");
   if (!normalized.length) return ["暂无自选基金。"];
   const limitPerStatus = Math.max(1, Number(options.limitPerStatus || 4));
+  const compact = Boolean(options.compact);
   const rankingCitationMap = options.rankingCitationMap || buildPortfolioWatchRankingCitationMap(options.managerRankings);
   const statusOrder = ["ready", "waiting_pullback", "watch", "blocked", "in_position"];
   const groups = statusOrder
@@ -7967,13 +7968,19 @@ function buildPortfolioWatchlistStatusLines(watchlist = [], options = {}) {
   const lines = [
     `合计 ${normalized.length} 只：${groups.map((group) => `${group.label}${group.items.length}只`).join("，")}。`
   ];
-  lines.push(...buildPortfolioWatchlistLaunchEveLines(normalized));
-  lines.push(...buildPortfolioWatchlistActionQueueLines(normalized));
+  if (compact) {
+    lines.push("自选池简版：先看动作含义和触发条件，完整费率、净值、替代份额和详细证据可在后台自选池展开。");
+  }
+  lines.push(...buildPortfolioWatchlistLaunchEveLines(normalized, { compact }));
+  lines.push(...buildPortfolioWatchlistActionQueueLines(normalized, { compact }));
 
   for (const group of groups) {
     lines.push(`【${group.label}】${group.items.length}只`);
     for (const rawItem of group.items.slice(0, limitPerStatus)) {
-      lines.push(formatPortfolioWatchDetailLine(summarizePortfolioWatchItem(rawItem), { rankingCitationMap }));
+      const item = summarizePortfolioWatchItem(rawItem);
+      lines.push(compact
+        ? formatPortfolioWatchCompactLine(item, { rankingCitationMap })
+        : formatPortfolioWatchDetailLine(item, { rankingCitationMap }));
     }
     if (group.items.length > limitPerStatus) {
       lines.push(`还有 ${group.items.length - limitPerStatus} 只同状态候选，可在管理页自选基金池查看。`);
@@ -8010,7 +8017,8 @@ function formatPortfolioWatchRankingCitationText(code = "", rankingCitationMap =
     .join("；");
 }
 
-function buildPortfolioWatchlistLaunchEveLines(watchlist = []) {
+function buildPortfolioWatchlistLaunchEveLines(watchlist = [], options = {}) {
+  const compact = Boolean(options.compact);
   const focusItems = normalizePortfolioWatchlist(watchlist)
     .filter((item) => isLowBaseLaunchWatchSeed(item))
     .filter((item) => !["blocked", "removed", "in_position"].includes(item.status))
@@ -8022,12 +8030,17 @@ function buildPortfolioWatchlistLaunchEveLines(watchlist = []) {
   for (const item of focusItems) {
     const gap = item.gaps?.[0] || buildPortfolioWatchReadinessGaps(item)[0] || "等待净值下钻确认";
     const trigger = item.buyTriggers?.[0] || "下一次净值更新后复核是否低位转强";
-    lines.push(`- ${item.code} ${item.name || ""}（准备度${item.score}，${item.label}）：${gap}；触发=${trigger}；纪律=等净值下钻确认后再进入买点评估，不自动买入。`);
+    if (compact) {
+      lines.push(`- ${item.code} ${item.name || ""}：关注低位启动前夜；下一步：${shortenPortfolioCustomerText(trigger, 58)}；边界：${shortenPortfolioCustomerText(gap, 58)}。`);
+    } else {
+      lines.push(`- ${item.code} ${item.name || ""}（准备度${item.score}，${item.label}）：${gap}；触发=${trigger}；纪律=等净值下钻确认后再进入买点评估，不自动买入。`);
+    }
   }
   return lines;
 }
 
-function buildPortfolioWatchlistActionQueueLines(watchlist = []) {
+function buildPortfolioWatchlistActionQueueLines(watchlist = [], options = {}) {
+  const compact = Boolean(options.compact);
   const ready = normalizePortfolioWatchlist(watchlist)
     .filter((item) => item.status === "ready")
     .map((item) => ({ ...item, ...evaluatePortfolioWatchReadiness(item) }))
@@ -8045,9 +8058,39 @@ function buildPortfolioWatchlistActionQueueLines(watchlist = []) {
     const trigger = item.buyTriggers?.[0] || item.positionPlan || "等待下一次复查";
     const risk = item.riskNotes?.[0] || "风险边界待补充";
     const gap = item.gaps?.[0] || buildPortfolioWatchReadinessGaps(item)[0] || "等待下一次复查";
-    lines.push(`- ${item.code} ${item.name || ""}（${status}，准备度${item.score}，${item.label}）：触发=${trigger}；缺口=${gap}；风险=${risk}；复查=${item.reviewDate || "下一次盘前观察"}`);
+    if (compact) {
+      lines.push(`- ${item.code} ${item.name || ""}（${status}）：下一步：${shortenPortfolioCustomerText(trigger, 58)}；边界：${shortenPortfolioCustomerText(risk || gap, 58)}。`);
+    } else {
+      lines.push(`- ${item.code} ${item.name || ""}（${status}，准备度${item.score}，${item.label}）：触发=${trigger}；缺口=${gap}；风险=${risk}；复查=${item.reviewDate || "下一次盘前观察"}`);
+    }
   }
   return lines;
+}
+
+function formatPortfolioWatchCompactLine(item = {}, options = {}) {
+  const head = `${item.code || ""} ${item.name || ""}`.trim();
+  const status = item.statusText || formatPortfolioWatchStatus(item.status);
+  const rankingCitation = formatPortfolioWatchRankingCitationText(item.code, options.rankingCitationMap);
+  const focus = item.reason
+    || item.setupEvidence?.[0]
+    || item.positionPlan
+    || "等待经理下一轮复核。";
+  const nextStep = item.buyTriggers?.[0]
+    || item.positionPlan
+    || item.readinessGaps?.[0]
+    || item.reviewDate
+    || "继续观察，不满足触发条件前不推进买入。";
+  const boundary = item.riskNotes?.[0]
+    || item.readinessGaps?.[0]
+    || "风险边界待下一次净值和持仓资料确认；费用和替代份额在后台详情页查看。";
+  const parts = [
+    `${head}${status ? `（${status}）` : ""}`,
+    `关注：${shortenPortfolioCustomerText(focus, 54)}`,
+    `下一步：${shortenPortfolioCustomerText(nextStep, 58)}`,
+    `边界：${shortenPortfolioCustomerText(boundary, 58)}`,
+    rankingCitation ? `上榜：${shortenPortfolioCustomerText(rankingCitation, 54)}` : ""
+  ].filter(Boolean);
+  return `- ${parts.join("；")}`;
 }
 
 function formatPortfolioWatchDetailLine(item = {}, options = {}) {
@@ -8443,7 +8486,11 @@ function buildPortfolioStatusAnswer(userText, intent) {
     lines.push("");
     lines.push("自选基金池：");
     if (watchlist.length) {
-      lines.push(...buildPortfolioWatchlistStatusLines(watchlist, { limitPerStatus: wantsWatchlist ? 5 : 3, managerRankings }));
+      lines.push(...buildPortfolioWatchlistStatusLines(watchlist, {
+        limitPerStatus: wantsWatchlist ? 5 : 2,
+        managerRankings,
+        compact: !wantsWatchlist
+      }));
     } else {
       lines.push("暂无自选基金。下一次盘前观察、今日操作或周总结会开始沉淀候选池。");
     }
