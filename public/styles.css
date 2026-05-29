@@ -3302,6 +3302,76 @@ button:disabled {
   background: #fbfcfd;
 }
 
+.ranking-lens-guide {
+  min-width: 0;
+  display: grid;
+  gap: 0;
+}
+
+.ranking-lens-guide-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(220px, 0.8fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 12px;
+  border: 1px solid #dbe5ee;
+  border-left: 4px solid #0f766e;
+  border-radius: 8px;
+  background: #f8fbfc;
+}
+
+.ranking-lens-guide-card.is-filtered-out {
+  display: none;
+}
+
+.ranking-lens-guide-card > div,
+.ranking-lens-guide-focus {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.ranking-lens-guide-card span,
+.ranking-lens-guide-card strong,
+.ranking-lens-guide-card small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ranking-lens-guide-card span {
+  color: #637284;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ranking-lens-guide-card strong {
+  color: #1d2d3b;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.ranking-lens-guide-card small {
+  color: #5f6f7e;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.ranking-lens-guide-focus {
+  padding-left: 12px;
+  border-left: 1px solid #dce6ee;
+}
+
+.ranking-lens-guide-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
 .ranking-action-deck-head {
   display: flex;
   align-items: start;
@@ -7081,6 +7151,21 @@ button.danger-button:hover {
 
   .ranking-terminal .ranking-overview-group-focus {
     min-height: 76px;
+  }
+
+  .ranking-lens-guide-card {
+    grid-template-columns: 1fr;
+  }
+
+  .ranking-lens-guide-focus {
+    padding-left: 0;
+    padding-top: 8px;
+    border-left: 0;
+    border-top: 1px solid #dce6ee;
+  }
+
+  .ranking-lens-guide-actions {
+    justify-content: flex-start;
   }
 
   .ranking-terminal .ranking-overview-card {

@@ -1823,6 +1823,7 @@ function renderManagerRankings(board = {}) {
       <div class="ranking-terminal-body">
         ${renderManagerRankingOverview(lists)}
         <div class="ranking-detail-stage">
+          ${renderManagerRankingLensGuide(board, lists)}
           ${renderManagerRankingActionDeck(board.customerActionDeck || {})}
           <div class="ranking-list-stage">
             ${lists.map(renderManagerRankingList).join("")}
@@ -1857,6 +1858,81 @@ function renderManagerRankingDigestDeck(board = {}) {
       ${renderManagerCustomerDigest(board.customerDigest || {})}
       ${renderManagerPriorityQueue(board.priorityQueue || [])}
     </div>
+  `;
+}
+
+function renderManagerRankingLensGuide(board = {}, lists = []) {
+  const totalItems = (lists || []).reduce((sum, list) => sum + (Array.isArray(list.items) ? list.items.length : 0), 0);
+  const priority = Array.isArray(board.priorityQueue) ? board.priorityQueue[0] : null;
+  const allGuide = {
+    id: "",
+    title: "全部榜单",
+    subtitle: board.summary || `共 ${lists.length} 个视角，${totalItems} 个复核对象。`,
+    purpose: "先看客户行动牌和今日优先处理，再进入单个视角核对买点、风险、数据和费用。",
+    top: priority,
+    count: totalItems,
+    nextAction: priority ? "先处理跨榜单优先项" : "等待经理生成榜单"
+  };
+  return `
+    <div class="ranking-lens-guide" aria-label="榜单视角说明">
+      ${renderManagerRankingGuideCard(allGuide)}
+      ${(lists || []).map((list) => renderManagerRankingGuideCard(buildManagerRankingGuide(list))).join("")}
+    </div>
+  `;
+}
+
+function buildManagerRankingGuide(list = {}) {
+  const items = Array.isArray(list.items) ? list.items : [];
+  const top = items[0] || null;
+  const group = MANAGER_RANKING_GROUPS.find((candidate) => candidate.listIds.includes(list.id));
+  return {
+    id: list.id || "",
+    title: list.title || "榜单视角",
+    subtitle: list.subtitle || group?.hint || "从一个角度复核基金是否值得买、继续等、卖出或补证据。",
+    purpose: getManagerRankingLensPurpose(list, group),
+    top,
+    count: items.length,
+    nextAction: top?.nextStep || list.nextAction || "查看榜单明细"
+  };
+}
+
+function getManagerRankingLensPurpose(list = {}, group = null) {
+  if (list.nextAction) return list.nextAction;
+  const id = list.id || "";
+  if (id === "decision_synthesis") return "把买点、轮动、追涨、费用和持仓前景汇总成最终复核顺序。";
+  if (id === "buy_preparation") return "只看接近买点的候选，确认是不是能小仓试探。";
+  if (id === "launch_setup") return "专门找回调完成、低位、准备启动的基金，防止追涨。";
+  if (id === "cash_redeployment") return "现金过高时找小额再部署对象，避免一直空等。";
+  if (id === "position_sizing") return "把候选转成 0 元观察、小仓试探或分批加仓的仓位方案。";
+  if (id === "theme_allocation" || id === "rotation_opportunity") return "先判断板块和轮动，再选代表基金。";
+  if (id === "chase_risk" || id === "drawdown_defense" || id === "sell_risk") return "先处理追涨、回撤和止盈风险，再讨论新增买入。";
+  if (id === "data_confidence") return "净值、费率、份额、前十大持仓和来源缺失时，先补证据。";
+  if (id === "fee_suitability" || id === "replacement_choice") return "比较 A/C/D/I 份额和同类替代，避免费用侵蚀收益。";
+  if (id === "user_holding_alerts") return "把客户真实持仓的卖出、止盈和买入提醒置顶。";
+  return group ? `${group.title}视角：${group.hint}。` : "从这个视角复核基金是否值得行动。";
+}
+
+function renderManagerRankingGuideCard(guide = {}) {
+  const top = guide.top || null;
+  const code = String(top?.code || "").trim();
+  const actionClass = getManagerRankingActionClass(top?.action || guide.nextAction || "");
+  return `
+    <section class="ranking-lens-guide-card" data-ranking-guide-id="${escapeHtml(guide.id || "")}">
+      <div>
+        <span>${escapeHtml(guide.title || "榜单视角")}</span>
+        <strong>${escapeHtml(guide.purpose || "查看这个视角的复核对象。")}</strong>
+        <small>${escapeHtml(guide.subtitle || "")}</small>
+      </div>
+      <div class="ranking-lens-guide-focus">
+        <span>${escapeHtml(guide.count ? `${guide.count} 项` : "暂无触发")}</span>
+        <strong>${escapeHtml(code ? `${code} ${top?.name || ""}`.trim() : "暂无第一处理对象")}</strong>
+        <small>${escapeHtml(top?.reason || guide.nextAction || "等待经理下一轮复核。")}</small>
+      </div>
+      <div class="ranking-lens-guide-actions">
+        <em class="ranking-action ${actionClass}">${escapeHtml(top?.action || guide.nextAction || "查看")}</em>
+        ${code ? `<button type="button" class="ranking-detail-link" data-focus-watchlist-code="${escapeHtml(code)}">自选详情</button>` : ""}
+      </div>
+    </section>
   `;
 }
 
@@ -2113,6 +2189,10 @@ function setManagerRankingFilter(rankingId = "") {
   });
   root.querySelectorAll("[data-ranking-id]").forEach((section) => {
     const visible = !activeManagerRankingFilter || section.dataset.rankingId === activeManagerRankingFilter;
+    section.classList.toggle("is-filtered-out", !visible);
+  });
+  root.querySelectorAll("[data-ranking-guide-id]").forEach((section) => {
+    const visible = (section.dataset.rankingGuideId || "") === activeManagerRankingFilter;
     section.classList.toggle("is-filtered-out", !visible);
   });
   root.querySelector(".ranking-detail-stage")?.scrollTo({ top: 0, behavior: "smooth" });

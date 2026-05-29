@@ -2585,6 +2585,22 @@ const requiredPatterns = [
     message: "admin manager ranking board must show customer action cards before detailed ranking lists."
   },
   {
+    pattern: /renderManagerRankingLensGuide[\s\S]{0,2200}ranking-lens-guide/,
+    message: "admin manager ranking board must explain the selected ranking lens and its first handling target before detailed fund rows."
+  },
+  {
+    pattern: /getManagerRankingLensPurpose/,
+    message: "admin manager ranking lens guide must explain launch-setup and other buying lenses in customer-readable Chinese."
+  },
+  {
+    pattern: /专门找回调完成、低位、准备启动/,
+    message: "admin manager ranking lens guide must explain the launch-setup lens as pullback-complete, low-position, ready-to-start screening."
+  },
+  {
+    pattern: /setManagerRankingFilter[\s\S]{0,1600}data-ranking-guide-id/,
+    message: "admin manager ranking lens guide must switch with the selected ranking lane."
+  },
+  {
     pattern: /renderManagerPriorityQueue[\s\S]{0,1200}今日优先处理/,
     message: "admin manager ranking board must render a first-class priority queue."
   },

@@ -1490,6 +1490,7 @@ assert(adminSource.includes("renderManagerRankings"), "admin UI must render mult
 assert(adminSource.includes("renderManagerCustomerDigest"), "admin UI must render customer-facing ranking digest before detailed lists");
 assert(adminSource.includes("renderManagerRankingActionDeck"), "admin UI must render customer action cards before detailed ranking lists");
 assert(adminSource.includes("renderManagerPriorityQueue"), "admin UI must render the cross-ranking priority queue");
+assert(adminSource.includes("renderManagerRankingLensGuide") && adminSource.includes("getManagerRankingLensPurpose"), "admin UI must explain the active manager ranking lens before listing detailed funds");
 assert(adminSource.includes("renderManagerRankingOverview"), "admin UI must render ranking board overview cards before detailed lists");
 assert(adminSource.includes("MANAGER_RANKING_GROUPS") && adminSource.includes("buildManagerRankingOverviewGroups"), "admin UI must group manager ranking lenses into action, opportunity, risk, and evidence sections");
 assert(adminSource.includes("selectManagerRankingGroupFocus") && adminSource.includes("renderManagerRankingGroupFocus"), "admin UI must give each manager ranking group a one-click focus item");
@@ -1544,6 +1545,7 @@ assert(/watchlist-terminal-body[\s\S]{0,360}max-height:\s*calc\(var\(--portfolio
 assert(adminStyleSource.includes("portfolio-workspace-card"), "admin portfolio overview shortcut cards must be visually scannable");
 assert(adminStyleSource.includes("ranking-terminal"), "admin manager ranking board must be a focused terminal-style workspace instead of a long stacked report");
 assert(adminStyleSource.includes("ranking-detail-stage"), "admin manager ranking board must separate lane navigation from the active ranking detail");
+assert(adminStyleSource.includes("ranking-lens-guide-card"), "admin manager ranking lens guide must be styled as a first-scan decision strip");
 assert(adminStyleSource.includes("ranking-overview-group") && adminStyleSource.includes("ranking-overview-group-list"), "admin manager ranking overview groups must be styled as compact terminal sections");
 assert(adminStyleSource.includes("ranking-overview-group-focus"), "admin manager ranking group focus items must be visibly styled");
 assert(adminStyleSource.includes("ranking-terminal-body") && adminStyleSource.includes("ranking-digest-deck"), "admin manager ranking board must keep digest and selected ranking list inside a bounded terminal body");
