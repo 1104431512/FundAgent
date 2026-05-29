@@ -695,6 +695,10 @@ button:disabled {
   border-left-color: #2b6cb0;
 }
 
+.ranking-overview-opportunity {
+  border-left-color: #7c6d1f;
+}
+
 .ranking-overview-sell {
   border-left-color: #c05621;
 }
@@ -775,6 +779,10 @@ button:disabled {
 
 .ranking-list-launch {
   border-top: 3px solid #2b6cb0;
+}
+
+.ranking-list-opportunity {
+  border-top: 3px solid #7c6d1f;
 }
 
 .ranking-list-sell {
@@ -888,6 +896,11 @@ button:disabled {
 .ranking-action.sell {
   color: #8b3217;
   background: #fff1e8;
+}
+
+.ranking-action.opportunity {
+  color: #66591a;
+  background: #fff8d8;
 }
 
 .ranking-action.watch {

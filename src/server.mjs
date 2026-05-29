@@ -1740,7 +1740,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "经理多角度榜单（系统计算，必须先看榜单再决定）：",
     JSON.stringify(compactManagerRankings, null, 2),
-    "要求：榜单是本轮决策前置清单。actions 必须优先覆盖 buy_preparation、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
+    "要求：榜单是本轮决策前置清单。actions 必须优先覆盖 buy_preparation、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
     JSON.stringify((missedFollowThroughQueue || []).slice(0, 5), null, 2),
@@ -3687,7 +3687,7 @@ function inferPortfolioRankingBoardReviewAction(list = {}, item = {}) {
 function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = []) {
   const lists = Array.isArray(board?.lists) ? board.lists : [];
   const existingCodes = new Set((existingActions || []).map((action) => action.code).filter(Boolean));
-  const watchedListIds = new Set(["buy_preparation", "launch_setup", "sell_risk", "user_holding_alerts"]);
+  const watchedListIds = new Set(["buy_preparation", "launch_setup", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
   const actions = [];
   for (const list of lists) {
     if (!watchedListIds.has(String(list?.id || ""))) continue;
@@ -8476,6 +8476,7 @@ function buildPortfolioRankingBoard(db = {}) {
   const lists = [
     buildPortfolioBuyPreparationRanking(watchlist),
     buildPortfolioLaunchSetupRanking(watchlist),
+    buildPortfolioOpportunityCostRanking(db, watchlist),
     buildPortfolioSellRiskRanking(positions),
     buildUserHoldingAlertRanking(userPortfolios)
   ];
@@ -8493,8 +8494,8 @@ function buildPortfolioRankingBoardHealth({ watchlist = [], positions = [], user
     return {
       level: "ok",
       title: "榜单已生成",
-      summary: `当前有 ${totalItems} 个可复核对象，经理可以按买入、低位启动、卖出风险和用户持仓提醒分层处理。`,
-      actions: ["优先处理排名靠前项", "买入和卖出分开复核", "把用户真实持仓提醒放入每日跟踪"]
+      summary: `当前有 ${totalItems} 个可复核对象，经理可以按买入、低位启动、机会成本、卖出风险和用户持仓提醒分层处理。`,
+      actions: ["优先处理排名靠前项", "买入/错过/卖出分开复核", "把用户真实持仓提醒放入每日跟踪"]
     };
   }
   if (!watchlist.length && !positions.length && !userPortfolios.length) {
@@ -8561,6 +8562,52 @@ function buildPortfolioLaunchSetupRanking(watchlist = []) {
     subtitle: "优先展示回调后准备启动的候选，避免只盯热门追涨。",
     emptyText: "暂无低位启动前夜候选。",
     nextAction: "下一步放宽行业召回范围，再用低位、回撤深度和持仓前景二次筛选。",
+    items
+  });
+}
+
+function buildPortfolioOpportunityCostRanking(db = {}, watchlist = []) {
+  const account = db.account || {};
+  const totalAsset = Number(account.totalAsset || 0);
+  const candidates = findPortfolioBacktestMissedFollowThroughCandidates({
+    watchlist,
+    transactions: getPortfolioDiagnosticTransactions(db),
+    orders: getPortfolioDiagnosticOrders(db),
+    totalAsset
+  });
+  const items = candidates.map((candidate) => buildPortfolioRankingItem({
+    code: candidate.code,
+    name: candidate.name,
+    source: "历史回测",
+    score: round(
+      Number(candidate.readinessScore || 0)
+      + Number(candidate.followThroughPct || 0) * 5
+      + Math.min(30, Number(candidate.estimatedStarterOpportunity || 0) / 10),
+      1
+    ),
+    action: "机会成本复核",
+    reason: candidate.estimatedStarterOpportunity
+      ? `等待后继续走强，按2.5%试探仓估算少赚约${round(candidate.estimatedStarterOpportunity, 2)}元。`
+      : "等待后继续走强，需要复核是不是过度保守。",
+    facts: [
+      candidate.evidence || "",
+      Number.isFinite(Number(candidate.followThroughPct)) ? `后续走强${formatFallbackPlainPct(candidate.followThroughPct)}` : "",
+      Number.isFinite(Number(candidate.readinessScore)) ? `准备度${round(Number(candidate.readinessScore), 0)}` : ""
+    ].filter(Boolean),
+    decision: {
+      highlights: [candidate.evidence || "等待后继续走强"],
+      risks: ["不能追涨补票，要复核当时买点是否仍有效。"],
+      gaps: normalizeStringArray(candidate.readinessGaps).slice(0, 2),
+      nextStep: "下一次今日操作必须给小仓试探、主动降级或明确复查时间。"
+    },
+    status: "warning"
+  })).sort(compareRankingItems).slice(0, 6);
+  return buildPortfolioRankingList({
+    id: "opportunity_cost",
+    title: "机会成本榜",
+    subtitle: "找出之前接近买点但没执行、随后继续走强的候选，防止经理只会等待。",
+    emptyText: "暂无等待后继续走强的可执行候选。",
+    nextAction: "下一步对接近买点但未执行的基金做复盘：小仓试探、主动降级、或写明下一次触发时间。",
     items
   });
 }

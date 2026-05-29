@@ -82,6 +82,7 @@ const rankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfol
 }));
 assert(rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.some((item) => item.code === "000001"), "manager ranking board must expose buy-preparation candidates");
 assert(rankingBoard.lists.find((item) => item.id === "launch_setup")?.items.some((item) => item.code === "000001"), "manager ranking board must expose low-position launch candidates");
+assert(rankingBoard.lists.find((item) => item.id === "opportunity_cost")?.nextAction, "manager ranking board must include an opportunity-cost list even when it is empty");
 assert(rankingBoard.lists.find((item) => item.id === "sell_risk")?.items.some((item) => item.code === "008327"), "manager ranking board must expose sell-risk positions");
 assert(rankingBoard.health?.summary, "manager ranking board must explain the current board state");
 assert(rankingBoard.lists.every((item) => item.nextAction), "manager ranking board empty states must include next actions");
@@ -701,6 +702,10 @@ const conservativeBacktest = manager.buildPortfolioBacktestDiagnostics(conservat
 assert(conservativeBacktest.items.some((item) => item.label === "过度保守回测"), "backtest diagnostics must detect repeated wait-only decisions under high cash");
 assert(conservativeBacktest.items.some((item) => item.label === "买点错过回测"), "backtest diagnostics must detect ready candidates that remain unexecuted under high cash");
 assert(conservativeBacktest.items.some((item) => item.label === "机会成本回测"), "backtest diagnostics must estimate opportunity cost when unbought ready candidates keep rising");
+const conservativeRankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb(JSON.parse(JSON.stringify(conservativeBacktestFixture))));
+const opportunityCostList = conservativeRankingBoard.lists.find((item) => item.id === "opportunity_cost");
+assert(opportunityCostList?.items.some((item) => item.code === "012046"), "manager ranking board must surface missed follow-through funds in the opportunity-cost list");
+assert(opportunityCostList?.items[0]?.decision?.nextStep.includes("小仓试探"), "opportunity-cost ranking items must force probe, downgrade, or review-time decisions");
 assert(
   conservativeBacktest.items.find((item) => item.label === "机会成本回测")?.note.includes("少赚约140元"),
   "opportunity-cost diagnostics must translate missed starter position gains into an estimated yuan impact"
@@ -1075,6 +1080,7 @@ assert(serverSource.includes("pendingUserPortfolioImportRequests"), "text-first 
 assert(adminHtmlSource.includes("用户持仓关注"), "admin UI must expose user-level holding management");
 assert(adminSource.includes("/api/user-portfolios/holding"), "admin UI must save user-level holdings through the API");
 assert(adminHtmlSource.includes("经理榜单"), "admin UI must expose manager ranking boards");
+assert(adminHtmlSource.includes("机会成本"), "admin UI must describe opportunity-cost rankings as a manager decision angle");
 assert(adminSource.includes("renderManagerRankings"), "admin UI must render multi-angle ranking boards");
 assert(adminSource.includes("renderManagerRankingOverview"), "admin UI must render ranking board overview cards before detailed lists");
 assert(adminSource.includes("getManagerRankingActionClass"), "admin ranking items must color-code buy, watch, and sell style actions");
