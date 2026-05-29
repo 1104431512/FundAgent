@@ -1052,6 +1052,8 @@ assert(capabilityProfileContext.includes("历史回测诊断"), "manager profile
 assert(serverSource.includes("能力修复队列（必须进入 team.主席、team.风控经理、actions 或 learningNotes）"), "portfolio decision prompt must force capability repair tasks into decisions");
 assert(serverSource.includes("经理多角度榜单（系统计算，必须先看榜单再决定）"), "portfolio decision prompt must force manager ranking boards into decisions");
 assert(serverSource.includes("rankingBasis"), "portfolio actions must preserve the ranking basis behind each recommendation");
+assert(serverSource.includes("buildPortfolioWatchRankingCitationMap"), "portfolio status replies must be able to cite which ranking lanes reference each watchlist fund");
+assert(serverSource.includes("formatPortfolioWatchRankingCitationText"), "portfolio status replies must format ranking citations in customer-readable watchlist lines");
 const portfolioDecisionCapabilitySource = serverSource.slice(
   serverSource.indexOf("async function executePortfolioDecision"),
   serverSource.indexOf("async function executePortfolioValuation")
@@ -1218,6 +1220,9 @@ assert(serverSource.includes("pendingUserPortfolioImportRequests"), "text-first 
 assert(adminHtmlSource.includes("用户持仓关注"), "admin UI must expose user-level holding management");
 assert(adminSource.includes("/api/user-portfolios/holding"), "admin UI must save user-level holdings through the API");
 assert(adminHtmlSource.includes("经理榜单"), "admin UI must expose manager ranking boards");
+assert(adminHtmlSource.includes("data-portfolio-view-target=\"rankings\""), "admin portfolio UI must split the long virtual account page into ranking workspace entries");
+assert(adminHtmlSource.includes("data-portfolio-view=\"watchlist\""), "admin portfolio UI must expose watchlist as a dedicated workspace view instead of a long mixed page");
+assert(adminSource.includes("setPortfolioView"), "admin portfolio UI must switch between virtual account workspace views");
 assert(adminHtmlSource.includes("综合决策"), "admin UI must describe integrated decision-synthesis rankings as a manager decision angle");
 assert(adminHtmlSource.includes("机会成本"), "admin UI must describe opportunity-cost rankings as a manager decision angle");
 assert(adminHtmlSource.includes("板块轮动"), "admin UI must describe sector-rotation rankings as a manager decision angle");
@@ -1240,6 +1245,8 @@ assert(adminSource.includes("rotation_opportunity"), "admin UI must render the s
 assert(adminSource.includes("chase_risk"), "admin UI must render the chase-risk ranking lane");
 assert(adminSource.includes("fee_suitability"), "admin UI must render the fee-suitability ranking lane");
 assert(adminStyleSource.includes("ranking-list.is-filtered-out"), "admin UI must hide non-focused ranking lists when a ranking filter is active");
+assert(adminStyleSource.includes("portfolio-workspace-switcher"), "admin portfolio workspace switcher must be styled as a first-class navigation surface");
+assert(adminStyleSource.includes("portfolio-workspace-view.active"), "admin portfolio workspace views must show one focused entry at a time");
 assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must style customer-facing ranking digest as a first-class panel");
 assert(adminStyleSource.includes("focused-from-ranking"), "admin UI must highlight watchlist cards opened from customer digest items");
 assert(adminStyleSource.includes("watchlist-ranking-refs"), "admin UI must style ranking citations inside watchlist fund details");
@@ -1709,6 +1716,21 @@ assert(watchlistStatusLines.includes("费用/份额：C类更适合短中期观�
 assert(watchlistStatusLines.includes("最新走势：20日+4.8%"), "portfolio status answer must include latest trend evidence");
 assert(watchlistStatusLines.includes("缺口=低位/启动/刚转强/不过热/费用条件已满足"), "buy-preparation queue must tell managers when ready candidates have no remaining setup, early-turn, and fee gap");
 assert(watchlistStatusLines.includes("买入缺口：还差回调完成或启动前夜信号"), "watchlist detail must expose what waiting candidates still lack before buying");
+const rankingAwareWatchlistLines = manager.buildPortfolioWatchlistStatusLines([normalizedWatchDb.watchlist[0]], {
+  managerRankings: {
+    lists: [
+      {
+        title: "综合决策榜",
+        items: [{ code: normalizedWatchDb.watchlist[0].code, rank: 1, action: "小仓试探复核" }]
+      },
+      {
+        title: "板块轮动榜",
+        items: [{ code: normalizedWatchDb.watchlist[0].code, rank: 2, action: "低位轮动观察" }]
+      }
+    ]
+  }
+}).join("\n");
+assert(rankingAwareWatchlistLines.includes("上榜依据：综合决策榜#1/小仓试探复核；板块轮动榜#2/低位轮动观察"), "portfolio status answer must cite ranking lanes inside watchlist detail lines");
 const workflowWatchlistInput = [
   {
     ...normalizedWatchDb.watchlist[0],

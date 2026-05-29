@@ -13,6 +13,7 @@ let portfolioPollTimer = null;
 let portfolioPollFailures = 0;
 let currentPortfolio = null;
 let activeManagerRankingFilter = "";
+let activePortfolioView = "overview";
 
 const WATCHLIST_STATUS_ORDER = ["ready", "waiting_pullback", "watch", "blocked", "in_position", "removed"];
 const TOP_HOLDINGS_DISPLAY_LIMIT = 10;
@@ -39,6 +40,7 @@ const initialTab = new URLSearchParams(location.search).get("tab") || location.h
 if (initialTab) {
   activateTab(initialTab);
 }
+setPortfolioView(localStorage.getItem("fundagent_portfolio_view") || activePortfolioView);
 
 document.querySelector("#saveTokenBtn").addEventListener("click", () => {
   localStorage.setItem("fundagent_admin_token", adminTokenInput.value.trim());
@@ -71,6 +73,11 @@ document.querySelector("#userPortfolioList")?.addEventListener("click", (event) 
   if (editButton) {
     fillUserHoldingForm(editButton.dataset.userId, editButton.dataset.code);
   }
+});
+document.querySelector("[data-panel='portfolio']")?.addEventListener("click", (event) => {
+  const viewButton = event.target.closest("[data-portfolio-view-target]");
+  if (!viewButton) return;
+  setPortfolioView(viewButton.dataset.portfolioViewTarget || "overview");
 });
 document.querySelector("#managerRankingBoard")?.addEventListener("click", (event) => {
   const focusButton = event.target.closest("[data-focus-watchlist-code]");
@@ -123,6 +130,20 @@ function activateTab(tab) {
   });
   document.querySelectorAll("[data-panel]").forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.panel === tab);
+  });
+}
+
+function setPortfolioView(view = "overview") {
+  const nextView = document.querySelector(`[data-portfolio-view="${view}"]`) ? view : "overview";
+  activePortfolioView = nextView;
+  localStorage.setItem("fundagent_portfolio_view", nextView);
+  document.querySelectorAll("[data-portfolio-view-target]").forEach((button) => {
+    const active = button.dataset.portfolioViewTarget === nextView;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  document.querySelectorAll("[data-portfolio-view]").forEach((section) => {
+    section.classList.toggle("active", section.dataset.portfolioView === nextView);
   });
 }
 
@@ -348,6 +369,8 @@ function renderPortfolioDashboard(portfolio = {}) {
   const watchlist = portfolio.watchlist || [];
   const userPortfolios = portfolio.userPortfolios || [];
   const runs = portfolio.recentRuns || [];
+  const transactions = portfolio.recentTransactions || [];
+  const equity = portfolio.recentEquity || [];
   const latestRun = runs[0] || null;
   const activeOrders = portfolio.activeOrders || [];
   const ready = watchlist.filter((item) => item.status === "ready");
@@ -368,6 +391,11 @@ function renderPortfolioDashboard(portfolio = {}) {
   setText("#portfolioPnlFootnote", `按实际投入基准 ${formatMoney(account.investedCostBasis || account.investedCost)} 计算`);
   setText("#portfolioPositionCount", `${positions.length} 只`);
   setText("#portfolioReadinessCount", `${ready.length + waiting.length} 只`);
+  setText("#portfolioNavPositionCount", String(positions.length));
+  setText("#portfolioNavWatchlistCount", String(watchlist.length));
+  setText("#portfolioNavUserCount", String(userPortfolios.length));
+  setText("#portfolioNavRunCount", String(runs.length));
+  setText("#portfolioNavOrderCount", String(activeOrders.length + transactions.length + equity.length));
   updateRunStateBadge(latestRun, portfolio.scheduler || {});
 
   renderInsightList("#portfolioManagerSummary", buildManagerInsightItems(portfolio, latestRun, activeOrders), "暂无经理运行摘要。");
@@ -390,6 +418,7 @@ function renderManagerRankings(board = {}) {
   if (updated) {
     updated.textContent = board.updatedAt ? `更新 ${formatDateTime(board.updatedAt)}` : "未加载";
   }
+  setText("#portfolioNavRankingCount", String(lists.reduce((sum, list) => sum + (Array.isArray(list.items) ? list.items.length : 0), 0)));
   if (!lists.length) {
     root.innerHTML = `<div class="empty">暂无榜单数据。自选池、持仓或用户持仓关注有数据后会自动生成。</div>`;
     return;
@@ -552,6 +581,7 @@ function focusWatchlistFund(code = "") {
   const normalizedCode = String(code || "").trim();
   if (!normalizedCode) return;
   activateTab("portfolio");
+  setPortfolioView("watchlist");
   const cards = [...document.querySelectorAll("[data-watchlist-code]")];
   const target = cards.find((card) => card.dataset.watchlistCode === normalizedCode);
   if (!target) {

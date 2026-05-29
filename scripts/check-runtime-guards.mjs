@@ -1061,6 +1061,18 @@ const requiredPatterns = [
     message: "admin portfolio UI must provide a manager dashboard with summary, holdings exposure, and buy-preparation panels."
   },
   {
+    pattern: /data-portfolio-view-target="overview"[\s\S]{0,1100}data-portfolio-view-target="rankings"[\s\S]{0,1100}data-portfolio-view-target="watchlist"[\s\S]{0,1100}data-portfolio-view-target="timeline"/,
+    message: "admin portfolio page must use stock-terminal style workspace entries instead of one long page."
+  },
+  {
+    pattern: /function setPortfolioView[\s\S]{0,1200}data-portfolio-view-target[\s\S]{0,1200}data-portfolio-view/,
+    message: "admin portfolio workspace entries must switch focused views."
+  },
+  {
+    pattern: /function focusWatchlistFund[\s\S]{0,500}setPortfolioView\("watchlist"\)/,
+    message: "ranking-to-watchlist jumps must open the dedicated watchlist workspace."
+  },
+  {
     pattern: /holding-strip/,
     message: "admin portfolio UI must expose top holdings as readable chips on positions and watchlist candidates."
   },
@@ -1355,6 +1367,18 @@ const requiredPatterns = [
   {
     pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,900}rankingBasis[\s\S]{0,900}来源：manager_ranking_board/,
     message: "portfolio decision prompts must force recommendations to cite the manager ranking board."
+  },
+  {
+    pattern: /buildPortfolioWatchlistStatusLines[\s\S]{0,1200}buildPortfolioWatchRankingCitationMap[\s\S]{0,1600}formatPortfolioWatchDetailLine/,
+    message: "portfolio watchlist status replies must pass ranking citation context into detail lines."
+  },
+  {
+    pattern: /formatPortfolioWatchDetailLine[\s\S]{0,2200}上榜依据：/,
+    message: "portfolio watchlist detail lines must cite ranking lanes when available."
+  },
+  {
+    pattern: /buildPortfolioStatusAnswer[\s\S]{0,1800}managerRankings[\s\S]{0,5200}buildPortfolioWatchlistStatusLines[\s\S]{0,800}managerRankings/,
+    message: "portfolio status answers must include current ranking-board citations in watchlist summaries."
   },
   {
     pattern: /function buildPortfolioRedeploymentPlan[\s\S]{0,5200}pressureActive[\s\S]{0,5200}starter_buy[\s\S]{0,5200}实时估算时间/,

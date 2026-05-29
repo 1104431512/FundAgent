@@ -7907,6 +7907,7 @@ function buildPortfolioWatchlistStatusLines(watchlist = [], options = {}) {
   const normalized = normalizePortfolioWatchlist(watchlist).filter((item) => item.status !== "removed");
   if (!normalized.length) return ["暂无自选基金。"];
   const limitPerStatus = Math.max(1, Number(options.limitPerStatus || 4));
+  const rankingCitationMap = options.rankingCitationMap || buildPortfolioWatchRankingCitationMap(options.managerRankings);
   const statusOrder = ["ready", "waiting_pullback", "watch", "blocked", "in_position"];
   const groups = statusOrder
     .map((status) => ({
@@ -7924,13 +7925,41 @@ function buildPortfolioWatchlistStatusLines(watchlist = [], options = {}) {
   for (const group of groups) {
     lines.push(`【${group.label}】${group.items.length}只`);
     for (const rawItem of group.items.slice(0, limitPerStatus)) {
-      lines.push(formatPortfolioWatchDetailLine(summarizePortfolioWatchItem(rawItem)));
+      lines.push(formatPortfolioWatchDetailLine(summarizePortfolioWatchItem(rawItem), { rankingCitationMap }));
     }
     if (group.items.length > limitPerStatus) {
       lines.push(`还有 ${group.items.length - limitPerStatus} 只同状态候选，可在管理页自选基金池查看。`);
     }
   }
   return lines;
+}
+
+function buildPortfolioWatchRankingCitationMap(managerRankings = {}) {
+  const lists = Array.isArray(managerRankings?.lists) ? managerRankings.lists : [];
+  const byCode = new Map();
+  for (const list of lists) {
+    const items = Array.isArray(list?.items) ? list.items : [];
+    for (const item of items) {
+      const code = String(item?.code || "").match(/^\d{6}$/)?.[0] || "";
+      if (!code) continue;
+      const refs = byCode.get(code) || [];
+      refs.push({
+        title: list.title || "经理榜单",
+        rank: item.rank || "",
+        action: item.action || item.status || ""
+      });
+      byCode.set(code, refs);
+    }
+  }
+  return byCode;
+}
+
+function formatPortfolioWatchRankingCitationText(code = "", rankingCitationMap = null) {
+  const refs = rankingCitationMap?.get?.(String(code || "")) || [];
+  return refs
+    .slice(0, 4)
+    .map((item) => `${item.title}${item.rank ? `#${item.rank}` : ""}${item.action ? `/${item.action}` : ""}`)
+    .join("；");
 }
 
 function buildPortfolioWatchlistLaunchEveLines(watchlist = []) {
@@ -7973,9 +8002,10 @@ function buildPortfolioWatchlistActionQueueLines(watchlist = []) {
   return lines;
 }
 
-function formatPortfolioWatchDetailLine(item = {}) {
+function formatPortfolioWatchDetailLine(item = {}, options = {}) {
   const head = `${item.code || ""} ${item.name || ""}`.trim();
   const readiness = item.readinessScore === undefined ? evaluatePortfolioWatchReadiness(item) : { score: item.readinessScore, label: item.readinessLabel || "" };
+  const rankingCitation = formatPortfolioWatchRankingCitationText(item.code, options.rankingCitationMap);
   const meta = [
     item.shareClass ? `${item.shareClass}类` : "",
     item.type || "",
@@ -7995,6 +8025,7 @@ function formatPortfolioWatchDetailLine(item = {}) {
     item.sameExposureAlternatives?.length ? `同类替代：${formatPortfolioWatchAlternativesText(item.sameExposureAlternatives)}` : "",
     item.positionPlan ? `仓位计划：${item.positionPlan}` : "",
     item.readinessGaps?.length ? `买入缺口：${item.readinessGaps.slice(0, 3).join("；")}` : "",
+    rankingCitation ? `上榜依据：${rankingCitation}` : "",
     trendEvidence ? `最新走势：${trendEvidence}` : "",
     item.reviewDate ? `复查：${item.reviewDate}` : ""
   ].filter(Boolean);
@@ -8278,6 +8309,7 @@ function buildPortfolioStatusAnswer(userText, intent) {
   const wantsSchedule = isPortfolioScheduleQuestion(userText);
   const wantsProfile = isPortfolioProfileQuestion(userText);
   const wantsOnlyProfileOrSchedule = (wantsSchedule || wantsProfile) && !wantsOperation && !wantsPosition && !wantsWatchlist;
+  const managerRankings = buildPortfolioRankingBoard(db);
 
   const lines = ["虚拟基金经理账本"];
   lines.push("");
@@ -8358,7 +8390,7 @@ function buildPortfolioStatusAnswer(userText, intent) {
     lines.push("");
     lines.push("自选基金池：");
     if (watchlist.length) {
-      lines.push(...buildPortfolioWatchlistStatusLines(watchlist, { limitPerStatus: wantsWatchlist ? 5 : 3 }));
+      lines.push(...buildPortfolioWatchlistStatusLines(watchlist, { limitPerStatus: wantsWatchlist ? 5 : 3, managerRankings }));
     } else {
       lines.push("暂无自选基金。下一次盘前观察、今日操作或周总结会开始沉淀候选池。");
     }
