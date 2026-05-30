@@ -2789,6 +2789,10 @@ const requiredPatterns = [
     message: "admin manager ranking board must keep health, digest, priority queue, and selected list inside a bounded terminal stage."
   },
   {
+    pattern: /(?=[\s\S]*buildPortfolioCustomerActionCrossCheck[\s\S]*supportingEvidence[\s\S]*constraintEvidence)(?=[\s\S]*buildPortfolioCustomerActionLeaderboardStatusLines[\s\S]*交叉验证)(?=[\s\S]*renderManagerCustomerActionCrossCheck[\s\S]*ranking-action-crosscheck)/,
+    message: "customer action leaderboards must show cross-ranking validation and constraints, not only ranks and reasons."
+  },
+  {
     pattern: /getDefaultManagerRankingFilter[\s\S]{0,900}priorityQueue[\s\S]{0,900}listId/,
     message: "admin manager ranking boards must default to the highest-priority ranking lane instead of expanding all lists."
   },

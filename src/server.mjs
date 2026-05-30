@@ -7976,7 +7976,8 @@ function buildPortfolioCustomerActionLeaderboardStatusLines(board = {}) {
     const reviewWindow = shortenPortfolioCustomerText(top?.reviewWindow || "", 40);
     const trigger = shortenPortfolioCustomerText(top?.trigger || "", 54);
     const invalidation = shortenPortfolioCustomerText(top?.invalidation || "", 54);
-    lines.push(`- ${lane.title || "行动榜"}：${subject ? `${subject}${action}` : "暂无第一对象"}${reason ? `。原因：${reason}` : ""}${nextStep ? `。下一步：${nextStep}` : ""}${reviewWindow ? `。复核期限：${reviewWindow}` : ""}${trigger ? `。触发：${trigger}` : ""}${invalidation ? `。失效/降级：${invalidation}` : ""}`);
+    const crossCheck = shortenPortfolioCustomerText(top?.crossCheckSummary || "", 66);
+    lines.push(`- ${lane.title || "行动榜"}：${subject ? `${subject}${action}` : "暂无第一对象"}${reason ? `。原因：${reason}` : ""}${nextStep ? `。下一步：${nextStep}` : ""}${crossCheck ? `。交叉验证：${crossCheck}` : ""}${reviewWindow ? `。复核期限：${reviewWindow}` : ""}${trigger ? `。触发：${trigger}` : ""}${invalidation ? `。失效/降级：${invalidation}` : ""}`);
   }
   return lines;
 }
@@ -11617,6 +11618,7 @@ function buildPortfolioCustomerActionLeaderboardItem(item = {}, context = {}) {
   const reason = shortenPortfolioCustomerText(item.reason || matrixItem.reason || alertItem.reason || queueItem.reason || "", 72);
   const nextStep = shortenPortfolioCustomerText(item.nextStep || matrixItem.nextStep || alertItem.nextStep || queueItem.nextStep || context.def?.purpose || "", 72);
   const boundary = buildPortfolioCustomerActionBoundary(laneId, item, { queueItem, matrixItem, alertItem });
+  const crossCheck = buildPortfolioCustomerActionCrossCheck(laneId, { item, queueItem, matrixItem, alertItem });
   return {
     code: item.code || "",
     name: item.name || "",
@@ -11627,6 +11629,9 @@ function buildPortfolioCustomerActionLeaderboardItem(item = {}, context = {}) {
     reviewWindow: boundary.reviewWindow,
     trigger: boundary.trigger,
     invalidation: boundary.invalidation,
+    crossCheckSummary: crossCheck.summary,
+    supportingEvidence: crossCheck.supportingEvidence,
+    constraintEvidence: crossCheck.constraintEvidence,
     score: sourceScore,
     queueRank: queueItem.queueRank || null,
     listTitle: queueItem.listTitle || alertItem.laneTitle || "",
@@ -11637,6 +11642,59 @@ function buildPortfolioCustomerActionLeaderboardItem(item = {}, context = {}) {
       queueItem.listTitle || "",
       ...(item.tags || [])
     ]).slice(0, 4)
+  };
+}
+
+function buildPortfolioCustomerActionCrossCheck(laneId = "", context = {}) {
+  const queueItem = context.queueItem || {};
+  const matrixItem = context.matrixItem || {};
+  const alertItem = context.alertItem || {};
+  const cells = matrixItem.cells || {};
+  const supporting = [];
+  const constraints = [];
+  const pushCell = (target, label, cell) => {
+    if (!cell) return;
+    const value = shortenPortfolioCustomerText(cell.action || cell.text || cell.listTitle || "", 34);
+    if (value) target.push(`${label}：${value}`);
+  };
+  if (queueItem.listTitle) {
+    supporting.push(`优先队列：${queueItem.listTitle}${queueItem.queueRank ? `#${queueItem.queueRank}` : ""}`);
+  }
+  if (laneId === "sell" || laneId === "avoid") {
+    pushCell(supporting, "风险", cells.risk);
+    pushCell(supporting, "数据", cells.data);
+    pushCell(constraints, "买点", cells.buy);
+    pushCell(constraints, "板块", cells.sector);
+  } else if (laneId === "data") {
+    pushCell(supporting, "数据", cells.data);
+    pushCell(supporting, "风险", cells.risk);
+    pushCell(constraints, "买点", cells.buy);
+    if (!constraints.length) constraints.push("证据未补齐前不进入买入金额");
+  } else {
+    pushCell(supporting, "买点", cells.buy);
+    pushCell(supporting, "板块/质量", cells.sector);
+    pushCell(constraints, "风险", cells.risk);
+    pushCell(constraints, "数据/费率", cells.data);
+  }
+  if (alertItem.laneTitle) {
+    const alertText = shortenPortfolioCustomerText(alertItem.action || alertItem.reason || "", 34);
+    const value = alertText ? `预警：${alertItem.laneTitle} ${alertText}` : `预警：${alertItem.laneTitle}`;
+    if (laneId === "buy" || laneId === "wait") {
+      constraints.push(value);
+    } else {
+      supporting.push(value);
+    }
+  }
+  const supportingEvidence = [...new Set(supporting.filter(Boolean))].slice(0, 3);
+  const constraintEvidence = [...new Set(constraints.filter(Boolean))].slice(0, 3);
+  const summaryParts = [
+    supportingEvidence.length ? `支持=${supportingEvidence.join(" / ")}` : "支持=暂无跨榜单共振",
+    constraintEvidence.length ? `约束=${constraintEvidence.join(" / ")}` : "约束=暂无硬性冲突"
+  ];
+  return {
+    summary: shortenPortfolioCustomerText(summaryParts.join("；"), 110),
+    supportingEvidence,
+    constraintEvidence
   };
 }
 

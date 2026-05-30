@@ -2330,6 +2330,7 @@ function renderManagerCustomerActionLeaderboardItem(item = {}) {
       </div>
       <p>${escapeHtml(item.reason || item.action || "等待经理复核。")}</p>
       <small>${escapeHtml(item.nextStep || "进入对应工作区查看边界。")}</small>
+      ${renderManagerCustomerActionCrossCheck(item)}
       <div class="ranking-action-boundary">
         ${item.reviewWindow ? `<span>复核：${escapeHtml(item.reviewWindow)}</span>` : ""}
         ${item.trigger ? `<span>触发：${escapeHtml(item.trigger)}</span>` : ""}
@@ -2340,6 +2341,19 @@ function renderManagerCustomerActionLeaderboardItem(item = {}) {
         ${code ? `<button type="button" class="ranking-detail-link" data-focus-watchlist-code="${escapeHtml(code)}">自选详情</button>` : ""}
       </footer>
     </article>
+  `;
+}
+
+function renderManagerCustomerActionCrossCheck(item = {}) {
+  const supporting = Array.isArray(item.supportingEvidence) ? item.supportingEvidence : [];
+  const constraints = Array.isArray(item.constraintEvidence) ? item.constraintEvidence : [];
+  if (!supporting.length && !constraints.length && !item.crossCheckSummary) return "";
+  return `
+    <div class="ranking-action-crosscheck">
+      ${supporting.length ? `<span>验证：${escapeHtml(supporting.join(" / "))}</span>` : ""}
+      ${constraints.length ? `<span>约束：${escapeHtml(constraints.join(" / "))}</span>` : ""}
+      ${!supporting.length && !constraints.length ? `<span>${escapeHtml(item.crossCheckSummary || "")}</span>` : ""}
+    </div>
   `;
 }
 

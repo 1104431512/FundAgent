@@ -358,11 +358,13 @@ assert(decisionSummaryLines.includes("客户决策摘要") && decisionSummaryLin
 assert(rankingBoard.customerActionLeaderboard?.lanes?.length === 5, "customer action leaderboard must split buy, wait, avoid, sell, and data into separate ranked lanes");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "sell")?.items.some((item) => item.code === "008327" && item.rank === 1), "customer action leaderboard must rank urgent sell/de-risk positions in the sell lane");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.items.every((item) => item.rank && item.reason && item.nextStep && item.reviewWindow && item.trigger && item.invalidation), "customer action leaderboard buy lane items must be ranked with reasons, next steps, review windows, triggers, and invalidation boundaries");
+assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.items.every((item) => item.crossCheckSummary && item.supportingEvidence?.length && Array.isArray(item.constraintEvidence)), "customer action leaderboard buy lane items must expose cross-ranking supporting evidence and unresolved constraints");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "avoid")?.items.some((item) => avoidActionCodes.includes(item.code)), "customer action leaderboard must rank avoid candidates separately from buy candidates");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "data")?.items.some((item) => dataActionCodes.includes(item.code)), "customer action leaderboard must rank data blockers as their own evidence lane");
 const leaderboardStatusLines = manager.buildPortfolioCustomerActionLeaderboardStatusLines(rankingBoard.customerActionLeaderboard).join("\n");
 assert(leaderboardStatusLines.includes("客户行动排行") && leaderboardStatusLines.includes("卖出/减仓榜") && leaderboardStatusLines.includes("补证据榜"), "portfolio status replies must translate customer action leaderboards into readable action-ranked lines");
 assert(leaderboardStatusLines.includes("复核期限：") && leaderboardStatusLines.includes("触发：") && leaderboardStatusLines.includes("失效/降级："), "portfolio status replies must include review windows, triggers, and invalidation boundaries for action leaderboards");
+assert(leaderboardStatusLines.includes("交叉验证：") && leaderboardStatusLines.includes("支持="), "portfolio status replies must show cross-ranking validation instead of action ranks alone");
 const actionDeckLines = manager.buildPortfolioCustomerActionDeckStatusLines(rankingBoard.customerActionDeck).join("\n");
 assert(actionDeckLines.includes("买入理由："), "customer action deck status must explain why a fund can be bought instead of using a generic reason label");
 assert(actionDeckLines.includes("加备选理由："), "customer action deck status must explain why a fund belongs in backup/watch instead of only saying wait");
@@ -1608,8 +1610,10 @@ assert(adminSource.includes("renderManagerCustomerDecisionSummary"), "admin mana
 assert(adminStyleSource.includes("ranking-decision-summary") && adminStyleSource.includes("portfolio-decision-summary"), "admin UI must style customer decision summaries in both overview and full ranking terminal");
 assert(adminSource.includes("renderManagerCustomerActionLeaderboard"), "admin manager ranking board must render customer action leaderboards inside the ranking terminal");
 assert(adminSource.includes("ranking-action-boundary") && adminSource.includes("复核：") && adminSource.includes("触发：") && adminSource.includes("失效："), "admin manager ranking board must render action leaderboard review windows, triggers, and invalidation boundaries");
+assert(adminSource.includes("renderManagerCustomerActionCrossCheck") && adminSource.includes("ranking-action-crosscheck") && adminSource.includes("验证：") && adminSource.includes("约束："), "admin manager ranking board must render cross-ranking validation and unresolved constraints for customer action items");
 assert(adminStyleSource.includes("ranking-action-leaderboard") && adminStyleSource.includes("portfolio-action-leaderboard"), "admin UI must style customer action leaderboards in both overview and full ranking terminal");
 assert(adminStyleSource.includes("ranking-action-boundary"), "admin UI must style action leaderboard execution boundaries clearly");
+assert(adminStyleSource.includes("ranking-action-crosscheck"), "admin UI must style action leaderboard cross-check evidence clearly");
 assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must style customer-facing ranking digest as a first-class panel");
 assert(adminStyleSource.includes("focused-from-ranking"), "admin UI must highlight watchlist cards opened from customer digest items");
 assert(adminStyleSource.includes("watchlist-ranking-refs"), "admin UI must style ranking citations inside watchlist fund details");

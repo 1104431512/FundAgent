@@ -1980,6 +1980,22 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   gap: 4px;
 }
 
+.ranking-action-crosscheck {
+  display: grid;
+  gap: 4px;
+}
+
+.ranking-action-crosscheck span {
+  display: block;
+  padding: 5px 7px;
+  border-radius: 7px;
+  color: #1f4a3a;
+  background: #eff8f3;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .ranking-action-boundary span {
   display: block;
   padding: 5px 7px;
