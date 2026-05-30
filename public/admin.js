@@ -12,6 +12,7 @@ let currentSkills = [];
 let portfolioPollTimer = null;
 let portfolioPollFailures = 0;
 let currentPortfolio = null;
+let currentDeployment = null;
 let activeManagerRankingFilter = "";
 let managerRankingFilterInitialized = false;
 let activePortfolioView = "overview";
@@ -474,8 +475,10 @@ async function loadStats() {
     runtime: stats.release || {},
     latest: {}
   };
+  currentDeployment = deployment;
   const release = stats.release || {};
   renderRuntimeTerminal(stats, deployment);
+  renderPortfolioDeploymentStatus(deployment);
   renderRuntimeDiagnostics(stats.diagnostics);
   document.querySelector("#statsOutput").textContent = JSON.stringify(
     {
@@ -718,6 +721,25 @@ function getDeploymentTone(deployment = null) {
   return "warn";
 }
 
+function renderPortfolioDeploymentStatus(deployment = currentDeployment) {
+  const card = document.querySelector("#portfolioDeploymentCard");
+  if (!card) return;
+  const tone = getDeploymentTone(deployment);
+  card.className = `portfolio-deployment-status ${tone}`;
+  setText("#portfolioDeploymentStatus", formatDeploymentStatus(deployment));
+  setText("#portfolioDeploymentHint", formatDeploymentMeta(deployment));
+  const rail = document.querySelector("#portfolioRailDeploymentStatus");
+  if (rail) {
+    rail.className = `portfolio-rail-deployment ${tone}`;
+    rail.textContent = deployment?.status === "current"
+      ? `最新 ${deployment.runtime?.shortCommit || ""}`.trim()
+      : deployment?.status === "stale"
+        ? `旧版 ${deployment.runtime?.shortCommit || ""}`.trim()
+        : "版本待确认";
+    rail.title = formatDeploymentMeta(deployment);
+  }
+}
+
 function renderRuntimeDiagnostics(diagnostics = {}) {
   const list = Array.isArray(diagnostics.items) ? diagnostics.items : [];
   const target = document.querySelector("#runtimeDiagnostics");
@@ -762,6 +784,7 @@ async function loadPortfolio() {
       : "未绑定"
   );
   setText("#portfolioRetention", `${portfolio.retentionDays || 90} 天`);
+  renderPortfolioDeploymentStatus(currentDeployment);
   renderPortfolioDashboard(portfolio);
   renderManagerRankings(portfolio.managerRankings || {});
   renderOrders(portfolio.activeOrders || []);

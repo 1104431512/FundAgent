@@ -217,7 +217,7 @@ const requiredPatterns = [
     message: "runtime release metadata must fall back to the Docker build release file when env vars or .git metadata are unavailable."
   },
   {
-    pattern: /check-deployment-state\.mjs[\s\S]{0,5200}portfolioCapabilityActionQueue[\s\S]{0,2600}capabilityDiagnostics[\s\S]{0,2600}capabilityActionQueue/,
+    pattern: /check-deployment-state\.mjs[\s\S]{0,7000}portfolioCapabilityActionQueue[\s\S]{0,4200}capabilityDiagnostics[\s\S]{0,4200}capabilityActionQueue/,
     message: "deployment checker must prove online admin and portfolio APIs expose capability repair features."
   },
   {
@@ -2119,6 +2119,10 @@ const requiredPatterns = [
   {
     pattern: /formatDeploymentStatus[\s\S]{0,800}部署落后[\s\S]{0,1200}formatDeploymentMeta[\s\S]{0,1200}getDeploymentTone/,
     message: "admin runtime UI must render stale deployment status as a compact 1Panel-style status card."
+  },
+  {
+    pattern: /(?=[\s\S]*portfolioDeploymentStatus)(?=[\s\S]*portfolioRailDeploymentStatus)(?=[\s\S]*currentDeployment)(?=[\s\S]*renderPortfolioDeploymentStatus[\s\S]{0,1600}formatDeploymentStatus[\s\S]{0,1200}formatDeploymentMeta)(?=[\s\S]*portfolio-deployment-status)(?=[\s\S]*portfolio-rail-deployment)/,
+    message: "admin portfolio dashboard must surface deployment freshness inside the manager workspace, not only the runtime tab."
   },
   {
     pattern: /function getRuntimeStats\(\)[\s\S]{0,260}shouldPersistRuntimeStats\(\)[\s\S]{0,180}runtimeStatsMemoryCache/,

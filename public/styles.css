@@ -1030,6 +1030,39 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   line-height: 1.3;
 }
 
+.portfolio-command-panel .portfolio-deployment-status {
+  border-left: 4px solid #9fb0bf;
+}
+
+.portfolio-command-panel .portfolio-deployment-status.ok {
+  border-left-color: var(--ok);
+  background: #f2fbf7;
+}
+
+.portfolio-command-panel .portfolio-deployment-status.warn {
+  border-left-color: var(--warn);
+  background: #fff9ec;
+}
+
+.portfolio-command-panel .portfolio-deployment-status.bad {
+  border-left-color: var(--danger);
+  background: #fff7f6;
+}
+
+.portfolio-command-panel .portfolio-deployment-status small {
+  grid-column: 1 / -1;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  margin-top: 2px;
+  color: #5f6f7d;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.35;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
 .portfolio-terminal-shell {
   --portfolio-workspace-height: 100%;
   display: grid;
@@ -1081,6 +1114,39 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   font-size: 12px;
   line-height: 1.25;
   overflow-wrap: anywhere;
+}
+
+.portfolio-rail-deployment {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: #4b5f70;
+  background: #e9f0f5;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portfolio-rail-deployment.ok {
+  color: #0f5132;
+  background: #dff3e8;
+}
+
+.portfolio-rail-deployment.warn {
+  color: #7a4b00;
+  background: #fff2cc;
+}
+
+.portfolio-rail-deployment.bad {
+  color: #8f1d16;
+  background: #ffe2df;
 }
 
 .portfolio-terminal-stage {
