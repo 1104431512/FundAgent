@@ -1241,11 +1241,43 @@ function renderPortfolioRankingRadar(board = {}) {
       <button type="button" class="secondary" data-portfolio-view-target="rankings">进入经理榜单</button>
     </div>
     ${renderPortfolioCustomerDecisionSummary(decisionSummary)}
+    ${renderPortfolioCustomerActionLeaderboard(board.customerActionLeaderboard || {})}
     ${renderPortfolioRankingCommandStrip(command)}
     <div class="portfolio-ranking-radar-grid">
       ${groups.map((group) => renderPortfolioRankingRadarGroup(group, group.items || digest[group.key] || [])).join("")}
     </div>
     ${hasPriorityItems ? renderPortfolioRankingRadarPriority(priorityQueue) : ""}
+  `;
+}
+
+function renderPortfolioCustomerActionLeaderboard(board = {}) {
+  const lanes = Array.isArray(board.lanes) ? board.lanes.filter((lane) => Number(lane.count || 0) > 0) : [];
+  if (!lanes.length) return "";
+  return `
+    <section class="portfolio-action-leaderboard" aria-label="客户行动排行">
+      <div class="portfolio-action-leaderboard-head">
+        <div>
+          <span>${escapeHtml(board.title || "客户行动排行")}</span>
+          <strong>${escapeHtml(board.summary || "把买、等、避、卖和补证据分开排队。")}</strong>
+        </div>
+        <button type="button" class="ranking-detail-link" data-portfolio-view-target="rankings">完整榜单</button>
+      </div>
+      <div class="portfolio-action-leaderboard-grid">
+        ${lanes.map(renderPortfolioCustomerActionLeaderboardLane).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderPortfolioCustomerActionLeaderboardLane(lane = {}) {
+  const top = Array.isArray(lane.items) ? lane.items[0] : null;
+  return `
+    <button type="button" class="portfolio-action-leaderboard-lane portfolio-action-leaderboard-${escapeHtml(lane.id || lane.tone || "watch")}" data-portfolio-view-target="${escapeHtml(lane.target || "rankings")}">
+      <span>${escapeHtml(lane.title || "行动排行")}</span>
+      <strong>${escapeHtml(top ? `${top.code || ""} ${top.name || ""}`.trim() : `${lane.count || 0} 项`)}</strong>
+      <small>${escapeHtml(top?.reason || lane.purpose || "查看对应行动线。")}</small>
+      <em>${escapeHtml(top?.action || lane.topAction || "复核")}</em>
+    </button>
   `;
 }
 
@@ -2097,6 +2129,7 @@ function renderManagerRankings(board = {}) {
         <div class="ranking-detail-stage">
           ${renderManagerRankingLensGuide(board, lists)}
           ${renderManagerCustomerDecisionSummary(board.customerDecisionSummary || {})}
+          ${renderManagerCustomerActionLeaderboard(board.customerActionLeaderboard || {})}
           ${renderManagerRankingActionDeck(board.customerActionDeck || {})}
           <div class="ranking-list-stage">
             ${lists.map(renderManagerRankingList).join("")}
@@ -2236,6 +2269,61 @@ function renderManagerCustomerDecisionSummary(summary = {}) {
         </div>
       ` : ""}
     </section>
+  `;
+}
+
+function renderManagerCustomerActionLeaderboard(board = {}) {
+  const lanes = Array.isArray(board.lanes) ? board.lanes : [];
+  if (!lanes.length) return "";
+  return `
+    <section class="ranking-action-leaderboard">
+      <div class="ranking-action-leaderboard-head">
+        <div>
+          <strong>${escapeHtml(board.title || "客户行动排行")}</strong>
+          <small>${escapeHtml(board.summary || "按买入、等待、回避、卖出和补证据拆开排序。")}</small>
+        </div>
+      </div>
+      <div class="ranking-action-leaderboard-grid">
+        ${lanes.map(renderManagerCustomerActionLeaderboardLane).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderManagerCustomerActionLeaderboardLane(lane = {}) {
+  const items = Array.isArray(lane.items) ? lane.items : [];
+  return `
+    <section class="ranking-action-leaderboard-lane ranking-action-leaderboard-${escapeHtml(lane.id || lane.tone || "watch")}">
+      <div class="ranking-action-leaderboard-lane-head">
+        <div>
+          <strong>${escapeHtml(lane.title || "行动排行")}</strong>
+          <small>${escapeHtml(lane.purpose || "查看这条行动线的排序。")}</small>
+        </div>
+        <span>${escapeHtml(String(lane.count || 0))}</span>
+      </div>
+      <div class="ranking-action-leaderboard-items">
+        ${items.length ? items.slice(0, 5).map(renderManagerCustomerActionLeaderboardItem).join("") : `<div class="compact-empty">${escapeHtml(lane.purpose || "暂无触发项。")}</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderManagerCustomerActionLeaderboardItem(item = {}) {
+  const code = String(item.code || "").trim();
+  const badges = Array.isArray(item.badges) ? item.badges : [];
+  return `
+    <article class="ranking-action-leaderboard-item">
+      <div>
+        <b>${escapeHtml(item.rank ? `#${item.rank}` : "-")}</b>
+        <strong>${escapeHtml(code ? `${code} ${item.name || ""}`.trim() : item.name || "待复核对象")}</strong>
+      </div>
+      <p>${escapeHtml(item.reason || item.action || "等待经理复核。")}</p>
+      <small>${escapeHtml(item.nextStep || "进入对应工作区查看边界。")}</small>
+      <footer>
+        ${badges.slice(0, 4).map((badge) => `<em>${escapeHtml(badge)}</em>`).join("")}
+        ${code ? `<button type="button" class="ranking-detail-link" data-focus-watchlist-code="${escapeHtml(code)}">自选详情</button>` : ""}
+      </footer>
+    </article>
   `;
 }
 

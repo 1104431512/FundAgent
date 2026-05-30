@@ -355,6 +355,11 @@ assert(rankingBoard.customerDecisionSummary?.lines?.some((line) => line.includes
 assert(rankingBoard.customerDecisionSummary?.lines?.some((line) => line.includes("先补证据") && dataActionCodes.some((code) => line.includes(code))), "customer decision summary must translate data blockers into a customer-readable evidence line");
 const decisionSummaryLines = manager.buildPortfolioCustomerDecisionSummaryStatusLines(rankingBoard.customerDecisionSummary).join("\n");
 assert(decisionSummaryLines.includes("客户决策摘要") && decisionSummaryLines.includes("先处理卖出/减仓") && decisionSummaryLines.includes("可小仓复核"), "portfolio status replies must show the customer decision summary before detailed action cards");
+assert(rankingBoard.customerActionLeaderboard?.lanes?.length === 5, "customer action leaderboard must split buy, wait, avoid, sell, and data into separate ranked lanes");
+assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "sell")?.items.some((item) => item.code === "008327" && item.rank === 1), "customer action leaderboard must rank urgent sell/de-risk positions in the sell lane");
+assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.items.every((item) => item.rank && item.reason && item.nextStep), "customer action leaderboard buy lane items must be ranked with reasons and next steps");
+assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "avoid")?.items.some((item) => avoidActionCodes.includes(item.code)), "customer action leaderboard must rank avoid candidates separately from buy candidates");
+assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "data")?.items.some((item) => dataActionCodes.includes(item.code)), "customer action leaderboard must rank data blockers as their own evidence lane");
 const actionDeckLines = manager.buildPortfolioCustomerActionDeckStatusLines(rankingBoard.customerActionDeck).join("\n");
 assert(actionDeckLines.includes("买入理由："), "customer action deck status must explain why a fund can be bought instead of using a generic reason label");
 assert(actionDeckLines.includes("加备选理由："), "customer action deck status must explain why a fund belongs in backup/watch instead of only saying wait");
@@ -1470,6 +1475,7 @@ assert(adminSource.includes("renderPortfolioWorkspaceCards"), "admin portfolio o
 assert(adminHtmlSource.includes("portfolioRankingRadar"), "admin portfolio overview must expose a compact ranking radar");
 assert(adminSource.includes("renderPortfolioRankingRadar") && adminSource.includes("customerActionDeck"), "admin portfolio overview must render customer action cards from the manager ranking board");
 assert(adminSource.includes("renderPortfolioCustomerDecisionSummary") && adminSource.includes("customerDecisionSummary"), "admin portfolio overview must render customer decision summary before detailed action cards");
+assert(adminSource.includes("renderPortfolioCustomerActionLeaderboard") && adminSource.includes("customerActionLeaderboard"), "admin portfolio overview must render customer action leaderboards before detailed ranking lists");
 assert(adminHtmlSource.includes("今日行动中心") && adminHtmlSource.includes("portfolio-launch-actions"), "admin portfolio overview must show a nonblank action center before data finishes loading");
 assert(adminSource.includes("portfolio-launch-center") && adminSource.includes('data-portfolio-view-target="opportunities"'), "admin portfolio empty action radar must guide users to runner, opportunities, and rankings");
 assert(adminSource.includes("renderPortfolioRankingCommandStrip") && adminSource.includes("今日买卖指挥"), "admin portfolio overview must lift ranking signals into a first-scan buy/sell command strip");
@@ -1593,6 +1599,8 @@ assert(adminStyleSource.includes("ranking-terminal-body") && adminStyleSource.in
 assert(adminStyleSource.includes("ranking-action-deck") && adminStyleSource.includes("ranking-action-card-sell"), "admin manager ranking board must style customer action cards with distinct buy, wait, avoid, sell, and data lanes");
 assert(adminSource.includes("renderManagerCustomerDecisionSummary"), "admin manager ranking board must render the customer decision summary inside the ranking terminal");
 assert(adminStyleSource.includes("ranking-decision-summary") && adminStyleSource.includes("portfolio-decision-summary"), "admin UI must style customer decision summaries in both overview and full ranking terminal");
+assert(adminSource.includes("renderManagerCustomerActionLeaderboard"), "admin manager ranking board must render customer action leaderboards inside the ranking terminal");
+assert(adminStyleSource.includes("ranking-action-leaderboard") && adminStyleSource.includes("portfolio-action-leaderboard"), "admin UI must style customer action leaderboards in both overview and full ranking terminal");
 assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must style customer-facing ranking digest as a first-class panel");
 assert(adminStyleSource.includes("focused-from-ranking"), "admin UI must highlight watchlist cards opened from customer digest items");
 assert(adminStyleSource.includes("watchlist-ranking-refs"), "admin UI must style ranking citations inside watchlist fund details");

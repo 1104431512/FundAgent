@@ -1750,7 +1750,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "经理多角度榜单（系统计算，必须先看榜单再决定）：",
     JSON.stringify(compactManagerRankings, null, 2),
-    "客户视角要求：回答客户时优先使用 customerDecisionSummary、customerActionDeck、alertCenter 和 customerDigest：customerDecisionSummary 决定开头先讲哪几件事；customerActionDeck 决定今天给客户先讲可买复核、等待触发、先回避、卖出/减仓、先补数据；alertCenter 决定今天必须先处理的买入复核、卖出风控、数据补证和用户持仓提醒；customerDigest 用于补充可买、观察、回避。先讲原因和动作，再补必要数字；不要把所有榜单指标原样堆给客户。",
+    "客户视角要求：回答客户时优先使用 customerDecisionSummary、customerActionLeaderboard、customerActionDeck、alertCenter 和 customerDigest：customerDecisionSummary 决定开头先讲哪几件事；customerActionLeaderboard 决定买入优先、等待触发、暂不买、卖出/减仓、先补证据各自的行动排行；customerActionDeck 决定今天给客户先讲可买复核、等待触发、先回避、卖出/减仓、先补数据；alertCenter 决定今天必须先处理的买入复核、卖出风控、数据补证和用户持仓提醒；customerDigest 用于补充可买、观察、回避。先讲原因和动作，再补必要数字；不要把所有榜单指标原样堆给客户。",
     "要求：榜单是本轮决策前置清单。必须先处理 alertCenter 每个 lane 的前2项和 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、cash_redeployment、position_sizing、quality_score、manager_stability、portfolio_fit、theme_allocation、rotation_opportunity、chase_risk、drawdown_defense、data_confidence、fee_suitability、replacement_choice、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。主题配置榜必须先回答哪个主题值得看，再选代表基金，不得把同主题多个基金全买；回撤防线榜必须先处理利润回吐、历史最大回撤和单仓风险，不得用补仓摊薄替代风控；数据体检榜出现净值过期、份额/费率缺失、持仓缺口时不得给买入执行。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
@@ -8950,6 +8950,12 @@ function buildPortfolioRankingBoard(db = {}) {
     decisionMatrix,
     priorityQueue
   });
+  const customerActionLeaderboard = buildPortfolioRankingCustomerActionLeaderboard({
+    customerActionDeck,
+    alertCenter,
+    decisionMatrix,
+    priorityQueue
+  });
   return {
     updatedAt: new Date().toISOString(),
     lists,
@@ -8959,8 +8965,9 @@ function buildPortfolioRankingBoard(db = {}) {
     customerDigest,
     customerActionDeck,
     customerDecisionSummary,
+    customerActionLeaderboard,
     health: buildPortfolioRankingBoardHealth({ watchlist, positions, userPortfolios, lists }),
-    summary: `${lists.map((list) => `${list.title}${list.items.length}只`).join("，")}；预警${alertCenter.items.length}项；矩阵${decisionMatrix.items.length}只；今日优先${priorityQueue.length}项；行动牌${customerActionDeck.cards.filter((card) => card.count).length}类；摘要${customerDecisionSummary.lines.length}条`
+    summary: `${lists.map((list) => `${list.title}${list.items.length}只`).join("，")}；预警${alertCenter.items.length}项；矩阵${decisionMatrix.items.length}只；今日优先${priorityQueue.length}项；行动牌${customerActionDeck.cards.filter((card) => card.count).length}类；摘要${customerDecisionSummary.lines.length}条；行动榜${customerActionLeaderboard.lanes.filter((lane) => lane.count).length}类`
   };
 }
 
@@ -11519,6 +11526,96 @@ function getPortfolioCustomerDecisionSummaryTarget(cardId = "") {
   return "rankings";
 }
 
+function buildPortfolioRankingCustomerActionLeaderboard({ customerActionDeck = {}, alertCenter = {}, decisionMatrix = {}, priorityQueue = [] } = {}) {
+  const cards = Array.isArray(customerActionDeck.cards) ? customerActionDeck.cards : [];
+  const cardById = new Map(cards.map((card) => [String(card.id || ""), card]));
+  const queueByCode = new Map((priorityQueue || []).map((item) => [String(item.code || ""), item]));
+  const matrixByCode = new Map((decisionMatrix.items || []).map((item) => [String(item.code || ""), item]));
+  const alertByCode = new Map((alertCenter.items || []).map((item) => [String(item.code || ""), item]));
+  const defs = [
+    { id: "sell", title: "卖出/减仓榜", purpose: "先处理回吐、止盈、止损和客户真实持仓卖点。", target: "risk" },
+    { id: "buy", title: "买入复核榜", purpose: "只排接近买点、适合小仓或现金再部署的对象。", target: "opportunities" },
+    { id: "wait", title: "等待触发榜", purpose: "值得加入备选，但必须等回调、转强或证据补齐。", target: "watchlist" },
+    { id: "avoid", title: "暂不买榜", purpose: "高位、追涨、拥挤或风险冲突时先排除。", target: "alerts" },
+    { id: "data", title: "补证据榜", purpose: "净值、费率、份额、持仓或来源缺口没补齐前不执行买入。", target: "data" }
+  ];
+  const lanes = defs.map((def) => {
+    const card = cardById.get(def.id) || {};
+    const items = uniquePortfolioCustomerActionItems(card.items || [], 6)
+      .map((item) => buildPortfolioCustomerActionLeaderboardItem(item, {
+        def,
+        queueItem: queueByCode.get(String(item.code || "")) || null,
+        matrixItem: matrixByCode.get(String(item.code || "")) || null,
+        alertItem: alertByCode.get(String(item.code || "")) || null
+      }))
+      .sort(comparePortfolioCustomerActionLeaderboardItems)
+      .map((item, index) => ({ ...item, rank: index + 1 }))
+      .slice(0, 5);
+    return {
+      id: def.id,
+      title: def.title,
+      purpose: def.purpose,
+      target: def.target,
+      tone: card.tone || def.id,
+      count: items.length,
+      topAction: items[0]?.action || card.nextStep || def.purpose,
+      items
+    };
+  });
+  return {
+    title: "客户行动排行",
+    summary: lanes
+      .filter((lane) => lane.count)
+      .map((lane) => `${lane.title}${lane.count}项`)
+      .join("，") || "暂无可排序的行动对象；先运行盘前观察或导入客户持仓。",
+    lanes,
+    primaryLane: lanes.find((lane) => lane.count)?.id || "",
+    generatedFrom: ["customerActionDeck", "priorityQueue", "alertCenter", "decisionMatrix"]
+  };
+}
+
+function buildPortfolioCustomerActionLeaderboardItem(item = {}, context = {}) {
+  const queueItem = context.queueItem || {};
+  const matrixItem = context.matrixItem || {};
+  const alertItem = context.alertItem || {};
+  const rankWeight = queueItem.queueRank
+    ? Math.max(0, 18 - Number(queueItem.queueRank || 18))
+    : 0;
+  const sourceScore = round(
+    rankWeight
+      + Math.min(24, Number(queueItem.priorityScore || 0) / 3)
+      + Math.min(16, Number(matrixItem.matrixScore || 0) / 8)
+      + (alertItem.code ? 8 : 0),
+    1
+  );
+  const reason = shortenPortfolioCustomerText(item.reason || matrixItem.reason || alertItem.reason || queueItem.reason || "", 72);
+  const nextStep = shortenPortfolioCustomerText(item.nextStep || matrixItem.nextStep || alertItem.nextStep || queueItem.nextStep || context.def?.purpose || "", 72);
+  return {
+    code: item.code || "",
+    name: item.name || "",
+    userId: item.userId || "",
+    action: item.action || matrixItem.action || queueItem.action || "复核",
+    reason,
+    nextStep,
+    score: sourceScore,
+    queueRank: queueItem.queueRank || null,
+    listTitle: queueItem.listTitle || alertItem.laneTitle || "",
+    target: context.def?.target || getPortfolioCustomerDecisionSummaryTarget(context.def?.id || ""),
+    badges: normalizeStringArray([
+      queueItem.queueRank ? `优先#${queueItem.queueRank}` : "",
+      matrixItem.matrixRank ? `矩阵#${matrixItem.matrixRank}` : "",
+      queueItem.listTitle || "",
+      ...(item.tags || [])
+    ]).slice(0, 4)
+  };
+}
+
+function comparePortfolioCustomerActionLeaderboardItems(a = {}, b = {}) {
+  return Number(a.queueRank || 999) - Number(b.queueRank || 999)
+    || Number(b.score || 0) - Number(a.score || 0)
+    || String(a.code || "").localeCompare(String(b.code || ""));
+}
+
 function buildPortfolioCustomerActionCard({ id = "", tone = "watch", title = "", emptyText = "", summary = "", nextStep = "", items = [] } = {}) {
   const normalizedItems = uniquePortfolioCustomerActionItems(items, 3);
   return {
@@ -11968,6 +12065,20 @@ function compactPortfolioRankingBoardForModel(board = {}) {
       lines: normalizeStringArray(board.customerDecisionSummary.lines).slice(0, 5),
       chips: (board.customerDecisionSummary.chips || []).slice(0, 5),
       evidence: board.customerDecisionSummary.evidence || null
+    } : null,
+    customerActionLeaderboard: board.customerActionLeaderboard ? {
+      title: board.customerActionLeaderboard.title || "",
+      summary: board.customerActionLeaderboard.summary || "",
+      primaryLane: board.customerActionLeaderboard.primaryLane || "",
+      lanes: (board.customerActionLeaderboard.lanes || []).map((lane) => ({
+        id: lane.id || "",
+        title: lane.title || "",
+        purpose: lane.purpose || "",
+        target: lane.target || "",
+        count: Number(lane.count || 0),
+        topAction: lane.topAction || "",
+        items: (lane.items || []).slice(0, 4)
+      }))
     } : null,
     customerDigest: board.customerDigest ? {
       summary: board.customerDigest.summary || "",

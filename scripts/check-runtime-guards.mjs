@@ -1561,8 +1561,8 @@ const requiredPatterns = [
     message: "portfolio decision prompts must force recommendations to cite the manager ranking board."
   },
   {
-    pattern: /客户视角要求[\s\S]{0,700}customerDecisionSummary[\s\S]{0,500}customerActionDeck[\s\S]{0,500}可买复核[\s\S]{0,500}等待触发[\s\S]{0,500}卖出\/减仓[\s\S]{0,500}先补数据/,
-    message: "portfolio decision prompts must make the customer decision summary and action deck the first layer for client-facing buy, wait, avoid, sell, and data guidance."
+    pattern: /客户视角要求[\s\S]{0,700}customerDecisionSummary[\s\S]{0,500}customerActionLeaderboard[\s\S]{0,500}customerActionDeck[\s\S]{0,500}可买复核[\s\S]{0,500}等待触发[\s\S]{0,500}卖出\/减仓[\s\S]{0,500}先补数据/,
+    message: "portfolio decision prompts must make the customer decision summary, action leaderboard, and action deck the first layer for client-facing buy, wait, avoid, sell, and data guidance."
   },
   {
     pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,1900}cash_redeployment[\s\S]{0,500}position_sizing[\s\S]{0,500}quality_score[\s\S]{0,500}manager_stability[\s\S]{0,500}portfolio_fit[\s\S]{0,900}drawdown_defense[\s\S]{0,900}data_confidence[\s\S]{0,900}replacement_choice/,
@@ -2657,6 +2657,10 @@ const requiredPatterns = [
     message: "manager ranking boards must produce and compact a customer decision summary before detailed ranking cards."
   },
   {
+    pattern: /(?=[\s\S]*const customerActionLeaderboard = buildPortfolioRankingCustomerActionLeaderboard)(?=[\s\S]*customerActionLeaderboard[\s\S]{0,700}customerDecisionSummary)(?=[\s\S]*compactPortfolioRankingBoardForModel[\s\S]{0,1500}customerActionLeaderboard)/,
+    message: "manager ranking boards must produce and compact customer action leaderboards by buy, wait, avoid, sell, and data lanes."
+  },
+  {
     pattern: /buildPortfolioRankingCustomerDigest[\s\S]{0,2200}buyReview[\s\S]{0,2200}watchFocus[\s\S]{0,2200}riskAvoid/,
     message: "manager ranking boards must translate multi-angle rankings into customer-facing buy/watch/avoid digest buckets."
   },
@@ -2667,6 +2671,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*function renderPortfolioCustomerDecisionSummary)(?=[\s\S]*customerDecisionSummary)(?=[\s\S]*function renderManagerCustomerDecisionSummary)(?=[\s\S]*ranking-decision-summary)(?=[\s\S]*portfolio-decision-summary)/,
     message: "admin portfolio UI must show customer decision summaries in both the overview radar and full ranking terminal."
+  },
+  {
+    pattern: /(?=[\s\S]*function renderPortfolioCustomerActionLeaderboard)(?=[\s\S]*customerActionLeaderboard)(?=[\s\S]*function renderManagerCustomerActionLeaderboard)(?=[\s\S]*ranking-action-leaderboard)(?=[\s\S]*portfolio-action-leaderboard)/,
+    message: "admin portfolio UI must show customer action leaderboards in both the overview radar and full ranking terminal."
   },
   {
     pattern: /renderManagerRankings/,
