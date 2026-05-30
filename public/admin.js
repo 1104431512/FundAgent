@@ -1276,6 +1276,7 @@ function renderPortfolioRankingRadar(board = {}) {
     </div>
     ${renderPortfolioCustomerDecisionSummary(decisionSummary)}
     ${renderPortfolioCustomerActionLeaderboard(board.customerActionLeaderboard || {})}
+    ${renderPortfolioConsensusRadar(board.consensusRadar || {}, { variant: "portfolio" })}
     ${renderPortfolioRankingCommandStrip(command)}
     <div class="portfolio-ranking-radar-grid">
       ${groups.map((group) => renderPortfolioRankingRadarGroup(group, group.items || digest[group.key] || [])).join("")}
@@ -1311,6 +1312,65 @@ function renderPortfolioCustomerActionLeaderboardLane(lane = {}) {
       <strong>${escapeHtml(top ? `${top.code || ""} ${top.name || ""}`.trim() : `${lane.count || 0} 项`)}</strong>
       <small>${escapeHtml(top?.reason || lane.purpose || "查看对应行动线。")}</small>
       <em>${escapeHtml(top?.reviewWindow || top?.action || lane.topAction || "复核")}</em>
+    </button>
+  `;
+}
+
+function renderPortfolioConsensusRadar(radar = {}, options = {}) {
+  const lanes = Array.isArray(radar.lanes) ? radar.lanes : [];
+  const visibleLanes = lanes.filter((lane) => Number(lane.count || 0) > 0 || Array.isArray(lane.items));
+  if (!visibleLanes.length && !radar.summary) return "";
+  const variant = options.variant === "ranking" ? "ranking" : "portfolio";
+  return `
+    <section class="${variant}-consensus-radar consensus-radar" aria-label="共识雷达">
+      <div class="consensus-radar-head">
+        <div>
+          <span>${escapeHtml(radar.title || "共识雷达")}</span>
+          <strong>${escapeHtml(radar.summary || "把买点、板块、风险、数据四条线对同一基金合并判断。")}</strong>
+        </div>
+        <button type="button" class="ranking-detail-link" data-portfolio-view-target="matrix">决策矩阵</button>
+      </div>
+      <div class="consensus-radar-grid">
+        ${visibleLanes.map(renderPortfolioConsensusRadarLane).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderPortfolioConsensusRadarLane(lane = {}) {
+  const items = Array.isArray(lane.items) ? lane.items : [];
+  return `
+    <section class="consensus-radar-lane consensus-radar-${escapeHtml(lane.tone || lane.id || "watch")}">
+      <div class="consensus-radar-lane-head">
+        <div>
+          <strong>${escapeHtml(lane.title || "共识")}</strong>
+          <small>${escapeHtml(lane.emptyText || "买点、板块、风险、数据合并后的状态。")}</small>
+        </div>
+        <span>${escapeHtml(String(lane.count || items.length || 0))}</span>
+      </div>
+      <div class="consensus-radar-items">
+        ${items.length ? items.slice(0, 4).map(renderPortfolioConsensusRadarItem).join("") : `<div class="compact-empty">${escapeHtml(lane.emptyText || "暂无触发项。")}</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderPortfolioConsensusRadarItem(item = {}) {
+  const code = String(item.code || "").trim();
+  const evidence = item.blockerText || item.constraintText || item.supportText || item.reason || "";
+  return `
+    <button type="button" class="consensus-radar-item" data-focus-watchlist-code="${escapeHtml(code)}">
+      <div>
+        <b>${escapeHtml(item.rank ? `#${item.rank}` : item.matrixRank ? `#${item.matrixRank}` : "-")}</b>
+        <strong>${escapeHtml(code ? `${code} ${item.name || ""}`.trim() : item.name || "复核对象")}</strong>
+      </div>
+      <p>${escapeHtml(item.action || item.verdictLabel || "等待复核")}</p>
+      <small>${escapeHtml(evidence || item.nextStep || "等待经理下一轮交叉验证。")}</small>
+      <footer>
+        ${item.permission ? `<em>${escapeHtml(item.permission)}</em>` : ""}
+        ${Number(item.supportCount || 0) ? `<em>验证${escapeHtml(String(item.supportCount))}</em>` : ""}
+        ${Number(item.blockerCount || 0) ? `<em>阻断${escapeHtml(String(item.blockerCount))}</em>` : ""}
+      </footer>
     </button>
   `;
 }
@@ -2173,6 +2233,7 @@ function renderManagerRankings(board = {}) {
           ${renderManagerRankingLensGuide(board, lists)}
           ${renderManagerCustomerDecisionSummary(board.customerDecisionSummary || {})}
           ${renderManagerCustomerActionLeaderboard(board.customerActionLeaderboard || {})}
+          ${renderPortfolioConsensusRadar(board.consensusRadar || {}, { variant: "ranking" })}
           ${renderManagerRankingActionDeck(board.customerActionDeck || {})}
           <div class="ranking-list-stage">
             ${lists.map(renderManagerRankingList).join("")}

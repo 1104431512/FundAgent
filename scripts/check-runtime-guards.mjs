@@ -2681,6 +2681,10 @@ const requiredPatterns = [
     message: "manager ranking boards must produce and compact customer action leaderboards by buy, wait, avoid, sell, and data lanes."
   },
   {
+    pattern: /(?=[\s\S]*function buildPortfolioRankingConsensusRadar)(?=[\s\S]*consensusRadar)(?=[\s\S]*compactPortfolioRankingBoardForModel[\s\S]*consensusRadar)/,
+    message: "manager ranking boards must produce and compact a cross-list consensus radar."
+  },
+  {
     pattern: /buildPortfolioRankingCustomerDigest[\s\S]{0,2200}buyReview[\s\S]{0,2200}watchFocus[\s\S]{0,2200}riskAvoid/,
     message: "manager ranking boards must translate multi-angle rankings into customer-facing buy/watch/avoid digest buckets."
   },
@@ -2695,6 +2699,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*function renderPortfolioCustomerActionLeaderboard)(?=[\s\S]*customerActionLeaderboard)(?=[\s\S]*function renderManagerCustomerActionLeaderboard)(?=[\s\S]*ranking-action-leaderboard)(?=[\s\S]*portfolio-action-leaderboard)/,
     message: "admin portfolio UI must show customer action leaderboards in both the overview radar and full ranking terminal."
+  },
+  {
+    pattern: /(?=[\s\S]*function renderPortfolioConsensusRadar)(?=[\s\S]*consensusRadar)(?=[\s\S]*consensus-radar-grid)/,
+    message: "admin portfolio UI must show consensus radar lanes in compact manager ranking workspaces."
   },
   {
     pattern: /renderManagerRankings/,

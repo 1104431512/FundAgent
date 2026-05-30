@@ -361,6 +361,10 @@ assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.items.every((item) => item.crossCheckSummary && item.supportingEvidence?.length && Array.isArray(item.constraintEvidence)), "customer action leaderboard buy lane items must expose cross-ranking supporting evidence and unresolved constraints");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "avoid")?.items.some((item) => avoidActionCodes.includes(item.code)), "customer action leaderboard must rank avoid candidates separately from buy candidates");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "data")?.items.some((item) => dataActionCodes.includes(item.code)), "customer action leaderboard must rank data blockers as their own evidence lane");
+assert(rankingBoard.consensusRadar?.lanes?.length === 4, "manager ranking board must build a four-lane consensus radar from decision matrix rows");
+assert(rankingBoard.consensusRadar.lanes.find((lane) => lane.id === "buy")?.items.some((item) => item.supportCount >= 2), "consensus radar buy lane must require cross-list supporting evidence");
+assert(rankingBoard.consensusRadar.lanes.find((lane) => lane.id === "risk")?.items.some((item) => item.blockerText || item.blockerCount), "consensus radar risk lane must expose blocking evidence");
+assert(manager.compactPortfolioRankingBoardForModel(rankingBoard).consensusRadar?.lanes?.length === 4, "manager model context must receive compact consensus radar lanes");
 const leaderboardStatusLines = manager.buildPortfolioCustomerActionLeaderboardStatusLines(rankingBoard.customerActionLeaderboard).join("\n");
 assert(leaderboardStatusLines.includes("客户行动排行") && leaderboardStatusLines.includes("卖出/减仓榜") && leaderboardStatusLines.includes("补证据榜"), "portfolio status replies must translate customer action leaderboards into readable action-ranked lines");
 assert(leaderboardStatusLines.includes("复核期限：") && leaderboardStatusLines.includes("触发：") && leaderboardStatusLines.includes("失效/降级："), "portfolio status replies must include review windows, triggers, and invalidation boundaries for action leaderboards");
@@ -1622,6 +1626,8 @@ assert(adminSource.includes("renderManagerCustomerActionCrossCheck") && adminSou
 assert(adminStyleSource.includes("ranking-action-leaderboard") && adminStyleSource.includes("portfolio-action-leaderboard"), "admin UI must style customer action leaderboards in both overview and full ranking terminal");
 assert(adminStyleSource.includes("ranking-action-boundary"), "admin UI must style action leaderboard execution boundaries clearly");
 assert(adminStyleSource.includes("ranking-action-crosscheck"), "admin UI must style action leaderboard cross-check evidence clearly");
+assert(adminSource.includes("renderPortfolioConsensusRadar") && adminSource.includes("consensusRadar"), "admin manager ranking board must render the cross-list consensus radar in overview and ranking terminal");
+assert(adminStyleSource.includes("consensus-radar") && adminStyleSource.includes("consensus-radar-grid"), "admin UI must style consensus radar lanes as compact terminal entries");
 assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must style customer-facing ranking digest as a first-class panel");
 assert(adminStyleSource.includes("focused-from-ranking"), "admin UI must highlight watchlist cards opened from customer digest items");
 assert(adminStyleSource.includes("watchlist-ranking-refs"), "admin UI must style ranking citations inside watchlist fund details");

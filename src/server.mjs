@@ -8962,6 +8962,7 @@ function buildPortfolioRankingBoard(db = {}) {
   const priorityQueue = buildPortfolioRankingPriorityQueue(lists);
   const customerDigest = buildPortfolioRankingCustomerDigest(lists);
   const decisionMatrix = buildPortfolioRankingDecisionMatrix(lists, priorityQueue);
+  const consensusRadar = buildPortfolioRankingConsensusRadar(decisionMatrix, priorityQueue);
   const alertCenter = buildPortfolioRankingAlertCenter(lists, priorityQueue, decisionMatrix);
   const customerActionDeck = buildPortfolioRankingCustomerActionDeck({
     customerDigest,
@@ -8988,12 +8989,13 @@ function buildPortfolioRankingBoard(db = {}) {
     priorityQueue,
     alertCenter,
     decisionMatrix,
+    consensusRadar,
     customerDigest,
     customerActionDeck,
     customerDecisionSummary,
     customerActionLeaderboard,
     health: buildPortfolioRankingBoardHealth({ watchlist, positions, userPortfolios, lists }),
-    summary: `${lists.map((list) => `${list.title}${list.items.length}只`).join("，")}；预警${alertCenter.items.length}项；矩阵${decisionMatrix.items.length}只；今日优先${priorityQueue.length}项；行动牌${customerActionDeck.cards.filter((card) => card.count).length}类；摘要${customerDecisionSummary.lines.length}条；行动榜${customerActionLeaderboard.lanes.filter((lane) => lane.count).length}类`
+    summary: `${lists.map((list) => `${list.title}${list.items.length}只`).join("，")}；预警${alertCenter.items.length}项；矩阵${decisionMatrix.items.length}只；共识${consensusRadar.items.length}只；今日优先${priorityQueue.length}项；行动牌${customerActionDeck.cards.filter((card) => card.count).length}类；摘要${customerDecisionSummary.lines.length}条；行动榜${customerActionLeaderboard.lanes.filter((lane) => lane.count).length}类`
   };
 }
 
@@ -12052,6 +12054,99 @@ function buildPortfolioRankingDecisionMatrix(lists = [], priorityQueue = []) {
   };
 }
 
+function buildPortfolioRankingConsensusRadar(decisionMatrix = {}, priorityQueue = []) {
+  const queueByCode = new Map((priorityQueue || []).map((item) => [String(item.code || ""), item]));
+  const laneConfigs = [
+    { id: "buy", title: "共识可买", tone: "buy", target: "buy_preparation", emptyText: "暂无买点、板块和数据同时通过的对象。" },
+    { id: "watch", title: "等待触发", tone: "watch", target: "launch_setup", emptyText: "暂无需要等待触发的对象。" },
+    { id: "risk", title: "风险阻断", tone: "risk", target: "chase_risk", emptyText: "暂无被风险榜阻断的对象。" },
+    { id: "data", title: "数据阻断", tone: "data", target: "data_confidence", emptyText: "暂无被数据或费率阻断的对象。" }
+  ];
+  const laneMap = new Map(laneConfigs.map((lane) => [lane.id, { ...lane, items: [] }]));
+  const items = (Array.isArray(decisionMatrix.items) ? decisionMatrix.items : [])
+    .map((item) => buildPortfolioRankingConsensusRadarItem(item, queueByCode.get(String(item.code || ""))))
+    .filter(Boolean)
+    .sort((a, b) => Number(a.laneRank || 99) - Number(b.laneRank || 99)
+      || Number(a.matrixRank || 99) - Number(b.matrixRank || 99)
+      || Number(a.queueRank || 999) - Number(b.queueRank || 999)
+      || String(a.code || "").localeCompare(String(b.code || "")));
+  for (const item of items) {
+    const lane = laneMap.get(item.laneId) || laneMap.get("watch");
+    lane.items.push(item);
+  }
+  const lanes = laneConfigs.map((config) => {
+    const lane = laneMap.get(config.id) || { ...config, items: [] };
+    const cappedItems = lane.items.slice(0, 4).map((item, index) => ({ ...item, rank: index + 1 }));
+    return {
+      ...config,
+      count: lane.items.length,
+      topAction: cappedItems[0]?.action || "",
+      items: cappedItems
+    };
+  });
+  const summary = `共识可买 ${laneMap.get("buy")?.items.length || 0}，等待触发 ${laneMap.get("watch")?.items.length || 0}，风险阻断 ${laneMap.get("risk")?.items.length || 0}，数据阻断 ${laneMap.get("data")?.items.length || 0}`;
+  return {
+    title: "共识雷达",
+    summary,
+    primaryLane: lanes.find((lane) => lane.items.length)?.id || "watch",
+    lanes,
+    items,
+    emptyText: "暂无可形成共识雷达的矩阵对象。"
+  };
+}
+
+function buildPortfolioRankingConsensusRadarItem(item = {}, priority = null) {
+  const verdict = item.verdict || {};
+  const laneId = resolvePortfolioConsensusRadarLane(verdict);
+  const supports = normalizeStringArray(verdict.supports);
+  const blockers = normalizeStringArray(verdict.blockers);
+  const constraints = normalizeStringArray(verdict.constraints);
+  const cells = item.cells || {};
+  const supportCount = supports.length + (cells.buy ? 1 : 0) + (cells.sector ? 1 : 0);
+  const blockerCount = blockers.length;
+  const constraintCount = constraints.length;
+  const supportText = supports[0] || cells.buy?.text || cells.sector?.text || item.reason || "等待经理复核。";
+  const blockerText = blockers[0] || (laneId === "risk" ? cells.risk?.text : laneId === "data" ? cells.data?.text : "") || "";
+  const constraintText = constraints[0] || verdict.nextStep || item.nextStep || "";
+  return {
+    laneId,
+    laneRank: { buy: 1, watch: 2, risk: 3, data: 4 }[laneId] || 9,
+    code: item.code || "",
+    name: item.name || "",
+    matrixRank: item.matrixRank || null,
+    queueRank: item.queueRank || priority?.queueRank || null,
+    tone: verdict.tone || laneId,
+    verdictLabel: verdict.label || item.action || "继续观察",
+    permission: verdict.permission || "",
+    action: formatPortfolioConsensusRadarAction(laneId, verdict),
+    reason: verdict.summary || item.reason || "",
+    supportCount,
+    blockerCount,
+    constraintCount,
+    supportText,
+    blockerText,
+    constraintText,
+    nextStep: verdict.nextStep || item.nextStep || "",
+    tags: normalizeStringArray(item.tags).slice(0, 4)
+  };
+}
+
+function resolvePortfolioConsensusRadarLane(verdict = {}) {
+  const tone = String(verdict.tone || "");
+  const label = `${verdict.label || ""} ${verdict.permission || ""} ${verdict.summary || ""}`;
+  if (tone === "risk" || /风险|追涨|减仓|止盈|卖出/.test(label)) return "risk";
+  if (tone === "data" || /数据|证据|费率|份额|净值|补/.test(label)) return "data";
+  if (tone === "buy" || /可小仓|买入复核|分批/.test(label)) return "buy";
+  return "watch";
+}
+
+function formatPortfolioConsensusRadarAction(laneId = "", verdict = {}) {
+  if (laneId === "buy") return "可小仓复核";
+  if (laneId === "risk") return "先处理风险";
+  if (laneId === "data") return "先补证据";
+  return verdict.label || "等待触发";
+}
+
 function getPortfolioRankingDecisionMatrixGroup(listId = "") {
   if (["decision_synthesis", "buy_preparation", "launch_setup", "cash_redeployment", "position_sizing"].includes(listId)) return "buy";
   if (["theme_allocation", "rotation_opportunity", "holdings_outlook", "quality_score", "manager_stability", "portfolio_fit"].includes(listId)) return "sector";
@@ -12310,6 +12405,31 @@ function compactPortfolioRankingBoardForModel(board = {}) {
         count: Number(lane.count || 0),
         topAction: lane.topAction || "",
         items: (lane.items || []).slice(0, 4)
+      }))
+    } : null,
+    consensusRadar: board.consensusRadar ? {
+      title: board.consensusRadar.title || "",
+      summary: board.consensusRadar.summary || "",
+      primaryLane: board.consensusRadar.primaryLane || "",
+      lanes: (board.consensusRadar.lanes || []).map((lane) => ({
+        id: lane.id || "",
+        title: lane.title || "",
+        tone: lane.tone || "",
+        target: lane.target || "",
+        count: Number(lane.count || 0),
+        topAction: lane.topAction || "",
+        items: (lane.items || []).slice(0, 3).map((item) => ({
+          code: item.code || "",
+          name: item.name || "",
+          action: item.action || "",
+          verdictLabel: item.verdictLabel || "",
+          permission: item.permission || "",
+          reason: item.reason || "",
+          supportText: item.supportText || "",
+          blockerText: item.blockerText || "",
+          constraintText: item.constraintText || "",
+          nextStep: item.nextStep || ""
+        }))
       }))
     } : null,
     customerDigest: board.customerDigest ? {
@@ -27648,7 +27768,9 @@ export {
   buildPortfolioDataConfidenceRanking,
   buildPortfolioRankingAlertCenter,
   buildPortfolioRankingDecisionMatrix,
+  buildPortfolioRankingConsensusRadar,
   buildPortfolioRankingPriorityQueue,
+  compactPortfolioRankingBoardForModel,
   buildPortfolioAccountRiskBudget,
   buildPortfolioReadyWatchlistReviewActions,
   buildPortfolioPositionRiskBudget,

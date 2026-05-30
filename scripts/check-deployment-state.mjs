@@ -42,12 +42,14 @@ async function main() {
     assertCheck(adminJs.includes("按实际投入成本"), "admin JavaScript labels PnL denominator as actual invested cost", "critical", "PnL percentages must not use initial capital as denominator.");
     assertCheck(adminJs.includes("PORTFOLIO_VIEW_GROUPS") && adminJs.includes("data-portfolio-nav-group"), "admin JavaScript switches portfolio entry groups", "critical", "The online client cannot hide inactive portfolio groups, so the virtual manager page remains too long.");
     assertCheck(adminJs.includes("compactRunnerConsoleText") && adminJs.includes("data-runner-view-target"), "admin JavaScript keeps runner cards inside runner sub-entries", "critical", "The online virtual runner still pushes users into long report pages from the summary cards.");
+    assertCheck(adminJs.includes("renderPortfolioConsensusRadar"), "admin JavaScript renders ranking consensus radar", "critical", "The online manager board still forces users to jump across many lists instead of showing cross-list consensus.");
     assertCheck(adminJs.includes("renderPortfolioDeploymentStatus") && adminJs.includes("currentDeployment") && adminJs.includes("portfolioRailDeploymentStatus"), "admin JavaScript renders portfolio deployment status", "critical", "The online portfolio workspace cannot warn that the running server is stale.");
     assertCheck(adminJs.includes("matrix-verdict-") && adminJs.includes("约束："), "admin JavaScript renders decision-matrix traffic lights", "warning", "The online decision matrix cannot distinguish supports, fee constraints, and hard blockers.");
   }
   if (adminCss) {
     assertCheck(adminCss.includes(".portfolio-terminal-shell") && adminCss.includes(".portfolio-workspace-view.active"), "admin stylesheet bounds portfolio workspace height", "critical", "The online stylesheet does not bound portfolio workspaces, so long reports stretch the whole page.");
     assertCheck(adminCss.includes('.runner-workspace-view[data-runner-view="control"].active') && adminCss.includes(".run-console-grid"), "admin stylesheet bounds virtual runner control cards", "critical", "The online runner control page can still stretch instead of scrolling inside the terminal stage.");
+    assertCheck(adminCss.includes(".consensus-radar") && adminCss.includes(".consensus-radar-grid"), "admin stylesheet styles ranking consensus radar", "warning", "The online manager board lacks a compact cross-list consensus layout.");
     assertCheck(adminCss.includes(".portfolio-command-panel .portfolio-deployment-status") && adminCss.includes(".portfolio-rail-deployment"), "admin stylesheet styles portfolio deployment status", "warning", "The online portfolio workspace has no compact deployment freshness status cell.");
     assertCheck(adminCss.includes(".matrix-verdict-buy") && adminCss.includes(".matrix-verdict-risk"), "admin stylesheet styles decision-matrix verdict tones", "warning", "The online decision matrix lacks visual buy/risk/data verdict cues.");
   }
@@ -58,6 +60,7 @@ async function main() {
     assertCheck(Boolean(body.exposureSummary), "portfolio API exposes exposure summary", "critical", "Exposure and overlap risk must be visible online.");
     assertCheck(Boolean(body.capabilityDiagnostics), "portfolio API exposes capability diagnostics", "critical", "The online manager must surface profitability, chase-risk, and data-quality weaknesses.");
     assertCheck(Array.isArray(body.capabilityActionQueue), "portfolio API exposes capability repair queue", "critical", "Diagnostics need concrete next actions.");
+    assertCheck(Boolean(body.managerRankings?.consensusRadar), "portfolio API exposes ranking consensus radar", "critical", "The manager must provide a cross-list consensus board so users do not read disconnected fund lists.");
     assertCheck(body.account && Object.prototype.hasOwnProperty.call(body.account, "investedCost"), "portfolio API exposes invested cost", "critical", "Return percentages must be based on actual invested amount, even when current positions are fully settled or flat.");
   }
 
