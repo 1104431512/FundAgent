@@ -1343,6 +1343,265 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   min-height: 0;
 }
 
+.portfolio-performance-board {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #d8e3ec;
+  border-left: 4px solid #0f766e;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.portfolio-performance-board[data-level="warning"] {
+  border-left-color: #b7791f;
+}
+
+.portfolio-performance-board[data-level="critical"] {
+  border-left-color: #c24136;
+}
+
+.portfolio-performance-board[data-level="watch"] {
+  border-left-color: #64748b;
+}
+
+.portfolio-performance-head,
+.portfolio-performance-subhead {
+  min-width: 0;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.portfolio-performance-head > div,
+.portfolio-performance-subhead > * {
+  min-width: 0;
+}
+
+.portfolio-performance-head span,
+.portfolio-performance-head strong,
+.portfolio-performance-head small,
+.portfolio-performance-subhead span,
+.portfolio-performance-subhead strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-performance-head span,
+.portfolio-performance-subhead span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.portfolio-performance-head strong {
+  margin-top: 3px;
+  color: #1d2d3b;
+  font-size: 18px;
+  line-height: 1.22;
+}
+
+.portfolio-performance-head small {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.42;
+}
+
+.portfolio-performance-head button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.portfolio-performance-metrics {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(112px, 1fr));
+  gap: 8px;
+}
+
+.portfolio-performance-metric {
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid #dfe7ef;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.portfolio-performance-metric.ok {
+  border-color: #badbcc;
+  background: #f2fbf7;
+}
+
+.portfolio-performance-metric.warn {
+  border-color: #ead8b7;
+  background: #fff9ec;
+}
+
+.portfolio-performance-metric.bad {
+  border-color: #f0b4ad;
+  background: #fff7f6;
+}
+
+.portfolio-performance-metric.info {
+  border-color: #c8d9ef;
+  background: #f4f8fd;
+}
+
+.portfolio-performance-metric.muted {
+  border-color: #dde5ed;
+  background: #f7f9fb;
+}
+
+.portfolio-performance-metric span,
+.portfolio-performance-metric strong,
+.portfolio-performance-metric small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-performance-metric span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.portfolio-performance-metric strong {
+  margin-top: 5px;
+  color: #172635;
+  font-size: 20px;
+  line-height: 1.08;
+}
+
+.portfolio-performance-metric small {
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.portfolio-performance-body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(230px, 0.65fr);
+  gap: 10px;
+}
+
+.portfolio-performance-body > div {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 7px;
+}
+
+.portfolio-performance-subhead strong {
+  color: #223243;
+  font-size: 12px;
+}
+
+.portfolio-operation-review-list,
+.portfolio-performance-lessons {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  gap: 7px;
+  align-content: start;
+  overflow: auto;
+}
+
+.portfolio-operation-review {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #dfe7ef;
+  border-left: 4px solid #8aa0b3;
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.portfolio-operation-review.ok {
+  border-left-color: #15946a;
+}
+
+.portfolio-operation-review.warn {
+  border-left-color: #b7791f;
+}
+
+.portfolio-operation-review.bad {
+  border-left-color: #c24136;
+}
+
+.portfolio-operation-review.muted {
+  border-left-color: #94a3b8;
+}
+
+.portfolio-operation-review header {
+  min-width: 0;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.portfolio-operation-review header div {
+  min-width: 0;
+}
+
+.portfolio-operation-review span,
+.portfolio-operation-review strong,
+.portfolio-operation-review p,
+.portfolio-operation-review small,
+.portfolio-operation-review em {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-operation-review span {
+  color: #6b7a88;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.portfolio-operation-review strong {
+  margin-top: 2px;
+  color: #1d2d3b;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.portfolio-operation-review em {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: #274456;
+  background: #e8f0f5;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.portfolio-operation-review p,
+.portfolio-operation-review small,
+.portfolio-performance-lessons p {
+  margin: 0;
+  color: #526271;
+  font-size: 12px;
+  line-height: 1.42;
+}
+
+.portfolio-performance-lessons p {
+  padding: 8px;
+  border: 1px solid #dfe7ef;
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
 .portfolio-workspace-cards {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -8594,20 +8853,32 @@ button.danger-button:hover {
 
   .portfolio-workspace-view[data-portfolio-view="overview"].active {
     grid-template-areas:
-      "entries entries"
-      "radar insights";
-    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.75fr);
+      "ability ability"
+      "radar entries";
+    grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr);
     grid-template-rows: auto minmax(0, 1fr);
     gap: 12px;
     overflow: hidden;
   }
 
+  #portfolioManagerScoreboard {
+    grid-area: ability;
+    min-height: 0;
+    max-height: 318px;
+    overflow: hidden;
+  }
+
+  #portfolioManagerScoreboard .portfolio-operation-review-list,
+  #portfolioManagerScoreboard .portfolio-performance-lessons {
+    max-height: 116px;
+  }
+
   #portfolioWorkspaceCards {
     grid-area: entries;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
-    overflow: hidden;
+    overflow: auto;
   }
 
   .portfolio-workspace-card {
@@ -8649,11 +8920,7 @@ button.danger-button:hover {
   }
 
   .portfolio-workspace-view[data-portfolio-view="overview"] .portfolio-insight-grid {
-    grid-area: insights;
-    grid-template-columns: 1fr;
-    gap: 10px;
-    min-height: 0;
-    overflow: auto;
+    display: none;
   }
 
   .portfolio-workspace-view[data-portfolio-view="overview"] .insight-card {
@@ -8859,6 +9126,8 @@ button.danger-button:hover {
   .portfolio-command-panel,
   .portfolio-hero,
   .portfolio-kpi-grid,
+  .portfolio-performance-metrics,
+  .portfolio-performance-body,
   .portfolio-terminal-shell,
   .portfolio-insight-grid,
   .portfolio-diagnostic-grid,

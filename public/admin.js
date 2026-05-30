@@ -888,6 +888,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   const blocked = watchlist.filter((item) => item.status === "blocked");
   const diagnosticCounts = buildPortfolioDiagnosticCounts(portfolio);
   const diagnosticCount = diagnosticCounts.total;
+  const managerPerformance = portfolio.managerPerformance || {};
 
   const briefParts = [
     portfolio.enabled ? "自动运行已启用" : "自动运行停用",
@@ -915,11 +916,17 @@ function renderPortfolioDashboard(portfolio = {}) {
   setText("#portfolioNavRiskCount", String(riskItems.length));
   setText("#portfolioNavSectorCount", String(sectorItems.length));
   setText("#portfolioNavDataCount", String(dataItems.length));
-  setText("#portfolioNavOverviewCount", "15");
+  setText(
+    "#portfolioNavOverviewCount",
+    isPresentFiniteNumber(managerPerformance.actionReview?.correctnessPct)
+      ? `${formatNumber(managerPerformance.actionReview.correctnessPct, 1)}%`
+      : "能力"
+  );
   setText("#portfolioNavRunnerCount", portfolio.scheduler?.inFlight ? "运行中" : latestRun ? formatRunStatus(latestRun.status) : "控制");
   updateRunStateBadge(latestRun, portfolio.scheduler || {});
   renderPortfolioRunConsole(portfolio, latestRun, { runs, activeOrders, transactions, equity });
 
+  renderPortfolioManagerPerformance(managerPerformance, account);
   renderPortfolioWorkspaceCards(portfolio, { positions, watchlist, userPortfolios, runs, activeOrders, transactions, equity, ready, waiting, launchEve, blocked, diagnosticCount, alertItems });
   renderPortfolioRankingRadar(portfolio.managerRankings || {});
   renderPortfolioActionDesk(latestRun, activeOrders);
@@ -940,6 +947,111 @@ function renderPortfolioDashboard(portfolio = {}) {
   updatePortfolioRankingAuditBadge(portfolio.rankingActionAudit || {});
   renderInsightList("#portfolioRankingAuditSummary", buildRankingAuditInsightItems(portfolio.rankingActionAudit || {}), "暂无榜单引用审计。");
   renderPortfolioDiagnosticTerminal(portfolio, diagnosticCounts);
+}
+
+function renderPortfolioManagerPerformance(performance = {}, account = {}) {
+  const root = document.querySelector("#portfolioManagerScoreboard");
+  if (!root) return;
+  const level = performance.level || "watch";
+  root.dataset.level = level;
+  setText("#portfolioAbilityVerdict", formatPortfolioPerformanceVerdict(performance));
+  setText("#portfolioAbilitySummary", performance.summary || "历史操作样本不足，暂时不能宣称经理正确率。");
+  setText("#portfolioPerformanceLevel", formatPortfolioPerformanceLevel(level));
+  const cards = Array.isArray(performance.scorecards) && performance.scorecards.length
+    ? performance.scorecards
+    : buildFallbackPerformanceScorecards(account);
+  const metricRoot = document.querySelector("#portfolioPerformanceMetrics");
+  if (metricRoot) {
+    metricRoot.innerHTML = cards.slice(0, 5).map((card) => `
+      <div class="portfolio-performance-metric ${escapeHtml(card.tone || "info")}">
+        <span>${escapeHtml(card.label || "能力指标")}</span>
+        <strong>${escapeHtml(card.value || "-")}</strong>
+        <small>${escapeHtml(card.meta || "")}</small>
+      </div>
+    `).join("");
+  }
+  const review = performance.actionReview || {};
+  const reviews = Array.isArray(performance.recentReviews) ? performance.recentReviews.slice(0, 6) : [];
+  setText("#portfolioOperationReviewCount", reviews.length ? `${reviews.length} 个动作` : `${review.total || 0} 个动作`);
+  const reviewRoot = document.querySelector("#portfolioOperationReviews");
+  if (reviewRoot) {
+    reviewRoot.innerHTML = reviews.length
+      ? reviews.map(renderPortfolioOperationReviewItem).join("")
+      : `<div class="empty compact-empty">暂无可展示的操作复盘。经理需要先生成买入、卖出或观察记录。</div>`;
+  }
+  const lessons = Array.isArray(performance.lessons) ? performance.lessons.slice(0, 4) : [];
+  const lessonRoot = document.querySelector("#portfolioPerformanceLessons");
+  if (lessonRoot) {
+    lessonRoot.innerHTML = lessons.length
+      ? lessons.map((item) => `<p>${escapeHtml(item)}</p>`).join("")
+      : `<div class="empty compact-empty">暂无明显改进重点。</div>`;
+  }
+}
+
+function buildFallbackPerformanceScorecards(account = {}) {
+  return [
+    {
+      label: "操作正确率",
+      value: "待复盘",
+      meta: "需要历史动作和事后走势",
+      tone: "muted"
+    },
+    {
+      label: "盈利能力",
+      value: formatPortfolioPnl(account),
+      meta: `按实际投入 ${formatMoney(account.investedCostBasis || account.investedCost || 0)}`,
+      tone: Number(account.cumulativePnl || 0) > 0 ? "ok" : "warn"
+    },
+    {
+      label: "回撤控制",
+      value: `${formatSigned(account.drawdownFromPeakPct || 0)}%`,
+      meta: `仓位 ${formatNumber(account.positionWeightPct || 0, 2)}%`,
+      tone: Number(account.drawdownFromPeakPct || 0) <= -3 ? "warn" : "ok"
+    }
+  ];
+}
+
+function renderPortfolioOperationReviewItem(item = {}) {
+  const title = [item.code, item.name].filter(Boolean).join(" ") || "组合动作";
+  const meta = [item.date, item.source, item.action].filter(Boolean).join(" · ");
+  const evidence = [item.evidence ? `证据：${item.evidence}` : "", item.nextStep ? `下一步：${item.nextStep}` : ""].filter(Boolean).join("；");
+  return `
+    <article class="portfolio-operation-review ${escapeHtml(item.tone || "info")}">
+      <header>
+        <div>
+          <span>${escapeHtml(meta || "复盘记录")}</span>
+          <strong>${escapeHtml(title)}</strong>
+        </div>
+        <em>${escapeHtml(item.verdict || "需要复盘")}</em>
+      </header>
+      <p>${escapeHtml(item.reason || "等待更多证据。")}</p>
+      <small>${escapeHtml(evidence)}</small>
+    </article>
+  `;
+}
+
+function formatPortfolioPerformanceVerdict(performance = {}) {
+  const review = performance.actionReview || {};
+  if (isPresentFiniteNumber(review.correctnessPct)) {
+    return `操作正确率 ${formatNumber(review.correctnessPct, 1)}%`;
+  }
+  if (review.total) return "复盘样本不足";
+  return "等待历史操作复盘";
+}
+
+function formatPortfolioPerformanceLevel(level = "watch") {
+  const labels = {
+    ok: "能力稳定",
+    warning: "需要改进",
+    critical: "必须纠偏",
+    watch: "样本不足",
+    info: "继续观察"
+  };
+  return labels[level] || labels.watch;
+}
+
+function isPresentFiniteNumber(value) {
+  return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
 }
 
 function buildPortfolioDiagnosticCounts(portfolio = {}) {

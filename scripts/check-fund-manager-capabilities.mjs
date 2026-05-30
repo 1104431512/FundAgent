@@ -879,6 +879,7 @@ assert(starterFollowUpDecision.actions[0].riskControl.includes("加到3%-5%"), "
 assert(serverSource.includes("capabilityDiagnostics: buildPortfolioCapabilityDiagnostics(db)"), "portfolio API must expose capability diagnostics");
 assert(serverSource.includes("capabilityActionQueue: buildPortfolioCapabilityActionQueue(db)"), "portfolio API must expose capability repair action queue");
 assert(serverSource.includes("backtestDiagnostics: buildPortfolioBacktestDiagnostics(db)"), "portfolio API must expose historical backtest diagnostics");
+assert(serverSource.includes("managerPerformance: buildPortfolioManagerPerformanceStats(db)"), "portfolio API must expose manager performance proof statistics");
 assert(adminSource.includes("buildCapabilityInsightItems") && adminHtmlSource.includes("portfolioCapabilitySummary"), "admin UI must render portfolio capability diagnostics");
 assert(adminSource.includes("renderCapabilityActionQueue") && adminHtmlSource.includes("portfolioCapabilityActionQueue"), "admin UI must render concrete capability repair tasks");
 assert(adminSource.includes("buildBacktestInsightItems") && adminHtmlSource.includes("portfolioBacktestSummary"), "admin UI must render historical backtest diagnostics");
@@ -955,6 +956,11 @@ assert(idleCashBacktestItem.note.includes("应收赎回"), "idle-cash backtest m
 assert(portfolioBacktestDiagnostics.phases.length >= 3, "backtest diagnostics must split history into replay phases");
 const backtestCapabilityDiagnostics = manager.buildPortfolioCapabilityDiagnostics(backtestFixture);
 assert(backtestCapabilityDiagnostics.items.some((item) => item.label === "重复成交回测"), "capability diagnostics must absorb historical backtest defects");
+const managerPerformanceStats = manager.buildPortfolioManagerPerformanceStats(backtestFixture);
+assert(managerPerformanceStats.scorecards.some((item) => item.label === "操作正确率"), "manager performance stats must expose operation correctness rate");
+assert(managerPerformanceStats.scorecards.some((item) => item.label === "盈利能力"), "manager performance stats must expose profitability");
+assert(managerPerformanceStats.recentReviews.some((item) => item.verdict === "纪律失误" || item.verdict === "需要纠偏"), "manager performance stats must replay recent actions into right/wrong verdicts");
+assert(managerPerformanceStats.lessons.some((item) => item.includes("回测") || item.includes("纠偏")), "manager performance stats must surface review lessons instead of raw entry cards only");
 const receivableCapabilityDiagnostics = manager.buildPortfolioCapabilityDiagnostics({
   account: {
     cash: 15000,
@@ -1490,6 +1496,10 @@ assert(adminHtmlSource.includes("data-portfolio-view=\"alerts\""), "admin portfo
 assert(adminHtmlSource.includes("data-portfolio-view-target=\"matrix\""), "admin portfolio UI must expose a dedicated decision-matrix workspace entrance");
 assert(adminHtmlSource.includes("data-portfolio-view=\"matrix\""), "admin portfolio UI must render the decision matrix as a dedicated workspace view");
 assert(adminSource.includes("setPortfolioView"), "admin portfolio UI must switch between virtual account workspace views");
+assert(adminHtmlSource.includes("portfolioManagerScoreboard") && adminHtmlSource.includes("经理能力证明"), "admin portfolio overview must lead with manager ability proof instead of entry cards");
+assert(adminSource.includes("renderPortfolioManagerPerformance") && adminSource.includes("操作正确率") && adminSource.includes("盈利能力"), "admin portfolio overview must render correctness and profitability statistics");
+assert(adminSource.includes("renderPortfolioOperationReviewItem") && adminSource.includes("portfolioOperationReviews"), "admin portfolio overview must show recent action review verdicts");
+assert(adminStyleSource.includes("portfolio-performance-board") && adminStyleSource.includes("portfolio-operation-review"), "admin manager performance proof board must be styled as a bounded first-screen panel");
 assert(adminHtmlSource.includes("portfolioWorkspaceCards"), "admin portfolio overview must expose workspace shortcut cards");
 assert(adminSource.includes("renderPortfolioWorkspaceCards"), "admin portfolio overview must summarize each workspace with actionable shortcut cards");
 assert(adminHtmlSource.includes("portfolioRankingRadar"), "admin portfolio overview must expose a compact ranking radar");

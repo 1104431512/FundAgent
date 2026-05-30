@@ -1065,6 +1065,22 @@ const requiredPatterns = [
     message: "admin portfolio UI must provide a manager dashboard with summary, holdings exposure, and buy-preparation panels."
   },
   {
+    pattern: /(?=[\s\S]*managerPerformance:\s*buildPortfolioManagerPerformanceStats\(db\))(?=[\s\S]*function buildPortfolioManagerPerformanceStats)(?=[\s\S]*操作正确率)(?=[\s\S]*盈利能力)/,
+    message: "portfolio public API must expose manager performance proof statistics with correctness and profitability cards."
+  },
+  {
+    pattern: /(?=[\s\S]*<section id="portfolioManagerScoreboard" class="portfolio-performance-board">)(?=[\s\S]*经理能力证明)(?=[\s\S]*portfolioOperationReviews)/,
+    message: "admin portfolio overview must lead with manager ability proof and action review verdicts before workspace entries."
+  },
+  {
+    pattern: /renderPortfolioDashboard[\s\S]{0,4200}renderPortfolioManagerPerformance\(managerPerformance,\s*account\)[\s\S]{0,900}renderPortfolioWorkspaceCards/,
+    message: "admin portfolio overview must render manager performance before shortcut cards."
+  },
+  {
+    pattern: /(?=[\s\S]*\.portfolio-performance-board\s*\{[\s\S]{0,520}border-left)(?=[\s\S]*\.portfolio-operation-review\s*\{[\s\S]{0,700}border-left)/,
+    message: "admin manager performance board must use bounded, verdict-colored review cards."
+  },
+  {
     pattern: /portfolio-command-panel[\s\S]{0,420}grid-template-areas:\s*"hero kpis status"[\s\S]{0,900}portfolio-hero \.actions[\s\S]{0,260}overflow-x:\s*auto[\s\S]{0,900}portfolio-command-panel \.info-grid[\s\S]{0,260}grid-area:\s*status/,
     message: "admin portfolio command header must be a compact trading-console strip instead of a tall stacked dashboard."
   },
@@ -1109,7 +1125,7 @@ const requiredPatterns = [
     message: "admin portfolio workspace entries must switch focused views."
   },
   {
-    pattern: /renderPortfolioDashboard[\s\S]{0,4800}renderPortfolioWorkspaceCards[\s\S]{0,5200}renderPortfolioWorkspaceCard/,
+    pattern: /(?=[\s\S]*function renderPortfolioDashboard[\s\S]*renderPortfolioWorkspaceCards)(?=[\s\S]*function renderPortfolioWorkspaceCards)(?=[\s\S]*function renderPortfolioWorkspaceCard)/,
     message: "admin portfolio overview must show actionable workspace shortcut cards."
   },
   {

@@ -9005,6 +9005,7 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
     capabilityActionQueue: buildPortfolioCapabilityActionQueue(db),
     managerRankings: buildPortfolioRankingBoard(db),
     rankingActionAudit: buildPortfolioRankingActionAudit(db),
+    managerPerformance: buildPortfolioManagerPerformanceStats(db),
     userPortfolios: summarizeUserPortfolios(db),
     positions: db.account.positions.map(summarizePosition),
     watchlist: getActivePortfolioWatchlist(db).slice(0, lightweight ? 12 : 50).map(summarizeWatch),
@@ -12654,6 +12655,530 @@ function buildPortfolioRankingActionAudit(db = {}, options = {}) {
         ? ["继续保持动作和榜单一致", "复核榜单是否覆盖买入、卖出和用户持仓提醒"]
         : ["先生成今日操作或盘前观察", "沉淀自选池和用户持仓后再审计"]
   };
+}
+
+function buildPortfolioManagerPerformanceStats(db = {}, options = {}) {
+  const account = db.account || {};
+  const positions = Array.isArray(account.positions) ? account.positions : [];
+  const transactions = getPortfolioDiagnosticTransactions(db)
+    .filter((item) => ["BUY", "SELL"].includes(String(item.side || "").toUpperCase()));
+  const orders = getPortfolioDiagnosticOrders(db)
+    .filter((item) => ["BUY", "SELL"].includes(String(item.side || "").toUpperCase()));
+  const runs = Array.isArray(db.runs) ? db.runs : [];
+  const watchlist = normalizePortfolioWatchlist(db.watchlist || []);
+  const backtestDiagnostics = buildPortfolioBacktestDiagnostics(db);
+  const rankingActionAudit = buildPortfolioRankingActionAudit(db, { maxRuns: 16 });
+  const recentReviews = collectPortfolioManagerOperationReviews({
+    account,
+    positions,
+    transactions,
+    orders,
+    runs,
+    watchlist,
+    backtestDiagnostics,
+    limit: Number(options.limit || 12)
+  });
+  const actionReview = summarizePortfolioOperationReviews(recentReviews);
+  const profitability = buildPortfolioManagerProfitabilityStats(db, account);
+  const distribution = countPortfolioOperationReviewDistribution(recentReviews);
+  const lessons = buildPortfolioManagerPerformanceLessons({
+    actionReview,
+    backtestDiagnostics,
+    rankingActionAudit,
+    profitability
+  });
+  const scorecards = buildPortfolioManagerPerformanceScorecards({
+    actionReview,
+    profitability,
+    distribution,
+    rankingActionAudit
+  });
+  const level = resolvePortfolioManagerPerformanceLevel({
+    actionReview,
+    profitability,
+    backtestDiagnostics,
+    rankingActionAudit
+  });
+  return {
+    level,
+    summary: formatPortfolioManagerPerformanceSummary(actionReview, profitability),
+    profitability,
+    actionReview,
+    distribution,
+    scorecards,
+    recentReviews,
+    lessons
+  };
+}
+
+function collectPortfolioManagerOperationReviews({
+  account = {},
+  positions = [],
+  transactions = [],
+  orders = [],
+  runs = [],
+  watchlist = [],
+  backtestDiagnostics = {},
+  limit = 12
+} = {}) {
+  const maxItems = Math.max(1, Number(limit || 12));
+  const reviews = [];
+  const seen = new Set();
+  const addReview = (review) => {
+    if (!review) return;
+    const key = [review.date, review.kind, review.code, review.sourceId || review.reason].join("|");
+    if (seen.has(key)) return;
+    seen.add(key);
+    reviews.push(review);
+  };
+  const recentRuns = [...runs]
+    .filter((run) => run && (run.status === "completed" || run.status === "failed" || run.error || Array.isArray(run.actions)))
+    .sort((a, b) => Date.parse(b.completedAt || b.startedAt || b.date || "") - Date.parse(a.completedAt || a.startedAt || a.date || ""))
+    .slice(0, 16);
+  for (const run of recentRuns) {
+    const actions = Array.isArray(run.actions) ? run.actions : [];
+    for (const action of actions) {
+      addReview(buildPortfolioManagerOperationReview(action, run, {
+        account,
+        positions,
+        transactions,
+        orders,
+        watchlist,
+        backtestDiagnostics
+      }));
+      if (reviews.length >= maxItems) return reviews;
+    }
+    if (run.type === "decision" && !actions.length && isPortfolioWaitOnlyRun(run)) {
+      addReview(buildPortfolioManagerOperationReview({
+        action: "WATCH",
+        code: "",
+        name: "组合现金",
+        reason: buildPortfolioRunSummary(run) || "本轮没有形成申购或赎回动作。"
+      }, run, {
+        account,
+        positions,
+        transactions,
+        orders,
+        watchlist,
+        backtestDiagnostics,
+        syntheticWait: true
+      }));
+      if (reviews.length >= maxItems) return reviews;
+    }
+  }
+  const looseTrades = [...orders, ...transactions]
+    .map((item) => ({
+      ...item,
+      action: item.action || item.side,
+      sourceId: item.id || item.orderId || "",
+      sourceDate: normalizePortfolioEventDate(item.date || item.submittedAt || item.createdAt || item.updatedAt || item.navDate)
+    }))
+    .filter((item) => item.sourceDate)
+    .sort((a, b) => String(b.sourceDate).localeCompare(String(a.sourceDate)))
+    .slice(0, 12);
+  for (const item of looseTrades) {
+    addReview(buildPortfolioManagerOperationReview(item, null, {
+      account,
+      positions,
+      transactions,
+      orders,
+      watchlist,
+      backtestDiagnostics,
+      sourceType: item.status ? "order" : "transaction"
+    }));
+    if (reviews.length >= maxItems) return reviews;
+  }
+  return reviews;
+}
+
+function buildPortfolioManagerOperationReview(action = {}, run = null, context = {}) {
+  const kind = normalizePortfolioOperationKind(action.action || action.side);
+  const code = String(action.code || "").trim();
+  const position = code ? (context.positions || []).find((item) => item.code === code) : null;
+  const watched = code ? (context.watchlist || []).find((item) => item.code === code) : null;
+  const date = normalizePortfolioEventDate(action.sourceDate || action.date || action.submittedAt || action.navDate || run?.date || run?.completedAt || run?.startedAt);
+  const evidenceText = [
+    portfolioBacktestText(action),
+    portfolioBacktestText(run),
+    portfolioBacktestText(position),
+    portfolioBacktestText(watched)
+  ].join("\n").slice(0, 20000);
+  const rankingCited = hasPortfolioOperationRankingEvidence(action);
+  const verdict = classifyPortfolioManagerOperation({
+    kind,
+    code,
+    action,
+    run,
+    position,
+    watched,
+    evidenceText,
+    rankingCited,
+    backtestDiagnostics: context.backtestDiagnostics || {},
+    syntheticWait: context.syntheticWait
+  });
+  return {
+    date: date || "",
+    kind,
+    action: formatPortfolioOperationKind(kind),
+    code,
+    name: String(action.name || position?.name || watched?.name || "").trim(),
+    verdict: verdict.label,
+    status: verdict.status,
+    tone: verdict.tone,
+    reason: verdict.reason,
+    evidence: verdict.evidence,
+    nextStep: verdict.nextStep,
+    source: context.sourceType || (run ? formatPortfolioRunType(run.type) : "流水"),
+    sourceId: action.sourceId || action.id || run?.id || "",
+    rankingCited
+  };
+}
+
+function classifyPortfolioManagerOperation({
+  kind = "WATCH",
+  code = "",
+  action = {},
+  position = null,
+  watched = null,
+  evidenceText = "",
+  rankingCited = false,
+  backtestDiagnostics = {},
+  syntheticWait = false
+} = {}) {
+  const text = String(evidenceText || "");
+  const diagnosticsText = portfolioBacktestText(backtestDiagnostics);
+  const hasHotEvidence = /(extended_uptrend|wait_pullback|追涨|偏热|过热|高位延伸|拥挤|等待回撤)/.test(text);
+  const hasLowSetupEvidence = /(低位|回调完成|启动前|修复|转强|轮动|小仓|试探)/.test(text);
+  const hasRiskEvidence = /(回吐|止盈|止损|减仓|降风险|集中|同题材|风险预算|高位|拥挤|破位)/.test(text);
+  const hasDataGapEvidence = /(数据不足|缺少|未核验|净值.*缺|费率.*缺|份额.*缺|来源.*缺|partial|poor)/.test(text);
+  const unrealizedPct = finiteMetricNumber(position?.unrealizedPnlPct);
+  const readinessScore = finiteMetricNumber(watched?.readinessScore);
+  const reviewGap = !rankingCited && ["BUY", "SELL"].includes(kind);
+  if (kind === "BUY") {
+    if (hasHotEvidence && !hasLowSetupEvidence) {
+      return {
+        status: "mistake",
+        tone: "bad",
+        label: "纪律失误",
+        reason: "买入证据更像高位延伸或追涨，不符合低位回调完成后的试探纪律。",
+        evidence: selectPortfolioOperationEvidence(text, ["追涨", "偏热", "高位", "等待回撤"]),
+        nextStep: "同类动作后续必须先等回调和5日/10日转强，再考虑小仓。"
+      };
+    }
+    if (Number.isFinite(unrealizedPct) && unrealizedPct > 0.5) {
+      return {
+        status: "correct",
+        tone: "ok",
+        label: "初步有效",
+        reason: "买入后持仓已有正收益，暂时说明入场没有立刻变成追涨亏损。",
+        evidence: `${code || "持仓"} 当前浮盈 ${formatFallbackPct(unrealizedPct)}`,
+        nextStep: "继续给加仓、持有或退出触发条件。"
+      };
+    }
+    if (hasLowSetupEvidence && (rankingCited || Number.isFinite(readinessScore) && readinessScore >= 70)) {
+      return {
+        status: "correct",
+        tone: "ok",
+        label: "买点有据",
+        reason: "买入理由包含低位、回调修复或小仓试探证据，符合经理当前的低位启动打法。",
+        evidence: selectPortfolioOperationEvidence(text, ["低位", "回调", "启动", "小仓", "试探"]),
+        nextStep: "用后续走势复核是否加到3%-5%或退出。"
+      };
+    }
+    if (reviewGap) {
+      return {
+        status: "insufficient",
+        tone: "muted",
+        label: "证据不足",
+        reason: "买入动作没有清楚引用榜单或数据依据，客户无法判断为什么买。",
+        evidence: "缺少榜单依据",
+        nextStep: "补写买点、板块、费率和前十大持仓证据。"
+      };
+    }
+    return {
+      status: "review",
+      tone: "warn",
+      label: "需要复盘",
+      reason: "买入动作已有记录，但事后收益或低位证据还不够明确。",
+      evidence: selectPortfolioOperationEvidence(text, ["买入", "回调", "风险", "费用"]),
+      nextStep: "等待净值确认和3-5个交易日走势，再判断是否有效。"
+    };
+  }
+  if (kind === "SELL") {
+    if (hasRiskEvidence) {
+      return {
+        status: "correct",
+        tone: "ok",
+        label: "风控有效",
+        reason: "卖出动作对应回吐、集中、高位或止盈线索，方向上是在降低风险。",
+        evidence: selectPortfolioOperationEvidence(text, ["回吐", "减仓", "高位", "集中", "风险"]),
+        nextStep: "复核卖出后是否降低回撤，并记录是否卖早或卖晚。"
+      };
+    }
+    if (reviewGap) {
+      return {
+        status: "insufficient",
+        tone: "muted",
+        label: "证据不足",
+        reason: "卖出动作缺少榜单或风控依据，难以向客户证明卖得对。",
+        evidence: "缺少卖出依据",
+        nextStep: "补齐止盈、止损、回吐或组合集中度证据。"
+      };
+    }
+    return {
+      status: "review",
+      tone: "warn",
+      label: "需要复盘",
+      reason: "卖出动作已经发生，但缺少足够的风险或收益归因。",
+      evidence: selectPortfolioOperationEvidence(text, ["卖出", "赎回", "风险", "仓位"]),
+      nextStep: "对比卖出后走势，判断是保护利润还是错过行情。"
+    };
+  }
+  const conservativeWarning = /(过度保守回测|仓位冻结回测|买点错过回测|机会成本回测|空仓等待回测)/.test(diagnosticsText);
+  if ((syntheticWait || kind === "WATCH" || kind === "HOLD") && conservativeWarning) {
+    return {
+      status: "mistake",
+      tone: "warn",
+      label: "需要纠偏",
+      reason: "连续等待已经被历史回测提示为保守或错过买点，不能只把机会放在观察池。",
+      evidence: selectPortfolioOperationEvidence(diagnosticsText, ["过度保守", "仓位冻结", "买点错过", "机会成本"]),
+      nextStep: "下一轮必须给小仓试探、主动降级或明确复查时间。"
+    };
+  }
+  if (hasDataGapEvidence || hasRiskEvidence) {
+    return {
+      status: "correct",
+      tone: "ok",
+      label: "等待有据",
+      reason: "没有执行买入是因为风险、数据或费用证据还没补齐，等待本身有约束。",
+      evidence: selectPortfolioOperationEvidence(text, ["风险", "缺少", "未核验", "等待"]),
+      nextStep: "把缺口变成可验证触发条件，避免长期空泛观望。"
+    };
+  }
+  return {
+    status: "review",
+    tone: "warn",
+    label: "需要复盘",
+    reason: "观察或持有动作没有形成明确的事后判断。",
+    evidence: selectPortfolioOperationEvidence(text, ["观察", "持有", "等待", "买点"]),
+    nextStep: "下一次复盘要说明继续等、加仓或卖出的条件。"
+  };
+}
+
+function buildPortfolioManagerProfitabilityStats(db = {}, account = {}) {
+  const investedCostBasis = derivePortfolioInvestedCostBasis(db, account);
+  const cumulativePnl = round(Number(account.cumulativePnl || 0), 2);
+  const storedPct = Number(account.cumulativePnlPct);
+  const cumulativePnlPct = Number.isFinite(storedPct)
+    ? round(storedPct, 2)
+    : investedCostBasis > 0 && Number.isFinite(cumulativePnl)
+      ? round(cumulativePnl / investedCostBasis * 100, 2)
+      : 0;
+  const drawdownFromPeakPct = round(Number(account.drawdownFromPeakPct || 0), 2);
+  const totalAsset = round(Number(account.totalAsset || 0), 2);
+  const positionWeightPct = round(resolvePortfolioStoredWeightPct(account.positionWeightPct, account.investedValue, account.totalAsset), 2);
+  return {
+    totalAsset,
+    investedCostBasis,
+    cumulativePnl,
+    cumulativePnlPct,
+    drawdownFromPeakPct,
+    positionWeightPct,
+    tone: cumulativePnlPct > 0 ? "ok" : cumulativePnlPct < -2 ? "bad" : "warn",
+    summary: `累计${formatSignedNumber(cumulativePnl)}元，按实际投入${round(investedCostBasis, 2)}元计 ${formatFallbackPct(cumulativePnlPct)}；距峰值 ${formatFallbackPct(drawdownFromPeakPct)}。`
+  };
+}
+
+function summarizePortfolioOperationReviews(reviews = []) {
+  const total = reviews.length;
+  const correct = reviews.filter((item) => item.status === "correct").length;
+  const mistakes = reviews.filter((item) => item.status === "mistake").length;
+  const needsReview = reviews.filter((item) => item.status === "review").length;
+  const insufficient = reviews.filter((item) => item.status === "insufficient").length;
+  const decisive = correct + mistakes;
+  return {
+    total,
+    correct,
+    mistakes,
+    needsReview,
+    insufficient,
+    decisive,
+    correctnessPct: decisive ? round(correct * 100 / decisive, 1) : null,
+    evidenceCoveragePct: total ? round((total - insufficient) * 100 / total, 1) : null
+  };
+}
+
+function buildPortfolioManagerPerformanceScorecards({
+  actionReview = {},
+  profitability = {},
+  distribution = {},
+  rankingActionAudit = {}
+} = {}) {
+  const hasCorrectnessPct = actionReview.correctnessPct !== null
+    && actionReview.correctnessPct !== undefined
+    && actionReview.correctnessPct !== ""
+    && Number.isFinite(Number(actionReview.correctnessPct));
+  const hasRankingCoverage = rankingActionAudit.coveragePct !== null
+    && rankingActionAudit.coveragePct !== undefined
+    && rankingActionAudit.coveragePct !== ""
+    && Number.isFinite(Number(rankingActionAudit.coveragePct));
+  const correctnessValue = hasCorrectnessPct
+    ? `${round(Number(actionReview.correctnessPct), 1)}%`
+    : "证据不足";
+  const rankingCoverage = hasRankingCoverage
+    ? `${round(Number(rankingActionAudit.coveragePct), 1)}%`
+    : "待沉淀";
+  const profitabilityPct = Number(profitability.investedCostBasis || 0) > 0
+    ? formatFallbackPct(profitability.cumulativePnlPct || 0)
+    : "尚未投入";
+  return [
+    {
+      id: "correctness",
+      label: "操作正确率",
+      value: correctnessValue,
+      meta: `可判定 ${actionReview.decisive || 0}/${actionReview.total || 0}，失误 ${actionReview.mistakes || 0}`,
+      tone: (actionReview.mistakes || 0) ? "warn" : hasCorrectnessPct ? "ok" : "muted"
+    },
+    {
+      id: "profitability",
+      label: "盈利能力",
+      value: `${formatSignedNumber(profitability.cumulativePnl || 0)}元`,
+      meta: `实际投入口径 ${profitabilityPct}`,
+      tone: profitability.tone || "warn"
+    },
+    {
+      id: "drawdown",
+      label: "回撤控制",
+      value: formatFallbackPct(profitability.drawdownFromPeakPct || 0),
+      meta: `仓位 ${formatFallbackPct(profitability.positionWeightPct || 0)}`,
+      tone: Number(profitability.drawdownFromPeakPct || 0) <= -3 ? "warn" : "ok"
+    },
+    {
+      id: "evidence",
+      label: "复盘覆盖",
+      value: rankingCoverage,
+      meta: `榜单依据 ${rankingActionAudit.citedActions || 0}/${rankingActionAudit.totalActions || 0}`,
+      tone: !hasRankingCoverage ? "muted" : rankingActionAudit.level === "critical" ? "bad" : rankingActionAudit.level === "warning" ? "warn" : "ok"
+    },
+    {
+      id: "distribution",
+      label: "动作结构",
+      value: `买${distribution.BUY || 0} / 卖${distribution.SELL || 0}`,
+      meta: `观察持有 ${Number(distribution.WATCH || 0) + Number(distribution.HOLD || 0)}`,
+      tone: Number(distribution.BUY || 0) || Number(distribution.SELL || 0) ? "info" : "warn"
+    }
+  ];
+}
+
+function buildPortfolioManagerPerformanceLessons({
+  actionReview = {},
+  backtestDiagnostics = {},
+  rankingActionAudit = {},
+  profitability = {}
+} = {}) {
+  const lessons = [];
+  if ((actionReview.mistakes || 0) > 0) {
+    lessons.push("已经发现需要纠偏的动作，总览必须把这些动作放出来，而不是只展示经理摘要。");
+  }
+  if (Number(profitability.cumulativePnlPct || 0) <= 0) {
+    lessons.push("盈利能力还没有形成正向证明，后续回答要先解释收益来源和拖累项。");
+  }
+  if (rankingActionAudit.level === "critical" || rankingActionAudit.level === "warning") {
+    lessons.push("动作和榜单依据仍需绑定，否则客户只看到建议，看不到经理为什么这样做。");
+  }
+  for (const item of backtestDiagnostics.items || []) {
+    lessons.push(`${item.label}：${item.note || item.value || "需要继续复核"}`.slice(0, 150));
+    if (lessons.length >= 4) break;
+  }
+  if (!lessons.length) {
+    lessons.push("最近没有明显纪律缺口，继续按低位、轮动、风控和证据完整度滚动复盘。");
+  }
+  return lessons.slice(0, 4);
+}
+
+function resolvePortfolioManagerPerformanceLevel({
+  actionReview = {},
+  profitability = {},
+  backtestDiagnostics = {},
+  rankingActionAudit = {}
+} = {}) {
+  if ((actionReview.mistakes || 0) >= 2 || Number(profitability.cumulativePnlPct || 0) <= -3 || backtestDiagnostics.level === "critical") {
+    return "critical";
+  }
+  if ((actionReview.mistakes || 0) || Number(profitability.cumulativePnlPct || 0) < 0 || backtestDiagnostics.level === "warning" || rankingActionAudit.level === "warning") {
+    return "warning";
+  }
+  if (actionReview.total) return "ok";
+  return "watch";
+}
+
+function formatPortfolioManagerPerformanceSummary(actionReview = {}, profitability = {}) {
+  if (!actionReview.total) {
+    return `当前资产${round(Number(profitability.totalAsset || 0), 2)}元，历史操作样本不足，暂时不能宣称经理正确率。`;
+  }
+  const correctness = Number.isFinite(Number(actionReview.correctnessPct))
+    ? `可判定正确率 ${round(Number(actionReview.correctnessPct), 1)}%`
+    : "可判定样本不足";
+  return `最近 ${actionReview.total} 个动作已复盘，${correctness}；累计收益 ${formatSignedNumber(profitability.cumulativePnl || 0)}元（${formatFallbackPct(profitability.cumulativePnlPct || 0)}）。`;
+}
+
+function countPortfolioOperationReviewDistribution(reviews = []) {
+  return reviews.reduce((counts, item) => {
+    const kind = normalizePortfolioOperationKind(item.kind);
+    counts[kind] = (counts[kind] || 0) + 1;
+    return counts;
+  }, { BUY: 0, SELL: 0, HOLD: 0, WATCH: 0 });
+}
+
+function normalizePortfolioOperationKind(value = "") {
+  const text = String(value || "").toUpperCase();
+  if (text.includes("BUY") || /申购|买入/.test(text)) return "BUY";
+  if (text.includes("SELL") || /赎回|卖出|减仓/.test(text)) return "SELL";
+  if (text.includes("HOLD") || /持有/.test(text)) return "HOLD";
+  return "WATCH";
+}
+
+function formatPortfolioOperationKind(kind = "WATCH") {
+  const labels = {
+    BUY: "买入",
+    SELL: "卖出",
+    HOLD: "持有",
+    WATCH: "观察"
+  };
+  return labels[normalizePortfolioOperationKind(kind)] || labels.WATCH;
+}
+
+function formatPortfolioRunType(type = "") {
+  const labels = {
+    premarket: "盘前",
+    decision: "决策",
+    valuation: "复盘",
+    weekly: "周总结"
+  };
+  return labels[String(type || "").toLowerCase()] || "记录";
+}
+
+function hasPortfolioOperationRankingEvidence(action = {}) {
+  const rankingBasis = normalizePortfolioUserFacingText(action.rankingBasis || "");
+  const dataBasis = normalizeStringArray(action.dataBasis);
+  return Boolean(rankingBasis) || dataBasis.some((item) => /manager_ranking_board|经理榜单|榜单/.test(item));
+}
+
+function isPortfolioWaitOnlyRun(run = {}) {
+  const text = portfolioBacktestText(run);
+  return !portfolioBacktestRunHasSide(run, "BUY")
+    && !portfolioBacktestRunHasSide(run, "SELL")
+    && /(等待|观望|观察|继续看|未提交|不买|暂不买|没有合格|没有可买|等待机会)/.test(text);
+}
+
+function selectPortfolioOperationEvidence(text = "", keywords = []) {
+  const lines = String(text || "")
+    .split(/[\r\n。；;]/)
+    .map((line) => normalizePortfolioUserFacingText(line).trim())
+    .filter(Boolean);
+  const keywordLine = lines.find((line) => keywords.some((keyword) => line.includes(keyword)));
+  const fallback = keywordLine || lines.find((line) => line.length >= 8) || "";
+  return fallback.slice(0, 110);
 }
 
 function selectPortfolioRankingFirstText(...groups) {
@@ -27813,6 +28338,7 @@ export {
   buildPortfolioHeldPositionReviewActions,
   buildPortfolioHeldPositionReviewQueue,
   buildPortfolioBacktestDiagnostics,
+  buildPortfolioManagerPerformanceStats,
   buildPortfolioCapabilityDiagnostics,
   buildPortfolioCapabilityActionQueue,
   buildPortfolioAccountStatusLines,
