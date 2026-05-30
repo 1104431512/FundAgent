@@ -1029,8 +1029,9 @@ button:disabled {
 .portfolio-terminal-shell {
   --portfolio-workspace-height: 100%;
   display: grid;
-  grid-template-columns: minmax(180px, 210px) minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(78px, 90px) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
   align-items: stretch;
   height: var(--portfolio-workspace-height);
   min-height: 0;
@@ -1043,43 +1044,47 @@ button:disabled {
   top: 0;
   z-index: 3;
   display: grid;
-  gap: 10px;
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  gap: 8px;
   align-self: stretch;
   align-content: start;
   grid-auto-rows: max-content;
   max-height: 100%;
-  overflow: auto;
-  padding: 10px;
+  overflow: hidden;
+  padding: 8px;
   border: 1px solid #dce5ed;
   border-radius: 8px;
-  background: #f7fafc;
+  background: #f6f9fb;
   box-shadow: none;
 }
 
 .portfolio-terminal-rail-head {
   display: grid;
   gap: 4px;
-  padding: 2px 2px 8px;
+  padding: 1px 2px 6px;
   border-bottom: 1px solid #e2eaf1;
 }
 
 .portfolio-terminal-rail-head span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 850;
 }
 
 .portfolio-terminal-rail-head strong {
   color: #1d2d3b;
-  font-size: 14px;
-  line-height: 1.35;
+  font-size: 12px;
+  line-height: 1.25;
   overflow-wrap: anywhere;
 }
 
 .portfolio-terminal-stage {
+  grid-column: 2;
+  grid-row: 2;
   min-width: 0;
   display: grid;
-  gap: 16px;
+  gap: 12px;
   min-height: 0;
   height: 100%;
   max-height: none;
@@ -1091,40 +1096,46 @@ button:disabled {
   top: 0;
   display: grid;
   grid-template-columns: 1fr;
-  gap: 10px;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid #dce5ed;
+  border-radius: 8px;
+  background: #f7fafc;
   box-shadow: none;
+}
+
+.portfolio-workspace-dock {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: stretch;
+  overflow: hidden;
 }
 
 .portfolio-entry-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 6px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #e2eaf1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0;
+  border-bottom: 0;
 }
 
 .portfolio-entry-tabs button {
   min-width: 0;
-  min-height: 44px;
+  min-height: 56px;
   display: grid;
   gap: 2px;
   align-content: center;
-  justify-items: start;
-  padding: 7px 8px;
+  justify-items: center;
+  padding: 7px 5px;
   border: 1px solid #d8e3ec;
   border-radius: 7px;
   color: #344152;
   background: #ffffff;
   box-shadow: none;
-  text-align: left;
-}
-
-.portfolio-entry-tabs button:first-child {
-  grid-column: 1 / -1;
+  text-align: center;
 }
 
 .portfolio-entry-tabs b,
@@ -1137,12 +1148,12 @@ button:disabled {
 }
 
 .portfolio-entry-tabs b {
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .portfolio-entry-tabs small {
   color: #72818f;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 750;
 }
 
@@ -1173,17 +1184,17 @@ button:disabled {
 
 .portfolio-workspace-switcher button {
   min-width: 0;
-  min-height: 46px;
+  min-height: 38px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas: "label count" "hint count";
   align-items: center;
   gap: 2px 8px;
-  padding: 7px 9px;
+  padding: 6px 9px;
   border: 1px solid transparent;
   border-radius: 7px;
   color: #344152;
-  background: transparent;
+  background: #ffffff;
   box-shadow: none;
   font-size: 13px;
   font-weight: 850;
@@ -7531,23 +7542,30 @@ button.danger-button:hover {
 
   .portfolio-terminal-shell {
     gap: 8px;
+    grid-template-columns: 82px minmax(0, 1fr);
+    grid-template-rows: 44px minmax(0, 1fr);
   }
 
   .portfolio-terminal-rail {
     padding: 8px;
+    overflow: hidden;
   }
 
   .portfolio-workspace-switcher {
-    gap: 8px;
+    height: 44px;
+    gap: 0;
+    padding: 5px;
+    overflow: hidden;
   }
 
   .portfolio-entry-tabs {
+    grid-template-columns: 1fr;
     gap: 5px;
-    padding-bottom: 8px;
+    padding-bottom: 0;
   }
 
   .portfolio-entry-tabs button {
-    min-height: 38px;
+    min-height: 54px;
     padding: 6px 7px;
   }
 
@@ -7556,10 +7574,31 @@ button.danger-button:hover {
   }
 
   .portfolio-workspace-group {
+    min-width: 0;
     gap: 5px;
   }
 
+  .portfolio-workspace-group.active {
+    display: flex;
+    align-items: stretch;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .portfolio-workspace-group > span {
+    flex: 0 0 auto;
+    min-width: 50px;
+    min-height: 32px;
+    display: grid;
+    place-items: center;
+    padding: 0 9px;
+    border-radius: 7px;
+    color: #274456;
+    background: #e7f0f5;
+  }
+
   .portfolio-workspace-switcher button {
+    flex: 0 0 118px;
     min-height: 40px;
     grid-template-areas: "label count";
     padding: 6px 8px;

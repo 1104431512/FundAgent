@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FundAgent 管理</title>
-    <link rel="stylesheet" href="/public/styles.css?v=20260530-terminal5" />
+    <link rel="stylesheet" href="/public/styles.css?v=20260530-terminal6" />
   </head>
   <body>
     <div class="app-shell">
@@ -350,37 +350,37 @@
                 <button type="button" data-portfolio-group-target="decision" data-portfolio-view-target="runner"><b>决策</b><small>运行 / 风控</small></button>
                 <button type="button" data-portfolio-group-target="records" data-portfolio-view-target="timeline"><b>记录</b><small>时间线 / 订单</small></button>
               </nav>
-              <div class="portfolio-workspace-switcher" aria-label="虚拟组合工作区">
-                <div class="portfolio-workspace-group" data-portfolio-nav-group="account">
-                  <span>账户</span>
-                  <button type="button" class="active" data-portfolio-view-target="overview"><b>总览</b><small>账户看板</small><span id="portfolioNavOverviewCount">15</span></button>
-                  <button type="button" data-portfolio-view-target="positions"><b>持仓</b><small>仓位与收益</small><span id="portfolioNavPositionCount">0</span></button>
-                  <button type="button" data-portfolio-view-target="users"><b>用户持仓</b><small>客户提醒</small><span id="portfolioNavUserCount">0</span></button>
-                </div>
-                <div class="portfolio-workspace-group" data-portfolio-nav-group="opportunity">
-                  <span>机会</span>
-                  <button type="button" data-portfolio-view-target="sectors"><b>板块榜</b><small>主题/轮动</small><span id="portfolioNavSectorCount">0</span></button>
-                  <button type="button" data-portfolio-view-target="opportunities"><b>观察机会</b><small>可买/回调</small><span id="portfolioNavOpportunityCount">0</span></button>
-                  <button type="button" data-portfolio-view-target="watchlist"><b>自选池</b><small>候选明细</small><span id="portfolioNavWatchlistCount">0</span></button>
-                </div>
-                <div class="portfolio-workspace-group" data-portfolio-nav-group="decision">
-                  <span>决策</span>
-                  <button type="button" data-portfolio-view-target="runner"><b>运行台</b><small>任务控制</small><span id="portfolioNavRunnerCount">控制</span></button>
-                  <button type="button" data-portfolio-view-target="actions"><b>行动台</b><small>买/卖/观察</small><span id="portfolioNavActionCount">0</span></button>
-                  <button type="button" data-portfolio-view-target="alerts"><b>预警台</b><small>必须处理</small><span id="portfolioNavAlertCount">0</span></button>
-                  <button type="button" data-portfolio-view-target="matrix"><b>决策矩阵</b><small>横向对比</small><span id="portfolioNavMatrixCount">0</span></button>
-                  <button type="button" data-portfolio-view-target="risk"><b>风控防线</b><small>回撤/止盈</small><span id="portfolioNavRiskCount">0</span></button>
-                  <button type="button" data-portfolio-view-target="data"><b>数据体检</b><small>净值/费率</small><span id="portfolioNavDataCount">0</span></button>
-                  <button type="button" data-portfolio-view-target="rankings"><b>经理榜单</b><small>多角度排序</small><span id="portfolioNavRankingCount">0</span></button>
-                  <button type="button" data-portfolio-view-target="diagnostics"><b>诊断</b><small>能力/回测</small><span id="portfolioNavDiagnosticCount">0</span></button>
-                </div>
-                <div class="portfolio-workspace-group" data-portfolio-nav-group="records">
-                  <span>记录</span>
-                  <button type="button" data-portfolio-view-target="timeline"><b>时间线</b><small>复盘记录</small><span id="portfolioNavRunCount">0</span></button>
-                  <button type="button" data-portfolio-view-target="orders"><b>订单流水</b><small>确认/到账</small><span id="portfolioNavOrderCount">0</span></button>
-                </div>
-              </div>
             </aside>
+            <nav class="portfolio-workspace-switcher portfolio-workspace-dock" aria-label="虚拟组合工作区">
+              <div class="portfolio-workspace-group" data-portfolio-nav-group="account">
+                <span>账户</span>
+                <button type="button" class="active" data-portfolio-view-target="overview"><b>总览</b><small>账户看板</small><span id="portfolioNavOverviewCount">15</span></button>
+                <button type="button" data-portfolio-view-target="positions"><b>持仓</b><small>仓位与收益</small><span id="portfolioNavPositionCount">0</span></button>
+                <button type="button" data-portfolio-view-target="users"><b>用户持仓</b><small>客户提醒</small><span id="portfolioNavUserCount">0</span></button>
+              </div>
+              <div class="portfolio-workspace-group" data-portfolio-nav-group="opportunity">
+                <span>机会</span>
+                <button type="button" data-portfolio-view-target="sectors"><b>板块榜</b><small>主题/轮动</small><span id="portfolioNavSectorCount">0</span></button>
+                <button type="button" data-portfolio-view-target="opportunities"><b>观察机会</b><small>可买/回调</small><span id="portfolioNavOpportunityCount">0</span></button>
+                <button type="button" data-portfolio-view-target="watchlist"><b>自选池</b><small>候选明细</small><span id="portfolioNavWatchlistCount">0</span></button>
+              </div>
+              <div class="portfolio-workspace-group" data-portfolio-nav-group="decision">
+                <span>决策</span>
+                <button type="button" data-portfolio-view-target="runner"><b>运行台</b><small>任务控制</small><span id="portfolioNavRunnerCount">控制</span></button>
+                <button type="button" data-portfolio-view-target="actions"><b>行动台</b><small>买/卖/观察</small><span id="portfolioNavActionCount">0</span></button>
+                <button type="button" data-portfolio-view-target="alerts"><b>预警台</b><small>必须处理</small><span id="portfolioNavAlertCount">0</span></button>
+                <button type="button" data-portfolio-view-target="matrix"><b>决策矩阵</b><small>横向对比</small><span id="portfolioNavMatrixCount">0</span></button>
+                <button type="button" data-portfolio-view-target="risk"><b>风控防线</b><small>回撤/止盈</small><span id="portfolioNavRiskCount">0</span></button>
+                <button type="button" data-portfolio-view-target="data"><b>数据体检</b><small>净值/费率</small><span id="portfolioNavDataCount">0</span></button>
+                <button type="button" data-portfolio-view-target="rankings"><b>经理榜单</b><small>多角度排序</small><span id="portfolioNavRankingCount">0</span></button>
+                <button type="button" data-portfolio-view-target="diagnostics"><b>诊断</b><small>能力/回测</small><span id="portfolioNavDiagnosticCount">0</span></button>
+              </div>
+              <div class="portfolio-workspace-group" data-portfolio-nav-group="records">
+                <span>记录</span>
+                <button type="button" data-portfolio-view-target="timeline"><b>时间线</b><small>复盘记录</small><span id="portfolioNavRunCount">0</span></button>
+                <button type="button" data-portfolio-view-target="orders"><b>订单流水</b><small>确认/到账</small><span id="portfolioNavOrderCount">0</span></button>
+              </div>
+            </nav>
             <div class="portfolio-terminal-stage">
               <section class="portfolio-workspace-view active" data-portfolio-view="overview">
                 <div id="portfolioWorkspaceCards" class="portfolio-workspace-cards">

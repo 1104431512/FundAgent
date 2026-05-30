@@ -1065,7 +1065,7 @@ const requiredPatterns = [
     message: "admin portfolio command header must be a compact trading-console strip instead of a tall stacked dashboard."
   },
   {
-    pattern: /@media \(min-width:\s*861px\)[\s\S]{0,900}body\[data-active-tab="portfolio"\] \.main[\s\S]{0,260}padding:\s*16px[\s\S]{0,900}\.portfolio-command-panel[\s\S]{0,360}max-height:\s*108px[\s\S]{0,2200}\.portfolio-workspace-switcher small[\s\S]{0,120}display:\s*none/,
+    pattern: /(?=[\s\S]*@media \(min-width:\s*861px\)[\s\S]{0,900}body\[data-active-tab="portfolio"\] \.main[\s\S]{0,260}padding:\s*16px)(?=[\s\S]*@media \(min-width:\s*861px\)[\s\S]*\.portfolio-command-panel[\s\S]{0,360}max-height:\s*108px)(?=[\s\S]*@media \(min-width:\s*861px\)[\s\S]*\.portfolio-workspace-switcher small[\s\S]{0,120}display:\s*none)/,
     message: "admin portfolio desktop layout must compress the header and rail labels so the trading workspace fits in one screen."
   },
   {
@@ -1077,7 +1077,7 @@ const requiredPatterns = [
     message: "admin portfolio page must group stock-terminal workspace entries by account, opportunity, decision, and records instead of one long page."
   },
   {
-    pattern: /<div class="portfolio-terminal-shell">[\s\S]{0,500}<aside class="portfolio-terminal-rail"[\s\S]{0,1200}<div class="portfolio-workspace-switcher"[\s\S]{0,3400}<div class="portfolio-terminal-stage">/,
+    pattern: /<div class="portfolio-terminal-shell">[\s\S]{0,500}<aside class="portfolio-terminal-rail"[\s\S]{0,1600}<nav class="portfolio-workspace-switcher portfolio-workspace-dock"[\s\S]{0,3400}<div class="portfolio-terminal-stage">/,
     message: "admin portfolio page must use a left-rail terminal workspace instead of stacking all virtual-run sections."
   },
   {
@@ -1209,8 +1209,12 @@ const requiredPatterns = [
     message: "admin portfolio workspace switcher must stay reachable and remain usable on narrow screens."
   },
   {
-    pattern: /portfolio-terminal-shell[\s\S]{0,260}grid-template-columns:\s*minmax\(180px,\s*210px\)\s*minmax\(0,\s*1fr\)[\s\S]{0,900}portfolio-terminal-rail[\s\S]{0,260}position:\s*relative/,
-    message: "admin portfolio terminal workspace must keep entry navigation in a stable left rail."
+    pattern: /portfolio-terminal-shell[\s\S]{0,340}grid-template-columns:\s*minmax\(78px,\s*90px\)\s*minmax\(0,\s*1fr\)[\s\S]{0,900}portfolio-terminal-rail[\s\S]{0,360}grid-row:\s*1\s*\/\s*span\s*2/,
+    message: "admin portfolio terminal workspace must keep only the primary entry navigation in a stable left rail."
+  },
+  {
+    pattern: /(?=[\s\S]*portfolio-workspace-dock)(?=[\s\S]*\.portfolio-workspace-dock\s*\{[\s\S]*grid-column:\s*2[\s\S]*grid-row:\s*1[\s\S]*overflow:\s*hidden)(?=[\s\S]*@media \(min-width:\s*861px\)[\s\S]*\.portfolio-workspace-group\.active\s*\{[\s\S]*display:\s*flex[\s\S]*overflow-x:\s*auto)/,
+    message: "admin portfolio secondary entries must live in a compact top dock instead of a long side menu."
   },
   {
     pattern: /@media \(max-width: 860px\)[\s\S]{0,4200}portfolio-workspace-switcher[\s\S]{0,600}overflow-x:\s*auto/,
