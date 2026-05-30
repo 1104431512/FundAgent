@@ -1601,6 +1601,10 @@ const requiredPatterns = [
     message: "portfolio status answers must include current ranking-board citations in watchlist summaries."
   },
   {
+    pattern: /(?=[\s\S]*buildPortfolioWatchRankingCitationMap[\s\S]{0,2400}consensusRadar\?\.lanes)(?=[\s\S]*collectWatchlistRankingRefs[\s\S]{0,2400}consensusRadar\?\.lanes)/,
+    message: "watchlist details and status replies must cite consensus radar lanes alongside ranking lanes."
+  },
+  {
     pattern: /function buildPortfolioAccountStatusLines[\s\S]{0,1800}账户简版[\s\S]{0,900}资金流转[\s\S]{0,900}回撤边界/,
     message: "portfolio default account status replies must summarize position, cash pressure, fund flow, and drawdown instead of dumping ledger fields."
   },
@@ -2951,6 +2955,18 @@ const requiredPatterns = [
   {
     pattern: /run-console-grid[\s\S]{0,260}overflow:\s*auto/,
     message: "admin portfolio runner summary cards must scroll inside the control entry."
+  },
+  {
+    pattern: /@media \(max-width: 860px\)[\s\S]*body\[data-active-tab="portfolio"\] \.app-shell[\s\S]{0,220}height:\s*100dvh[\s\S]{0,260}grid-template-rows:\s*auto minmax\(0,\s*1fr\)/,
+    message: "admin portfolio mobile layout must remain a bounded stock-terminal workspace instead of reverting to a long page."
+  },
+  {
+    pattern: /@media \(max-width: 860px\)[\s\S]*\.portfolio-workspace-view\[data-portfolio-view="runner"\]\.active[\s\S]{0,140}overflow:\s*hidden[\s\S]{0,700}\.run-console-terminal[\s\S]{0,260}grid-template-rows:\s*auto minmax\(0,\s*1fr\)/,
+    message: "admin portfolio mobile runner must split task entries from the active detail panel."
+  },
+  {
+    pattern: /@media \(max-width: 860px\)[\s\S]*\.run-task-rail[\s\S]{0,220}max-height:\s*70px[\s\S]{0,140}overflow-x:\s*auto/,
+    message: "admin portfolio mobile runner tasks must be horizontal terminal entries, not a tall vertical stack."
   },
   {
     pattern: /(?=[\s\S]*body\[data-active-tab="portfolio"\]\[data-active-portfolio-view\]:not\(\[data-active-portfolio-view="overview"\]\) \.portfolio-command-panel[\s\S]{0,120}display:\s*none)(?=[\s\S]*@media \(min-width:\s*861px\)[\s\S]*data-active-portfolio-view[\s\S]{0,260}grid-template-rows:\s*minmax\(0,\s*1fr\))/,

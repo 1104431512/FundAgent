@@ -8405,6 +8405,21 @@ function buildPortfolioWatchRankingCitationMap(managerRankings = {}) {
       byCode.set(code, refs);
     }
   }
+  const consensusLanes = Array.isArray(managerRankings?.consensusRadar?.lanes) ? managerRankings.consensusRadar.lanes : [];
+  for (const lane of consensusLanes) {
+    const items = Array.isArray(lane?.items) ? lane.items : [];
+    for (const item of items) {
+      const code = String(item?.code || "").match(/^\d{6}$/)?.[0] || "";
+      if (!code) continue;
+      const refs = byCode.get(code) || [];
+      refs.push({
+        title: `共识雷达·${lane.title || "共识"}`,
+        rank: item.rank || item.matrixRank || "",
+        action: item.action || item.verdictLabel || lane.topAction || ""
+      });
+      byCode.set(code, refs);
+    }
+  }
   return byCode;
 }
 
@@ -8414,6 +8429,12 @@ function formatPortfolioWatchRankingCitationText(code = "", rankingCitationMap =
     .slice(0, 4)
     .map((item) => `${item.title}${item.rank ? `#${item.rank}` : ""}${item.action ? `/${item.action}` : ""}`)
     .join("；");
+}
+
+function shortenPortfolioCitationText(value = "", maxLength = 100) {
+  const text = normalizePortfolioUserFacingText(value || "").replace(/\s+/g, " ").trim();
+  if (!text || text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 1)).trim()}…`;
 }
 
 function buildPortfolioWatchlistLaunchEveLines(watchlist = [], options = {}) {
@@ -8487,7 +8508,7 @@ function formatPortfolioWatchCompactLine(item = {}, options = {}) {
     `关注：${shortenPortfolioCustomerText(focus, 54)}`,
     `下一步：${shortenPortfolioCustomerText(nextStep, 58)}`,
     `边界：${shortenPortfolioCustomerText(boundary, 58)}`,
-    rankingCitation ? `上榜：${shortenPortfolioCustomerText(rankingCitation, 54)}` : ""
+    rankingCitation ? `上榜：${shortenPortfolioCitationText(rankingCitation, 100)}` : ""
   ].filter(Boolean);
   return `- ${parts.join("；")}`;
 }

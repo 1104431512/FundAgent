@@ -2881,6 +2881,7 @@ function getManagerRankingHealthClass(level = "") {
 }
 
 function getManagerRankingListClass(id = "") {
+  if (String(id || "").startsWith("consensus_")) return "synthesis";
   if (id === "decision_synthesis") return "synthesis";
   if (id === "buy_preparation") return "buy";
   if (id === "launch_setup") return "launch";
@@ -4305,6 +4306,18 @@ function collectWatchlistRankingRefs(code = "") {
       title: list.title || "经理榜单",
       rank: item.rank || "",
       action: item.action || item.status || ""
+    });
+  }
+  const consensusLanes = Array.isArray(currentPortfolio?.managerRankings?.consensusRadar?.lanes) ? currentPortfolio.managerRankings.consensusRadar.lanes : [];
+  for (const lane of consensusLanes) {
+    const items = Array.isArray(lane?.items) ? lane.items : [];
+    const item = items.find((candidate) => String(candidate?.code || "").trim() === targetCode);
+    if (!item) continue;
+    refs.push({
+      listId: `consensus_${lane.id || "watch"}`,
+      title: `共识雷达·${lane.title || "共识"}`,
+      rank: item.rank || item.matrixRank || "",
+      action: item.action || item.verdictLabel || lane.topAction || ""
     });
   }
   return refs.slice(0, 6);

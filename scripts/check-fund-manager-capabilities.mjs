@@ -1283,7 +1283,7 @@ assert(capabilityProfileContext.includes("历史回测诊断"), "manager profile
 assert(serverSource.includes("能力修复队列（必须进入 team.主席、team.风控经理、actions 或 learningNotes）"), "portfolio decision prompt must force capability repair tasks into decisions");
 assert(serverSource.includes("经理多角度榜单（系统计算，必须先看榜单再决定）"), "portfolio decision prompt must force manager ranking boards into decisions");
 assert(serverSource.includes("rankingBasis"), "portfolio actions must preserve the ranking basis behind each recommendation");
-assert(serverSource.includes("buildPortfolioWatchRankingCitationMap"), "portfolio status replies must be able to cite which ranking lanes reference each watchlist fund");
+assert(serverSource.includes("buildPortfolioWatchRankingCitationMap") && serverSource.includes("consensusRadar?.lanes"), "portfolio status replies must be able to cite which ranking lanes and consensus radar lanes reference each watchlist fund");
 assert(serverSource.includes("formatPortfolioWatchRankingCitationText"), "portfolio status replies must format ranking citations in customer-readable watchlist lines");
 assert(serverSource.includes("buildPortfolioCashRedeploymentRanking"), "portfolio ranking board must include a cash-redeployment lane to fight over-conservative waiting");
 assert(serverSource.includes("cash_redeployment"), "portfolio decision prompt and ranking guards must reference the cash-redeployment lane");
@@ -1561,7 +1561,7 @@ assert(adminSource.includes("focusWatchlistFund"), "admin UI customer digest mus
 assert(adminSource.includes("data-focus-watchlist-code"), "admin UI customer digest items must expose a watchlist focus action");
 assert(adminSource.includes("data-watchlist-code"), "admin UI watchlist cards must be addressable from ranking digest items");
 assert(adminSource.includes("ranking-detail-link"), "admin UI ranking and priority items must expose compact watchlist detail actions");
-assert(adminSource.includes("renderWatchlistRankingRefs"), "admin UI watchlist details must show which manager ranking lanes cite each fund");
+assert(adminSource.includes("renderWatchlistRankingRefs") && adminSource.includes("consensusRadar?.lanes"), "admin UI watchlist details must show which manager ranking and consensus radar lanes cite each fund");
 assert(adminSource.includes("decision_synthesis"), "admin UI must render the decision-synthesis ranking lane");
 assert(adminSource.includes("cash_redeployment"), "admin UI must render the cash-redeployment ranking lane");
 assert(adminSource.includes("position_sizing"), "admin UI must render the position-sizing ranking lane");
@@ -1585,6 +1585,11 @@ assert(/portfolio-command-panel[\s\S]{0,420}grid-template-areas:\s*"hero kpis st
 assert(/portfolio-hero \.actions[\s\S]{0,260}overflow-x:\s*auto/.test(adminStyleSource), "admin portfolio command actions must stay compact instead of wrapping into a tall toolbar on desktop");
 assert(/portfolio-command-panel \.info-grid[\s\S]{0,260}grid-area:\s*status/.test(adminStyleSource), "admin portfolio schedule and push metadata must live in the compact command header status column");
 assert(/(?=[\s\S]*@media \(min-width:\s*861px\)[\s\S]{0,900}body\[data-active-tab="portfolio"\] \.main[\s\S]{0,260}padding:\s*16px)(?=[\s\S]*@media \(min-width:\s*861px\)[\s\S]*\.portfolio-command-panel[\s\S]{0,360}max-height:\s*108px)(?=[\s\S]*@media \(min-width:\s*861px\)[\s\S]*\.portfolio-workspace-switcher small[\s\S]{0,120}display:\s*none)/.test(adminStyleSource), "admin portfolio desktop layout must compress the command header and terminal rail so the workspace is not a long page");
+assert(/@media \(max-width: 860px\)[\s\S]*body\[data-active-tab="portfolio"\] \.app-shell[\s\S]{0,220}height:\s*100dvh[\s\S]{0,260}grid-template-rows:\s*auto minmax\(0,\s*1fr\)/.test(adminStyleSource), "admin portfolio mobile layout must keep the stock-terminal page inside the viewport instead of becoming one long page");
+assert(/@media \(max-width: 860px\)[\s\S]*\.portfolio-terminal-shell[\s\S]{0,260}grid-template-rows:\s*auto auto minmax\(0,\s*1fr\)/.test(adminStyleSource), "admin portfolio mobile terminal must keep top entries compact instead of stacking every control vertically");
+assert(/@media \(max-width: 860px\)[\s\S]*\.portfolio-workspace-view\.active[\s\S]{0,220}overflow:\s*auto/.test(adminStyleSource), "admin portfolio mobile terminal must scroll only the active workspace");
+assert(/@media \(max-width: 860px\)[\s\S]*\.portfolio-workspace-view\[data-portfolio-view="runner"\]\.active[\s\S]{0,140}overflow:\s*hidden[\s\S]{0,700}\.run-console-terminal[\s\S]{0,260}grid-template-rows:\s*auto minmax\(0,\s*1fr\)/.test(adminStyleSource), "admin portfolio mobile runner must stay as a bounded virtual-run console with separate task and detail regions");
+assert(/@media \(max-width: 860px\)[\s\S]*\.run-task-rail[\s\S]{0,220}max-height:\s*70px[\s\S]{0,140}overflow-x:\s*auto/.test(adminStyleSource), "admin portfolio mobile runner task buttons must be horizontal entries instead of a tall vertical stack");
 assert(/function setPortfolioView[\s\S]{0,360}document\.body\.dataset\.activePortfolioView\s*=\s*nextView/.test(adminSource), "admin portfolio view switching must expose the active workspace on the body for view-specific terminal layouts");
 assert(adminStyleSource.includes("portfolio-workspace-switcher"), "admin portfolio workspace switcher must be styled as a first-class navigation surface");
 assert(adminHtmlSource.includes("portfolio-workspace-dock") && /portfolio-workspace-dock\s*\{[\s\S]{0,220}grid-column:\s*2[\s\S]{0,120}grid-row:\s*1/.test(adminStyleSource), "admin portfolio secondary workspace entries must move into a compact top dock instead of a long side rail");
@@ -2140,10 +2145,20 @@ const rankingAwareWatchlistLines = manager.buildPortfolioWatchlistStatusLines([n
         title: "板块轮动榜",
         items: [{ code: normalizedWatchDb.watchlist[0].code, rank: 2, action: "低位轮动观察" }]
       }
-    ]
+    ],
+    consensusRadar: {
+      lanes: [
+        {
+          id: "buy",
+          title: "共识可买",
+          items: [{ code: normalizedWatchDb.watchlist[0].code, rank: 1, action: "可小仓复核" }]
+        }
+      ]
+    }
   }
 }).join("\n");
 assert(rankingAwareWatchlistLines.includes("上榜依据：综合决策榜#1/小仓试探复核；板块轮动榜#2/低位轮动观察"), "portfolio status answer must cite ranking lanes inside watchlist detail lines");
+assert(rankingAwareWatchlistLines.includes("共识雷达·共识可买#1/可小仓复核"), "portfolio status answer must cite consensus radar inside watchlist detail lines");
 const compactWatchlistLines = manager.buildPortfolioWatchlistStatusLines([normalizedWatchDb.watchlist[0]], {
   compact: true,
   limitPerStatus: 1,
@@ -2153,7 +2168,16 @@ const compactWatchlistLines = manager.buildPortfolioWatchlistStatusLines([normal
         title: "综合决策榜",
         items: [{ code: normalizedWatchDb.watchlist[0].code, rank: 1, action: "小仓试探复核" }]
       }
-    ]
+    ],
+    consensusRadar: {
+      lanes: [
+        {
+          id: "buy",
+          title: "共识可买",
+          items: [{ code: normalizedWatchDb.watchlist[0].code, rank: 1, action: "可小仓复核" }]
+        }
+      ]
+    }
   }
 }).join("\n");
 assert(compactWatchlistLines.includes("自选池简版："), "default portfolio status watchlist mode must tell users it is a concise action summary");
@@ -2161,6 +2185,7 @@ assert(compactWatchlistLines.includes("关注："), "compact watchlist lines mus
 assert(compactWatchlistLines.includes("下一步："), "compact watchlist lines must show the trigger or next action");
 assert(compactWatchlistLines.includes("边界："), "compact watchlist lines must show the risk boundary");
 assert(compactWatchlistLines.includes("上榜：综合决策榜#1/小仓试探复核"), "compact watchlist lines must retain ranking evidence without forcing the full detail report");
+assert(compactWatchlistLines.includes("共识雷达·共识可买#1/可小仓复核"), "compact watchlist lines must retain consensus radar evidence without forcing the full detail report");
 assert(!compactWatchlistLines.includes("费用/份额："), "compact watchlist lines should not dump fee details unless the user explicitly asks for the watchlist");
 assert(!compactWatchlistLines.includes("最新走势："), "compact watchlist lines should not dump raw trend fields unless the user explicitly asks for the watchlist");
 const compactAccountLines = manager.buildPortfolioAccountStatusLines({

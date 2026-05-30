@@ -9243,4 +9243,205 @@ button.danger-button:hover {
   .timeline-marker {
     left: -16px;
   }
+
+  body[data-active-tab="portfolio"] {
+    overflow: hidden;
+  }
+
+  body[data-active-tab="portfolio"] .app-shell {
+    height: 100dvh;
+    min-height: 100dvh;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  body[data-active-tab="portfolio"] .main {
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
+    padding: 10px;
+  }
+
+  .tab-panel[data-panel="portfolio"].active {
+    height: 100%;
+    min-height: 0;
+    gap: 8px;
+    overflow: hidden;
+  }
+
+  body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-portfolio-view="overview"]) .tab-panel[data-panel="portfolio"].active {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .portfolio-command-panel {
+    max-height: 142px;
+    min-height: 0;
+    gap: 8px;
+    padding: 8px;
+    overflow: hidden;
+  }
+
+  .portfolio-hero {
+    gap: 5px;
+  }
+
+  .portfolio-hero h2 {
+    font-size: 17px;
+  }
+
+  .portfolio-hero p {
+    -webkit-line-clamp: 1;
+    font-size: 12px;
+  }
+
+  .portfolio-hero .actions {
+    padding-bottom: 0;
+  }
+
+  .portfolio-kpi-grid {
+    display: flex;
+    min-width: 0;
+    overflow-x: auto;
+  }
+
+  .portfolio-kpi {
+    flex: 0 0 128px;
+    min-height: 58px;
+    padding: 7px;
+  }
+
+  .portfolio-kpi strong {
+    margin: 3px 0;
+    font-size: 17px;
+  }
+
+  .portfolio-kpi small {
+    max-height: 1.25em;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .portfolio-command-panel .info-grid {
+    display: none;
+  }
+
+  .portfolio-terminal-shell {
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 6px;
+    overflow: hidden;
+  }
+
+  .portfolio-terminal-rail,
+  .portfolio-workspace-dock,
+  .portfolio-terminal-stage,
+  .portfolio-workspace-view.active {
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  .portfolio-terminal-rail {
+    position: static;
+    padding: 7px;
+  }
+
+  .portfolio-entry-tabs,
+  .portfolio-workspace-switcher {
+    max-height: 48px;
+    padding-bottom: 1px;
+  }
+
+  .portfolio-entry-tabs button,
+  .portfolio-workspace-switcher button {
+    min-height: 42px;
+  }
+
+  .portfolio-terminal-stage {
+    height: 100%;
+  }
+
+  .portfolio-workspace-view.active {
+    height: 100%;
+    overflow: auto;
+    padding-right: 0;
+  }
+
+  .portfolio-workspace-view[data-portfolio-view="runner"].active {
+    overflow: hidden;
+  }
+
+  .portfolio-workspace-view[data-portfolio-view="runner"] .run-console-panel {
+    height: 100%;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    padding: 10px;
+    overflow: hidden;
+  }
+
+  .run-console-terminal {
+    height: 100%;
+    min-height: 0;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .run-task-rail {
+    max-height: 70px;
+    padding: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .run-task-button {
+    flex: 0 0 156px;
+    min-height: 48px;
+  }
+
+  .run-console-stage {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .runner-workspace-switcher {
+    max-height: 54px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .runner-workspace-view.active {
+    height: 100%;
+    min-height: 0;
+    overflow: auto;
+    padding: 10px;
+  }
+
+  .runner-workspace-view[data-runner-view="control"].active {
+    overflow: hidden;
+  }
+
+  .run-command-strip {
+    grid-template-columns: 1fr;
+    gap: 7px;
+    padding: 8px;
+  }
+
+  .run-command-facts {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .run-command-facts span {
+    flex: 0 0 92px;
+  }
+
+  .run-console-grid {
+    min-height: 0;
+    overflow: auto;
+  }
 }
