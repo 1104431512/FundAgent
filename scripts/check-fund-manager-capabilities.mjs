@@ -365,6 +365,9 @@ assert(rankingBoard.consensusRadar?.lanes?.length === 4, "manager ranking board 
 assert(rankingBoard.consensusRadar.lanes.find((lane) => lane.id === "buy")?.items.some((item) => item.supportCount >= 2), "consensus radar buy lane must require cross-list supporting evidence");
 assert(rankingBoard.consensusRadar.lanes.find((lane) => lane.id === "risk")?.items.some((item) => item.blockerText || item.blockerCount), "consensus radar risk lane must expose blocking evidence");
 assert(manager.compactPortfolioRankingBoardForModel(rankingBoard).consensusRadar?.lanes?.length === 4, "manager model context must receive compact consensus radar lanes");
+const consensusRadarLines = manager.buildPortfolioConsensusRadarStatusLines(rankingBoard.consensusRadar).join("\n");
+assert(consensusRadarLines.includes("共识雷达") && consensusRadarLines.includes("共识可买") && consensusRadarLines.includes("风险阻断"), "portfolio status replies must translate consensus radar lanes into readable buy/watch/risk/data lines");
+assert(consensusRadarLines.includes("依据：") && consensusRadarLines.includes("下一步："), "consensus radar status lines must explain the reason and next step, not only repeat fund codes");
 const leaderboardStatusLines = manager.buildPortfolioCustomerActionLeaderboardStatusLines(rankingBoard.customerActionLeaderboard).join("\n");
 assert(leaderboardStatusLines.includes("客户行动排行") && leaderboardStatusLines.includes("卖出/减仓榜") && leaderboardStatusLines.includes("补证据榜"), "portfolio status replies must translate customer action leaderboards into readable action-ranked lines");
 assert(leaderboardStatusLines.includes("复核期限：") && leaderboardStatusLines.includes("触发：") && leaderboardStatusLines.includes("失效/降级："), "portfolio status replies must include review windows, triggers, and invalidation boundaries for action leaderboards");

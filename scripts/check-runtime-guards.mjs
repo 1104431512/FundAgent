@@ -1669,6 +1669,10 @@ const requiredPatterns = [
     message: "portfolio status answers must translate customer action leaderboards before detailed action-card lines."
   },
   {
+    pattern: /(?=[\s\S]*function buildPortfolioConsensusRadarStatusLines[\s\S]{0,1200}共识雷达)(?=[\s\S]*buildPortfolioStatusAnswer[\s\S]{0,6200}buildPortfolioConsensusRadarStatusLines[\s\S]{0,900}buildPortfolioCustomerActionLeaderboardStatusLines)/,
+    message: "portfolio status answers must translate consensus radar before detailed action leaderboards."
+  },
+  {
     pattern: /function buildPortfolioRedeploymentPlan[\s\S]{0,5200}pressureActive[\s\S]{0,5200}starter_buy[\s\S]{0,5200}实时估算时间/,
     message: "portfolio redeployment plan must force high-cash low-exposure portfolios to review starter buys with realtime valuation evidence."
   },

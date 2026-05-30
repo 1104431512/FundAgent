@@ -7982,6 +7982,35 @@ function buildPortfolioCustomerActionLeaderboardStatusLines(board = {}) {
   return lines;
 }
 
+function buildPortfolioConsensusRadarStatusLines(radar = {}) {
+  const lanes = Array.isArray(radar.lanes)
+    ? radar.lanes.filter((lane) => Number(lane.count || 0) > 0)
+    : [];
+  if (!lanes.length) return [];
+  const lines = [`${radar.title || "共识雷达"}：${radar.summary || lanes.map((lane) => `${lane.title}${lane.count || 0}项`).join("，")}。`];
+  for (const lane of lanes.slice(0, 4)) {
+    const items = Array.isArray(lane.items) ? lane.items.slice(0, 2) : [];
+    const itemText = items.length
+      ? items.map((item) => `${item.code || ""} ${item.name || ""}${item.action ? `（${item.action}）` : ""}`.trim()).join("；")
+      : lane.emptyText || "暂无第一对象";
+    const first = items[0] || {};
+    const evidence = lane.id === "risk"
+      ? first.blockerText || first.reason
+      : lane.id === "data"
+        ? first.blockerText || first.constraintText || first.reason
+        : first.supportText || first.reason;
+    const constraint = first.constraintText || first.permission || "";
+    const nextStep = first.nextStep || lane.topAction || "";
+    lines.push(
+      `- ${lane.title || "共识"}：${itemText}` +
+        `${evidence ? `。依据：${shortenPortfolioCustomerText(evidence, 58)}` : ""}` +
+        `${constraint ? `。约束：${shortenPortfolioCustomerText(constraint, 48)}` : ""}` +
+        `${nextStep ? `。下一步：${shortenPortfolioCustomerText(nextStep, 58)}` : ""}`
+    );
+  }
+  return lines;
+}
+
 function formatPortfolioCustomerActionReasonLabel(cardId = "") {
   const id = String(cardId || "").trim();
   if (id === "buy") return "买入理由";
@@ -8786,6 +8815,11 @@ function buildPortfolioStatusAnswer(userText, intent) {
   if (!wantsOnlyProfileOrSchedule) {
     lines.push("");
     lines.push(...buildPortfolioCustomerDecisionSummaryStatusLines(managerRankings.customerDecisionSummary || {}));
+    const consensusLines = buildPortfolioConsensusRadarStatusLines(managerRankings.consensusRadar || {});
+    if (consensusLines.length) {
+      lines.push("");
+      lines.push(...consensusLines);
+    }
     const leaderboardLines = buildPortfolioCustomerActionLeaderboardStatusLines(managerRankings.customerActionLeaderboard || {});
     if (leaderboardLines.length) {
       lines.push("");
@@ -27734,6 +27768,7 @@ export {
   buildPortfolioCapabilityActionQueue,
   buildPortfolioAccountStatusLines,
   buildPortfolioCustomerDecisionSummaryStatusLines,
+  buildPortfolioConsensusRadarStatusLines,
   buildPortfolioCustomerActionLeaderboardStatusLines,
   buildPortfolioCustomerActionDeckStatusLines,
   buildPortfolioStatusDirectConclusionLines,
