@@ -1633,6 +1633,10 @@ const requiredPatterns = [
     message: "portfolio status answers must format customer action cards in Chinese."
   },
   {
+    pattern: /function buildPortfolioCustomerActionDeckStatusLines[\s\S]{0,1200}formatPortfolioCustomerActionReasonLabel[\s\S]{0,900}function formatPortfolioCustomerActionReasonLabel[\s\S]{0,900}买入理由[\s\S]{0,900}加备选理由[\s\S]{0,900}暂不买理由[\s\S]{0,900}卖出\/减仓理由[\s\S]{0,900}先补证据原因/,
+    message: "portfolio customer action cards must explain buy, backup, avoid, sell, and data-block reasons with customer-friendly labels."
+  },
+  {
     pattern: /function buildPortfolioStatusDirectConclusionLines[\s\S]{0,900}priorityOrder = \["sell",\s*"buy",\s*"wait",\s*"avoid",\s*"data"\][\s\S]{0,900}直接结论：[\s\S]{0,900}优先处理：/,
     message: "portfolio status replies must start with a direct conclusion derived from customer action cards."
   },

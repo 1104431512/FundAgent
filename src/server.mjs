@@ -7946,9 +7946,20 @@ function buildPortfolioCustomerActionDeckStatusLines(deck = {}) {
       : card.emptyText || "暂无";
     const firstReason = shortenPortfolioCustomerText(items[0]?.reason || card.summary || "", 54);
     const nextStep = shortenPortfolioCustomerText(items[0]?.nextStep || card.nextStep || "", 64);
-    lines.push(`- ${card.title || "行动"}：${itemText}${firstReason ? `。原因：${firstReason}` : ""}${nextStep ? `。下一步：${nextStep}` : ""}`);
+    const reasonLabel = formatPortfolioCustomerActionReasonLabel(card.id);
+    lines.push(`- ${card.title || "行动"}：${itemText}${firstReason ? `。${reasonLabel}：${firstReason}` : ""}${nextStep ? `。下一步：${nextStep}` : ""}`);
   }
   return lines;
+}
+
+function formatPortfolioCustomerActionReasonLabel(cardId = "") {
+  const id = String(cardId || "").trim();
+  if (id === "buy") return "买入理由";
+  if (id === "wait") return "加备选理由";
+  if (id === "avoid") return "暂不买理由";
+  if (id === "sell") return "卖出/减仓理由";
+  if (id === "data") return "先补证据原因";
+  return "判断依据";
 }
 
 function buildPortfolioStatusDirectConclusionLines({ account = {}, managerRankings = {}, recentDecision = null, activeOrders = [], todayTransactions = [] } = {}) {
@@ -27147,6 +27158,7 @@ export {
   buildPortfolioCapabilityDiagnostics,
   buildPortfolioCapabilityActionQueue,
   buildPortfolioAccountStatusLines,
+  buildPortfolioCustomerActionDeckStatusLines,
   buildPortfolioStatusDirectConclusionLines,
   buildPortfolioDecisionCard,
   buildPortfolioDecisionReadinessQueue,

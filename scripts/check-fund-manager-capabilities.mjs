@@ -345,6 +345,12 @@ assert(rankingBoard.customerActionDeck.cards.find((card) => card.id === "wait")?
 assert(rankingBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items.some((item) => item.code === "000006"), "customer action deck must surface chase-risk avoid candidates");
 assert(rankingBoard.customerActionDeck.cards.find((card) => card.id === "sell")?.items.some((item) => item.code === "008327"), "customer action deck must surface sell or de-risk candidates separately from avoid candidates");
 assert(rankingBoard.customerActionDeck.cards.find((card) => card.id === "data")?.items.some((item) => item.code === "000010"), "customer action deck must surface data-first blockers before buy execution");
+const actionDeckLines = manager.buildPortfolioCustomerActionDeckStatusLines(rankingBoard.customerActionDeck).join("\n");
+assert(actionDeckLines.includes("买入理由："), "customer action deck status must explain why a fund can be bought instead of using a generic reason label");
+assert(actionDeckLines.includes("加备选理由："), "customer action deck status must explain why a fund belongs in backup/watch instead of only saying wait");
+assert(actionDeckLines.includes("暂不买理由："), "customer action deck status must explain why a hot fund should not be bought now");
+assert(actionDeckLines.includes("卖出/减仓理由："), "customer action deck status must explain why a held fund needs sell or de-risk review");
+assert(actionDeckLines.includes("先补证据原因："), "customer action deck status must explain why missing data blocks buy execution");
 assert(rankingBoard.decisionMatrix?.items?.length, "manager ranking board must build a cross-list decision matrix");
 assert(rankingBoard.decisionMatrix.items.some((item) => item.code === "000005" && item.cells?.buy && item.cells?.sector), "decision matrix must align buy and sector evidence for the same fund");
 assert(rankingBoard.decisionMatrix.items.some((item) => item.code === "000010" && item.cells?.data && /补证据|补齐|不能提交买入|数据/.test(item.nextStep || item.action || "")), "decision matrix must surface data blockers before buy execution");
