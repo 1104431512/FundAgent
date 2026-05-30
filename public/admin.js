@@ -198,6 +198,9 @@ document.querySelector("[data-panel='portfolio']")?.addEventListener("click", (e
   const runButton = event.target.closest("[data-run-select]");
   if (runButton) {
     activePortfolioRunKey = runButton.dataset.runSelect || "";
+    if (runButton.dataset.portfolioViewTarget) {
+      setPortfolioView(runButton.dataset.portfolioViewTarget);
+    }
     renderRuns(currentPortfolio?.recentRuns || []);
     return;
   }
@@ -1284,7 +1287,7 @@ function renderPortfolioCustomerActionLeaderboardLane(lane = {}) {
       <span>${escapeHtml(lane.title || "行动排行")}</span>
       <strong>${escapeHtml(top ? `${top.code || ""} ${top.name || ""}`.trim() : `${lane.count || 0} 项`)}</strong>
       <small>${escapeHtml(top?.reason || lane.purpose || "查看对应行动线。")}</small>
-      <em>${escapeHtml(top?.action || lane.topAction || "复核")}</em>
+      <em>${escapeHtml(top?.reviewWindow || top?.action || lane.topAction || "复核")}</em>
     </button>
   `;
 }
@@ -2327,6 +2330,11 @@ function renderManagerCustomerActionLeaderboardItem(item = {}) {
       </div>
       <p>${escapeHtml(item.reason || item.action || "等待经理复核。")}</p>
       <small>${escapeHtml(item.nextStep || "进入对应工作区查看边界。")}</small>
+      <div class="ranking-action-boundary">
+        ${item.reviewWindow ? `<span>复核：${escapeHtml(item.reviewWindow)}</span>` : ""}
+        ${item.trigger ? `<span>触发：${escapeHtml(item.trigger)}</span>` : ""}
+        ${item.invalidation ? `<span>失效：${escapeHtml(item.invalidation)}</span>` : ""}
+      </div>
       <footer>
         ${badges.slice(0, 4).map((badge) => `<em>${escapeHtml(badge)}</em>`).join("")}
         ${code ? `<button type="button" class="ranking-detail-link" data-focus-watchlist-code="${escapeHtml(code)}">自选详情</button>` : ""}
@@ -2764,6 +2772,7 @@ function renderPortfolioRunConsole(portfolio = {}, latestRun = null, context = {
   const commandRoot = document.querySelector("#portfolioRunCommandStrip");
   const latestRoot = document.querySelector("#portfolioRunLatestBoard");
   const executionRoot = document.querySelector("#portfolioRunExecutionBoard");
+  const historyRoot = document.querySelector("#portfolioRunHistoryBoard");
   const outputRoot = document.querySelector("#portfolioRunOutput");
   const scheduler = portfolio.scheduler || {};
   const status = scheduler.inFlight ? "running" : latestRun?.status || "idle";
@@ -2788,6 +2797,7 @@ function renderPortfolioRunConsole(portfolio = {}, latestRun = null, context = {
   setText("#runnerNavControlCount", scheduler.inFlight ? "运行中" : portfolio.enabled ? "启用" : "停用");
   setText("#runnerNavLatestCount", latestRun ? "1" : "0");
   setText("#runnerNavExecutionCount", String(executionCount));
+  setText("#runnerNavHistoryCount", String(runs.length));
   setText("#runnerNavRawCount", portfolio.lightweight ? "摘要" : "完整");
   if (commandRoot) {
     commandRoot.innerHTML = renderPortfolioRunCommandStrip({ portfolio, latestRun, scheduler, status, label, activeOrders, runs });
@@ -2844,6 +2854,9 @@ function renderPortfolioRunConsole(portfolio = {}, latestRun = null, context = {
   if (executionRoot) {
     executionRoot.innerHTML = renderPortfolioRunExecutionBoard({ activeOrders, transactions, equity });
   }
+  if (historyRoot) {
+    historyRoot.innerHTML = renderPortfolioRunHistoryBoard(runs);
+  }
   if (outputRoot) {
     outputRoot.textContent = formatPortfolioOutput(portfolio);
   }
@@ -2872,7 +2885,7 @@ function renderPortfolioRunCommandStrip({ portfolio = {}, latestRun = null, sche
     <div class="run-command-actions">
       <button type="button" data-runner-view-target="latest">看结论</button>
       <button type="button" class="secondary" data-runner-view-target="execution">看执行</button>
-      <button type="button" class="secondary" data-portfolio-view-target="timeline">时间线</button>
+      <button type="button" class="secondary" data-runner-view-target="history">看历史</button>
     </div>
   `;
 }
@@ -2968,6 +2981,52 @@ function renderPortfolioRunExecutionBoard({ activeOrders = [], transactions = []
       <button type="button" data-portfolio-view-target="orders">进入订单终端</button>
       <button type="button" class="secondary" data-runner-view-target="raw">看原始状态</button>
     </div>
+  `;
+}
+
+function renderPortfolioRunHistoryBoard(runs = []) {
+  const items = Array.isArray(runs) ? runs.slice(0, 8) : [];
+  if (!items.length) {
+    return `
+      <div class="runner-empty-state">
+        <strong>暂无运行历史</strong>
+        <p>运行盘前观察、今日操作或周总结后，这里会先显示最近记录；完整日报仍在时间线入口里。</p>
+      </div>
+    `;
+  }
+  const counts = buildRunStatusCounts(items);
+  return `
+    <section class="runner-history-terminal">
+      <div class="runner-history-head">
+        <div>
+          <strong>最近运行</strong>
+          <small>运行台只放最近记录，长日报和角色明细进入时间线下钻。</small>
+        </div>
+        <div class="runner-history-counts">
+          <span>完成 ${escapeHtml(String(counts.completed || 0))}</span>
+          <span>运行 ${escapeHtml(String(counts.running || 0))}</span>
+          <span>异常 ${escapeHtml(String((counts.failed || 0) + (counts.interrupted || 0)))}</span>
+        </div>
+      </div>
+      <div class="runner-history-list">
+        ${items.map((run, index) => {
+          const key = getRunKey(run, index);
+          return `
+            <button type="button" class="runner-history-item" data-run-select="${escapeHtml(key)}" data-portfolio-view-target="timeline">
+              <span class="run-index-dot ${escapeHtml(getRunStatusClass(run.status))}"></span>
+              <div>
+                <strong>${escapeHtml([run.date, run.title || formatRunTypeLabel(run.type)].filter(Boolean).join(" · ") || "运行记录")}</strong>
+                <small>${escapeHtml(run.summary || buildRunCompactMeta(run))}</small>
+              </div>
+              <em class="${escapeHtml(getRunStatusClass(run.status))}">${escapeHtml(formatRunStatus(run.status))}</em>
+            </button>
+          `;
+        }).join("")}
+      </div>
+      <div class="runner-history-actions">
+        <button type="button" data-portfolio-view-target="timeline">进入完整时间线</button>
+      </div>
+    </section>
   `;
 }
 

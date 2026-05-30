@@ -2897,8 +2897,12 @@ const requiredPatterns = [
     message: "admin portfolio orders must split orders, transactions, equity, and raw state into terminal entries."
   },
   {
-    pattern: /(?=[\s\S]*虚拟运行台)(?=[\s\S]*data-runner-view-target="latest")(?=[\s\S]*data-runner-view-target="execution")(?=[\s\S]*setPortfolioRunnerView)(?=[\s\S]*portfolioRunCommandStrip)/,
-    message: "admin portfolio runner must split virtual execution into task, conclusion, execution, and raw-state entries."
+    pattern: /(?=[\s\S]*虚拟运行台)(?=[\s\S]*data-runner-view-target="latest")(?=[\s\S]*data-runner-view-target="execution")(?=[\s\S]*data-runner-view-target="history")(?=[\s\S]*setPortfolioRunnerView)(?=[\s\S]*portfolioRunCommandStrip)(?=[\s\S]*renderPortfolioRunHistoryBoard)/,
+    message: "admin portfolio runner must split virtual execution into task, conclusion, execution, history, and raw-state entries."
+  },
+  {
+    pattern: /(?=[\s\S]*body\[data-active-tab="portfolio"\]\[data-active-portfolio-view\]:not\(\[data-active-portfolio-view="overview"\]\) \.portfolio-command-panel[\s\S]{0,120}display:\s*none)(?=[\s\S]*@media \(min-width:\s*861px\)[\s\S]*data-active-portfolio-view[\s\S]{0,260}grid-template-rows:\s*minmax\(0,\s*1fr\))/,
+    message: "admin portfolio focused workspaces must hide the tall account header so virtual-run entries fit like a trading terminal."
   },
   {
     pattern: /(?=[\s\S]*经理体检终端)(?=[\s\S]*data-diagnostic-view-target="actions")(?=[\s\S]*setPortfolioDiagnosticView)(?=[\s\S]*diagnosticNavBacktestCount)/,

@@ -7973,7 +7973,10 @@ function buildPortfolioCustomerActionLeaderboardStatusLines(board = {}) {
     const action = top?.action ? `（${top.action}）` : "";
     const reason = shortenPortfolioCustomerText(top?.reason || lane.purpose || "", 58);
     const nextStep = shortenPortfolioCustomerText(top?.nextStep || lane.topAction || lane.purpose || "", 62);
-    lines.push(`- ${lane.title || "行动榜"}：${subject ? `${subject}${action}` : "暂无第一对象"}${reason ? `。原因：${reason}` : ""}${nextStep ? `。下一步：${nextStep}` : ""}`);
+    const reviewWindow = shortenPortfolioCustomerText(top?.reviewWindow || "", 40);
+    const trigger = shortenPortfolioCustomerText(top?.trigger || "", 54);
+    const invalidation = shortenPortfolioCustomerText(top?.invalidation || "", 54);
+    lines.push(`- ${lane.title || "行动榜"}：${subject ? `${subject}${action}` : "暂无第一对象"}${reason ? `。原因：${reason}` : ""}${nextStep ? `。下一步：${nextStep}` : ""}${reviewWindow ? `。复核期限：${reviewWindow}` : ""}${trigger ? `。触发：${trigger}` : ""}${invalidation ? `。失效/降级：${invalidation}` : ""}`);
   }
   return lines;
 }
@@ -11600,6 +11603,7 @@ function buildPortfolioCustomerActionLeaderboardItem(item = {}, context = {}) {
   const queueItem = context.queueItem || {};
   const matrixItem = context.matrixItem || {};
   const alertItem = context.alertItem || {};
+  const laneId = String(context.def?.id || "");
   const rankWeight = queueItem.queueRank
     ? Math.max(0, 18 - Number(queueItem.queueRank || 18))
     : 0;
@@ -11612,6 +11616,7 @@ function buildPortfolioCustomerActionLeaderboardItem(item = {}, context = {}) {
   );
   const reason = shortenPortfolioCustomerText(item.reason || matrixItem.reason || alertItem.reason || queueItem.reason || "", 72);
   const nextStep = shortenPortfolioCustomerText(item.nextStep || matrixItem.nextStep || alertItem.nextStep || queueItem.nextStep || context.def?.purpose || "", 72);
+  const boundary = buildPortfolioCustomerActionBoundary(laneId, item, { queueItem, matrixItem, alertItem });
   return {
     code: item.code || "",
     name: item.name || "",
@@ -11619,6 +11624,9 @@ function buildPortfolioCustomerActionLeaderboardItem(item = {}, context = {}) {
     action: item.action || matrixItem.action || queueItem.action || "复核",
     reason,
     nextStep,
+    reviewWindow: boundary.reviewWindow,
+    trigger: boundary.trigger,
+    invalidation: boundary.invalidation,
     score: sourceScore,
     queueRank: queueItem.queueRank || null,
     listTitle: queueItem.listTitle || alertItem.laneTitle || "",
@@ -11629,6 +11637,61 @@ function buildPortfolioCustomerActionLeaderboardItem(item = {}, context = {}) {
       queueItem.listTitle || "",
       ...(item.tags || [])
     ]).slice(0, 4)
+  };
+}
+
+function buildPortfolioCustomerActionBoundary(laneId = "", item = {}, context = {}) {
+  const text = [
+    item.reason,
+    item.nextStep,
+    context.queueItem?.reason,
+    context.queueItem?.nextStep,
+    context.matrixItem?.reason,
+    context.matrixItem?.nextStep,
+    context.alertItem?.reason,
+    context.alertItem?.nextStep,
+    ...(item.tags || [])
+  ].filter(Boolean).join(" ");
+  const compactNext = shortenPortfolioCustomerText(item.nextStep || context.matrixItem?.nextStep || context.queueItem?.nextStep || "", 54);
+  if (laneId === "sell") {
+    return {
+      reviewWindow: "今天交易截点前优先复核，最迟下一交易日开盘前更新。",
+      trigger: /止损|止盈|回吐|减仓|卖出/.test(text) ? "回吐、止盈止损或单仓风险继续触发时执行减仓复核。" : "持仓风险继续高于组合预算时执行减仓复核。",
+      invalidation: "浮盈回吐修复、同题材拥挤下降且单仓风险降级后，才允许暂缓卖出。"
+    };
+  }
+  if (laneId === "buy") {
+    return {
+      reviewWindow: "1-3个交易日内复核，不能无限期挂在可买区。",
+      trigger: compactNext || "回调完成、5日/10日温和转强，且费率与持仓证据完整后才小仓。",
+      invalidation: "短期拉升变追涨、数据缺口未补齐或同题材仓位超限时降级观察。"
+    };
+  }
+  if (laneId === "wait") {
+    return {
+      reviewWindow: "3-5个交易日内复查触发条件，过期必须重新排序。",
+      trigger: compactNext || "等回调结束、5日/10日重新转强、板块轮动证据更清晰。",
+      invalidation: "跌破修复结构、持续弱势或涨成高位追涨时移出备选。"
+    };
+  }
+  if (laneId === "avoid") {
+    return {
+      reviewWindow: "每天只检查风险是否解除，不主动追买。",
+      trigger: "不设买入触发；先等回撤、降温和拥挤度下降。",
+      invalidation: "高位、追涨、拥挤或风险冲突未解除前继续暂不买。"
+    };
+  }
+  if (laneId === "data") {
+    return {
+      reviewWindow: "当天或下一轮数据同步优先补齐。",
+      trigger: compactNext || "净值、份额费率、前十大持仓和来源全部补齐后才恢复买入复核。",
+      invalidation: "证据未补齐前不给买入金额，也不把它包装成确定买点。"
+    };
+  }
+  return {
+    reviewWindow: "下一轮经理复核时更新。",
+    trigger: compactNext || "等待榜单证据重新确认。",
+    invalidation: "条件不满足时继续观察。"
   };
 }
 

@@ -911,6 +911,10 @@ button:disabled {
   box-shadow: none;
 }
 
+body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-portfolio-view="overview"]) .portfolio-command-panel {
+  display: none;
+}
+
 .portfolio-hero {
   grid-area: hero;
   display: grid;
@@ -1969,6 +1973,22 @@ button:disabled {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.42;
+}
+
+.ranking-action-boundary {
+  display: grid;
+  gap: 4px;
+}
+
+.ranking-action-boundary span {
+  display: block;
+  padding: 5px 7px;
+  border-radius: 7px;
+  color: #334155;
+  background: #f5f8fb;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .ranking-action-leaderboard-item footer {
@@ -6672,7 +6692,7 @@ button.danger-button:hover {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(132px, 168px) minmax(0, 1fr);
   height: 100%;
   border: 1px solid #dde7ef;
   border-radius: 8px;
@@ -6682,20 +6702,20 @@ button.danger-button:hover {
 
 .run-task-rail {
   min-width: 0;
-  display: flex;
+  min-height: 0;
+  display: grid;
   gap: 8px;
   align-content: start;
   padding: 10px;
-  overflow-x: auto;
-  border-bottom: 1px solid #e3ebf2;
+  overflow: auto;
+  border-right: 1px solid #e3ebf2;
   background: #f7fafc;
 }
 
 .run-task-button {
-  flex: 0 0 150px;
-  width: auto;
+  width: 100%;
   min-width: 0;
-  min-height: 48px;
+  min-height: 54px;
   display: grid;
   gap: 4px;
   justify-items: start;
@@ -6741,7 +6761,7 @@ button.danger-button:hover {
 .runner-workspace-switcher {
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0;
   border-bottom: 1px solid #e3ebf2;
   background: #f7fafc;
@@ -7192,6 +7212,124 @@ button.danger-button:hover {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.runner-history-terminal {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid #e0e7ee;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.runner-history-head,
+.runner-history-actions {
+  min-width: 0;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 12px;
+  border-bottom: 1px solid #e5ecf2;
+  background: #f7fafc;
+}
+
+.runner-history-actions {
+  justify-content: flex-end;
+  border-top: 1px solid #e5ecf2;
+  border-bottom: 0;
+}
+
+.runner-history-head strong,
+.runner-history-head small,
+.runner-history-counts span,
+.runner-history-item strong,
+.runner-history-item small,
+.runner-history-item em {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.runner-history-head strong {
+  color: #1d2d3b;
+  font-size: 14px;
+}
+
+.runner-history-head small {
+  margin-top: 4px;
+  color: #60707f;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.runner-history-counts {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.runner-history-counts span {
+  padding: 4px 8px;
+  border: 1px solid #d8e2ea;
+  border-radius: 999px;
+  color: #405263;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.runner-history-list {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  overflow: auto;
+}
+
+.runner-history-item {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 11px 12px;
+  border: 0;
+  border-bottom: 1px solid #e8edf2;
+  border-radius: 0;
+  color: var(--text);
+  background: #ffffff;
+  box-shadow: none;
+  text-align: left;
+}
+
+.runner-history-item:hover {
+  background: #f8fbfc;
+}
+
+.runner-history-item strong {
+  color: #1f2f3d;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.runner-history-item small {
+  margin-top: 4px;
+  color: #60707f;
+  font-size: 12px;
+  line-height: 1.42;
+}
+
+.runner-history-item em {
+  color: #2f7d62;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
 }
 
 .runner-output {
@@ -7846,6 +7984,10 @@ button.danger-button:hover {
   .tab-panel[data-panel="portfolio"].active {
     height: calc(100vh - 32px);
     gap: 8px;
+  }
+
+  body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-portfolio-view="overview"]) .tab-panel[data-panel="portfolio"].active {
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .portfolio-command-panel {

@@ -357,11 +357,12 @@ const decisionSummaryLines = manager.buildPortfolioCustomerDecisionSummaryStatus
 assert(decisionSummaryLines.includes("客户决策摘要") && decisionSummaryLines.includes("先处理卖出/减仓") && decisionSummaryLines.includes("可小仓复核"), "portfolio status replies must show the customer decision summary before detailed action cards");
 assert(rankingBoard.customerActionLeaderboard?.lanes?.length === 5, "customer action leaderboard must split buy, wait, avoid, sell, and data into separate ranked lanes");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "sell")?.items.some((item) => item.code === "008327" && item.rank === 1), "customer action leaderboard must rank urgent sell/de-risk positions in the sell lane");
-assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.items.every((item) => item.rank && item.reason && item.nextStep), "customer action leaderboard buy lane items must be ranked with reasons and next steps");
+assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.items.every((item) => item.rank && item.reason && item.nextStep && item.reviewWindow && item.trigger && item.invalidation), "customer action leaderboard buy lane items must be ranked with reasons, next steps, review windows, triggers, and invalidation boundaries");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "avoid")?.items.some((item) => avoidActionCodes.includes(item.code)), "customer action leaderboard must rank avoid candidates separately from buy candidates");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "data")?.items.some((item) => dataActionCodes.includes(item.code)), "customer action leaderboard must rank data blockers as their own evidence lane");
 const leaderboardStatusLines = manager.buildPortfolioCustomerActionLeaderboardStatusLines(rankingBoard.customerActionLeaderboard).join("\n");
 assert(leaderboardStatusLines.includes("客户行动排行") && leaderboardStatusLines.includes("卖出/减仓榜") && leaderboardStatusLines.includes("补证据榜"), "portfolio status replies must translate customer action leaderboards into readable action-ranked lines");
+assert(leaderboardStatusLines.includes("复核期限：") && leaderboardStatusLines.includes("触发：") && leaderboardStatusLines.includes("失效/降级："), "portfolio status replies must include review windows, triggers, and invalidation boundaries for action leaderboards");
 const actionDeckLines = manager.buildPortfolioCustomerActionDeckStatusLines(rankingBoard.customerActionDeck).join("\n");
 assert(actionDeckLines.includes("买入理由："), "customer action deck status must explain why a fund can be bought instead of using a generic reason label");
 assert(actionDeckLines.includes("加备选理由："), "customer action deck status must explain why a fund belongs in backup/watch instead of only saying wait");
@@ -504,8 +505,8 @@ assert(Object.prototype.hasOwnProperty.call(runtimeRelease, "shortCommit"), "run
 assert(serverSource.includes("release: getRuntimeRelease()"), "health/stats APIs must expose runtime release metadata");
 assert(serverSource.includes("readBuildReleaseMetadata") && serverSource.includes(".fundagent-release.json"), "runtime release metadata must fall back to a Docker build release file");
 assert(adminSource.includes("formatReleaseCommit") && adminHtmlSource.includes("runtimeReleaseBoard"), "admin runtime UI must show the deployed commit");
-assert(adminHtmlSource.includes('data-runner-view-target="latest"') && adminSource.includes("setPortfolioRunnerView"), "admin virtual runner must split task control, latest conclusion, execution, and raw status into dedicated entries");
-assert(adminSource.includes("renderPortfolioRunCommandStrip") && adminStyleSource.includes(".runner-workspace-switcher"), "admin virtual runner must keep the first action and internal entries above long run details");
+assert(adminHtmlSource.includes('data-runner-view-target="latest"') && adminHtmlSource.includes('data-runner-view-target="history"') && adminSource.includes("setPortfolioRunnerView"), "admin virtual runner must split task control, latest conclusion, execution, history, and raw status into dedicated entries");
+assert(adminSource.includes("renderPortfolioRunCommandStrip") && adminSource.includes("renderPortfolioRunHistoryBoard") && adminStyleSource.includes(".runner-workspace-switcher"), "admin virtual runner must keep the first action and internal entries above long run details");
 assert(serverSource.includes('url.pathname === "/api/deployment"') && serverSource.includes("getDeploymentFreshness"), "admin API must expose deployment freshness checks");
 assert(serverSource.includes("api.github.com/repos") && serverSource.includes("部署落后"), "deployment freshness must compare runtime commit with the latest GitHub branch commit");
 assert(adminSource.includes('apiFetch("/api/deployment"') && adminSource.includes("formatDeploymentStatus"), "admin runtime UI must render a deployment freshness status card");
@@ -1452,7 +1453,8 @@ assert(adminStyleSource.includes("user-terminal"), "admin UI must style user hol
 assert(adminStyleSource.includes("user-portfolio-detail-stage"), "admin UI must keep selected user holdings in an internally scrollable detail stage");
 assert(adminHtmlSource.includes("虚拟运行台") && adminHtmlSource.includes("data-portfolio-view-target=\"runner\""), "admin portfolio UI must split virtual run controls into a dedicated trading-terminal entry");
 assert(adminSource.includes("renderPortfolioRunConsole"), "admin portfolio UI must render virtual run status as a focused console instead of crowding the top page");
-assert(adminStyleSource.includes("run-console-terminal") && adminStyleSource.includes("run-task-rail"), "admin virtual run console must use a bounded task rail and detail stage");
+assert(adminStyleSource.includes("run-console-terminal") && adminStyleSource.includes("grid-template-columns: minmax(132px, 168px) minmax(0, 1fr)") && adminStyleSource.includes("run-task-rail"), "admin virtual run console must use a bounded side task rail and detail stage");
+assert(adminStyleSource.includes('body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-portfolio-view="overview"]) .portfolio-command-panel'), "admin portfolio concrete workspaces must hide the tall account header and use focused terminal mode");
 assert(adminHtmlSource.includes("经理榜单"), "admin UI must expose manager ranking boards");
 assert(adminHtmlSource.includes("data-portfolio-view-target=\"rankings\""), "admin portfolio UI must split the long virtual account page into ranking workspace entries");
 assert(adminHtmlSource.includes("data-portfolio-view=\"watchlist\""), "admin portfolio UI must expose watchlist as a dedicated workspace view instead of a long mixed page");
@@ -1603,7 +1605,9 @@ assert(adminStyleSource.includes("ranking-action-deck") && adminStyleSource.incl
 assert(adminSource.includes("renderManagerCustomerDecisionSummary"), "admin manager ranking board must render the customer decision summary inside the ranking terminal");
 assert(adminStyleSource.includes("ranking-decision-summary") && adminStyleSource.includes("portfolio-decision-summary"), "admin UI must style customer decision summaries in both overview and full ranking terminal");
 assert(adminSource.includes("renderManagerCustomerActionLeaderboard"), "admin manager ranking board must render customer action leaderboards inside the ranking terminal");
+assert(adminSource.includes("ranking-action-boundary") && adminSource.includes("复核：") && adminSource.includes("触发：") && adminSource.includes("失效："), "admin manager ranking board must render action leaderboard review windows, triggers, and invalidation boundaries");
 assert(adminStyleSource.includes("ranking-action-leaderboard") && adminStyleSource.includes("portfolio-action-leaderboard"), "admin UI must style customer action leaderboards in both overview and full ranking terminal");
+assert(adminStyleSource.includes("ranking-action-boundary"), "admin UI must style action leaderboard execution boundaries clearly");
 assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must style customer-facing ranking digest as a first-class panel");
 assert(adminStyleSource.includes("focused-from-ranking"), "admin UI must highlight watchlist cards opened from customer digest items");
 assert(adminStyleSource.includes("watchlist-ranking-refs"), "admin UI must style ranking citations inside watchlist fund details");

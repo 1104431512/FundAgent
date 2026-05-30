@@ -483,6 +483,7 @@
                         <button type="button" class="active" data-runner-view-target="control"><b>任务控制</b><small>现在做什么</small><span id="runnerNavControlCount">待运行</span></button>
                         <button type="button" data-runner-view-target="latest"><b>最新结论</b><small>经理判断</small><span id="runnerNavLatestCount">0</span></button>
                         <button type="button" data-runner-view-target="execution"><b>执行流转</b><small>订单/净值</small><span id="runnerNavExecutionCount">0</span></button>
+                        <button type="button" data-runner-view-target="history"><b>运行历史</b><small>按记录查看</small><span id="runnerNavHistoryCount">0</span></button>
                         <button type="button" data-runner-view-target="raw"><b>原始状态</b><small>调试摘要</small><span id="runnerNavRawCount">摘要</span></button>
                       </nav>
                       <section class="runner-workspace-view active" data-runner-view="control">
@@ -494,6 +495,9 @@
                       </section>
                       <section class="runner-workspace-view" data-runner-view="execution">
                         <div id="portfolioRunExecutionBoard" class="runner-execution-board"></div>
+                      </section>
+                      <section class="runner-workspace-view" data-runner-view="history">
+                        <div id="portfolioRunHistoryBoard" class="runner-history-board"></div>
                       </section>
                       <section class="runner-workspace-view" data-runner-view="raw">
                         <pre id="portfolioRunOutput" class="output compact runner-output"></pre>
