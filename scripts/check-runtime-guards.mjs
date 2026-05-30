@@ -1121,6 +1121,18 @@ const requiredPatterns = [
     message: "admin portfolio overview must render customer action cards so users can scan buy, wait, avoid, sell, and data signals without opening a long ranking report."
   },
   {
+    pattern: /<section id="portfolioRankingRadar" class="portfolio-ranking-radar">[\s\S]{0,1200}今日行动中心[\s\S]{0,900}data-portfolio-view-target="runner"[\s\S]{0,500}data-portfolio-view-target="opportunities"[\s\S]{0,500}data-portfolio-view-target="rankings"/,
+    message: "admin portfolio overview must have a nonblank first-screen action center before async portfolio data loads."
+  },
+  {
+    pattern: /function renderPortfolioRankingRadar[\s\S]{0,1800}portfolio-launch-center[\s\S]{0,900}data-portfolio-view-target="runner"[\s\S]{0,500}data-portfolio-view-target="opportunities"[\s\S]{0,500}data-portfolio-view-target="rankings"/,
+    message: "admin portfolio ranking radar empty state must route users to runner, opportunity, and ranking entries instead of showing a blank panel."
+  },
+  {
+    pattern: /\.portfolio-launch-center\s*\{[\s\S]{0,380}min-height:\s*168px[\s\S]{0,600}\.portfolio-launch-actions\s*\{[\s\S]{0,280}flex-wrap:\s*wrap/,
+    message: "admin portfolio launch center must be styled as a visible first-screen action panel."
+  },
+  {
     pattern: /renderPortfolioRankingCommandStrip[\s\S]{0,1800}今日买卖指挥[\s\S]{0,1200}完整榜单/,
     message: "admin portfolio overview must expose a first-scan buy/sell command strip before the detailed ranking radar lanes."
   },

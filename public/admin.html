@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FundAgent 管理</title>
-    <link rel="stylesheet" href="/public/styles.css?v=20260530-terminal3" />
+    <link rel="stylesheet" href="/public/styles.css?v=20260530-terminal4" />
   </head>
   <body>
     <div class="app-shell">
@@ -383,29 +383,79 @@
             </aside>
             <div class="portfolio-terminal-stage">
               <section class="portfolio-workspace-view active" data-portfolio-view="overview">
-                <div id="portfolioWorkspaceCards" class="portfolio-workspace-cards"></div>
-                <section id="portfolioRankingRadar" class="portfolio-ranking-radar"></section>
+                <div id="portfolioWorkspaceCards" class="portfolio-workspace-cards">
+                  <section class="portfolio-workspace-cluster portfolio-workspace-cluster-decision">
+                    <div class="portfolio-workspace-cluster-head">
+                      <div>
+                        <span>决策</span>
+                        <strong>先看今日动作</strong>
+                      </div>
+                      <em>加载中</em>
+                    </div>
+                    <button type="button" class="portfolio-workspace-card" data-portfolio-view-target="runner">
+                      <span>运行台</span>
+                      <strong>待同步</strong>
+                      <small>盘前、今日操作、估值和周总结集中控制</small>
+                      <em>状态加载后自动更新</em>
+                    </button>
+                  </section>
+                  <section class="portfolio-workspace-cluster portfolio-workspace-cluster-opportunity">
+                    <div class="portfolio-workspace-cluster-head">
+                      <div>
+                        <span>机会</span>
+                        <strong>再看低位候选</strong>
+                      </div>
+                      <em>加载中</em>
+                    </div>
+                    <button type="button" class="portfolio-workspace-card" data-portfolio-view-target="opportunities">
+                      <span>观察机会</span>
+                      <strong>待同步</strong>
+                      <small>可买、等待回调、启动前夜分开查看</small>
+                      <em>避免把长表铺在首页</em>
+                    </button>
+                  </section>
+                </div>
+                <section id="portfolioRankingRadar" class="portfolio-ranking-radar">
+                  <div class="portfolio-ranking-radar-empty portfolio-launch-center">
+                    <div>
+                      <span>今日行动中心</span>
+                      <strong>先同步状态，再进入对应入口</strong>
+                      <small>总览只保留第一眼需要处理的动作；长报告、订单和榜单都收进独立工作区。</small>
+                    </div>
+                    <div class="portfolio-launch-actions">
+                      <button type="button" data-portfolio-view-target="runner">运行台</button>
+                      <button type="button" class="secondary" data-portfolio-view-target="opportunities">观察机会</button>
+                      <button type="button" class="secondary" data-portfolio-view-target="rankings">经理榜单</button>
+                    </div>
+                  </div>
+                </section>
                 <div class="portfolio-insight-grid">
                   <section class="panel insight-card">
                   <div class="panel-head tight">
                     <h2>经理摘要</h2>
                     <span id="portfolioRunState" class="badge">未运行</span>
                   </div>
-                  <div id="portfolioManagerSummary" class="insight-list"></div>
+                  <div id="portfolioManagerSummary" class="insight-list">
+                    <div class="empty compact-empty">正在同步经理状态。</div>
+                  </div>
                   </section>
                   <section class="panel insight-card">
                   <div class="panel-head tight">
                     <h2>持仓暴露</h2>
                     <span id="portfolioPositionCount" class="badge">0 只</span>
                   </div>
-                  <div id="portfolioHoldingSummary" class="insight-list"></div>
+                  <div id="portfolioHoldingSummary" class="insight-list">
+                    <div class="empty compact-empty">持仓数据加载后显示。</div>
+                  </div>
                   </section>
                   <section class="panel insight-card">
                   <div class="panel-head tight">
                     <h2>买入准备</h2>
                     <span id="portfolioReadinessCount" class="badge">0 只</span>
                   </div>
-                  <div id="portfolioReadinessSummary" class="insight-list"></div>
+                  <div id="portfolioReadinessSummary" class="insight-list">
+                    <div class="empty compact-empty">候选池同步后显示接近买点对象。</div>
+                  </div>
                   </section>
                 </div>
               </section>
@@ -800,6 +850,6 @@
     </div>
 
     <div id="toast" class="toast hidden"></div>
-    <script src="/public/admin.js?v=20260530-entry-tabs"></script>
+    <script src="/public/admin.js?v=20260530-launch-center"></script>
   </body>
 </html>

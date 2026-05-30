@@ -1198,13 +1198,17 @@ function renderPortfolioRankingRadar(board = {}) {
   const command = buildPortfolioRankingCommandStrip({ groups, priorityQueue, actionDeck, digest });
   if (!hasActionItems && !hasDigestItems && !hasPriorityItems && !digest.summary && !actionDeck.summary) {
     root.innerHTML = `
-      <div class="portfolio-ranking-radar-empty">
+      <div class="portfolio-ranking-radar-empty portfolio-launch-center">
         <div>
-          <span>客户行动牌</span>
-          <strong>等待行动信号</strong>
+          <span>今日行动中心</span>
+          <strong>暂无强制买卖信号，先按入口处理</strong>
           <small>经理生成自选池、持仓复核或用户持仓提醒后，这里会直接显示可买、等待、回避、卖出和补数据。</small>
         </div>
-        <button type="button" class="secondary" data-portfolio-view-target="rankings">进入经理榜单</button>
+        <div class="portfolio-launch-actions">
+          <button type="button" data-portfolio-view-target="runner">运行台</button>
+          <button type="button" class="secondary" data-portfolio-view-target="opportunities">观察机会</button>
+          <button type="button" class="secondary" data-portfolio-view-target="rankings">经理榜单</button>
+        </div>
       </div>
     `;
     return;
