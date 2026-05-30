@@ -7951,6 +7951,52 @@ function buildPortfolioCustomerActionDeckStatusLines(deck = {}) {
   return lines;
 }
 
+function buildPortfolioAccountStatusLines(account = {}, options = {}) {
+  const compact = Boolean(options.compact);
+  if (!compact) {
+    const lines = [
+      `总资产：${account.totalAsset}元`,
+      `可用现金：${account.cash}元`
+    ];
+    if (account.pendingBuyAmount || account.receivableCash) {
+      lines.push(`待确认申购：${account.pendingBuyAmount || 0}元，应收赎回：${account.receivableCash || 0}元`);
+    }
+    lines.push(`当前仓位：${account.positionWeightPct}%`);
+    lines.push(`累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（按实际投入基准 ${account.investedCostBasis || account.investedCost || 0} 元计 ${formatSignedNumber(account.cumulativePnlPct)}%）`);
+    return lines;
+  }
+  const cashPct = computePortfolioCustomerCashPct(account);
+  const risk = account.riskBudget || buildPortfolioAccountRiskBudget(account);
+  const cashText = Number.isFinite(cashPct)
+    ? cashPct >= 65
+      ? "现金充足，重点等待低位候选触发"
+      : cashPct >= 35
+        ? "现金仍可分批，但不适合一次打满"
+        : "现金余量偏低，新增买入要先看风险预算"
+    : "现金状态待复核";
+  const positionText = Number(account.positionWeightPct || 0) <= 0
+    ? "当前空仓"
+    : Number(account.positionWeightPct || 0) >= 70
+      ? "仓位偏高"
+      : Number(account.positionWeightPct || 0) >= 35
+        ? "中等仓位"
+        : "低仓位";
+  const pnlText = Number(account.cumulativePnl || 0) >= 0
+    ? `累计仍为正收益，收益率按实际投入基准计算`
+    : `累计承压，后续先解释亏损来源`;
+  const pendingText = account.pendingBuyAmount || account.receivableCash
+    ? "有申购/赎回在路上，未确认前不把它当成已成交"
+    : "暂无待确认资金流转";
+  const next = risk.blockNewBuys
+    ? "先保护回撤，不扩大新仓"
+    : "下一步优先复核低位启动、回调完成和已有仓位风险";
+  return [
+    `账户简版：${positionText}；${cashText}；${pnlText}。`,
+    `资金流转：${pendingText}。`,
+    `回撤边界：${risk.label || "回撤正常"}，当前距峰值${formatFallbackPct(risk.drawdownFromPeakPct || account.drawdownFromPeakPct || 0)}；${next}。`
+  ];
+}
+
 function buildPortfolioPositionStatusLines(positions = [], options = {}) {
   const values = (positions || []).filter((position) => position?.code || position?.name);
   if (!values.length) return ["暂无基金持仓，当前为 100% 现金。"];
@@ -8630,13 +8676,7 @@ function buildPortfolioStatusAnswer(userText, intent) {
   if (wantsOnlyProfileOrSchedule) {
     lines.push(`当前自动运行：${config.portfolioEnabled ? "已启用" : "已停用"}。`);
   } else {
-    lines.push(`总资产：${account.totalAsset}元`);
-    lines.push(`可用现金：${account.cash}元`);
-    if (account.pendingBuyAmount || account.receivableCash) {
-      lines.push(`待确认申购：${account.pendingBuyAmount || 0}元，应收赎回：${account.receivableCash || 0}元`);
-    }
-    lines.push(`当前仓位：${account.positionWeightPct}%`);
-    lines.push(`累计盈亏：${formatSignedNumber(account.cumulativePnl)}元（按实际投入基准 ${account.investedCostBasis || account.investedCost || 0} 元计 ${formatSignedNumber(account.cumulativePnlPct)}%）`);
+    lines.push(...buildPortfolioAccountStatusLines(account, { compact: !wantsPosition }));
   }
 
   if (!wantsOnlyProfileOrSchedule) {
@@ -27044,6 +27084,7 @@ export {
   buildPortfolioBacktestDiagnostics,
   buildPortfolioCapabilityDiagnostics,
   buildPortfolioCapabilityActionQueue,
+  buildPortfolioAccountStatusLines,
   buildPortfolioDecisionCard,
   buildPortfolioDecisionReadinessQueue,
   buildPortfolioActiveOrderStatusLines,

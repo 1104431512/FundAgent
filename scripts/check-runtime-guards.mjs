@@ -1549,6 +1549,14 @@ const requiredPatterns = [
     message: "portfolio status answers must include current ranking-board citations in watchlist summaries."
   },
   {
+    pattern: /function buildPortfolioAccountStatusLines[\s\S]{0,1800}账户简版[\s\S]{0,900}资金流转[\s\S]{0,900}回撤边界/,
+    message: "portfolio default account status replies must summarize position, cash pressure, fund flow, and drawdown instead of dumping ledger fields."
+  },
+  {
+    pattern: /buildPortfolioStatusAnswer[\s\S]{0,4200}buildPortfolioAccountStatusLines\(account,\s*\{\s*compact:\s*!wantsPosition\s*\}\)/,
+    message: "portfolio status answers must reserve exact account ledger fields for explicit position/account questions."
+  },
+  {
     pattern: /function buildPortfolioPositionStatusLines[\s\S]{0,900}const compact = Boolean\(options\.compact\)[\s\S]{0,900}持仓简版[\s\S]{0,1400}formatPortfolioPositionCompactLine/,
     message: "portfolio default position status replies must support a compact customer-readable mode instead of dumping every ledger field."
   },

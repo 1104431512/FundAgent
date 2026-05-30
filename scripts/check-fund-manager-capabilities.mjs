@@ -2089,6 +2089,35 @@ assert(compactWatchlistLines.includes("边界："), "compact watchlist lines mus
 assert(compactWatchlistLines.includes("上榜：综合决策榜#1/小仓试探复核"), "compact watchlist lines must retain ranking evidence without forcing the full detail report");
 assert(!compactWatchlistLines.includes("费用/份额："), "compact watchlist lines should not dump fee details unless the user explicitly asks for the watchlist");
 assert(!compactWatchlistLines.includes("最新走势："), "compact watchlist lines should not dump raw trend fields unless the user explicitly asks for the watchlist");
+const compactAccountLines = manager.buildPortfolioAccountStatusLines({
+  totalAsset: 100980.4,
+  cash: 70132.17,
+  pendingBuyAmount: 0,
+  receivableCash: 0,
+  positionWeightPct: 30.55,
+  cumulativePnl: 739.77,
+  cumulativePnlPct: 2.46,
+  investedCostBasis: 30002.28,
+  drawdownFromPeakPct: -0.31,
+  riskBudget: { label: "回撤正常", drawdownFromPeakPct: -0.31, blockNewBuys: false }
+}, { compact: true }).join("\n");
+assert(compactAccountLines.includes("账户简版："), "default account status must tell users it is a concise account summary");
+assert(compactAccountLines.includes("资金流转："), "compact account status must summarize pending cash flow");
+assert(compactAccountLines.includes("回撤边界："), "compact account status must show drawdown boundary");
+assert(!compactAccountLines.includes("总资产：100980.4元"), "compact account status should not dump exact total assets by default");
+assert(!compactAccountLines.includes("可用现金：70132.17元"), "compact account status should not dump exact cash by default");
+assert(!compactAccountLines.includes("累计盈亏：739.77元"), "compact account status should not dump exact PnL by default");
+const detailedAccountLines = manager.buildPortfolioAccountStatusLines({
+  totalAsset: 100980.4,
+  cash: 70132.17,
+  positionWeightPct: 30.55,
+  cumulativePnl: 739.77,
+  cumulativePnlPct: 2.46,
+  investedCostBasis: 30002.28
+}, { compact: false }).join("\n");
+assert(detailedAccountLines.includes("总资产：100980.4元"), "explicit account questions must still expose total assets");
+assert(detailedAccountLines.includes("可用现金：70132.17元"), "explicit account questions must still expose cash");
+assert(detailedAccountLines.includes("按实际投入基准 30002.28 元计"), "explicit account questions must keep actual invested denominator");
 const compactPositionLines = manager.buildPortfolioPositionStatusLines([
   {
     code: "008327",
