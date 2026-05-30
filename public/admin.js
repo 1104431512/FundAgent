@@ -97,6 +97,24 @@ const PORTFOLIO_WORKSPACE_OVERVIEW_GROUPS = [
   { id: "decision", title: "决策", hint: "行动、预警、榜单与风控", focusViews: ["alerts", "actions", "rankings", "matrix"] },
   { id: "records", title: "记录", hint: "时间线与订单", focusViews: ["timeline", "orders"] }
 ];
+const PORTFOLIO_VIEW_GROUPS = {
+  overview: "overview",
+  positions: "account",
+  users: "account",
+  sectors: "opportunity",
+  opportunities: "opportunity",
+  watchlist: "opportunity",
+  runner: "decision",
+  actions: "decision",
+  alerts: "decision",
+  matrix: "decision",
+  risk: "decision",
+  data: "decision",
+  rankings: "decision",
+  diagnostics: "decision",
+  timeline: "records",
+  orders: "records"
+};
 const WATCHLIST_STATUS_LABELS = {
   ready: "接近可买",
   waiting_pullback: "等待回调",
@@ -289,13 +307,25 @@ function activateTab(tab) {
 
 function setPortfolioView(view = "overview") {
   const nextView = document.querySelector(`[data-portfolio-view="${view}"]`) ? view : "overview";
+  const nextGroup = PORTFOLIO_VIEW_GROUPS[nextView] || "overview";
   activePortfolioView = nextView;
   document.body.dataset.activePortfolioView = nextView;
+  document.body.dataset.activePortfolioGroup = nextGroup;
   localStorage.setItem("fundagent_portfolio_view", nextView);
   document.querySelectorAll("[data-portfolio-view-target]").forEach((button) => {
     const active = button.dataset.portfolioViewTarget === nextView;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  document.querySelectorAll("[data-portfolio-group-target]").forEach((button) => {
+    const active = button.dataset.portfolioGroupTarget === nextGroup;
+    button.classList.toggle("group-active", active);
+    if (!button.dataset.portfolioViewTarget || button.dataset.portfolioViewTarget !== nextView) {
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    }
+  });
+  document.querySelectorAll("[data-portfolio-nav-group]").forEach((group) => {
+    group.classList.toggle("active", group.dataset.portfolioNavGroup === nextGroup);
   });
   document.querySelectorAll("[data-portfolio-view]").forEach((section) => {
     section.classList.toggle("active", section.dataset.portfolioView === nextView);

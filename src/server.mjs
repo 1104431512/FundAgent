@@ -7951,6 +7951,60 @@ function buildPortfolioCustomerActionDeckStatusLines(deck = {}) {
   return lines;
 }
 
+function buildPortfolioStatusDirectConclusionLines({ account = {}, managerRankings = {}, recentDecision = null, activeOrders = [], todayTransactions = [] } = {}) {
+  const deck = managerRankings.customerActionDeck || {};
+  const cards = Array.isArray(deck.cards) ? deck.cards : [];
+  const activeCards = cards.filter((card) => Number(card.count || 0) > 0);
+  const priorityOrder = ["sell", "buy", "wait", "avoid", "data"];
+  const selectedCard = priorityOrder
+    .map((id) => activeCards.find((card) => card.id === id))
+    .find(Boolean)
+    || activeCards[0]
+    || null;
+  const firstItem = Array.isArray(selectedCard?.items) ? selectedCard.items[0] : null;
+  const risk = account.riskBudget || buildPortfolioAccountRiskBudget(account);
+  const summary = selectedCard
+    ? buildPortfolioStatusDirectConclusionText(selectedCard, firstItem, { account, risk, recentDecision, activeOrders, todayTransactions })
+    : buildPortfolioStatusFallbackConclusionText({ account, risk, recentDecision, activeOrders, todayTransactions });
+  const lines = [`直接结论：${summary}`];
+  if (firstItem) {
+    const subject = [firstItem.code, firstItem.name].filter(Boolean).join(" ") || selectedCard.title || "优先事项";
+    lines.push(`优先处理：${subject}${firstItem.action ? `（${firstItem.action}）` : ""}。`);
+    const reason = shortenPortfolioCustomerText(firstItem.reason || selectedCard.summary || "", 72);
+    const nextStep = shortenPortfolioCustomerText(firstItem.nextStep || selectedCard.nextStep || "", 72);
+    if (reason) lines.push(`为什么：${reason}`);
+    if (nextStep) lines.push(`下一步：${nextStep}`);
+  } else {
+    const next = risk.blockNewBuys
+      ? "先保护回撤，不扩大新仓。"
+      : "继续等待低位启动、回调完成和数据补齐后再行动。";
+    lines.push(`下一步：${next}`);
+  }
+  return lines;
+}
+
+function buildPortfolioStatusDirectConclusionText(card = {}, item = null, context = {}) {
+  const action = String(card.id || "");
+  const subject = item ? [item.code, item.name].filter(Boolean).join(" ") : "";
+  if (action === "sell") return `${subject ? `${subject} ` : ""}先看卖出/减仓和回吐保护，新增买入让位给风控。`;
+  if (action === "buy") return `${subject ? `${subject} ` : ""}进入买入复核，但仍按小仓、分批和触发条件执行。`;
+  if (action === "wait") return `${subject ? `${subject} ` : ""}值得继续盯，但今天重点是等触发，不把观察对象包装成买点。`;
+  if (action === "avoid") return `${subject ? `${subject} ` : ""}先回避或降级观察，等高位降温、回撤或证据补齐。`;
+  if (action === "data") return `${subject ? `${subject} ` : ""}先补数据，净值、费率或持仓证据没齐前不给买入金额。`;
+  return buildPortfolioStatusFallbackConclusionText(context);
+}
+
+function buildPortfolioStatusFallbackConclusionText({ account = {}, risk = null, recentDecision = null, activeOrders = [], todayTransactions = [] } = {}) {
+  const budget = risk || account.riskBudget || buildPortfolioAccountRiskBudget(account);
+  if (budget.blockNewBuys) return "账户回撤触发防线，今天先保护本金，不扩大新仓。";
+  if ((activeOrders || []).length) return "有订单还在确认或到账中，先等流转落账，再评估下一步买卖。";
+  if ((todayTransactions || []).length) return "今天已有成交，下一步先看成交后的仓位和风险是否符合计划。";
+  if (recentDecision?.summary) return shortenPortfolioCustomerText(recentDecision.summary, 86);
+  const cashPct = computePortfolioCustomerCashPct(account);
+  if (Number.isFinite(cashPct) && cashPct >= 65) return "现金较多，但仍要等低位启动和回调完成信号，不为了出手而出手。";
+  return "暂无必须立即买卖的信号，先维护持仓风险和低位候选池。";
+}
+
 function buildPortfolioAccountStatusLines(account = {}, options = {}) {
   const compact = Boolean(options.compact);
   if (!compact) {
@@ -8648,6 +8702,7 @@ function buildPortfolioStatusAnswer(userText, intent) {
   const wantsProfile = isPortfolioProfileQuestion(userText);
   const wantsOnlyProfileOrSchedule = (wantsSchedule || wantsProfile) && !wantsOperation && !wantsPosition && !wantsWatchlist;
   const managerRankings = buildPortfolioRankingBoard(db);
+  const activeOrders = (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status));
 
   const lines = ["虚拟基金经理账本"];
   lines.push("");
@@ -8676,6 +8731,14 @@ function buildPortfolioStatusAnswer(userText, intent) {
   if (wantsOnlyProfileOrSchedule) {
     lines.push(`当前自动运行：${config.portfolioEnabled ? "已启用" : "已停用"}。`);
   } else {
+    lines.push(...buildPortfolioStatusDirectConclusionLines({
+      account,
+      managerRankings,
+      recentDecision,
+      activeOrders,
+      todayTransactions
+    }));
+    lines.push("");
     lines.push(...buildPortfolioAccountStatusLines(account, { compact: !wantsPosition }));
   }
 
@@ -8726,7 +8789,6 @@ function buildPortfolioStatusAnswer(userText, intent) {
       limit: wantsOperation ? 8 : 4
     }));
 
-    const activeOrders = (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status));
     if (activeOrders.length) {
       lines.push("");
       lines.push(...buildPortfolioActiveOrderStatusLines(activeOrders, {
@@ -27085,6 +27147,7 @@ export {
   buildPortfolioCapabilityDiagnostics,
   buildPortfolioCapabilityActionQueue,
   buildPortfolioAccountStatusLines,
+  buildPortfolioStatusDirectConclusionLines,
   buildPortfolioDecisionCard,
   buildPortfolioDecisionReadinessQueue,
   buildPortfolioActiveOrderStatusLines,

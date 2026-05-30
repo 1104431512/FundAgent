@@ -1523,6 +1523,10 @@ assert(adminSource.includes("replacement_choice"), "admin UI must render the rep
 assert(adminStyleSource.includes("ranking-list.is-filtered-out"), "admin UI must hide non-focused ranking lists when a ranking filter is active");
 assert(adminStyleSource.includes("ranking-list-manager"), "admin UI must style manager-stability ranking lanes distinctly");
 assert(adminHtmlSource.includes("portfolio-workspace-group"), "admin portfolio workspace entries must be grouped like a stock terminal navigation rail");
+assert(adminHtmlSource.includes("portfolio-entry-tabs") && adminHtmlSource.includes('data-portfolio-group-target="decision"'), "admin portfolio terminal must expose top-level entry tabs so the virtual page is not one long menu");
+assert(adminSource.includes("PORTFOLIO_VIEW_GROUPS") && adminSource.includes("data-portfolio-nav-group"), "admin portfolio view switching must map each workspace to one visible entry group");
+assert(/portfolio-workspace-group\s*\{[\s\S]{0,140}display:\s*none[\s\S]{0,220}portfolio-workspace-group\.active\s*\{[\s\S]{0,140}display:\s*grid/.test(adminStyleSource), "admin portfolio rail must hide inactive groups and reveal only the selected stock-terminal entry");
+assert(/portfolio-terminal-rail\s*\{[\s\S]{0,320}align-content:\s*start[\s\S]{0,160}grid-auto-rows:\s*max-content/.test(adminStyleSource), "admin portfolio rail must keep entry controls packed instead of stretching into a tall blank menu");
 assert(/portfolio-command-panel[\s\S]{0,420}grid-template-areas:\s*"hero kpis status"/.test(adminStyleSource), "admin portfolio command header must use a compact trading-console grid");
 assert(/portfolio-hero \.actions[\s\S]{0,260}overflow-x:\s*auto/.test(adminStyleSource), "admin portfolio command actions must stay compact instead of wrapping into a tall toolbar on desktop");
 assert(/portfolio-command-panel \.info-grid[\s\S]{0,260}grid-area:\s*status/.test(adminStyleSource), "admin portfolio schedule and push metadata must live in the compact command header status column");
@@ -2118,6 +2122,41 @@ const detailedAccountLines = manager.buildPortfolioAccountStatusLines({
 assert(detailedAccountLines.includes("总资产：100980.4元"), "explicit account questions must still expose total assets");
 assert(detailedAccountLines.includes("可用现金：70132.17元"), "explicit account questions must still expose cash");
 assert(detailedAccountLines.includes("按实际投入基准 30002.28 元计"), "explicit account questions must keep actual invested denominator");
+const directConclusionLines = manager.buildPortfolioStatusDirectConclusionLines({
+  account: {
+    cash: 70132.17,
+    totalAsset: 100980.4,
+    positionWeightPct: 30.55,
+    riskBudget: { label: "回撤正常", drawdownFromPeakPct: -0.31, blockNewBuys: false }
+  },
+  managerRankings: {
+    customerActionDeck: {
+      cards: [
+        {
+          id: "buy",
+          title: "可买复核",
+          count: 1,
+          summary: "只放接近买点对象。",
+          nextStep: "先交叉确认，再小仓。",
+          items: [{ code: "012046", name: "大成医药健康C", action: "小仓试探复核", reason: "低位修复但规模偏小。", nextStep: "等净值下钻确认。" }]
+        },
+        {
+          id: "sell",
+          title: "卖出/减仓",
+          count: 1,
+          summary: "先处理回吐。",
+          nextStep: "先看单仓风险。",
+          items: [{ code: "008327", name: "东财通信C", action: "减仓复核", reason: "通信链高位拥挤，利润回吐风险更高。", nextStep: "先降风险，不新增同线仓位。" }]
+        }
+      ]
+    }
+  }
+}).join("\n");
+assert(directConclusionLines.startsWith("直接结论："), "portfolio status replies must start with a direct conclusion");
+assert(directConclusionLines.includes("008327 东财通信C"), "direct conclusion must prioritize sell/de-risk items before buy-review items");
+assert(directConclusionLines.includes("优先处理：008327 东财通信C"), "direct conclusion must name the first actionable fund");
+assert(directConclusionLines.includes("为什么："), "direct conclusion must explain why the item matters");
+assert(directConclusionLines.includes("下一步："), "direct conclusion must show the next action");
 const compactPositionLines = manager.buildPortfolioPositionStatusLines([
   {
     code: "008327",

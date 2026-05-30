@@ -1045,6 +1045,8 @@ button:disabled {
   display: grid;
   gap: 10px;
   align-self: stretch;
+  align-content: start;
+  grid-auto-rows: max-content;
   max-height: 100%;
   overflow: auto;
   padding: 10px;
@@ -1097,9 +1099,68 @@ button:disabled {
   box-shadow: none;
 }
 
-.portfolio-workspace-group {
+.portfolio-entry-tabs {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e2eaf1;
+}
+
+.portfolio-entry-tabs button {
+  min-width: 0;
+  min-height: 44px;
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  justify-items: start;
+  padding: 7px 8px;
+  border: 1px solid #d8e3ec;
+  border-radius: 7px;
+  color: #344152;
+  background: #ffffff;
+  box-shadow: none;
+  text-align: left;
+}
+
+.portfolio-entry-tabs button:first-child {
+  grid-column: 1 / -1;
+}
+
+.portfolio-entry-tabs b,
+.portfolio-entry-tabs small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portfolio-entry-tabs b {
+  font-size: 13px;
+}
+
+.portfolio-entry-tabs small {
+  color: #72818f;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.portfolio-entry-tabs button:hover,
+.portfolio-entry-tabs button.active,
+.portfolio-entry-tabs button.group-active {
+  border-color: #9fb7c9;
+  color: #12384f;
+  background: #eef7f4;
+}
+
+.portfolio-workspace-group {
+  display: none;
+  gap: 6px;
+}
+
+.portfolio-workspace-group.active {
+  display: grid;
 }
 
 .portfolio-workspace-group > span {
@@ -6172,7 +6233,7 @@ button.danger-button:hover {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(210px, 250px) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
   border: 1px solid #dde7ef;
   border-radius: 8px;
@@ -6182,23 +6243,24 @@ button.danger-button:hover {
 
 .run-task-rail {
   min-width: 0;
-  display: grid;
+  display: flex;
   gap: 8px;
   align-content: start;
   padding: 10px;
-  overflow: auto;
-  border-right: 1px solid #e3ebf2;
+  overflow-x: auto;
+  border-bottom: 1px solid #e3ebf2;
   background: #f7fafc;
 }
 
 .run-task-button {
-  width: 100%;
+  flex: 0 0 150px;
+  width: auto;
   min-width: 0;
-  min-height: 58px;
+  min-height: 48px;
   display: grid;
   gap: 4px;
   justify-items: start;
-  padding: 10px 11px;
+  padding: 8px 10px;
   border-radius: 8px;
   text-align: left;
 }
@@ -7455,6 +7517,20 @@ button.danger-button:hover {
     gap: 8px;
   }
 
+  .portfolio-entry-tabs {
+    gap: 5px;
+    padding-bottom: 8px;
+  }
+
+  .portfolio-entry-tabs button {
+    min-height: 38px;
+    padding: 6px 7px;
+  }
+
+  .portfolio-entry-tabs small {
+    display: none;
+  }
+
   .portfolio-workspace-group {
     gap: 5px;
   }
@@ -7837,6 +7913,7 @@ button.danger-button:hover {
     display: none;
   }
 
+  .portfolio-entry-tabs,
   .portfolio-workspace-switcher,
   .runtime-workspace-switcher {
     display: flex;
@@ -7845,6 +7922,10 @@ button.danger-button:hover {
   }
 
   .portfolio-workspace-group {
+    display: none;
+  }
+
+  .portfolio-workspace-group.active {
     display: contents;
   }
 
@@ -7852,10 +7933,19 @@ button.danger-button:hover {
     display: none;
   }
 
+  .portfolio-entry-tabs button,
   .portfolio-workspace-switcher button,
   .runtime-workspace-switcher button {
     flex: 0 0 132px;
     box-shadow: none;
+  }
+
+  .portfolio-entry-tabs button:first-child {
+    flex-basis: 104px;
+  }
+
+  .portfolio-entry-tabs button.group-active {
+    box-shadow: inset 0 -3px 0 #0f766e;
   }
 
   .portfolio-workspace-switcher button.active,

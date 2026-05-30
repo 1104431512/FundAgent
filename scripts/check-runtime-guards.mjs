@@ -1081,8 +1081,24 @@ const requiredPatterns = [
     message: "admin portfolio page must use a left-rail terminal workspace instead of stacking all virtual-run sections."
   },
   {
-    pattern: /\.portfolio-terminal-shell\s*\{[\s\S]{0,420}--portfolio-workspace-height:\s*100%[\s\S]{0,420}height:\s*var\(--portfolio-workspace-height\)[\s\S]{0,420}max-height:\s*100%[\s\S]{0,180}overflow:\s*hidden[\s\S]{0,1600}\.portfolio-terminal-stage\s*\{[\s\S]{0,520}overflow:\s*hidden[\s\S]{0,2400}\.portfolio-workspace-view\.active\s*\{[\s\S]{0,520}overflow:\s*auto/,
+    pattern: /(?=[\s\S]*\.portfolio-terminal-shell\s*\{[\s\S]*--portfolio-workspace-height:\s*100%[\s\S]*height:\s*var\(--portfolio-workspace-height\)[\s\S]*max-height:\s*100%[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.portfolio-terminal-stage\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.portfolio-workspace-view\.active\s*\{[\s\S]*overflow:\s*auto)/,
     message: "admin portfolio terminal workspace must keep the virtual-run page bounded and scroll inside the active entry."
+  },
+  {
+    pattern: /portfolio-entry-tabs[\s\S]{0,900}data-portfolio-group-target="account"[\s\S]{0,500}data-portfolio-group-target="opportunity"[\s\S]{0,500}data-portfolio-group-target="decision"[\s\S]{0,500}data-portfolio-group-target="records"/,
+    message: "admin portfolio terminal must put account, opportunity, decision, and record groups behind top-level entry tabs."
+  },
+  {
+    pattern: /(?=[\s\S]*const PORTFOLIO_VIEW_GROUPS[\s\S]*runner:\s*"decision"[\s\S]*orders:\s*"records")(?=[\s\S]*data-portfolio-nav-group[\s\S]*classList\.toggle\("active")/,
+    message: "admin portfolio view switching must reveal only the active terminal entry group instead of a long rail."
+  },
+  {
+    pattern: /(?=[\s\S]*\.portfolio-entry-tabs\s*\{)(?=[\s\S]*\.portfolio-workspace-group\s*\{[\s\S]{0,180}display:\s*none)(?=[\s\S]*\.portfolio-workspace-group\.active\s*\{[\s\S]{0,180}display:\s*grid)/,
+    message: "admin portfolio rail must hide inactive entry groups to keep the virtual page short."
+  },
+  {
+    pattern: /\.portfolio-terminal-rail\s*\{[\s\S]{0,320}align-content:\s*start[\s\S]{0,160}grid-auto-rows:\s*max-content/,
+    message: "admin portfolio rail entries must not stretch into a tall blank menu."
   },
   {
     pattern: /function setPortfolioView[\s\S]{0,1200}data-portfolio-view-target[\s\S]{0,1200}data-portfolio-view/,
@@ -1595,6 +1611,14 @@ const requiredPatterns = [
   {
     pattern: /function buildPortfolioCustomerActionDeckStatusLines[\s\S]{0,1200}客户行动牌/,
     message: "portfolio status answers must format customer action cards in Chinese."
+  },
+  {
+    pattern: /function buildPortfolioStatusDirectConclusionLines[\s\S]{0,900}priorityOrder = \["sell",\s*"buy",\s*"wait",\s*"avoid",\s*"data"\][\s\S]{0,900}直接结论：[\s\S]{0,900}优先处理：/,
+    message: "portfolio status replies must start with a direct conclusion derived from customer action cards."
+  },
+  {
+    pattern: /buildPortfolioStatusAnswer[\s\S]{0,4200}buildPortfolioStatusDirectConclusionLines[\s\S]{0,900}buildPortfolioAccountStatusLines/,
+    message: "portfolio status answers must put direct conclusion before account ledger summaries."
   },
   {
     pattern: /buildPortfolioStatusAnswer[\s\S]{0,5200}buildPortfolioCustomerActionDeckStatusLines/,
