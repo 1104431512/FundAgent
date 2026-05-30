@@ -28,14 +28,22 @@ async function main() {
 
   const adminHtml = await fetchText("/admin", { required: true, label: "admin page" });
   const adminJs = await fetchText("/public/admin.js", { required: true, label: "admin JavaScript" });
+  const adminCss = await fetchText("/public/styles.css", { required: true, label: "admin stylesheet" });
   if (adminHtml) {
     assertCheck(adminHtml.includes('data-tab="portfolio"'), "admin page exposes portfolio tab", "critical", "Managers need the portfolio dashboard to inspect holdings and actions.");
     assertCheck(adminHtml.includes("portfolioCapabilityActionQueue"), "admin page contains capability repair queue node", "critical", "The online UI is missing the concrete manager repair queue.");
+    assertCheck(adminHtml.includes("portfolio-terminal-shell") && adminHtml.includes("portfolio-entry-tabs"), "admin page uses terminal-style portfolio entries", "critical", "The online portfolio page is still the old long vertical page instead of grouped stock-terminal entries.");
   }
   if (adminJs) {
     assertCheck(adminJs.includes("renderCapabilityActionQueue"), "admin JavaScript renders capability repair queue", "critical", "The online client cannot show the repair queue even if the API returns it.");
     assertCheck(adminJs.includes("TOP_HOLDINGS_DISPLAY_LIMIT = 10"), "admin JavaScript preserves top-ten holdings display", "critical", "The UI must show all top-ten holdings, not only five.");
     assertCheck(adminJs.includes("按实际投入成本"), "admin JavaScript labels PnL denominator as actual invested cost", "critical", "PnL percentages must not use initial capital as denominator.");
+    assertCheck(adminJs.includes("PORTFOLIO_VIEW_GROUPS") && adminJs.includes("data-portfolio-nav-group"), "admin JavaScript switches portfolio entry groups", "critical", "The online client cannot hide inactive portfolio groups, so the virtual manager page remains too long.");
+    assertCheck(adminJs.includes("matrix-verdict-") && adminJs.includes("约束："), "admin JavaScript renders decision-matrix traffic lights", "warning", "The online decision matrix cannot distinguish supports, fee constraints, and hard blockers.");
+  }
+  if (adminCss) {
+    assertCheck(adminCss.includes(".portfolio-terminal-shell") && adminCss.includes(".portfolio-workspace-view.active"), "admin stylesheet bounds portfolio workspace height", "critical", "The online stylesheet does not bound portfolio workspaces, so long reports stretch the whole page.");
+    assertCheck(adminCss.includes(".matrix-verdict-buy") && adminCss.includes(".matrix-verdict-risk"), "admin stylesheet styles decision-matrix verdict tones", "warning", "The online decision matrix lacks visual buy/risk/data verdict cues.");
   }
 
   const portfolio = await fetchJson("/api/portfolio?summary=1", { required: true, label: "portfolio summary API", admin: true });

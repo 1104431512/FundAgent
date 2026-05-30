@@ -217,8 +217,12 @@ const requiredPatterns = [
     message: "runtime release metadata must fall back to the Docker build release file when env vars or .git metadata are unavailable."
   },
   {
-    pattern: /check-deployment-state\.mjs[\s\S]{0,3600}portfolioCapabilityActionQueue[\s\S]{0,1800}capabilityDiagnostics[\s\S]{0,1800}capabilityActionQueue/,
+    pattern: /check-deployment-state\.mjs[\s\S]{0,5200}portfolioCapabilityActionQueue[\s\S]{0,2600}capabilityDiagnostics[\s\S]{0,2600}capabilityActionQueue/,
     message: "deployment checker must prove online admin and portfolio APIs expose capability repair features."
+  },
+  {
+    pattern: /check-deployment-state\.mjs[\s\S]{0,5200}portfolio-terminal-shell[\s\S]{0,1600}PORTFOLIO_VIEW_GROUPS[\s\S]{0,1600}\.portfolio-terminal-shell/,
+    message: "deployment checker must fail stale online portfolio pages that still use the old long vertical layout."
   },
   {
     pattern: /extended_uptrend[\s\S]{0,120}短期涨幅偏热/,
