@@ -2498,14 +2498,27 @@ function renderManagerRankingOverview(lists = []) {
   if (!lists.length) return "";
   const totalItems = lists.reduce((sum, list) => sum + (Array.isArray(list.items) ? list.items.length : 0), 0);
   const groups = buildManagerRankingOverviewGroups(lists);
+  const allSummary = {
+    id: "all",
+    title: "全部",
+    hint: `${lists.length} 类视角`,
+    count: totalItems,
+    focus: groups.map(selectManagerRankingGroupFocus).filter(Boolean).slice(0, 4)
+  };
   return `
     <div class="ranking-overview">
-      <button class="ranking-overview-card ranking-overview-all ranking-overview-all-card" type="button" data-ranking-filter="">
-        <span>全部榜单</span>
-        <strong>${lists.length} 类</strong>
-        <small>${totalItems} 个复核对象</small>
-      </button>
-      ${groups.map(renderManagerRankingOverviewGroup).join("")}
+      <div class="ranking-overview-groups" aria-label="榜单大类入口">
+        <button class="ranking-overview-group-tab ranking-overview-all-card" type="button" data-ranking-filter="" data-ranking-group-target="all">
+          <span>全部</span>
+          <strong>${lists.length} 类</strong>
+          <small>${totalItems} 项</small>
+        </button>
+        ${groups.map(renderManagerRankingOverviewGroupTab).join("")}
+      </div>
+      <div class="ranking-overview-lens-stage">
+        ${renderManagerRankingAllGroupPanel(allSummary)}
+        ${groups.map(renderManagerRankingOverviewGroup).join("")}
+      </div>
     </div>
   `;
 }
@@ -2525,11 +2538,49 @@ function buildManagerRankingOverviewGroups(lists = []) {
   return groups;
 }
 
+function renderManagerRankingOverviewGroupTab(group = {}) {
+  const focus = selectManagerRankingGroupFocus(group);
+  const count = (group.lists || []).reduce((sum, list) => sum + (Array.isArray(list.items) ? list.items.length : 0), 0);
+  return `
+    <button class="ranking-overview-group-tab ranking-overview-group-tab-${escapeHtml(group.id || "other")}" type="button" data-ranking-filter="${escapeHtml(focus?.listId || "")}" data-ranking-group-target="${escapeHtml(group.id || "other")}">
+      <span>${escapeHtml(group.title || "榜单")}</span>
+      <strong>${escapeHtml(String((group.lists || []).length))} 类</strong>
+      <small>${escapeHtml(`${count} 项`)}</small>
+    </button>
+  `;
+}
+
+function renderManagerRankingAllGroupPanel(summary = {}) {
+  const focusItems = Array.isArray(summary.focus) ? summary.focus : [];
+  return `
+    <section class="ranking-overview-group ranking-overview-group-all" data-ranking-group-id="all">
+      <div class="ranking-overview-group-head">
+        <strong>全部榜单</strong>
+        <span>${escapeHtml(summary.hint || "")} · ${escapeHtml(String(summary.count || 0))} 项</span>
+      </div>
+      <button class="ranking-overview-group-focus" type="button" data-ranking-filter="">
+        <span>总览模式</span>
+        <strong>显示全部榜单明细</strong>
+        <small>适合全局复盘；日常买卖请优先选择行动、机会、风控或证据大类。</small>
+      </button>
+      <div class="ranking-overview-group-list">
+        ${focusItems.map((focus) => `
+          <button class="ranking-overview-card ranking-overview-${escapeHtml(getManagerRankingListClass(focus.listId))}" type="button" data-ranking-filter="${escapeHtml(focus.listId || "")}" data-scroll-target="${escapeHtml(focus.listId || "")}">
+            <span>${escapeHtml(focus.listTitle || "榜单")}</span>
+            <strong>${escapeHtml(String(focus.count || 0))} 只</strong>
+            <small>${escapeHtml(focus.label || "暂无触发项")}</small>
+          </button>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderManagerRankingOverviewGroup(group = {}) {
   const count = (group.lists || []).reduce((sum, list) => sum + (Array.isArray(list.items) ? list.items.length : 0), 0);
   const focus = selectManagerRankingGroupFocus(group);
   return `
-    <section class="ranking-overview-group ranking-overview-group-${escapeHtml(group.id || "other")}">
+    <section class="ranking-overview-group ranking-overview-group-${escapeHtml(group.id || "other")}" data-ranking-group-id="${escapeHtml(group.id || "other")}">
       <div class="ranking-overview-group-head">
         <strong>${escapeHtml(group.title || "榜单")}</strong>
         <span>${escapeHtml(group.hint || "")} · ${count} 项</span>
@@ -2555,6 +2606,13 @@ function selectManagerRankingGroupFocus(group = {}) {
     action: item?.action || list.nextAction || "查看榜单",
     count: Array.isArray(list.items) ? list.items.length : 0
   };
+}
+
+function getManagerRankingGroupIdForList(rankingId = "") {
+  const id = String(rankingId || "");
+  if (!id) return "all";
+  const group = MANAGER_RANKING_GROUPS.find((candidate) => candidate.listIds.includes(id));
+  return group?.id || "other";
 }
 
 function renderManagerRankingGroupFocus(focus = null, group = {}) {
@@ -2589,10 +2647,20 @@ function setManagerRankingFilter(rankingId = "") {
   } else {
     delete root.dataset.activeRanking;
   }
+  const activeGroup = getManagerRankingGroupIdForList(activeManagerRankingFilter);
+  root.dataset.activeRankingGroup = activeGroup;
   root.querySelectorAll("[data-ranking-filter]").forEach((button) => {
     const active = (button.dataset.rankingFilter || "") === activeManagerRankingFilter;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  root.querySelectorAll("[data-ranking-group-target]").forEach((button) => {
+    const active = (button.dataset.rankingGroupTarget || "") === activeGroup;
+    button.classList.toggle("group-active", active);
+  });
+  root.querySelectorAll("[data-ranking-group-id]").forEach((section) => {
+    const visible = (section.dataset.rankingGroupId || "") === activeGroup;
+    section.classList.toggle("is-group-hidden", !visible);
   });
   root.querySelectorAll("[data-ranking-id]").forEach((section) => {
     const visible = !activeManagerRankingFilter || section.dataset.rankingId === activeManagerRankingFilter;

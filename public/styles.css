@@ -4318,23 +4318,114 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
 
 .ranking-overview {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 10px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .ranking-terminal .ranking-overview {
   z-index: 2;
-  grid-template-columns: 1fr;
   min-height: 0;
   max-height: none;
-  overflow: auto;
+  overflow: hidden;
   padding: 10px;
   border-right: 1px solid #e3ebf2;
   background: #fbfcfd;
 }
 
+.ranking-overview-groups {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.ranking-overview-lens-stage {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  overflow: auto;
+}
+
+.ranking-overview-group.is-group-hidden {
+  display: none;
+}
+
 .ranking-overview-all-card {
   border-left-color: #64748b;
+}
+
+.ranking-overview-group-tab {
+  min-width: 0;
+  min-height: 58px;
+  display: grid;
+  gap: 3px;
+  align-content: center;
+  padding: 8px;
+  border: 1px solid #dce6ee;
+  border-top: 3px solid #8aa1b5;
+  border-radius: 8px;
+  color: var(--text);
+  background: #ffffff;
+  box-shadow: none;
+  text-align: left;
+}
+
+.ranking-overview-group-tab:hover,
+.ranking-overview-group-tab.group-active,
+.ranking-overview-group-tab.active {
+  border-color: #9fb7c9;
+  background: #eef7f4;
+}
+
+.ranking-overview-group-tab span,
+.ranking-overview-group-tab strong,
+.ranking-overview-group-tab small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ranking-overview-group-tab span {
+  color: #60707f;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.ranking-overview-group-tab strong {
+  color: #1d2d3b;
+  font-size: 15px;
+  line-height: 1.1;
+}
+
+.ranking-overview-group-tab small {
+  color: #60707f;
+  font-size: 11px;
+  font-weight: 780;
+}
+
+.ranking-overview-group-tab-action {
+  border-top-color: #0f766e;
+}
+
+.ranking-overview-group-tab-opportunity {
+  border-top-color: #2b6cb0;
+}
+
+.ranking-overview-group-tab-risk {
+  border-top-color: #c05621;
+}
+
+.ranking-overview-group-tab-evidence {
+  border-top-color: #475569;
+}
+
+.ranking-overview-group-tab-other {
+  border-top-color: #7d95aa;
 }
 
 .ranking-overview-group {
@@ -8701,14 +8792,27 @@ button.danger-button:hover {
 
   .ranking-terminal .ranking-overview {
     position: static;
-    display: flex;
+    display: grid;
     max-height: none;
-    overflow-x: auto;
+    overflow: visible;
     padding: 0 0 4px;
   }
 
+  .ranking-overview-groups {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .ranking-overview-group-tab {
+    flex: 0 0 116px;
+  }
+
+  .ranking-overview-lens-stage {
+    overflow: visible;
+  }
+
   .ranking-terminal .ranking-overview-group {
-    flex: 0 0 270px;
+    width: 100%;
   }
 
   .ranking-terminal .ranking-overview-group-list {

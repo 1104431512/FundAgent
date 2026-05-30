@@ -1531,8 +1531,10 @@ assert(adminSource.includes("renderManagerPriorityQueue"), "admin UI must render
 assert(adminSource.includes("renderManagerRankingLensGuide") && adminSource.includes("getManagerRankingLensPurpose"), "admin UI must explain the active manager ranking lens before listing detailed funds");
 assert(adminSource.includes("renderManagerRankingOverview"), "admin UI must render ranking board overview cards before detailed lists");
 assert(adminSource.includes("MANAGER_RANKING_GROUPS") && adminSource.includes("buildManagerRankingOverviewGroups"), "admin UI must group manager ranking lenses into action, opportunity, risk, and evidence sections");
+assert(adminSource.includes("renderManagerRankingOverviewGroupTab") && adminSource.includes("data-ranking-group-target") && adminSource.includes("data-ranking-group-id"), "admin UI must expose manager ranking groups as first-level tabs instead of expanding every group at once");
 assert(adminSource.includes("selectManagerRankingGroupFocus") && adminSource.includes("renderManagerRankingGroupFocus"), "admin UI must give each manager ranking group a one-click focus item");
 assert(adminSource.includes("setManagerRankingFilter"), "admin UI must allow focusing one manager ranking lane from overview cards");
+assert(adminSource.includes("getManagerRankingGroupIdForList") && adminSource.includes("activeRankingGroup") && adminSource.includes("is-group-hidden"), "admin UI must keep only the active manager ranking group visible in the ranking rail");
 assert(adminSource.includes("getDefaultManagerRankingFilter"), "admin UI must open the manager ranking board on the highest-priority lane instead of expanding every list by default");
 assert(adminSource.includes("data-ranking-filter"), "admin UI ranking overview cards must work as compact filters");
 assert(adminSource.includes("focusWatchlistFund"), "admin UI customer digest must jump from ranking advice to watchlist fund details");

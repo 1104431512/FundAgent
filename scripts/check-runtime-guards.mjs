@@ -2773,6 +2773,10 @@ const requiredPatterns = [
     message: "admin manager ranking overview must render grouped lens sections."
   },
   {
+    pattern: /(?=[\s\S]*renderManagerRankingOverviewGroupTab[\s\S]*data-ranking-group-target)(?=[\s\S]*data-ranking-group-id)(?=[\s\S]*setManagerRankingFilter[\s\S]{0,1800}activeRankingGroup[\s\S]{0,900}is-group-hidden)/,
+    message: "admin manager ranking overview must use first-level group tabs and show only the active ranking group."
+  },
+  {
     pattern: /selectManagerRankingGroupFocus[\s\S]{0,1400}renderManagerRankingGroupFocus[\s\S]{0,1200}ranking-overview-group-focus/,
     message: "admin manager ranking groups must expose a one-click focus item for the most relevant lens in each group."
   },
