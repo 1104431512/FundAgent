@@ -374,6 +374,8 @@ assert(actionDeckLines.includes("先补证据原因："), "customer action deck 
 assert(rankingBoard.decisionMatrix?.items?.length, "manager ranking board must build a cross-list decision matrix");
 assert(rankingBoard.decisionMatrix.items.some((item) => item.code === "000005" && item.cells?.buy && item.cells?.sector), "decision matrix must align buy and sector evidence for the same fund");
 assert(rankingBoard.decisionMatrix.items.some((item) => item.code === "000010" && item.cells?.data && /补证据|补齐|不能提交买入|数据/.test(item.nextStep || item.action || "")), "decision matrix must surface data blockers before buy execution");
+assert(rankingBoard.decisionMatrix.items.some((item) => item.code === "000005" && item.verdict?.tone === "buy" && item.verdict?.permission?.includes("小仓") && item.verdict?.supports?.length && !item.verdict?.blockers?.length), "decision matrix must turn buy+sector evidence into a customer-readable small-starter verdict without mistaking fee review for a hard blocker");
+assert(rankingBoard.decisionMatrix.items.some((item) => item.code === "000010" && item.verdict?.tone === "data" && item.verdict?.permission?.includes("不给买入金额") && item.verdict?.blockers?.length), "decision matrix must turn data blockers into a clear no-buy verdict");
 assert(rankingBoard.alertCenter?.lanes?.length === 4, "manager ranking board must build a four-lane alert center");
 assert(rankingBoard.alertCenter.lanes.find((lane) => lane.id === "buy")?.items.some((item) => item.code === "000001" || item.code === "000005"), "alert center must surface buy-review items");
 assert(rankingBoard.alertCenter.lanes.find((lane) => lane.id === "sell")?.items.some((item) => item.code === "008327" || item.code === "000006"), "alert center must surface sell and risk-control items");
@@ -1491,6 +1493,7 @@ assert(adminSource.includes("renderPortfolioRiskBoard"), "admin portfolio UI mus
 assert(adminSource.includes("renderPortfolioSectorBoard"), "admin portfolio UI must render a compact sector leaderboard outside the full ranking page");
 assert(adminSource.includes("renderPortfolioDataBoard"), "admin portfolio UI must render a compact data-confidence board outside the full ranking page");
 assert(adminSource.includes("renderPortfolioDecisionMatrixBoard"), "admin portfolio UI must render a compact decision matrix outside the full ranking page");
+assert(adminSource.includes("matrix-verdict-") && adminSource.includes("阻断：") && adminSource.includes("约束：") && adminSource.includes("支持："), "admin decision matrix must render red-light blockers, yellow constraints, and green support evidence directly in the verdict column");
 assert(adminSource.includes("renderPortfolioActionDesk"), "admin portfolio UI must render a compact action desk outside the long run timeline");
 assert(adminSource.includes("renderPortfolioAlertBoard"), "admin portfolio UI must render a compact alert desk outside the long run timeline");
 assert(adminSource.includes("renderPortfolioOpportunityCommand") && adminSource.includes("selectPortfolioOpportunityLead"), "admin opportunity workspace must surface the first actionable opportunity before lane details");
@@ -1498,6 +1501,7 @@ assert(adminSource.includes("PORTFOLIO_POSITION_LANES"), "admin portfolio positi
 assert(adminStyleSource.includes("portfolio-ranking-radar-grid") && adminStyleSource.includes("portfolio-ranking-radar-data"), "admin portfolio ranking radar must be styled as a scannable five-action-card board");
 assert(/portfolio-ranking-radar-grid\s*\{[\s\S]{0,220}display:\s*grid[\s\S]{0,220}repeat\(auto-fit,\s*minmax\(158px,\s*1fr\)\)/.test(adminStyleSource), "admin portfolio action cards must wrap adaptively instead of adding a horizontal scrollbar");
 assert(adminStyleSource.includes("portfolio-ranking-command") && adminStyleSource.includes("portfolio-ranking-command-lanes"), "admin portfolio ranking radar must style the first-scan command strip and lane counters");
+assert(adminStyleSource.includes("matrix-verdict-risk") && adminStyleSource.includes("matrix-verdict-buy"), "admin decision matrix must style risk/data/buy verdicts as traffic-light cells");
 assert(adminStyleSource.includes("portfolio-ranking-radar-priority"), "admin portfolio ranking radar must style the priority queue as a compact strip");
 assert(adminStyleSource.includes("portfolio-launch-center") && adminStyleSource.includes("portfolio-launch-actions"), "admin portfolio first-screen launch center must be visibly styled");
 assert(adminStyleSource.includes("risk-terminal"), "admin portfolio risk-defense board must be styled as a bounded terminal panel");

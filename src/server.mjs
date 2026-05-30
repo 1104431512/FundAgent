@@ -12100,7 +12100,10 @@ function finalizePortfolioRankingDecisionMatrixRow(row = {}) {
   const dataText = `${dataRef?.action || ""} ${dataRef?.reason || ""} ${dataRef?.gaps?.join(" ") || ""}`;
   const buyText = `${buyRef?.action || ""} ${buyRef?.reason || ""}`;
   const hasHardRisk = /卖出|减仓|止损|止盈|回吐|追涨|回避|防线|风险/.test(riskText);
-  const hasDataBlock = /阻塞|过期|缺|补数据|补证/.test(dataText);
+  const hasFeeOnlyReview = /费率|费用|持有期|赎回|申购|销售服务费|A\/C|A\/C\/D\/I|份额|低费|替代/.test(dataText);
+  const hasHardDataSignal = /数据阻塞|过期|补数据|补证|不能提交买入|证据不足|无法核验|关键数据.*缺|净值.*缺|走势.*缺|来源.*缺|持仓.*缺|前十大.*缺/.test(dataText);
+  const hasDataBlock = hasHardDataSignal || (/缺(?:失|少|口)?/.test(dataText) && !hasFeeOnlyReview);
+  const hasSoftDataConstraint = Boolean(dataRef && !hasDataBlock && (hasFeeOnlyReview || /缺(?:失|少|口)?/.test(dataText)));
   const hasBuyReview = /买入|试探|启动|再部署|复核/.test(buyText);
   const action = hasHardRisk
     ? "先处理风险"
@@ -12116,6 +12119,18 @@ function finalizePortfolioRankingDecisionMatrixRow(row = {}) {
     : hasDataBlock
       ? dataRef?.nextStep || "先补齐净值、费率、份额和持仓证据。"
       : buyRef?.nextStep || sectorRef?.nextStep || "继续等待下一轮榜单复核。";
+  const verdict = buildPortfolioRankingDecisionMatrixVerdict({
+    action,
+    hasHardRisk,
+    hasDataBlock,
+    hasSoftDataConstraint,
+    hasBuyReview,
+    buyRef,
+    sectorRef,
+    riskRef,
+    dataRef,
+    nextStep
+  });
   const matrixScore = round(
     Number(row.priorityScore || 0)
     + refs.reduce((sum, ref) => sum + Math.max(0, 6 - Number(ref.rank || 6)) * 2 + Math.min(12, Number(ref.score || 0) / 12), 0),
@@ -12128,6 +12143,7 @@ function finalizePortfolioRankingDecisionMatrixRow(row = {}) {
     priorityScore: Number.isFinite(Number(row.priorityScore)) ? round(Number(row.priorityScore), 1) : 0,
     matrixScore,
     action,
+    verdict,
     reason: selectPortfolioRankingFirstText(buyRef?.reason, riskRef?.reason, dataRef?.reason, sectorRef?.reason) || "等待经理复核。",
     cells: {
       buy: buildPortfolioRankingDecisionMatrixCell(buyRef),
@@ -12137,6 +12153,79 @@ function finalizePortfolioRankingDecisionMatrixRow(row = {}) {
     },
     nextStep,
     tags: refs.map((ref) => `${ref.listTitle}#${ref.rank}`).slice(0, 5)
+  };
+}
+
+function buildPortfolioRankingDecisionMatrixVerdict({ action = "", hasHardRisk = false, hasDataBlock = false, hasSoftDataConstraint = false, hasBuyReview = false, buyRef = null, sectorRef = null, riskRef = null, dataRef = null, nextStep = "" } = {}) {
+  const supports = normalizeStringArray([
+    buyRef ? `买点：${shortenPortfolioCustomerText(buyRef.action || buyRef.reason || buyRef.listTitle, 32)}` : "",
+    sectorRef ? `板块/质量：${shortenPortfolioCustomerText(sectorRef.action || sectorRef.reason || sectorRef.listTitle, 32)}` : ""
+  ]).slice(0, 2);
+  const blockers = normalizeStringArray([
+    hasHardRisk && riskRef ? `风险：${shortenPortfolioCustomerText(riskRef.action || riskRef.reason || riskRef.listTitle, 36)}` : "",
+    hasDataBlock && dataRef ? `数据/费率：${shortenPortfolioCustomerText(dataRef.action || dataRef.reason || dataRef.listTitle, 36)}` : ""
+  ]).slice(0, 2);
+  const constraints = normalizeStringArray([
+    hasSoftDataConstraint && dataRef ? `费率/份额：${shortenPortfolioCustomerText(dataRef.action || dataRef.reason || dataRef.listTitle, 36)}` : "",
+    !hasHardRisk && !hasDataBlock && riskRef ? `风险线：${shortenPortfolioCustomerText(riskRef.action || riskRef.reason || riskRef.listTitle, 36)}` : ""
+  ]).slice(0, 2);
+  if (hasHardRisk) {
+    return {
+      tone: "risk",
+      label: "先处理风险",
+      permission: "不新增买入",
+      summary: "风险榜已触发，先看卖出/减仓、回吐或追涨防线。",
+      supports,
+      blockers,
+      constraints,
+      nextStep
+    };
+  }
+  if (hasDataBlock) {
+    return {
+      tone: "data",
+      label: "先补证据",
+      permission: "不给买入金额",
+      summary: "数据或费率证据不完整，不能把候选包装成确定买点。",
+      supports,
+      blockers,
+      constraints,
+      nextStep
+    };
+  }
+  if (hasBuyReview && sectorRef) {
+    return {
+      tone: "buy",
+      label: "可小仓复核",
+      permission: "仅小仓/分批",
+      summary: "买点与板块/质量形成共振，但仍需按仓位上限执行。",
+      supports,
+      blockers,
+      constraints,
+      nextStep
+    };
+  }
+  if (hasBuyReview) {
+    return {
+      tone: "watch",
+      label: "买点待确认",
+      permission: "先观察不追买",
+      summary: "有买点线索，但缺少板块、质量或费用交叉确认。",
+      supports,
+      blockers,
+      constraints,
+      nextStep
+    };
+  }
+  return {
+    tone: sectorRef ? "watch" : "neutral",
+    label: action || "继续观察",
+    permission: "等待触发",
+    summary: sectorRef ? "方向值得关注，但暂未形成可执行买点。" : "证据不足，先等待下一轮榜单复核。",
+    supports,
+    blockers,
+    constraints,
+    nextStep
   };
 }
 
@@ -12279,6 +12368,7 @@ function compactPortfolioRankingBoardForModel(board = {}) {
         code: item.code || "",
         name: item.name || "",
         action: item.action || "",
+        verdict: item.verdict || null,
         reason: item.reason || "",
         nextStep: item.nextStep || "",
         cells: item.cells || {}

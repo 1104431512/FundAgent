@@ -2860,13 +2860,65 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
 .matrix-next {
   display: grid;
   align-content: start;
-  gap: 8px;
+  gap: 6px;
+}
+
+.matrix-verdict {
+  border-top: 3px solid #94a3b8;
+  background: #fbfcfd;
+}
+
+.matrix-verdict-risk {
+  border-top-color: #b3261e;
+  background: #fff7f6;
+}
+
+.matrix-verdict-data {
+  border-top-color: #64748b;
+  background: #f8fafc;
+}
+
+.matrix-verdict-buy {
+  border-top-color: #2f855a;
+  background: #f4fbf7;
+}
+
+.matrix-verdict-watch {
+  border-top-color: #2b6cb0;
+  background: #f5f9ff;
+}
+
+.matrix-verdict b,
+.matrix-verdict strong,
+.matrix-verdict p,
+.matrix-verdict small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.matrix-verdict b {
+  color: #1f2f3d;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.matrix-verdict strong {
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.matrix-verdict p {
+  color: #435363;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .matrix-verdict small {
   color: #657789;
   font-size: 12px;
   font-weight: 800;
+  line-height: 1.35;
 }
 
 .matrix-verdict .ranking-action,

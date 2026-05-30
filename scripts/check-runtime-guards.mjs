@@ -1185,6 +1185,10 @@ const requiredPatterns = [
     message: "admin portfolio decision matrix must compare buy point, sector, risk, and data columns in one trading-style board."
   },
   {
+    pattern: /(?=[\s\S]*buildPortfolioRankingDecisionMatrixVerdict[\s\S]*permission[\s\S]*blockers[\s\S]*constraints[\s\S]*supports)(?=[\s\S]*renderPortfolioDecisionMatrixRow[\s\S]*matrix-verdict-[\s\S]*阻断：[\s\S]*约束：[\s\S]*支持：)/,
+    message: "portfolio decision matrix must show a traffic-light buy/wait/block verdict with supports, constraints, and blockers."
+  },
+  {
     pattern: /(?=[\s\S]*\.matrix-terminal\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.matrix-table\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.matrix-body\s*\{[\s\S]*overflow:\s*auto)/,
     message: "admin portfolio decision matrix must be bounded with an internally scrollable table."
   },

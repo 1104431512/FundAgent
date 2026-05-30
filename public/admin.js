@@ -1660,6 +1660,11 @@ function renderPortfolioDecisionMatrixBoard(board = {}) {
 
 function renderPortfolioDecisionMatrixRow(item = {}) {
   const actionClass = getManagerRankingActionClass(`${item.action || ""} ${item.reason || ""}`);
+  const verdict = item.verdict || {};
+  const verdictTone = verdict.tone || actionClass || "neutral";
+  const blockers = Array.isArray(verdict.blockers) ? verdict.blockers : [];
+  const constraints = Array.isArray(verdict.constraints) ? verdict.constraints : [];
+  const supports = Array.isArray(verdict.supports) ? verdict.supports : [];
   return `
     <article class="matrix-row matrix-item" role="row">
       <div class="matrix-fund">
@@ -1669,8 +1674,12 @@ function renderPortfolioDecisionMatrixRow(item = {}) {
           <small>${escapeHtml(item.reason || "等待经理复核。")}</small>
         </div>
       </div>
-      <div class="matrix-verdict">
+      <div class="matrix-verdict matrix-verdict-${escapeHtml(verdictTone)}">
+        <b>${escapeHtml(verdict.label || item.action || "复核")}</b>
         <span class="ranking-action ${actionClass}">${escapeHtml(item.action || "复核")}</span>
+        ${verdict.permission ? `<strong>${escapeHtml(verdict.permission)}</strong>` : ""}
+        ${verdict.summary ? `<p>${escapeHtml(verdict.summary)}</p>` : ""}
+        ${blockers.length ? `<small>阻断：${escapeHtml(blockers.join("；"))}</small>` : constraints.length ? `<small>约束：${escapeHtml(constraints.join("；"))}</small>` : supports.length ? `<small>支持：${escapeHtml(supports.join("；"))}</small>` : ""}
         ${Number.isFinite(Number(item.matrixScore)) ? `<small>矩阵 ${formatNumber(item.matrixScore, 0)}</small>` : ""}
       </div>
       ${renderPortfolioDecisionMatrixCell(item.cells?.buy, "buy")}
