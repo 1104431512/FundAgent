@@ -7961,6 +7961,23 @@ function buildPortfolioCustomerDecisionSummaryStatusLines(summary = {}) {
   ];
 }
 
+function buildPortfolioCustomerActionLeaderboardStatusLines(board = {}) {
+  const lanes = Array.isArray(board.lanes)
+    ? board.lanes.filter((lane) => Number(lane.count || 0) > 0)
+    : [];
+  if (!lanes.length) return [];
+  const lines = [`${board.title || "客户行动排行"}：${board.summary || lanes.map((lane) => `${lane.title}${lane.count || 0}项`).join("，")}。`];
+  for (const lane of lanes.slice(0, 5)) {
+    const top = Array.isArray(lane.items) ? lane.items[0] : null;
+    const subject = top ? [top.code, top.name].filter(Boolean).join(" ") : "";
+    const action = top?.action ? `（${top.action}）` : "";
+    const reason = shortenPortfolioCustomerText(top?.reason || lane.purpose || "", 58);
+    const nextStep = shortenPortfolioCustomerText(top?.nextStep || lane.topAction || lane.purpose || "", 62);
+    lines.push(`- ${lane.title || "行动榜"}：${subject ? `${subject}${action}` : "暂无第一对象"}${reason ? `。原因：${reason}` : ""}${nextStep ? `。下一步：${nextStep}` : ""}`);
+  }
+  return lines;
+}
+
 function formatPortfolioCustomerActionReasonLabel(cardId = "") {
   const id = String(cardId || "").trim();
   if (id === "buy") return "买入理由";
@@ -8765,6 +8782,11 @@ function buildPortfolioStatusAnswer(userText, intent) {
   if (!wantsOnlyProfileOrSchedule) {
     lines.push("");
     lines.push(...buildPortfolioCustomerDecisionSummaryStatusLines(managerRankings.customerDecisionSummary || {}));
+    const leaderboardLines = buildPortfolioCustomerActionLeaderboardStatusLines(managerRankings.customerActionLeaderboard || {});
+    if (leaderboardLines.length) {
+      lines.push("");
+      lines.push(...leaderboardLines);
+    }
     lines.push("");
     lines.push(...buildPortfolioCustomerActionDeckStatusLines(managerRankings.customerActionDeck || {}));
   }
@@ -27381,6 +27403,7 @@ export {
   buildPortfolioCapabilityActionQueue,
   buildPortfolioAccountStatusLines,
   buildPortfolioCustomerDecisionSummaryStatusLines,
+  buildPortfolioCustomerActionLeaderboardStatusLines,
   buildPortfolioCustomerActionDeckStatusLines,
   buildPortfolioStatusDirectConclusionLines,
   buildPortfolioDecisionCard,

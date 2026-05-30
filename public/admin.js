@@ -992,6 +992,11 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
   const dataItems = collectPortfolioDataBoardItems(portfolio.managerRankings || {});
   const matrixItems = collectPortfolioDecisionMatrixItems(portfolio.managerRankings || {});
   const priority = portfolio.managerRankings?.priorityQueue?.[0] || null;
+  const actionLeaderboard = portfolio.managerRankings?.customerActionLeaderboard || {};
+  const actionLeaderboardLanes = Array.isArray(actionLeaderboard.lanes) ? actionLeaderboard.lanes : [];
+  const actionLeaderboardActive = actionLeaderboardLanes.filter((lane) => Number(lane.count || 0) > 0);
+  const topActionLane = actionLeaderboardActive[0] || null;
+  const topActionItem = Array.isArray(topActionLane?.items) ? topActionLane.items[0] : null;
   const userAlerts = userPortfolios.reduce((sum, item) => sum + Number(item.alertCount || 0), 0);
   const latestRun = runs[0] || null;
   const scheduler = portfolio.scheduler || {};
@@ -1026,10 +1031,13 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
     {
       view: "rankings",
       group: "decision",
-      label: "经理榜单",
-      value: `${rankingCount} 项`,
-      detail: priority ? `${priority.listTitle || "优先处理"}：${priority.code || ""} ${priority.name || ""}`.trim() : "综合、轮动、追涨、费率等多角度排序",
-      meta: priority?.action || "辅助买入/卖出复核"
+      label: "行动排行",
+      value: actionLeaderboardActive.length ? `${actionLeaderboardActive.length} 类` : `${rankingCount} 项`,
+      detail: topActionItem
+        ? `${topActionLane.title || "行动榜"}：${topActionItem.code || ""} ${topActionItem.name || ""}`.trim()
+        : priority ? `${priority.listTitle || "优先处理"}：${priority.code || ""} ${priority.name || ""}`.trim()
+          : "买、等、避、卖、补证据分线排序",
+      meta: topActionItem?.nextStep || topActionItem?.action || priority?.action || "辅助买入/卖出复核"
     },
     {
       view: "matrix",

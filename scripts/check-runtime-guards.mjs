@@ -1125,6 +1125,10 @@ const requiredPatterns = [
     message: "admin portfolio workspace cards must summarize rankings, watchlist readiness, and user alerts."
   },
   {
+    pattern: /renderPortfolioWorkspaceCards[\s\S]{0,2600}customerActionLeaderboard[\s\S]{0,2600}label:\s*"行动排行"/,
+    message: "admin portfolio workspace cards must use the customer action leaderboard as the first-scan manager ranking shortcut."
+  },
+  {
     pattern: /(?=[\s\S]*portfolioRankingRadar)(?=[\s\S]*function renderPortfolioRankingRadar)(?=[\s\S]*customerActionDeck)(?=[\s\S]*可买复核)(?=[\s\S]*等待触发)(?=[\s\S]*先回避)/,
     message: "admin portfolio overview must render customer action cards so users can scan buy, wait, avoid, sell, and data signals without opening a long ranking report."
   },
@@ -1637,7 +1641,7 @@ const requiredPatterns = [
     message: "portfolio status answers must format customer action cards in Chinese."
   },
   {
-    pattern: /function buildPortfolioCustomerActionDeckStatusLines[\s\S]{0,1200}formatPortfolioCustomerActionReasonLabel[\s\S]{0,900}function formatPortfolioCustomerActionReasonLabel[\s\S]{0,900}买入理由[\s\S]{0,900}加备选理由[\s\S]{0,900}暂不买理由[\s\S]{0,900}卖出\/减仓理由[\s\S]{0,900}先补证据原因/,
+    pattern: /(?=[\s\S]*function buildPortfolioCustomerActionDeckStatusLines[\s\S]{0,1600}formatPortfolioCustomerActionReasonLabel)(?=[\s\S]*function formatPortfolioCustomerActionReasonLabel[\s\S]{0,900}买入理由[\s\S]{0,900}加备选理由[\s\S]{0,900}暂不买理由[\s\S]{0,900}卖出\/减仓理由[\s\S]{0,900}先补证据原因)/,
     message: "portfolio customer action cards must explain buy, backup, avoid, sell, and data-block reasons with customer-friendly labels."
   },
   {
@@ -1651,6 +1655,10 @@ const requiredPatterns = [
   {
     pattern: /buildPortfolioStatusAnswer[\s\S]{0,5200}buildPortfolioCustomerActionDeckStatusLines/,
     message: "portfolio status answers must lead with customer action cards before dense holdings and watchlist details."
+  },
+  {
+    pattern: /(?=[\s\S]*function buildPortfolioCustomerActionLeaderboardStatusLines[\s\S]{0,900}客户行动排行)(?=[\s\S]*function buildPortfolioStatusAnswer[\s\S]{0,6200}buildPortfolioCustomerActionLeaderboardStatusLines[\s\S]{0,900}buildPortfolioCustomerActionDeckStatusLines)/,
+    message: "portfolio status answers must translate customer action leaderboards before detailed action-card lines."
   },
   {
     pattern: /function buildPortfolioRedeploymentPlan[\s\S]{0,5200}pressureActive[\s\S]{0,5200}starter_buy[\s\S]{0,5200}实时估算时间/,
