@@ -50,7 +50,7 @@ const normalizedUserPortfolios = manager.normalizeUserPortfolios([
 ]);
 assert.equal(normalizedUserPortfolios[0].holdings[0].code, "021959", "user portfolios must keep screenshot holding codes");
 assert.equal(normalizedUserPortfolios[0].holdings[0].visibleReturnLabel, "当日涨幅", "user portfolios must keep the meaning of visible screenshot returns");
-const rankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
+const normalizedRankingDb = manager.normalizePortfolioDb({
   account: {
     initialCapital: 100000,
     cash: 90000,
@@ -315,7 +315,8 @@ const rankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfol
     }
   ],
   userPortfolios: normalizedUserPortfolios
-}));
+});
+const rankingBoard = manager.buildPortfolioRankingBoard(normalizedRankingDb);
 assert(rankingBoard.lists.find((item) => item.id === "decision_synthesis")?.items.some((item) => item.code === "000005"), "manager ranking board must expose integrated decision-synthesis candidates");
 assert(rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.some((item) => item.code === "000001"), "manager ranking board must expose buy-preparation candidates");
 assert(rankingBoard.lists.find((item) => item.id === "launch_setup")?.items.some((item) => item.code === "000001"), "manager ranking board must expose low-position launch candidates");
@@ -368,6 +369,8 @@ assert(manager.compactPortfolioRankingBoardForModel(rankingBoard).consensusRadar
 const consensusRadarLines = manager.buildPortfolioConsensusRadarStatusLines(rankingBoard.consensusRadar).join("\n");
 assert(consensusRadarLines.includes("共识雷达") && consensusRadarLines.includes("共识可买") && consensusRadarLines.includes("风险阻断"), "portfolio status replies must translate consensus radar lanes into readable buy/watch/risk/data lines");
 assert(consensusRadarLines.includes("依据：") && consensusRadarLines.includes("下一步："), "consensus radar status lines must explain the reason and next step, not only repeat fund codes");
+const consensusDirectLines = manager.buildPortfolioStatusDirectConclusionLines({ account: normalizedRankingDb.account, managerRankings: rankingBoard }).join("\n");
+assert(consensusDirectLines.includes("多榜单交叉") && (consensusDirectLines.includes("008327") || consensusDirectLines.includes("000005")), "direct portfolio status conclusion must use consensus radar before falling back to generic action cards");
 const leaderboardStatusLines = manager.buildPortfolioCustomerActionLeaderboardStatusLines(rankingBoard.customerActionLeaderboard).join("\n");
 assert(leaderboardStatusLines.includes("客户行动排行") && leaderboardStatusLines.includes("卖出/减仓榜") && leaderboardStatusLines.includes("补证据榜"), "portfolio status replies must translate customer action leaderboards into readable action-ranked lines");
 assert(leaderboardStatusLines.includes("复核期限：") && leaderboardStatusLines.includes("触发：") && leaderboardStatusLines.includes("失效/降级："), "portfolio status replies must include review windows, triggers, and invalidation boundaries for action leaderboards");

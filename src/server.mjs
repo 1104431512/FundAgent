@@ -8022,6 +8022,10 @@ function formatPortfolioCustomerActionReasonLabel(cardId = "") {
 }
 
 function buildPortfolioStatusDirectConclusionLines({ account = {}, managerRankings = {}, recentDecision = null, activeOrders = [], todayTransactions = [] } = {}) {
+  const consensusConclusion = buildPortfolioStatusConsensusDirectConclusion(managerRankings.consensusRadar || {});
+  if (consensusConclusion) {
+    return consensusConclusion;
+  }
   const deck = managerRankings.customerActionDeck || {};
   const cards = Array.isArray(deck.cards) ? deck.cards : [];
   const activeCards = cards.filter((card) => Number(card.count || 0) > 0);
@@ -8051,6 +8055,30 @@ function buildPortfolioStatusDirectConclusionLines({ account = {}, managerRankin
     lines.push(`下一步：${next}`);
   }
   return lines;
+}
+
+function buildPortfolioStatusConsensusDirectConclusion(radar = {}) {
+  const lanes = Array.isArray(radar.lanes) ? radar.lanes : [];
+  const laneOrder = ["risk", "buy", "data", "watch"];
+  const selectedLane = laneOrder
+    .map((id) => lanes.find((lane) => lane.id === id && Number(lane.count || 0) > 0 && Array.isArray(lane.items) && lane.items.length))
+    .find(Boolean);
+  const first = selectedLane?.items?.[0] || null;
+  if (!selectedLane || !first) return null;
+  const subject = [first.code, first.name].filter(Boolean).join(" ") || selectedLane.title || "优先事项";
+  const action = first.action || first.verdictLabel || selectedLane.topAction || "复核";
+  const reason = selectedLane.id === "risk"
+    ? first.blockerText || first.reason
+    : selectedLane.id === "data"
+      ? first.blockerText || first.constraintText || first.reason
+      : first.supportText || first.reason;
+  const nextStep = first.nextStep || first.constraintText || selectedLane.emptyText || "";
+  return [
+    `直接结论：${subject} ${action}，这是多榜单交叉后的第一处理对象。`,
+    `优先处理：${subject}${first.permission ? `（${first.permission}）` : ""}。`,
+    reason ? `为什么：${shortenPortfolioCustomerText(reason, 72)}` : "",
+    nextStep ? `下一步：${shortenPortfolioCustomerText(nextStep, 72)}` : ""
+  ].filter(Boolean);
 }
 
 function buildPortfolioStatusDirectConclusionText(card = {}, item = null, context = {}) {
@@ -27768,6 +27796,7 @@ export {
   buildPortfolioCapabilityActionQueue,
   buildPortfolioAccountStatusLines,
   buildPortfolioCustomerDecisionSummaryStatusLines,
+  buildPortfolioStatusConsensusDirectConclusion,
   buildPortfolioConsensusRadarStatusLines,
   buildPortfolioCustomerActionLeaderboardStatusLines,
   buildPortfolioCustomerActionDeckStatusLines,

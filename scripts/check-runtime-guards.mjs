@@ -1657,6 +1657,10 @@ const requiredPatterns = [
     message: "portfolio status replies must start with a direct conclusion derived from customer action cards."
   },
   {
+    pattern: /(?=[\s\S]*function buildPortfolioStatusDirectConclusionLines[\s\S]{0,600}buildPortfolioStatusConsensusDirectConclusion)(?=[\s\S]*function buildPortfolioStatusConsensusDirectConclusion[\s\S]{0,2200}多榜单交叉)/,
+    message: "portfolio status direct conclusions must prefer consensus radar before generic action cards."
+  },
+  {
     pattern: /buildPortfolioStatusAnswer[\s\S]{0,4200}buildPortfolioStatusDirectConclusionLines[\s\S]{0,900}buildPortfolioAccountStatusLines/,
     message: "portfolio status answers must put direct conclusion before account ledger summaries."
   },
