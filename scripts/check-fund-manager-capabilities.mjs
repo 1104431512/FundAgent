@@ -1466,6 +1466,7 @@ assert(adminSource.includes("renderPortfolioAlertBoard"), "admin portfolio UI mu
 assert(adminSource.includes("renderPortfolioOpportunityCommand") && adminSource.includes("selectPortfolioOpportunityLead"), "admin opportunity workspace must surface the first actionable opportunity before lane details");
 assert(adminSource.includes("PORTFOLIO_POSITION_LANES"), "admin portfolio positions view must split holdings into risk, profit, core, and watch lanes");
 assert(adminStyleSource.includes("portfolio-ranking-radar-grid") && adminStyleSource.includes("portfolio-ranking-radar-data"), "admin portfolio ranking radar must be styled as a scannable five-action-card board");
+assert(/portfolio-ranking-radar-grid\s*\{[\s\S]{0,220}display:\s*grid[\s\S]{0,220}repeat\(auto-fit,\s*minmax\(158px,\s*1fr\)\)/.test(adminStyleSource), "admin portfolio action cards must wrap adaptively instead of adding a horizontal scrollbar");
 assert(adminStyleSource.includes("portfolio-ranking-command") && adminStyleSource.includes("portfolio-ranking-command-lanes"), "admin portfolio ranking radar must style the first-scan command strip and lane counters");
 assert(adminStyleSource.includes("portfolio-ranking-radar-priority"), "admin portfolio ranking radar must style the priority queue as a compact strip");
 assert(adminStyleSource.includes("portfolio-launch-center") && adminStyleSource.includes("portfolio-launch-actions"), "admin portfolio first-screen launch center must be visibly styled");
@@ -1539,7 +1540,11 @@ assert(adminStyleSource.includes("portfolio-workspace-switcher"), "admin portfol
 assert(/portfolio-workspace-switcher[\s\S]{0,240}position:\s*sticky/.test(adminStyleSource), "admin portfolio workspace switcher must remain reachable while long workspace views scroll");
 assert(adminStyleSource.includes("portfolio-workspace-view.active"), "admin portfolio workspace views must show one focused entry at a time");
 assert(adminSource.includes("PORTFOLIO_WORKSPACE_OVERVIEW_GROUPS") && adminSource.includes("renderPortfolioWorkspaceGroups"), "admin portfolio overview shortcuts must be grouped by account, opportunity, decision, and records");
+assert(/decision[\s\S]{0,220}focusViews:\s*\["runner",\s*"alerts",\s*"actions",\s*"rankings",\s*"matrix"\]/.test(adminSource), "admin portfolio decision overview must fall back to the runner instead of a zero-count alert card");
+assert(/selectPortfolioWorkspaceGroupFocus[\s\S]{0,900}hasPortfolioWorkspaceCardSignal\(item\)[\s\S]{0,900}byView\.has\(view\)/.test(adminSource), "admin portfolio overview focus selection must prefer cards with real signals before the default entry");
 assert(adminStyleSource.includes("portfolio-workspace-cluster") && adminStyleSource.includes("portfolio-workspace-mini-list"), "admin portfolio overview must style grouped shortcut zones instead of a flat card strip");
+assert(adminSource.includes("renderPortfolioWorkspaceMoreButton") && adminSource.includes("secondary.slice(0, 3)"), "admin portfolio overview groups must cap secondary shortcuts and expose a compact more chip");
+assert(/portfolio-workspace-mini-list\s*\{[\s\S]{0,260}overflow:\s*hidden/.test(adminStyleSource), "admin portfolio overview mini shortcut lists must not create internal scrollbars");
 assert(/portfolio-terminal-shell[\s\S]{0,260}--portfolio-workspace-height:\s*100%[\s\S]{0,520}height:\s*var\(--portfolio-workspace-height\)[\s\S]{0,260}max-height:\s*100%[\s\S]{0,180}overflow:\s*hidden/.test(adminStyleSource), "admin portfolio terminal shell must bound the virtual-run workspace height like a trading terminal");
 assert(/portfolio-terminal-stage[\s\S]{0,320}overflow:\s*hidden/.test(adminStyleSource), "admin portfolio terminal stage must prevent long workspace content from stretching the whole page");
 assert(/portfolio-workspace-view\.active[\s\S]{0,360}overflow:\s*auto/.test(adminStyleSource), "admin portfolio active workspace view must scroll internally");

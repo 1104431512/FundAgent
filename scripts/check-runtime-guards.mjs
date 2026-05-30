@@ -1113,6 +1113,14 @@ const requiredPatterns = [
     message: "admin portfolio overview must group shortcut entries into account, opportunity, decision, and record zones instead of a flat strip."
   },
   {
+    pattern: /(?=[\s\S]*PORTFOLIO_WORKSPACE_OVERVIEW_GROUPS[\s\S]*decision[\s\S]{0,260}focusViews:\s*\["runner",\s*"alerts",\s*"actions",\s*"rankings",\s*"matrix"\])(?=[\s\S]*selectPortfolioWorkspaceGroupFocus[\s\S]*hasPortfolioWorkspaceCardSignal\(item\)[\s\S]*byView\.has\(view\))/,
+    message: "admin portfolio decision overview must prefer signaled cards but fall back to the runner instead of enlarging a zero-count alert card."
+  },
+  {
+    pattern: /(?=[\s\S]*renderPortfolioWorkspaceGroups[\s\S]*secondary\.slice\(0,\s*3\))(?=[\s\S]*renderPortfolioWorkspaceMoreButton[\s\S]*portfolio-workspace-more)(?=[\s\S]*portfolio-workspace-mini-list\s*\{[\s\S]*overflow:\s*hidden)/,
+    message: "admin portfolio overview groups must cap mini shortcuts and show a more chip instead of creating internal scrollbars."
+  },
+  {
     pattern: /(?=[\s\S]*function renderPortfolioWorkspaceCards)(?=[\s\S]*managerRankings)(?=[\s\S]*ready)(?=[\s\S]*waiting)(?=[\s\S]*userAlerts)(?=[\s\S]*renderPortfolioWorkspaceGroups)/,
     message: "admin portfolio workspace cards must summarize rankings, watchlist readiness, and user alerts."
   },
@@ -1193,8 +1201,8 @@ const requiredPatterns = [
     message: "admin portfolio ranking radar must jump from radar items and priority queue entries to matching watchlist details."
   },
   {
-    pattern: /(?=[\s\S]*\.portfolio-ranking-radar\s*\{)(?=[\s\S]*\.portfolio-ranking-radar-grid\s*\{[\s\S]*display:\s*flex[\s\S]*overflow-x:\s*auto)(?=[\s\S]*\.portfolio-ranking-radar-priority\s*\{[\s\S]*overflow-x:\s*auto)/,
-    message: "admin portfolio ranking radar must be styled as a compact horizontal action-card board with a scrollable priority strip."
+    pattern: /(?=[\s\S]*\.portfolio-ranking-radar\s*\{)(?=[\s\S]*\.portfolio-ranking-radar-grid\s*\{[\s\S]*display:\s*grid[\s\S]*repeat\(auto-fit,\s*minmax\(158px,\s*1fr\)\)[\s\S]*overflow:\s*visible)(?=[\s\S]*\.portfolio-ranking-radar-priority\s*\{[\s\S]*overflow-x:\s*auto)/,
+    message: "admin portfolio ranking radar must use an adaptive action-card grid instead of forcing a horizontal scrollbar."
   },
   {
     pattern: /portfolio-workspace-switcher[\s\S]{0,260}position:\s*sticky/,

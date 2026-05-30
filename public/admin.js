@@ -94,7 +94,7 @@ const MANAGER_RANKING_GROUPS = [
 const PORTFOLIO_WORKSPACE_OVERVIEW_GROUPS = [
   { id: "account", title: "账户", hint: "持仓与客户", focusViews: ["positions", "users"] },
   { id: "opportunity", title: "机会", hint: "低位、轮动与自选", focusViews: ["opportunities", "sectors", "watchlist"] },
-  { id: "decision", title: "决策", hint: "行动、预警、榜单与风控", focusViews: ["alerts", "actions", "rankings", "matrix"] },
+  { id: "decision", title: "决策", hint: "行动、预警、榜单与风控", focusViews: ["runner", "alerts", "actions", "rankings", "matrix"] },
   { id: "records", title: "记录", hint: "时间线与订单", focusViews: ["timeline", "orders"] }
 ];
 const PORTFOLIO_VIEW_GROUPS = {
@@ -1129,6 +1129,8 @@ function renderPortfolioWorkspaceGroups(cards = []) {
     if (!items.length) return "";
     const focus = selectPortfolioWorkspaceGroupFocus(group, items);
     const secondary = items.filter((card) => card !== focus);
+    const visibleSecondary = secondary.slice(0, 3);
+    const hiddenCount = Math.max(0, secondary.length - visibleSecondary.length);
     return `
       <section class="portfolio-workspace-cluster portfolio-workspace-cluster-${escapeHtml(group.id)}">
         <div class="portfolio-workspace-cluster-head">
@@ -1140,7 +1142,8 @@ function renderPortfolioWorkspaceGroups(cards = []) {
         </div>
         ${renderPortfolioWorkspaceCard(focus, { primary: true })}
         <div class="portfolio-workspace-mini-list">
-          ${secondary.map(renderPortfolioWorkspaceMiniButton).join("")}
+          ${visibleSecondary.map(renderPortfolioWorkspaceMiniButton).join("")}
+          ${hiddenCount ? renderPortfolioWorkspaceMoreButton(group, focus, hiddenCount) : ""}
         </div>
       </section>
     `;
@@ -1149,6 +1152,10 @@ function renderPortfolioWorkspaceGroups(cards = []) {
 
 function selectPortfolioWorkspaceGroupFocus(group = {}, items = []) {
   const byView = new Map(items.map((item) => [item.view, item]));
+  for (const view of group.focusViews || []) {
+    const item = byView.get(view);
+    if (item && hasPortfolioWorkspaceCardSignal(item)) return item;
+  }
   for (const view of group.focusViews || []) {
     if (byView.has(view)) return byView.get(view);
   }
@@ -1176,6 +1183,16 @@ function renderPortfolioWorkspaceMiniButton(card = {}) {
     <button type="button" class="portfolio-workspace-mini" data-portfolio-view-target="${escapeHtml(card.view || "overview")}">
       <span>${escapeHtml(card.label || "")}</span>
       <strong>${escapeHtml(card.value || "-")}</strong>
+    </button>
+  `;
+}
+
+function renderPortfolioWorkspaceMoreButton(group = {}, focus = {}, hiddenCount = 0) {
+  const targetView = (group.focusViews || []).find((view) => view && view !== focus.view) || focus.view || "overview";
+  return `
+    <button type="button" class="portfolio-workspace-mini portfolio-workspace-more" data-portfolio-view-target="${escapeHtml(targetView)}">
+      <span>更多</span>
+      <strong>+${escapeHtml(String(hiddenCount))}</strong>
     </button>
   `;
 }

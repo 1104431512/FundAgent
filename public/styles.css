@@ -1383,7 +1383,7 @@ button:disabled {
   gap: 6px;
   align-content: start;
   max-height: 72px;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .portfolio-workspace-mini {
@@ -1405,6 +1405,12 @@ button:disabled {
 .portfolio-workspace-mini:hover {
   border-color: #b7c9d8;
   background: #f4f8fb;
+}
+
+.portfolio-workspace-more {
+  border-style: dashed;
+  color: #526678;
+  background: #f8fbfd;
 }
 
 .portfolio-workspace-mini span,
@@ -1667,14 +1673,13 @@ button:disabled {
 }
 
 .portfolio-ranking-radar-grid {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
   gap: 10px;
-  overflow-x: auto;
-  padding-bottom: 2px;
+  overflow: visible;
 }
 
 .portfolio-ranking-radar-lane {
-  flex: 0 0 220px;
   min-width: 0;
   display: grid;
   align-content: start;
