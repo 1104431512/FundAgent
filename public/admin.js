@@ -1200,6 +1200,7 @@ function renderPortfolioWorkspaceMoreButton(group = {}, focus = {}, hiddenCount 
 function renderPortfolioRankingRadar(board = {}) {
   const root = document.querySelector("#portfolioRankingRadar");
   if (!root) return;
+  const decisionSummary = board.customerDecisionSummary || {};
   const actionDeck = board.customerActionDeck || {};
   const actionCards = Array.isArray(actionDeck.cards) ? actionDeck.cards : [];
   const digest = board.customerDigest || {};
@@ -1239,11 +1240,40 @@ function renderPortfolioRankingRadar(board = {}) {
       </div>
       <button type="button" class="secondary" data-portfolio-view-target="rankings">进入经理榜单</button>
     </div>
+    ${renderPortfolioCustomerDecisionSummary(decisionSummary)}
     ${renderPortfolioRankingCommandStrip(command)}
     <div class="portfolio-ranking-radar-grid">
       ${groups.map((group) => renderPortfolioRankingRadarGroup(group, group.items || digest[group.key] || [])).join("")}
     </div>
     ${hasPriorityItems ? renderPortfolioRankingRadarPriority(priorityQueue) : ""}
+  `;
+}
+
+function renderPortfolioCustomerDecisionSummary(summary = {}) {
+  const lines = Array.isArray(summary.lines) ? summary.lines.filter(Boolean).slice(0, 5) : [];
+  if (!lines.length && !summary.primaryAction) return "";
+  const chips = Array.isArray(summary.chips) ? summary.chips : [];
+  return `
+    <section class="portfolio-decision-summary" aria-label="客户决策摘要">
+      <div class="portfolio-decision-summary-main">
+        <span>${escapeHtml(summary.title || "客户决策摘要")}</span>
+        <strong>${escapeHtml(summary.primaryAction || summary.summary || "先看今天最需要处理的动作。")}</strong>
+        ${summary.summary ? `<small>${escapeHtml(summary.summary)}</small>` : ""}
+      </div>
+      <div class="portfolio-decision-summary-lines">
+        ${lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("")}
+      </div>
+      ${chips.length ? `
+        <div class="portfolio-decision-summary-chips">
+          ${chips.map((chip) => `
+            <button type="button" class="portfolio-decision-chip portfolio-decision-chip-${escapeHtml(chip.tone || chip.id || "watch")}" data-portfolio-view-target="${escapeHtml(chip.target || "rankings")}">
+              <span>${escapeHtml(chip.title || "复核")}</span>
+              <strong>${escapeHtml(String(chip.count || 0))}</strong>
+            </button>
+          `).join("")}
+        </div>
+      ` : ""}
+    </section>
   `;
 }
 
@@ -2066,6 +2096,7 @@ function renderManagerRankings(board = {}) {
         ${renderManagerRankingOverview(lists)}
         <div class="ranking-detail-stage">
           ${renderManagerRankingLensGuide(board, lists)}
+          ${renderManagerCustomerDecisionSummary(board.customerDecisionSummary || {})}
           ${renderManagerRankingActionDeck(board.customerActionDeck || {})}
           <div class="ranking-list-stage">
             ${lists.map(renderManagerRankingList).join("")}
@@ -2174,6 +2205,36 @@ function renderManagerRankingGuideCard(guide = {}) {
         <em class="ranking-action ${actionClass}">${escapeHtml(top?.action || guide.nextAction || "查看")}</em>
         ${code ? `<button type="button" class="ranking-detail-link" data-focus-watchlist-code="${escapeHtml(code)}">自选详情</button>` : ""}
       </div>
+    </section>
+  `;
+}
+
+function renderManagerCustomerDecisionSummary(summary = {}) {
+  const lines = Array.isArray(summary.lines) ? summary.lines.filter(Boolean).slice(0, 5) : [];
+  if (!lines.length && !summary.primaryAction) return "";
+  const chips = Array.isArray(summary.chips) ? summary.chips : [];
+  return `
+    <section class="ranking-decision-summary">
+      <div class="ranking-decision-summary-head">
+        <div>
+          <strong>${escapeHtml(summary.title || "客户决策摘要")}</strong>
+          <small>${escapeHtml(summary.primaryAction || summary.summary || "先看今天最需要处理的动作。")}</small>
+        </div>
+        ${summary.evidence?.priorityTop ? `<span>${escapeHtml(`优先：${summary.evidence.priorityTop.code || ""} ${summary.evidence.priorityTop.name || ""}`.trim())}</span>` : ""}
+      </div>
+      <div class="ranking-decision-summary-body">
+        ${lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("")}
+      </div>
+      ${chips.length ? `
+        <div class="ranking-decision-summary-chips">
+          ${chips.map((chip) => `
+            <button type="button" class="ranking-decision-chip ranking-decision-chip-${escapeHtml(chip.tone || chip.id || "watch")}" data-portfolio-view-target="${escapeHtml(chip.target || "rankings")}">
+              <span>${escapeHtml(chip.title || "复核")}</span>
+              <strong>${escapeHtml(String(chip.count || 0))}</strong>
+            </button>
+          `).join("")}
+        </div>
+      ` : ""}
     </section>
   `;
 }

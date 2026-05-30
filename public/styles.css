@@ -1581,6 +1581,163 @@ button:disabled {
   font-size: 12px;
 }
 
+.portfolio-decision-summary,
+.ranking-decision-summary {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #d8e3ec;
+  border-left: 4px solid #0f766e;
+  border-radius: 8px;
+  background: #f7fbf9;
+}
+
+.portfolio-decision-summary-main,
+.ranking-decision-summary-head {
+  min-width: 0;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.portfolio-decision-summary-main > *,
+.ranking-decision-summary-head > * {
+  min-width: 0;
+}
+
+.portfolio-decision-summary-main span,
+.portfolio-decision-summary-main strong,
+.portfolio-decision-summary-main small,
+.ranking-decision-summary-head strong,
+.ranking-decision-summary-head small,
+.ranking-decision-summary-head span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-decision-summary-main span {
+  color: #60707f;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.portfolio-decision-summary-main strong,
+.ranking-decision-summary-head strong {
+  margin-top: 3px;
+  color: #1d2d3b;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.portfolio-decision-summary-main small,
+.ranking-decision-summary-head small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.42;
+}
+
+.ranking-decision-summary-head span {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #0f5132;
+  background: #e1f2e9;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.portfolio-decision-summary-lines,
+.ranking-decision-summary-body {
+  display: grid;
+  gap: 6px;
+}
+
+.portfolio-decision-summary-lines p,
+.ranking-decision-summary-body p {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #e1eaf0;
+  border-radius: 8px;
+  color: #253746;
+  background: #ffffff;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-decision-summary-chips,
+.ranking-decision-summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.portfolio-decision-chip,
+.ranking-decision-chip {
+  min-height: 30px;
+  display: inline-grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 8px;
+  border: 1px solid #d6e2ea;
+  border-radius: 999px;
+  color: #314253;
+  background: #ffffff;
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.portfolio-decision-chip span,
+.portfolio-decision-chip strong,
+.ranking-decision-chip span,
+.ranking-decision-chip strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portfolio-decision-chip strong,
+.ranking-decision-chip strong {
+  color: #1d2d3b;
+  font-weight: 900;
+}
+
+.portfolio-decision-chip-sell,
+.ranking-decision-chip-sell {
+  border-color: #efc3bd;
+  background: #fff6f4;
+}
+
+.portfolio-decision-chip-buy,
+.ranking-decision-chip-buy {
+  border-color: #bddfcb;
+  background: #f3fbf6;
+}
+
+.portfolio-decision-chip-watch,
+.ranking-decision-chip-watch {
+  border-color: #c7d7ea;
+  background: #f5f9ff;
+}
+
+.portfolio-decision-chip-avoid,
+.ranking-decision-chip-avoid {
+  border-color: #f0d2ac;
+  background: #fff9ef;
+}
+
+.portfolio-decision-chip-data,
+.ranking-decision-chip-data {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
 .portfolio-ranking-command {
   min-width: 0;
   display: grid;

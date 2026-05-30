@@ -1561,8 +1561,8 @@ const requiredPatterns = [
     message: "portfolio decision prompts must force recommendations to cite the manager ranking board."
   },
   {
-    pattern: /客户视角要求[\s\S]{0,500}customerActionDeck[\s\S]{0,500}可买复核[\s\S]{0,500}等待触发[\s\S]{0,500}卖出\/减仓[\s\S]{0,500}先补数据/,
-    message: "portfolio decision prompts must make the customer action deck the first layer for client-facing buy, wait, avoid, sell, and data guidance."
+    pattern: /客户视角要求[\s\S]{0,700}customerDecisionSummary[\s\S]{0,500}customerActionDeck[\s\S]{0,500}可买复核[\s\S]{0,500}等待触发[\s\S]{0,500}卖出\/减仓[\s\S]{0,500}先补数据/,
+    message: "portfolio decision prompts must make the customer decision summary and action deck the first layer for client-facing buy, wait, avoid, sell, and data guidance."
   },
   {
     pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,1900}cash_redeployment[\s\S]{0,500}position_sizing[\s\S]{0,500}quality_score[\s\S]{0,500}manager_stability[\s\S]{0,500}portfolio_fit[\s\S]{0,900}drawdown_defense[\s\S]{0,900}data_confidence[\s\S]{0,900}replacement_choice/,
@@ -2649,12 +2649,24 @@ const requiredPatterns = [
     message: "manager ranking boards must build a four-lane alert center for buy review, sell/risk, data/fee evidence, and user holdings."
   },
   {
-    pattern: /compactPortfolioRankingBoardForModel[\s\S]{0,1600}priorityQueue[\s\S]{0,1600}alertCenter[\s\S]{0,1600}decisionMatrix/,
+    pattern: /(?=[\s\S]*compactPortfolioRankingBoardForModel[\s\S]*priorityQueue)(?=[\s\S]*compactPortfolioRankingBoardForModel[\s\S]*alertCenter)(?=[\s\S]*compactPortfolioRankingBoardForModel[\s\S]*decisionMatrix)/,
     message: "portfolio decision prompts must include the ranking priority queue, alert center, and decision matrix."
+  },
+  {
+    pattern: /(?=[\s\S]*const customerDecisionSummary = buildPortfolioRankingCustomerDecisionSummary)(?=[\s\S]*customerDecisionSummary[\s\S]{0,700}customerActionDeck)(?=[\s\S]*compactPortfolioRankingBoardForModel[\s\S]{0,1000}customerDecisionSummary)/,
+    message: "manager ranking boards must produce and compact a customer decision summary before detailed ranking cards."
   },
   {
     pattern: /buildPortfolioRankingCustomerDigest[\s\S]{0,2200}buyReview[\s\S]{0,2200}watchFocus[\s\S]{0,2200}riskAvoid/,
     message: "manager ranking boards must translate multi-angle rankings into customer-facing buy/watch/avoid digest buckets."
+  },
+  {
+    pattern: /(?=[\s\S]*function buildPortfolioCustomerDecisionSummaryStatusLines[\s\S]{0,700}客户决策摘要)(?=[\s\S]*function buildPortfolioStatusAnswer[\s\S]{0,6200}buildPortfolioCustomerDecisionSummaryStatusLines)/,
+    message: "portfolio status replies must show a customer decision summary before detailed action-card lines."
+  },
+  {
+    pattern: /(?=[\s\S]*function renderPortfolioCustomerDecisionSummary)(?=[\s\S]*customerDecisionSummary)(?=[\s\S]*function renderManagerCustomerDecisionSummary)(?=[\s\S]*ranking-decision-summary)(?=[\s\S]*portfolio-decision-summary)/,
+    message: "admin portfolio UI must show customer decision summaries in both the overview radar and full ranking terminal."
   },
   {
     pattern: /renderManagerRankings/,

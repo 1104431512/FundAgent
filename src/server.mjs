@@ -1750,7 +1750,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "经理多角度榜单（系统计算，必须先看榜单再决定）：",
     JSON.stringify(compactManagerRankings, null, 2),
-    "客户视角要求：回答客户时优先使用 customerActionDeck、alertCenter 和 customerDigest：customerActionDeck 决定今天给客户先讲可买复核、等待触发、先回避、卖出/减仓、先补数据；alertCenter 决定今天必须先处理的买入复核、卖出风控、数据补证和用户持仓提醒；customerDigest 用于补充可买、观察、回避。先讲原因和动作，再补必要数字；不要把所有榜单指标原样堆给客户。",
+    "客户视角要求：回答客户时优先使用 customerDecisionSummary、customerActionDeck、alertCenter 和 customerDigest：customerDecisionSummary 决定开头先讲哪几件事；customerActionDeck 决定今天给客户先讲可买复核、等待触发、先回避、卖出/减仓、先补数据；alertCenter 决定今天必须先处理的买入复核、卖出风控、数据补证和用户持仓提醒；customerDigest 用于补充可买、观察、回避。先讲原因和动作，再补必要数字；不要把所有榜单指标原样堆给客户。",
     "要求：榜单是本轮决策前置清单。必须先处理 alertCenter 每个 lane 的前2项和 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、cash_redeployment、position_sizing、quality_score、manager_stability、portfolio_fit、theme_allocation、rotation_opportunity、chase_risk、drawdown_defense、data_confidence、fee_suitability、replacement_choice、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。主题配置榜必须先回答哪个主题值得看，再选代表基金，不得把同主题多个基金全买；回撤防线榜必须先处理利润回吐、历史最大回撤和单仓风险，不得用补仓摊薄替代风控；数据体检榜出现净值过期、份额/费率缺失、持仓缺口时不得给买入执行。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
@@ -7952,6 +7952,15 @@ function buildPortfolioCustomerActionDeckStatusLines(deck = {}) {
   return lines;
 }
 
+function buildPortfolioCustomerDecisionSummaryStatusLines(summary = {}) {
+  const lines = Array.isArray(summary.lines) ? summary.lines.filter(Boolean) : [];
+  if (!lines.length) return [];
+  return [
+    `${summary.title || "客户决策摘要"}：${summary.primaryAction || summary.summary || "先看最需要处理的买卖和证据缺口。"}`,
+    ...lines.slice(0, 5).map((line) => `- ${line}`)
+  ];
+}
+
 function formatPortfolioCustomerActionReasonLabel(cardId = "") {
   const id = String(cardId || "").trim();
   if (id === "buy") return "买入理由";
@@ -8755,6 +8764,8 @@ function buildPortfolioStatusAnswer(userText, intent) {
 
   if (!wantsOnlyProfileOrSchedule) {
     lines.push("");
+    lines.push(...buildPortfolioCustomerDecisionSummaryStatusLines(managerRankings.customerDecisionSummary || {}));
+    lines.push("");
     lines.push(...buildPortfolioCustomerActionDeckStatusLines(managerRankings.customerActionDeck || {}));
   }
 
@@ -8933,6 +8944,12 @@ function buildPortfolioRankingBoard(db = {}) {
     priorityQueue,
     lists
   });
+  const customerDecisionSummary = buildPortfolioRankingCustomerDecisionSummary({
+    customerActionDeck,
+    alertCenter,
+    decisionMatrix,
+    priorityQueue
+  });
   return {
     updatedAt: new Date().toISOString(),
     lists,
@@ -8941,8 +8958,9 @@ function buildPortfolioRankingBoard(db = {}) {
     decisionMatrix,
     customerDigest,
     customerActionDeck,
+    customerDecisionSummary,
     health: buildPortfolioRankingBoardHealth({ watchlist, positions, userPortfolios, lists }),
-    summary: `${lists.map((list) => `${list.title}${list.items.length}只`).join("，")}；预警${alertCenter.items.length}项；矩阵${decisionMatrix.items.length}只；今日优先${priorityQueue.length}项；行动牌${customerActionDeck.cards.filter((card) => card.count).length}类`
+    summary: `${lists.map((list) => `${list.title}${list.items.length}只`).join("，")}；预警${alertCenter.items.length}项；矩阵${decisionMatrix.items.length}只；今日优先${priorityQueue.length}项；行动牌${customerActionDeck.cards.filter((card) => card.count).length}类；摘要${customerDecisionSummary.lines.length}条`
   };
 }
 
@@ -11416,6 +11434,91 @@ function buildPortfolioRankingCustomerActionDeck({ customerDigest = {}, alertCen
   };
 }
 
+function buildPortfolioRankingCustomerDecisionSummary({ customerActionDeck = {}, alertCenter = {}, decisionMatrix = {}, priorityQueue = [] } = {}) {
+  const cards = Array.isArray(customerActionDeck.cards) ? customerActionDeck.cards : [];
+  const cardById = new Map(cards.map((card) => [String(card.id || ""), card]));
+  const orderedCards = ["sell", "buy", "wait", "avoid", "data"]
+    .map((id) => cardById.get(id))
+    .filter(Boolean);
+  const lines = orderedCards
+    .map(buildPortfolioCustomerDecisionSummaryLine)
+    .filter(Boolean)
+    .slice(0, 5);
+  const firstActiveCard = orderedCards.find((card) => Number(card.count || 0) > 0) || null;
+  const firstActiveItem = firstActiveCard && Array.isArray(firstActiveCard.items) ? firstActiveCard.items[0] : null;
+  const primaryAction = firstActiveCard
+    ? buildPortfolioCustomerDecisionPrimaryAction(firstActiveCard, firstActiveItem)
+    : "暂无必须立即买卖的对象，先维护低位候选、数据证据和持仓风控。";
+  const queueTop = Array.isArray(priorityQueue) ? priorityQueue[0] : null;
+  const alertCount = Array.isArray(alertCenter.items) ? alertCenter.items.length : 0;
+  const matrixCount = Array.isArray(decisionMatrix.items) ? decisionMatrix.items.length : 0;
+  return {
+    title: "客户决策摘要",
+    summary: lines.length
+      ? `把客户行动牌压缩为 ${lines.length} 条先后顺序，先看动作，再看榜单依据。`
+      : "暂无可压缩的行动摘要；先运行盘前观察或补充持仓截图。",
+    primaryAction,
+    lines,
+    chips: orderedCards.map((card) => ({
+      id: card.id || "",
+      title: getPortfolioCustomerDecisionSummaryLabel(card.id),
+      tone: card.tone || card.id || "watch",
+      count: Number(card.count || 0),
+      target: getPortfolioCustomerDecisionSummaryTarget(card.id)
+    })),
+    evidence: {
+      priorityTop: queueTop ? {
+        code: queueTop.code || "",
+        name: queueTop.name || "",
+        listTitle: queueTop.listTitle || "",
+        action: queueTop.action || ""
+      } : null,
+      alertCount,
+      matrixCount
+    },
+    generatedFrom: ["customerActionDeck", "priorityQueue", "alertCenter", "decisionMatrix"]
+  };
+}
+
+function buildPortfolioCustomerDecisionSummaryLine(card = {}) {
+  if (!card || Number(card.count || 0) <= 0) return "";
+  const item = Array.isArray(card.items) ? card.items[0] : null;
+  const label = getPortfolioCustomerDecisionSummaryLabel(card.id);
+  const subject = item ? [item.code, item.name].filter(Boolean).join(" ") : "";
+  const reason = shortenPortfolioCustomerText(item?.reason || card.summary || "", 58);
+  const nextStep = shortenPortfolioCustomerText(item?.nextStep || card.nextStep || "", 58);
+  const tail = reason || nextStep || card.emptyText || "等待经理复核。";
+  const action = item?.action ? `（${item.action}）` : "";
+  return `${label}：${subject ? `${subject}${action}，` : ""}${tail}${nextStep && reason ? `；下一步：${nextStep}` : ""}`;
+}
+
+function buildPortfolioCustomerDecisionPrimaryAction(card = {}, item = null) {
+  const label = getPortfolioCustomerDecisionSummaryLabel(card.id);
+  const subject = item ? [item.code, item.name].filter(Boolean).join(" ") : "";
+  if (subject) return `${label} ${subject}`;
+  return `${label} ${card.summary || ""}`.trim();
+}
+
+function getPortfolioCustomerDecisionSummaryLabel(cardId = "") {
+  const id = String(cardId || "").trim();
+  if (id === "sell") return "先处理卖出/减仓";
+  if (id === "buy") return "可小仓复核";
+  if (id === "wait") return "加入备选等待触发";
+  if (id === "avoid") return "暂不买";
+  if (id === "data") return "先补证据";
+  return "继续复核";
+}
+
+function getPortfolioCustomerDecisionSummaryTarget(cardId = "") {
+  const id = String(cardId || "").trim();
+  if (id === "sell") return "risk";
+  if (id === "buy") return "opportunities";
+  if (id === "wait") return "watchlist";
+  if (id === "avoid") return "alerts";
+  if (id === "data") return "data";
+  return "rankings";
+}
+
 function buildPortfolioCustomerActionCard({ id = "", tone = "watch", title = "", emptyText = "", summary = "", nextStep = "", items = [] } = {}) {
   const normalizedItems = uniquePortfolioCustomerActionItems(items, 3);
   return {
@@ -11858,6 +11961,14 @@ function compactPortfolioRankingBoardForModel(board = {}) {
       actions: normalizeStringArray(board.health.actions).slice(0, 3)
     } : null,
     summary: board.summary || lists.map((list) => `${list.title || list.id}${list.items?.length || 0}只`).join("，"),
+    customerDecisionSummary: board.customerDecisionSummary ? {
+      title: board.customerDecisionSummary.title || "",
+      summary: board.customerDecisionSummary.summary || "",
+      primaryAction: board.customerDecisionSummary.primaryAction || "",
+      lines: normalizeStringArray(board.customerDecisionSummary.lines).slice(0, 5),
+      chips: (board.customerDecisionSummary.chips || []).slice(0, 5),
+      evidence: board.customerDecisionSummary.evidence || null
+    } : null,
     customerDigest: board.customerDigest ? {
       summary: board.customerDigest.summary || "",
       buyReview: (board.customerDigest.buyReview || []).slice(0, 3),
@@ -27158,6 +27269,7 @@ export {
   buildPortfolioCapabilityDiagnostics,
   buildPortfolioCapabilityActionQueue,
   buildPortfolioAccountStatusLines,
+  buildPortfolioCustomerDecisionSummaryStatusLines,
   buildPortfolioCustomerActionDeckStatusLines,
   buildPortfolioStatusDirectConclusionLines,
   buildPortfolioDecisionCard,
