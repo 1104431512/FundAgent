@@ -217,7 +217,7 @@ const requiredPatterns = [
     message: "runtime release metadata must fall back to the Docker build release file when env vars or .git metadata are unavailable."
   },
   {
-    pattern: /check-deployment-state\.mjs[\s\S]{0,7000}portfolioCapabilityActionQueue[\s\S]{0,4200}capabilityDiagnostics[\s\S]{0,4200}capabilityActionQueue/,
+    pattern: /check-deployment-state\.mjs[\s\S]*portfolioCapabilityActionQueue[\s\S]*capabilityDiagnostics[\s\S]*capabilityActionQueue/,
     message: "deployment checker must prove online admin and portfolio APIs expose capability repair features."
   },
   {
@@ -2919,6 +2919,22 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*虚拟运行台)(?=[\s\S]*data-runner-view-target="latest")(?=[\s\S]*data-runner-view-target="execution")(?=[\s\S]*data-runner-view-target="history")(?=[\s\S]*setPortfolioRunnerView)(?=[\s\S]*portfolioRunCommandStrip)(?=[\s\S]*renderPortfolioRunHistoryBoard)/,
     message: "admin portfolio runner must split virtual execution into task, conclusion, execution, history, and raw-state entries."
+  },
+  {
+    pattern: /compactRunnerConsoleText/,
+    message: "admin portfolio runner control cards must compact long manager summaries."
+  },
+  {
+    pattern: /runnerTarget:\s*"latest"[\s\S]*data-runner-view-target/,
+    message: "admin portfolio runner control cards must switch runner sub-entries instead of sending users into long report pages."
+  },
+  {
+    pattern: /runner-workspace-view\[data-runner-view="control"\]\.active[\s\S]{0,260}overflow:\s*hidden/,
+    message: "admin portfolio runner control view must stay bounded inside the trading terminal."
+  },
+  {
+    pattern: /run-console-grid[\s\S]{0,260}overflow:\s*auto/,
+    message: "admin portfolio runner summary cards must scroll inside the control entry."
   },
   {
     pattern: /(?=[\s\S]*body\[data-active-tab="portfolio"\]\[data-active-portfolio-view\]:not\(\[data-active-portfolio-view="overview"\]\) \.portfolio-command-panel[\s\S]{0,120}display:\s*none)(?=[\s\S]*@media \(min-width:\s*861px\)[\s\S]*data-active-portfolio-view[\s\S]{0,260}grid-template-rows:\s*minmax\(0,\s*1fr\))/,

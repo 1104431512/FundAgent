@@ -2924,16 +2924,16 @@ function renderPortfolioRunConsole(portfolio = {}, latestRun = null, context = {
         ? `开始于 ${formatDateTime(scheduler.activeRunStartedAt)}，页面会自动刷新`
         : formatPortfolioSchedule(portfolio),
       tone: scheduler.inFlight ? "warn" : portfolio.enabled ? "ok" : "muted",
-      target: "timeline",
-      action: "查看时间线"
+      runnerTarget: "history",
+      action: "看运行"
     },
     {
       label: "最近结论",
       value: latestRun?.summary || "暂无经理结论",
       meta: latestRun ? `${latestRun.date || "-"} · ${latestRun.title || formatRunTypeLabel(latestRun.type)}` : "先从左侧选择盘前观察或今日操作",
       tone: latestRun?.status === "failed" || latestRun?.status === "interrupted" ? "bad" : "info",
-      target: "timeline",
-      action: "打开记录"
+      runnerTarget: "latest",
+      action: "看结论"
     },
     {
       label: "执行流转",
@@ -2942,24 +2942,24 @@ function renderPortfolioRunConsole(portfolio = {}, latestRun = null, context = {
         ? `${activeOrders[0].side || ""} ${activeOrders[0].code || ""} ${activeOrders[0].name || ""}`.trim()
         : `已确认成交 ${transactions.length} 笔，估值记录 ${equity.length} 条`,
       tone: activeOrders.length ? "warn" : "ok",
-      target: "orders",
-      action: "看订单"
+      runnerTarget: "execution",
+      action: "看执行"
     },
     {
       label: "记录规模",
       value: `${runs.length} 条运行记录`,
       meta: portfolio.lightweight && !portfolioTimelineFullLoaded ? "当前先加载轻量摘要，打开原文时再取完整日报" : "记录已按时间线收纳，不再铺成长页面",
       tone: "info",
-      target: "diagnostics",
-      action: "看体检"
+      runnerTarget: "history",
+      action: "看历史"
     }
   ];
   root.innerHTML = cards.map((card) => `
     <article class="run-console-card ${escapeHtml(card.tone || "info")}">
       <span>${escapeHtml(card.label)}</span>
-      <strong>${escapeHtml(card.value)}</strong>
-      <p>${escapeHtml(card.meta || "")}</p>
-      <button type="button" class="secondary" data-portfolio-view-target="${escapeHtml(card.target || "timeline")}">${escapeHtml(card.action || "查看")}</button>
+      <strong>${escapeHtml(compactRunnerConsoleText(card.value, 78))}</strong>
+      <p>${escapeHtml(compactRunnerConsoleText(card.meta || "", 96))}</p>
+      <button type="button" class="secondary" data-runner-view-target="${escapeHtml(card.runnerTarget || "control")}">${escapeHtml(card.action || "查看")}</button>
     </article>
   `).join("");
   if (latestRoot) {
@@ -2974,6 +2974,12 @@ function renderPortfolioRunConsole(portfolio = {}, latestRun = null, context = {
   if (outputRoot) {
     outputRoot.textContent = formatPortfolioOutput(portfolio);
   }
+}
+
+function compactRunnerConsoleText(value = "", limit = 90) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text || text.length <= limit) return text;
+  return `${text.slice(0, Math.max(0, limit - 1)).trim()}…`;
 }
 
 function renderPortfolioRunCommandStrip({ portfolio = {}, latestRun = null, scheduler = {}, status = "idle", label = "待运行", activeOrders = [], runs = [] } = {}) {

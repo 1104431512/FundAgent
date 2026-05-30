@@ -6978,9 +6978,13 @@ button.danger-button:hover {
 }
 
 .run-console-grid {
+  min-width: 0;
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 10px;
+  align-content: start;
+  overflow: auto;
 }
 
 .runner-workspace-switcher {
@@ -7069,6 +7073,12 @@ button.danger-button:hover {
   gap: 10px;
   overflow: auto;
   padding: 12px;
+}
+
+.runner-workspace-view[data-runner-view="control"].active {
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
+  overflow: hidden;
 }
 
 .run-command-strip {
@@ -7217,12 +7227,20 @@ button.danger-button:hover {
   color: #1d2d3b;
   font-size: 17px;
   line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .run-console-card p {
   color: #405263;
   font-size: 13px;
   line-height: 1.48;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .run-console-card button {

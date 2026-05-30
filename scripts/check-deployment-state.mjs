@@ -33,6 +33,7 @@ async function main() {
     assertCheck(adminHtml.includes('data-tab="portfolio"'), "admin page exposes portfolio tab", "critical", "Managers need the portfolio dashboard to inspect holdings and actions.");
     assertCheck(adminHtml.includes("portfolioCapabilityActionQueue"), "admin page contains capability repair queue node", "critical", "The online UI is missing the concrete manager repair queue.");
     assertCheck(adminHtml.includes("portfolio-terminal-shell") && adminHtml.includes("portfolio-entry-tabs"), "admin page uses terminal-style portfolio entries", "critical", "The online portfolio page is still the old long vertical page instead of grouped stock-terminal entries.");
+    assertCheck(adminHtml.includes('data-runner-view-target="latest"') && adminHtml.includes('data-runner-view-target="execution"') && adminHtml.includes('data-runner-view-target="history"'), "admin page splits virtual runner into sub-entries", "critical", "The online virtual run page is still a long mixed report instead of task, conclusion, execution, history, and raw-state entries.");
     assertCheck(adminHtml.includes("portfolioDeploymentStatus") && adminHtml.includes("portfolioRailDeploymentStatus"), "admin portfolio page exposes deployment status", "critical", "Managers should see stale deployment warnings directly in the virtual portfolio workspace.");
   }
   if (adminJs) {
@@ -40,11 +41,13 @@ async function main() {
     assertCheck(adminJs.includes("TOP_HOLDINGS_DISPLAY_LIMIT = 10"), "admin JavaScript preserves top-ten holdings display", "critical", "The UI must show all top-ten holdings, not only five.");
     assertCheck(adminJs.includes("按实际投入成本"), "admin JavaScript labels PnL denominator as actual invested cost", "critical", "PnL percentages must not use initial capital as denominator.");
     assertCheck(adminJs.includes("PORTFOLIO_VIEW_GROUPS") && adminJs.includes("data-portfolio-nav-group"), "admin JavaScript switches portfolio entry groups", "critical", "The online client cannot hide inactive portfolio groups, so the virtual manager page remains too long.");
+    assertCheck(adminJs.includes("compactRunnerConsoleText") && adminJs.includes("data-runner-view-target"), "admin JavaScript keeps runner cards inside runner sub-entries", "critical", "The online virtual runner still pushes users into long report pages from the summary cards.");
     assertCheck(adminJs.includes("renderPortfolioDeploymentStatus") && adminJs.includes("currentDeployment") && adminJs.includes("portfolioRailDeploymentStatus"), "admin JavaScript renders portfolio deployment status", "critical", "The online portfolio workspace cannot warn that the running server is stale.");
     assertCheck(adminJs.includes("matrix-verdict-") && adminJs.includes("约束："), "admin JavaScript renders decision-matrix traffic lights", "warning", "The online decision matrix cannot distinguish supports, fee constraints, and hard blockers.");
   }
   if (adminCss) {
     assertCheck(adminCss.includes(".portfolio-terminal-shell") && adminCss.includes(".portfolio-workspace-view.active"), "admin stylesheet bounds portfolio workspace height", "critical", "The online stylesheet does not bound portfolio workspaces, so long reports stretch the whole page.");
+    assertCheck(adminCss.includes('.runner-workspace-view[data-runner-view="control"].active') && adminCss.includes(".run-console-grid"), "admin stylesheet bounds virtual runner control cards", "critical", "The online runner control page can still stretch instead of scrolling inside the terminal stage.");
     assertCheck(adminCss.includes(".portfolio-command-panel .portfolio-deployment-status") && adminCss.includes(".portfolio-rail-deployment"), "admin stylesheet styles portfolio deployment status", "warning", "The online portfolio workspace has no compact deployment freshness status cell.");
     assertCheck(adminCss.includes(".matrix-verdict-buy") && adminCss.includes(".matrix-verdict-risk"), "admin stylesheet styles decision-matrix verdict tones", "warning", "The online decision matrix lacks visual buy/risk/data verdict cues.");
   }
