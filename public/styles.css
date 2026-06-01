@@ -6884,6 +6884,69 @@ button.danger-button:hover {
   font-weight: 800;
 }
 
+.watchlist-hard-risk-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.fund-card-summary .watchlist-hard-risk-strip {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+}
+
+.watchlist-risk-chip {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.watchlist-risk-chip strong,
+.watchlist-risk-chip small {
+  margin: 0;
+  min-width: 0;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.watchlist-risk-chip small {
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 720;
+  opacity: 0.9;
+}
+
+.watchlist-risk-danger {
+  border-color: #fecaca;
+  color: #991b1b;
+  background: #fff1f2;
+}
+
+.watchlist-risk-warning {
+  border-color: #fed7aa;
+  color: #9a3412;
+  background: #fff7ed;
+}
+
+.watchlist-risk-data {
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
 .watchlist-action-card p,
 .watchlist-action-card small {
   display: block;
@@ -6892,6 +6955,12 @@ button.danger-button:hover {
   font-size: 13px;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.watchlist-action-card .watchlist-risk-chip small {
+  display: inline;
+  margin-top: 0;
+  overflow-wrap: normal;
 }
 
 .watchlist-action-card .fact-strip,

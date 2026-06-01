@@ -2089,6 +2089,10 @@ const requiredPatterns = [
     message: "admin buy-preparation queue must highlight the primary missing setup condition."
   },
   {
+    pattern: /(?=[\s\S]*WATCHLIST_HARD_RISK_RULES)(?=[\s\S]*持仓未承载题材)(?=[\s\S]*renderWatchlistHardRiskStrip)(?=[\s\S]*watchlist-hard-risk-strip)(?=[\s\S]*watchlist-risk-danger)/,
+    message: "admin watchlist UI must highlight hard risks such as holdings-carrier mismatch, capital retreat, and chase risk before long evidence text."
+  },
+  {
     pattern: /购买准备队列/,
     message: "manager-facing watchlist replies and admin UI must expose a Chinese buy-preparation queue."
   },

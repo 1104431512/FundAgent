@@ -4424,6 +4424,7 @@ function renderWatchlistActionCard(item) {
   const setupBadge = isWatchlistLaunchEveCandidate(item) ? `<span class="watchlist-setup-badge">启动前夜</span>` : "";
   const facts = renderWatchlistFactStrip(item, snapshot);
   const holdings = renderHoldingChips(getSnapshotTopHoldings(snapshot), "持仓看点");
+  const hardRisks = renderWatchlistHardRiskStrip(item);
   return `
     <article class="watchlist-action-card">
       <div class="watchlist-action-title">
@@ -4432,6 +4433,7 @@ function renderWatchlistActionCard(item) {
       </div>
       ${setupBadge}
       ${readiness ? `<div class="watchlist-readiness">${readiness}</div>` : ""}
+      ${hardRisks}
       <p>${escapeHtml(item.reason || item.candidateRole || "暂无备选理由")}</p>
       ${trend && trend !== "走势数据不足" ? `<small>${escapeHtml(trend)}</small>` : ""}
       ${facts}
@@ -4469,6 +4471,7 @@ function renderWatchlistItem(item) {
   const facts = renderWatchlistFactStrip(item, snapshot);
   const holdings = renderHoldingChips(getSnapshotTopHoldings(snapshot), "持仓看点");
   const rankingRefs = renderWatchlistRankingRefs(item.code);
+  const hardRisks = renderWatchlistHardRiskStrip(item);
   return `
     <details class="fund-card watchlist-fund-card" data-watchlist-code="${escapeHtml(item.code || "")}">
       <summary class="fund-card-summary">
@@ -4481,8 +4484,10 @@ function renderWatchlistItem(item) {
           ${setupBadge}
         </div>
         <small>${escapeHtml(selectWatchlistPrimaryGap(item) || item.reason || "点击查看候选细节")}</small>
+        ${hardRisks}
       </summary>
       <div class="fund-card-detail">
+        ${hardRisks}
         <p>${escapeHtml(item.reason || "暂无备选理由")}</p>
         ${trend && trend !== "走势数据不足" ? `<p>${escapeHtml(trend)}</p>` : ""}
         ${facts}
@@ -4562,6 +4567,63 @@ function formatWatchlistReadiness(item = {}) {
   if (!Number.isFinite(score)) return "";
   const label = item.readinessLabel || "买入准备度";
   return `准备度 ${formatNumber(score, 0)} · ${escapeHtml(label)}`;
+}
+
+const WATCHLIST_HARD_RISK_RULES = [
+  { id: "carrier", tone: "danger", label: "持仓未承载题材", pattern: /持仓承载|未命中题材龙头|目标主题匹配度不足/ },
+  { id: "retreat", tone: "danger", label: "主力撤离", pattern: /题材退潮|主力资金撤离|主力撤离|资金回流/ },
+  { id: "chase", tone: "warning", label: "追涨风险", pattern: /追涨|偏热|高位|等待回撤|拥挤/ },
+  { id: "data", tone: "data", label: "数据缺口", pattern: /缺少可验证|重新下钻|净值.*过期|费用\/份额|持仓.*缺少|数据缺口/ }
+];
+
+function renderWatchlistHardRiskStrip(item = {}) {
+  const risks = collectWatchlistHardRisks(item);
+  if (!risks.length) return "";
+  return `
+    <div class="watchlist-hard-risk-strip" aria-label="关键风险">
+      ${risks.map((risk) => `
+        <span class="watchlist-risk-chip watchlist-risk-${escapeHtml(risk.tone)}" title="${escapeHtml(risk.detail || risk.label)}">
+          <strong>${escapeHtml(risk.label)}</strong>
+          ${risk.detail ? `<small>${escapeHtml(shortenText(risk.detail, 36))}</small>` : ""}
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
+function collectWatchlistHardRisks(item = {}) {
+  const snapshot = item.lastSnapshot || {};
+  const texts = mergeTextList(
+    [item.reason, item.positionPlan],
+    item.setupEvidence,
+    item.buyTriggers,
+    item.riskNotes,
+    item.readinessGaps,
+    snapshot.actionability?.decisionBlocker,
+    snapshot.actionability?.holdingsOutlook?.risks,
+    snapshot.holdingsOutlook?.risks
+  );
+  const risks = [];
+  for (const rule of WATCHLIST_HARD_RISK_RULES) {
+    const detail = texts.find((text) => rule.pattern.test(text));
+    if (detail) risks.push({ ...rule, detail });
+  }
+  return risks.slice(0, 3);
+}
+
+function mergeTextList(...groups) {
+  const values = [];
+  for (const item of groups.flat(Infinity)) {
+    const text = String(item || "").trim();
+    if (text && !values.includes(text)) values.push(text);
+  }
+  return values;
+}
+
+function shortenText(value = "", maxLength = 36) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 1))}…`;
 }
 
 function selectWatchlistPrimaryGap(item = {}) {
