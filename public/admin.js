@@ -962,21 +962,24 @@ function renderPortfolioManagerPerformance(performance = {}, account = {}) {
     : buildFallbackPerformanceScorecards(account);
   const metricRoot = document.querySelector("#portfolioPerformanceMetrics");
   if (metricRoot) {
-    metricRoot.innerHTML = cards.slice(0, 5).map((card) => `
-      <div class="portfolio-performance-metric ${escapeHtml(card.tone || "info")}">
-        <span>${escapeHtml(card.label || "能力指标")}</span>
-        <strong>${escapeHtml(card.value || "-")}</strong>
-        <small>${escapeHtml(card.meta || "")}</small>
-      </div>
-    `).join("");
+    metricRoot.innerHTML = cards.slice(0, 5).map(renderPortfolioPerformanceMetricCard).join("");
+  }
+  const narrativeRoot = document.querySelector("#portfolioPerformanceNarrative");
+  if (narrativeRoot) {
+    const proofPoints = Array.isArray(performance.proofPoints) && performance.proofPoints.length
+      ? performance.proofPoints
+      : buildFallbackPortfolioProofPoints(performance, account);
+    narrativeRoot.innerHTML = proofPoints.length
+      ? proofPoints.slice(0, 3).map(renderPortfolioPerformanceProofPoint).join("")
+      : `<div class="portfolio-performance-note muted">等待经理历史复盘形成能力结论。</div>`;
   }
   const review = performance.actionReview || {};
   const reviews = Array.isArray(performance.recentReviews) ? performance.recentReviews.slice(0, 6) : [];
-  setText("#portfolioOperationReviewCount", reviews.length ? `${reviews.length} 个动作` : `${review.total || 0} 个动作`);
+  setText("#portfolioOperationReviewCount", formatPortfolioOperationReviewCount(review, reviews));
   const reviewRoot = document.querySelector("#portfolioOperationReviews");
   if (reviewRoot) {
-    reviewRoot.innerHTML = reviews.length
-      ? reviews.map(renderPortfolioOperationReviewItem).join("")
+    reviewRoot.innerHTML = reviews.length || Array.isArray(performance.operationLanes)
+      ? renderPortfolioOperationReviewLanes(performance.operationLanes, reviews)
       : `<div class="empty compact-empty">暂无可展示的操作复盘。经理需要先生成买入、卖出或观察记录。</div>`;
   }
   const lessons = Array.isArray(performance.lessons) ? performance.lessons.slice(0, 4) : [];
@@ -986,6 +989,119 @@ function renderPortfolioManagerPerformance(performance = {}, account = {}) {
       ? lessons.map((item) => `<p>${escapeHtml(item)}</p>`).join("")
       : `<div class="empty compact-empty">暂无明显改进重点。</div>`;
   }
+}
+
+function renderPortfolioPerformanceMetricCard(card = {}) {
+  const featured = ["correctness", "profitability"].includes(card.id) ? " featured" : "";
+  return `
+    <div class="portfolio-performance-metric ${escapeHtml(card.tone || "info")}${featured}">
+      <span>${escapeHtml(card.label || "能力指标")}</span>
+      <strong>${escapeHtml(card.value || "-")}</strong>
+      <small>${escapeHtml(card.meta || "")}</small>
+    </div>
+  `;
+}
+
+function buildFallbackPortfolioProofPoints(performance = {}, account = {}) {
+  const review = performance.actionReview || {};
+  const profitability = performance.profitability || {};
+  const total = Number(review.total || 0);
+  const correctness = isPresentFiniteNumber(review.correctnessPct)
+    ? `${formatNumber(review.correctnessPct, 1)}%`
+    : "样本不足";
+  return [
+    {
+      tone: total ? (Number(review.mistakes || 0) ? "warn" : "ok") : "muted",
+      title: total ? `已复盘 ${total} 个动作` : "操作样本不足",
+      detail: total ? `正确率 ${correctness}，失误 ${review.mistakes || 0} 个。` : "先沉淀买入、卖出和等待记录。"
+    },
+    {
+      tone: Number(profitability.cumulativePnlPct ?? account.cumulativePnlPct ?? 0) > 0 ? "ok" : "warn",
+      title: "盈利口径",
+      detail: profitability.summary || `按实际投入 ${formatMoney(account.investedCostBasis || account.investedCost || 0)} 计算。`
+    }
+  ];
+}
+
+function renderPortfolioPerformanceProofPoint(point = {}) {
+  return `
+    <div class="portfolio-performance-note ${escapeHtml(point.tone || "info")}">
+      <span>${escapeHtml(point.title || "能力证据")}</span>
+      <strong>${escapeHtml(point.detail || "等待更多复盘。")}</strong>
+    </div>
+  `;
+}
+
+function formatPortfolioOperationReviewCount(review = {}, reviews = []) {
+  const total = Number(review.total || reviews.length || 0);
+  if (!total) return "0 个动作";
+  const pending = Number(review.needsReview || 0) + Number(review.insufficient || 0);
+  return `${review.correct || 0} 对 / ${review.mistakes || 0} 错 / ${pending} 待验证`;
+}
+
+function renderPortfolioOperationReviewLanes(serverLanes = [], fallbackReviews = []) {
+  const lanes = normalizePortfolioOperationReviewLanes(serverLanes, fallbackReviews);
+  return `
+    <div class="portfolio-operation-review-lanes">
+      ${lanes.map(renderPortfolioOperationReviewLane).join("")}
+    </div>
+  `;
+}
+
+function normalizePortfolioOperationReviewLanes(serverLanes = [], fallbackReviews = []) {
+  const byId = new Map((Array.isArray(serverLanes) ? serverLanes : [])
+    .filter((lane) => lane && lane.id)
+    .map((lane) => [lane.id, lane]));
+  const definitions = [
+    {
+      id: "correct",
+      title: "做对的动作",
+      tone: "ok",
+      emptyText: "还没有能证明做对的动作。",
+      matcher: (item) => item.status === "correct"
+    },
+    {
+      id: "correction",
+      title: "需要纠偏",
+      tone: "bad",
+      emptyText: "暂未发现明确错误动作。",
+      matcher: (item) => item.status === "mistake"
+    },
+    {
+      id: "pending",
+      title: "待验证",
+      tone: "warn",
+      emptyText: "暂无等待事后验证的动作。",
+      matcher: (item) => ["review", "insufficient"].includes(item.status)
+    }
+  ];
+  return definitions.map((definition) => {
+    const lane = byId.get(definition.id);
+    const items = Array.isArray(lane?.items) && lane.items.length
+      ? lane.items
+      : (fallbackReviews || []).filter(definition.matcher).slice(0, 4);
+    return {
+      ...definition,
+      ...lane,
+      count: Number(lane?.count ?? items.length),
+      items
+    };
+  });
+}
+
+function renderPortfolioOperationReviewLane(lane = {}) {
+  const items = Array.isArray(lane.items) ? lane.items.slice(0, 4) : [];
+  return `
+    <section class="portfolio-review-lane ${escapeHtml(lane.tone || "info")}">
+      <div class="portfolio-review-lane-head">
+        <strong>${escapeHtml(lane.title || "动作复盘")}</strong>
+        <span>${escapeHtml(String(lane.count || 0))}</span>
+      </div>
+      <div class="portfolio-review-lane-items">
+        ${items.length ? items.map(renderPortfolioOperationReviewItem).join("") : `<div class="portfolio-review-lane-empty">${escapeHtml(lane.emptyText || "暂无动作。")}</div>`}
+      </div>
+    </section>
+  `;
 }
 
 function buildFallbackPerformanceScorecards(account = {}) {
@@ -1025,15 +1141,21 @@ function renderPortfolioOperationReviewItem(item = {}) {
         <em>${escapeHtml(item.verdict || "需要复盘")}</em>
       </header>
       <p>${escapeHtml(item.reason || "等待更多证据。")}</p>
-      <small>${escapeHtml(evidence)}</small>
+      ${evidence ? `<small>${escapeHtml(evidence)}</small>` : ""}
     </article>
   `;
 }
 
 function formatPortfolioPerformanceVerdict(performance = {}) {
   const review = performance.actionReview || {};
+  const profitability = performance.profitability || {};
+  const pnlPct = Number(profitability.cumulativePnlPct || 0);
+  if (review.total && Number(review.mistakes || 0) > 0) {
+    return `发现 ${review.mistakes} 个需要纠偏动作`;
+  }
   if (isPresentFiniteNumber(review.correctnessPct)) {
-    return `操作正确率 ${formatNumber(review.correctnessPct, 1)}%`;
+    const suffix = pnlPct > 0 ? "，盈利为正" : pnlPct < 0 ? "，盈利仍待证明" : "";
+    return `操作正确率 ${formatNumber(review.correctnessPct, 1)}%${suffix}`;
   }
   if (review.total) return "复盘样本不足";
   return "等待历史操作复盘";

@@ -392,11 +392,14 @@
                 <section id="portfolioManagerScoreboard" class="portfolio-performance-board">
                   <div class="portfolio-performance-head">
                     <div>
-                      <span>经理能力证明</span>
-                      <strong id="portfolioAbilityVerdict">正在复盘经理操作</strong>
-                      <small id="portfolioAbilitySummary">总览会优先展示操作正确率、盈利能力和每笔动作事后是否做对。</small>
+                      <span>经理能力总览</span>
+                      <strong id="portfolioAbilityVerdict">正在计算操作胜率</strong>
+                      <small id="portfolioAbilitySummary">第一屏只回答三件事：经理有没有赚钱、动作事后看对不对、下一步哪里必须改。</small>
                     </div>
-                    <button type="button" class="secondary" data-portfolio-view-target="diagnostics">查看诊断</button>
+                    <div class="portfolio-performance-actions">
+                      <button type="button" class="secondary" data-portfolio-view-target="timeline">查看时间线</button>
+                      <button type="button" class="secondary" data-portfolio-view-target="diagnostics">查看诊断</button>
+                    </div>
                   </div>
                   <div id="portfolioPerformanceMetrics" class="portfolio-performance-metrics">
                     <div class="portfolio-performance-metric muted">
@@ -405,10 +408,13 @@
                       <small>等待历史动作复盘</small>
                     </div>
                   </div>
+                  <div id="portfolioPerformanceNarrative" class="portfolio-performance-narrative">
+                    <div class="portfolio-performance-note muted">同步后展示经理能力结论。</div>
+                  </div>
                   <div class="portfolio-performance-body">
                     <div>
                       <div class="portfolio-performance-subhead">
-                        <span>最近操作复盘</span>
+                        <span>最近动作判定</span>
                         <strong id="portfolioOperationReviewCount">0 个动作</strong>
                       </div>
                       <div id="portfolioOperationReviews" class="portfolio-operation-review-list">
@@ -417,7 +423,7 @@
                     </div>
                     <div>
                       <div class="portfolio-performance-subhead">
-                        <span>改进重点</span>
+                        <span>错误归因与改进</span>
                         <strong id="portfolioPerformanceLevel">待判断</strong>
                       </div>
                       <div id="portfolioPerformanceLessons" class="portfolio-performance-lessons">

@@ -1065,11 +1065,15 @@ const requiredPatterns = [
     message: "admin portfolio UI must provide a manager dashboard with summary, holdings exposure, and buy-preparation panels."
   },
   {
-    pattern: /(?=[\s\S]*managerPerformance:\s*buildPortfolioManagerPerformanceStats\(db\))(?=[\s\S]*function buildPortfolioManagerPerformanceStats)(?=[\s\S]*操作正确率)(?=[\s\S]*盈利能力)/,
+    pattern: /(?=[\s\S]*function inferThemeRetreatSignal)(?=[\s\S]*capitalRetreatScore)(?=[\s\S]*avgMainNetInflowPct)(?=[\s\S]*getActionabilityThemeRetreatDiscipline)(?=[\s\S]*题材退潮)(?=[\s\S]*主力资金撤离)/,
+    message: "fund manager must block pullback-looking candidates when the theme is fading and main capital is leaving."
+  },
+  {
+    pattern: /(?=[\s\S]*managerPerformance:\s*buildPortfolioManagerPerformanceStats\(db\))(?=[\s\S]*function buildPortfolioManagerPerformanceStats)(?=[\s\S]*操作正确率)(?=[\s\S]*盈利能力)(?=[\s\S]*operationLanes)(?=[\s\S]*proofPoints)/,
     message: "portfolio public API must expose manager performance proof statistics with correctness and profitability cards."
   },
   {
-    pattern: /(?=[\s\S]*<section id="portfolioManagerScoreboard" class="portfolio-performance-board">)(?=[\s\S]*经理能力证明)(?=[\s\S]*portfolioOperationReviews)/,
+    pattern: /(?=[\s\S]*<section id="portfolioManagerScoreboard" class="portfolio-performance-board">)(?=[\s\S]*经理能力总览)(?=[\s\S]*portfolioPerformanceNarrative)(?=[\s\S]*portfolioOperationReviews)/,
     message: "admin portfolio overview must lead with manager ability proof and action review verdicts before workspace entries."
   },
   {
@@ -1077,7 +1081,7 @@ const requiredPatterns = [
     message: "admin portfolio overview must render manager performance before shortcut cards."
   },
   {
-    pattern: /(?=[\s\S]*\.portfolio-performance-board\s*\{[\s\S]{0,520}border-left)(?=[\s\S]*\.portfolio-operation-review\s*\{[\s\S]{0,700}border-left)/,
+    pattern: /(?=[\s\S]*\.portfolio-performance-board\s*\{[\s\S]{0,620}border-left)(?=[\s\S]*\.portfolio-operation-review-lanes\s*\{[\s\S]{0,420}grid-template-columns:\s*repeat\(3)(?=[\s\S]*\.portfolio-operation-review\s*\{[\s\S]{0,700}border-left)/,
     message: "admin manager performance board must use bounded, verdict-colored review cards."
   },
   {
@@ -2401,15 +2405,15 @@ const requiredPatterns = [
     message: "fund actionability must cap buy/staged-buy scores when the trend says wait for pullback."
   },
   {
-    pattern: /buildFundActionabilitySignals[\s\S]{0,3800}getActionabilityFreshnessDiscipline\(digest[\s\S]{0,900}boundedScore = Math\.min\(boundedScore, freshnessDiscipline\.scoreCap\)/,
+    pattern: /buildFundActionabilitySignals[\s\S]{0,4600}getActionabilityFreshnessDiscipline\(digest[\s\S]{0,1200}boundedScore = Math\.min\(boundedScore, freshnessDiscipline\.scoreCap\)/,
     message: "fund actionability must cap buy/staged-buy scores when NAV or trend evidence is stale."
   },
   {
-    pattern: /buildFundActionabilitySignals[\s\S]{0,4400}getActionabilityIntradayDiscipline\(digest[\s\S]{0,1100}boundedScore = Math\.min\(boundedScore, intradayDiscipline\.scoreCap\)/,
+    pattern: /buildFundActionabilitySignals[\s\S]{0,5200}getActionabilityIntradayDiscipline\(digest[\s\S]{0,1300}boundedScore = Math\.min\(boundedScore, intradayDiscipline\.scoreCap\)/,
     message: "fund actionability must cap buy/staged-buy scores when intraday valuation fades from the high."
   },
   {
-    pattern: /buildFundActionabilitySignals[\s\S]{0,5200}getActionabilityValuationSourceDiscipline\(digest[\s\S]{0,1100}boundedScore = Math\.min\(boundedScore, valuationSourceDiscipline\.scoreCap\)/,
+    pattern: /buildFundActionabilitySignals[\s\S]{0,6000}getActionabilityValuationSourceDiscipline\(digest[\s\S]{0,1400}boundedScore = Math\.min\(boundedScore, valuationSourceDiscipline\.scoreCap\)/,
     message: "fund actionability must cap buy/staged-buy scores when realtime valuation sources disagree."
   },
   {

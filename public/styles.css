@@ -1347,12 +1347,12 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   min-width: 0;
   display: grid;
   gap: 10px;
-  padding: 12px;
-  border: 1px solid #d8e3ec;
+  padding: 14px;
+  border: 1px solid #d4e0e8;
   border-left: 4px solid #0f766e;
   border-radius: 8px;
   background: #ffffff;
-  box-shadow: none;
+  box-shadow: 0 12px 28px rgba(26, 43, 58, 0.06);
 }
 
 .portfolio-performance-board[data-level="warning"] {
@@ -1411,6 +1411,14 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   line-height: 1.42;
 }
 
+.portfolio-performance-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 .portfolio-performance-head button {
   flex: 0 0 auto;
   min-height: 32px;
@@ -1421,7 +1429,7 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
 .portfolio-performance-metrics {
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(5, minmax(112px, 1fr));
+  grid-template-columns: repeat(5, minmax(118px, 1fr));
   gap: 8px;
 }
 
@@ -1431,6 +1439,10 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   border: 1px solid #dfe7ef;
   border-radius: 8px;
   background: #f8fafc;
+}
+
+.portfolio-performance-metric.featured {
+  background: #ffffff;
 }
 
 .portfolio-performance-metric.ok {
@@ -1485,10 +1497,64 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   line-height: 1.35;
 }
 
+.portfolio-performance-narrative {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.portfolio-performance-note {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #dfe7ef;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.portfolio-performance-note.ok {
+  border-color: #badbcc;
+  background: #f5fbf8;
+}
+
+.portfolio-performance-note.warn {
+  border-color: #ead8b7;
+  background: #fff9ec;
+}
+
+.portfolio-performance-note.bad {
+  border-color: #f0b4ad;
+  background: #fff7f6;
+}
+
+.portfolio-performance-note.muted {
+  border-color: #dde5ed;
+  background: #f7f9fb;
+}
+
+.portfolio-performance-note span,
+.portfolio-performance-note strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-performance-note span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.portfolio-performance-note strong {
+  margin-top: 4px;
+  color: #263746;
+  font-size: 12px;
+  line-height: 1.42;
+}
+
 .portfolio-performance-body {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(230px, 0.65fr);
+  grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.55fr);
   gap: 10px;
 }
 
@@ -1512,6 +1578,94 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   gap: 7px;
   align-content: start;
   overflow: auto;
+}
+
+.portfolio-operation-review-lanes {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.portfolio-review-lane {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid #dfe7ef;
+  border-top: 3px solid #8aa0b3;
+  border-radius: 8px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.portfolio-review-lane.ok {
+  border-top-color: #15946a;
+  background: #f5fbf8;
+}
+
+.portfolio-review-lane.warn {
+  border-top-color: #b7791f;
+  background: #fffaf0;
+}
+
+.portfolio-review-lane.bad {
+  border-top-color: #c24136;
+  background: #fff7f6;
+}
+
+.portfolio-review-lane-head {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.portfolio-review-lane-head strong,
+.portfolio-review-lane-head span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-review-lane-head strong {
+  color: #223243;
+  font-size: 12px;
+}
+
+.portfolio-review-lane-head span {
+  min-width: 24px;
+  min-height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #274456;
+  background: #e7eef4;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.portfolio-review-lane-items {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  gap: 7px;
+  align-content: start;
+  overflow: auto;
+}
+
+.portfolio-review-lane-empty {
+  min-width: 0;
+  padding: 8px;
+  border: 1px dashed #d8e2ea;
+  border-radius: 8px;
+  color: #667789;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  line-height: 1.42;
 }
 
 .portfolio-operation-review {
@@ -8683,6 +8837,22 @@ button.danger-button:hover {
     gap: 8px;
   }
 
+  body[data-active-tab="portfolio"][data-active-portfolio-view="overview"] .tab-panel[data-panel="portfolio"].active {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  body[data-active-tab="portfolio"][data-active-portfolio-view="overview"] .portfolio-command-panel {
+    display: none;
+  }
+
+  body[data-active-tab="portfolio"][data-active-portfolio-view="overview"] .portfolio-workspace-dock {
+    display: none;
+  }
+
+  body[data-active-tab="portfolio"][data-active-portfolio-view="overview"] .portfolio-terminal-stage {
+    grid-row: 1 / span 2;
+  }
+
   body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-portfolio-view="overview"]) .tab-panel[data-panel="portfolio"].active {
     grid-template-rows: minmax(0, 1fr);
   }
@@ -8864,13 +9034,13 @@ button.danger-button:hover {
   #portfolioManagerScoreboard {
     grid-area: ability;
     min-height: 0;
-    max-height: 318px;
+    max-height: 382px;
     overflow: hidden;
   }
 
   #portfolioManagerScoreboard .portfolio-operation-review-list,
   #portfolioManagerScoreboard .portfolio-performance-lessons {
-    max-height: 116px;
+    max-height: 148px;
   }
 
   #portfolioWorkspaceCards {
@@ -8878,6 +9048,7 @@ button.danger-button:hover {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
+    align-self: start;
     overflow: auto;
   }
 
@@ -8916,7 +9087,13 @@ button.danger-button:hover {
   #portfolioRankingRadar {
     grid-area: radar;
     min-height: 0;
+    align-self: start;
     overflow: auto;
+  }
+
+  #portfolioRankingRadar .portfolio-launch-center {
+    min-height: 132px;
+    align-items: start;
   }
 
   .portfolio-workspace-view[data-portfolio-view="overview"] .portfolio-insight-grid {
@@ -9127,7 +9304,9 @@ button.danger-button:hover {
   .portfolio-hero,
   .portfolio-kpi-grid,
   .portfolio-performance-metrics,
+  .portfolio-performance-narrative,
   .portfolio-performance-body,
+  .portfolio-operation-review-lanes,
   .portfolio-terminal-shell,
   .portfolio-insight-grid,
   .portfolio-diagnostic-grid,

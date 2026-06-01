@@ -959,6 +959,8 @@ assert(backtestCapabilityDiagnostics.items.some((item) => item.label === "重复
 const managerPerformanceStats = manager.buildPortfolioManagerPerformanceStats(backtestFixture);
 assert(managerPerformanceStats.scorecards.some((item) => item.label === "操作正确率"), "manager performance stats must expose operation correctness rate");
 assert(managerPerformanceStats.scorecards.some((item) => item.label === "盈利能力"), "manager performance stats must expose profitability");
+assert(managerPerformanceStats.proofPoints?.some((item) => item.title.includes("已复盘") || item.title.includes("操作样本")), "manager performance stats must expose customer-readable proof points");
+assert(managerPerformanceStats.operationLanes?.some((lane) => lane.id === "correction" && lane.count >= 1), "manager performance stats must split reviewed actions into correction lanes");
 assert(managerPerformanceStats.recentReviews.some((item) => item.verdict === "纪律失误" || item.verdict === "需要纠偏"), "manager performance stats must replay recent actions into right/wrong verdicts");
 assert(managerPerformanceStats.lessons.some((item) => item.includes("回测") || item.includes("纠偏")), "manager performance stats must surface review lessons instead of raw entry cards only");
 const receivableCapabilityDiagnostics = manager.buildPortfolioCapabilityDiagnostics({
@@ -1496,9 +1498,9 @@ assert(adminHtmlSource.includes("data-portfolio-view=\"alerts\""), "admin portfo
 assert(adminHtmlSource.includes("data-portfolio-view-target=\"matrix\""), "admin portfolio UI must expose a dedicated decision-matrix workspace entrance");
 assert(adminHtmlSource.includes("data-portfolio-view=\"matrix\""), "admin portfolio UI must render the decision matrix as a dedicated workspace view");
 assert(adminSource.includes("setPortfolioView"), "admin portfolio UI must switch between virtual account workspace views");
-assert(adminHtmlSource.includes("portfolioManagerScoreboard") && adminHtmlSource.includes("经理能力证明"), "admin portfolio overview must lead with manager ability proof instead of entry cards");
+assert(adminHtmlSource.includes("portfolioManagerScoreboard") && adminHtmlSource.includes("经理能力总览"), "admin portfolio overview must lead with manager ability proof instead of entry cards");
 assert(adminSource.includes("renderPortfolioManagerPerformance") && adminSource.includes("操作正确率") && adminSource.includes("盈利能力"), "admin portfolio overview must render correctness and profitability statistics");
-assert(adminSource.includes("renderPortfolioOperationReviewItem") && adminSource.includes("portfolioOperationReviews"), "admin portfolio overview must show recent action review verdicts");
+assert(adminSource.includes("renderPortfolioOperationReviewLanes") && adminSource.includes("做对的动作") && adminSource.includes("portfolioOperationReviews"), "admin portfolio overview must show recent action review verdict lanes");
 assert(adminStyleSource.includes("portfolio-performance-board") && adminStyleSource.includes("portfolio-operation-review"), "admin manager performance proof board must be styled as a bounded first-screen panel");
 assert(adminHtmlSource.includes("portfolioWorkspaceCards"), "admin portfolio overview must expose workspace shortcut cards");
 assert(adminSource.includes("renderPortfolioWorkspaceCards"), "admin portfolio overview must summarize each workspace with actionable shortcut cards");
@@ -3780,6 +3782,30 @@ const crowdedThemeDigest = {
     }]
   }
 };
+const fadingThemeDigest = {
+  ...setupDigest,
+  code: "000023",
+  name: "题材退潮修复基金C",
+  seed: {
+    matchedThemes: [{
+      id: "old_theme",
+      name: "过时题材",
+      stage: "theme_fading",
+      positionSignal: "capital_outflow_watch",
+      actionBias: "avoid_until_capital_returns",
+      retreatSignal: "capital_outflow",
+      forwardScore: 12,
+      rotationScore: 12,
+      lowPositionScore: 55,
+      crowdingScore: 15,
+      capitalRetreatScore: 72,
+      avgMainNetInflowPct: -4.2,
+      minMainNetInflowPct: -8.1,
+      boardOutflowCount: 3,
+      boardDeclineCount: 2
+    }]
+  }
+};
 assert(
   manager.scoreResearchDigestForPullbackSetup(rotationSupportedDigest) >
     manager.scoreResearchDigestForPullbackSetup(setupDigest),
@@ -3790,15 +3816,55 @@ assert(
     manager.scoreResearchDigestForPullbackSetup(setupDigest),
   "deep-dive scoring must downgrade pullback-looking funds in crowded/high-chase themes"
 );
+assert(
+  manager.scoreResearchDigestForPullbackSetup(fadingThemeDigest) <
+    manager.scoreResearchDigestForPullbackSetup(setupDigest),
+  "deep-dive scoring must downgrade pullback-looking funds when the theme is fading and main capital is leaving"
+);
 const rotationSummary = manager.buildMarketDeepDiveSummary({
   ok: true,
   focus: "pullback_setup_discovery",
   selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
-  candidates: [rotationSupportedDigest, crowdedThemeDigest]
+  candidates: [rotationSupportedDigest, crowdedThemeDigest, fadingThemeDigest]
 });
 assert(rotationSummary.includes("mainCandidateCodes=000021"), "low-position rotation candidate should remain eligible for main pullback recommendations");
 assert(rotationSummary.includes("watchOrRejectCodes=000022"), "crowded/high-chase theme candidate should be demoted to watch/reject even if fund trend looks repaired");
+assert(/watchOrRejectCodes=.*000023/.test(rotationSummary), "theme-fading candidate must be demoted to watch/reject even if fund trend looks repaired");
 assert(rotationSummary.includes("题材=医药/低位轮动"), "deep-dive summary should expose sector rotation evidence for the manager");
+assert(rotationSummary.includes("题材退潮") && rotationSummary.includes("主力资金撤离"), "deep-dive summary should explain theme retreat instead of presenting a stale-theme pullback as a buy point");
+const fadingActionability = manager.buildFundActionabilitySignals(fadingThemeDigest);
+assert(["wait", "avoid"].includes(fadingActionability.action), "actionability must not allow staged-buy when the matched theme is fading");
+assert(fadingActionability.score < 62, "theme-retreat discipline must cap actionability below staged-buy threshold");
+assert(
+  fadingActionability.decisionBlocker.some((item) => item.includes("题材退潮") || item.includes("主力资金撤离")),
+  "actionability blockers must tell the customer that capital outflow makes the pullback unbuyable"
+);
+const fadingWatchReadiness = manager.evaluatePortfolioWatchReadiness({
+  code: "000023",
+  name: "题材退潮修复基金C",
+  status: "ready",
+  lastSnapshot: {
+    ...fadingThemeDigest,
+    actionability: fadingActionability
+  }
+});
+assert(fadingWatchReadiness.score <= 46, "watchlist readiness must cap stale-theme candidates even if the trend looks buyable");
+assert(
+  fadingWatchReadiness.gaps.some((item) => item.includes("题材退潮") || item.includes("主力资金撤离")),
+  "watchlist readiness gaps must expose theme retreat as a hard blocker"
+);
+const fadingChaseRiskRanking = manager.buildPortfolioChaseRiskRanking([{
+  code: "000023",
+  name: "题材退潮修复基金C",
+  status: "ready",
+  readinessScore: fadingWatchReadiness.score,
+  readinessGaps: fadingWatchReadiness.gaps,
+  lastSnapshot: fadingThemeDigest
+}]);
+assert(
+  fadingChaseRiskRanking.items.some((item) => item.code === "000023" && item.facts.some((fact) => fact.includes("题材退潮") || fact.includes("主力资金撤离"))),
+  "chase-risk ranking must surface stale-theme capital-outflow candidates as avoid/watch items"
+);
 const holdingsSupportedDigest = {
   ...setupDigest,
   code: "000031",
