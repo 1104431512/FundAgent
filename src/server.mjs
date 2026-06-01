@@ -17151,6 +17151,14 @@ function getCandidateThemeSignals(candidate = {}) {
       maxBoardDropPct: Number(theme?.maxBoardDropPct),
       leaderSignal: theme?.leaderSignal || "",
       primaryCatalyst: theme?.primaryCatalyst || "",
+      catalystProfile: theme?.catalystProfile && typeof theme.catalystProfile === "object"
+        ? {
+            score: Number(theme.catalystProfile.score),
+            tags: normalizeStringArray(theme.catalystProfile.tags).slice(0, 6),
+            summary: String(theme.catalystProfile.summary || "").trim(),
+            risk: Boolean(theme.catalystProfile.risk)
+          }
+        : null,
       dynamic: Boolean(theme?.dynamic),
       newsLogic: theme?.newsLogic || "",
       boardNames: normalizeStringArray(theme?.boardNames).slice(0, 4),
@@ -17264,6 +17272,7 @@ function scorePullbackThemeRotation(candidate = {}) {
   const themes = getCandidateThemeSignals(candidate);
   if (!themes.length) return 0;
   let score = 0;
+  let catalystAdjustment = 0;
   for (const theme of themes.slice(0, 2)) {
     const crowding = Number(theme.crowdingScore);
     const rotation = Number(theme.rotationScore);
@@ -17284,6 +17293,7 @@ function scorePullbackThemeRotation(candidate = {}) {
     if (theme.stage === "low_position_rotation") score += 10;
     if (theme.stage === "capital_entering") score += 12;
     if (theme.stage === "preheat_catalyst") score += 8;
+    catalystAdjustment += scoreThemeCatalystQuality(theme);
     if (Number.isFinite(rotation) && Number.isFinite(lowPosition)) {
       if (rotation >= 45 && lowPosition >= 45) score += 14;
       else if (rotation >= 35 && lowPosition >= 35) score += 8;
@@ -17292,7 +17302,7 @@ function scorePullbackThemeRotation(candidate = {}) {
     if (Number.isFinite(preheat)) score += Math.min(10, preheat / 7);
     if (Number.isFinite(lowPosition) && lowPosition < 20 && Number.isFinite(crowding) && crowding >= 35) score -= 8;
   }
-  return Math.max(-50, Math.min(46, score));
+  return Math.max(-60, Math.min(58, Math.max(-50, Math.min(46, score)) + Math.max(-12, Math.min(12, catalystAdjustment))));
 }
 
 function formatCandidateThemeEvidence(candidate = {}) {
@@ -17306,6 +17316,7 @@ function formatCandidateThemeEvidence(candidate = {}) {
     theme.positionSignal === "high_chase_risk" || theme.stage === "crowded" ? "偏拥挤" : "",
     theme.positionSignal === "low_position_rotation" || theme.stage === "low_position_rotation" ? "低位轮动" : "",
     theme.positionSignal === "acceptable_position" ? "位置尚可" : "",
+    theme.catalystProfile?.summary ? `催化=${theme.catalystProfile.summary}` : "",
     theme.newsLogic ? `逻辑=${theme.newsLogic}` : "",
     Number.isFinite(theme.capitalFollowScore) ? `主力=${round(theme.capitalFollowScore, 1)}` : "",
     Number.isFinite(theme.preheatScore) ? `预热=${round(theme.preheatScore, 1)}` : "",
@@ -17316,6 +17327,28 @@ function formatCandidateThemeEvidence(candidate = {}) {
     Number.isFinite(theme.avgMainNetInflowPct) ? `主力=${formatFallbackPlainPct(theme.avgMainNetInflowPct)}` : ""
   ].filter(Boolean);
   return parts.length ? `题材=${parts.join("/")}` : "";
+}
+
+function scoreThemeCatalystQuality(theme = {}) {
+  const catalystScore = Number(theme.catalystProfile?.score);
+  const hasRiskCatalyst = Boolean(theme.catalystProfile?.risk);
+  const hasLogic = Boolean(String(theme.newsLogic || "").trim() || theme.catalystProfile?.summary);
+  let score = 0;
+  if (Number.isFinite(catalystScore)) {
+    if (catalystScore >= 30) score += 10;
+    else if (catalystScore >= 18) score += 7;
+    else if (catalystScore >= 10) score += 4;
+  }
+  if (hasRiskCatalyst) score -= 8;
+  if (!hasLogic && (
+    ["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)
+    || ["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)
+    || Number(theme.capitalFollowScore) >= 55
+    || Number(theme.preheatScore) >= 55
+  )) {
+    score -= 6;
+  }
+  return Math.max(-12, Math.min(12, score));
 }
 
 function collectPortfolioSources(...items) {
@@ -21080,6 +21113,7 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
     score += Math.min(12, Number(theme.rotationScore || 0) / 8);
     score += Math.min(14, Number(theme.capitalFollowScore || 0) / 6);
     score += Math.min(10, Number(theme.preheatScore || 0) / 7);
+    score += scoreThemeCatalystQuality(theme);
     if (["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)) score += 10;
     if (["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)) score += 8;
     if (theme.positionSignal === "high_chase_risk") score -= 16;
@@ -21127,6 +21161,7 @@ function scoreDeepDiveCandidate(item, themeRadar = []) {
     score += 8 + Math.min(16, Number(theme.forwardScore || 0) / 5);
     score += Math.min(12, Number(theme.capitalFollowScore || 0) / 6);
     score += Math.min(8, Number(theme.preheatScore || 0) / 8);
+    score += scoreThemeCatalystQuality(theme);
     if (["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)) score += 8;
     if (theme.stage === "crowded") score -= 4;
     if (theme.positionSignal === "high_chase_risk") score -= 6;

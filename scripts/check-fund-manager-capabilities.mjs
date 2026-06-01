@@ -3947,6 +3947,7 @@ const capitalEnteringDigest = {
       preheatScore: 58,
       avgMainNetInflowPct: 2.6,
       maxMainNetInflowPct: 4.4,
+      catalystProfile: { score: 34, tags: ["产业订单", "资金关注"], summary: "产业订单、资金关注", risk: false },
       newsLogic: "主力刚进场：新闻催化：AI算力订单改善；板块验证：人工智能+1.4%，龙头工业富联；主力线索：相关板块资金均值净流入+2.6%"
     }]
   }
@@ -3956,9 +3957,24 @@ assert(
     manager.scoreResearchDigestForPullbackSetup(setupDigest),
   "deep-dive scoring must reward pullback candidates when main capital is entering and the theme has news logic"
 );
+const capitalEnteringNoLogicDigest = {
+  ...capitalEnteringDigest,
+  seed: {
+    matchedThemes: [{
+      ...capitalEnteringDigest.seed.matchedThemes[0],
+      catalystProfile: { score: 0, tags: [], summary: "", risk: false },
+      newsLogic: ""
+    }]
+  }
+};
+assert(
+  manager.scoreResearchDigestForPullbackSetup(capitalEnteringDigest) >
+    manager.scoreResearchDigestForPullbackSetup(capitalEnteringNoLogicDigest) + 10,
+  "deep-dive scoring must prefer main-capital candidates that have a real news/industry catalyst over unexplained heat"
+);
 const capitalEnteringActionability = manager.buildFundActionabilitySignals(capitalEnteringDigest);
 assert(
-  capitalEnteringActionability.decisiveEvidence.some((item) => item.includes("主力进场") || item.includes("题材预热") || item.includes("逻辑=")),
+  capitalEnteringActionability.decisiveEvidence.some((item) => item.includes("主力进场") || item.includes("题材预热") || item.includes("催化=产业订单") || item.includes("逻辑=")),
   "actionability evidence must carry main-capital/preheat theme logic into manager prompts"
 );
 const capitalEnteringRotationRanking = manager.buildPortfolioRotationOpportunityRanking([{

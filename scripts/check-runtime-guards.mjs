@@ -1077,7 +1077,7 @@ const requiredPatterns = [
     message: "fund manager must identify main-capital entry, preheated themes, and news logic before ranking fund opportunities."
   },
   {
-    pattern: /(?=[\s\S]*function buildNewsCatalystProfile)(?=[\s\S]*政策落地)(?=[\s\S]*产业订单)(?=[\s\S]*外盘映射)(?=[\s\S]*风险提醒)(?=[\s\S]*催化性质)/,
+    pattern: /(?=[\s\S]*function buildNewsCatalystProfile)(?=[\s\S]*function scoreThemeCatalystQuality)(?=[\s\S]*政策落地)(?=[\s\S]*产业订单)(?=[\s\S]*外盘映射)(?=[\s\S]*风险提醒)(?=[\s\S]*催化性质)/,
     message: "theme news evidence must classify the catalyst type so the manager can explain why a sector is moving."
   },
   {
