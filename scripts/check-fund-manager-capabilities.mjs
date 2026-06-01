@@ -3865,6 +3865,68 @@ assert(
   fadingChaseRiskRanking.items.some((item) => item.code === "000023" && item.facts.some((fact) => fact.includes("题材退潮") || fact.includes("主力资金撤离"))),
   "chase-risk ranking must surface stale-theme capital-outflow candidates as avoid/watch items"
 );
+const genericHoldingThemeMatch = manager.matchCandidateThemes({
+  code: "000024",
+  name: "成长精选混合C",
+  type: "混合型基金",
+  holdings: {
+    equityTopHoldings: [
+      "300502 新易盛 8.7%",
+      "300308 中际旭创 7.9%",
+      "002222 福晶科技 5.1%"
+    ]
+  }
+}, [{
+  id: "cpo_fading",
+  name: "光模块/CPO",
+  stage: "theme_fading",
+  positionSignal: "capital_outflow_watch",
+  actionBias: "avoid_until_capital_returns",
+  retreatSignal: "capital_outflow",
+  forwardScore: 12,
+  rotationScore: 12,
+  lowPositionScore: 18,
+  crowdingScore: 24,
+  capitalRetreatScore: 78,
+  avgMainNetInflowPct: -3.5,
+  minMainNetInflowPct: -7.2,
+  boardOutflowCount: 3,
+  boardDeclineCount: 2,
+  evidence: {
+    boards: [
+      { name: "CPO概念", leadStock: "新易盛", changePct: -2.4, mainNetInflowPct: -7.2 },
+      { name: "光模块", leadStock: "中际旭创", changePct: -1.8, mainNetInflowPct: -3.5 }
+    ]
+  },
+  keywords: ["CPO", "光模块"],
+  fundKeywords: ["通信", "光模块"]
+}]);
+assert.equal(genericHoldingThemeMatch[0]?.name, "光模块/CPO", "theme matching must use top-ten holdings when a generic fund name hides stale-theme exposure");
+assert.equal(genericHoldingThemeMatch[0]?.matchBasis, "top_holding_theme_anchor", "holding-based theme matches must preserve their match basis for diagnostics");
+const genericHoldingFadingDigest = {
+  ...setupDigest,
+  code: "000024",
+  name: "成长精选混合C",
+  seed: {
+    matchedThemes: genericHoldingThemeMatch
+  },
+  holdings: {
+    equityTopHoldings: [
+      "300502 新易盛 8.7%",
+      "300308 中际旭创 7.9%",
+      "002222 福晶科技 5.1%"
+    ],
+    equityDisclosureDate: "2099-03-31"
+  }
+};
+assert(
+  manager.scoreResearchDigestForPullbackSetup(genericHoldingFadingDigest) <
+    manager.scoreResearchDigestForPullbackSetup(setupDigest),
+  "deep-dive scoring must downgrade generic-name pullback funds when top holdings reveal stale-theme capital outflow"
+);
+const genericHoldingFadingActionability = manager.buildFundActionabilitySignals(genericHoldingFadingDigest);
+assert(["wait", "avoid"].includes(genericHoldingFadingActionability.action), "actionability must block generic-name funds whose top holdings expose theme retreat");
+assert(genericHoldingFadingActionability.decisionBlocker.some((item) => item.includes("题材退潮") || item.includes("主力资金撤离")), "actionability blocker must explain holding-derived theme retreat");
 const capitalEnteringDigest = {
   ...setupDigest,
   code: "000024",

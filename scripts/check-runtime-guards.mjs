@@ -1085,6 +1085,10 @@ const requiredPatterns = [
     message: "buy/actionability and watchlist readiness must be capped when holdings do not prove theme-carrier alignment."
   },
   {
+    pattern: /(?=[\s\S]*function matchCandidateThemes)(?=[\s\S]*buildCandidateThemeMatchText)(?=[\s\S]*candidateHoldingsMatchThemeAnchors)(?=[\s\S]*top_holding_theme_anchor)/,
+    message: "theme matching must inspect top-ten holdings so generic fund names cannot hide stale-theme exposure."
+  },
+  {
     pattern: /(?=[\s\S]*managerPerformance:\s*buildPortfolioManagerPerformanceStats\(db\))(?=[\s\S]*function buildPortfolioManagerPerformanceStats)(?=[\s\S]*操作正确率)(?=[\s\S]*盈利能力)(?=[\s\S]*operationLanes)(?=[\s\S]*proofPoints)/,
     message: "portfolio public API must expose manager performance proof statistics with correctness and profitability cards."
   },

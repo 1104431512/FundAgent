@@ -20124,38 +20124,80 @@ function selectRelevantThemeRadar(userText, marketSnapshot) {
 }
 
 function matchCandidateThemes(candidate, themes = []) {
-  const text = `${candidate?.name || ""} ${candidate?.type || ""} ${(candidate?.keywords || []).join(" ")}`;
+  const text = buildCandidateThemeMatchText(candidate);
   return (themes || [])
-    .filter((theme) => textMatchesKeywords(text, theme.fundKeywords || theme.keywords || []))
-    .map((theme) => ({
-      id: theme.id,
-      name: theme.name,
-      stage: theme.stage,
-      forwardScore: theme.forwardScore,
-      crowdingScore: theme.crowdingScore,
-      rotationScore: theme.rotationScore,
-      lowPositionScore: theme.lowPositionScore,
-      capitalRetreatScore: theme.capitalRetreatScore,
-      capitalFollowScore: theme.capitalFollowScore,
-      preheatScore: theme.preheatScore,
-      avgMainNetInflowPct: theme.avgMainNetInflowPct,
-      minMainNetInflowPct: theme.minMainNetInflowPct,
-      maxMainNetInflowPct: theme.maxMainNetInflowPct,
-      boardOutflowCount: theme.boardOutflowCount,
-      boardDeclineCount: theme.boardDeclineCount,
-      maxBoardDropPct: theme.maxBoardDropPct,
-      retreatSignal: theme.retreatSignal || "",
-      leaderSignal: theme.leaderSignal || "",
-      positionSignal: theme.positionSignal,
-      actionBias: theme.actionBias,
-      primaryCatalyst: theme.primaryCatalyst || "",
-      dynamic: Boolean(theme.dynamic),
-      newsLogic: theme.newsLogic || "",
-      boardNames: (theme.evidence?.boards || []).map((item) => item.name).filter(Boolean).slice(0, 4),
-      leaderStocks: (theme.evidence?.boards || []).map((item) => item.leadStock).filter(Boolean).slice(0, 4),
-      themeKeywords: [...new Set([...(theme.fundKeywords || []), ...(theme.keywords || [])].filter(Boolean))].slice(0, 8)
-    }))
+    .map((theme) => {
+      const directMatch = textMatchesKeywords(text, theme.fundKeywords || theme.keywords || []);
+      const anchorMatch = candidateHoldingsMatchThemeAnchors(candidate, theme);
+      if (!directMatch && !anchorMatch) return null;
+      return {
+        ...compactMatchedThemeSignal(theme),
+        matchBasis: anchorMatch && !directMatch ? "top_holding_theme_anchor" : directMatch && anchorMatch ? "name_and_top_holding" : "name_or_keyword",
+        matchScore: (directMatch ? 20 : 0) + (anchorMatch ? 18 : 0) + Number(theme.forwardScore || 0) * 0.12 + Number(theme.capitalRetreatScore || 0) * 0.08
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(b.matchScore || 0) - Number(a.matchScore || 0))
+    .map(({ matchScore, ...theme }) => theme)
     .slice(0, 3);
+}
+
+function compactMatchedThemeSignal(theme = {}) {
+  return {
+    id: theme.id,
+    name: theme.name,
+    stage: theme.stage,
+    forwardScore: theme.forwardScore,
+    crowdingScore: theme.crowdingScore,
+    rotationScore: theme.rotationScore,
+    lowPositionScore: theme.lowPositionScore,
+    capitalRetreatScore: theme.capitalRetreatScore,
+    capitalFollowScore: theme.capitalFollowScore,
+    preheatScore: theme.preheatScore,
+    avgMainNetInflowPct: theme.avgMainNetInflowPct,
+    minMainNetInflowPct: theme.minMainNetInflowPct,
+    maxMainNetInflowPct: theme.maxMainNetInflowPct,
+    boardOutflowCount: theme.boardOutflowCount,
+    boardDeclineCount: theme.boardDeclineCount,
+    maxBoardDropPct: theme.maxBoardDropPct,
+    retreatSignal: theme.retreatSignal || "",
+    leaderSignal: theme.leaderSignal || "",
+    positionSignal: theme.positionSignal,
+    actionBias: theme.actionBias,
+    primaryCatalyst: theme.primaryCatalyst || "",
+    dynamic: Boolean(theme.dynamic),
+    newsLogic: theme.newsLogic || "",
+    boardNames: normalizeStringArray(theme.boardNames || (theme.evidence?.boards || []).map((item) => item.name)).slice(0, 4),
+    leaderStocks: normalizeStringArray(theme.leaderStocks || (theme.evidence?.boards || []).map((item) => item.leadStock)).slice(0, 4),
+    themeKeywords: [...new Set([...(theme.themeKeywords || []), ...(theme.fundKeywords || []), ...(theme.keywords || [])].filter(Boolean))].slice(0, 8)
+  };
+}
+
+function buildCandidateThemeMatchText(candidate = {}) {
+  const holdings = [
+    ...collectCandidateHoldings(candidate, "equity"),
+    ...collectCandidateHoldings(candidate, "bond")
+  ];
+  return mergeStringLists(
+    [
+      candidate?.name,
+      candidate?.type,
+      candidate?.company,
+      candidate?.seed?.name,
+      candidate?.seed?.type,
+      candidate?.seed?.company
+    ],
+    candidate?.keywords,
+    candidate?.seed?.keywords,
+    holdings.map((holding) => `${holding.code || ""} ${holding.name || ""} ${holding.text || ""}`)
+  ).join(" ");
+}
+
+function candidateHoldingsMatchThemeAnchors(candidate = {}, theme = {}) {
+  const holdings = collectCandidateHoldings(candidate, "equity");
+  if (!holdings.length) return false;
+  const anchors = getCandidateThemeHoldingAnchors([compactMatchedThemeSignal(theme)]);
+  return holdings.some((holding) => holdingMatchesThemeAnchors(holding, anchors));
 }
 
 function textMatchesKeywords(text, keywords = []) {
@@ -22260,7 +22302,10 @@ function getCandidateThemeHoldingAnchors(themeSignals = []) {
     theme.id,
     ...(theme.boardNames || []),
     ...(theme.leaderStocks || []),
-    ...(theme.themeKeywords || [])
+    ...(theme.themeKeywords || []),
+    ...(theme.fundKeywords || []),
+    ...(theme.keywords || []),
+    ...(theme.evidence?.boards || []).flatMap((board) => [board.name, board.leadStock])
   ]).map((item) => String(item || "").trim()).filter((item) =>
     item.length >= 2
     && !/^dynamic_/i.test(item)
@@ -29113,6 +29158,7 @@ export {
   ensurePortfolioStarterBuyFollowUpReviewed,
   mergeFundWorkflowWatchlistIntoDeepDive,
   mergeChinaRealtimeIndexQuotes,
+  matchCandidateThemes,
   inferPortfolioBlockedFollowThroughSearchKeywords,
   inferPullbackSetupSearchKeywords,
   inferEastmoneySecidFromHolding,
