@@ -166,6 +166,13 @@ const USER_FACING_FUND_LABELS = [
   ["high_chase_risk", "追高风险偏高"],
   ["theme_retreat_risk", "题材退潮风险"],
   ["capital_outflow_watch", "主力撤离观察"],
+  ["capital_entering", "主力开始进场"],
+  ["preheat_catalyst", "题材预热"],
+  ["main_capital_entering", "主力进场观察"],
+  ["preheat_catalyst_watch", "预热催化观察"],
+  ["follow_main_small", "跟随主力小仓试探"],
+  ["preheat_watch", "预热观察确认"],
+  ["trend_confirming", "趋势确认中"],
   ["low_position_rotation", "低位轮动"],
   ["acceptable_position", "位置尚可"],
   ["neutral_or_wait", "中性偏等待"],
@@ -193,6 +200,10 @@ const USER_FACING_FUND_FIELD_LABELS = [
   ["rotationScore", "轮动评分"],
   ["lowPositionScore", "低位评分"],
   ["capitalRetreatScore", "退潮风险"],
+  ["capitalFollowScore", "主力跟随"],
+  ["preheatScore", "预热评分"],
+  ["leaderSignal", "主力节奏"],
+  ["newsLogic", "题材逻辑"],
   ["positionSignal", "位置判断"],
   ["actionBias", "操作倾向"],
   ["actionBiasText", "操作倾向"],
@@ -1720,7 +1731,8 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "只能基于传入的公开市场快照、基金候选池、当前持仓和自选基金池做判断；不要编造快照中不存在的基金代码、涨跌幅或排名。",
     "你必须维护自己的自选基金池：暂时不买但值得盯的基金要写入 watchlistUpdates，已有候选要复核是否 ready、waiting_pullback、watch 或 blocked，不能只围绕已有持仓转。",
     "自选基金池是未来随时准备购入的候选账本，每只候选都必须有备选理由、买入触发条件、风险备注和费用/份额说明。",
-    "新闻只能作为催化证据，不能单独触发 BUY。每次买入前必须通过“轮动/低位/拥挤度”检查：优先低位轮动、回撤修复和早期确认，回避仅因新闻热度和短期涨幅追高。",
+    "新闻只能作为催化证据，不能单独触发 BUY。每次买入前必须通过“主力跟随/预热题材/轮动/低位/拥挤度”检查：优先主力刚进场、题材预热未涨开、低位轮动、回撤修复和早期确认，回避仅因新闻热度和短期涨幅追高。",
+    "如果题材雷达显示主力开始进场或题材预热，投委会必须说明新闻时事支撑、资金是否配合、代表基金是否已经出现买点；证据成立时不能只写空泛观望，至少给出观察触发或0.5%-2.5%小仓试探方案。",
     "如果题材雷达显示位置判断为追高风险偏高，或拥挤度高但低位/轮动评分不支持，只能 WATCH、HOLD 或小额试探，不能重仓追涨。",
     "如果账户回撤正常、现金超过60%、且候选满足低位/回调完成/费用可核验但10日趋势只差轻微确认，必须评估0.5%-2.5%的启动试探；不能用“继续等待”替代具体触发价位、复核日期和小仓试错计划。",
     "账户里的 account.cash 才是当下可动用现金；receivableCash 是赎回在途资金，不能当作已经到账的买入火力。客户可见文本要把“可动用现金”和“赎回款未到账”分开说。",
@@ -9173,6 +9185,7 @@ function resolvePortfolioDecisionSynthesisEvidence(item = {}) {
   const scoreParts = [
     Math.min(34, readinessScore * 0.34),
     rotation.strong ? 18 : rotation.shouldSurface && !rotation.highChase ? 10 : 0,
+    rotation.leaderPositive && !rotation.highChase ? 12 : 0,
     ["pullback_complete", "launch_setup"].includes(setupSignal) ? 14 : 0,
     Number.isFinite(low120) && low120 <= 55 ? 8 : 0,
     Number(outlook.score || 0) >= 10 ? 10 : Number(outlook.score || 0) >= 5 ? 5 : 0,
@@ -9197,6 +9210,8 @@ function resolvePortfolioDecisionSynthesisEvidence(item = {}) {
   const level = chase.shouldSurface ? "warning" : buyable ? "ready" : starter ? "watch" : item.status || "watch";
   const highlights = [
     readinessScore ? `准备度${round(readinessScore, 0)}` : "",
+    rotation.leaderPositive && rotation.leaderLabel ? `主力节奏：${rotation.leaderLabel}` : "",
+    rotation.newsLogic ? `题材逻辑：${rotation.newsLogic}` : "",
     rotation.shouldSurface && !rotation.highChase ? "板块轮动或低位修复有支撑" : "",
     trend.pullbackSetup?.signalText || "",
     Number(outlook.score || 0) >= 5 ? "前十大持仓有复核价值" : "",
@@ -9223,6 +9238,7 @@ function resolvePortfolioDecisionSynthesisEvidence(item = {}) {
     facts: [
       readinessScore ? `准备度${round(readinessScore, 0)}` : "",
       rotation.themeName ? `轮动${rotation.themeName}` : "",
+      rotation.leaderPositive ? "主力预热" : "",
       chase.shouldSurface ? "追涨拦截" : "",
       fee.shareClass ? `${fee.shareClass}类` : "",
       Number.isFinite(low120) ? `120日位置${round(low120, 1)}%` : ""
@@ -9242,6 +9258,7 @@ function buildPortfolioDecisionSynthesisReason({ buyable = false, starter = fals
   if (chase.shouldSurface) return "综合看追涨风险压过买点证据，本轮不应作为主推荐。";
   if (fee.missingCritical) return "综合证据尚可，但费用/份额证据不足，买入前必须补齐。";
   if (buyable) return "买点、轮动和费用证据相对完整，适合进入优先买入复核。";
+  if (rotation.leaderPositive) return "主力进场或新闻预热已经出现，但还要等基金自身买点和费用证据确认。";
   if (starter) return "有低位或轮动线索，但仍需小仓试探和交叉确认。";
   if (rotation.shouldSurface) return "已有轮动或低位线索，但综合证据还不足以直接买入。";
   return "综合证据偏弱，暂时只保留观察，不进入主推荐。";
@@ -10017,6 +10034,7 @@ function scorePortfolioThemeAllocationCandidate(item = {}) {
     readinessScore * 0.28
     + (item.status === "ready" ? 10 : item.status === "waiting_pullback" ? 5 : 0)
     + (rotation.strong ? 22 : rotation.shouldSurface && !rotation.highChase ? 12 : 0)
+    + (rotation.leaderPositive && !rotation.highChase ? 12 : 0)
     + (["pullback_complete", "launch_setup"].includes(setupSignal) ? 14 : 0)
     + (Number.isFinite(low120) && low120 <= 55 ? 10 : 0)
     + (Number.isFinite(low250) && low250 <= 65 ? 6 : 0)
@@ -10043,20 +10061,24 @@ function buildPortfolioThemeAllocationRankingItem(group = {}) {
   }));
   const lowEvidenceCount = candidateScores.filter((entry) => hasPortfolioThemeLowEvidence(entry.item, entry.rotation)).length;
   const hotCount = candidateScores.filter((entry) => entry.chase.shouldSurface || entry.rotation.highChase).length;
+  const leaderCount = candidateScores.filter((entry) => entry.rotation.leaderPositive).length;
   const holdingsCount = candidateScores.filter((entry) => entry.outlook.hasHoldings).length;
   const representativeScore = Number(candidateScores[0]?.score || 0);
   const score = Math.max(0, Math.min(100,
     representativeScore
     + Math.min(8, Math.max(0, candidates.length - 1) * 3)
     + Math.min(8, lowEvidenceCount * 2)
+    + Math.min(10, leaderCount * 4)
     + Math.min(6, holdingsCount * 1.5)
     - Math.min(18, hotCount * 7)
   ));
-  const deployable = score >= 64 && hotCount === 0 && lowEvidenceCount > 0;
+  const deployable = score >= 64 && hotCount === 0 && (lowEvidenceCount > 0 || leaderCount > 0);
   const action = hotCount > 0
     ? "主题降温观察"
     : deployable
-      ? "主题配置复核"
+      ? leaderCount > 0
+        ? "主力预热配置复核"
+        : "主题配置复核"
       : "主题观察";
   const themeName = group.theme || "未命名主题";
   const representativeLabel = `${representative.code || ""} ${representative.name || ""}`.trim();
@@ -10069,17 +10091,21 @@ function buildPortfolioThemeAllocationRankingItem(group = {}) {
     action,
     reason: hotCount > 0
       ? `${themeName}主题已有拥挤或追涨风险，先降温观察，不把同主题基金包装成机会。`
-      : `${themeName}主题有配置线索，先选主题，再用代表基金做买点、费率和持仓前景复核。`,
+      : leaderCount > 0
+        ? `${themeName}主题出现主力进场或新闻预热线索，先选主题，再用代表基金做买点、费率和持仓前景复核。`
+        : `${themeName}主题有配置线索，先选主题，再用代表基金做买点、费率和持仓前景复核。`,
     facts: [
       `主题${themeName}`,
       `代表基金 ${representativeLabel}`,
       backup ? `备选${backup.code || ""} ${backup.name || ""}`.trim() : "",
+      `主力预热${leaderCount}只`,
       `低位证据${lowEvidenceCount}只`,
       `拥挤风险${hotCount}只`
     ].filter(Boolean),
     decision: {
       highlights: [
         `${themeName}进入主题配置榜，候选${candidates.length}只。`,
+        leaderCount ? `主力进场/新闻预热线索覆盖${leaderCount}只。` : "",
         lowEvidenceCount ? `低位/回调修复证据覆盖${lowEvidenceCount}只。` : "",
         representativeLabel ? `代表基金：${representativeLabel}。` : ""
       ].filter(Boolean),
@@ -10089,7 +10115,7 @@ function buildPortfolioThemeAllocationRankingItem(group = {}) {
         holdingsCount < candidates.length ? "部分候选缺前十大持仓/行业前景验证。" : ""
       ].filter(Boolean),
       gaps: [
-        !lowEvidenceCount ? "缺低位或回调完成证据" : "",
+        !lowEvidenceCount && !leaderCount ? "缺低位或主力预热线索" : "",
         !holdingsCount ? "缺前十大持仓/行业前景验证" : "",
         hotCount ? "缺拥挤度降温证据" : ""
       ].filter(Boolean),
@@ -10204,12 +10230,14 @@ function buildPortfolioRotationOpportunityRankingItem(item = {}) {
     name: item.name,
     source: "板块轮动",
     score: round(evidence.score, 1),
-    action: evidence.themeRetreatRisk ? "题材退潮回避" : evidence.highChase ? "轮动降温观察" : evidence.strong ? "轮动启动复核" : "低位轮动观察",
+    action: evidence.themeRetreatRisk ? "题材退潮回避" : evidence.highChase ? "轮动降温观察" : evidence.leaderPositive ? "主力预热复核" : evidence.strong ? "轮动启动复核" : "低位轮动观察",
     reason: buildPortfolioRotationOpportunityReason(evidence),
     facts: buildPortfolioRotationOpportunityFacts(evidence),
     decision: {
       highlights: [
         evidence.themeName ? `${evidence.themeName}：${evidence.themePositionLabel || "轮动线索待确认"}` : "",
+        evidence.leaderPositive && evidence.leaderLabel ? `主力节奏：${evidence.leaderLabel}` : "",
+        evidence.newsLogic ? `题材逻辑：${evidence.newsLogic}` : "",
         evidence.setupLabel || "",
         evidence.rotationLine || ""
       ].filter(Boolean),
@@ -10221,6 +10249,7 @@ function buildPortfolioRotationOpportunityRankingItem(item = {}) {
       ].filter(Boolean),
       gaps: [
         evidence.missingTheme ? "缺题材雷达" : "",
+        evidence.leaderPositive && !evidence.newsLogic ? "缺新闻逻辑复核" : "",
         evidence.needsEarlyTurn ? "缺5日/10日温和转强" : "",
         evidence.needsLowPosition ? "缺120日或250日低位证据" : ""
       ].filter(Boolean),
@@ -10228,9 +10257,11 @@ function buildPortfolioRotationOpportunityRankingItem(item = {}) {
         ? evidence.themeRetreatRisk
           ? "降级为回避，等主力资金回流、板块重新转强后再回到轮动榜。"
           : "降级为观察，等拥挤度下降或回撤后再进入买入准备。"
-        : "和买入准备榜、费率适配榜交叉复核；若低位和早期转强同时成立，只能先小仓试探。"
+        : evidence.leaderPositive
+          ? "把主力预热题材加入买入准备复核；只有基金自身也出现低位或早期转强，才允许0.5%-2.5%试探。"
+          : "和买入准备榜、费率适配榜交叉复核；若低位和早期转强同时成立，只能先小仓试探。"
     },
-    status: evidence.highChase ? "watch" : evidence.strong ? "ready" : item.status || "watch"
+    status: evidence.highChase ? "watch" : evidence.strong || evidence.leaderPositive ? "ready" : item.status || "watch"
   });
 }
 
@@ -10256,13 +10287,17 @@ function resolvePortfolioRotationOpportunityEvidence(item = {}) {
   const readinessScore = Math.min(18, Number(item.readinessScore || 0) / 5);
   const themeRetreatWarnings = getCandidateThemeRetreatWarnings({ matchedThemes: themes });
   const themeRetreatRisk = themeRetreatWarnings.length > 0;
+  const leaderPositive = ["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)
+    || ["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)
+    || Number(theme.capitalFollowScore) >= 55
+    || Number(theme.preheatScore) >= 55;
   const highChase = theme.positionSignal === "high_chase_risk"
     || theme.stage === "crowded"
     || themeRetreatRisk
     || Number(theme.crowdingScore) >= 55
     || Number(trend.return20dPct) > 18
     || Number(trend.lowPositionPct120) > 85;
-  const score = Math.max(0, themeRotationScore + trendRotationScore + textScore + readinessScore - (highChase ? 24 : 0));
+  const score = Math.max(0, themeRotationScore + trendRotationScore + textScore + readinessScore + (leaderPositive && !highChase ? 12 : 0) - (highChase ? 24 : 0));
   const strong = score >= 55 && !highChase;
   const hasTheme = Boolean(theme.id || theme.name);
   const low120 = Number(trend.lowPositionPct120);
@@ -10280,6 +10315,9 @@ function resolvePortfolioRotationOpportunityEvidence(item = {}) {
     themePositionLabel: formatPortfolioRotationThemePosition(theme),
     setupLabel: trend.pullbackSetup?.signalText || formatTrendLabel(trend.trendLabel),
     rotationLine: formatPortfolioRotationScoreLine(theme),
+    leaderPositive,
+    leaderLabel: formatUserFacingFundLabel(theme.leaderSignal || theme.positionSignal),
+    newsLogic: theme.newsLogic || theme.primaryCatalyst || "",
     score,
     strong,
     shouldSurface,
@@ -10300,11 +10338,19 @@ function scorePortfolioWatchThemeRotation(theme = {}) {
   const rotation = Number(theme.rotationScore);
   const lowPosition = Number(theme.lowPositionScore);
   const crowding = Number(theme.crowdingScore);
+  const capitalFollow = Number(theme.capitalFollowScore);
+  const preheat = Number(theme.preheatScore);
   if (theme.positionSignal === "low_position_rotation") score += 18;
   if (theme.stage === "low_position_rotation") score += 14;
   if (theme.positionSignal === "acceptable_position") score += 8;
+  if (theme.positionSignal === "main_capital_entering" || theme.leaderSignal === "capital_entering") score += 18;
+  if (theme.positionSignal === "preheat_catalyst_watch" || theme.leaderSignal === "preheat_catalyst") score += 12;
+  if (theme.stage === "capital_entering") score += 14;
+  if (theme.stage === "preheat_catalyst") score += 10;
   if (Number.isFinite(rotation)) score += Math.min(16, rotation / 4);
   if (Number.isFinite(lowPosition)) score += Math.min(16, lowPosition / 4);
+  if (Number.isFinite(capitalFollow)) score += Math.min(16, capitalFollow / 5);
+  if (Number.isFinite(preheat)) score += Math.min(12, preheat / 6);
   if (Number.isFinite(crowding)) score -= crowding >= 55 ? 24 : crowding >= 40 ? 10 : 0;
   return score;
 }
@@ -10336,6 +10382,9 @@ function formatPortfolioRotationThemePosition(theme = {}) {
 
 function formatPortfolioRotationScoreLine(theme = {}) {
   const parts = [
+    theme.leaderSignal ? `节奏${formatUserFacingFundLabel(theme.leaderSignal)}` : "",
+    Number.isFinite(Number(theme.capitalFollowScore)) ? `主力${round(Number(theme.capitalFollowScore), 0)}` : "",
+    Number.isFinite(Number(theme.preheatScore)) ? `预热${round(Number(theme.preheatScore), 0)}` : "",
     Number.isFinite(Number(theme.rotationScore)) ? `轮动${round(Number(theme.rotationScore), 0)}` : "",
     Number.isFinite(Number(theme.lowPositionScore)) ? `低位${round(Number(theme.lowPositionScore), 0)}` : "",
     Number.isFinite(Number(theme.crowdingScore)) ? `拥挤${round(Number(theme.crowdingScore), 0)}` : ""
@@ -10349,6 +10398,9 @@ function buildPortfolioRotationOpportunityReason(evidence = {}) {
   }
   if (evidence.highChase) {
     return "板块或基金位置已经偏热，本轮只做降温观察，避免被新闻和短期涨幅牵着追。";
+  }
+  if (evidence.leaderPositive) {
+    return "题材出现主力进场或新闻预热线索，但仍要和基金买点、费用和持仓前景交叉确认，只允许小仓试探。";
   }
   if (evidence.strong) {
     return "板块轮动和低位修复同时出现，适合进入小仓试探前置复核。";
@@ -10364,6 +10416,8 @@ function buildPortfolioRotationOpportunityFacts(evidence = {}) {
   return [
     evidence.themeName ? `题材${evidence.themeName}` : "",
     ...(evidence.themeRetreatWarnings || []).slice(0, 1),
+    evidence.leaderLabel ? `节奏${evidence.leaderLabel}` : "",
+    evidence.newsLogic ? `逻辑${evidence.newsLogic}` : "",
     evidence.themePositionLabel ? `位置${evidence.themePositionLabel}` : "",
     evidence.rotationLine,
     trend.pullbackSetup?.signalText || "",
@@ -15952,9 +16006,12 @@ function compactThemeRadarForModel(theme = {}) {
     id: theme.id || "",
     name: theme.name || "",
     板块位置: formatUserFacingFundLabel(theme.stage),
+    主力节奏: formatUserFacingFundLabel(theme.leaderSignal),
     位置判断: formatUserFacingFundLabel(theme.positionSignal),
     操作倾向: formatUserFacingFundLabel(theme.actionBias),
     前瞻评分: finiteMetricNumber(theme.forwardScore),
+    主力跟随: finiteMetricNumber(theme.capitalFollowScore),
+    预热评分: finiteMetricNumber(theme.preheatScore),
     拥挤度: finiteMetricNumber(theme.crowdingScore),
     轮动评分: finiteMetricNumber(theme.rotationScore),
     低位评分: finiteMetricNumber(theme.lowPositionScore),
@@ -15962,6 +16019,7 @@ function compactThemeRadarForModel(theme = {}) {
     主力资金均值: finiteMetricNumber(theme.avgMainNetInflowPct),
     主力资金最弱: finiteMetricNumber(theme.minMainNetInflowPct),
     主要催化: theme.primaryCatalyst || "",
+    题材逻辑: theme.newsLogic || "",
     相关板块: (theme.evidence?.boards || []).slice(0, 2).map((item) => ({
       name: item.name || "",
       changePct: finiteMetricNumber(item.changePct),
@@ -16633,6 +16691,8 @@ function formatEvidenceField(label, value, suffix = "") {
   const formatted = Number.isFinite(numeric) ? round(numeric, 2) : String(value);
   const labels = {
     forwardScore: "前瞻评分",
+    capitalFollowScore: "主力跟随",
+    preheatScore: "预热评分",
     crowdingScore: "拥挤度",
     rotationScore: "轮动评分",
     lowPositionScore: "低位评分",
@@ -16663,7 +16723,10 @@ function formatThemeRadarEvidenceLine(theme = {}) {
   const fields = [
     theme.name || theme.id || "未知题材",
     theme.stage ? `板块位置：${formatUserFacingFundLabel(theme.stage)}` : "",
+    theme.leaderSignal ? `主力节奏：${formatUserFacingFundLabel(theme.leaderSignal)}` : "",
     formatEvidenceField("forwardScore", theme.forwardScore),
+    formatEvidenceField("capitalFollowScore", theme.capitalFollowScore),
+    formatEvidenceField("preheatScore", theme.preheatScore),
     formatEvidenceField("crowdingScore", theme.crowdingScore),
     formatEvidenceField("rotationScore", theme.rotationScore),
     formatEvidenceField("lowPositionScore", theme.lowPositionScore),
@@ -16671,6 +16734,7 @@ function formatThemeRadarEvidenceLine(theme = {}) {
     Number.isFinite(Number(theme.avgMainNetInflowPct)) ? `主力资金均值：${formatFallbackPlainPct(theme.avgMainNetInflowPct)}` : "",
     theme.positionSignal ? `位置：${formatUserFacingFundLabel(theme.positionSignal)}` : "",
     theme.actionBias ? `操作倾向：${formatUserFacingFundLabel(theme.actionBias)}` : "",
+    theme.newsLogic ? `题材逻辑：${theme.newsLogic}` : "",
     theme.primaryCatalyst ? `主要催化：${theme.primaryCatalyst}` : "",
     theme.evidence?.boards?.length ? `板块：${theme.evidence.boards.slice(0, 2).map((item) => `${item.name}${formatSignedNumber(item.changePct)}%`).join("/")}` : "",
     theme.evidence?.globalMarkets?.length ? `海外：${theme.evidence.globalMarkets.slice(0, 2).map((item) => `${item.name}${formatSignedNumber(item.changePct)}%`).join("/")}` : "",
@@ -16744,7 +16808,7 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
   if (themeRadar.length) {
     lines.push("题材雷达：");
     lines.push(...themeRadar.map(formatThemeRadarEvidenceLine));
-    lines.push("质量要求：题材雷达已提供，推荐前先判断题材阶段、轮动评分、低位评分、拥挤度和后续赔率；不要因为新闻热就追高。");
+    lines.push("质量要求：题材雷达已提供，推荐前先判断题材阶段、主力跟随、预热评分、新闻逻辑、轮动评分、低位评分、拥挤度和后续赔率；新闻热但资金撤离要回避，主力刚进场且基金买点成立时可以小仓试探。");
   }
 
   if (isPreciousMetalQuestion(userText)) {
@@ -17047,11 +17111,17 @@ function getCandidateThemeSignals(candidate = {}) {
       rotationScore: Number(theme?.rotationScore),
       lowPositionScore: Number(theme?.lowPositionScore),
       capitalRetreatScore: Number(theme?.capitalRetreatScore),
+      capitalFollowScore: Number(theme?.capitalFollowScore),
+      preheatScore: Number(theme?.preheatScore),
       avgMainNetInflowPct: Number(theme?.avgMainNetInflowPct),
       minMainNetInflowPct: Number(theme?.minMainNetInflowPct),
+      maxMainNetInflowPct: Number(theme?.maxMainNetInflowPct),
       boardOutflowCount: Number(theme?.boardOutflowCount),
       boardDeclineCount: Number(theme?.boardDeclineCount),
-      maxBoardDropPct: Number(theme?.maxBoardDropPct)
+      maxBoardDropPct: Number(theme?.maxBoardDropPct),
+      leaderSignal: theme?.leaderSignal || "",
+      primaryCatalyst: theme?.primaryCatalyst || "",
+      newsLogic: theme?.newsLogic || ""
     }))
     .filter((theme) => theme.id || theme.name)
     .filter((theme) => {
@@ -17164,6 +17234,8 @@ function scorePullbackThemeRotation(candidate = {}) {
     const crowding = Number(theme.crowdingScore);
     const rotation = Number(theme.rotationScore);
     const lowPosition = Number(theme.lowPositionScore);
+    const capitalFollow = Number(theme.capitalFollowScore);
+    const preheat = Number(theme.preheatScore);
     if (theme.positionSignal === "high_chase_risk") score -= 28;
     if (theme.stage === "crowded") score -= 20;
     if (hasThemeCapitalRetreatRisk(theme)) score -= 34;
@@ -17173,14 +17245,20 @@ function scorePullbackThemeRotation(candidate = {}) {
     }
     if (theme.positionSignal === "low_position_rotation") score += 18;
     if (theme.positionSignal === "acceptable_position") score += 10;
+    if (theme.positionSignal === "main_capital_entering" || theme.leaderSignal === "capital_entering") score += 16;
+    if (theme.positionSignal === "preheat_catalyst_watch" || theme.leaderSignal === "preheat_catalyst") score += 12;
     if (theme.stage === "low_position_rotation") score += 10;
+    if (theme.stage === "capital_entering") score += 12;
+    if (theme.stage === "preheat_catalyst") score += 8;
     if (Number.isFinite(rotation) && Number.isFinite(lowPosition)) {
       if (rotation >= 45 && lowPosition >= 45) score += 14;
       else if (rotation >= 35 && lowPosition >= 35) score += 8;
     }
+    if (Number.isFinite(capitalFollow)) score += Math.min(14, capitalFollow / 6);
+    if (Number.isFinite(preheat)) score += Math.min(10, preheat / 7);
     if (Number.isFinite(lowPosition) && lowPosition < 20 && Number.isFinite(crowding) && crowding >= 35) score -= 8;
   }
-  return Math.max(-50, Math.min(34, score));
+  return Math.max(-50, Math.min(46, score));
 }
 
 function formatCandidateThemeEvidence(candidate = {}) {
@@ -17189,9 +17267,14 @@ function formatCandidateThemeEvidence(candidate = {}) {
   const parts = [
     theme.name || "题材",
     hasThemeCapitalRetreatRisk(theme) ? "题材退潮/主力撤离" : "",
+    theme.leaderSignal === "capital_entering" || theme.positionSignal === "main_capital_entering" ? "主力进场" : "",
+    theme.leaderSignal === "preheat_catalyst" || theme.positionSignal === "preheat_catalyst_watch" ? "题材预热" : "",
     theme.positionSignal === "high_chase_risk" || theme.stage === "crowded" ? "偏拥挤" : "",
     theme.positionSignal === "low_position_rotation" || theme.stage === "low_position_rotation" ? "低位轮动" : "",
     theme.positionSignal === "acceptable_position" ? "位置尚可" : "",
+    theme.newsLogic ? `逻辑=${theme.newsLogic}` : "",
+    Number.isFinite(theme.capitalFollowScore) ? `主力=${round(theme.capitalFollowScore, 1)}` : "",
+    Number.isFinite(theme.preheatScore) ? `预热=${round(theme.preheatScore, 1)}` : "",
     Number.isFinite(theme.rotationScore) ? `轮动=${round(theme.rotationScore, 1)}` : "",
     Number.isFinite(theme.lowPositionScore) ? `低位=${round(theme.lowPositionScore, 1)}` : "",
     Number.isFinite(theme.crowdingScore) ? `拥挤=${round(theme.crowdingScore, 1)}` : "",
@@ -17816,7 +17899,8 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "当前任务不是分析用户已经给出的某一只基金，也不是截图 screening；当前任务是根据用户文字、公开市场快照和基金候选池，给出教育性的基金方向与候选清单。",
     "推荐顺序必须是：先判断题材/事件/催化阶段，再判断基金承载工具；基金净值走势只能作为确认信号，不能作为第一推荐理由。",
     "用户更关心走势和分析思路，不要把回答写成数字清单。每只基金最多保留3个关键数字，其他用“低位修复、短期偏热、等待确认、回撤未完成”等自然中文解释。",
-    "如果市场快照或下钻摘要里有题材雷达，必须先用题材阶段、前瞻评分、拥挤度和操作倾向判断赔率，再筛选基金。",
+    "如果市场快照或下钻摘要里有题材雷达，必须先用题材阶段、主力跟随、预热评分、新闻逻辑、拥挤度和操作倾向判断赔率，再筛选基金。",
+    "遇到主力开始进场或题材预热的方向，必须解释题材上涨背后的新闻/政策/产业逻辑，并判断基金本身是否已经出现低位买点；逻辑成立但买点差一点时给触发条件，逻辑与资金都成立时可以给小仓试探，不要机械地只说等待。",
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
     "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度、盘中走势和数据新鲜度；若盘中冲高回落或尾盘转弱，只能降低买入把握度，成交和盈亏仍以确认净值为准。",
     "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
@@ -17859,7 +17943,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "",
     "请输出：",
     "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
-    "2. 题材雷达：先列 1-3 个相关题材的中文板块位置、前瞻评分、拥挤度、为什么现在值得/不值得看；不要输出任何内部字段名。",
+    "2. 题材雷达：先列 1-3 个相关题材的中文板块位置、主力节奏、新闻逻辑、拥挤度、为什么现在值得/不值得看；不要输出任何内部字段名。",
     "3. 自评估：这类需求是否适合现在做、把握度如何、适合激进/均衡/保守哪类。",
     "4. 推荐清单：优先 3-4 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号、5日/10日早期转强、120日区间低位、趋势/自评估动作、为什么入选，以及“配图看什么”。只能使用快照、下钻或经理自选候选池中的候选代码；如果没有足够代码，就写“待复核方向”。",
     "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
@@ -17919,7 +18003,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "如果传入 marketSnapshot，可用它回答近期市场/题材问题；涉及黄金、白银或贵金属时，优先引用 marketIndicators.preciousMetals 和相关基金候选。",
     "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度、盘中走势和数据新鲜度；若盘中冲高回落或尾盘转弱，只能降低买入把握度，成交和盈亏仍以确认净值为准。",
     "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
-    "如果市场快照或下钻摘要里有题材雷达，优先引用中文题材阶段、前瞻评分、拥挤度和操作倾向，避免只按历史涨幅回答。",
+    "如果市场快照或下钻摘要里有题材雷达，优先引用中文题材阶段、主力节奏、新闻逻辑、拥挤度和操作倾向，避免只按历史涨幅回答。",
     "如果提供了候选基金下钻摘要，必须使用下钻候选的走势画像、风险、费用、持仓和可操作性评估来形成买/等/回避判断。",
     "如果提供了经理自选候选池，必须把它当成已经沉淀的备选来源先复核；ready 可以进入买入参考，waiting 或启动前夜只能说明等待条件。",
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，最终回答要用自然中文说明数据缺口、降低把握度；缺少贵金属/板块/排行/新闻模块时，不得声称已完整联网或给重仓买入。",
@@ -18596,7 +18680,7 @@ function hasNoQualifiedPullbackMessage(text) {
 
 function hasInternalFundSignalLeak(text) {
   const body = String(text || "");
-  const tokenPattern = /\b(?:STAGE|BATCH|ENTRY|FEEY|PULLBK|ACT|CLASS|CLS|SIZE|DROP|DD|MDD|MAX|RET|SHRP|VOL|20d|60d|120d|250d|extended_uptrend|pullback_complete|launch_setup|rebound_repair|range_or_mixed|germination|confirmation|diffusion|crowded|theme_fading|capital_outflow|buyable_now|staged_buy|wait_pullback|hold_observe|avoid_now|tactical_only|weak_fit|not_suitable|need_specific_fund|high_chase_risk|theme_retreat_risk|capital_outflow_watch|low_position_rotation|acceptable_position|neutral_or_wait|early_staged_buy|watch_confirm|avoid_chasing|wait_or_small_starter|rotation_starter|avoid_until_capital_returns|trendProfile|actionability|entryBias|fitLabel|trendLabel|forwardScore|crowdingScore|rotationScore|lowPositionScore|capitalRetreatScore|avgMainNetInflowPct|positionSignal|actionBias|pullbackSetup|drawdownFromRecentHighPct|drawdownFrom120HighPct|lowPositionPct120|lowPositionPct250|return5dPct|return10dPct|return20dPct|return60dPct|return120dPct)\b/i;
+  const tokenPattern = /\b(?:STAGE|BATCH|ENTRY|FEEY|PULLBK|ACT|CLASS|CLS|SIZE|DROP|DD|MDD|MAX|RET|SHRP|VOL|20d|60d|120d|250d|extended_uptrend|pullback_complete|launch_setup|rebound_repair|range_or_mixed|germination|confirmation|diffusion|crowded|theme_fading|capital_outflow|capital_entering|preheat_catalyst|trend_confirming|buyable_now|staged_buy|wait_pullback|hold_observe|avoid_now|tactical_only|weak_fit|not_suitable|need_specific_fund|high_chase_risk|theme_retreat_risk|capital_outflow_watch|main_capital_entering|preheat_catalyst_watch|low_position_rotation|acceptable_position|neutral_or_wait|early_staged_buy|watch_confirm|avoid_chasing|wait_or_small_starter|rotation_starter|follow_main_small|preheat_watch|avoid_until_capital_returns|trendProfile|actionability|entryBias|fitLabel|trendLabel|forwardScore|crowdingScore|rotationScore|lowPositionScore|capitalRetreatScore|capitalFollowScore|preheatScore|leaderSignal|newsLogic|avgMainNetInflowPct|positionSignal|actionBias|pullbackSetup|drawdownFromRecentHighPct|drawdownFrom120HighPct|lowPositionPct120|lowPositionPct250|return5dPct|return10dPct|return20dPct|return60dPct|return120dPct)\b/i;
   return tokenPattern.test(body)
     || /\b(?:tactical\s+only|staged\s+buy|wait\s+pullback)\b/i.test(body)
     || /\b(?:stage|trend|action|fit)\s*[=:：]\s*[a-z_ -]{3,}/i.test(body);
@@ -19692,11 +19776,17 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
     const boardChangeValues = boards.map((item) => Number(item.changePct)).filter(Number.isFinite);
     const boardOutflowCount = boardFlowValues.filter((value) => value < 0).length;
     const boardDeclineCount = boardChangeValues.filter((value) => value < 0).length;
+    const boardPositiveFlowCount = boardFlowValues.filter((value) => value > 0).length;
+    const boardRisingCount = boardChangeValues.filter((value) => value > 0).length;
+    const boardModerateRiseCount = boardChangeValues.filter((value) => value >= 0 && value <= 4.5).length;
     const avgMainNetInflowPct = boardFlowValues.length ? averageNumeric(boardFlowValues) : null;
     const minMainNetInflowPct = boardFlowValues.length ? Math.min(...boardFlowValues) : null;
+    const maxMainNetInflowPct = boardFlowValues.length ? Math.max(...boardFlowValues) : null;
     const maxBoardDropPct = boardChangeValues.length ? Math.min(0, ...boardChangeValues) : 0;
     const avgOutflow = Number.isFinite(avgMainNetInflowPct) ? Math.max(0, -avgMainNetInflowPct) : 0;
     const maxOutflow = Number.isFinite(minMainNetInflowPct) ? Math.max(0, -minMainNetInflowPct) : 0;
+    const avgInflow = Number.isFinite(avgMainNetInflowPct) ? Math.max(0, avgMainNetInflowPct) : 0;
+    const maxInflow = Number.isFinite(maxMainNetInflowPct) ? Math.max(0, maxMainNetInflowPct) : 0;
     const capitalRetreatScore = clampScore(
       boardOutflowCount * 12
       + boardDeclineCount * 8
@@ -19725,25 +19815,69 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + Math.max(0, 5 - metalFiveDay) * 2
       + Math.max(0, 3 - overseasDaily) * 2
     );
+    const capitalFollowScore = clampScore(
+      boardPositiveFlowCount * 10
+      + boardRisingCount * 4
+      + avgInflow * 10
+      + maxInflow * 5
+      + catalystScore * 0.16
+      + vehicleScore * 0.14
+      + Math.max(0, 5 - maxBoardChange) * 2
+      - crowdingScore * 0.28
+      - capitalRetreatScore * 0.52
+      - Math.max(0, maxBoardChange - 6) * 7
+    );
+    const preheatScore = clampScore(
+      catalystScore * 0.55
+      + lowPositionScore * 0.34
+      + vehicleScore * 0.22
+      + boardModerateRiseCount * 8
+      + Math.max(0, 18 - boardScore) * 0.32
+      + capitalFollowScore * 0.12
+      - crowdingScore * 0.46
+      - capitalRetreatScore * 0.42
+    );
     const rotationScore = clampScore(
       catalystScore * 0.35
       + vehicleScore * 0.25
       + lowPositionScore * 0.45
+      + capitalFollowScore * 0.12
+      + preheatScore * 0.1
       + Math.max(0, 28 - boardScore) * 0.25
       - crowdingScore * 0.25
       - capitalRetreatScore * 0.22
     );
-    const forwardScore = clampScore(catalystScore * 0.4 + boardScore * 0.34 + vehicleScore * 0.2 + rotationScore * 0.18 - crowdingScore * 0.34 - capitalRetreatScore * 0.32);
+    const forwardScore = clampScore(
+      catalystScore * 0.32
+      + boardScore * 0.28
+      + vehicleScore * 0.16
+      + rotationScore * 0.16
+      + capitalFollowScore * 0.2
+      + preheatScore * 0.16
+      - crowdingScore * 0.36
+      - capitalRetreatScore * 0.32
+    );
     const retreatSignal = inferThemeRetreatSignal({ capitalRetreatScore, avgMainNetInflowPct, minMainNetInflowPct, boardOutflowCount, boardDeclineCount, forwardScore, rotationScore });
     const stage = retreatSignal
       ? "theme_fading"
-      : inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore, rotationScore, lowPositionScore });
+      : inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore, rotationScore, lowPositionScore, capitalFollowScore, preheatScore, avgMainNetInflowPct });
+    const leaderSignal = inferThemeLeaderSignal({ retreatSignal, stage, capitalFollowScore, preheatScore, forwardScore, crowdingScore, avgMainNetInflowPct, maxMainNetInflowPct });
     const actionBias = retreatSignal
       ? "avoid_until_capital_returns"
-      : inferThemeActionBias({ stage, forwardScore, crowdingScore, rotationScore, lowPositionScore });
+      : inferThemeActionBias({ stage, forwardScore, crowdingScore, rotationScore, lowPositionScore, capitalFollowScore, preheatScore });
     const positionSignal = retreatSignal
       ? "capital_outflow_watch"
-      : inferThemePositionSignal({ crowdingScore, rotationScore, lowPositionScore, maxFundOneMonth, maxBoardChange });
+      : inferThemePositionSignal({ crowdingScore, rotationScore, lowPositionScore, maxFundOneMonth, maxBoardChange, capitalFollowScore, preheatScore });
+    const newsLogic = buildThemeCatalystLogic({
+      rule,
+      news,
+      boards,
+      metals,
+      overseasMarkets,
+      leaderSignal,
+      avgMainNetInflowPct,
+      maxMainNetInflowPct
+    });
 
     return {
       id: rule.id,
@@ -19759,14 +19893,21 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       rotationScore: round(rotationScore, 1),
       lowPositionScore: round(lowPositionScore, 1),
       capitalRetreatScore: round(capitalRetreatScore, 1),
+      capitalFollowScore: round(capitalFollowScore, 1),
+      preheatScore: round(preheatScore, 1),
       avgMainNetInflowPct: Number.isFinite(avgMainNetInflowPct) ? round(avgMainNetInflowPct, 2) : null,
       minMainNetInflowPct: Number.isFinite(minMainNetInflowPct) ? round(minMainNetInflowPct, 2) : null,
+      maxMainNetInflowPct: Number.isFinite(maxMainNetInflowPct) ? round(maxMainNetInflowPct, 2) : null,
       boardOutflowCount,
       boardDeclineCount,
+      boardPositiveFlowCount,
+      boardRisingCount,
       maxBoardDropPct: round(maxBoardDropPct, 2),
       retreatSignal,
+      leaderSignal,
       positionSignal,
       actionBias,
+      newsLogic,
       primaryCatalyst: news[0]?.title || boards[0]?.name || metals[0]?.name || overseasMarkets[0]?.name || "",
       evidence: { news, boards, metals, globalMarkets: overseasMarkets, funds }
     };
@@ -19776,14 +19917,18 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
     || theme.marketConfirmationScore >= 12
     || theme.vehicleScore >= 10
     || theme.capitalRetreatScore >= 50
+    || theme.capitalFollowScore >= 38
+    || theme.preheatScore >= 42
   );
 
   return themes.sort((a, b) => b.forwardScore - a.forwardScore).slice(0, 12);
 }
 
-function inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore, rotationScore = 0, lowPositionScore = 0 }) {
+function inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore, rotationScore = 0, lowPositionScore = 0, capitalFollowScore = 0, preheatScore = 0, avgMainNetInflowPct = null }) {
   if (crowdingScore >= 55) return "crowded";
+  if (capitalFollowScore >= 58 && Number(avgMainNetInflowPct) > 0 && crowdingScore < 48) return "capital_entering";
   if (rotationScore >= 50 && lowPositionScore >= 45 && catalystScore >= 8) return "low_position_rotation";
+  if (preheatScore >= 52 && catalystScore >= 10 && boardScore < 32 && crowdingScore < 45) return "preheat_catalyst";
   if (catalystScore >= 18 && boardScore < 14) return "germination";
   if (boardScore >= 35 && vehicleScore >= 10) return "diffusion";
   if (boardScore >= 14 || (catalystScore >= 12 && vehicleScore >= 8)) return "confirmation";
@@ -19791,11 +19936,13 @@ function inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScor
   return "watch";
 }
 
-function inferThemeActionBias({ stage, forwardScore, crowdingScore, rotationScore = 0, lowPositionScore = 0 }) {
+function inferThemeActionBias({ stage, forwardScore, crowdingScore, rotationScore = 0, lowPositionScore = 0, capitalFollowScore = 0, preheatScore = 0 }) {
   if (stage === "theme_fading" || stage === "capital_outflow") return "avoid_until_capital_returns";
   if (stage === "crowded" || crowdingScore >= 55) return "wait_or_small_starter";
+  if (stage === "capital_entering" || capitalFollowScore >= 58) return "follow_main_small";
+  if (stage === "preheat_catalyst" || preheatScore >= 56) return "preheat_watch";
   if (rotationScore >= 45 && lowPositionScore >= 45 && forwardScore >= 32) return "rotation_starter";
-  if (forwardScore >= 55 && ["germination", "confirmation", "low_position_rotation"].includes(stage)) return "early_staged_buy";
+  if (forwardScore >= 55 && ["germination", "confirmation", "low_position_rotation", "capital_entering", "preheat_catalyst"].includes(stage)) return "early_staged_buy";
   if (forwardScore >= 42) return "staged_buy";
   if (forwardScore >= 25) return "watch_confirm";
   return "avoid_chasing";
@@ -19824,11 +19971,54 @@ function inferThemeRetreatSignal({
   return "";
 }
 
-function inferThemePositionSignal({ crowdingScore, rotationScore, lowPositionScore, maxFundOneMonth, maxBoardChange }) {
+function inferThemeLeaderSignal({ retreatSignal = "", stage = "", capitalFollowScore = 0, preheatScore = 0, forwardScore = 0, crowdingScore = 0, avgMainNetInflowPct = null, maxMainNetInflowPct = null } = {}) {
+  if (retreatSignal) return "capital_outflow";
+  if (stage === "crowded" || crowdingScore >= 55) return "crowded";
+  const avgFlow = Number(avgMainNetInflowPct);
+  const maxFlow = Number(maxMainNetInflowPct);
+  if ((stage === "capital_entering" || capitalFollowScore >= 58) && (Number.isFinite(avgFlow) && avgFlow > 0 || Number.isFinite(maxFlow) && maxFlow >= 2)) {
+    return "capital_entering";
+  }
+  if (stage === "preheat_catalyst" || preheatScore >= 56) return "preheat_catalyst";
+  if (Number(forwardScore) >= 45) return "trend_confirming";
+  return "watch";
+}
+
+function inferThemePositionSignal({ crowdingScore, rotationScore, lowPositionScore, maxFundOneMonth, maxBoardChange, capitalFollowScore = 0, preheatScore = 0 }) {
   if (crowdingScore >= 55 || maxFundOneMonth >= 25 || maxBoardChange >= 8) return "high_chase_risk";
+  if (capitalFollowScore >= 58 && crowdingScore < 48 && maxBoardChange < 6) return "main_capital_entering";
+  if (preheatScore >= 54 && crowdingScore < 45 && maxBoardChange < 5) return "preheat_catalyst_watch";
   if (rotationScore >= 45 && lowPositionScore >= 45) return "low_position_rotation";
   if (lowPositionScore >= 35 && crowdingScore < 35) return "acceptable_position";
   return "neutral_or_wait";
+}
+
+function buildThemeCatalystLogic({ rule = {}, news = [], boards = [], metals = [], overseasMarkets = [], leaderSignal = "", avgMainNetInflowPct = null, maxMainNetInflowPct = null } = {}) {
+  const facts = [];
+  const topNews = String(news[0]?.title || "").trim();
+  const topBoard = boards[0] || {};
+  const topMetal = metals[0] || {};
+  const topOverseas = overseasMarkets[0] || {};
+  const avgFlow = Number(avgMainNetInflowPct);
+  const maxFlow = Number(maxMainNetInflowPct);
+  if (topNews) facts.push(`新闻催化：${topNews.slice(0, 80)}`);
+  if (topBoard.name) {
+    const lead = topBoard.leadStock ? `，龙头${topBoard.leadStock}` : "";
+    facts.push(`板块验证：${topBoard.name}${formatSignedNumber(topBoard.changePct)}%${lead}`);
+  }
+  if (Number.isFinite(avgFlow) && avgFlow > 0) facts.push(`主力线索：相关板块资金均值净流入${formatFallbackPlainPct(avgFlow)}`);
+  else if (Number.isFinite(maxFlow) && maxFlow > 0) facts.push(`主力线索：最强相关板块资金净流入${formatFallbackPlainPct(maxFlow)}`);
+  if (topMetal.name) facts.push(`商品线索：${topMetal.name}${formatSignedNumber(topMetal.changePct)}%`);
+  if (topOverseas.name) facts.push(`外盘线索：${topOverseas.name}${formatSignedNumber(topOverseas.changePct)}%`);
+  if (!facts.length) return "";
+  const prefix = leaderSignal === "capital_entering"
+    ? "主力刚进场"
+    : leaderSignal === "preheat_catalyst"
+      ? "题材预热"
+      : leaderSignal === "capital_outflow"
+        ? "题材退潮"
+        : rule.name || "题材线索";
+  return `${prefix}：${facts.slice(0, 3).join("；")}`;
 }
 
 function selectRelevantThemeRadar(userText, marketSnapshot) {
@@ -19863,14 +20053,20 @@ function matchCandidateThemes(candidate, themes = []) {
       rotationScore: theme.rotationScore,
       lowPositionScore: theme.lowPositionScore,
       capitalRetreatScore: theme.capitalRetreatScore,
+      capitalFollowScore: theme.capitalFollowScore,
+      preheatScore: theme.preheatScore,
       avgMainNetInflowPct: theme.avgMainNetInflowPct,
       minMainNetInflowPct: theme.minMainNetInflowPct,
+      maxMainNetInflowPct: theme.maxMainNetInflowPct,
       boardOutflowCount: theme.boardOutflowCount,
       boardDeclineCount: theme.boardDeclineCount,
       maxBoardDropPct: theme.maxBoardDropPct,
       retreatSignal: theme.retreatSignal || "",
+      leaderSignal: theme.leaderSignal || "",
       positionSignal: theme.positionSignal,
-      actionBias: theme.actionBias
+      actionBias: theme.actionBias,
+      primaryCatalyst: theme.primaryCatalyst || "",
+      newsLogic: theme.newsLogic || ""
     }))
     .slice(0, 3);
 }
@@ -20330,7 +20526,13 @@ function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
   const allowPrecious = isPreciousMetalQuestion(userText);
   const radarKeywords = (themeRadar || [])
     .filter((theme) => allowPrecious || theme.id !== "precious_metals")
-    .filter((theme) => Number(theme.lowPositionScore || 0) >= 35 || ["low_position_rotation", "acceptable_position"].includes(theme.positionSignal))
+    .filter((theme) =>
+      Number(theme.lowPositionScore || 0) >= 35
+      || Number(theme.capitalFollowScore || 0) >= 45
+      || Number(theme.preheatScore || 0) >= 45
+      || ["low_position_rotation", "acceptable_position", "main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)
+      || ["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)
+    )
     .flatMap((theme) => [theme.name, ...(theme.fundKeywords || []), ...(theme.keywords || [])])
     .filter(Boolean);
   const configured = String(process.env.PULLBACK_SETUP_FUND_KEYWORDS || "")
@@ -20675,6 +20877,10 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
   for (const theme of matchedThemes.slice(0, 2)) {
     score += Math.min(14, Number(theme.lowPositionScore || 0) / 6);
     score += Math.min(12, Number(theme.rotationScore || 0) / 8);
+    score += Math.min(14, Number(theme.capitalFollowScore || 0) / 6);
+    score += Math.min(10, Number(theme.preheatScore || 0) / 7);
+    if (["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)) score += 10;
+    if (["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)) score += 8;
     if (theme.positionSignal === "high_chase_risk") score -= 16;
     if (theme.stage === "crowded") score -= 10;
     if (hasThemeCapitalRetreatRisk(theme)) score -= 24;
@@ -20718,8 +20924,12 @@ function scoreDeepDiveCandidate(item, themeRadar = []) {
   const matchedThemes = item.matchedThemes?.length ? item.matchedThemes : matchCandidateThemes(item, themeRadar);
   for (const theme of matchedThemes.slice(0, 2)) {
     score += 8 + Math.min(16, Number(theme.forwardScore || 0) / 5);
+    score += Math.min(12, Number(theme.capitalFollowScore || 0) / 6);
+    score += Math.min(8, Number(theme.preheatScore || 0) / 8);
+    if (["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)) score += 8;
     if (theme.stage === "crowded") score -= 4;
     if (theme.positionSignal === "high_chase_risk") score -= 6;
+    if (hasThemeCapitalRetreatRisk(theme)) score -= 18;
     if (["low_position_rotation", "acceptable_position"].includes(theme.positionSignal)) score += 5;
   }
   score += scoreCandidateReturnSetup(item);
@@ -23444,6 +23654,16 @@ function buildFundActionabilitySignals(digest) {
   if (feeImpact?.holdingPeriodFit === "short_term_only_high_long_holding_drag") score -= 4;
   if (missingFeeData.length) score -= Math.min(6, missingFeeData.length * 2);
   score += Math.round(holdingsOutlook.score * 0.45);
+  const leaderThemeSupport = getCandidateThemeSignals(digest).some((theme) =>
+    !hasThemeCapitalRetreatRisk(theme)
+    && (
+      ["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)
+      || ["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)
+      || Number(theme.capitalFollowScore) >= 55
+      || Number(theme.preheatScore) >= 55
+    )
+  );
+  if (leaderThemeSupport && ["pullback_complete", "launch_setup"].includes(trend.pullbackSetup?.signal)) score += 6;
 
   const entryDiscipline = getActionabilityEntryDiscipline(trend, { isMoneyMarket });
   const freshnessDiscipline = getActionabilityFreshnessDiscipline(digest, { isMoneyMarket });
@@ -28157,7 +28377,7 @@ function buildSkillFocusDirective(intent = {}, skills = []) {
     );
   } else if (workflow === "fund_recommendation") {
     lines.push(
-      "本次任务焦点：给候选清单时先判断题材阶段、板块轮动、低位程度和拥挤度，再选择基金承载工具。",
+      "本次任务焦点：给候选清单时先判断题材阶段、主力跟随、预热题材、新闻逻辑、板块轮动、低位程度和拥挤度，再选择基金承载工具。",
       "不要把新闻热度或近期涨幅当成买入理由；推荐必须同时交代份额类别、费用模型、仓位和复查边界。"
     );
   } else if (workflow === "fund_screening") {
@@ -28669,6 +28889,7 @@ export {
   buildFeishuImageSupplementText,
   buildFundReportChartGlossaryAnswer,
   buildMarketDataQuality,
+  buildThemeRadar,
   buildPullbackQualityFallbackAnswer,
   buildFundWorkflowWatchlistSummary,
   classifyMessageIntent,

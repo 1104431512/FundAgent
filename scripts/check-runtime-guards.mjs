@@ -50,7 +50,7 @@ const forbiddenPatterns = [
     message: "in-image fund chart legends must avoid opaque theme-stage wording; use shorter low/high labels."
   },
   {
-    pattern: /function compactThemeRadarForModel[\s\S]{0,900}\n\s*(?:stage|positionSignal|actionBias|stageText|positionSignalText|actionBiasText)\s*:/,
+    pattern: /function compactThemeRadarForModel[\s\S]{0,1200}\n\s*(?:stage|positionSignal|actionBias|stageText|positionSignalText|actionBiasText|leaderSignal|capitalFollowScore|preheatScore|newsLogic)\s*:/,
     message: "compact market snapshots sent to the model must not expose raw theme-radar field names."
   },
   {
@@ -197,7 +197,7 @@ const requiredPatterns = [
     message: "fund chart glossary must explain the reading order in natural Chinese."
   },
   {
-    pattern: /function compactThemeRadarForModel[\s\S]{0,900}板块位置[\s\S]{0,900}位置判断[\s\S]{0,900}操作倾向/,
+    pattern: /function compactThemeRadarForModel(?=[\s\S]{0,1800}板块位置)(?=[\s\S]{0,1800}主力节奏)(?=[\s\S]{0,1800}题材逻辑)(?=[\s\S]{0,1800}操作倾向)/,
     message: "compact market snapshots must present theme-radar fields with Chinese labels before model calls."
   },
   {
@@ -1067,6 +1067,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*function inferThemeRetreatSignal)(?=[\s\S]*capitalRetreatScore)(?=[\s\S]*avgMainNetInflowPct)(?=[\s\S]*getActionabilityThemeRetreatDiscipline)(?=[\s\S]*题材退潮)(?=[\s\S]*主力资金撤离)/,
     message: "fund manager must block pullback-looking candidates when the theme is fading and main capital is leaving."
+  },
+  {
+    pattern: /(?=[\s\S]*function inferThemeLeaderSignal)(?=[\s\S]*capitalFollowScore)(?=[\s\S]*preheatScore)(?=[\s\S]*主力跟随)(?=[\s\S]*题材逻辑)(?=[\s\S]*follow_main_small)/,
+    message: "fund manager must identify main-capital entry, preheated themes, and news logic before ranking fund opportunities."
   },
   {
     pattern: /(?=[\s\S]*managerPerformance:\s*buildPortfolioManagerPerformanceStats\(db\))(?=[\s\S]*function buildPortfolioManagerPerformanceStats)(?=[\s\S]*操作正确率)(?=[\s\S]*盈利能力)(?=[\s\S]*operationLanes)(?=[\s\S]*proofPoints)/,
@@ -2401,7 +2405,7 @@ const requiredPatterns = [
     message: "fund actionability must incorporate structured top-ten holdings outlook."
   },
   {
-    pattern: /buildFundActionabilitySignals[\s\S]{0,3600}getActionabilityEntryDiscipline\(trend[\s\S]{0,900}boundedScore = Math\.min\(boundedScore, entryDiscipline\.scoreCap\)/,
+    pattern: /buildFundActionabilitySignals[\s\S]{0,4300}getActionabilityEntryDiscipline\(trend[\s\S]{0,1100}boundedScore = Math\.min\(boundedScore, entryDiscipline\.scoreCap\)/,
     message: "fund actionability must cap buy/staged-buy scores when the trend says wait for pullback."
   },
   {
@@ -2657,7 +2661,7 @@ const requiredPatterns = [
     message: "manager ranking boards must include a portfolio-fit lane that checks diversification and same-theme or holding overlap before buys."
   },
   {
-    pattern: /function buildPortfolioThemeAllocationRanking[\s\S]{0,2600}主题配置榜[\s\S]{0,2600}代表基金[\s\S]{0,2600}低位[\s\S]{0,2600}拥挤/,
+    pattern: /function buildPortfolioThemeAllocationRanking(?=[\s\S]{0,3600}主题配置榜)(?=[\s\S]{0,3600}代表基金)(?=[\s\S]{0,3600}低位)(?=[\s\S]{0,3600}拥挤)/,
     message: "manager ranking boards must include a theme-allocation lane that chooses sectors first, then representative funds, with low-position and crowding evidence."
   },
   {

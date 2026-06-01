@@ -3865,6 +3865,67 @@ assert(
   fadingChaseRiskRanking.items.some((item) => item.code === "000023" && item.facts.some((fact) => fact.includes("题材退潮") || fact.includes("主力资金撤离"))),
   "chase-risk ranking must surface stale-theme capital-outflow candidates as avoid/watch items"
 );
+const capitalEnteringDigest = {
+  ...setupDigest,
+  code: "000024",
+  name: "主力预热低位基金C",
+  seed: {
+    matchedThemes: [{
+      id: "ai_compute",
+      name: "AI/算力",
+      stage: "capital_entering",
+      positionSignal: "main_capital_entering",
+      actionBias: "follow_main_small",
+      leaderSignal: "capital_entering",
+      forwardScore: 62,
+      rotationScore: 48,
+      lowPositionScore: 54,
+      crowdingScore: 22,
+      capitalFollowScore: 76,
+      preheatScore: 58,
+      avgMainNetInflowPct: 2.6,
+      maxMainNetInflowPct: 4.4,
+      newsLogic: "主力刚进场：新闻催化：AI算力订单改善；板块验证：人工智能+1.4%，龙头工业富联；主力线索：相关板块资金均值净流入+2.6%"
+    }]
+  }
+};
+assert(
+  manager.scoreResearchDigestForPullbackSetup(capitalEnteringDigest) >
+    manager.scoreResearchDigestForPullbackSetup(setupDigest),
+  "deep-dive scoring must reward pullback candidates when main capital is entering and the theme has news logic"
+);
+const capitalEnteringActionability = manager.buildFundActionabilitySignals(capitalEnteringDigest);
+assert(
+  capitalEnteringActionability.decisiveEvidence.some((item) => item.includes("主力进场") || item.includes("题材预热") || item.includes("逻辑=")),
+  "actionability evidence must carry main-capital/preheat theme logic into manager prompts"
+);
+const capitalEnteringRotationRanking = manager.buildPortfolioRotationOpportunityRanking([{
+  code: "000024",
+  name: "主力预热低位基金C",
+  status: "ready",
+  readinessScore: 74,
+  lastSnapshot: capitalEnteringDigest
+}]);
+assert(
+  capitalEnteringRotationRanking.items.some((item) => item.code === "000024" && item.action.includes("主力预热") && item.facts.some((fact) => /主力|逻辑/.test(fact))),
+  "rotation ranking must surface main-capital entry and news logic instead of reducing the candidate to generic wait-and-see"
+);
+const liveThemeRadar = manager.buildThemeRadar({
+  conceptBoards: [
+    { boardCode: "BKAI1", name: "人工智能", changePct: 1.4, mainNetInflowPct: 2.6, leadStock: "工业富联", quoteTime: "10:30" },
+    { boardCode: "BKAI2", name: "机器人", changePct: 1.1, mainNetInflowPct: 3.1, leadStock: "中大力德", quoteTime: "10:30" }
+  ],
+  industryBoards: [],
+  fastNews: [{ title: "AI算力订单改善 产业链公司获机构调研", showTime: "10:10", mediaName: "测试快讯" }],
+  fundCandidates: {
+    stockFunds: [{ code: "000024", name: "人工智能主题C", type: "股票型基金", oneMonthPct: 3.2, dailyPct: 0.8, shareClass: "C" }]
+  }
+});
+const liveAiTheme = liveThemeRadar.find((theme) => theme.id === "ai_compute");
+assert(liveAiTheme, "theme radar must build an AI/compute theme from boards, news, and fund vehicles");
+assert.equal(liveAiTheme.leaderSignal, "capital_entering", "theme radar must identify main-capital entry before the sector becomes crowded");
+assert(liveAiTheme.capitalFollowScore >= 55, "theme radar must expose a strong main-capital follow score");
+assert(liveAiTheme.newsLogic.includes("新闻催化") && liveAiTheme.newsLogic.includes("主力线索"), "theme radar must explain why the theme is moving with news and capital evidence");
 const holdingsSupportedDigest = {
   ...setupDigest,
   code: "000031",
@@ -4689,13 +4750,17 @@ const noisyMarketSnapshot = {
     id: "gold",
     name: "黄金",
     stage: "crowded",
+    leaderSignal: "crowded",
     forwardScore: 62,
+    capitalFollowScore: 34,
+    preheatScore: 28,
     crowdingScore: 70,
     rotationScore: 35,
     lowPositionScore: 20,
     positionSignal: "high_chase_risk",
     actionBias: "wait_or_small_starter",
     primaryCatalyst: "避险",
+    newsLogic: "题材拥挤：新闻催化：金价波动；板块验证：贵金属+1.2%",
     evidence: {
       boards: [{ name: "贵金属", changePct: 1.2 }],
       news: [{ title: "金价波动", body: "NOISY_NEWS_PAYLOAD".repeat(300) }]
@@ -4730,8 +4795,12 @@ assert.equal(compactMarketSnapshot.marketIndicators.realtimeFundValuations.lengt
 assert(compactMarketSnapshot.marketIndicators.realtimeFundValuations[0].freshness === "半小时内更新", "compact market snapshot must preserve real-time valuation freshness labels");
 assert.equal(compactMarketSnapshot.marketIndicators.realtimeFundValuations[0]["盘中走势"], "盘中回落，冲高回落", "compact market snapshot must preserve intraday valuation direction for timing decisions");
 assert(compactMarketSnapshot.themeRadar[0]["板块位置"] === "交易拥挤", "compact market snapshot must carry Chinese theme-stage labels");
+assert(compactMarketSnapshot.themeRadar[0]["主力节奏"] === "交易拥挤", "compact market snapshot must carry Chinese leader-signal labels");
+assert.equal(compactMarketSnapshot.themeRadar[0]["题材逻辑"], "题材拥挤：新闻催化：金价波动；板块验证：贵金属+1.2%", "compact market snapshot must carry readable news/theme logic");
+assert.equal(compactMarketSnapshot.themeRadar[0]["主力跟随"], 34, "compact market snapshot must carry main-capital follow score under a Chinese label");
+assert.equal(compactMarketSnapshot.themeRadar[0]["预热评分"], 28, "compact market snapshot must carry preheat score under a Chinese label");
 assert(compactMarketSnapshot.themeRadar[0]["操作倾向"] === "等待或小额试探", "compact market snapshot must carry Chinese action-bias labels");
-assert(!/"(?:stage|positionSignal|actionBias|stageText|positionSignalText|actionBiasText)"\s*:/.test(compactMarketSnapshotJson), "compact market snapshot must not expose raw theme-radar field names to the model");
+assert(!/"(?:stage|positionSignal|actionBias|stageText|positionSignalText|actionBiasText|leaderSignal|capitalFollowScore|preheatScore|newsLogic)"\s*:/.test(compactMarketSnapshotJson), "compact market snapshot must not expose raw theme-radar field names to the model");
 assert(!compactMarketSnapshotJson.includes("NOISY_"), "compact market snapshot must strip raw payloads that cause context-window failures");
 assert(compactMarketSnapshotJson.length < 9000, "compact market snapshot must stay small enough for recommendation and QA prompts");
 assert(serverSource.includes("compactMarketSnapshotForModel(marketSnapshot)"), "fund recommendation, QA, and portfolio prompts must use compact market snapshots");
