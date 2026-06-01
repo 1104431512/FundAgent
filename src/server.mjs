@@ -17121,7 +17121,11 @@ function getCandidateThemeSignals(candidate = {}) {
       maxBoardDropPct: Number(theme?.maxBoardDropPct),
       leaderSignal: theme?.leaderSignal || "",
       primaryCatalyst: theme?.primaryCatalyst || "",
-      newsLogic: theme?.newsLogic || ""
+      dynamic: Boolean(theme?.dynamic),
+      newsLogic: theme?.newsLogic || "",
+      boardNames: normalizeStringArray(theme?.boardNames).slice(0, 4),
+      leaderStocks: normalizeStringArray(theme?.leaderStocks).slice(0, 4),
+      themeKeywords: normalizeStringArray(theme?.themeKeywords || theme?.fundKeywords || theme?.keywords).slice(0, 8)
     }))
     .filter((theme) => theme.id || theme.name)
     .filter((theme) => {
@@ -20119,7 +20123,11 @@ function matchCandidateThemes(candidate, themes = []) {
       positionSignal: theme.positionSignal,
       actionBias: theme.actionBias,
       primaryCatalyst: theme.primaryCatalyst || "",
-      newsLogic: theme.newsLogic || ""
+      dynamic: Boolean(theme.dynamic),
+      newsLogic: theme.newsLogic || "",
+      boardNames: (theme.evidence?.boards || []).map((item) => item.name).filter(Boolean).slice(0, 4),
+      leaderStocks: (theme.evidence?.boards || []).map((item) => item.leadStock).filter(Boolean).slice(0, 4),
+      themeKeywords: [...new Set([...(theme.fundKeywords || []), ...(theme.keywords || [])].filter(Boolean))].slice(0, 8)
     }))
     .slice(0, 3);
 }
@@ -22046,8 +22054,11 @@ function buildHoldingsOutlookProfile(candidate = {}) {
   const intentTerms = getCandidateOutlookTerms(candidate);
   const focusedTerms = intentTerms.filter(isSpecificThemeTerm);
   const matchedTags = holdingTags.filter((tag) => focusedTerms.some((term) => areThemeTermsRelated(term, tag))).slice(0, 4);
+  const themeAnchors = getCandidateThemeHoldingAnchors(themeSignals);
+  const matchedThemeHoldings = primaryHoldings.filter((holding) => holdingMatchesThemeAnchors(holding, themeAnchors)).slice(0, 4);
   const matchedThemeSignals = themeSignals.filter((theme) =>
     holdingTags.some((tag) => areThemeTermsRelated(theme.name || theme.id, tag))
+    || primaryHoldings.some((holding) => holdingMatchesThemeAnchors(holding, getCandidateThemeHoldingAnchors([theme])))
   );
   const top1Pct = primaryHoldings[0] ? primaryHoldings[0].pct : null;
   const top3Pct = sumFinitePct(primaryHoldings.slice(0, 3));
@@ -22090,6 +22101,19 @@ function buildHoldingsOutlookProfile(candidate = {}) {
   } else if (focusedTerms.length && holdingTags.length) {
     score -= 6;
     risks.push("前十大持仓与目标主题匹配度不足");
+  }
+  if (matchedThemeHoldings.length) {
+    score += 8;
+    positives.push(`前十大持仓命中题材龙头=${matchedThemeHoldings.map((item) => item.name || item.code).filter(Boolean).join("/")}`);
+  } else if (themeSignals.some((theme) =>
+    theme.leaderSignal === "capital_entering"
+    || theme.leaderSignal === "preheat_catalyst"
+    || theme.positionSignal === "main_capital_entering"
+    || theme.positionSignal === "preheat_catalyst_watch"
+    || theme.dynamic
+  )) {
+    score -= 5;
+    risks.push("前十大持仓未命中题材龙头，承载逻辑需复核");
   }
   if (matchedThemeSignals.some((theme) => theme.positionSignal === "low_position_rotation" || theme.stage === "low_position_rotation")) {
     score += 5;
@@ -22144,6 +22168,7 @@ function buildHoldingsOutlookProfile(candidate = {}) {
     Number.isFinite(top3Pct) ? `前三约${formatFallbackPlainPct(top3Pct)}` : "",
     holdingTags.length ? `行业=${holdingTags.join("/")}` : "",
     matchedTags.length ? `匹配=${matchedTags.join("/")}` : "",
+    matchedThemeHoldings.length ? `题材龙头=${matchedThemeHoldings.map(formatNormalizedHoldingItem).join("/")}` : "",
     realtimePulse?.ok ? `实时=${realtimePulse.label}${Number.isFinite(finiteMetricNumber(realtimePulse.weightedChangePct)) ? formatFallbackPct(realtimePulse.weightedChangePct) : ""}` : "",
     disclosureDate ? `披露=${disclosureDate}` : ""
   ].filter(Boolean);
@@ -22158,6 +22183,7 @@ function buildHoldingsOutlookProfile(candidate = {}) {
     topHoldings: primaryHoldings,
     holdingTags,
     matchedTags,
+    matchedThemeHoldings,
     concentration: {
       top1Pct: Number.isFinite(top1Pct) ? round(top1Pct, 2) : null,
       top3Pct: Number.isFinite(top3Pct) ? round(top3Pct, 2) : null,
@@ -22200,6 +22226,31 @@ function getCandidateOutlookTerms(candidate = {}) {
     ...(Array.isArray(candidate.keywords) ? candidate.keywords : []),
     ...themeTerms
   ].map((item) => String(item || "").trim()).filter(Boolean);
+}
+
+function getCandidateThemeHoldingAnchors(themeSignals = []) {
+  return [...new Set((themeSignals || []).flatMap((theme) => [
+    theme.name,
+    theme.id,
+    ...(theme.boardNames || []),
+    ...(theme.leaderStocks || []),
+    ...(theme.themeKeywords || [])
+  ]).map((item) => String(item || "").trim()).filter((item) =>
+    item.length >= 2
+    && !/^dynamic_/i.test(item)
+    && !/^(概念|行业|板块|基金|主题|指数|ETF|联接|股票型基金|混合型基金)$/.test(item)
+  ))].slice(0, 20);
+}
+
+function holdingMatchesThemeAnchors(holding = {}, anchors = []) {
+  if (!anchors.length) return false;
+  const text = normalizeIntentText(`${holding.code || ""} ${holding.name || ""} ${holding.text || ""}`);
+  if (!text) return false;
+  return anchors.some((anchor) => {
+    const value = normalizeIntentText(anchor);
+    if (!value || value.length < 2) return false;
+    return text.includes(value) || value.includes(text);
+  });
 }
 
 function isSpecificThemeTerm(term = "") {

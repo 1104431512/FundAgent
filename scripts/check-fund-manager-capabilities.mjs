@@ -4015,6 +4015,74 @@ assert(
   "actionability evidence must include top-ten holdings outlook, not only trend and fee signals"
 );
 assert.equal(holdingsActionability.holdingsOutlook.hasHoldings, true, "actionability must carry the structured holdings outlook profile");
+const dynamicThemeHoldingSupported = {
+  ...setupDigest,
+  code: "000041",
+  name: "低空经济主题C",
+  seed: {
+    matchedThemes: [{
+      id: "dynamic_BKNEW1",
+      name: "低空经济",
+      dynamic: true,
+      stage: "capital_entering",
+      positionSignal: "main_capital_entering",
+      leaderSignal: "capital_entering",
+      actionBias: "follow_main_small",
+      forwardScore: 60,
+      rotationScore: 46,
+      lowPositionScore: 50,
+      crowdingScore: 20,
+      capitalFollowScore: 72,
+      preheatScore: 58,
+      boardNames: ["低空经济"],
+      leaderStocks: ["万丰奥威"],
+      themeKeywords: ["低空经济", "飞行汽车"],
+      newsLogic: "主力刚进场：新闻催化：低空经济示范区政策加速落地；板块验证：低空经济+2.1%，龙头万丰奥威"
+    }]
+  },
+  holdings: {
+    ok: true,
+    equityTopHoldings: [
+      "002085 万丰奥威 8.1%",
+      "600038 中直股份 5.2%",
+      "300124 汇川技术 4.6%",
+      "002179 中航光电 3.8%",
+      "600150 中国船舶 3.2%",
+      "600760 中航沈飞 2.8%",
+      "000768 中航西飞 2.4%",
+      "600893 航发动力 2.1%"
+    ],
+    equityDisclosureDate: "2099-03-31"
+  }
+};
+const dynamicThemeHoldingWeak = {
+  ...dynamicThemeHoldingSupported,
+  code: "000042",
+  name: "低空经济错配基金C",
+  holdings: {
+    ok: true,
+    equityTopHoldings: [
+      "600519 贵州茅台 9.1%",
+      "000858 五粮液 7.2%",
+      "600036 招商银行 6.8%",
+      "601318 中国平安 4.4%",
+      "000333 美的集团 3.7%",
+      "600887 伊利股份 3.2%",
+      "601288 农业银行 2.8%",
+      "601398 工商银行 2.2%"
+    ],
+    equityDisclosureDate: "2099-03-31"
+  }
+};
+const dynamicSupportedOutlook = manager.buildHoldingsOutlookProfile(dynamicThemeHoldingSupported);
+const dynamicWeakOutlook = manager.buildHoldingsOutlookProfile(dynamicThemeHoldingWeak);
+assert(dynamicSupportedOutlook.evidence.includes("题材龙头") && dynamicSupportedOutlook.evidence.includes("万丰奥威"), "holdings outlook must prove that dynamic-theme funds actually hold the live theme leader");
+assert(dynamicWeakOutlook.risks.some((item) => item.includes("未命中题材龙头")), "holdings outlook must flag dynamic-theme funds whose top holdings do not carry the live theme");
+assert(
+  manager.scoreResearchDigestForPullbackSetup(dynamicThemeHoldingSupported) >
+    manager.scoreResearchDigestForPullbackSetup(dynamicThemeHoldingWeak),
+  "deep-dive scoring must prefer dynamic-theme candidates whose top-ten holdings actually carry the live board leader"
+);
 const hotButStrongActionability = manager.buildFundActionabilitySignals({
   ...holdingsSupportedDigest,
   code: "000033",
