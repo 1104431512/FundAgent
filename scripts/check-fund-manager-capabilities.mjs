@@ -4040,6 +4040,26 @@ assert(lowAltitudeTheme?.dynamic, "theme radar must create dynamic themes from l
 assert(["capital_entering", "preheat_catalyst", "trend_confirming"].includes(lowAltitudeTheme.leaderSignal), "dynamic themes must still receive actionable main-capital/preheat timing labels");
 assert(lowAltitudeTheme.newsLogic.includes("低空经济"), "dynamic themes must preserve news logic for emerging topics");
 assert(lowAltitudeTheme.newsLogic.includes("催化性质：政策落地"), "dynamic themes must explain policy/news catalyst type in plain Chinese");
+const themeLeaderboards = manager.buildThemeLeaderboards([
+  liveAiTheme,
+  fadingAiTheme,
+  lowAltitudeTheme,
+  {
+    id: "policy_preheat",
+    name: "政策预热测试",
+    leaderSignal: "preheat_catalyst",
+    positionSignal: "preheat_catalyst_watch",
+    actionBias: "preheat_watch",
+    preheatScore: 68,
+    lowPositionScore: 64,
+    crowdingScore: 12,
+    catalystProfile: { score: 32, tags: ["政策落地"], summary: "政策落地", risk: false },
+    newsLogic: "题材预热：新闻催化：政策试点加速落地；催化性质：政策落地"
+  }
+]);
+assert(themeLeaderboards.mainCapital.items.some((item) => item.name === "AI/算力"), "theme leaderboards must surface main-capital entry themes as a dedicated lane");
+assert(themeLeaderboards.preheat.items.some((item) => item.name === "政策预热测试" && item.catalyst.includes("政策落地")), "theme leaderboards must surface preheated policy catalysts with readable catalyst labels");
+assert(themeLeaderboards.retreat.items.some((item) => item.name === "AI/算力"), "theme leaderboards must keep capital-outflow themes in the avoid lane");
 const holdingsSupportedDigest = {
   ...setupDigest,
   code: "000031",

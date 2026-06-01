@@ -1081,6 +1081,10 @@ const requiredPatterns = [
     message: "theme news evidence must classify the catalyst type so the manager can explain why a sector is moving."
   },
   {
+    pattern: /(?=[\s\S]*function buildThemeLeaderboards)(?=[\s\S]*主力进场榜)(?=[\s\S]*题材预热榜)(?=[\s\S]*低位轮动榜)(?=[\s\S]*退潮回避榜)(?=[\s\S]*追涨风险榜)(?=[\s\S]*题材榜单)/,
+    message: "market snapshots must expose theme leaderboards for main-capital entry, preheat, low rotation, retreat, and chase-risk lanes."
+  },
+  {
     pattern: /(?=[\s\S]*function buildDynamicThemeRadarRules)(?=[\s\S]*buildDynamicThemeKeywords)(?=[\s\S]*dynamic_)(?=[\s\S]*discoveryScore)/,
     message: "theme radar must generate dynamic emerging themes from live concept and industry boards, not only a static dictionary."
   },

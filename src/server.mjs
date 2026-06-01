@@ -15917,6 +15917,7 @@ function summarizeMarketSnapshot(snapshot) {
     },
     themeRadar: (snapshot.themeRadar || []).slice(0, 8),
     fastNews: (snapshot.fastNews || []).slice(0, 8),
+    themeLeaderboards: snapshot.themeLeaderboards || buildThemeLeaderboards(snapshot.themeRadar || []),
     fundCandidates: {
       stockFunds: (snapshot.fundCandidates?.stockFunds || []).slice(0, 8),
       hybridFunds: (snapshot.fundCandidates?.hybridFunds || []).slice(0, 8),
@@ -15947,6 +15948,7 @@ function compactMarketSnapshotForModel(snapshot = null) {
       industryBoards: compactMarketBoardItems(summary.themes?.industryBoards || [], 6)
     },
     themeRadar: (summary.themeRadar || []).slice(0, 6).map(compactThemeRadarForModel),
+    题材榜单: compactThemeLeaderboardsForModel(summary.themeLeaderboards || buildThemeLeaderboards(summary.themeRadar || [])),
     fastNews: (summary.fastNews || []).slice(0, 6).map(compactFastNewsForModel),
     fundCandidates: {
       stockFunds: compactMarketFundCandidates(summary.fundCandidates?.stockFunds || [], 6),
@@ -15958,6 +15960,25 @@ function compactMarketSnapshotForModel(snapshot = null) {
     errors: (summary.errors || []).slice(0, 6),
     sources: (summary.sources || []).slice(0, 8)
   };
+}
+
+function compactThemeLeaderboardsForModel(leaderboards = {}) {
+  const laneKeys = ["mainCapital", "preheat", "lowRotation", "retreat", "chaseRisk"];
+  return Object.fromEntries(laneKeys.map((key) => {
+    const lane = leaderboards?.[key] || {};
+    return [key, {
+      标题: lane.title || "",
+      说明: lane.subtitle || "",
+      项目: (lane.items || []).slice(0, 3).map((item) => ({
+        题材: item.name || "",
+        看点: item.reason || "",
+        主力节奏: item.leader || "",
+        操作倾向: item.action || "",
+        催化性质: item.catalyst || "",
+        题材逻辑: item.newsLogic || ""
+      }))
+    }];
+  }));
 }
 
 function compactMarketDataQuality(quality = null) {
@@ -16773,6 +16794,30 @@ function formatThemeRadarEvidenceLine(theme = {}) {
   return `- ${fields.join("，")}`;
 }
 
+function formatThemeLeaderboardEvidenceLines(leaderboards = {}) {
+  const lanes = [
+    ["mainCapital", "主力进场"],
+    ["preheat", "题材预热"],
+    ["lowRotation", "低位轮动"],
+    ["retreat", "退潮回避"],
+    ["chaseRisk", "追涨风险"]
+  ];
+  return lanes.flatMap(([key, label]) => {
+    const items = (leaderboards?.[key]?.items || []).slice(0, 2);
+    if (!items.length) return [];
+    const text = items.map((item) => {
+      const parts = [
+        item.name || "未知题材",
+        item.reason || "",
+        item.catalyst ? `催化${item.catalyst}` : "",
+        item.action ? `动作${item.action}` : ""
+      ].filter(Boolean);
+      return parts.join("，");
+    }).join(" / ");
+    return [`- ${label}：${text}`];
+  });
+}
+
 function buildMarketEvidenceSummary(userText, marketSnapshot) {
   if (!marketSnapshot) {
     return "未抓取市场快照：只能按通用基金知识回答，不能声称已看到近期行情。";
@@ -16839,6 +16884,12 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
     lines.push("题材雷达：");
     lines.push(...themeRadar.map(formatThemeRadarEvidenceLine));
     lines.push("质量要求：题材雷达已提供，推荐前先判断题材阶段、主力跟随、预热评分、新闻逻辑、轮动评分、低位评分、拥挤度和后续赔率；新闻热但资金撤离要回避，主力刚进场且基金买点成立时可以小仓试探。");
+  }
+  const themeLeaderboardLines = formatThemeLeaderboardEvidenceLines(marketSnapshot.themeLeaderboards || buildThemeLeaderboards(marketSnapshot.themeRadar || []));
+  if (themeLeaderboardLines.length) {
+    lines.push("题材榜单：");
+    lines.push(...themeLeaderboardLines);
+    lines.push("质量要求：主力进场榜和题材预热榜只代表方向开始有线索，仍需基金买点、持仓承载和费用复核；退潮回避榜和追涨风险榜不能包装成买点。");
   }
 
   if (isPreciousMetalQuestion(userText)) {
@@ -19407,6 +19458,7 @@ async function fetchMarketSnapshot() {
     fastNews: fastNews.items || [],
     fundCandidates
   });
+  const themeLeaderboards = buildThemeLeaderboards(themeRadar);
   const dataQuality = buildMarketDataQuality(snapshotParts, {
     fundCandidates,
     fetchedAt,
@@ -19441,6 +19493,7 @@ async function fetchMarketSnapshot() {
       industryBoards: industryBoards.items || []
     },
     themeRadar,
+    themeLeaderboards,
     fastNews: fastNews.items || [],
     fundCandidates,
     errors: snapshotParts
@@ -20007,6 +20060,90 @@ function scoreThemeRadarPriority(theme = {}) {
     + Number(theme.capitalFollowScore || 0) * 0.2
     + Number(theme.preheatScore || 0) * 0.16
     + Number(theme.crowdingScore || 0) * 0.12;
+}
+
+function buildThemeLeaderboards(themeRadar = []) {
+  const themes = Array.isArray(themeRadar) ? themeRadar.filter(Boolean) : [];
+  const notRetreat = (theme) => !hasThemeCapitalRetreatRisk(theme);
+  const notCrowded = (theme) => theme.positionSignal !== "high_chase_risk" && theme.stage !== "crowded" && Number(theme.crowdingScore) < 55;
+  const makeLane = ({ id, title, subtitle, filter, score, reason }) => ({
+    id,
+    title,
+    subtitle,
+    items: themes
+      .filter(filter)
+      .sort((a, b) => score(b) - score(a))
+      .slice(0, 5)
+      .map((theme) => compactThemeLeaderboardItem(theme, reason(theme), round(score(theme), 1)))
+  });
+  return {
+    mainCapital: makeLane({
+      id: "main_capital",
+      title: "主力进场榜",
+      subtitle: "资金开始配合、但拥挤度还没失控的方向。",
+      filter: (theme) => notRetreat(theme) && notCrowded(theme) && (
+        theme.leaderSignal === "capital_entering"
+        || theme.positionSignal === "main_capital_entering"
+        || Number(theme.capitalFollowScore) >= 58
+      ),
+      score: (theme) => Number(theme.capitalFollowScore || 0) + Number(theme.forwardScore || 0) * 0.35 + Number(theme.catalystProfile?.score || 0) * 0.35,
+      reason: (theme) => theme.newsLogic ? "主力资金和题材逻辑同时出现" : "主力资金开始配合，等待新闻逻辑补齐"
+    }),
+    preheat: makeLane({
+      id: "preheat",
+      title: "题材预热榜",
+      subtitle: "有政策、产业或外盘催化，但还没有明显涨开的方向。",
+      filter: (theme) => notRetreat(theme) && notCrowded(theme) && (
+        theme.leaderSignal === "preheat_catalyst"
+        || theme.positionSignal === "preheat_catalyst_watch"
+        || Number(theme.preheatScore) >= 52
+      ),
+      score: (theme) => Number(theme.preheatScore || 0) + Number(theme.catalystProfile?.score || 0) * 0.45 + Number(theme.lowPositionScore || 0) * 0.22,
+      reason: (theme) => theme.catalystProfile?.summary ? `催化清晰：${theme.catalystProfile.summary}` : "预热线索出现，等待催化确认"
+    }),
+    lowRotation: makeLane({
+      id: "low_rotation",
+      title: "低位轮动榜",
+      subtitle: "位置较低、轮动评分改善，适合进入小仓试探复核的方向。",
+      filter: (theme) => notRetreat(theme) && notCrowded(theme) && (
+        theme.positionSignal === "low_position_rotation"
+        || theme.stage === "low_position_rotation"
+        || (Number(theme.rotationScore) >= 45 && Number(theme.lowPositionScore) >= 45)
+      ),
+      score: (theme) => Number(theme.rotationScore || 0) + Number(theme.lowPositionScore || 0) * 0.75 + Number(theme.capitalFollowScore || 0) * 0.18,
+      reason: () => "低位和轮动证据同时改善"
+    }),
+    retreat: makeLane({
+      id: "retreat",
+      title: "退潮回避榜",
+      subtitle: "主力流出或板块转弱，回调不能当买点。",
+      filter: (theme) => hasThemeCapitalRetreatRisk(theme),
+      score: (theme) => Number(theme.capitalRetreatScore || 0) + Math.max(0, -Number(theme.avgMainNetInflowPct || 0)) * 10,
+      reason: () => "主力撤离或题材退潮，先等资金回流"
+    }),
+    chaseRisk: makeLane({
+      id: "chase_risk",
+      title: "追涨风险榜",
+      subtitle: "涨幅、拥挤度或位置已经偏热，不能被新闻牵着追。",
+      filter: (theme) => theme.positionSignal === "high_chase_risk" || theme.stage === "crowded" || Number(theme.crowdingScore) >= 55,
+      score: (theme) => Number(theme.crowdingScore || 0) + Math.max(0, Number(theme.marketConfirmationScore || 0) - 35) * 0.5,
+      reason: () => "热度偏高，优先等回撤或降温"
+    })
+  };
+}
+
+function compactThemeLeaderboardItem(theme = {}, reason = "", score = 0) {
+  return {
+    id: theme.id || "",
+    name: theme.name || theme.id || "",
+    score,
+    reason,
+    leader: formatUserFacingFundLabel(theme.leaderSignal || theme.positionSignal || ""),
+    action: formatUserFacingFundLabel(theme.actionBias || ""),
+    catalyst: theme.catalystProfile?.summary || "",
+    newsLogic: theme.newsLogic || theme.primaryCatalyst || "",
+    primaryCatalyst: theme.primaryCatalyst || ""
+  };
 }
 
 function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], fastNews = [], allFunds = [] } = {}) {
@@ -29284,6 +29421,7 @@ export {
   buildFundReportChartGlossaryAnswer,
   buildMarketDataQuality,
   buildThemeRadar,
+  buildThemeLeaderboards,
   buildPullbackQualityFallbackAnswer,
   buildFundWorkflowWatchlistSummary,
   classifyMessageIntent,
