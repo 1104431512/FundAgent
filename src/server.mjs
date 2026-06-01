@@ -5706,7 +5706,7 @@ function buildPortfolioReadyStatusReadinessGuard(status, readiness = {}) {
 }
 
 function isPortfolioWatchStructuralReadinessGap(gap = "") {
-  return /基金规模|前十大集中度|特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛|题材退潮|主力资金撤离|主力撤离/.test(String(gap || ""));
+  return /基金规模|前十大集中度|持仓承载|前十大持仓未命中题材龙头|承载逻辑需复核|目标主题匹配度不足|特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛|题材退潮|主力资金撤离|主力撤离/.test(String(gap || ""));
 }
 
 function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
@@ -5719,6 +5719,8 @@ function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
   ];
   if (!evidence || !trend.ok) {
     gaps.push(...themeRetreatWarnings);
+    const holdingCarrierGap = getPortfolioWatchHoldingCarrierGap(evidence);
+    if (holdingCarrierGap) gaps.push(holdingCarrierGap);
     gaps.push("缺少可验证净值/走势下钻，不能进入买入执行。");
     return gaps;
   }
@@ -5757,6 +5759,10 @@ function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
   if (hasHighChaseTheme(evidence) || hasHighChaseTheme(item)) {
     gaps.push("题材拥挤或追涨风险仍需下降。");
   }
+  const holdingCarrierGap = getPortfolioWatchHoldingCarrierGap(evidence);
+  if (holdingCarrierGap) {
+    gaps.push(holdingCarrierGap);
+  }
   gaps.push(...themeRetreatWarnings);
   const specialAvailability = evaluatePortfolioSpecialShareClassAvailability(evidence);
   if (specialAvailability.required && !specialAvailability.ok) {
@@ -5771,6 +5777,14 @@ function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
     return ["低位/启动/刚转强/不过热/费用条件已满足，下一次盘前确认后再分批评估。"];
   }
   return gaps;
+}
+
+function getPortfolioWatchHoldingCarrierGap(evidence = null) {
+  return mergeStringLists(
+    evidence?.actionability?.decisionBlocker,
+    evidence?.actionability?.holdingsOutlook?.risks,
+    evidence?.holdingsOutlook?.risks
+  ).find((gap) => /持仓承载|前十大持仓未命中题材龙头|前十大持仓与目标主题匹配度不足/.test(gap)) || "";
 }
 
 function buildPortfolioWatchStructuralReadinessGaps(item = {}, evidence = null) {
@@ -5790,6 +5804,16 @@ function buildPortfolioWatchStructuralReadinessGaps(item = {}, evidence = null) 
     } else if (top10Pct >= 60) {
       gaps.push(`前十大集中度${formatFallbackPlainPct(top10Pct)}偏高，只能观察或小仓复核。`);
     }
+  }
+  const holdingsOutlook = resolvePortfolioWatchHoldingsOutlook({
+    ...item,
+    lastSnapshot: evidence || item.lastSnapshot
+  });
+  const holdingCarrierRisk = normalizeStringArray(holdingsOutlook.risks).find((risk) =>
+    /前十大持仓未命中题材龙头|前十大持仓与目标主题匹配度不足/.test(risk)
+  );
+  if (holdingCarrierRisk) {
+    gaps.push(holdingCarrierRisk);
   }
   return gaps;
 }
@@ -5925,6 +5949,7 @@ function getPortfolioWatchStructuralReadinessCap(gaps = []) {
   if (/题材退潮|主力资金撤离|主力撤离/.test(text)) return 46;
   if (/特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛/.test(text)) return 58;
   if (/基金规模.*不能作为可直接买入|前十大集中度.*过高/.test(text)) return 58;
+  if (/持仓承载|前十大持仓未命中题材龙头|承载逻辑需复核|目标主题匹配度不足/.test(text)) return 58;
   if (/基金规模.*偏小|前十大集中度.*偏高/.test(text)) return 78;
   return null;
 }
@@ -5935,6 +5960,7 @@ function scorePortfolioWatchReadinessGapPenalty(gap = "") {
   if (/基金规模.*不能作为可直接买入/.test(text)) return 30;
   if (/前十大集中度.*过高/.test(text)) return 24;
   if (/特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛/.test(text)) return 32;
+  if (/持仓承载|前十大持仓未命中题材龙头|承载逻辑需复核|目标主题匹配度不足/.test(text)) return 26;
   if (/基金规模.*偏小/.test(text)) return 16;
   if (/前十大集中度.*偏高/.test(text)) return 18;
   if (/回调完成|启动前夜/.test(text)) return 18;
@@ -23774,6 +23800,7 @@ function buildFundActionabilitySignals(digest) {
   const intradayDiscipline = getActionabilityIntradayDiscipline(digest, { isMoneyMarket });
   const valuationSourceDiscipline = getActionabilityValuationSourceDiscipline(digest, { isMoneyMarket });
   const themeRetreatDiscipline = getActionabilityThemeRetreatDiscipline(digest, { isMoneyMarket });
+  const holdingsDiscipline = getActionabilityHoldingsOutlookDiscipline(holdingsOutlook, { isMoneyMarket });
   if (Number.isFinite(intradayDiscipline.scorePenalty)) {
     score -= intradayDiscipline.scorePenalty;
   }
@@ -23782,6 +23809,9 @@ function buildFundActionabilitySignals(digest) {
   }
   if (Number.isFinite(themeRetreatDiscipline.scorePenalty)) {
     score -= themeRetreatDiscipline.scorePenalty;
+  }
+  if (Number.isFinite(holdingsDiscipline.scorePenalty)) {
+    score -= holdingsDiscipline.scorePenalty;
   }
   let boundedScore = Math.max(0, Math.min(100, Math.round(score)));
   if (Number.isFinite(entryDiscipline.scoreCap)) {
@@ -23798,6 +23828,9 @@ function buildFundActionabilitySignals(digest) {
   }
   if (Number.isFinite(themeRetreatDiscipline.scoreCap)) {
     boundedScore = Math.min(boundedScore, themeRetreatDiscipline.scoreCap);
+  }
+  if (Number.isFinite(holdingsDiscipline.scoreCap)) {
+    boundedScore = Math.min(boundedScore, holdingsDiscipline.scoreCap);
   }
   const action = boundedScore >= 78
     ? "buy"
@@ -23844,6 +23877,7 @@ function buildFundActionabilitySignals(digest) {
     intradayDiscipline.blocker || "",
     valuationSourceDiscipline.blocker || "",
     themeRetreatDiscipline.blocker || "",
+    holdingsDiscipline.blocker || "",
     trend.invalidationHint || "",
     isMoneyMarket ? "货币基金主要用于现金管理，不适合作为权益进攻仓或追求高弹性的配置。" : "",
     trend.trendLabel === "extended_uptrend" ? "短期涨幅偏热，不符合回调完成后启动的买点。" : "",
@@ -23963,6 +23997,28 @@ function getActionabilityThemeRetreatDiscipline(digest = {}, { isMoneyMarket = f
     scorePenalty: 14,
     blocker: `系统题材退潮拦截：${warnings[0]}。`
   };
+}
+
+function getActionabilityHoldingsOutlookDiscipline(holdingsOutlook = {}, { isMoneyMarket = false } = {}) {
+  if (isMoneyMarket || !holdingsOutlook || typeof holdingsOutlook !== "object") {
+    return { scoreCap: null, scorePenalty: 0, blocker: "" };
+  }
+  const riskText = normalizeStringArray(holdingsOutlook.risks).join(" ");
+  if (/前十大持仓未命中题材龙头|前十大持仓与目标主题匹配度不足/.test(riskText)) {
+    return {
+      scoreCap: 58,
+      scorePenalty: 14,
+      blocker: "系统持仓承载降级：前十大持仓没有证明基金真实承载该题材，不能给买入或分批买入动作。"
+    };
+  }
+  if (holdingsOutlook.hasHoldings === false) {
+    return {
+      scoreCap: 62,
+      scorePenalty: 8,
+      blocker: "系统持仓承载降级：缺少前十大持仓/行业前景验证，不能把题材名字直接当买入理由。"
+    };
+  }
+  return { scoreCap: null, scorePenalty: 0, blocker: "" };
 }
 
 function buildFundValuationSourceAgreement(valuation = {}) {

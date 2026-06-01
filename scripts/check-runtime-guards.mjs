@@ -1081,6 +1081,10 @@ const requiredPatterns = [
     message: "holdings outlook must connect emerging themes to live board leaders before treating a fund as a true theme vehicle."
   },
   {
+    pattern: /(?=[\s\S]*function getActionabilityHoldingsOutlookDiscipline)(?=[\s\S]*系统持仓承载降级)(?=[\s\S]*前十大持仓没有证明基金真实承载该题材)(?=[\s\S]*getPortfolioWatchStructuralReadinessCap[\s\S]*前十大持仓未命中题材龙头)/,
+    message: "buy/actionability and watchlist readiness must be capped when holdings do not prove theme-carrier alignment."
+  },
+  {
     pattern: /(?=[\s\S]*managerPerformance:\s*buildPortfolioManagerPerformanceStats\(db\))(?=[\s\S]*function buildPortfolioManagerPerformanceStats)(?=[\s\S]*操作正确率)(?=[\s\S]*盈利能力)(?=[\s\S]*operationLanes)(?=[\s\S]*proofPoints)/,
     message: "portfolio public API must expose manager performance proof statistics with correctness and profitability cards."
   },

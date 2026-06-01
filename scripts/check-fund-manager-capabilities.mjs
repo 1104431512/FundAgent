@@ -4083,6 +4083,27 @@ assert(
     manager.scoreResearchDigestForPullbackSetup(dynamicThemeHoldingWeak),
   "deep-dive scoring must prefer dynamic-theme candidates whose top-ten holdings actually carry the live board leader"
 );
+const dynamicWeakActionability = manager.buildFundActionabilitySignals(dynamicThemeHoldingWeak);
+assert(["wait", "avoid"].includes(dynamicWeakActionability.action), "actionability must not allow buy/staged-buy when a dynamic-theme fund does not hold the live theme leader");
+assert(dynamicWeakActionability.score < 62, "holdings-carrier discipline must cap actionability below staged-buy threshold");
+assert(
+  dynamicWeakActionability.decisionBlocker.some((item) => item.includes("持仓承载") || item.includes("题材名字")),
+  "actionability blocker must explain that the fund name/theme is not enough without top-ten holdings support"
+);
+const dynamicWeakReadiness = manager.evaluatePortfolioWatchReadiness({
+  code: "000042",
+  name: "低空经济错配基金C",
+  status: "ready",
+  lastSnapshot: {
+    ...dynamicThemeHoldingWeak,
+    actionability: dynamicWeakActionability
+  }
+});
+assert(dynamicWeakReadiness.score <= 58, "watchlist readiness must cap dynamic-theme candidates whose holdings do not carry the live board leader");
+assert(
+  dynamicWeakReadiness.gaps.some((item) => item.includes("持仓承载") || item.includes("未命中题材龙头") || item.includes("目标主题匹配度不足")),
+  "watchlist readiness gaps must expose holdings-carrier mismatch before a ready candidate can be bought"
+);
 const hotButStrongActionability = manager.buildFundActionabilitySignals({
   ...holdingsSupportedDigest,
   code: "000033",
