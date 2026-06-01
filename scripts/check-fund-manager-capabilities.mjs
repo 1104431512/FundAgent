@@ -3988,6 +3988,7 @@ assert(liveAiTheme, "theme radar must build an AI/compute theme from boards, new
 assert.equal(liveAiTheme.leaderSignal, "capital_entering", "theme radar must identify main-capital entry before the sector becomes crowded");
 assert(liveAiTheme.capitalFollowScore >= 55, "theme radar must expose a strong main-capital follow score");
 assert(liveAiTheme.newsLogic.includes("新闻催化") && liveAiTheme.newsLogic.includes("主力线索"), "theme radar must explain why the theme is moving with news and capital evidence");
+assert(liveAiTheme.catalystProfile?.summary.includes("产业订单"), "theme radar must classify why a theme is moving instead of treating every headline as equal noise");
 const retreatThemeRadar = manager.buildThemeRadar({
   conceptBoards: [
     { boardCode: "BKAI9", name: "CPO", changePct: -3.4, mainNetInflowPct: -4.2, leadStock: "新易盛", quoteTime: "10:45", coverageSources: ["主力流出榜", "跌幅榜"] },
@@ -4022,6 +4023,7 @@ const lowAltitudeTheme = dynamicThemeRadar.find((theme) => theme.name === "低�
 assert(lowAltitudeTheme?.dynamic, "theme radar must create dynamic themes from live concept boards instead of relying only on a static theme dictionary");
 assert(["capital_entering", "preheat_catalyst", "trend_confirming"].includes(lowAltitudeTheme.leaderSignal), "dynamic themes must still receive actionable main-capital/preheat timing labels");
 assert(lowAltitudeTheme.newsLogic.includes("低空经济"), "dynamic themes must preserve news logic for emerging topics");
+assert(lowAltitudeTheme.newsLogic.includes("催化性质：政策落地"), "dynamic themes must explain policy/news catalyst type in plain Chinese");
 const holdingsSupportedDigest = {
   ...setupDigest,
   code: "000031",

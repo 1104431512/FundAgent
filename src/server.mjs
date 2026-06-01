@@ -16039,6 +16039,7 @@ function compactThemeRadarForModel(theme = {}) {
     前瞻评分: finiteMetricNumber(theme.forwardScore),
     主力跟随: finiteMetricNumber(theme.capitalFollowScore),
     预热评分: finiteMetricNumber(theme.preheatScore),
+    催化性质: theme.catalystProfile?.summary || "",
     拥挤度: finiteMetricNumber(theme.crowdingScore),
     轮动评分: finiteMetricNumber(theme.rotationScore),
     低位评分: finiteMetricNumber(theme.lowPositionScore),
@@ -16763,6 +16764,7 @@ function formatThemeRadarEvidenceLine(theme = {}) {
     theme.positionSignal ? `位置：${formatUserFacingFundLabel(theme.positionSignal)}` : "",
     theme.actionBias ? `操作倾向：${formatUserFacingFundLabel(theme.actionBias)}` : "",
     theme.newsLogic ? `题材逻辑：${theme.newsLogic}` : "",
+    theme.catalystProfile?.summary ? `催化性质：${theme.catalystProfile.summary}` : "",
     theme.primaryCatalyst ? `主要催化：${theme.primaryCatalyst}` : "",
     theme.evidence?.boards?.length ? `板块：${theme.evidence.boards.slice(0, 2).map((item) => `${item.name}${formatSignedNumber(item.changePct)}%`).join("/")}` : "",
     theme.evidence?.globalMarkets?.length ? `海外：${theme.evidence.globalMarkets.slice(0, 2).map((item) => `${item.name}${formatSignedNumber(item.changePct)}%`).join("/")}` : "",
@@ -19809,6 +19811,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
           }))
       : [];
 
+    const newsCatalystProfile = buildNewsCatalystProfile(news, rule);
     const boardFlowValues = boards.map((item) => Number(item.mainNetInflowPct)).filter(Number.isFinite);
     const boardChangeValues = boards.map((item) => Number(item.changePct)).filter(Number.isFinite);
     const boardOutflowCount = boardFlowValues.filter((value) => value < 0).length;
@@ -19831,7 +19834,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + maxOutflow * 6
       + Math.abs(maxBoardDropPct) * 8
     );
-    const catalystScore = clampScore(news.length * 12 + metals.filter((item) => Number.isFinite(item.changePct)).length * 4 + overseasMarkets.filter((item) => Number.isFinite(item.changePct)).length * 3);
+    const catalystScore = clampScore(news.length * 6 + newsCatalystProfile.score + metals.filter((item) => Number.isFinite(item.changePct)).length * 4 + overseasMarkets.filter((item) => Number.isFinite(item.changePct)).length * 3);
     const boardScore = clampScore(
       boards.reduce((sum, item) => sum + Math.max(0, Number(item.changePct || 0)) * 4 + Math.max(0, Number(item.mainNetInflowPct || 0)) / 8, 0)
       - capitalRetreatScore * 0.35
@@ -19914,7 +19917,8 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       leaderSignal,
       avgMainNetInflowPct,
       maxMainNetInflowPct,
-      minMainNetInflowPct
+      minMainNetInflowPct,
+      newsCatalystProfile
     });
 
     return {
@@ -19934,6 +19938,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       capitalRetreatScore: round(capitalRetreatScore, 1),
       capitalFollowScore: round(capitalFollowScore, 1),
       preheatScore: round(preheatScore, 1),
+      catalystProfile: newsCatalystProfile,
       avgMainNetInflowPct: Number.isFinite(avgMainNetInflowPct) ? round(avgMainNetInflowPct, 2) : null,
       minMainNetInflowPct: Number.isFinite(minMainNetInflowPct) ? round(minMainNetInflowPct, 2) : null,
       maxMainNetInflowPct: Number.isFinite(maxMainNetInflowPct) ? round(maxMainNetInflowPct, 2) : null,
@@ -20114,7 +20119,32 @@ function inferThemePositionSignal({ crowdingScore, rotationScore, lowPositionSco
   return "neutral_or_wait";
 }
 
-function buildThemeCatalystLogic({ rule = {}, news = [], boards = [], metals = [], overseasMarkets = [], leaderSignal = "", avgMainNetInflowPct = null, maxMainNetInflowPct = null, minMainNetInflowPct = null } = {}) {
+function buildNewsCatalystProfile(news = [], rule = {}) {
+  const text = (news || []).map((item) => `${item.title || ""} ${item.mediaName || ""}`).join(" ");
+  const tags = [];
+  const add = (pattern, label, weight) => {
+    if (pattern.test(text) && !tags.some((item) => item.label === label)) {
+      tags.push({ label, weight });
+    }
+  };
+  add(/政策|规划|方案|通知|会议|试点|示范区|补贴|发改委|工信部|国务院|地方|落地|推进|加速/i, "政策落地", 18);
+  add(/订单|需求|供给|产能|库存|招标|中标|交付|出货|产业链|调研|扩产/i, "产业订单", 16);
+  add(/涨价|提价|价格|库存下降|供需|稀缺|短缺|限产/i, "价格上行", 14);
+  add(/业绩|利润|营收|预增|盈利|改善|超预期/i, "业绩改善", 12);
+  add(/美股|海外|英伟达|苹果|特斯拉|微软|OpenAI|美联储|美元|美债|COMEX|日经|纳斯达克/i, "外盘映射", 10);
+  add(/资金|主力|北向|南向|ETF|机构|增持|回购|净流入/i, "资金关注", 8);
+  const hasRisk = /风险|利空|减持|跳水|大跌|杀跌|回落|回调|高位震荡|净流出|撤离|监管|调查/i.test(text);
+  const score = clampScore(tags.reduce((sum, item) => sum + item.weight, 0) - (hasRisk ? 14 : 0));
+  return {
+    score,
+    tags: tags.map((item) => item.label),
+    summary: tags.map((item) => item.label).slice(0, 3).join("、") || (hasRisk ? "风险提醒" : ""),
+    risk: hasRisk,
+    themeMatched: textMatchesKeywords(text, rule.keywords || [])
+  };
+}
+
+function buildThemeCatalystLogic({ rule = {}, news = [], boards = [], metals = [], overseasMarkets = [], leaderSignal = "", avgMainNetInflowPct = null, maxMainNetInflowPct = null, minMainNetInflowPct = null, newsCatalystProfile = null } = {}) {
   const facts = [];
   const topNews = String(news[0]?.title || "").trim();
   const topBoard = boards[0] || {};
@@ -20124,6 +20154,7 @@ function buildThemeCatalystLogic({ rule = {}, news = [], boards = [], metals = [
   const maxFlow = Number(maxMainNetInflowPct);
   const minFlow = Number(minMainNetInflowPct);
   if (topNews) facts.push(`新闻催化：${topNews.slice(0, 80)}`);
+  if (newsCatalystProfile?.summary) facts.push(`催化性质：${newsCatalystProfile.summary}`);
   if (topBoard.name) {
     const lead = topBoard.leadStock ? `，龙头${topBoard.leadStock}` : "";
     facts.push(`板块验证：${topBoard.name}${formatSignedNumber(topBoard.changePct)}%${lead}`);
@@ -20142,7 +20173,7 @@ function buildThemeCatalystLogic({ rule = {}, news = [], boards = [], metals = [
       : leaderSignal === "capital_outflow"
         ? "题材退潮"
         : rule.name || "题材线索";
-  return `${prefix}：${facts.slice(0, 3).join("；")}`;
+  return `${prefix}：${facts.slice(0, 4).join("；")}`;
 }
 
 function selectRelevantThemeRadar(userText, marketSnapshot) {
