@@ -24121,8 +24121,13 @@ function buildFundActionabilitySignals(digest) {
     )
   );
   if (leaderThemeSupport && ["pullback_complete", "launch_setup"].includes(trend.pullbackSetup?.signal)) score += 6;
+  const hasBuySetup = ["pullback_complete", "launch_setup"].includes(trend.pullbackSetup?.signal || "")
+    && ["buyable_now", "staged_buy"].includes(trend.entryBias);
+  const microStarterSupport = hasActionabilityMicroStarterSupport(digest, trend);
+  const microStarterOnly = microStarterSupport && !hasBuySetup;
+  if (microStarterOnly) score += 12;
 
-  const entryDiscipline = getActionabilityEntryDiscipline(trend, { isMoneyMarket });
+  const entryDiscipline = getActionabilityEntryDiscipline(trend, { isMoneyMarket, microStarterSupport });
   const freshnessDiscipline = getActionabilityFreshnessDiscipline(digest, { isMoneyMarket });
   const intradayDiscipline = getActionabilityIntradayDiscipline(digest, { isMoneyMarket });
   const valuationSourceDiscipline = getActionabilityValuationSourceDiscipline(digest, { isMoneyMarket });
@@ -24176,6 +24181,8 @@ function buildFundActionabilitySignals(digest) {
   const highDrawdown = Number.isFinite(risk.maxDrawdownPct) && risk.maxDrawdownPct <= -25;
   const allocationBand = isMoneyMarket
     ? (action === "avoid" ? "0%" : "现金管理仓，按闲置资金和流动性需求配置")
+    : microStarterOnly && ["buy", "staged_buy"].includes(action)
+      ? "0.5%-2.5% 试探仓"
     : action === "buy"
       ? (highDrawdown ? "5%-10%" : "10%-20%")
       : action === "staged_buy"
@@ -24192,6 +24199,7 @@ function buildFundActionabilitySignals(digest) {
     formatIntradayTrendActionabilityEvidence(intradayTrend),
     formatValuationSourceAgreementEvidence(valuationSourceAgreement),
     formatCandidateThemeEvidence(digest),
+    microStarterOnly ? "主力预热和低位温和转强同时出现，但基金买点未完全确认，只允许0.5%-2.5%试探仓。" : "",
     risk.ok ? `近一年收益${risk.totalReturnPct}%，最大回撤${risk.maxDrawdownPct}%，夏普${risk.sharpe}` : "",
     holdingsOutlook.evidence,
     formatMoneyMarketEvidence(digest.moneyMarket),
@@ -24229,7 +24237,33 @@ function buildFundActionabilitySignals(digest) {
   };
 }
 
-function getActionabilityEntryDiscipline(trend = {}, { isMoneyMarket = false } = {}) {
+function hasActionabilityMicroStarterSupport(digest = {}, trend = {}) {
+  if (!digest || !trend || typeof trend !== "object") return false;
+  if (trend.entryBias === "avoid_now" || trend.trendLabel === "breakdown" || trend.trendLabel === "extended_uptrend") return false;
+  const r5 = Number(trend.return5dPct);
+  const r10 = Number(trend.return10dPct);
+  const r20 = Number(trend.return20dPct);
+  const low120 = Number(trend.lowPositionPct120);
+  const low250 = Number(trend.lowPositionPct250);
+  const gentleTurn = Number.isFinite(r5) && r5 >= 0 && r5 <= 4.5
+    && Number.isFinite(r10) && r10 >= -1 && r10 <= 7
+    && (!Number.isFinite(r20) || (r20 >= -5 && r20 <= 8));
+  const lowEnough = (Number.isFinite(low120) && low120 <= 60) || (Number.isFinite(low250) && low250 <= 65);
+  if (!gentleTurn || !lowEnough) return false;
+  return getCandidateThemeSignals(digest).some((theme) =>
+    !hasThemeCapitalRetreatRisk(theme)
+    && Number(theme.crowdingScore) < 45
+    && Boolean(theme.catalystProfile?.summary || theme.newsLogic)
+    && (
+      ["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)
+      || ["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)
+      || Number(theme.capitalFollowScore) >= 58
+      || Number(theme.preheatScore) >= 56
+    )
+  );
+}
+
+function getActionabilityEntryDiscipline(trend = {}, { isMoneyMarket = false, microStarterSupport = false } = {}) {
   if (isMoneyMarket || !trend || typeof trend !== "object") {
     return { scoreCap: null, blocker: "" };
   }
@@ -24249,6 +24283,12 @@ function getActionabilityEntryDiscipline(trend = {}, { isMoneyMarket = false } =
       Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置${formatFallbackPlainPct(trend.lowPositionPct120)}` : "",
       Number.isFinite(Number(trend.lowPositionPct250)) ? `250日位置${formatFallbackPlainPct(trend.lowPositionPct250)}` : ""
     ].filter(Boolean).join("，") || "当前位置偏热";
+    if (microStarterSupport && trend.trendLabel !== "extended_uptrend") {
+      return {
+        scoreCap: 64,
+        blocker: `系统小仓试探限制：${hotEvidence}，题材主力/预热线索成立但基金买点未完全确认，只允许0.5%-2.5%试探仓，不能重仓买入。`
+      };
+    }
     return {
       scoreCap: 58,
       blocker: `系统动作降级：${hotEvidence}，买点判断仍是等待回撤，不能给买入或分批买入动作。`

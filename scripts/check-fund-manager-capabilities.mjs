@@ -3991,6 +3991,49 @@ assert(
   capitalEnteringActionability.decisiveEvidence.some((item) => item.includes("主力进场") || item.includes("题材预热") || item.includes("催化=产业订单") || item.includes("逻辑=")),
   "actionability evidence must carry main-capital/preheat theme logic into manager prompts"
 );
+const microStarterDigest = {
+  ...capitalEnteringDigest,
+  trendProfile: {
+    pullbackSetup: { signal: "none", score: 42 },
+    trendLabel: "range_or_mixed",
+    entryBias: "wait_pullback",
+    return5dPct: 1.2,
+    return10dPct: 2.4,
+    return20dPct: 3.8,
+    lowPositionPct120: 42,
+    lowPositionPct250: 52,
+    drawdownFromRecentHighPct: -6.1
+  },
+  risk: {
+    oneYear: {
+      ok: true,
+      annualizedReturnPct: 12.4,
+      maxDrawdownPct: -13.6,
+      sharpe: 1.08
+    }
+  },
+  fees: {
+    shareClass: "C",
+    shareClassFeeModel: { type: "sales_service_fee", label: "C类：偏销售服务费模型" },
+    feeImpact: { oneYearCostPer10000: 35, missingFeeData: [] }
+  },
+  holdings: {
+    ok: true,
+    equityDisclosureDate: "2099-03-31",
+    equityTopHoldings: ["601138 工业富联 7.2%", "300502 新易盛 4.1%"]
+  },
+  seed: {
+    matchedThemes: [{
+      ...capitalEnteringDigest.seed.matchedThemes[0],
+      leaderStocks: ["工业富联", "新易盛"],
+      themeKeywords: ["人工智能", "算力", "CPO"]
+    }]
+  }
+};
+const microStarterActionability = manager.buildFundActionabilitySignals(microStarterDigest);
+assert.equal(microStarterActionability.action, "staged_buy", "main-capital/preheat setups with gentle low-position turns must allow a small starter instead of endless waiting");
+assert(microStarterActionability.allocationBand.includes("0.5%-2.5%"), "micro-starter actionability must cap sizing to a tiny starter band");
+assert(microStarterActionability.decisionBlocker.some((item) => item.includes("小仓试探")), "micro-starter actionability must explain that the normal buy point is not fully confirmed");
 const capitalEnteringRotationRanking = manager.buildPortfolioRotationOpportunityRanking([{
   code: "000024",
   name: "主力预热低位基金C",

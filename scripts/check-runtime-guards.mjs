@@ -1085,6 +1085,10 @@ const requiredPatterns = [
     message: "theme news evidence must classify the catalyst type so the manager can explain why a sector is moving."
   },
   {
+    pattern: /(?=[\s\S]*function hasActionabilityMicroStarterSupport)(?=[\s\S]*0\.5%-2\.5% 试探仓)(?=[\s\S]*系统小仓试探限制)(?=[\s\S]*microStarterSupport)/,
+    message: "actionability must allow tiny starter positions for catalyst-backed main-capital setups without turning them into heavy buys."
+  },
+  {
     pattern: /(?=[\s\S]*function buildThemeLeaderboards)(?=[\s\S]*主力进场榜)(?=[\s\S]*题材预热榜)(?=[\s\S]*低位轮动榜)(?=[\s\S]*退潮回避榜)(?=[\s\S]*追涨风险榜)(?=[\s\S]*题材榜单)/,
     message: "market snapshots must expose theme leaderboards for main-capital entry, preheat, low rotation, retreat, and chase-risk lanes."
   },
@@ -2441,7 +2445,7 @@ const requiredPatterns = [
     message: "fund actionability must incorporate structured top-ten holdings outlook."
   },
   {
-    pattern: /buildFundActionabilitySignals[\s\S]{0,4300}getActionabilityEntryDiscipline\(trend[\s\S]{0,1100}boundedScore = Math\.min\(boundedScore, entryDiscipline\.scoreCap\)/,
+    pattern: /buildFundActionabilitySignals[\s\S]{0,5400}getActionabilityEntryDiscipline\(trend[\s\S]{0,1800}boundedScore = Math\.min\(boundedScore, entryDiscipline\.scoreCap\)/,
     message: "fund actionability must cap buy/staged-buy scores when the trend says wait for pullback."
   },
   {
