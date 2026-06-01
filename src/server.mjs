@@ -16023,7 +16023,8 @@ function compactMarketBoardItems(items = [], limit = 6) {
     changePct: finiteMetricNumber(item.changePct),
     mainNetInflowPct: finiteMetricNumber(item.mainNetInflowPct),
     leadStock: item.leadStock || "",
-    quoteTime: item.quoteTime || ""
+    quoteTime: item.quoteTime || "",
+    榜单线索: Array.isArray(item.coverageSources) ? item.coverageSources.slice(0, 3).join("、") : ""
   }));
 }
 
@@ -16049,7 +16050,8 @@ function compactThemeRadarForModel(theme = {}) {
     相关板块: (theme.evidence?.boards || []).slice(0, 2).map((item) => ({
       name: item.name || "",
       changePct: finiteMetricNumber(item.changePct),
-      mainNetInflowPct: finiteMetricNumber(item.mainNetInflowPct)
+      mainNetInflowPct: finiteMetricNumber(item.mainNetInflowPct),
+      榜单线索: Array.isArray(item.coverageSources) ? item.coverageSources.slice(0, 3).join("、") : ""
     })),
     海外市场: (theme.evidence?.globalMarkets || []).slice(0, 2).map((item) => ({
       name: item.name || "",
@@ -19323,8 +19325,8 @@ async function fetchMarketSnapshot() {
     yangjibaoIndices,
     fastNews
   ] = await Promise.all([
-    fetchEastmoneyBoards("concept").catch((error) => ({ ok: false, error: error.message, items: [] })),
-    fetchEastmoneyBoards("industry").catch((error) => ({ ok: false, error: error.message, items: [] })),
+    fetchEastmoneyBoardCoverage("concept").catch((error) => ({ ok: false, error: error.message, items: [] })),
+    fetchEastmoneyBoardCoverage("industry").catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchFundRanking("gp", "股票型基金").catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchFundRanking("hh", "混合型基金").catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchFundRanking("zs", "指数型基金").catch((error) => ({ ok: false, error: error.message, items: [] })),
@@ -19752,8 +19754,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
     ...buildDynamicThemeRadarRules({ conceptBoards, industryBoards, fastNews, allFunds })
   ];
   const themes = rules.map((rule) => {
-    const boards = [...conceptBoards, ...industryBoards]
-      .filter((board) => textMatchesKeywords(`${board.name || ""} ${board.leadStock || ""}`, rule.keywords))
+    const boards = selectThemeBoardEvidence([...conceptBoards, ...industryBoards], rule.keywords)
       .slice(0, 5)
       .map((board) => ({
         name: board.name || board.boardCode || "",
@@ -19761,7 +19762,9 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
         changePct: board.changePct,
         mainNetInflowPct: board.mainNetInflowPct,
         leadStock: board.leadStock || "",
-        quoteTime: board.quoteTime || ""
+        quoteTime: board.quoteTime || "",
+        coverageSources: Array.isArray(board.coverageSources) ? board.coverageSources.slice(0, 4) : [],
+        rankSignals: Array.isArray(board.rankSignals) ? board.rankSignals.slice(0, 4) : []
       }));
     const news = fastNews
       .filter((item) => textMatchesKeywords(`${item.title || ""} ${item.mediaName || ""}`, rule.keywords))
@@ -19910,7 +19913,8 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       overseasMarkets,
       leaderSignal,
       avgMainNetInflowPct,
-      maxMainNetInflowPct
+      maxMainNetInflowPct,
+      minMainNetInflowPct
     });
 
     return {
@@ -19956,7 +19960,15 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
     || theme.preheatScore >= 42
   );
 
-  return themes.sort((a, b) => b.forwardScore - a.forwardScore).slice(0, 12);
+  return themes.sort((a, b) => scoreThemeRadarPriority(b) - scoreThemeRadarPriority(a)).slice(0, 12);
+}
+
+function scoreThemeRadarPriority(theme = {}) {
+  return Number(theme.forwardScore || 0)
+    + Math.max(0, Number(theme.capitalRetreatScore || 0) - 45) * 1.25
+    + Number(theme.capitalFollowScore || 0) * 0.2
+    + Number(theme.preheatScore || 0) * 0.16
+    + Number(theme.crowdingScore || 0) * 0.12;
 }
 
 function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], fastNews = [], allFunds = [] } = {}) {
@@ -19970,13 +19982,19 @@ function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], 
       const fundCount = (allFunds || []).filter((fund) => textMatchesKeywords(`${fund.name || ""} ${fund.type || ""} ${(fund.keywords || []).join(" ")}`, keywords)).length;
       const change = Number(board.changePct || 0);
       const flow = Number(board.mainNetInflowPct || 0);
+      const retreatPenalty = Math.max(0, -change) * 8 + Math.max(0, -flow) * 10;
       return {
         board,
         keywords,
-        discoveryScore: Math.max(0, change) * 6 + Math.max(0, flow) * 5 + newsCount * 12 + Math.min(4, fundCount) * 5
+        discoveryScore: Math.max(0, change) * 6 + Math.max(0, flow) * 5 + newsCount * 12 + Math.min(4, fundCount) * 5 - retreatPenalty
       };
     })
-    .filter((item) => item.discoveryScore >= 10 || Number(item.board.mainNetInflowPct) > 1.5 || Number(item.board.changePct) > 1.8)
+    .filter((item) => {
+      const change = Number(item.board.changePct || 0);
+      const flow = Number(item.board.mainNetInflowPct || 0);
+      const hasPositiveTape = flow > 1.5 || change > 1.8 || (item.discoveryScore >= 18 && change >= -0.3 && flow >= 0);
+      return (item.discoveryScore >= 10 && hasPositiveTape) || flow > 1.5 || change > 1.8;
+    })
     .sort((a, b) => b.discoveryScore - a.discoveryScore)
     .slice(0, 10);
   const seen = new Set();
@@ -20005,6 +20023,26 @@ function buildDynamicThemeKeywords(board = {}) {
     .map((item) => item.trim())
     .filter((item) => item.length >= 2 && !/^(概念|板块|行业|指数)$/.test(item));
   return [...new Set([name, ...tokens, leadStock].filter(Boolean))].slice(0, 8);
+}
+
+function selectThemeBoardEvidence(boards = [], keywords = []) {
+  return (boards || [])
+    .filter((board) => textMatchesKeywords(`${board.name || ""} ${board.leadStock || ""}`, keywords))
+    .sort((a, b) => scoreThemeBoardEvidence(b) - scoreThemeBoardEvidence(a));
+}
+
+function scoreThemeBoardEvidence(board = {}) {
+  const change = Number(board.changePct);
+  const flow = Number(board.mainNetInflowPct);
+  const sources = Array.isArray(board.coverageSources) ? board.coverageSources.join(" ") : "";
+  return (
+    (Number.isFinite(change) ? Math.abs(change) * 8 : 0)
+    + (Number.isFinite(flow) ? Math.abs(flow) * 12 : 0)
+    + (/主力流出/.test(sources) ? 22 : 0)
+    + (/跌幅/.test(sources) ? 12 : 0)
+    + (/主力流入/.test(sources) ? 16 : 0)
+    + (/涨幅/.test(sources) ? 8 : 0)
+  );
 }
 
 function inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore, rotationScore = 0, lowPositionScore = 0, capitalFollowScore = 0, preheatScore = 0, avgMainNetInflowPct = null }) {
@@ -20076,7 +20114,7 @@ function inferThemePositionSignal({ crowdingScore, rotationScore, lowPositionSco
   return "neutral_or_wait";
 }
 
-function buildThemeCatalystLogic({ rule = {}, news = [], boards = [], metals = [], overseasMarkets = [], leaderSignal = "", avgMainNetInflowPct = null, maxMainNetInflowPct = null } = {}) {
+function buildThemeCatalystLogic({ rule = {}, news = [], boards = [], metals = [], overseasMarkets = [], leaderSignal = "", avgMainNetInflowPct = null, maxMainNetInflowPct = null, minMainNetInflowPct = null } = {}) {
   const facts = [];
   const topNews = String(news[0]?.title || "").trim();
   const topBoard = boards[0] || {};
@@ -20084,12 +20122,15 @@ function buildThemeCatalystLogic({ rule = {}, news = [], boards = [], metals = [
   const topOverseas = overseasMarkets[0] || {};
   const avgFlow = Number(avgMainNetInflowPct);
   const maxFlow = Number(maxMainNetInflowPct);
+  const minFlow = Number(minMainNetInflowPct);
   if (topNews) facts.push(`新闻催化：${topNews.slice(0, 80)}`);
   if (topBoard.name) {
     const lead = topBoard.leadStock ? `，龙头${topBoard.leadStock}` : "";
     facts.push(`板块验证：${topBoard.name}${formatSignedNumber(topBoard.changePct)}%${lead}`);
   }
-  if (Number.isFinite(avgFlow) && avgFlow > 0) facts.push(`主力线索：相关板块资金均值净流入${formatFallbackPlainPct(avgFlow)}`);
+  if (Number.isFinite(avgFlow) && avgFlow < 0) facts.push(`主力线索：相关板块资金均值净流出${formatFallbackPlainPct(Math.abs(avgFlow))}`);
+  else if (Number.isFinite(minFlow) && minFlow < 0) facts.push(`主力线索：最弱相关板块资金净流出${formatFallbackPlainPct(Math.abs(minFlow))}`);
+  else if (Number.isFinite(avgFlow) && avgFlow > 0) facts.push(`主力线索：相关板块资金均值净流入${formatFallbackPlainPct(avgFlow)}`);
   else if (Number.isFinite(maxFlow) && maxFlow > 0) facts.push(`主力线索：最强相关板块资金净流入${formatFallbackPlainPct(maxFlow)}`);
   if (topMetal.name) facts.push(`商品线索：${topMetal.name}${formatSignedNumber(topMetal.changePct)}%`);
   if (topOverseas.name) facts.push(`外盘线索：${topOverseas.name}${formatSignedNumber(topOverseas.changePct)}%`);
@@ -24130,18 +24171,91 @@ function formatIntradayTrendActionabilityEvidence(intradayTrend = null) {
   ].filter(Boolean).join("，");
 }
 
-async function fetchEastmoneyBoards(kind) {
+const MARKET_BOARD_FETCH_MODES = [
+  { id: "gainers", label: "涨幅榜", fid: "f3", po: "1" },
+  { id: "losers", label: "跌幅榜", fid: "f3", po: "0" },
+  { id: "main_inflow", label: "主力流入榜", fid: "f184", po: "1" },
+  { id: "main_outflow", label: "主力流出榜", fid: "f184", po: "0" }
+];
+
+async function fetchEastmoneyBoardCoverage(kind) {
+  const results = await Promise.all(MARKET_BOARD_FETCH_MODES.map((mode) =>
+    fetchEastmoneyBoards(kind, mode).catch((error) => ({
+      ok: false,
+      kind,
+      mode,
+      label: mode.label,
+      error: error.message,
+      items: []
+    }))
+  ));
+  const available = results.filter((result) => result.ok && Array.isArray(result.items) && result.items.length);
+  const failures = results.filter((result) => result.ok === false);
+  const items = mergeMarketBoardCoverageItems(available);
+  if (!items.length && failures.length) {
+    return {
+      ok: false,
+      kind: kind === "concept" ? "concept" : "industry",
+      error: failures.map((item) => `${item.label || item.mode?.label || "板块榜单"}：${item.error || "抓取失败"}`).join("；"),
+      items: []
+    };
+  }
+  return {
+    ok: true,
+    kind: kind === "concept" ? "concept" : "industry",
+    coverageModes: MARKET_BOARD_FETCH_MODES.map((mode) => mode.label),
+    sourceKinds: MARKET_BOARD_FETCH_MODES.map((mode) => mode.label),
+    partialErrors: failures.map((item) => `${item.label || item.mode?.label || "板块榜单"}：${item.error || "抓取失败"}`),
+    items
+  };
+}
+
+function mergeMarketBoardCoverageItems(results = []) {
+  const merged = new Map();
+  for (const result of results || []) {
+    const sourceLabel = result.mode?.label || result.label || "板块榜单";
+    for (const item of result.items || []) {
+      const key = item.boardCode || item.name;
+      if (!key) continue;
+      const previous = merged.get(key) || {
+        ...item,
+        coverageSources: [],
+        rankSignals: []
+      };
+      const coverageSources = [...new Set([...(previous.coverageSources || []), sourceLabel])];
+      const rankSignals = [
+        ...(previous.rankSignals || []),
+        ...(Array.isArray(item.rankSignals) ? item.rankSignals : [])
+      ];
+      merged.set(key, {
+        ...previous,
+        ...item,
+        coverageSources,
+        rankSignals
+      });
+    }
+  }
+  return Array.from(merged.values())
+    .map((item) => ({
+      ...item,
+      coverageSignalScore: round(scoreThemeBoardEvidence(item), 1)
+    }))
+    .sort((a, b) => Number(b.coverageSignalScore || 0) - Number(a.coverageSignalScore || 0));
+}
+
+async function fetchEastmoneyBoards(kind, mode = MARKET_BOARD_FETCH_MODES[0]) {
   const isConcept = kind === "concept";
   const url = new URL("https://push2.eastmoney.com/api/qt/clist/get");
+  const fetchMode = mode || MARKET_BOARD_FETCH_MODES[0];
   const params = {
     pn: "1",
     pz: String(Number(process.env.MARKET_BOARD_LIMIT || 12)),
-    po: "1",
+    po: fetchMode.po || "1",
     np: "1",
     ut: "bd1d9ddb04089700cf9c27f6f7426281",
     fltt: "2",
     invt: "2",
-    fid: "f3",
+    fid: fetchMode.fid || "f3",
     fs: isConcept ? "m:90+t:3" : "m:90+t:2",
     fields: "f12,f14,f2,f3,f62,f184,f66,f69,f72,f75,f78,f81,f84,f87,f204,f205,f124"
   };
@@ -24155,7 +24269,9 @@ async function fetchEastmoneyBoards(kind) {
   return {
     ok: true,
     kind: isConcept ? "concept" : "industry",
-    items: diff.map((item) => ({
+    mode: fetchMode,
+    label: fetchMode.label || "",
+    items: diff.map((item, index) => ({
       boardCode: item.f12 || "",
       name: item.f14 || "",
       latest: item.f2 ?? "",
@@ -24164,7 +24280,14 @@ async function fetchEastmoneyBoards(kind) {
       mainNetInflowPct: toNumber(item.f184),
       leadStock: item.f204 || "",
       leadStockCode: item.f205 || "",
-      quoteTime: formatEpochSeconds(item.f124)
+      quoteTime: formatEpochSeconds(item.f124),
+      coverageSources: fetchMode.label ? [fetchMode.label] : [],
+      rankSignals: fetchMode.label ? [{
+        source: fetchMode.label,
+        metric: fetchMode.fid || "f3",
+        direction: fetchMode.po === "0" ? "asc" : "desc",
+        rank: index + 1
+      }] : []
     }))
   };
 }

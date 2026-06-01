@@ -3988,6 +3988,26 @@ assert(liveAiTheme, "theme radar must build an AI/compute theme from boards, new
 assert.equal(liveAiTheme.leaderSignal, "capital_entering", "theme radar must identify main-capital entry before the sector becomes crowded");
 assert(liveAiTheme.capitalFollowScore >= 55, "theme radar must expose a strong main-capital follow score");
 assert(liveAiTheme.newsLogic.includes("新闻催化") && liveAiTheme.newsLogic.includes("主力线索"), "theme radar must explain why the theme is moving with news and capital evidence");
+const retreatThemeRadar = manager.buildThemeRadar({
+  conceptBoards: [
+    { boardCode: "BKAI9", name: "CPO", changePct: -3.4, mainNetInflowPct: -4.2, leadStock: "新易盛", quoteTime: "10:45", coverageSources: ["主力流出榜", "跌幅榜"] },
+    { boardCode: "BKAI8", name: "光模块", changePct: -2.1, mainNetInflowPct: -2.8, leadStock: "中际旭创", quoteTime: "10:45", coverageSources: ["主力流出榜"] }
+  ],
+  industryBoards: [],
+  fastNews: [{ title: "光模块板块高位震荡 资金转向低位方向", showTime: "10:40", mediaName: "测试快讯" }],
+  fundCandidates: {
+    stockFunds: [{ code: "008327", name: "通信主题C", type: "股票型基金", oneMonthPct: 19.2, dailyPct: -1.6, shareClass: "C" }]
+  }
+});
+const fadingAiTheme = retreatThemeRadar.find((theme) => theme.id === "ai_compute");
+assert(fadingAiTheme, "theme radar must keep fading themes in radar instead of hiding them behind the top-gainers board");
+assert.equal(fadingAiTheme.leaderSignal, "capital_outflow", "theme radar must mark high-position AI/CPO outflow as main-capital retreat");
+assert(fadingAiTheme.capitalRetreatScore >= 70, "theme radar must expose a high capital-retreat score when outflow and declines are broad");
+assert(fadingAiTheme.newsLogic.includes("净流出"), "theme radar must explain fading themes with net-outflow logic, not only news headlines");
+assert(
+  fadingAiTheme.evidence.boards.some((board) => Array.isArray(board.coverageSources) && board.coverageSources.includes("主力流出榜")),
+  "theme evidence must preserve board coverage sources so the manager knows whether a signal came from outflow/decline lists"
+);
 const dynamicThemeRadar = manager.buildThemeRadar({
   conceptBoards: [
     { boardCode: "BKNEW1", name: "低空经济", changePct: 2.1, mainNetInflowPct: 2.8, leadStock: "万丰奥威", quoteTime: "10:35" }

@@ -1069,6 +1069,10 @@ const requiredPatterns = [
     message: "fund manager must block pullback-looking candidates when the theme is fading and main capital is leaving."
   },
   {
+    pattern: /(?=[\s\S]*const MARKET_BOARD_FETCH_MODES\s*=\s*\[[\s\S]*涨幅榜[\s\S]*跌幅榜[\s\S]*主力流入榜[\s\S]*主力流出榜)(?=[\s\S]*function fetchEastmoneyBoardCoverage)(?=[\s\S]*fetchEastmoneyBoardCoverage\("concept"\))(?=[\s\S]*fetchEastmoneyBoardCoverage\("industry"\))(?=[\s\S]*mergeMarketBoardCoverageItems)(?=[\s\S]*scoreThemeRadarPriority[\s\S]*capitalRetreatScore)/,
+    message: "market board snapshots must merge gainers, losers, main inflow, and main outflow lists so theme-retreat detection is not blind to capital leaving."
+  },
+  {
     pattern: /(?=[\s\S]*function inferThemeLeaderSignal)(?=[\s\S]*capitalFollowScore)(?=[\s\S]*preheatScore)(?=[\s\S]*主力跟随)(?=[\s\S]*题材逻辑)(?=[\s\S]*follow_main_small)/,
     message: "fund manager must identify main-capital entry, preheated themes, and news logic before ranking fund opportunities."
   },
