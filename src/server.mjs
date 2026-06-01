@@ -19717,7 +19717,11 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
     ...(fundCandidates.qdiiFunds || []),
     ...(fundCandidates.preciousMetalFunds || [])
   ];
-  const themes = THEME_RADAR_RULES.map((rule) => {
+  const rules = [
+    ...THEME_RADAR_RULES,
+    ...buildDynamicThemeRadarRules({ conceptBoards, industryBoards, fastNews, allFunds })
+  ];
+  const themes = rules.map((rule) => {
     const boards = [...conceptBoards, ...industryBoards]
       .filter((board) => textMatchesKeywords(`${board.name || ""} ${board.leadStock || ""}`, rule.keywords))
       .slice(0, 5)
@@ -19884,6 +19888,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       name: rule.name,
       keywords: rule.keywords,
       fundKeywords: rule.fundKeywords || rule.keywords,
+      dynamic: Boolean(rule.dynamic),
       stage,
       forwardScore: round(forwardScore, 1),
       catalystScore: round(catalystScore, 1),
@@ -19922,6 +19927,54 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
   );
 
   return themes.sort((a, b) => b.forwardScore - a.forwardScore).slice(0, 12);
+}
+
+function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], fastNews = [], allFunds = [] } = {}) {
+  const staticNames = new Set(THEME_RADAR_RULES.flatMap((rule) => [rule.id, rule.name, ...(rule.keywords || [])]).map((item) => normalizeIntentText(item)).filter(Boolean));
+  const boards = [...conceptBoards, ...industryBoards]
+    .filter((board) => String(board?.name || "").trim())
+    .filter((board) => !THEME_RADAR_RULES.some((rule) => textMatchesKeywords(`${board.name || ""} ${board.leadStock || ""}`, rule.keywords)))
+    .map((board) => {
+      const keywords = buildDynamicThemeKeywords(board);
+      const newsCount = (fastNews || []).filter((item) => textMatchesKeywords(`${item.title || ""} ${item.mediaName || ""}`, keywords)).length;
+      const fundCount = (allFunds || []).filter((fund) => textMatchesKeywords(`${fund.name || ""} ${fund.type || ""} ${(fund.keywords || []).join(" ")}`, keywords)).length;
+      const change = Number(board.changePct || 0);
+      const flow = Number(board.mainNetInflowPct || 0);
+      return {
+        board,
+        keywords,
+        discoveryScore: Math.max(0, change) * 6 + Math.max(0, flow) * 5 + newsCount * 12 + Math.min(4, fundCount) * 5
+      };
+    })
+    .filter((item) => item.discoveryScore >= 10 || Number(item.board.mainNetInflowPct) > 1.5 || Number(item.board.changePct) > 1.8)
+    .sort((a, b) => b.discoveryScore - a.discoveryScore)
+    .slice(0, 10);
+  const seen = new Set();
+  return boards
+    .map(({ board, keywords }) => {
+      const name = String(board.name || "").trim();
+      const normalized = normalizeIntentText(name);
+      if (!normalized || staticNames.has(normalized) || seen.has(normalized)) return null;
+      seen.add(normalized);
+      return {
+        id: `dynamic_${String(board.boardCode || normalized).replace(/[^\w-]+/g, "_").slice(0, 40)}`,
+        name,
+        keywords,
+        fundKeywords: keywords,
+        dynamic: true
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildDynamicThemeKeywords(board = {}) {
+  const name = String(board.name || "").trim();
+  const leadStock = String(board.leadStock || "").trim();
+  const tokens = [name, leadStock]
+    .flatMap((value) => String(value || "").split(/[\/、，,\s]+/))
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2 && !/^(概念|板块|行业|指数)$/.test(item));
+  return [...new Set([name, ...tokens, leadStock].filter(Boolean))].slice(0, 8);
 }
 
 function inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore, rotationScore = 0, lowPositionScore = 0, capitalFollowScore = 0, preheatScore = 0, avgMainNetInflowPct = null }) {

@@ -1073,6 +1073,10 @@ const requiredPatterns = [
     message: "fund manager must identify main-capital entry, preheated themes, and news logic before ranking fund opportunities."
   },
   {
+    pattern: /(?=[\s\S]*function buildDynamicThemeRadarRules)(?=[\s\S]*buildDynamicThemeKeywords)(?=[\s\S]*dynamic_)(?=[\s\S]*discoveryScore)/,
+    message: "theme radar must generate dynamic emerging themes from live concept and industry boards, not only a static dictionary."
+  },
+  {
     pattern: /(?=[\s\S]*managerPerformance:\s*buildPortfolioManagerPerformanceStats\(db\))(?=[\s\S]*function buildPortfolioManagerPerformanceStats)(?=[\s\S]*操作正确率)(?=[\s\S]*盈利能力)(?=[\s\S]*operationLanes)(?=[\s\S]*proofPoints)/,
     message: "portfolio public API must expose manager performance proof statistics with correctness and profitability cards."
   },
