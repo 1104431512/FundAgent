@@ -1254,6 +1254,35 @@ function yieldToEventLoop() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
+function buildPortfolioMarketSnapshotPrioritySeeds(db = {}, watchlist = []) {
+  const accountPositions = (db.account?.positions || []).map((position) => ({
+    code: position.code || "",
+    name: position.name || "",
+    shareClass: position.shareClass || inferFundShareClass(position.name || ""),
+    type: "组合持仓",
+    setupDiscoverySource: "portfolio_holding"
+  }));
+  const watchSeeds = (watchlist || []).map((item) => ({
+    code: item.code || "",
+    name: item.name || "",
+    shareClass: item.shareClass || inferFundShareClass(item.name || ""),
+    type: "经理自选",
+    setupDiscoverySource: "portfolio_watchlist"
+  }));
+  const userHoldingSeeds = (db.userPortfolios || []).flatMap((user) =>
+    (user.holdings || []).map((holding) => ({
+      code: holding.code || "",
+      name: holding.name || "",
+      shareClass: holding.shareClass || inferFundShareClass(holding.name || ""),
+      type: `用户持仓${user.displayName ? `-${user.displayName}` : ""}`,
+      setupDiscoverySource: "user_portfolio_holding"
+    }))
+  );
+  return mergeCandidateFunds(accountPositions, watchSeeds, userHoldingSeeds)
+    .filter((item) => item.code)
+    .slice(0, Number(process.env.PORTFOLIO_REALTIME_PRIORITY_LIMIT || 24));
+}
+
 async function executePortfolioDecision(db, run, config) {
   const profileContext = buildPortfolioManagerProfileContext(config, db);
   markPortfolioRunProgress(db, run, "正在处理上一轮订单和确认状态。");
@@ -1267,13 +1296,15 @@ async function executePortfolioDecision(db, run, config) {
   const capabilityActionQueue = buildPortfolioCapabilityActionQueue(db);
   const missedFollowThroughQueue = buildPortfolioMissedFollowThroughReviewQueue(db);
   const starterBuyFollowUpQueue = buildPortfolioStarterBuyFollowUpQueue(db);
-  const marketSnapshot = await fetchMarketSnapshot();
+  let watchlist = getActivePortfolioWatchlist(db);
+  const marketSnapshot = await fetchMarketSnapshot({
+    priorityFundSeeds: buildPortfolioMarketSnapshotPrioritySeeds(db, watchlist)
+  });
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, "正在补全当前持仓和自选基金池资料。");
   await yieldToEventLoop();
   const heldCodes = db.account.positions.map((position) => position.code).filter(Boolean);
   const heldProfiles = heldCodes.length ? await enrichFunds(heldCodes) : [];
-  let watchlist = getActivePortfolioWatchlist(db);
   const watchlistCodes = mergeFundCodes(watchlist.map((item) => item.code));
   const watchlistProfiles = watchlistCodes.length ? await enrichFunds(watchlistCodes) : [];
   const preDecisionWatchlistUpdates = applyPortfolioWatchlistUpdates(
@@ -19396,7 +19427,7 @@ async function enrichFunds(fundCodes) {
   return results;
 }
 
-async function fetchMarketSnapshot() {
+async function fetchMarketSnapshot(options = {}) {
   const fetchedAt = new Date().toISOString();
   const [
     conceptBoards,
@@ -19431,7 +19462,9 @@ async function fetchMarketSnapshot() {
     qdiiFunds: qdiiFunds.items || [],
     preciousMetalFunds: preciousMetalFunds.items || []
   };
-  const realtimeFundValuations = await fetchRealtimeFundValuationSnapshot(fundCandidates).catch((error) => {
+  const realtimeFundValuations = await fetchRealtimeFundValuationSnapshot(fundCandidates, {
+    prioritySeeds: options.priorityFundSeeds || []
+  }).catch((error) => {
     console.warn("[market-realtime-valuation-error]", error.message);
     recordError(error, { marketRealtimeValuationFailures: 1 });
     return { ok: false, error: error.message, items: [] };
@@ -19619,15 +19652,20 @@ function buildMarketCandidateCounts(fundCandidates = {}) {
   };
 }
 
-async function fetchRealtimeFundValuationSnapshot(fundCandidates = {}) {
+function buildRealtimeFundValuationSeedItems(fundCandidates = {}, options = {}) {
+  return mergeCandidateFunds(
+    options.prioritySeeds || [],
+    fundCandidates.stockFunds || [],
+    fundCandidates.hybridFunds || [],
+    fundCandidates.indexFunds || [],
+    fundCandidates.qdiiFunds || [],
+    fundCandidates.preciousMetalFunds || []
+  ).filter((item) => item.code);
+}
+
+async function fetchRealtimeFundValuationSnapshot(fundCandidates = {}, options = {}) {
   const fetchedAt = new Date().toISOString();
-  const seedItems = [
-    ...(fundCandidates.stockFunds || []),
-    ...(fundCandidates.hybridFunds || []),
-    ...(fundCandidates.indexFunds || []),
-    ...(fundCandidates.qdiiFunds || []),
-    ...(fundCandidates.preciousMetalFunds || [])
-  ];
+  const seedItems = buildRealtimeFundValuationSeedItems(fundCandidates, options);
   const codes = mergeFundCodes(seedItems.map((item) => item.code)).slice(0, Number(process.env.MARKET_REALTIME_VALUATION_LIMIT || 24));
   if (!codes.length) {
     return { ok: false, label: "天天基金/新浪/HaoETF实时估算净值", error: "没有候选基金代码可抓取", items: [] };
@@ -29361,6 +29399,7 @@ export {
   buildPortfolioHeldPositionReviewQueue,
   buildPortfolioBacktestDiagnostics,
   buildPortfolioManagerPerformanceStats,
+  buildPortfolioMarketSnapshotPrioritySeeds,
   buildPortfolioCapabilityDiagnostics,
   buildPortfolioCapabilityActionQueue,
   buildPortfolioAccountStatusLines,
@@ -29448,6 +29487,7 @@ export {
   fetchChinaRealtimeIndexQuotes,
   fetchEastmoneyChinaIndexQuotes,
   fetchGlobalMarketQuotes,
+  buildRealtimeFundValuationSeedItems,
   fetchRealtimeFundValuationSnapshot,
   findPortfolioBacktestBlockedFollowThroughCandidates,
   findDuplicatePortfolioSettlementGroups,

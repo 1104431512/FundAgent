@@ -316,6 +316,20 @@ const normalizedRankingDb = manager.normalizePortfolioDb({
   ],
   userPortfolios: normalizedUserPortfolios
 });
+const priorityRealtimeSeeds = manager.buildPortfolioMarketSnapshotPrioritySeeds(normalizedRankingDb, [
+  { code: "010802", name: "长江量化消费精选股票C" }
+]);
+assert.deepEqual(
+  priorityRealtimeSeeds.slice(0, 3).map((item) => item.code),
+  ["008327", "010802", "021959"],
+  "portfolio market snapshots must prioritize current holdings, watchlist, and user holdings for realtime valuation"
+);
+const realtimeSeedItems = manager.buildRealtimeFundValuationSeedItems({
+  stockFunds: [{ code: "000001", name: "普通市场候选" }]
+}, {
+  prioritySeeds: priorityRealtimeSeeds
+});
+assert.equal(realtimeSeedItems[0].code, "008327", "realtime valuation queue must keep portfolio priority seeds before broad market candidates");
 const rankingBoard = manager.buildPortfolioRankingBoard(normalizedRankingDb);
 assert(rankingBoard.lists.find((item) => item.id === "decision_synthesis")?.items.some((item) => item.code === "000005"), "manager ranking board must expose integrated decision-synthesis candidates");
 assert(rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.some((item) => item.code === "000001"), "manager ranking board must expose buy-preparation candidates");

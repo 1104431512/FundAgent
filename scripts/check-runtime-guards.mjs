@@ -161,6 +161,10 @@ const requiredPatterns = [
     message: "compact market snapshots must carry intraday fund valuation direction into model prompts."
   },
   {
+    pattern: /(?=[\s\S]*function buildPortfolioMarketSnapshotPrioritySeeds)(?=[\s\S]*portfolio_holding)(?=[\s\S]*portfolio_watchlist)(?=[\s\S]*user_portfolio_holding)(?=[\s\S]*function buildRealtimeFundValuationSeedItems)(?=[\s\S]*prioritySeeds)/,
+    message: "portfolio market snapshots must prioritize held, watchlist, and user-held funds in the realtime valuation queue."
+  },
+  {
     pattern: /realtimeFundValuations[\s\S]{0,220}盘中走势[\s\S]{0,220}冲高回落[\s\S]{0,220}尾盘转弱/,
     message: "fund and portfolio prompts must use intraday valuation direction to reduce chase-buy confidence."
   },
