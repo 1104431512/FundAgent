@@ -1205,11 +1205,15 @@ const requiredPatterns = [
     message: "theme radar must discover preheated emerging themes from fast news before concept boards fully move."
   },
   {
+    pattern: /(?=[\s\S]*GENERIC_THEME_NEWS_MATCH_TERMS)(?=[\s\S]*function buildSpecificThemeNewsKeywords)(?=[\s\S]*function matchesThemeSpecificNews)(?=[\s\S]*function buildNewsDiscoveredThemeRadarRules[\s\S]{0,700}matchesThemeSpecificNews)/,
+    message: "theme news discovery must require specific theme anchors instead of mapping generic catalyst words such as orders or approvals to unrelated sectors."
+  },
+  {
     pattern: /(?=[\s\S]*function buildEmergingNewsTopicRadarRules)(?=[\s\S]*function extractEmergingNewsTopicTerms)(?=[\s\S]*news_auto_)(?=[\s\S]*newsOnlyPreheatBoost)(?=[\s\S]*newsDiscovered)(?=[\s\S]*新闻自动发现)/,
     message: "theme radar must auto-extract fresh news-only preheat topics instead of relying only on preset theme rules."
   },
   {
-    pattern: /(?=[\s\S]*THEME_NEWS_DISCOVERY_RULES)(?=[\s\S]*ai_terminal)(?=[\s\S]*domestic_semiconductor)(?=[\s\S]*power_grid_nuclear)(?=[\s\S]*innovative_drug_policy)(?=[\s\S]*resource_price_up)(?=[\s\S]*high_dividend_reform)/,
+    pattern: /(?=[\s\S]*THEME_NEWS_DISCOVERY_RULES)(?=[\s\S]*ai_terminal)(?=[\s\S]*domestic_semiconductor)(?=[\s\S]*power_grid_nuclear)(?=[\s\S]*innovative_drug_policy)(?=[\s\S]*resource_price_up)(?=[\s\S]*high_dividend_reform)(?=[\s\S]*brain_computer_interface)(?=[\s\S]*vehicle_road_cloud)(?=[\s\S]*pcb_copper_link)(?=[\s\S]*quantum_technology)/,
     message: "theme news discovery must cover a broad preheat universe, not only the original few emerging themes."
   },
   {
@@ -2421,7 +2425,7 @@ const requiredPatterns = [
     message: "admin buy-preparation queue must highlight the primary missing setup condition."
   },
   {
-    pattern: /(?=[\s\S]*WATCHLIST_HARD_RISK_RULES)(?=[\s\S]*底层持仓走弱)(?=[\s\S]*表面回调可能继续下探)(?=[\s\S]*持仓未承载题材)(?=[\s\S]*renderWatchlistHardRiskStrip)(?=[\s\S]*watchlist-hard-risk-strip)(?=[\s\S]*watchlist-risk-danger)/,
+    pattern: /(?=[\s\S]*WATCHLIST_HARD_RISK_RULES)(?=[\s\S]*接盘风险)(?=[\s\S]*退潮接盘)(?=[\s\S]*底层持仓走弱)(?=[\s\S]*表面回调可能继续下探)(?=[\s\S]*持仓未承载题材)(?=[\s\S]*renderWatchlistHardRiskStrip)(?=[\s\S]*watchlist-hard-risk-strip)(?=[\s\S]*watchlist-risk-danger)/,
     message: "admin watchlist UI must highlight hard risks such as weak top-holding pulse, holdings-carrier mismatch, capital retreat, and chase risk before long evidence text."
   },
   {
@@ -2589,8 +2593,8 @@ const requiredPatterns = [
     message: "skill growth must be anchored by a task focus directive before detailed skill bodies."
   },
   {
-    pattern: /本次任务焦点：回调完成\/低位启动，不追热点/,
-    message: "pullback/setup prompts must keep low-position launch discovery ahead of generic theme skills."
+    pattern: /(?=[\s\S]*本次任务焦点：回调完成\/低位启动，但低位不是第一理由，先确认题材还活着)(?=[\s\S]*当前题材作战图)(?=[\s\S]*当前题材有支撑 \+ 基金承载题材 \+ 回调\/启动买点合格)/,
+    message: "pullback/setup prompts must put live theme, catalyst, capital-flow, and fund-carrier checks before pure low-position trend screening."
   },
   {
     pattern: /低位刚要启动/,

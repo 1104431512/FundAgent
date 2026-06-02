@@ -20027,6 +20027,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "你是飞书机器人“基金经理”的基金发现与配置工作流。",
     "当前任务不是分析用户已经给出的某一只基金，也不是截图 screening；当前任务是根据用户文字、公开市场快照和基金候选池，给出教育性的基金方向与候选清单。",
     "推荐顺序必须是：先判断题材/事件/催化阶段，再判断基金承载工具；基金净值走势只能作为确认信号，不能作为第一推荐理由。",
+    "工作流硬门槛：每次推荐先过“题材作战图 -> 基金承载 -> 买点执行”三关。题材作战图要说明主力进场榜、题材预热榜、低位轮动榜、追涨风险榜或退潮回避榜；基金承载要说明前十大持仓、指数名称或代表股票是否对得上；买点执行才谈回调完成、低位启动和仓位。",
     "用户更关心走势和分析思路，不要把回答写成数字清单。每只基金最多保留3个关键数字，其他用“低位修复、短期偏热、等待确认、回撤未完成”等自然中文解释。",
     "如果市场快照或下钻摘要里有题材雷达，必须先用题材阶段、主力跟随、预热评分、新闻逻辑、拥挤度和操作倾向判断赔率，再筛选基金。",
     "遇到主力开始进场或题材预热的方向，必须解释题材上涨背后的新闻/政策/产业逻辑，并判断基金本身是否已经出现低位买点；逻辑成立但买点差一点时给触发条件，逻辑与资金都成立时可以给小仓试探，不要机械地只说等待。",
@@ -22470,6 +22471,30 @@ const THEME_NEWS_KEYWORD_EXPANSIONS = [
   {
     needles: ["军工", "航空发动机", "低轨", "卫星互联网"],
     aliases: ["军工", "航空发动机", "低轨卫星", "卫星互联网", "商业航天", "北斗"]
+  },
+  {
+    needles: ["脑机接口", "脑机", "神经接口", "bci"],
+    aliases: ["脑机接口", "BCI", "神经接口", "医疗器械", "人机交互"]
+  },
+  {
+    needles: ["车路云", "智能驾驶", "自动驾驶", "无人驾驶", "萝卜快跑"],
+    aliases: ["车路云", "智能驾驶", "自动驾驶", "无人驾驶", "V2X", "汽车电子"]
+  },
+  {
+    needles: ["pcb", "铜缆", "高速连接器", "覆铜板", "交换机"],
+    aliases: ["PCB", "铜缆高速连接", "高速连接器", "覆铜板", "交换机", "AI服务器"]
+  },
+  {
+    needles: ["量子", "量子计算", "量子通信", "量子科技"],
+    aliases: ["量子科技", "量子计算", "量子通信", "国产算力", "信息安全"]
+  },
+  {
+    needles: ["可控核聚变", "核聚变", "聚变", "超导"],
+    aliases: ["可控核聚变", "核聚变", "超导", "电力设备", "能源装备"]
+  },
+  {
+    needles: ["短剧", "游戏", "影视", "传媒", "ai应用"],
+    aliases: ["AI应用", "游戏传媒", "短剧", "影视", "版权", "广告营销"]
   }
 ];
 
@@ -22551,6 +22576,42 @@ const THEME_NEWS_DISCOVERY_RULES = [
     name: "央国企/高股息改革",
     keywords: ["央企", "国企改革", "市值管理", "分红", "高股息", "中特估", "回购"],
     fundKeywords: ["红利", "高股息", "央企", "国企", "价值"]
+  },
+  {
+    id: "brain_computer_interface",
+    name: "脑机接口",
+    keywords: ["脑机接口", "BCI", "神经接口", "人机交互", "医疗器械", "临床试验"],
+    fundKeywords: ["医疗器械", "医药", "科技", "人工智能", "创新医疗"]
+  },
+  {
+    id: "vehicle_road_cloud",
+    name: "车路云/智能驾驶",
+    keywords: ["车路云", "智能驾驶", "自动驾驶", "无人驾驶", "V2X", "路侧设备", "汽车电子"],
+    fundKeywords: ["车路云", "智能驾驶", "自动驾驶", "智能汽车", "新能源汽车", "汽车", "人工智能", "高端制造"]
+  },
+  {
+    id: "pcb_copper_link",
+    name: "PCB/铜缆高速连接",
+    keywords: ["PCB", "铜缆", "高速连接器", "覆铜板", "交换机", "AI服务器", "800G"],
+    fundKeywords: ["PCB", "铜缆", "高速连接", "高速连接器", "电子", "通信", "人工智能", "半导体", "高端制造"]
+  },
+  {
+    id: "quantum_technology",
+    name: "量子科技",
+    keywords: ["量子科技", "量子计算", "量子通信", "量子芯片", "信息安全", "国产算力"],
+    fundKeywords: ["科技", "计算机", "通信", "人工智能", "信息技术"]
+  },
+  {
+    id: "controlled_fusion",
+    name: "可控核聚变",
+    keywords: ["可控核聚变", "核聚变", "超导", "托卡马克", "能源装备", "电力设备"],
+    fundKeywords: ["电力设备", "新能源", "高端制造", "军工", "能源"]
+  },
+  {
+    id: "ai_application_media",
+    name: "AI应用/游戏传媒",
+    keywords: ["AI应用", "游戏", "短剧", "影视", "传媒", "版权", "广告营销", "AIGC"],
+    fundKeywords: ["传媒", "游戏", "人工智能", "数字经济", "互联网"]
   }
 ];
 
@@ -22559,6 +22620,13 @@ const EMERGING_NEWS_TOPIC_STOPWORDS = new Set([
   "政策", "方案", "规划", "订单", "价格", "涨价", "需求", "供给", "产业链", "今日", "早盘", "午后", "尾盘", "指数",
   "A股", "港股", "美股", "ETF", "利好", "消息", "新闻", "快讯", "交易", "行情"
 ]);
+
+const GENERIC_THEME_NEWS_MATCH_TERMS = new Set([
+  "政策", "规划", "方案", "通知", "会议", "试点", "示范区", "补贴", "落地", "推进", "加速", "订单", "需求", "供给", "产能",
+  "库存", "招标", "中标", "交付", "出货", "产业链", "调研", "扩产", "审批", "项目", "开工", "价格", "涨价", "供需", "资金",
+  "主力", "ETF", "机构", "回购", "科技", "高端制造", "新能源", "电力设备", "医疗器械", "临床试验", "医药", "医疗", "电子",
+  "通信", "人工智能", "资源", "汽车"
+].map((item) => normalizeIntentText(item)));
 
 function expandThemeNewsKeywords(keywords = [], context = {}) {
   const base = [
@@ -22578,6 +22646,28 @@ function expandThemeNewsKeywords(keywords = [], context = {}) {
     .map((item) => String(item || "").trim())
     .filter((item) => item.length >= 2)
     .slice(0, 24);
+}
+
+function buildSpecificThemeNewsKeywords(rule = {}, expandedKeywords = []) {
+  const values = [
+    rule.name || "",
+    ...(Array.isArray(rule.keywords) ? rule.keywords : []),
+    ...(Array.isArray(expandedKeywords) ? expandedKeywords : [])
+  ];
+  return [...new Set(values
+    .map((item) => String(item || "").trim())
+    .filter((item) => {
+      const normalized = normalizeIntentText(item);
+      if (!normalized || GENERIC_THEME_NEWS_MATCH_TERMS.has(normalized)) return false;
+      if (/^[\u4e00-\u9fff]$/.test(item)) return false;
+      return item.length >= 2;
+    }))].slice(0, 18);
+}
+
+function matchesThemeSpecificNews(item = {}, rule = {}, expandedKeywords = []) {
+  const text = `${item.title || ""} ${item.mediaName || ""}`;
+  const specificKeywords = buildSpecificThemeNewsKeywords(rule, expandedKeywords);
+  return textMatchesKeywords(text, specificKeywords.length ? specificKeywords : expandedKeywords);
 }
 
 function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], fastNews = [], allFunds = [] } = {}) {
@@ -22644,7 +22734,7 @@ function buildNewsDiscoveredThemeRadarRules({ fastNews = [], allFunds = [], stat
   const catalogRules = THEME_NEWS_DISCOVERY_RULES
     .map((rule) => {
       const newsKeywords = expandThemeNewsKeywords(rule.keywords, { name: rule.name });
-      const matchedNews = (fastNews || []).filter((item) => textMatchesKeywords(`${item.title || ""} ${item.mediaName || ""}`, newsKeywords));
+      const matchedNews = (fastNews || []).filter((item) => matchesThemeSpecificNews(item, rule, newsKeywords));
       const catalystProfile = buildNewsCatalystProfile(matchedNews.slice(0, 5), { ...rule, keywords: newsKeywords });
       const fundCount = (allFunds || []).filter((fund) => textMatchesKeywords(`${fund.name || ""} ${fund.type || ""} ${(fund.keywords || []).join(" ")}`, rule.fundKeywords || rule.keywords)).length;
       const freshNewsCount = catalystProfile.fresh === false ? 0 : matchedNews.length;
@@ -22661,7 +22751,7 @@ function buildNewsDiscoveredThemeRadarRules({ fastNews = [], allFunds = [], stat
     })
     .filter((item) => item.matchedNews.length && item.catalystProfile.fresh !== false && item.discoveryScore >= 18 && Number(item.catalystProfile.score || 0) >= 10)
     .sort((a, b) => b.discoveryScore - a.discoveryScore)
-    .slice(0, 6)
+    .slice(0, 10)
     .map(({ rule, newsKeywords }) => {
       const normalized = normalizeIntentText(rule.name || rule.id);
       if (!normalized || staticNames.has(normalized) || seen.has(normalized)) return null;
@@ -22678,7 +22768,7 @@ function buildNewsDiscoveredThemeRadarRules({ fastNews = [], allFunds = [], stat
     })
     .filter(Boolean);
   const emergingRules = buildEmergingNewsTopicRadarRules({ fastNews, allFunds, staticNames, seen });
-  return [...catalogRules, ...emergingRules].slice(0, 8);
+  return [...catalogRules, ...emergingRules].slice(0, 12);
 }
 
 function buildEmergingNewsTopicRadarRules({ fastNews = [], allFunds = [], staticNames = new Set(), seen = new Set() } = {}) {
@@ -31794,10 +31884,10 @@ function buildSkillFocusDirective(intent = {}, skills = []) {
 
   if (workflow === "fund_recommendation" && (mode === "pullback_setup_discovery" || isPullbackSetupRequest(userText))) {
     lines.push(
-      "本次任务焦点：回调完成/低位启动，不追热点。",
-      "判断顺序：先看 5日/10日是否刚转强、120日区间位置是否偏低、20日/60日是否不过热，再看题材催化和基金质量。",
-      "推荐纪律：主推荐只能来自合格的回调/启动候选；短期大涨、等待回撤、只适合观察的基金只能进观察/排除，1万元执行中必须是0元或等待条件。",
-      "如果没有合格主候选，要明确说暂未筛到，不要用黄金、贵金属或其他热门基金硬凑。"
+      "本次任务焦点：回调完成/低位启动，但低位不是第一理由，先确认题材还活着。",
+      "判断顺序：先看当前题材作战图，必须分清主力进场、题材预热、低位轮动、追涨拥挤和退潮接盘；再看新闻/政策/订单/外盘催化是否新鲜、主力资金是否跟进、基金前十大持仓或指数名称是否真实承载；最后才看 5日/10日刚转强、120日区间位置偏低、20日/60日不过热。",
+      "推荐纪律：主推荐只能来自“当前题材有支撑 + 基金承载题材 + 回调/启动买点合格”的候选；题材退潮、主力撤离、旧催化、持仓不承载或只是表面回调的基金只能进观察/排除，1万元执行中必须是0元或等待条件。",
+      "如果没有合格主候选，要明确说暂未筛到，并给出下一轮要追踪的主力进场/预热题材和代表基金召回方向；不要用黄金、贵金属或其他热门基金硬凑。"
     );
   } else if (workflow === "fund_recommendation") {
     lines.push(
@@ -31818,9 +31908,9 @@ function buildSkillFocusDirective(intent = {}, skills = []) {
     }
     if (mode === "specific_pullback_setup_assessment" || isPullbackSetupRequest(userText)) {
       lines.push(
-        "本次任务焦点：具体基金的回调完成/低位启动评估，不追热点。",
-        "判断顺序：先看 5日/10日是否刚转强、120日区间位置是否偏低、20日/60日是否不过热，再看基金质量、风险、费用和适合对象。",
-        "回答纪律：必须明确这只基金是否符合“回调完成、低位、准备启动”；如果不符合，要说等待什么条件，不要给买入金额。"
+        "本次任务焦点：具体基金的回调完成/低位启动评估，不把退潮后的便宜当机会。",
+        "判断顺序：先看它对应题材是否仍有主力进场、题材预热、低位轮动或新鲜新闻逻辑；再看前十大持仓/指数名称是否承载该题材；最后才看 5日/10日是否刚转强、120日区间位置是否偏低、20日/60日是否不过热，以及基金质量、风险、费用和适合对象。",
+        "回答纪律：必须明确这只基金是否符合“题材仍有支撑、回调完成、低位、准备启动”；如果题材退潮、主力撤离或持仓不承载，要直接说不符合，不要给买入金额。"
       );
     }
     if (/(货币|余额宝|现金管理|零钱)/.test(normalized)) {

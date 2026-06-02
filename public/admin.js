@@ -4724,6 +4724,7 @@ function formatWatchlistReadiness(item = {}) {
 }
 
 const WATCHLIST_HARD_RISK_RULES = [
+  { id: "catchdown", tone: "danger", label: "接盘风险", pattern: /接盘风险|退潮接盘|题材退潮|主力资金撤离|主力撤离|资金撤离|回调不作为买点|回调不能当买点|表面回调可能继续下探/ },
   { id: "holding_pulse", tone: "danger", label: "底层持仓走弱", pattern: /前十大持仓盘中|底层持仓.*走弱|表面回调可能继续下探|底层持仓止跌/ },
   { id: "carrier", tone: "danger", label: "持仓未承载题材", pattern: /持仓承载|未命中题材龙头|目标主题匹配度不足/ },
   { id: "retreat", tone: "danger", label: "主力撤离", pattern: /题材退潮|主力资金撤离|主力撤离|资金回流/ },

@@ -820,8 +820,8 @@ assertSkillCoverage(intent.skillIds, [
 ], "pullback setup recommendation");
 const setupSkillContext = manager.buildSkillContextForIntent(intent, manager.getFundRecommendationSkillIds(), { userText: setupQuery });
 assert(
-  setupSkillContext.includes("本次任务焦点：回调完成/低位启动，不追热点。"),
-  "pullback setup skill context must keep the ready-to-launch task focus above generic skill details"
+  setupSkillContext.includes("低位不是第一理由，先确认题材还活着") && setupSkillContext.includes("当前题材作战图"),
+  "pullback setup skill context must put live theme playbook checks before pure trend screening"
 );
 assert(
   setupSkillContext.indexOf("本次任务焦点：回调完成/低位启动") < setupSkillContext.indexOf("# Skill: fund-theme-radar"),
@@ -2019,7 +2019,7 @@ const specificPullbackContext = manager.buildSkillContextForIntent({
   skillIds: manager.getFundAnalysisSkillIds(["fund-market-timing", "fund-synthesis"])
 });
 assert(specificPullbackContext.includes("具体基金的回调完成/低位启动评估"), "specific fund pullback setup requests must get a dedicated low-position launch focus");
-assert(specificPullbackContext.includes("如果不符合，要说等待什么条件，不要给买入金额"), "specific fund pullback setup focus must forbid buy amounts when conditions are not met");
+assert(specificPullbackContext.includes("题材退潮、主力撤离或持仓不承载") && specificPullbackContext.includes("不要给买入金额"), "specific fund pullback setup focus must forbid buy amounts when live theme/carrier conditions are not met");
 assert(!serverSource.includes("preferPullbackSetup && !precious"), "precious-metal pullback setup requests must not bypass setup discovery");
 assert.deepEqual(
   manager.filterFocusedPullbackRankingCandidates([
@@ -2240,7 +2240,7 @@ assert(adminSource.includes("renderManagerCustomerActionCrossCheck") && adminSou
 assert(adminStyleSource.includes("ranking-action-leaderboard") && adminStyleSource.includes("portfolio-action-leaderboard"), "admin UI must style customer action leaderboards in both overview and full ranking terminal");
 assert(adminStyleSource.includes("ranking-action-boundary"), "admin UI must style action leaderboard execution boundaries clearly");
 assert(adminStyleSource.includes("ranking-action-crosscheck"), "admin UI must style action leaderboard cross-check evidence clearly");
-assert(adminSource.includes("底层持仓走弱") && adminSource.includes("表面回调可能继续下探"), "admin watchlist hard-risk strip must surface weak top-holding pulse as a first-class danger chip");
+assert(adminSource.includes("接盘风险") && adminSource.includes("退潮接盘") && adminSource.includes("表面回调可能继续下探"), "admin watchlist hard-risk strip must surface stale catchdown risk as a first-class danger chip");
 assert(adminSource.includes("renderPortfolioConsensusRadar") && adminSource.includes("consensusRadar"), "admin manager ranking board must render the cross-list consensus radar in overview and ranking terminal");
 assert(adminStyleSource.includes("consensus-radar") && adminStyleSource.includes("consensus-radar-grid"), "admin UI must style consensus radar lanes as compact terminal entries");
 assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must style customer-facing ranking digest as a first-class panel");
@@ -5267,21 +5267,32 @@ const expandedNewsOnlyThemeRadar = manager.buildThemeRadar({
   industryBoards: [],
   fastNews: [
     { title: "多地推进端侧AI落地 AI手机产业链订单改善 消费电子公司获机构调研", showTime: "09:48", mediaName: "测试快讯" },
-    { title: "核电审批加速 新项目开工 电力设备招标需求增长", showTime: "09:51", mediaName: "测试快讯" }
+    { title: "核电审批加速 新项目开工 电力设备招标需求增长", showTime: "09:51", mediaName: "测试快讯" },
+    { title: "车路云试点扩围 智能驾驶路侧设备订单增加", showTime: "09:55", mediaName: "测试快讯" },
+    { title: "AI服务器铜缆高速连接需求增长 PCB覆铜板公司获机构调研", showTime: "09:58", mediaName: "测试快讯" }
   ],
   fundCandidates: {
     stockFunds: [
       { code: "159004", name: "消费电子AI主题C", type: "股票型基金", oneMonthPct: 1.1, dailyPct: 0.2, shareClass: "C", keywords: ["消费电子", "端侧AI"] },
-      { code: "159005", name: "核电电力设备主题C", type: "股票型基金", oneMonthPct: 0.9, dailyPct: 0.1, shareClass: "C", keywords: ["核电", "电力设备"] }
+      { code: "159005", name: "核电电力设备主题C", type: "股票型基金", oneMonthPct: 0.9, dailyPct: 0.1, shareClass: "C", keywords: ["核电", "电力设备"] },
+      { code: "159006", name: "智能驾驶车路云主题C", type: "股票型基金", oneMonthPct: 1.0, dailyPct: 0.1, shareClass: "C", keywords: ["车路云", "智能驾驶"] },
+      { code: "159007", name: "PCB铜缆高速连接主题C", type: "股票型基金", oneMonthPct: 1.3, dailyPct: 0.2, shareClass: "C", keywords: ["PCB", "铜缆", "高速连接"] }
     ]
   }
 });
 const aiTerminalTheme = expandedNewsOnlyThemeRadar.find((theme) => theme.id === "news_ai_terminal");
 const nuclearPowerTheme = expandedNewsOnlyThemeRadar.find((theme) => theme.id === "news_power_grid_nuclear");
+const vehicleRoadCloudTheme = expandedNewsOnlyThemeRadar.find((theme) => theme.id === "news_vehicle_road_cloud");
+const pcbCopperTheme = expandedNewsOnlyThemeRadar.find((theme) => theme.id === "news_pcb_copper_link");
 assert(aiTerminalTheme?.dynamic && aiTerminalTheme.newsLogic.includes("AI手机产业链订单改善"), "expanded news discovery must catch AI terminal preheat before board confirmation");
 assert(aiTerminalTheme.catalystProfile?.summary.includes("产业订单") && manager.buildThemeLeaderboards([aiTerminalTheme]).preheat.items.length, "AI terminal news-only preheat must carry catalyst type into the preheat leaderboard");
 assert(nuclearPowerTheme?.dynamic && nuclearPowerTheme.newsLogic.includes("核电审批加速"), "expanded news discovery must catch nuclear/power-equipment preheat from fast news");
 assert(nuclearPowerTheme.catalystProfile?.summary.includes("政策落地") || nuclearPowerTheme.catalystProfile?.summary.includes("产业订单"), "nuclear/power preheat must explain the catalyst instead of only naming the theme");
+assert(vehicleRoadCloudTheme?.dynamic && vehicleRoadCloudTheme.newsLogic.includes("车路云试点扩围"), "expanded news discovery must catch vehicle-road-cloud preheat before board confirmation");
+assert(vehicleRoadCloudTheme.catalystProfile?.summary.includes("政策落地") || vehicleRoadCloudTheme.catalystProfile?.summary.includes("产业订单"), "vehicle-road-cloud preheat must explain whether the move comes from policy or orders");
+assert(pcbCopperTheme?.dynamic && pcbCopperTheme.newsLogic.includes("铜缆高速连接需求增长"), "expanded news discovery must catch PCB/copper-link preheat from AI server news");
+assert(pcbCopperTheme.catalystProfile?.summary.includes("产业订单"), "PCB/copper-link preheat must explain the industry-demand catalyst behind the move");
+assert(!expandedNewsOnlyThemeRadar.some((theme) => ["news_innovative_drug_policy", "news_brain_computer_interface"].includes(theme.id) && theme.newsLogic.includes("核电审批加速")), "news-only preheat discovery must not map generic approval/order words to unrelated medical or brain-computer themes");
 const staleNewsOnlyThemeRadar = manager.buildThemeRadar({
   conceptBoards: [],
   industryBoards: [],
