@@ -1863,7 +1863,8 @@ const portfolioDecisionCapabilitySource = serverSource.slice(
 assert(portfolioDecisionCapabilitySource.includes("const capabilityDiagnostics = buildPortfolioCapabilityDiagnostics(db)"), "portfolio decision must compute full-ledger capability diagnostics after order lifecycle processing");
 assert(portfolioDecisionCapabilitySource.includes("const capabilityActionQueue = buildPortfolioCapabilityActionQueue(db)"), "portfolio decision must compute full-ledger capability repair tasks");
 assert(portfolioDecisionCapabilitySource.includes("capabilityDiagnostics,") && portfolioDecisionCapabilitySource.includes("capabilityActionQueue"), "portfolio decision must pass capability diagnostics and repair tasks into the model prompt");
-assert(portfolioDecisionCapabilitySource.includes("const managerRankings = buildPortfolioDecisionRankingBoard(db, watchlistSeedCandidates, { profiles: seedProfiles })"), "portfolio decision must compute seed-aware manager ranking boards before model calls");
+assert(portfolioDecisionCapabilitySource.includes("const managerRankings = buildPortfolioDecisionRankingBoard(db, watchlistSeedCandidates, {"), "portfolio decision must compute seed-aware manager ranking boards before model calls");
+assert(portfolioDecisionCapabilitySource.includes("watchlistProfiles,") && portfolioDecisionCapabilitySource.includes("marketSnapshot"), "portfolio decision ranking boards must carry current market radar and watchlist profiles before model calls");
 assert(portfolioDecisionCapabilitySource.includes("managerRankings"), "portfolio decision must pass manager ranking boards into the model prompt and run audit");
 const pollutedLocalStatsDiagnostics = manager.buildRuntimeDiagnostics({
   counters: {
@@ -4978,6 +4979,41 @@ assert(staleCatchdownBoard.lists.find((item) => item.id === "stale_catchdown_ris
 assert(staleCatchdownBoard.priorityQueue.some((item) => item.code === "000042" && item.listId === "stale_catchdown_risk"), "priority queue must put stale-catchdown risk ahead of ordinary watch review");
 assert(!(staleCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "000042"), "customer action deck must not place stale catchdown candidates in buy-review");
 assert((staleCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000042"), "customer action deck must present stale catchdown candidates as no-buy/avoid items");
+const oldPreheatCurrentRetreatDb = manager.normalizePortfolioDb({
+  account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
+  watchlist: [{
+    code: "000045",
+    name: "CPO光模块人工智能主题C",
+    status: "ready",
+    readinessScore: 90,
+    reason: "历史快照显示AI/算力主力进场，曾经可以小仓试探。",
+    lastSnapshot: {
+      ...setupDigest,
+      code: "000045",
+      name: "CPO光模块人工智能主题C",
+      matchedThemes: [liveAiTheme],
+      seed: { matchedThemes: [liveAiTheme] }
+    }
+  }]
+});
+const refreshedRetreatDecisionBoard = manager.buildPortfolioDecisionRankingBoard(oldPreheatCurrentRetreatDb, [], {
+  marketSnapshot: {
+    fetchedAt: "2026-05-20T10:45:00.000Z",
+    themeRadar: [fadingAiTheme]
+  }
+});
+assert(
+  refreshedRetreatDecisionBoard.lists.find((item) => item.id === "stale_catchdown_risk")?.items.some((item) => item.code === "000045"),
+  "decision ranking board must refresh old watchlist theme labels with current radar and expose same-day retreat as stale-catchdown risk"
+);
+assert(
+  !refreshedRetreatDecisionBoard.lists.find((item) => item.id === "theme_momentum")?.items.some((item) => item.code === "000045"),
+  "decision ranking board must not keep an old preheat/main-capital label when current radar says the theme is fading"
+);
+assert(
+  (refreshedRetreatDecisionBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000045"),
+  "customer action deck must present current-radar retreat candidates as avoid instead of buy-review"
+);
 const holdingsSupportedDigest = {
   ...setupDigest,
   code: "000031",

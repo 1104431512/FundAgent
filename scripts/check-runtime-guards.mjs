@@ -1765,7 +1765,7 @@ const requiredPatterns = [
     message: "portfolio model context must carry capability diagnostics into every manager run."
   },
   {
-    pattern: /const capabilityDiagnostics = buildPortfolioCapabilityDiagnostics\(db\)[\s\S]{0,160}const capabilityActionQueue = buildPortfolioCapabilityActionQueue\(db\)[\s\S]{0,2600}capabilityDiagnostics,[\s\S]{0,120}capabilityActionQueue/,
+    pattern: /const capabilityDiagnostics = buildPortfolioCapabilityDiagnostics\(db\)[\s\S]{0,160}const capabilityActionQueue = buildPortfolioCapabilityActionQueue\(db\)[\s\S]{0,4200}capabilityDiagnostics,[\s\S]{0,120}capabilityActionQueue/,
     message: "portfolio decision runs must pass full-ledger capability diagnostics, including transactions and failed runs, into the model prompt."
   },
   {
@@ -1773,12 +1773,12 @@ const requiredPatterns = [
     message: "portfolio decision prompt must force capability repair before new buy decisions."
   },
   {
-    pattern: /function buildPortfolioDecisionRankingBoard[\s\S]{0,900}buildPortfolioWatchlistUpdatesFromSeedCandidates\(watchlistSeedCandidates,\s*\{\s*profiles\s*\}\)[\s\S]{0,900}buildPortfolioRankingBoard\(virtualDb\)/,
-    message: "portfolio decision ranking boards must preview same-day seed candidates before model prompts."
+    pattern: /function buildPortfolioDecisionRankingBoard[\s\S]{0,900}refreshPortfolioWatchlistThemesWithMarketRadar\(virtualDb,\s*\{[\s\S]{0,300}marketSnapshot[\s\S]{0,300}watchlistProfiles[\s\S]{0,900}buildPortfolioWatchlistUpdatesFromSeedCandidates\(watchlistSeedCandidates,\s*\{\s*profiles\s*\}\)[\s\S]{0,900}buildPortfolioRankingBoard\(virtualDb\)/,
+    message: "portfolio decision ranking boards must refresh current market theme radar and preview same-day seed candidates before model prompts."
   },
   {
-    pattern: /const managerRankings = buildPortfolioDecisionRankingBoard\(db,\s*watchlistSeedCandidates,\s*\{\s*profiles:\s*seedProfiles\s*\}\)[\s\S]{0,900}managerRankings/,
-    message: "portfolio decision runs must compute seed-aware manager ranking boards and pass them into the model prompt."
+    pattern: /const managerRankings = buildPortfolioDecisionRankingBoard\(db,\s*watchlistSeedCandidates,\s*\{[\s\S]{0,160}profiles:\s*seedProfiles,[\s\S]{0,160}watchlistProfiles,[\s\S]{0,160}marketSnapshot[\s\S]{0,900}managerRankings/,
+    message: "portfolio decision runs must compute current-radar refreshed, seed-aware manager ranking boards and pass them into the model prompt."
   },
   {
     pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,900}rankingBasis[\s\S]{0,900}来源：manager_ranking_board/,

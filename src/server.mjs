@@ -1285,7 +1285,13 @@ function buildPortfolioMarketSnapshotPrioritySeeds(db = {}, watchlist = []) {
 
 function buildPortfolioDecisionRankingBoard(db = {}, watchlistSeedCandidates = [], options = {}) {
   const profiles = Array.isArray(options) ? options : options.profiles || [];
+  const marketSnapshot = Array.isArray(options) ? null : options.marketSnapshot || null;
+  const watchlistProfiles = Array.isArray(options) ? [] : options.watchlistProfiles || [];
   const virtualDb = normalizePortfolioDb(JSON.parse(JSON.stringify(db || {})));
+  refreshPortfolioWatchlistThemesWithMarketRadar(virtualDb, {
+    marketSnapshot,
+    profiles: watchlistProfiles
+  });
   const seedUpdates = buildPortfolioWatchlistUpdatesFromSeedCandidates(watchlistSeedCandidates, { profiles });
   if (seedUpdates.length) {
     applyPortfolioWatchlistUpdates(virtualDb, seedUpdates, {
@@ -1294,6 +1300,91 @@ function buildPortfolioDecisionRankingBoard(db = {}, watchlistSeedCandidates = [
     });
   }
   return buildPortfolioRankingBoard(virtualDb);
+}
+
+function refreshPortfolioCandidateThemesWithMarketRadar(candidate = {}, marketSnapshot = null) {
+  const themeRadar = Array.isArray(marketSnapshot?.themeRadar)
+    ? marketSnapshot.themeRadar
+    : Array.isArray(marketSnapshot)
+      ? marketSnapshot
+      : [];
+  if (!themeRadar.length || !candidate || typeof candidate !== "object") return candidate;
+  const matchedThemes = matchCandidateThemes(candidate, themeRadar);
+  if (!matchedThemes.length) return candidate;
+  const refreshed = {
+    ...candidate,
+    matchedThemes,
+    marketThemeRefresh: {
+      source: "current_market_theme_radar",
+      refreshedAt: marketSnapshot?.fetchedAt || new Date().toISOString(),
+      matchedThemeNames: matchedThemes.map((theme) => theme.name || theme.id).filter(Boolean).slice(0, 3)
+    }
+  };
+  if (candidate.seed && typeof candidate.seed === "object") {
+    refreshed.seed = {
+      ...candidate.seed,
+      matchedThemes
+    };
+  }
+  return refreshed;
+}
+
+function refreshPortfolioWatchlistThemesWithMarketRadar(db = {}, options = {}) {
+  const themeRadar = Array.isArray(options.marketSnapshot?.themeRadar)
+    ? options.marketSnapshot.themeRadar
+    : Array.isArray(options.themeRadar)
+      ? options.themeRadar
+      : [];
+  if (!themeRadar.length || !db || typeof db !== "object") return [];
+  db.watchlist = normalizePortfolioWatchlist(db.watchlist);
+  const profileByCode = new Map((options.profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
+  const refreshed = [];
+  db.watchlist = db.watchlist.map((item) => {
+    if (!item?.code || item.status === "removed") return item;
+    const profile = profileByCode.get(item.code) || null;
+    const source = {
+      ...(item.lastSnapshot || {}),
+      ...(profile || {}),
+      code: item.code,
+      name: item.name || profile?.name || item.lastSnapshot?.name || "",
+      type: item.type || profile?.type || item.lastSnapshot?.type || ""
+    };
+    const current = refreshPortfolioCandidateThemesWithMarketRadar(source, themeRadar);
+    if (current === source) return item;
+    const snapshot = profile ? buildPortfolioFundSnapshot(current) : {
+      ...(item.lastSnapshot || {}),
+      matchedThemes: current.matchedThemes || [],
+      seed: {
+        ...(item.lastSnapshot?.seed || {}),
+        matchedThemes: current.seed?.matchedThemes || current.matchedThemes || []
+      },
+      marketThemeRefresh: current.marketThemeRefresh
+    };
+    const retreatWarnings = [
+      ...getCandidateThemeRetreatWarnings(current),
+      ...getStaleThemeCatchdownWarnings(current)
+    ];
+    const riskNotes = retreatWarnings.length
+      ? mergeStringLists(retreatWarnings, item.riskNotes, ["当前题材雷达已刷新，旧题材标签不得作为买入依据。"]).slice(0, 8)
+      : mergeStringLists(item.riskNotes, ["当前题材雷达已刷新。"]).slice(0, 8);
+    const setupEvidence = mergeStringLists(item.setupEvidence, [
+      `当前题材雷达：${(current.matchedThemes || []).map((theme) => theme.name || theme.id).filter(Boolean).slice(0, 2).join("、")}`
+    ]).slice(0, 8);
+    refreshed.push(item.code);
+    return {
+      ...item,
+      status: retreatWarnings.length && item.status === "ready" ? "waiting_pullback" : item.status,
+      priority: retreatWarnings.length ? Math.max(Number(item.priority || 3), 4) : item.priority,
+      reason: retreatWarnings.length
+        ? [item.reason, `系统当前题材雷达复核：${retreatWarnings[0]}`].filter(Boolean).join(" ").slice(0, 1200)
+        : item.reason,
+      riskNotes,
+      setupEvidence,
+      dataBasis: mergeStringLists(item.dataBasis, ["来源：current_market_theme_radar"]).slice(0, 8),
+      lastSnapshot: snapshot
+    };
+  });
+  return refreshed;
 }
 
 async function executePortfolioDecision(db, run, config) {
@@ -1317,9 +1408,11 @@ async function executePortfolioDecision(db, run, config) {
   markPortfolioRunProgress(db, run, "正在补全当前持仓和自选基金池资料。");
   await yieldToEventLoop();
   const heldCodes = db.account.positions.map((position) => position.code).filter(Boolean);
-  const heldProfiles = heldCodes.length ? await enrichFunds(heldCodes) : [];
+  const heldProfilesRaw = heldCodes.length ? await enrichFunds(heldCodes) : [];
+  const heldProfiles = heldProfilesRaw.map((profile) => refreshPortfolioCandidateThemesWithMarketRadar(profile, marketSnapshot));
   const watchlistCodes = mergeFundCodes(watchlist.map((item) => item.code));
-  const watchlistProfiles = watchlistCodes.length ? await enrichFunds(watchlistCodes) : [];
+  const watchlistProfilesRaw = watchlistCodes.length ? await enrichFunds(watchlistCodes) : [];
+  const watchlistProfiles = watchlistProfilesRaw.map((profile) => refreshPortfolioCandidateThemesWithMarketRadar(profile, marketSnapshot));
   const preDecisionWatchlistUpdates = applyPortfolioWatchlistUpdates(
     db,
     buildPortfolioWatchlistRecheckUpdates(watchlist, { profiles: watchlistProfiles }),
@@ -1339,9 +1432,13 @@ async function executePortfolioDecision(db, run, config) {
     return [];
   });
   const seedProfiles = watchlistSeedCandidates.length
-    ? await enrichFunds(watchlistSeedCandidates.map((item) => item.code))
+    ? (await enrichFunds(watchlistSeedCandidates.map((item) => item.code))).map((profile) => refreshPortfolioCandidateThemesWithMarketRadar(profile, marketSnapshot))
     : [];
-  const managerRankings = buildPortfolioDecisionRankingBoard(db, watchlistSeedCandidates, { profiles: seedProfiles });
+  const managerRankings = buildPortfolioDecisionRankingBoard(db, watchlistSeedCandidates, {
+    profiles: seedProfiles,
+    watchlistProfiles,
+    marketSnapshot
+  });
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, `资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度生成今日操作。`);
   await yieldToEventLoop();
@@ -1765,7 +1862,11 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     : buildPortfolioCapabilityActionQueue({ account, watchlist });
   const redeploymentPlan = buildPortfolioRedeploymentPlan(account, watchlist, mergePortfolioProfiles(watchlistProfiles, seedProfiles));
   const themeOpportunityPlan = buildPortfolioThemeOpportunityPlan(account, watchlist, mergePortfolioProfiles(watchlistProfiles, seedProfiles), marketSnapshot);
-  const decisionManagerRankings = managerRankings || buildPortfolioDecisionRankingBoard({ account, watchlist, userPortfolios: [] }, watchlistSeedCandidates, { profiles: seedProfiles });
+  const decisionManagerRankings = managerRankings || buildPortfolioDecisionRankingBoard({ account, watchlist, userPortfolios: [] }, watchlistSeedCandidates, {
+    profiles: seedProfiles,
+    watchlistProfiles,
+    marketSnapshot
+  });
   const compactManagerRankings = compactPortfolioRankingBoardForModel(decisionManagerRankings);
   const compactHeldProfiles = (heldProfiles || []).map(compactPortfolioReviewProfile);
   const compactWatchlistProfiles = (watchlistProfiles || []).map(compactPortfolioReviewProfile);
