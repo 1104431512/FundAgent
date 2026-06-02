@@ -3566,7 +3566,7 @@ function buildPortfolioWatchlistUpdatesFromAnswerProfiles(profiles = [], options
       const originLabel = formatAnswerWatchlistSourceLabel(source);
       const statusReason = rejectedByAnswer
         ? "回答中明确写了暂不买入、回避或排除，系统写入暂不买入而不是可买。"
-        : formatAnswerWatchlistStatusReason(status, role);
+        : formatAnswerWatchlistStatusReason(status, role, profile);
       const gapEvidence = formatAnswerWatchlistGapEvidence(profile, {
         status,
         role,
@@ -3598,13 +3598,13 @@ function buildPortfolioWatchlistUpdatesFromAnswerProfiles(profiles = [], options
           profile.actionability?.action ? `自评动作：${formatActionabilityAction(profile.actionability.action)}${profile.actionability.allocationBand ? ` ${profile.actionability.allocationBand}` : ""}` : "",
           Number.isFinite(Number(profile.trendProfile?.lowPositionPct120)) ? `120日位置${round(Number(profile.trendProfile.lowPositionPct120), 1)}%` : ""
         ].filter(Boolean),
-        buyTriggers: buildAnswerWatchBuyTriggers(status, role),
+        buyTriggers: buildAnswerWatchBuyTriggers(status, role, profile),
         riskNotes: [...buildAnswerWatchRiskNotes(status, profile), gapEvidence].filter(Boolean),
         feeNotes: [
           feeModel?.label || "份额类别和费率待基金详情页复核。",
           Number.isFinite(oneYearFeeCost) ? `估算持有1年每万元费用约 ${round(oneYearFeeCost, 0)} 元。` : ""
         ].filter(Boolean),
-        positionPlan: formatAnswerWatchPositionPlan(status, role),
+        positionPlan: formatAnswerWatchPositionPlan(status, role, profile),
         reviewDate: "下一次盘前观察或用户复问时复查",
         dataBasis: [
           `来源：${source}`,
@@ -3707,10 +3707,10 @@ function buildPortfolioWatchlistRecheckUpdates(watchlist = [], options = {}) {
           item.reason || ""
         ].filter(Boolean).join(" "),
         setupEvidence: mergeStringLists(item.setupEvidence, [trendEvidence]),
-        buyTriggers: mergeStringLists(item.buyTriggers, buildAnswerWatchBuyTriggers(status, item.status === "waiting_pullback" ? "backup" : "buy_reference")),
+        buyTriggers: mergeStringLists(item.buyTriggers, buildAnswerWatchBuyTriggers(status, item.status === "waiting_pullback" ? "backup" : "buy_reference", profile)),
         riskNotes: mergeStringLists(item.riskNotes, buildAnswerWatchRiskNotes(status, profile), freshnessNotes, readinessNotes),
         feeNotes: item.feeNotes || [],
-        positionPlan: item.positionPlan || formatAnswerWatchPositionPlan(status, item.status === "waiting_pullback" ? "backup" : "buy_reference"),
+        positionPlan: item.positionPlan || formatAnswerWatchPositionPlan(status, item.status === "waiting_pullback" ? "backup" : "buy_reference", profile),
         reviewDate: freshness.ok ? "本次每日决策已复核，下一次盘前继续确认" : "需重新下钻刷新净值后再评估买入",
         dataBasis: mergeStringLists(item.dataBasis, [
           "来源：decision_watchlist_recheck",
@@ -4678,7 +4678,10 @@ function inferPortfolioWatchStatusFromAnswerProfile(profile = {}, role = "buy_re
   return "watch";
 }
 
-function formatAnswerWatchlistStatusReason(status, role) {
+function formatAnswerWatchlistStatusReason(status, role, profile = null) {
+  if (status === "ready" && isMainlineLaunchWatchProfile(profile)) {
+    return "净值、新闻逻辑、主力线索和持仓承载已满足主线启动微型验证条件，可作为接近可买自选复核。";
+  }
   if (status === "ready") return "净值和走势证据已满足低位回调/启动候选条件，可作为接近可买自选复核。";
   if (status === "blocked") return "系统复核识别到偏热、追涨或回避风险，写入暂不买入而不是可买。";
   if (status === "waiting_pullback") {
@@ -4687,6 +4690,13 @@ function formatAnswerWatchlistStatusReason(status, role) {
       : "暂未完全证明低位启动，先等待回调/确认。";
   }
   return "作为普通观察候选保留，等待更多数据确认。";
+}
+
+function isMainlineLaunchWatchProfile(profile = null) {
+  if (!profile) return false;
+  return hasPortfolioThemeMicroStarterSetup(profile)
+    && !hasThemeLowBaseMicroStarterTrendSetup(profile.trendProfile || {})
+    && !hasVerifiedPortfolioBuySetup(profile);
 }
 
 function formatAnswerWatchlistGapEvidence(profile = {}, options = {}) {
@@ -4704,6 +4714,9 @@ function formatAnswerWatchlistGapEvidence(profile = {}, options = {}) {
     return `观察缺口：${gaps.slice(0, 4).join("；")}。`;
   }
   if (status === "ready") {
+    if (isMainlineLaunchWatchProfile(profile)) {
+      return "观察缺口：主线启动微型验证条件暂已满足，下一次复核新闻、主力资金和代表持仓是否延续。";
+    }
     return "观察缺口：低位启动条件暂已满足，等待下一次净值确认。";
   }
   if (role === "backup") {
@@ -4712,11 +4725,17 @@ function formatAnswerWatchlistGapEvidence(profile = {}, options = {}) {
   return "";
 }
 
-function buildAnswerWatchBuyTriggers(status, role) {
+function buildAnswerWatchBuyTriggers(status, role, profile = null) {
   if (status === "blocked") {
     return ["重新回到低位、回撤消化且5日/10日温和转强后，才允许重新评估。"];
   }
   if (status === "ready") {
+    if (isMainlineLaunchWatchProfile(profile)) {
+      return [
+        "主力资金和新闻催化继续成立，代表持仓不冲高回落，才允许0.5%-1.2%微型验证。",
+        "题材不进入拥挤/追涨状态，基金前十大仍能承载龙头或指数标的。"
+      ];
+    }
     return [
       "下一次净值更新后仍保持回调完成或启动前夜，且近20日涨幅不超过10%。",
       "主题没有进入拥挤/追涨状态，费用和份额类别适合计划持有期。"
@@ -4738,7 +4757,8 @@ function buildAnswerWatchRiskNotes(status, profile = {}) {
   ].filter(Boolean);
 }
 
-function formatAnswerWatchPositionPlan(status, role) {
+function formatAnswerWatchPositionPlan(status, role, profile = null) {
+  if (status === "ready" && isMainlineLaunchWatchProfile(profile)) return "只按主线启动微型验证处理，单笔0.5%-1.2%，若新闻或主力退潮立即撤回。";
   if (status === "ready") return "触发后只做卫星仓小额分批，先验证不追涨。";
   if (status === "blocked") return "暂不买入；只有重新形成低位启动证据后才复查。";
   if (role === "backup") return "先作为备选观察，不给买入金额，等待触发条件。";

@@ -4823,6 +4823,18 @@ assert(mainlineLaunchSeedUpdates[0].candidateRole.includes("主线启动"), "wat
 assert(mainlineLaunchSeedUpdates[0].reason.includes("主线启动微型验证条件"), "mainline launch seed reason must explain the news/capital/carrier verification path");
 assert(mainlineLaunchSeedUpdates[0].buyTriggers.some((item) => item.includes("主力资金") && item.includes("新闻催化")), "mainline launch seed triggers must require news and main-capital continuation");
 assert(mainlineLaunchSeedUpdates[0].positionPlan.includes("0.5%-1.2%"), "mainline launch seed position plan must keep sizing tiny");
+const mainlineAnswerWatchlistUpdates = manager.buildPortfolioWatchlistUpdatesFromAnswerProfiles([{
+  ...executableMainlineLaunchDigest,
+  reportChartRole: "买入参考图"
+}], {
+  userText: "按最近主力预热题材推荐几个基金",
+  answerText: "主线启动验证基金C：主力刚进场，AI算力订单改善，基金前十大持有工业富联和新易盛，只做微型验证。",
+  source: "fund_recommendation_answer"
+});
+assert.equal(mainlineAnswerWatchlistUpdates[0].status, "ready", "answer-derived mainline launch candidates must enter ready review instead of waiting_pullback");
+assert(mainlineAnswerWatchlistUpdates[0].reason.includes("主线启动微型验证条件"), "answer-derived mainline candidates must not reuse old low-position-ready wording");
+assert(mainlineAnswerWatchlistUpdates[0].buyTriggers.some((item) => item.includes("主力资金") && item.includes("新闻催化")), "answer-derived mainline candidates must keep news/main-force continuation triggers");
+assert(mainlineAnswerWatchlistUpdates[0].positionPlan.includes("0.5%-1.2%"), "answer-derived mainline candidates must keep tiny validation sizing");
 const noCarrierMicroStarterDigest = {
   ...microStarterDigest,
   code: "000046",
