@@ -752,6 +752,21 @@ assert.equal(sinaEstimateNav.valuationBasis, "盘中估算（新浪备源）", "
 assert.equal(sinaEstimateNav.intradaySeries.length, 2, "Sina estimate parser must preserve minute-level valuation series");
 assert(sinaEstimateNav.intradayTrend.label.includes("盘中回落"), "Sina estimate parser must summarize minute-level valuation direction");
 assert.equal(sinaEstimateNav.intradayTrend.changeFromOpenPct, -0.88, "Sina intraday trend must compare the latest point with the first point");
+const sinaFastNews = manager.parseSinaFastNewsJsonp(`
+jsonp_sina_news_test({"result":{"data":{"feed":{"list":[
+  {"rich_text":"<p>低空经济示范区政策加速落地 多地推进空域试点</p>","create_time":"10:18","media_name":"新浪财经","docurl":"https://finance.sina.com.cn/test-low-altitude","id":"n1"}
+]}}}})
+`);
+assert.equal(sinaFastNews[0].title, "低空经济示范区政策加速落地 多地推进空域试点", "Sina fast-news parser must clean rich_text HTML into readable headlines");
+assert.equal(sinaFastNews[0].showTime, "10:18", "Sina fast-news parser must preserve publish time for catalyst freshness checks");
+assert.equal(sinaFastNews[0].sourceKind, "sina_finance_7x24_news", "Sina fast-news parser must expose a traceable news source kind");
+const sinaNewsThemeRadar = manager.buildThemeRadar({
+  conceptBoards: [{ boardCode: "BKLOW1", name: "飞行汽车", changePct: 1.6, mainNetInflowPct: 2.1, leadStock: "万丰奥威", quoteTime: "10:25" }],
+  fastNews: sinaFastNews,
+  fundCandidates: { stockFunds: [{ code: "000099", name: "低空经济主题基金C", type: "股票型" }] }
+});
+const sinaLowAltitudeTheme = sinaNewsThemeRadar.find((theme) => theme.name.includes("低空"));
+assert(sinaLowAltitudeTheme?.newsLogic.includes("新浪财经") && sinaLowAltitudeTheme.newsLogic.includes("10:18"), "theme radar must use Sina backup news with source/time in catalyst logic");
 const haoetfRows = manager.parseHaoetfQdiiValuationRows(`
 <p>数据更新时间：2026-05-27 05:02:20</p>
 <table><tbody>

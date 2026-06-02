@@ -20742,7 +20742,7 @@ async function fetchMarketSnapshot(options = {}) {
     fetchPreciousMetalFundCandidates().catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchGlobalMarketQuotes().catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchChinaRealtimeIndexQuotes().catch((error) => ({ ok: false, error: error.message, items: [] })),
-    fetchEastmoneyFastNews().catch((error) => ({ ok: false, error: error.message, items: [] }))
+    fetchMarketFastNews().catch((error) => ({ ok: false, error: error.message, items: [] }))
   ]);
 
   const fundCandidates = {
@@ -21464,6 +21464,59 @@ function buildThemeLeaderboards(themeRadar = []) {
       reason: () => "热度偏高，优先等回撤或降温"
     })
   };
+}
+
+async function fetchMarketFastNews() {
+  const [eastmoney, sina] = await Promise.all([
+    fetchEastmoneyFastNews().catch((error) => ({ ok: false, label: "东方财富7x24快讯", error: error.message, items: [] })),
+    fetchSinaFastNews().catch((error) => ({ ok: false, label: "新浪财经7x24快讯", error: error.message, items: [] }))
+  ]);
+  const items = mergeFastNewsItems(eastmoney.items || [], sina.items || [])
+    .slice(0, Number(process.env.MARKET_FAST_NEWS_LIMIT || 30));
+  const errors = [eastmoney, sina]
+    .filter((source) => source && source.ok === false && source.error)
+    .map((source) => `${source.label || "快讯源"}：${source.error}`);
+  return {
+    ok: items.length > 0 && [eastmoney, sina].some((source) => source?.ok !== false),
+    label: "实时财经新闻（东方财富+新浪）",
+    items,
+    sourceKinds: [...new Set(items.map((item) => item.sourceKind).filter(Boolean))],
+    error: errors.join("；")
+  };
+}
+
+async function fetchSinaFastNews() {
+  const limit = Number(process.env.MARKET_FAST_NEWS_LIMIT || 30);
+  const callback = `jsonp_sina_news_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const url = new URL("https://zhibo.sina.com.cn/api/zhibo/feed");
+  url.searchParams.set("callback", callback);
+  url.searchParams.set("page", "1");
+  url.searchParams.set("page_size", String(limit));
+  url.searchParams.set("zhibo_id", "152");
+  url.searchParams.set("tag_id", "0");
+  url.searchParams.set("dire", "f");
+  url.searchParams.set("dpc", "1");
+  url.searchParams.set("_", String(Date.now()));
+  const text = await fetchText(url.href, "https://finance.sina.com.cn/7x24/");
+  const items = parseSinaFastNewsJsonp(text).slice(0, limit);
+  updateStats({ counters: { sinaFastNewsFetches: 1 } });
+  return {
+    ok: items.length > 0,
+    label: "新浪财经7x24快讯",
+    items,
+    sourceKinds: ["sina_finance_7x24_news"],
+    error: items.length ? "" : "新浪财经快讯返回为空"
+  };
+}
+
+function mergeFastNewsItems(...groups) {
+  const seen = new Set();
+  return groups.flat().filter((item) => {
+    const title = normalizeIntentText(item?.title || "");
+    if (!title || seen.has(title)) return false;
+    seen.add(title);
+    return true;
+  });
 }
 
 function compactThemeLeaderboardItem(theme = {}, reason = "", score = 0) {
@@ -26951,12 +27004,9 @@ function cleanHaoetfCellText(html = "") {
 
 function parseSinaEstimateNetworthJsonp(text) {
   const body = String(text || "").trim();
-  const start = body.indexOf("(");
-  const end = body.lastIndexOf(")");
-  if (start < 0 || end <= start) return null;
   let payload = null;
   try {
-    payload = JSON.parse(body.slice(start + 1, end));
+    payload = parseJsonOrJsonpPayload(body);
   } catch {
     return null;
   }
@@ -26985,6 +27035,74 @@ function parseSinaEstimateNetworthJsonp(text) {
     sourceKind: "sina_intraday_estimate",
     valuationBasis: "盘中估算（新浪备源）"
   };
+}
+
+function parseSinaFastNewsJsonp(text) {
+  let payload = null;
+  try {
+    payload = parseJsonOrJsonpPayload(text);
+  } catch {
+    return [];
+  }
+  const lists = [
+    payload?.result?.data?.feed?.list,
+    payload?.result?.data?.list,
+    payload?.data?.feed?.list,
+    payload?.data?.list,
+    payload?.data
+  ];
+  const rows = lists.find(Array.isArray) || [];
+  return rows.map((item) => {
+    const title = cleanFastNewsText(item.rich_text || item.content || item.title || item.summary || "");
+    if (!title) return null;
+    return {
+      title,
+      showTime: normalizeSinaFastNewsTime(item),
+      mediaName: cleanFastNewsText(item.media_name || item.mediaName || item.source || "新浪财经"),
+      url: item.docurl || item.url || item.link || "",
+      code: String(item.id || item.news_id || item.code || "").trim(),
+      sourceKind: "sina_finance_7x24_news"
+    };
+  }).filter(Boolean);
+}
+
+function parseJsonOrJsonpPayload(text) {
+  const body = String(text || "").trim().replace(/^[\uFEFF\s]+/, "");
+  if (!body) throw new Error("empty payload");
+  if (body.startsWith("{") || body.startsWith("[")) {
+    return JSON.parse(body);
+  }
+  const start = body.indexOf("(");
+  const end = body.lastIndexOf(")");
+  if (start < 0 || end <= start) throw new Error("invalid jsonp payload");
+  return JSON.parse(body.slice(start + 1, end));
+}
+
+function cleanFastNewsText(value = "") {
+  return stripHtml(decodeHtmlEntities(String(value || "")))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeSinaFastNewsTime(item = {}) {
+  const raw = item.showTime || item.create_time || item.created_at || item.publish_time || item.time || item.date || "";
+  if (typeof raw === "number" || /^\d{10,13}$/.test(String(raw))) {
+    const numeric = Number(raw);
+    if (Number.isFinite(numeric)) {
+      return new Date(numeric < 1e12 ? numeric * 1000 : numeric)
+        .toLocaleString("zh-CN", {
+          timeZone: "Asia/Shanghai",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false
+        })
+        .replace(/\//g, "-");
+    }
+  }
+  return String(raw || "").trim();
 }
 
 function normalizeSinaEstimateIntradaySeries(points = [], data = {}) {
@@ -31209,6 +31327,7 @@ export {
   normalizeUserFacingFundAnswer,
   parseFundPingzhongLatestNav,
   parseHaoetfQdiiValuationRows,
+  parseSinaFastNewsJsonp,
   parseSinaEstimateNetworthJsonp,
   parseTencentRealtimeQuotes,
   summarizeFundIntradayValuationTrend,

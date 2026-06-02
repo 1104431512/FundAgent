@@ -1133,6 +1133,18 @@ const requiredPatterns = [
     message: "theme news logic must preserve source/time for catalyst explanations."
   },
   {
+    pattern: /fetchMarketSnapshot[\s\S]{0,2200}fetchMarketFastNews/,
+    message: "market snapshots must use the aggregated fast-news feed instead of depending on a single news source."
+  },
+  {
+    pattern: /async function fetchMarketFastNews[\s\S]{0,1400}fetchEastmoneyFastNews[\s\S]{0,900}fetchSinaFastNews[\s\S]{0,900}mergeFastNewsItems/,
+    message: "theme news support must merge Eastmoney and Sina fast-news sources so one source failure does not make the manager look offline."
+  },
+  {
+    pattern: /function parseSinaFastNewsJsonp[\s\S]{0,1400}rich_text[\s\S]{0,900}sina_finance_7x24_news/,
+    message: "Sina fast-news backup must parse rich_text headlines and expose a traceable source kind for catalyst explanations."
+  },
+  {
     pattern: /新闻催化：\$\{formatThemeNewsHeadline\(news\[0\]\)\}/,
     message: "theme news logic must use the source/time-aware headline formatter."
   },
