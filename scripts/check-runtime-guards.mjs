@@ -3025,6 +3025,10 @@ const requiredPatterns = [
     message: "ranking-board guards must add traceable fallback review actions when top ranked items are omitted."
   },
   {
+    pattern: /function inferPortfolioRankingBoardReviewAction[\s\S]{0,900}isPortfolioRankingBoardBuyReviewText[\s\S]{0,1800}function resolvePortfolioRankingReviewTargetWeight[\s\S]{0,900}1\.2/,
+    message: "ranking-board fallback must turn executable main-capital/preheat micro-starters into capped BUY reviews instead of always WATCH."
+  },
+  {
     pattern: /decision_synthesis[\s\S]*buy_preparation[\s\S]*launch_setup[\s\S]*cash_redeployment[\s\S]*position_sizing[\s\S]*quality_score[\s\S]*manager_stability[\s\S]*portfolio_fit[\s\S]*theme_allocation[\s\S]*theme_momentum[\s\S]*rotation_opportunity[\s\S]*stale_catchdown_risk[\s\S]*chase_risk[\s\S]*drawdown_defense[\s\S]*data_confidence[\s\S]*holdings_outlook[\s\S]*fee_suitability[\s\S]*replacement_choice[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
     message: "manager ranking boards must cover decision synthesis, buy preparation, low-position launch, cash redeployment, position sizing, fund quality, manager stability, portfolio fit, theme allocation, main-capital/preheat momentum, sector rotation, stale-catchdown risk, chase risk, drawdown defense, data confidence, holdings outlook, fee suitability, replacement choice, opportunity cost, sell risk, and user holding alerts."
   },

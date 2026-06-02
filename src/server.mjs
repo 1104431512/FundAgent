@@ -4499,12 +4499,41 @@ function inferPortfolioRankingBoardReviewAction(list = {}, item = {}) {
   if (listId === "sell_risk") {
     return /优先卖出|卖出|减仓|止损|止盈|回吐/.test(actionText) ? "SELL" : "HOLD";
   }
-  if (listId === "cash_redeployment") {
-    return "WATCH";
+  if (isPortfolioRankingBoardBuyReviewList(listId) && isPortfolioRankingBoardBuyReviewText(actionText)) {
+    return "BUY";
   }
   if (listId === "replacement_choice") return "WATCH";
   if (listId === "user_holding_alerts") return "WATCH";
   return "WATCH";
+}
+
+function isPortfolioRankingBoardBuyReviewList(listId = "") {
+  return new Set([
+    "decision_synthesis",
+    "buy_preparation",
+    "launch_setup",
+    "cash_redeployment",
+    "position_sizing",
+    "theme_momentum",
+    "rotation_opportunity"
+  ]).has(String(listId || ""));
+}
+
+function isPortfolioRankingBoardBuyReviewText(text = "") {
+  const body = String(text || "");
+  if (!/(买入复核|优先买入|小仓试探|微型试探|启动仓复核|可分批|可小仓|主力预热微型试探|主力预热买入复核)/.test(body)) {
+    return false;
+  }
+  return !/(0元观察|观察补证据|继续观察|先观察|等待|回避|暂不|不买|补证据|缺[^，。；;]{0,24}(?:证据|确认|核验|持仓|费用|净值|买点)|风险未解除|追涨|退潮|接盘|降温观察|数据不足)/.test(body);
+}
+
+function resolvePortfolioRankingReviewTargetWeight(list = {}, item = {}, reviewAction = "") {
+  if (reviewAction !== "BUY") return 0;
+  const text = `${list.title || ""} ${list.id || ""} ${item.action || ""} ${item.reason || ""} ${item.decision?.nextStep || ""}`;
+  if (/微型|0\.5%-1\.2%|1\.2%/.test(text)) return 1.2;
+  if (/小仓|1\.5%/.test(text)) return 1.5;
+  if (/启动仓|2\.5%|0\.5%-2\.5%|分批/.test(text)) return 2.5;
+  return 1;
 }
 
 function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = []) {
@@ -4518,6 +4547,7 @@ function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = [
       const code = String(item?.code || "").match(/^\d{6}$/)?.[0] || "";
       if (!code || existingCodes.has(code)) continue;
       const reviewAction = inferPortfolioRankingBoardReviewAction(list, item);
+      const targetWeightPct = resolvePortfolioRankingReviewTargetWeight(list, item, reviewAction);
       const basis = formatPortfolioRankingBoardReviewBasis(list, item);
       const decision = item.decision || {};
       const highlights = normalizeStringArray(decision.highlights);
@@ -4529,9 +4559,9 @@ function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = [
         code,
         name: item.name || "",
         amount: 0,
-        targetWeightPct: 0,
+        targetWeightPct,
         rankingBasis: basis,
-        reason: `${basis}；本轮先给${reviewAction === "SELL" ? "分批减仓/卖出" : reviewAction === "HOLD" ? "持仓" : "观察"}复核，不允许静默跳过。`,
+        reason: `${basis}；本轮先给${reviewAction === "BUY" ? "买入" : reviewAction === "SELL" ? "分批减仓/卖出" : reviewAction === "HOLD" ? "持仓" : "观察"}复核，不允许静默跳过。`,
         dataBasis: mergeStringLists([
           "来源：manager_ranking_board",
           item.source ? `榜单来源：${item.source}` : "",
@@ -4544,6 +4574,8 @@ function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = [
         feeCheck: facts.find((fact) => /[ACDI]类|费用|申购|销售服务费|赎回/.test(fact)) || "执行前仍需核验份额类别、申购费、销售服务费和赎回规则。",
         riskControl: decision.nextStep || (reviewAction === "SELL"
           ? "先复核赎回到账和减仓比例，禁止用补仓替代风控。"
+          : reviewAction === "BUY"
+            ? "只按榜单给小仓复核；执行前仍要经过净值、费用、仓位和题材退潮守卫。"
           : "下一轮继续跟踪榜单触发条件，未满足前不提交虚拟申购。")
       });
       existingCodes.add(code);
