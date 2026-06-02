@@ -20835,7 +20835,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "若质检问题包含 watch_candidate_given_buy_execution 或 watch_candidate_given_buy_signal，观察/排除候选不能获得买入金额，也不能写“可以买、小仓位试探、少买一点、建仓”等买入暗示；只能写0元观察或等待条件。",
       "若质检问题包含 stale_data_candidate_given_buy_execution 或 stale_data_candidate_given_buy_signal，说明该基金净值/走势证据已过期；必须把对应代码改为0元等待、重新下钻复核，不能给买入、分批、建仓或小仓位试探。",
       "若质检问题包含 stale_theme_candidate_given_buy_execution 或 stale_theme_candidate_given_buy_signal，说明该基金题材退潮、主力撤离、旧题材未被当前雷达确认或存在接盘风险；必须把对应代码改为0元观察，等待资金回流、当前题材雷达重新确认或新鲜催化出现，不能给买入、分批、建仓或小仓位试探。",
-      "若质检问题包含 missing_theme_news_logic_explanation，必须补上题材为什么动：写清新闻/政策/订单/产业催化、主力资金是否跟进、代表基金是否承载题材；不能只写低位修复或等待机会。",
+      "若质检问题包含 missing_theme_news_logic_explanation，必须补上题材为什么动：写清新闻/政策/订单/产业催化的来源或时间、主力资金是否跟进、代表基金是否承载题材；不能只写低位修复或等待机会。",
       "若质检问题包含 missing_pullback_timing_evidence，主推荐每条必须写出5日/10日早期转强、120日区间低位或距高点回撤等数字证据；若包含 missing_pullback_three_tier_execution，必须给激进/均衡/保守三档金额。",
       "若质检问题包含 missing_pullback_share_class_fee，主推荐每条必须写份额类别和费用模型，例如 C类无前端申购费但有销售服务费，或 A类有申购费但长期持有持续费率较低。",
       "若质检问题包含 insufficient_chart_linked_candidates，必须补足 12 张左右可配图候选：主买入参考和备选观察分开写，每只都写代码、买入/备选角色、图上看的走势/回撤/低位/费用证据。",
@@ -20962,11 +20962,12 @@ function evaluateThemeNewsLogicAnswerCoverage({ text, workflow, userText, eviden
   if (!shouldRequireThemeNewsLogicExplanation({ workflow, userText, evidence })) return [];
   const body = String(text || "");
   const hasCatalystLogic = /(?:题材|板块|行业|赛道|方向).{0,36}(?:新闻|快讯|催化|政策|订单|产业|时事|公告|业绩|价格|外盘|事件|为什么|大涨|上涨原因)|(?:新闻|快讯|催化|政策|订单|产业|时事|公告|业绩|价格|外盘|事件).{0,42}(?:催化|逻辑|落地|改善|加速|支撑|驱动|订单|政策|兑现|发酵)|(?:为什么动|大涨逻辑|上涨原因)/.test(body);
+  const hasCatalystFreshnessTrace = /(?:\d{1,2}:\d{2}|今天|今日|当天|盘中|早盘|午后|近两天|昨日|昨晚|本周|财联社|东方财富|新浪|新华社|央视|证券时报|上海证券报|中证报|上证报|证券日报|中国基金报|第一财经|每经|公告|交易所|工信部|发改委|商务部|国务院|来源\s*[：:]?|新闻源|快讯源|[\u4e00-\u9fa5A-Za-z]{2,12}(?:快讯|财经|证券|时报|日报))/.test(body);
   const hasCapitalOrBoardConfirmation = /(?:主力|资金|机构|北向|南向).{0,28}(?:进场|流入|跟进|净流入|回流|撤离|流出|净流出)|(?:板块|行业|赛道|方向|龙头|指数).{0,32}(?:走强|确认|发酵|轮动|跟进|分化|退潮|回落|拥挤)/.test(body);
   const hasFundCarrierLogic = /(?:前十大|持仓|底层|成分|指数|ETF|联接|代表基金|基金).{0,42}(?:承载|映射|匹配|覆盖|暴露|龙头|成分|方向|题材|行业|赛道)|(?:承载|映射).{0,28}(?:题材|板块|行业|赛道|方向)/.test(body);
   const hasLooseThemeLogic = /(?:题材|板块|行业|赛道|方向).{0,36}(?:新闻|快讯|催化|政策|订单|产业|主力|资金|逻辑|为什么|大涨|上涨|轮动)|(?:新闻|快讯|催化|政策|订单|产业).{0,36}(?:催化|逻辑|落地|改善|加速|支撑|驱动|主力|资金|订单|政策)|主力.{0,24}(?:进场|流入|跟进|撤离|流出)|资金.{0,24}(?:净流入|流入|净流出|流出|回流)/.test(body);
   const hasThemeLogic = shouldRequireStrictThemePlaybookExplanation(evidence)
-    ? hasCatalystLogic && hasCapitalOrBoardConfirmation && hasFundCarrierLogic
+    ? hasCatalystLogic && hasCatalystFreshnessTrace && hasCapitalOrBoardConfirmation && hasFundCarrierLogic
     : hasLooseThemeLogic;
   const hasDecisionTranslation = /(买入|分批|观察|等待|回避|排除|备选|小仓|试探|不买|少买|暂停|触发)/.test(body);
   return hasThemeLogic && hasDecisionTranslation ? [] : ["missing_theme_news_logic_explanation"];

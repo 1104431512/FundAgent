@@ -1317,8 +1317,8 @@ const requiredPatterns = [
     message: "answer quality and deterministic fallback must pass deepDive-level theme-playbook requirements into pullback candidate bucketing."
   },
   {
-    pattern: /(?=[\s\S]*missing_theme_news_logic_explanation)(?=[\s\S]*function evaluateThemeNewsLogicAnswerCoverage)(?=[\s\S]*hasCatalystLogic)(?=[\s\S]*hasCapitalOrBoardConfirmation)(?=[\s\S]*hasFundCarrierLogic)(?=[\s\S]*function shouldRequireStrictThemePlaybookExplanation)(?=[\s\S]*题材为什么动)/,
-    message: "fund answer quality must require catalyst, capital/board confirmation, and fund-carrier logic in customer replies when current theme playbook evidence is required."
+    pattern: /(?=[\s\S]*missing_theme_news_logic_explanation)(?=[\s\S]*function evaluateThemeNewsLogicAnswerCoverage)(?=[\s\S]*hasCatalystLogic)(?=[\s\S]*hasCatalystFreshnessTrace)(?=[\s\S]*hasCapitalOrBoardConfirmation)(?=[\s\S]*hasFundCarrierLogic)(?=[\s\S]*function shouldRequireStrictThemePlaybookExplanation)(?=[\s\S]*题材为什么动)/,
+    message: "fund answer quality must require catalyst, fresh source/time trace, capital/board confirmation, and fund-carrier logic in customer replies when current theme playbook evidence is required."
   },
   {
     pattern: /(?=[\s\S]*function getActionabilityHoldingsOutlookDiscipline)(?=[\s\S]*系统持仓承载降级)(?=[\s\S]*前十大持仓没有证明基金真实承载该题材)(?=[\s\S]*getPortfolioWatchStructuralReadinessCap[\s\S]*前十大持仓未命中题材龙头)/,
