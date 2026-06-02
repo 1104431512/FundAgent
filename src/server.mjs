@@ -3253,8 +3253,10 @@ function inferPortfolioThemeOpportunitySearchKeywords(marketSnapshot = null) {
 }
 
 function buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot = null) {
-  const leaderItems = collectPortfolioThemeOpportunityLeaderboardItems(marketSnapshot)
-    .filter((item) => ["mainCapital", "preheat", "lowRotation"].includes(item.laneKey))
+  const leaderItems = filterPortfolioDefaultThemeOpportunityItems(
+    collectPortfolioThemeOpportunityLeaderboardItems(marketSnapshot)
+      .filter((item) => ["mainCapital", "preheat", "lowRotation"].includes(item.laneKey))
+  )
     .slice(0, 6);
   if (!leaderItems.length) return [];
   const radar = Array.isArray(marketSnapshot?.themeRadar) ? marketSnapshot.themeRadar : [];
@@ -3278,8 +3280,10 @@ function buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot = null) {
 function buildPortfolioThemeOpportunitySeedCandidates(marketSnapshot = null) {
   const themeRadar = Array.isArray(marketSnapshot?.themeRadar) ? marketSnapshot.themeRadar : [];
   if (!themeRadar.length) return [];
-  const leaderItems = collectPortfolioThemeOpportunityLeaderboardItems(marketSnapshot)
-    .filter((item) => ["mainCapital", "preheat", "lowRotation"].includes(item.laneKey));
+  const leaderItems = filterPortfolioDefaultThemeOpportunityItems(
+    collectPortfolioThemeOpportunityLeaderboardItems(marketSnapshot)
+      .filter((item) => ["mainCapital", "preheat", "lowRotation"].includes(item.laneKey))
+  );
   if (!leaderItems.length) return [];
   const laneByThemeKey = new Map();
   for (const item of leaderItems) {
@@ -3323,6 +3327,16 @@ function buildPortfolioThemeOpportunitySeedCandidates(marketSnapshot = null) {
     }
   }
   return mergeCandidateFunds(seeds);
+}
+
+function filterPortfolioDefaultThemeOpportunityItems(items = []) {
+  const list = (items || []).filter(Boolean);
+  const hasNonPrecious = list.some((item) => !isPreciousPortfolioThemeOpportunityItem(item));
+  return hasNonPrecious ? list.filter((item) => !isPreciousPortfolioThemeOpportunityItem(item)) : list;
+}
+
+function isPreciousPortfolioThemeOpportunityItem(item = {}) {
+  return item.id === "precious_metals" || /黄金|贵金属|白银|金价|沪金|沪银|COMEX/i.test(`${item.name || ""} ${item.reason || ""} ${item.newsLogic || ""}`);
 }
 
 function isPortfolioThemeOpportunitySeedTheme(theme = {}) {

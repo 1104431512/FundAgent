@@ -2029,8 +2029,12 @@ const requiredPatterns = [
     message: "portfolio watchlist seeding must search representative funds for live theme opportunities instead of generic low-position funds only."
   },
   {
-    pattern: /function buildPortfolioThemeOpportunityKeywordGroups[\s\S]{0,1400}collectPortfolioThemeOpportunityLeaderboardItems[\s\S]{0,900}collectThemeOpportunitySearchKeywords[\s\S]{0,2600}function buildPortfolioThemeOpportunitySeedCandidates[\s\S]{0,2200}题材榜单代表基金[\s\S]{0,2200}function collectThemeOpportunitySearchKeywords[\s\S]{0,1200}fundKeywords[\s\S]{0,700}newsKeywords/,
+    pattern: /function buildPortfolioThemeOpportunityKeywordGroups[\s\S]{0,1700}collectPortfolioThemeOpportunityLeaderboardItems[\s\S]{0,1100}collectThemeOpportunitySearchKeywords[\s\S]{0,3200}function buildPortfolioThemeOpportunitySeedCandidates[\s\S]{0,2600}题材榜单代表基金[\s\S]{0,3200}function collectThemeOpportunitySearchKeywords[\s\S]{0,1200}fundKeywords[\s\S]{0,700}newsKeywords/,
     message: "portfolio theme opportunity seed recall must derive grouped theme/fund keywords from main-capital, preheat, and low-rotation leaderboards."
+  },
+  {
+    pattern: /function filterPortfolioDefaultThemeOpportunityItems[\s\S]{0,900}isPreciousPortfolioThemeOpportunityItem[\s\S]{0,900}function isPreciousPortfolioThemeOpportunityItem[\s\S]{0,500}黄金\|贵金属/,
+    message: "portfolio default theme recall must suppress precious-metal seeds when non-precious mainline themes are available, without disabling gold-only opportunities."
   },
   {
     pattern: /function formatPortfolioThemeSeedWaitingReason[\s\S]{0,1200}已有新闻\/资金线索[\s\S]{0,900}不能把题材热度直接当买点/,

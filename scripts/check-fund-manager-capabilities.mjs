@@ -552,6 +552,42 @@ assert(
   noCarrierDirectThemeUpdate?.reason?.includes("题材预热") && /前十大|承载|持仓/.test(noCarrierDirectThemeUpdate.reason),
   "waiting reasons for direct theme seeds must explain the theme is alive but the fund carrier evidence is not enough"
 );
+const preciousLeaderTheme = {
+  id: "precious_metals",
+  name: "黄金/贵金属",
+  leaderSignal: "capital_entering",
+  positionSignal: "main_capital_entering",
+  capitalFollowScore: 72,
+  preheatScore: 62,
+  rotationScore: 42,
+  lowPositionScore: 38,
+  crowdingScore: 18,
+  capitalRetreatScore: 8,
+  avgMainNetInflowPct: 1.4,
+  catalystProfile: { score: 28, summary: "避险和降息预期共振", risk: false, fresh: true },
+  newsLogic: "主力刚进场：新闻催化：避险需求升温；主力线索：贵金属资金净流入",
+  keywords: ["黄金", "贵金属"],
+  fundKeywords: ["黄金", "贵金属"],
+  evidence: {
+    funds: [{ code: "021959", name: "南方黄金股指数C", type: "指数型", shareClass: "C", oneMonthPct: 2.4, dailyPct: 0.4 }]
+  }
+};
+const mixedThemeSnapshot = {
+  themeRadar: [preciousLeaderTheme, directThemeCarrierSnapshot.themeRadar[0]]
+};
+mixedThemeSnapshot.themeLeaderboards = manager.buildThemeLeaderboards(mixedThemeSnapshot.themeRadar);
+const mixedThemeGroups = manager.buildPortfolioThemeOpportunityKeywordGroups(mixedThemeSnapshot);
+assert(mixedThemeGroups.some((item) => item.name.includes("低空")), "default theme opportunity recall must keep non-precious mainline themes");
+assert(!mixedThemeGroups.some((item) => /黄金|贵金属/.test(item.name)), "default theme opportunity recall must not let precious metals crowd out non-precious mainlines");
+const mixedThemeSeeds = manager.buildPortfolioThemeOpportunitySeedCandidates(mixedThemeSnapshot);
+assert(mixedThemeSeeds.some((item) => item.code === "000099"), "direct theme seeds must keep non-precious representative funds when gold is also active");
+assert(!mixedThemeSeeds.some((item) => item.code === "021959"), "direct theme seeds must suppress default gold seeds when non-precious mainlines are available");
+const preciousOnlySnapshot = { themeRadar: [preciousLeaderTheme] };
+preciousOnlySnapshot.themeLeaderboards = manager.buildThemeLeaderboards(preciousOnlySnapshot.themeRadar);
+assert(
+  manager.buildPortfolioThemeOpportunitySeedCandidates(preciousOnlySnapshot).some((item) => item.code === "021959"),
+  "precious-metal representative funds must still be available when they are the only live mainline opportunity"
+);
 assert.equal(
   manager.shouldForcePortfolioThemeOpportunitySeedScan(liveThemeOpportunitySnapshot, [{
     code: "000097",
