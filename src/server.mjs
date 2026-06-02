@@ -4047,6 +4047,7 @@ function collectPortfolioThemeOpportunityLeaderboardItems(marketSnapshot = null)
       score: Number(item.score || 0),
       reason: item.reason || "",
       catalyst: item.catalyst || "",
+      sourceType: item.sourceType || "",
       newsLogic: item.newsLogic || ""
     }))
   );
@@ -14517,6 +14518,7 @@ function compactThemeLeaderboardsForPublic(leaderboards = {}) {
         reason: item.reason || "",
         leader: item.leader || "",
         action: item.action || "",
+        sourceType: item.sourceType || "",
         catalyst: item.catalyst || "",
         newsLogic: item.newsLogic || item.primaryCatalyst || "",
         nextStep: item.nextStep || "",
@@ -17513,6 +17515,7 @@ function compactThemeLeaderboardsForModel(leaderboards = {}) {
         看点: item.reason || "",
         主力节奏: item.leader || "",
         操作倾向: item.action || "",
+        来源: item.sourceType || "",
         催化性质: item.catalyst || "",
         题材逻辑: item.newsLogic || "",
         下一步: item.nextStep || "",
@@ -22249,6 +22252,7 @@ function compactThemeLeaderboardItem(theme = {}, reason = "", score = 0) {
     reason,
     leader: formatUserFacingFundLabel(theme.leaderSignal || theme.positionSignal || ""),
     action: formatUserFacingFundLabel(theme.actionBias || ""),
+    sourceType: theme.newsDiscovered ? "新闻自动发现" : theme.dynamic ? "动态题材雷达" : "预置题材雷达",
     catalyst: theme.catalystProfile?.summary || "",
     catalystFreshness: theme.catalystProfile?.freshnessLabel || "",
     newsLogic: theme.newsLogic || theme.primaryCatalyst || "",
@@ -22299,6 +22303,7 @@ function buildThemeLeaderboardEvidenceChips(theme = {}) {
   const maxFlow = Number(theme.maxMainNetInflowPct);
   const retreat = Number(theme.capitalRetreatScore);
   const board = theme.evidence?.boards?.[0] || {};
+  if (theme.newsDiscovered) chips.push("新闻自动发现");
   if (Number.isFinite(flow)) {
     chips.push(flow >= 0 ? `主力净流入${formatFallbackPlainPct(flow)}` : `主力净流出${formatFallbackPlainPct(Math.abs(flow))}`);
   } else if (Number.isFinite(maxFlow) && maxFlow > 0) {

@@ -1201,7 +1201,7 @@ const requiredPatterns = [
     message: "theme radar must discover preheated emerging themes from fast news before concept boards fully move."
   },
   {
-    pattern: /(?=[\s\S]*function buildEmergingNewsTopicRadarRules)(?=[\s\S]*function extractEmergingNewsTopicTerms)(?=[\s\S]*news_auto_)(?=[\s\S]*newsOnlyPreheatBoost)(?=[\s\S]*newsDiscovered)/,
+    pattern: /(?=[\s\S]*function buildEmergingNewsTopicRadarRules)(?=[\s\S]*function extractEmergingNewsTopicTerms)(?=[\s\S]*news_auto_)(?=[\s\S]*newsOnlyPreheatBoost)(?=[\s\S]*newsDiscovered)(?=[\s\S]*新闻自动发现)/,
     message: "theme radar must auto-extract fresh news-only preheat topics instead of relying only on preset theme rules."
   },
   {

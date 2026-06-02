@@ -5043,10 +5043,13 @@ const emergingNewsTheme = emergingNewsOnlyRadar.find((theme) => theme.name.inclu
 assert(emergingNewsTheme?.newsDiscovered, "theme radar must auto-discover emerging preheat themes from fresh news even when no preset rule exists");
 assert(emergingNewsTheme.newsLogic.includes("新闻催化") && emergingNewsTheme.newsLogic.includes("脑机接口"), "auto-discovered news themes must explain the current-event catalyst");
 assert(emergingNewsTheme.preheatScore >= 52, "auto-discovered news themes must receive preheat scoring before boards fully diffuse");
+const emergingPreheatItem = manager.buildThemeLeaderboards([emergingNewsTheme]).preheat.items.find((item) => item.name.includes("脑机接口"));
 assert(
-  manager.buildThemeLeaderboards([emergingNewsTheme]).preheat.items.some((item) => item.name.includes("脑机接口")),
+  emergingPreheatItem,
   "theme preheat leaderboard must surface auto-discovered current-event themes"
 );
+assert.equal(emergingPreheatItem.sourceType, "新闻自动发现", "theme leaderboard items must preserve auto-news discovery source for model and UI explanations");
+assert(emergingPreheatItem.evidence.includes("新闻自动发现"), "theme leaderboard evidence chips must tell users when a preheat theme came from fast news");
 const staleNewsThemeRadar = manager.buildThemeRadar({
   conceptBoards: [
     { boardCode: "BKAIOLD", name: "人工智能", changePct: 1.2, mainNetInflowPct: 2.4, leadStock: "工业富联", quoteTime: "10:30" }
