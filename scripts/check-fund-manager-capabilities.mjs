@@ -477,6 +477,7 @@ assert.equal(
 const liveThemeSeedSearchText = manager.buildPortfolioWatchlistSeedSearchText([], liveThemeOpportunitySnapshot);
 assert(liveThemeSeedSearchText.includes("代表基金"), "theme opportunity seed search must ask for representative funds instead of generic funds");
 assert(liveThemeSeedSearchText.includes("低空经济") && liveThemeSeedSearchText.includes("万丰奥威"), "theme opportunity seed search must carry live theme and holdings keywords");
+assert(liveThemeSeedSearchText.includes("新闻催化") && liveThemeSeedSearchText.includes("前十大持仓"), "theme opportunity seed search must require news logic and holdings-carrier evidence");
 assert.equal(
   manager.shouldForcePortfolioThemeOpportunitySeedScan(liveThemeOpportunitySnapshot, [{
     code: "000099",

@@ -2001,7 +2001,7 @@ const requiredPatterns = [
     message: "portfolio watchlist seeding must force candidate recall when live main-capital/preheat/low-rotation themes are not represented in the watchlist."
   },
   {
-    pattern: /function buildPortfolioWatchlistSeedSearchText[\s\S]{0,500}代表基金[\s\S]{0,500}inferPortfolioThemeOpportunitySearchKeywords/,
+    pattern: /function buildPortfolioWatchlistSeedSearchText[\s\S]{0,700}新闻催化[\s\S]{0,700}前十大持仓[\s\S]{0,700}代表基金[\s\S]{0,700}inferPortfolioThemeOpportunitySearchKeywords/,
     message: "portfolio watchlist seeding must search representative funds for live theme opportunities instead of generic low-position funds only."
   },
   {

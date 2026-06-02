@@ -3228,7 +3228,21 @@ function shouldForcePortfolioThemeOpportunitySeedScan(marketSnapshot = null, wat
 function buildPortfolioWatchlistSeedSearchText(seedContextCandidates = [], marketSnapshot = null) {
   const keywords = inferPortfolioBlockedFollowThroughSearchKeywords(seedContextCandidates);
   const themeKeywords = inferPortfolioThemeOpportunitySearchKeywords(marketSnapshot);
-  return ["回调完成", "低位", "准备启动", "同主题替代", "代表基金", "基金", ...themeKeywords, ...keywords].join(" ");
+  return [
+    "回调完成",
+    "低位",
+    "准备启动",
+    "主力进场",
+    "题材预热",
+    "新闻催化",
+    "前十大持仓",
+    "龙头承载",
+    "同主题替代",
+    "代表基金",
+    "基金",
+    ...themeKeywords,
+    ...keywords
+  ].join(" ");
 }
 
 function inferPortfolioThemeOpportunitySearchKeywords(marketSnapshot = null) {
