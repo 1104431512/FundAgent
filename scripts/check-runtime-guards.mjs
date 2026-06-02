@@ -1105,6 +1105,10 @@ const requiredPatterns = [
     message: "admin theme leaderboards must render evidence chips and next-step cards for each theme."
   },
   {
+    pattern: /function formatThemeLeaderboardEvidenceLines[\s\S]{0,900}下一步[\s\S]{0,500}失效[\s\S]{0,500}证据/,
+    message: "portfolio model prompts must receive theme leaderboard next steps, invalidation boundaries, and evidence chips."
+  },
+  {
     pattern: /function formatThemeNewsHeadline/,
     message: "theme news logic must preserve source/time for catalyst explanations."
   },

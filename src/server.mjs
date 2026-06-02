@@ -17611,7 +17611,10 @@ function formatThemeLeaderboardEvidenceLines(leaderboards = {}) {
         item.name || "未知题材",
         item.reason || "",
         item.catalyst ? `催化${item.catalyst}` : "",
-        item.action ? `动作${item.action}` : ""
+        item.action ? `动作${item.action}` : "",
+        item.nextStep ? `下一步${shortenPortfolioCustomerText(item.nextStep, 46)}` : "",
+        item.invalidation ? `失效${shortenPortfolioCustomerText(item.invalidation, 42)}` : "",
+        normalizeStringArray(item.evidence).length ? `证据${normalizeStringArray(item.evidence).slice(0, 2).join("/")}` : ""
       ].filter(Boolean);
       return parts.join("，");
     }).join(" / ");
