@@ -4151,6 +4151,32 @@ assert(
     manager.scoreResearchDigestForPullbackSetup(capitalEnteringNoLogicDigest) + 10,
   "deep-dive scoring must prefer main-capital candidates that have a real news/industry catalyst over unexplained heat"
 );
+const preheatWithoutNewsTheme = {
+  id: "policy_heat_without_news",
+  name: "政策热度无逻辑",
+  stage: "preheat_catalyst",
+  positionSignal: "preheat_catalyst_watch",
+  actionBias: "preheat_watch",
+  leaderSignal: "preheat_catalyst",
+  forwardScore: 58,
+  rotationScore: 54,
+  lowPositionScore: 62,
+  crowdingScore: 18,
+  capitalFollowScore: 61,
+  preheatScore: 74,
+  avgMainNetInflowPct: 1.4,
+  catalystProfile: { score: 0, tags: [], summary: "", risk: false },
+  newsLogic: "",
+  fundKeywords: ["政策热度无逻辑"]
+};
+assert(
+  !manager.hasActionableThemeSupport({ code: "000043", name: "无逻辑预热基金C", seed: { matchedThemes: [preheatWithoutNewsTheme] }, matchedThemes: [preheatWithoutNewsTheme] }),
+  "preheat themes without news/current-event logic must not become actionable theme support"
+);
+assert(
+  !manager.buildThemeLeaderboards([preheatWithoutNewsTheme]).preheat.items.some((item) => item.name === "政策热度无逻辑"),
+  "theme preheat leaderboard must require a readable news/industry catalyst instead of raw preheat scores"
+);
 const capitalEnteringActionability = manager.buildFundActionabilitySignals(capitalEnteringDigest);
 assert(
   capitalEnteringActionability.decisiveEvidence.some((item) => item.includes("主力进场") || item.includes("题材预热") || item.includes("催化=产业订单") || item.includes("逻辑=")),
@@ -4231,6 +4257,25 @@ assert(
   themeMomentumRanking.items.some((item) => item.code === "000024" && item.action.includes("微型试探") && item.facts.some((fact) => /催化|逻辑|主力进场/.test(fact))),
   "theme momentum ranking must connect main-capital/preheat news logic to the representative fund action"
 );
+const noLogicMicroStarterDigest = {
+  ...executableMicroStarterDigest,
+  code: "000043",
+  name: "无逻辑预热基金C",
+  seed: { matchedThemes: [preheatWithoutNewsTheme] },
+  matchedThemes: [preheatWithoutNewsTheme]
+};
+assert.equal(manager.hasPortfolioThemeMicroStarterSetup(noLogicMicroStarterDigest), false, "micro-starter setup must require news/current-event catalyst support, not only preheat labels");
+const noLogicThemeMomentumRanking = manager.buildPortfolioThemeMomentumRanking([{
+  code: "000043",
+  name: "无逻辑预热基金C",
+  status: "watch",
+  readinessScore: 74,
+  lastSnapshot: noLogicMicroStarterDigest
+}]);
+assert(
+  !noLogicThemeMomentumRanking.items.some((item) => item.code === "000043"),
+  "theme momentum ranking must not promote preheat candidates that cannot explain the news or industry logic"
+);
 const themeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
   redeploymentAccount,
   [{
@@ -4250,6 +4295,26 @@ const themeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
 assert.equal(themeOpportunityPlan.candidates[0].opportunityAction, "theme_micro_starter", "theme opportunity plan must convert actionable main-capital/preheat setups into micro-starter candidates");
 assert.equal(themeOpportunityPlan.candidates[0].executable, true, "theme opportunity candidates should be executable only after buy discipline and fee checks pass");
 assert(themeOpportunityPlan.candidates[0].newsLogic.includes("新闻催化"), "theme opportunity plan must preserve the news/current-event logic behind the move");
+const noLogicThemeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
+  redeploymentAccount,
+  [{
+    code: "000043",
+    name: "无逻辑预热基金C",
+    status: "watch",
+    readinessScore: 74,
+    lastSnapshot: noLogicMicroStarterDigest
+  }],
+  [noLogicMicroStarterDigest],
+  {
+    fetchedAt: "2026-05-20T06:30:00.000Z",
+    themeRadar: [preheatWithoutNewsTheme],
+    themeLeaderboards: manager.buildThemeLeaderboards([preheatWithoutNewsTheme])
+  }
+);
+assert(
+  !noLogicThemeOpportunityPlan.candidates.some((item) => item.code === "000043"),
+  "theme opportunity plan must not turn unexplained preheat heat into a buy or watch action candidate"
+);
 const themeOpportunityDecision = manager.ensurePortfolioThemeOpportunityReviewed(
   { actions: [], learningNotes: [] },
   redeploymentAccount,
@@ -4391,6 +4456,19 @@ const selectedThemeSeeds = manager.selectPortfolioWatchlistSeedCandidates([
 ], [], [liveAiTheme, fadingAiTheme], { minScore: 20, limit: 4 });
 assert(selectedThemeSeeds.some((item) => item.code === "000041"), "watchlist seed selection must keep main-capital supported low-position candidates");
 assert(!selectedThemeSeeds.some((item) => item.code === "000042"), "watchlist seed selection must not promote stale catchdown candidates after main capital has left");
+const catalystAwareSeedSelection = manager.selectPortfolioWatchlistSeedCandidates([
+  { code: "000041", name: "主力低位启动基金C", oneWeekPct: 1.2, oneMonthPct: 2.4, threeMonthPct: -4, sixMonthPct: -8, shareClass: "C", matchedThemes: [liveAiTheme] },
+  { code: "000043", name: "无逻辑预热基金C", oneWeekPct: 1.2, oneMonthPct: 2.4, threeMonthPct: -4, sixMonthPct: -8, shareClass: "C", matchedThemes: [preheatWithoutNewsTheme] }
+], [], [liveAiTheme, preheatWithoutNewsTheme], { minScore: 20, limit: 1 });
+assert.deepEqual(
+  catalystAwareSeedSelection.map((item) => item.code),
+  ["000041"],
+  "watchlist seed selection must prefer news-backed main-capital/preheat themes over unexplained preheat heat"
+);
+assert(
+  !manager.inferPullbackSetupSearchKeywords("我想找回调完成准备启动的基金", [preheatWithoutNewsTheme]).includes("政策热度无逻辑"),
+  "pullback setup keyword expansion must not chase a preheat theme that lacks news/current-event logic"
+);
 const staleCatchdownRanking = manager.buildPortfolioStaleCatchdownRiskRanking([{
   code: "000042",
   name: "退潮回调接盘基金C",

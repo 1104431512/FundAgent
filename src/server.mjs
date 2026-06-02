@@ -3620,7 +3620,10 @@ function buildPortfolioThemeOpportunityPlan(account = {}, watchlist = [], profil
       const starterBuy = Boolean(profile && hasPortfolioStarterBuySetup(profile));
       const themeMicroStarter = Boolean(profile && hasPortfolioThemeMicroStarterSetup(profile));
       const targetWeightPct = themeMicroStarter ? 1 : starterBuy ? 1.5 : verifiedBuy ? 2.5 : 0;
-      const hardGap = readiness.gaps.find(isPortfolioRedeploymentHardGap);
+      const catalystGap = hasThemeLeaderOrPreheatSignal(theme) && !hasFreshThemeCatalystContext(theme)
+        ? "缺新闻时事/产业催化解释，不能把主力热度直接当买点。"
+        : "";
+      const hardGap = catalystGap || readiness.gaps.find(isPortfolioRedeploymentHardGap);
       const feeVerified = Boolean(profile && hasVerifiedPortfolioFeeEvidence(profile));
       const buyGuard = targetWeightPct > 0
         ? evaluatePortfolioBuyDiscipline(
@@ -3792,6 +3795,8 @@ function scorePortfolioActionableThemeSignal(theme = {}) {
     + Number(theme.rotationScore || 0) * 0.45
     + Number(theme.lowPositionScore || 0) * 0.35
     + Number(theme.catalystProfile?.score || 0) * 0.8
+    + scoreThemeMainForceOpportunity(theme) * 0.65
+    + (hasFreshThemeCatalystContext(theme) ? 12 : hasThemeLeaderOrPreheatSignal(theme) ? -20 : 0)
     - Number(theme.crowdingScore || 0) * 0.4;
 }
 
@@ -3834,6 +3839,7 @@ function scorePortfolioThemeOpportunityCandidate({ item = {}, profile = null, th
     + (lane ? 10 : 0)
     + (executable ? 18 : 0)
     + (hasPortfolioThemeMicroStarterSetup(profile) ? 8 : 0)
+    + (hasFreshThemeCatalystContext(theme) ? 8 : hasThemeLeaderOrPreheatSignal(theme) ? -16 : 0)
     + (Number.isFinite(low120) && low120 <= 60 ? 7 : 0)
     - (Number.isFinite(r20) && r20 > 8 ? 8 : 0)
     - (hardGap ? 18 : 0)
@@ -10605,12 +10611,16 @@ function buildPortfolioThemeMomentumRankingItem(item = {}) {
   const starterBuy = hasPortfolioStarterBuySetup(profile);
   const themeMicroStarter = hasPortfolioThemeMicroStarterSetup(profile);
   const structuralGaps = buildPortfolioWatchStructuralReadinessGaps(item, profile);
-  const hardGap = structuralGaps.find(isPortfolioRedeploymentHardGap);
+  const catalystGap = hasThemeLeaderOrPreheatSignal(theme) && !hasFreshThemeCatalystContext(theme)
+    ? "缺新闻时事/产业催化解释，不能把主力热度直接当买点。"
+    : "";
+  const hardGap = catalystGap || structuralGaps.find(isPortfolioRedeploymentHardGap);
   const buyReady = !chase.shouldSurface && !fee.missingCritical && !hardGap && (verifiedBuy || starterBuy || themeMicroStarter);
   const score = Math.max(0, Math.min(100,
     readinessScore * 0.28
     + scorePortfolioActionableThemeSignal(theme) * 0.5
     + (verifiedBuy ? 18 : starterBuy ? 14 : themeMicroStarter ? 12 : 0)
+    + (hasFreshThemeCatalystContext(theme) ? 8 : hasThemeLeaderOrPreheatSignal(theme) ? -16 : 0)
     + (outlook.hasHoldings ? Math.max(0, Number(outlook.score || 0)) * 0.45 : -6)
     - (chase.shouldSurface ? 24 : 0)
     - (fee.missingCritical ? 14 : 0)
@@ -18044,18 +18054,19 @@ function isActionableThemeSupport(theme = {}) {
   const preheat = finiteMetricNumber(theme.preheatScore);
   const rotation = finiteMetricNumber(theme.rotationScore);
   const lowPosition = finiteMetricNumber(theme.lowPositionScore);
-  const catalystContext = hasThemeCatalystContext(theme);
+  const catalystContext = hasFreshThemeCatalystContext(theme);
   const mainCapitalSignal = theme.leaderSignal === "capital_entering"
     || theme.positionSignal === "main_capital_entering"
     || (Number.isFinite(capitalFollow) && capitalFollow >= 58 && flowNotWeak);
-  const mainCapital = mainCapitalSignal && (catalystContext || Number.isFinite(capitalFollow) && capitalFollow >= 68);
+  const mainCapital = mainCapitalSignal && catalystContext;
   const preheatCatalyst = theme.leaderSignal === "preheat_catalyst"
     || theme.positionSignal === "preheat_catalyst_watch"
     || (Number.isFinite(preheat) && preheat >= 56 && scoreThemeCatalystQuality(theme) >= 0);
   const lowRotation = theme.positionSignal === "low_position_rotation"
     || theme.stage === "low_position_rotation"
     || (Number.isFinite(rotation) && rotation >= 50 && Number.isFinite(lowPosition) && lowPosition >= 45 && flowNotWeak);
-  return Boolean(mainCapital || preheatCatalyst || lowRotation);
+  const unresolvedLeaderHeat = hasThemeLeaderOrPreheatSignal(theme) && !catalystContext;
+  return Boolean(mainCapital || (preheatCatalyst && catalystContext) || (lowRotation && !unresolvedLeaderHeat));
 }
 
 function hasThemeCatalystContext(theme = {}) {
@@ -18064,6 +18075,46 @@ function hasThemeCatalystContext(theme = {}) {
     || String(theme.primaryCatalyst || "").trim()
     || String(theme.catalystProfile?.summary || "").trim()
   );
+}
+
+function hasFreshThemeCatalystContext(theme = {}) {
+  return hasThemeCatalystContext(theme) && !theme.catalystProfile?.risk;
+}
+
+function hasThemeLeaderOrPreheatSignal(theme = {}) {
+  return theme.leaderSignal === "capital_entering"
+    || theme.leaderSignal === "preheat_catalyst"
+    || theme.positionSignal === "main_capital_entering"
+    || theme.positionSignal === "preheat_catalyst_watch"
+    || Number(theme.capitalFollowScore) >= 58
+    || Number(theme.preheatScore) >= 56;
+}
+
+function scoreThemeMainForceOpportunity(theme = {}) {
+  if (!theme || typeof theme !== "object") return 0;
+  if (hasThemeCapitalRetreatRisk(theme) || isStaleThemeCatchdownRiskTheme(theme)) return -32;
+  const capitalFollow = Number(theme.capitalFollowScore || 0);
+  const preheat = Number(theme.preheatScore || 0);
+  const lowPosition = Number(theme.lowPositionScore || 0);
+  const rotation = Number(theme.rotationScore || 0);
+  const crowding = Number(theme.crowdingScore || 0);
+  const catalyst = scoreThemeCatalystQuality(theme);
+  const catalystBonus = hasFreshThemeCatalystContext(theme) ? 16 : hasThemeLeaderOrPreheatSignal(theme) ? -18 : 0;
+  const leaderBonus = theme.leaderSignal === "capital_entering" || theme.positionSignal === "main_capital_entering"
+    ? 14
+    : theme.leaderSignal === "preheat_catalyst" || theme.positionSignal === "preheat_catalyst_watch"
+      ? 10
+      : 0;
+  return Math.max(-40, Math.min(80,
+    capitalFollow * 0.32
+    + preheat * 0.24
+    + rotation * 0.16
+    + lowPosition * 0.12
+    + catalyst * 1.2
+    + catalystBonus
+    + leaderBonus
+    - crowding * 0.32
+  ));
 }
 
 function hasStaleThemeCatchdownRisk(candidate = {}) {
@@ -20984,7 +21035,7 @@ function buildThemeLeaderboards(themeRadar = []) {
       id: "preheat",
       title: "题材预热榜",
       subtitle: "有政策、产业或外盘催化，但还没有明显涨开的方向。",
-      filter: (theme) => notRetreat(theme) && notCrowded(theme) && (
+      filter: (theme) => notRetreat(theme) && notCrowded(theme) && hasFreshThemeCatalystContext(theme) && (
         theme.leaderSignal === "preheat_catalyst"
         || theme.positionSignal === "preheat_catalyst_watch"
         || Number(theme.preheatScore) >= 52
@@ -21875,15 +21926,19 @@ function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
     .filter((theme) => allowPrecious || theme.id !== "precious_metals")
     .filter((theme) => !isStaleThemeCatchdownRiskTheme(theme))
     .filter((theme) => theme.positionSignal !== "high_chase_risk" && theme.stage !== "crowded" && Number(theme.crowdingScore || 0) < 55)
-    .filter((theme) =>
-      isActionableThemeSupport(theme)
-      || theme.dynamic
-      || Number(theme.lowPositionScore || 0) >= 35
-      || Number(theme.capitalFollowScore || 0) >= 45
-      || Number(theme.preheatScore || 0) >= 45
-      || ["low_position_rotation", "acceptable_position", "main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)
-      || ["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)
-    )
+    .filter((theme) => {
+      const lowRotationCandidate = Number(theme.lowPositionScore || 0) >= 35
+        || ["low_position_rotation", "acceptable_position"].includes(theme.positionSignal);
+      const leaderCandidate = theme.dynamic
+        || Number(theme.capitalFollowScore || 0) >= 45
+        || Number(theme.preheatScore || 0) >= 45
+        || ["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)
+        || ["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal);
+      const unresolvedLeaderHeat = hasThemeLeaderOrPreheatSignal(theme) && !hasFreshThemeCatalystContext(theme);
+      return isActionableThemeSupport(theme)
+        || (lowRotationCandidate && !unresolvedLeaderHeat)
+        || (leaderCandidate && hasFreshThemeCatalystContext(theme));
+    })
     .flatMap((theme) => [theme.name, ...(theme.fundKeywords || []), ...(theme.keywords || [])])
     .filter(Boolean);
   const configured = String(process.env.PULLBACK_SETUP_FUND_KEYWORDS || "")
@@ -22226,13 +22281,16 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
 
   const matchedThemes = item.matchedThemes?.length ? item.matchedThemes : matchCandidateThemes(item, themeRadar);
   for (const theme of matchedThemes.slice(0, 2)) {
+    const mainForceScore = scoreThemeMainForceOpportunity(theme);
     score += Math.min(14, Number(theme.lowPositionScore || 0) / 6);
     score += Math.min(12, Number(theme.rotationScore || 0) / 8);
     score += Math.min(14, Number(theme.capitalFollowScore || 0) / 6);
     score += Math.min(10, Number(theme.preheatScore || 0) / 7);
+    score += Math.max(-14, Math.min(18, mainForceScore / 4));
     score += scoreThemeCatalystQuality(theme);
     if (["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)) score += 10;
     if (["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)) score += 8;
+    if (hasThemeLeaderOrPreheatSignal(theme) && !hasFreshThemeCatalystContext(theme)) score -= 18;
     if (theme.positionSignal === "high_chase_risk") score -= 16;
     if (theme.stage === "crowded") score -= 10;
     if (hasThemeCapitalRetreatRisk(theme)) score -= 24;
@@ -22276,11 +22334,14 @@ function scoreDeepDiveCandidate(item, themeRadar = []) {
   if (/A$|A类/.test(text)) score += 1;
   const matchedThemes = item.matchedThemes?.length ? item.matchedThemes : matchCandidateThemes(item, themeRadar);
   for (const theme of matchedThemes.slice(0, 2)) {
+    const mainForceScore = scoreThemeMainForceOpportunity(theme);
     score += 8 + Math.min(16, Number(theme.forwardScore || 0) / 5);
     score += Math.min(12, Number(theme.capitalFollowScore || 0) / 6);
     score += Math.min(8, Number(theme.preheatScore || 0) / 8);
+    score += Math.max(-10, Math.min(14, mainForceScore / 5));
     score += scoreThemeCatalystQuality(theme);
     if (["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)) score += 8;
+    if (hasThemeLeaderOrPreheatSignal(theme) && !hasFreshThemeCatalystContext(theme)) score -= 14;
     if (theme.stage === "crowded") score -= 4;
     if (theme.positionSignal === "high_chase_risk") score -= 6;
     if (hasThemeCapitalRetreatRisk(theme)) score -= 18;
