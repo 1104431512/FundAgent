@@ -1731,7 +1731,7 @@ const staleCatchdownLossItem = staleCatchdownLossBacktest.items.find((item) => i
 assert(staleCatchdownLossItem, "backtest diagnostics must catch stale-theme catchdown buys that later lose money");
 assert(staleCatchdownLossItem.note.includes("题材退潮") && staleCatchdownLossItem.note.includes("主力撤离"), "stale catchdown loss replay must explain the retreating theme and main-capital exit");
 assert(staleCatchdownLossItem.note.includes("亏损约2400元"), "stale catchdown loss replay must translate the mistake into estimated yuan damage");
-const unconfirmedOldThemeLossBacktest = manager.buildPortfolioBacktestDiagnostics({
+const unconfirmedOldThemeLossBacktestFixture = {
   account: {
     cash: 90000,
     totalAsset: 100000,
@@ -1767,10 +1767,17 @@ const unconfirmedOldThemeLossBacktest = manager.buildPortfolioBacktestDiagnostic
     { date: "2026-05-12", type: "decision", status: "completed", summary: "000046 历史热点回调完成，经理仍买入试探。", actions: [{ action: "BUY", code: "000046", reason: "回调完成，小仓试探" }] },
     { date: "2026-05-20", type: "valuation", status: "completed", summary: "000046 买入后亏损24%，当前浮亏2400元。" }
   ]
-});
+};
+const unconfirmedOldThemeLossBacktest = manager.buildPortfolioBacktestDiagnostics(unconfirmedOldThemeLossBacktestFixture);
 const unconfirmedOldThemeLossItem = unconfirmedOldThemeLossBacktest.items.find((item) => item.label === "退潮接盘亏损回测");
 assert(unconfirmedOldThemeLossItem, "backtest diagnostics must catch current-radar-unconfirmed old-theme buys that later lose money");
 assert(unconfirmedOldThemeLossItem.note.includes("旧题材未确认") || unconfirmedOldThemeLossItem.note.includes("历史热点"), "old-theme loss replay must name the current-radar-unconfirmed historical-hotspot pattern");
+assert(
+  manager.buildPortfolioCapabilityActionQueue(unconfirmedOldThemeLossBacktestFixture).some((item) =>
+    item.action.includes("旧题材未确认") && item.action.includes("当前题材雷达重新确认")
+  ),
+  "capability queue must turn current-radar-unconfirmed old-theme losses into a specific repair task"
+);
 assert(
   manager.buildPortfolioCapabilityActionQueue(staleCatchdownLossBacktestFixture).some((item) =>
     item.action.includes("退潮接盘不是低位启动")

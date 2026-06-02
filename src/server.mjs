@@ -16778,7 +16778,10 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
     } else if (item.label === "重复应收回测") {
       addTask(item, "同一赎回订单只保留一条有效到账；重复pending应收要作废并从应收现金扣回。", "执行风控");
     } else if (item.label === "退潮接盘亏损回测") {
-      addTask(item, "退潮接盘不是低位启动；后续同类候选必须先证明资金回流、新闻催化仍成立、代表持仓承载和费率核验齐备，再允许0.5%-1.2%微型试探。", "题材分析师");
+      const oldThemeClause = /旧题材未确认|历史热点|当前题材雷达未确认/.test(String(item.note || ""))
+        ? "特别是旧题材未确认/历史热点标签，必须等当前题材雷达重新确认；"
+        : "";
+      addTask(item, `退潮接盘不是低位启动；${oldThemeClause}后续同类候选必须先证明资金回流、新闻催化仍成立、代表持仓承载和费率核验齐备，再允许0.5%-1.2%微型试探。`, "题材分析师");
     } else if (item.label === "追高买入回测") {
       addTask(item, "复盘买入当日是否处于高位延伸；后续同类基金必须等回调完成和5日/10日温和转强后才小仓试探。", "基金研究员");
     } else if (item.label === "卖出滞后回测") {

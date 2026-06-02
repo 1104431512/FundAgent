@@ -1813,6 +1813,10 @@ const requiredPatterns = [
     message: "portfolio capability queue must turn stale catchdown losses into a concrete theme/news repair task."
   },
   {
+    pattern: /退潮接盘亏损回测[\s\S]{0,900}旧题材未确认[\s\S]{0,420}当前题材雷达重新确认/,
+    message: "portfolio capability queue must turn current-radar-unconfirmed old-theme losses into a specific radar-reconfirmation repair task."
+  },
+  {
     pattern: /function buildUserPortfolioAlerts[\s\S]{0,1400}buildUserHoldingRiskEvidence[\s\S]{0,700}复核卖出\/减仓/,
     message: "user holding alerts must automatically turn stale-theme or capital-outflow holdings into sell/reduce reminders."
   },
