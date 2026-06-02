@@ -3433,6 +3433,10 @@ const requiredPatterns = [
     message: "portfolio theme opportunity guard must inject customer-readable why-move, capital/theme, and representative-fund logic into actions."
   },
   {
+    pattern: /(?=[\s\S]*function ensurePortfolioThemeRepresentativeRecallAction)(?=[\s\S]*theme_representative_recall)(?=[\s\S]*主力预热代表基金召回)(?=[\s\S]*前十大持仓)(?=[\s\S]*补齐前买入金额为0元)/,
+    message: "portfolio theme opportunity guard must inject a 0-yuan representative-fund recall action when live main-capital/preheat themes lack usable carriers."
+  },
+  {
     pattern: /function buildPortfolioRankingBoard[\s\S]{0,240000}buildPortfolioStaleCatchdownRiskRanking\(watchlist\)[\s\S]{0,240000}function buildPortfolioStaleCatchdownRiskRanking[\s\S]{0,2000}stale_catchdown_risk[\s\S]{0,2000}接盘风险榜[\s\S]{0,2000}表面回调/,
     message: "manager ranking boards must include a stale-catchdown risk lane that blocks retreating themes from masquerading as pullback setups."
   },

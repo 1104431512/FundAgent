@@ -895,6 +895,25 @@ assert(
   manager.buildPortfolioCapabilityActionQueue(themeRepresentativeGapDb).some((item) => item.action.includes("代表基金候选") && item.action.includes("前十大持仓")),
   "capability action queue must turn missing theme representatives into concrete candidate expansion work"
 );
+const themeRepresentativeRecallDecision = manager.ensurePortfolioThemeOpportunityReviewed(
+  { actions: [], learningNotes: [], riskNotes: [], sources: [] },
+  themeRepresentativeGapDb.account,
+  themeRepresentativeGapDb.watchlist,
+  { marketSnapshot: liveThemeOpportunitySnapshot }
+);
+const themeRepresentativeRecallAction = themeRepresentativeRecallDecision.actions.find((item) => item.name === "主力预热代表基金召回");
+assert.equal(themeRepresentativeRecallAction?.action, "WATCH", "theme opportunity guard must inject a 0-yuan WATCH action when live themes lack representative funds");
+assert.equal(themeRepresentativeRecallAction?.amount, 0, "theme representative recall actions must never create buy execution amounts");
+assert(
+  /低空经济|代表基金|为什么动|前十大持仓|费用|追涨风险/.test(themeRepresentativeRecallAction?.reason || "")
+    && themeRepresentativeRecallAction?.dataBasis?.some((item) => item.includes("theme_representative_recall")),
+  "theme representative recall actions must explain live theme logic, representative-fund gaps, and traceable data basis"
+);
+assert(
+  themeRepresentativeRecallDecision.learningNotes.some((item) => item.includes("召回代表基金"))
+    && themeRepresentativeRecallDecision.riskNotes.some((item) => item.includes("不得直接买入")),
+  "theme representative recall must leave learning and risk notes instead of silently waiting"
+);
 const latestRunThemeRepresentativeGapDb = {
   ...themeRepresentativeGapDb,
   marketSnapshot: null,

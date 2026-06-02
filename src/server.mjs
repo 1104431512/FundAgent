@@ -4285,7 +4285,9 @@ function buildPortfolioThemeOpportunityPlan(account = {}, watchlist = [], profil
 
 function ensurePortfolioThemeOpportunityReviewed(decision = {}, account = {}, watchlist = [], options = {}) {
   const plan = buildPortfolioThemeOpportunityPlan(account, watchlist, options.profiles || [], options.marketSnapshot || null);
-  if (!plan.candidates.length) return decision;
+  if (!plan.candidates.length) {
+    return ensurePortfolioThemeRepresentativeRecallAction(decision, plan);
+  }
   const normalized = {
     ...decision,
     actions: normalizePortfolioActions(decision?.actions),
@@ -4335,6 +4337,68 @@ function ensurePortfolioThemeOpportunityReviewed(decision = {}, account = {}, wa
     ]),
     sources: mergeStringLists(normalized.sources, ["portfolio_theme_opportunity_guard"])
   };
+}
+
+function ensurePortfolioThemeRepresentativeRecallAction(decision = {}, plan = {}) {
+  if (!plan?.active || !Array.isArray(plan.themeLeaders) || !plan.themeLeaders.length) return decision;
+  const normalized = {
+    ...decision,
+    actions: normalizePortfolioActions(decision?.actions),
+    watchlistUpdates: normalizePortfolioWatchlistUpdates(decision?.watchlistUpdates),
+    team: Array.isArray(decision?.team) ? decision.team : [],
+    riskNotes: Array.isArray(decision?.riskNotes) ? decision.riskNotes : [],
+    learningNotes: Array.isArray(decision?.learningNotes) ? decision.learningNotes : [],
+    sources: Array.isArray(decision?.sources) ? decision.sources : []
+  };
+  const alreadyCovered = normalized.actions.some((action) =>
+    action.action === "WATCH"
+    && /代表基金|主力预热|题材预热|主力进场/.test(`${action.name || ""} ${action.reason || ""} ${action.rankingBasis || ""}`)
+  );
+  const recallReason = formatPortfolioThemeRepresentativeRecallReason(plan.themeLeaders);
+  const action = alreadyCovered ? [] : [{
+    action: "WATCH",
+    code: "",
+    name: "主力预热代表基金召回",
+    amount: 0,
+    targetWeightPct: 0,
+    reason: recallReason,
+    rankingBasis: "主力/预热题材代表基金缺口处理器，当前先召回代表基金，不给买入金额。",
+    rotationCheck: recallReason,
+    positionCheck: "当前缺可验证代表基金，先补基金净值走势、前十大持仓、份额费率和追涨风险。",
+    chaseRisk: "未找到代表基金前，不能把题材热度包装成低位启动买点。",
+    feeCheck: "代表基金补齐后必须核验A/C/D/I份额、申购费、销售服务费和赎回规则。",
+    riskControl: "0元观察；下一轮至少补1只可承载该题材的代表基金，再决定微型试探、继续观察或排除。",
+    dataBasis: mergeStringLists([
+      "来源：portfolio_theme_opportunity_guard",
+      "来源：theme_representative_recall",
+      ...plan.themeLeaders.slice(0, 3).map((item) => `${item.title || "题材榜"}：${item.name || ""}${item.whyMove ? `，${item.whyMove}` : ""}`)
+    ])
+  }];
+  return {
+    ...normalized,
+    actions: [...normalized.actions, ...action].slice(0, 10),
+    learningNotes: mergeStringLists(normalized.learningNotes, [
+      `系统主力/预热机会纪律：${plan.summary}；当前先召回代表基金，不允许用泛泛等待替代。`
+    ]),
+    riskNotes: mergeStringLists(normalized.riskNotes, [
+      "主力/预热题材缺代表基金时不得直接买入；必须先补前十大持仓承载、走势、费用和追涨风险。"
+    ]),
+    sources: mergeStringLists(normalized.sources, ["portfolio_theme_opportunity_guard", "theme_representative_recall"])
+  };
+}
+
+function formatPortfolioThemeRepresentativeRecallReason(themeLeaders = []) {
+  const leaders = (themeLeaders || []).slice(0, 3);
+  const names = leaders.map((item) => item.name).filter(Boolean).join(" / ");
+  const lead = leaders[0] || {};
+  const whyMove = shortenPortfolioCustomerText(lead.whyMove || lead.newsLogic || lead.reason || "", 96);
+  const catalyst = lead.catalyst ? `催化：${shortenPortfolioCustomerText(lead.catalyst, 42)}` : "";
+  return [
+    `系统主力/预热机会纪律：${names || "主力/预热题材"} 已进入题材榜，但当前自选池缺少可验证代表基金`,
+    whyMove ? `为什么动：${whyMove.replace(/^为什么动[:：]\s*/, "")}` : "",
+    catalyst,
+    "下一步必须扩充代表基金候选，并逐只验证前十大持仓/指数名称是否承载题材、5日/10日是否温和转强、A/C/D/I费用和追涨风险；补齐前买入金额为0元"
+  ].filter(Boolean).join("；");
 }
 
 function formatPortfolioThemeOpportunityCustomerLogic(candidate = {}) {
