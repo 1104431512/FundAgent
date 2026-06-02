@@ -297,6 +297,14 @@ const requiredPatterns = [
     message: "stale-theme answer quality must reuse text-only retreat/catchdown warnings."
   },
   {
+    pattern: /function hasStaleThemeCatchdownEvidence[\s\S]{0,500}getUnrefreshedMarketThemeWarnings\(candidate\)\.length/,
+    message: "stale-theme answer quality must reject buy wording when old theme labels are not confirmed by the current radar."
+  },
+  {
+    pattern: /stale_theme_candidate_given_buy_execution[\s\S]{0,500}旧题材未被当前雷达确认[\s\S]{0,500}当前题材雷达重新确认/,
+    message: "fund answer rewrite guidance must explain current-radar-unconfirmed old themes as zero-yuan observation, not buyable pullbacks."
+  },
+  {
     pattern: /function getActionabilityThemeRetreatDiscipline[\s\S]{0,700}getTextualCatchdownWarnings\(digest\)[\s\S]{0,500}系统文本接盘风险拦截/,
     message: "fund actionability must downgrade text-only catchdown risks before UI cards or model prompts can surface them as buyable."
   },

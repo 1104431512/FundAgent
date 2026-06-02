@@ -4074,6 +4074,30 @@ assert(
   unconfirmedOldThemeActionability.decisionBlocker.some((item) => item.includes("系统当前题材雷达未确认") && item.includes("历史热点")),
   "actionability blocker must carry current-radar-unconfirmed old-theme evidence into UI cards and model prompts"
 );
+const unconfirmedOldThemeBuyAnswerQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000010 中证A500ETF联接C 可以分批买入1000元。理由是AI算力低位回调修复，适合小仓试探。",
+  workflow: "fund_qa",
+  userText: "000010 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [unconfirmedOldThemeProfile] } }
+});
+assert(
+  unconfirmedOldThemeBuyAnswerQuality.issues.includes("stale_theme_candidate_given_buy_execution"),
+  "quality gate must reject buy amounts when a historical theme label is not confirmed by the current theme radar"
+);
+assert(
+  unconfirmedOldThemeBuyAnswerQuality.issues.includes("stale_theme_candidate_given_buy_signal"),
+  "quality gate must reject buy-intent wording when a historical theme label is not confirmed by the current theme radar"
+);
+const unconfirmedOldThemeWaitAnswerQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000010 中证A500ETF联接C 先0元观察。原因是AI/算力旧题材线索未被当前题材雷达确认，不能拿历史热点当今天买入依据，等当前雷达重新确认和资金回流后再复核。",
+  workflow: "fund_qa",
+  userText: "000010 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [unconfirmedOldThemeProfile] } }
+});
+assert(
+  !unconfirmedOldThemeWaitAnswerQuality.issues.some((issue) => issue.startsWith("stale_theme_candidate")),
+  "quality gate should allow current-radar-unconfirmed old themes only when the answer says zero-yuan observation and waits for current confirmation"
+);
 const textOnlyCatchdownProfile = {
   ...verifiedSeedProfile,
   code: "000014",

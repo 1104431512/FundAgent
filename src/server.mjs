@@ -20828,7 +20828,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "若质检问题包含 watch_candidate_promoted_to_recommendation、recommendation_not_from_pullback_main_candidates 或 recommends_without_qualified_pullback_candidate，必须按证据里的 mainCandidateCodes 重写主推荐；watchOrRejectCodes 只能写进观察/排除原因。",
       "若质检问题包含 watch_candidate_given_buy_execution 或 watch_candidate_given_buy_signal，观察/排除候选不能获得买入金额，也不能写“可以买、小仓位试探、少买一点、建仓”等买入暗示；只能写0元观察或等待条件。",
       "若质检问题包含 stale_data_candidate_given_buy_execution 或 stale_data_candidate_given_buy_signal，说明该基金净值/走势证据已过期；必须把对应代码改为0元等待、重新下钻复核，不能给买入、分批、建仓或小仓位试探。",
-      "若质检问题包含 stale_theme_candidate_given_buy_execution 或 stale_theme_candidate_given_buy_signal，说明该基金题材退潮、主力撤离或存在接盘风险；必须把对应代码改为0元观察、等待资金回流，不能给买入、分批、建仓或小仓位试探。",
+      "若质检问题包含 stale_theme_candidate_given_buy_execution 或 stale_theme_candidate_given_buy_signal，说明该基金题材退潮、主力撤离、旧题材未被当前雷达确认或存在接盘风险；必须把对应代码改为0元观察，等待资金回流、当前题材雷达重新确认或新鲜催化出现，不能给买入、分批、建仓或小仓位试探。",
       "若质检问题包含 missing_theme_news_logic_explanation，必须补上题材为什么动：写清新闻/政策/订单/产业催化、主力资金是否跟进、代表基金是否承载题材；不能只写低位修复或等待机会。",
       "若质检问题包含 missing_pullback_timing_evidence，主推荐每条必须写出5日/10日早期转强、120日区间低位或距高点回撤等数字证据；若包含 missing_pullback_three_tier_execution，必须给激进/均衡/保守三档金额。",
       "若质检问题包含 missing_pullback_share_class_fee，主推荐每条必须写份额类别和费用模型，例如 C类无前端申购费但有销售服务费，或 A类有申购费但长期持有持续费率较低。",
@@ -21102,6 +21102,7 @@ function hasStaleThemeCatchdownEvidence(candidate = {}) {
     hasStaleThemeCatchdownRisk(candidate)
     || hasThemeRetreatRisk(candidate)
     || hasHoldingRealtimeCatchdownRisk(candidate)
+    || getUnrefreshedMarketThemeWarnings(candidate).length
   ) return true;
   if (getTextualCatchdownWarnings(candidate).length) return true;
   const actionability = candidate.actionability || {};
@@ -31486,7 +31487,7 @@ function summarizeFundAnswerQualityIssueCategories(issues = []) {
   add(/watch_candidate_promoted_to_recommendation|recommendation_not_from_pullback_main_candidates|recommends_without_qualified_pullback_candidate|missing_no_qualified_pullback_message|missing_pullback_main_candidate_code/, "回调/低位启动请求存在硬凑或错推风险：没有合格主候选时必须明确先不买");
   add(/watch_candidate_given_buy_execution|watch_candidate_given_buy_signal/, "观察池候选被写成可买：备选只能给等待条件和0元观察");
   add(/stale_data_candidate_given_buy_execution|stale_data_candidate_given_buy_signal/, "过期净值/走势仍给买入：必须重新下钻复核后再谈金额");
-  add(/stale_theme_candidate_given_buy_execution|stale_theme_candidate_given_buy_signal/, "题材退潮/主力撤离仍给买入：必须改成0元观察，等资金回流再复核");
+  add(/stale_theme_candidate_given_buy_execution|stale_theme_candidate_given_buy_signal/, "题材退潮、主力撤离或旧题材未被当前雷达确认仍给买入：必须改成0元观察，等资金回流或当前题材雷达重新确认再复核");
   add(/missing_pullback_timing_evidence/, "主推荐缺少回调、低位、5日/10日转强或近20/60日不过热证据");
   add(/missing_pullback_share_class_fee/, "主推荐缺少A/C份额和费用依据，无法支撑执行金额");
   add(/missing_pullback_three_tier_execution/, "缺少激进/均衡/保守三档执行方案");
