@@ -341,6 +341,10 @@ const requiredPatterns = [
     message: "catchdown fallback must explain the live catalyst, capital-return, and holdings-carrier evidence required to reopen review."
   },
   {
+    pattern: /function getPullbackFallbackCatchdownWarnings[\s\S]{0,420}getUnrefreshedMarketThemeWarnings\(candidate\)[\s\S]{0,600}getStaleThemeCatchdownWarnings\(candidate\)/,
+    message: "catchdown fallback must explain current-radar-unconfirmed old theme labels, not only retreat or stale catalyst warnings."
+  },
+  {
     pattern: /function hasStaleFundEvidence[\s\S]{0,900}系统数据时效降级[\s\S]{0,500}evaluatePullbackTrendFreshness/,
     message: "stale evidence quality gate must reuse structured freshness and actionability blockers."
   },

@@ -21414,6 +21414,7 @@ function getPullbackFallbackCatchdownWarnings(candidate = {}) {
   const seen = new Set();
   return [
     ...getTextualCatchdownWarnings(candidate),
+    ...getUnrefreshedMarketThemeWarnings(candidate),
     ...getStaleThemeCatchdownWarnings(candidate),
     ...getStaleCatalystThemeWarnings(candidate),
     ...getCandidateThemeRetreatWarnings(candidate)

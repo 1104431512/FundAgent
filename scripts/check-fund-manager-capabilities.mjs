@@ -6483,6 +6483,43 @@ assert(
   !unconfirmedOldThemeDecisionBoard.lists.find((item) => item.id === "theme_momentum")?.items.some((item) => item.code === "000046"),
   "decision ranking board must not keep old main-capital/preheat labels when the current radar does not confirm that theme"
 );
+const unconfirmedOldThemeFallback = manager.buildPullbackQualityFallbackAnswer({
+  userText: setupQuery,
+  evidence: {
+    marketDeepDive: {
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      requireThemeOpportunityBacking: true,
+      candidates: [{
+        ...setupDigest,
+        code: "000046",
+        name: "人工智能旧预热主题C",
+        matchedThemes: [{
+          id: "old_ai_unconfirmed",
+          name: "AI/算力旧热点",
+          stage: "current_radar_unconfirmed",
+          positionSignal: "current_radar_unconfirmed",
+          actionBias: "wait_current_radar_confirmation",
+          catalystProfile: { fresh: false, risk: true, freshnessLabel: "未被当前题材雷达确认" },
+          newsLogic: "旧题材线索未被当前雷达确认：只有历史热点标签。"
+        }],
+        seed: { matchedThemes: [] },
+        trendProfile: {
+          ok: true,
+          return20dPct: 2.1,
+          return60dPct: -4.2,
+          lowPositionPct120: 32,
+          lowPositionPct250: 44,
+          pullbackSetup: { signal: "pullback_complete", signalText: "回调完成" }
+        }
+      }]
+    }
+  },
+  issues: ["stale_theme_candidate_given_buy_signal"]
+});
+assert(
+  /旧题材线索未被当前题材雷达确认|历史热点/.test(unconfirmedOldThemeFallback),
+  "pullback deterministic fallback must explain current-radar-unconfirmed old theme labels as catchdown risk"
+);
 const holdingsSupportedDigest = {
   ...setupDigest,
   code: "000031",
