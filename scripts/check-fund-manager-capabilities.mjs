@@ -15,6 +15,10 @@ const manager = await import(serverPath);
 const todayIso = new Date().toISOString().slice(0, 10);
 
 assert.equal(manager.shouldPersistRuntimeStats(), false, "capability checks must not write synthetic failures into runtime stats");
+assert(!serverSource.includes("uniqueCodes.slice(0, 6)"), "fund enrichment must not hard-limit coverage to only six funds");
+assert(serverSource.includes("FUND_ANALYSIS_ENRICHMENT_LIMIT") && serverSource.includes("PORTFOLIO_PROFILE_ENRICHMENT_LIMIT"), "fund enrichment limits must be configurable for analysis and portfolio-manager coverage");
+assert(/heldProfilesRaw[\s\S]{0,180}getPortfolioProfileEnrichmentLimit/.test(serverSource), "portfolio decisions must enrich held positions with the higher portfolio coverage limit");
+assert(/watchlistProfilesRaw[\s\S]{0,180}getPortfolioProfileEnrichmentLimit/.test(serverSource), "portfolio decisions must enrich watchlist candidates with the higher portfolio coverage limit");
 
 const setupQuery = "我想要找一个回调完成，到了低位，准备要启动的基金";
 const intent = await manager.classifyMessageIntent({

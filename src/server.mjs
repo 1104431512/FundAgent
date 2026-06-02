@@ -778,7 +778,7 @@ async function processFeishuFundMessage({
       recordError(error, { replyFailures: 1 });
     });
 
-    const enrichments = await enrichFunds(fundCodes);
+    const enrichments = await enrichFunds(fundCodes, { limit: getFundAnalysisEnrichmentLimit() });
 
     await replyToMessage(
       message.message_id,
@@ -906,7 +906,7 @@ async function handleUserPortfolioImportWorkflow({ message, userText, intent, im
     extracted.fundCodes,
     (extracted.screenshotHoldings || []).map((item) => item.code)
   );
-  const enrichments = fundCodes.length ? await enrichFunds(fundCodes) : [];
+  const enrichments = fundCodes.length ? await enrichFunds(fundCodes, { limit: getFundAnalysisEnrichmentLimit() }) : [];
   const result = upsertUserPortfolioFromExtractedHoldings({
     userId,
     displayName: extractUserPortfolioDisplayName(userText) || userId,
@@ -1514,10 +1514,10 @@ async function executePortfolioDecision(db, run, config) {
   markPortfolioRunProgress(db, run, "正在补全当前持仓和自选基金池资料。");
   await yieldToEventLoop();
   const heldCodes = db.account.positions.map((position) => position.code).filter(Boolean);
-  const heldProfilesRaw = heldCodes.length ? await enrichFunds(heldCodes) : [];
+  const heldProfilesRaw = heldCodes.length ? await enrichFunds(heldCodes, { limit: getPortfolioProfileEnrichmentLimit() }) : [];
   const heldProfiles = heldProfilesRaw.map((profile) => refreshPortfolioCandidateThemesWithMarketRadar(profile, marketSnapshot));
   const watchlistCodes = mergeFundCodes(watchlist.map((item) => item.code));
-  const watchlistProfilesRaw = watchlistCodes.length ? await enrichFunds(watchlistCodes) : [];
+  const watchlistProfilesRaw = watchlistCodes.length ? await enrichFunds(watchlistCodes, { limit: getPortfolioProfileEnrichmentLimit() }) : [];
   const watchlistProfiles = watchlistProfilesRaw.map((profile) => refreshPortfolioCandidateThemesWithMarketRadar(profile, marketSnapshot));
   const preDecisionWatchlistUpdates = applyPortfolioWatchlistUpdates(
     db,
@@ -1538,7 +1538,7 @@ async function executePortfolioDecision(db, run, config) {
     return [];
   });
   const seedProfiles = watchlistSeedCandidates.length
-    ? (await enrichFunds(watchlistSeedCandidates.map((item) => item.code))).map((profile) => refreshPortfolioCandidateThemesWithMarketRadar(profile, marketSnapshot))
+    ? (await enrichFunds(watchlistSeedCandidates.map((item) => item.code), { limit: getPortfolioSeedProfileEnrichmentLimit() })).map((profile) => refreshPortfolioCandidateThemesWithMarketRadar(profile, marketSnapshot))
     : [];
   const managerRankings = buildPortfolioDecisionRankingBoard(db, watchlistSeedCandidates, {
     profiles: seedProfiles,
@@ -1599,7 +1599,7 @@ async function executePortfolioDecision(db, run, config) {
   markPortfolioRunProgress(db, run, `已解析 ${decision.actions.length} 条动作，正在补全拟交易基金净值。`);
   await yieldToEventLoop();
   const profileCodes = decision.actions.map((action) => action.code).filter(Boolean);
-  const actionProfiles = profileCodes.length ? await enrichFunds(profileCodes) : [];
+  const actionProfiles = profileCodes.length ? await enrichFunds(profileCodes, { limit: getPortfolioProfileEnrichmentLimit() }) : [];
   const executionProfiles = mergePortfolioProfiles(actionProfiles, watchlistProfiles, seedProfiles, heldProfiles);
   decision.actions = enforcePortfolioRiskBudget(decision.actions, db.account, executionProfiles);
   decision.actions = enforcePortfolioBuyDiscipline(decision.actions, executionProfiles, db.account.positions, db.account);
@@ -1676,7 +1676,7 @@ async function executePortfolioValuation(db, run, config) {
   const accountBefore = summarizePortfolioAccount(db.account);
   const positionsBefore = new Map(db.account.positions.map((position) => [position.code, { ...position }]));
   const codes = db.account.positions.map((position) => position.code).filter(Boolean);
-  const profiles = codes.length ? await enrichFunds(codes) : [];
+  const profiles = codes.length ? await enrichFunds(codes, { limit: getPortfolioProfileEnrichmentLimit() }) : [];
   assertPortfolioRunActive(run);
   const profileByCode = new Map(profiles.map((profile) => [profile.code, profile]));
   const positionUpdates = [];
@@ -1810,10 +1810,10 @@ async function executePortfolioPremarket(db, run, config) {
   markPortfolioRunProgress(db, run, "正在补全盘前持仓和自选基金池资料。");
   await yieldToEventLoop();
   const codes = db.account.positions.map((position) => position.code).filter(Boolean);
-  const profiles = codes.length ? await enrichFunds(codes) : [];
+  const profiles = codes.length ? await enrichFunds(codes, { limit: getPortfolioProfileEnrichmentLimit() }) : [];
   const watchlist = getActivePortfolioWatchlist(db);
   const watchlistCodes = mergeFundCodes(watchlist.map((item) => item.code));
-  const watchlistProfiles = watchlistCodes.length ? await enrichFunds(watchlistCodes) : [];
+  const watchlistProfiles = watchlistCodes.length ? await enrichFunds(watchlistCodes, { limit: getPortfolioProfileEnrichmentLimit() }) : [];
   const watchlistSeedCandidates = await fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist, {
     account,
     profiles: watchlistProfiles
@@ -1823,7 +1823,7 @@ async function executePortfolioPremarket(db, run, config) {
     return [];
   });
   const seedProfiles = watchlistSeedCandidates.length
-    ? await enrichFunds(watchlistSeedCandidates.map((item) => item.code))
+    ? await enrichFunds(watchlistSeedCandidates.map((item) => item.code), { limit: getPortfolioSeedProfileEnrichmentLimit() })
     : [];
   const activeOrders = (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status));
   assertPortfolioRunActive(run);
@@ -1898,7 +1898,7 @@ async function executePortfolioWeekly(db, run, config) {
     weeklyContext.orders.map((item) => item.code),
     getActivePortfolioWatchlist(db).map((item) => item.code)
   );
-  const profiles = codes.length ? await enrichFunds(codes) : [];
+  const profiles = codes.length ? await enrichFunds(codes, { limit: getPortfolioProfileEnrichmentLimit() }) : [];
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, `周度资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度总结。`);
   await yieldToEventLoop();
@@ -6120,7 +6120,7 @@ async function getFundWorkflowWatchlistContext(userText = "", options = {}) {
       now: options.now
     });
     if (staleRefreshCandidates.length) {
-      const profiles = await enrichFunds(staleRefreshCandidates.map((item) => item.code));
+      const profiles = await enrichFunds(staleRefreshCandidates.map((item) => item.code), { limit: getFundAnalysisEnrichmentLimit() });
       const refreshUpdates = buildPortfolioWatchlistRecheckUpdates(staleRefreshCandidates, { profiles })
         .map((update) => ({
           ...update,
@@ -7263,7 +7263,7 @@ async function processPortfolioOrderLifecycle(db, run, config = getEffectiveConf
   }
 
   const profileCodes = mergeFundCodes(activeOrders.map((order) => order.code));
-  const profiles = profileCodes.length ? await enrichFunds(profileCodes) : [];
+  const profiles = profileCodes.length ? await enrichFunds(profileCodes, { limit: getPortfolioProfileEnrichmentLimit() }) : [];
   const profileByCode = new Map(profiles.map((profile) => [profile.code, profile]));
 
   for (const order of activeOrders) {
@@ -21080,13 +21080,26 @@ async function uploadFeishuImage(buffer, fileName, config = getEffectiveConfig()
   return json.data.image_key;
 }
 
-async function enrichFunds(fundCodes) {
+function getFundAnalysisEnrichmentLimit() {
+  return Math.max(1, finiteNumberOr(process.env.FUND_ANALYSIS_ENRICHMENT_LIMIT ?? process.env.FUND_ENRICHMENT_LIMIT, 12));
+}
+
+function getPortfolioProfileEnrichmentLimit() {
+  return Math.max(1, finiteNumberOr(process.env.PORTFOLIO_PROFILE_ENRICHMENT_LIMIT ?? process.env.FUND_ENRICHMENT_LIMIT, 18));
+}
+
+function getPortfolioSeedProfileEnrichmentLimit() {
+  return Math.max(1, finiteNumberOr(process.env.PORTFOLIO_SEED_PROFILE_ENRICHMENT_LIMIT ?? process.env.FUND_ENRICHMENT_LIMIT, 12));
+}
+
+async function enrichFunds(fundCodes, options = {}) {
   const uniqueCodes = mergeFundCodes(fundCodes);
   if (!uniqueCodes.length) {
     return [];
   }
 
-  const codes = uniqueCodes.slice(0, 6);
+  const limit = Math.max(1, finiteNumberOr(options.limit ?? process.env.FUND_ENRICHMENT_LIMIT, 12));
+  const codes = uniqueCodes.slice(0, limit);
   const results = await Promise.all(codes.map(async (code) => {
     try {
       const profile = await fetchFundProfile(code);
@@ -21105,7 +21118,11 @@ async function enrichFunds(fundCodes) {
   }));
 
   updateStats({
-    counters: { fundEnrichmentCalls: uniqueCodes.length },
+    counters: {
+      fundEnrichmentCalls: codes.length,
+      fundEnrichmentRequested: uniqueCodes.length,
+      fundEnrichmentSkippedByLimit: Math.max(0, uniqueCodes.length - codes.length)
+    },
     last: { lastFundEnrichmentAt: new Date().toISOString() }
   });
   return results;

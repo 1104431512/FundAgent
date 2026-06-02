@@ -2257,6 +2257,14 @@ const requiredPatterns = [
     message: "candidate-theme matching must use full theme keywords so CPO/optical-module holdings inherit current main-capital retreat signals."
   },
   {
+    pattern: /async function enrichFunds\(fundCodes,\s*options = \{\}\)[\s\S]{0,600}FUND_ENRICHMENT_LIMIT[\s\S]{0,1800}fundEnrichmentSkippedByLimit/,
+    message: "fund enrichment must use configurable coverage limits and report skipped profiles instead of silently hard-limiting to six funds."
+  },
+  {
+    pattern: /executePortfolioDecision[\s\S]{0,1600}heldProfilesRaw[\s\S]{0,180}getPortfolioProfileEnrichmentLimit[\s\S]{0,600}watchlistProfilesRaw[\s\S]{0,180}getPortfolioProfileEnrichmentLimit/,
+    message: "portfolio decisions must enrich held positions and watchlist candidates with the higher portfolio coverage limit."
+  },
+  {
     pattern: /function collectPortfolioSellDisciplineSignals[\s\S]{0,5200}getCandidateThemeRetreatWarnings[\s\S]{0,5200}主力撤离[\s\S]{0,700}降低题材风险/,
     message: "sell discipline must accept current theme retreat or main-capital outflow as valid staged reduction evidence."
   },
