@@ -2555,6 +2555,7 @@ assert(adminStyleSource.includes("ranking-action-boundary"), "admin UI must styl
 assert(adminStyleSource.includes("ranking-action-crosscheck"), "admin UI must style action leaderboard cross-check evidence clearly");
 assert(adminSource.includes("接盘风险") && adminSource.includes("退潮接盘") && adminSource.includes("表面回调可能继续下探"), "admin watchlist hard-risk strip must surface stale catchdown risk as a first-class danger chip");
 assert(adminSource.includes("旧催化") && adminSource.includes("stale_catalyst"), "admin watchlist hard-risk strip must separately highlight old-catalyst catchdown risk");
+assert(adminSource.includes("旧题材未确认") && adminSource.includes("unconfirmed_theme") && adminSource.includes("历史热点"), "admin hard-risk chips must visibly flag old theme labels that are not confirmed by the current radar");
 assert(adminSource.includes("renderRunActionRiskStrip") && adminSource.includes("collectRunActionHardRisks"), "admin run action cards must render hard-risk chips for old catalysts, catchdown, and retreat warnings");
 assert(adminStyleSource.includes("action-hard-risk-strip"), "admin UI must style action-card hard-risk chips so risk signals are visible before long reasons");
 assert(adminSource.includes("renderPortfolioConsensusRadar") && adminSource.includes("consensusRadar"), "admin manager ranking board must render the cross-list consensus radar in overview and ranking terminal");

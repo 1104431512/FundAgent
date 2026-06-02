@@ -4742,6 +4742,7 @@ function formatWatchlistReadiness(item = {}) {
 }
 
 const WATCHLIST_HARD_RISK_RULES = [
+  { id: "unconfirmed_theme", tone: "danger", label: "旧题材未确认", pattern: /旧题材(?:线索)?未被当前(?:题材)?雷达确认|旧题材线索未被当前题材雷达确认|当前题材雷达.*未确认|未被当前题材雷达确认|历史热点|旧主力标签/ },
   { id: "stale_catalyst", tone: "danger", label: "旧催化", pattern: /旧催化|旧新闻|催化.*过期|缺新鲜新闻|缺新的新闻|缺新鲜主力进场/ },
   { id: "catchdown", tone: "danger", label: "接盘风险", pattern: /接盘风险|退潮接盘|题材退潮|主力资金撤离|主力撤离|资金撤离|回调不作为买点|回调不能当买点|表面回调可能继续下探/ },
   { id: "holding_pulse", tone: "danger", label: "底层持仓走弱", pattern: /前十大持仓盘中|底层持仓.*走弱|表面回调可能继续下探|底层持仓止跌/ },
