@@ -14393,6 +14393,17 @@ function buildPortfolioCapabilityDiagnostics(db = {}) {
     );
   }
 
+  const themeRepresentativeGaps = findPortfolioThemeRepresentativeGaps(db, watchlist);
+  if (themeRepresentativeGaps.length) {
+    const names = themeRepresentativeGaps.map((item) => item.name).filter(Boolean).slice(0, 3).join(" / ");
+    add(
+      "warning",
+      "主力预热代表基金缺口",
+      `${themeRepresentativeGaps.length} 个题材未覆盖`,
+      `${names || "主力/预热题材"} 已进入题材榜，但当前自选池没有对应代表基金；下一轮必须扩充代表基金候选，并补齐前十大持仓、费率和走势承载。`
+    );
+  }
+
   const failedRuns = runs.slice(-12).filter((run) => run.status === "failed" || run.error).slice(0, 3);
   if (failedRuns.length) {
     add(
@@ -14482,6 +14493,41 @@ function buildPortfolioCapabilityDiagnostics(db = {}) {
     summary: formatPortfolioCapabilityDiagnosticSummary(level, items),
     items: items.slice(0, 8)
   };
+}
+
+function findPortfolioThemeRepresentativeGaps(db = {}, watchlist = []) {
+  const snapshot = findLatestPortfolioMarketSnapshot(db);
+  const keywordGroups = buildPortfolioThemeOpportunityKeywordGroups(snapshot);
+  if (!keywordGroups.length) return [];
+  const activeText = buildPortfolioWatchlistThemeCoverageText(watchlist);
+  return keywordGroups.filter((group) =>
+    !group.keywords.some((keyword) => {
+      const value = normalizeIntentText(keyword);
+      return value && activeText.includes(value);
+    })
+  ).slice(0, 5);
+}
+
+function findLatestPortfolioMarketSnapshot(db = {}) {
+  const direct = db.marketSnapshot || db.latestMarketSnapshot;
+  if (direct && typeof direct === "object") return direct;
+  const runs = Array.isArray(db.runs) ? db.runs : [];
+  return runs.find((run) => run?.marketSnapshot && typeof run.marketSnapshot === "object")?.marketSnapshot || null;
+}
+
+function buildPortfolioWatchlistThemeCoverageText(watchlist = []) {
+  return normalizeIntentText(normalizePortfolioWatchlist(watchlist)
+    .filter((item) => !["blocked", "removed"].includes(item.status))
+    .map((item) => [
+      item.name,
+      item.reason,
+      item.candidateRole,
+      item.positionPlan,
+      ...(item.setupEvidence || []),
+      ...(item.buyTriggers || []),
+      ...(item.lastSnapshot?.matchedThemes || []).flatMap((theme) => [theme.name, theme.id, ...(theme.themeKeywords || []), ...(theme.fundKeywords || []), ...(theme.keywords || [])])
+    ].filter(Boolean).join(" "))
+    .join(" "));
 }
 
 function isPortfolioHotChasePosition(position = {}) {
@@ -15769,6 +15815,8 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "等待后继续走强要被追责；下一轮必须在低位转强候选里给0.5%-2.5%试探、主动降级或明确触发复查时间。", "组合经理");
     } else if (item.label === "主力预热错过回测") {
       addTask(item, "主力/预热题材不能被普通等待吞掉；下一轮必须用新闻逻辑、资金流和基金低位温和转强三件套判断，给0.5%-1.2%微型试探、主动降级或具体复查时间。", "题材分析师");
+    } else if (item.label === "主力预热代表基金缺口") {
+      addTask(item, "立即扩充这些题材的代表基金候选；每个题材至少补1只承载基金，并验证前十大持仓、费率、走势和追涨风险。", "题材分析师");
     } else if (item.label === "候选质量缺口回测") {
       addTask(item, "这些上涨不能直接追买；下一轮要补实时净值、份额费率和可申购渠道，并寻找同主题可执行替代候选。", "基金研究员");
     } else if (item.label === "候选数据源阻塞回测") {

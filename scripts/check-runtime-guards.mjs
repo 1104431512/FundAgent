@@ -1953,6 +1953,14 @@ const requiredPatterns = [
     message: "portfolio theme opportunity seed recall must derive grouped theme/fund keywords from main-capital, preheat, and low-rotation leaderboards."
   },
   {
+    pattern: /function buildPortfolioCapabilityDiagnostics[\s\S]{0,5200}findPortfolioThemeRepresentativeGaps[\s\S]{0,900}主力预热代表基金缺口/,
+    message: "portfolio capability diagnostics must surface live main-capital/preheat themes whose representative funds are missing from the watchlist."
+  },
+  {
+    pattern: /function findPortfolioThemeRepresentativeGaps[\s\S]{0,1200}buildPortfolioThemeOpportunityKeywordGroups[\s\S]{0,900}buildPortfolioWatchlistThemeCoverageText/,
+    message: "theme representative gap detection must compare theme leaderboard keywords against active watchlist coverage."
+  },
+  {
     pattern: /function inferPortfolioBlockedFollowThroughSearchKeywords[\s\S]{0,2200}信息传媒[\s\S]{0,900}QDII[\s\S]{0,900}新能源车[\s\S]{0,900}医药/,
     message: "blocked or data-gapped replacement scans must infer theme keywords such as media, QDII, new-energy vehicles, and healthcare."
   },

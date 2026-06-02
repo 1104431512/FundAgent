@@ -457,6 +457,23 @@ assert.equal(
   false,
   "theme opportunity seed recall must stop once the active watchlist already covers that live theme"
 );
+const themeRepresentativeGapDb = {
+  account: { cash: 82000, totalAsset: 100000, positionWeightPct: 8, positions: [] },
+  watchlist: fullOldThemeWatchlist,
+  marketSnapshot: liveThemeOpportunitySnapshot,
+  runs: [],
+  transactions: [],
+  orders: [],
+  settlements: []
+};
+assert(
+  manager.buildPortfolioCapabilityDiagnostics(themeRepresentativeGapDb).items.some((item) => item.label === "主力预热代表基金缺口" && item.note.includes("代表基金")),
+  "capability diagnostics must surface live main-capital/preheat themes that lack representative funds in the watchlist"
+);
+assert(
+  manager.buildPortfolioCapabilityActionQueue(themeRepresentativeGapDb).some((item) => item.action.includes("代表基金候选") && item.action.includes("前十大持仓")),
+  "capability action queue must turn missing theme representatives into concrete candidate expansion work"
+);
 assert(rankingBoard.lists.find((item) => item.id === "decision_synthesis")?.items.some((item) => item.code === "000005"), "manager ranking board must expose integrated decision-synthesis candidates");
 assert(rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.some((item) => item.code === "000001"), "manager ranking board must expose buy-preparation candidates");
 assert(rankingBoard.lists.find((item) => item.id === "launch_setup")?.items.some((item) => item.code === "000001"), "manager ranking board must expose low-position launch candidates");
