@@ -146,6 +146,12 @@ const normalizedRankingDb = manager.normalizePortfolioDb({
       reason: "新能源低位修复候选，前十大持仓支撑方向。",
       buyTriggers: ["5日/10日温和转强后复核"],
       lastSnapshot: {
+        marketThemeRefresh: {
+          source: "current_market_theme_radar",
+          matchedThemeNames: ["新能源"],
+          supportSignals: ["低位轮动支撑", "主力资金回流"],
+          summary: "新能源链低位轮动，宁德时代/比亚迪等持仓承载。"
+        },
         holdings: {
           equityDisclosureDate: "2099-03-31",
           equityTopHoldings: [
@@ -4332,6 +4338,61 @@ assert.equal(
   manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000015" }, textualRiskNegationProfile).ok,
   true,
   "textual catchdown guard must not block explicit negations such as no catchdown risk or no capital outflow"
+);
+const noRadarThemeNamedProfile = {
+  ...verifiedSeedProfile,
+  code: "000017",
+  name: "人工智能主题低位基金C",
+  matchedThemes: [],
+  seed: {
+    ...(verifiedSeedProfile.seed || {}),
+    name: "人工智能主题低位基金C",
+    matchedThemes: [],
+    keywords: ["人工智能", "算力", "低位启动"]
+  },
+  actionability: {
+    ...(verifiedSeedProfile.actionability || {}),
+    action: "buy",
+    score: 88,
+    decisionBlocker: []
+  }
+};
+const noRadarThemeNamedBuyGuard = manager.evaluatePortfolioBuyDiscipline(
+  { action: "BUY", code: "000017", name: "人工智能主题低位基金C", amount: 1000 },
+  noRadarThemeNamedProfile
+);
+assert.equal(noRadarThemeNamedBuyGuard.ok, false, "theme-named funds must not buy when no current theme radar support is matched");
+assert(
+  noRadarThemeNamedBuyGuard.reason.includes("基金名称/标签显示为人工智能/算力方向")
+    && noRadarThemeNamedBuyGuard.reason.includes("当前题材雷达")
+    && noRadarThemeNamedBuyGuard.evidence.includes("来源：portfolio_theme_support_guard"),
+  "theme-named no-radar BUY blocks must explain that the name alone is not current main-capital/news support"
+);
+assert(
+  manager.buildPortfolioWatchReadinessGaps({ code: "000017", name: "人工智能主题低位基金C", status: "ready" }, noRadarThemeNamedProfile)
+    .some((item) => item.includes("基金名称/标签显示为人工智能/算力方向") && item.includes("低位轮动支撑")),
+  "watchlist readiness must downgrade theme-named low-position candidates when current radar support is absent"
+);
+const noRadarThemeActionability = manager.buildFundActionabilitySignals(noRadarThemeNamedProfile);
+assert.equal(noRadarThemeActionability.action, "avoid", "actionability must not surface theme-named no-radar candidates as buy or staged-buy");
+assert(
+  noRadarThemeActionability.decisionBlocker.some((item) => item.includes("系统当前题材支撑拦截") && item.includes("当前题材雷达")),
+  "actionability blockers must carry no-radar theme-name evidence into cards and prompts"
+);
+const broadNoRadarProfile = {
+  ...verifiedSeedProfile,
+  matchedThemes: [],
+  seed: {
+    ...(verifiedSeedProfile.seed || {}),
+    name: "中证A500ETF联接C",
+    matchedThemes: [],
+    keywords: ["中证A500", "宽基"]
+  }
+};
+assert.equal(
+  manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, broadNoRadarProfile).ok,
+  true,
+  "broad core index funds must not be blocked solely because no sector theme radar is matched"
 );
 const unsupportedThemeRankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
   account: { cash: 90000, totalAsset: 100000, positionWeightPct: 5 },

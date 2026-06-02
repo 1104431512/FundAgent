@@ -1713,7 +1713,7 @@ const requiredPatterns = [
     message: "portfolio BUY execution must require verified pullback/launch and low-position setup evidence, not merely absence of chase risk."
   },
   {
-    pattern: /hasVerifiedPortfolioBuySetup[\s\S]{0,500}isEarlyTurnSetupTrend/,
+    pattern: /hasVerifiedPortfolioBuySetup[\s\S]{0,900}isEarlyTurnSetupTrend/,
     message: "portfolio BUY execution must require 5/10-day early-turn evidence before virtual subscription."
   },
   {
@@ -2293,8 +2293,24 @@ const requiredPatterns = [
     message: "portfolio BUY guard must explain when low-position launch or early-turn evidence is missing."
   },
   {
-    pattern: /(?=[\s\S]*function evaluatePortfolioBuyDiscipline[\s\S]{0,2600}getPortfolioActionableThemeSupportGap\(profile\)[\s\S]{0,500}portfolio_theme_support_guard)(?=[\s\S]*function getPortfolioActionableThemeSupportGap[\s\S]{0,900}!themeSignals\.length \|\| hasActionableThemeSupport\(candidate\))/,
+    pattern: /function evaluatePortfolioBuyDiscipline[\s\S]{0,2600}getPortfolioActionableThemeSupportGap\(profile\)[\s\S]{0,500}portfolio_theme_support_guard/,
     message: "portfolio BUY guard must block theme-labeled pullbacks that lack current actionable main-capital, preheat, or rotation support."
+  },
+  {
+    pattern: /function getPortfolioActionableThemeSupportGap[\s\S]{0,900}hasPortfolioCurrentThemeRadarSupport\(candidate\)[\s\S]{0,500}getPortfolioThemeSupportRequirement\(candidate\)[\s\S]{0,500}基金名称\/标签显示为/,
+    message: "portfolio theme support gaps must block theme-named funds when current radar support is absent."
+  },
+  {
+    pattern: /function getPortfolioThemeSupportRequirement[\s\S]{0,4200}function isBroadPortfolioExposureText/,
+    message: "portfolio theme support guard must exempt broad/core funds from sector-radar-only blocking."
+  },
+  {
+    pattern: /function getPortfolioSectorThemeLabel[\s\S]{0,3200}人工智能[\s\S]{0,3200}医药[\s\S]{0,3200}消费[\s\S]{0,3200}黄金/,
+    message: "portfolio theme support guard must detect sector/theme fund labels even when matchedThemes are empty."
+  },
+  {
+    pattern: /function hasVerifiedPortfolioBuySetup[\s\S]{0,220}getPortfolioActionableThemeSupportGap\(profile\)[\s\S]{0,900}function hasPortfolioStarterBuySetup[\s\S]{0,260}getPortfolioActionableThemeSupportGap\(profile\)/,
+    message: "portfolio verified and starter buy setup gates must not bypass current theme support gaps."
   },
   {
     pattern: /function getTextualCatchdownWarnings[\s\S]{0,900}文本证据显示题材退潮/,

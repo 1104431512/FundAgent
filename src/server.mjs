@@ -5010,6 +5010,9 @@ function inferPortfolioWatchStatusFromSeedCandidate(candidate = {}, seedScore = 
   if (hasPortfolioVerifiedSeedChaseRisk(candidate, profile)) {
     return "blocked";
   }
+  if (getPortfolioActionableThemeSupportGap(profile)) {
+    return "waiting_pullback";
+  }
   const verifiedReady = Number(seedScore) >= 60 && (
     hasVerifiedPortfolioBuySetup(profile)
     || hasPortfolioThemeMicroStarterSetup(profile)
@@ -5023,6 +5026,7 @@ function inferPortfolioWatchStatusFromSeedCandidate(candidate = {}, seedScore = 
 function hasVerifiedPortfolioBuySetup(profile = {}) {
   const trend = profile?.trendProfile || {};
   if (!trend.ok) return false;
+  if (getPortfolioActionableThemeSupportGap(profile)) return false;
   const signal = trend.pullbackSetup?.signal || "";
   const return20d = finiteMetricNumber(trend.return20dPct);
   const return60d = finiteMetricNumber(trend.return60dPct);
@@ -5041,6 +5045,7 @@ function hasVerifiedPortfolioBuySetup(profile = {}) {
 function hasPortfolioStarterBuySetup(profile = {}) {
   const trend = profile?.trendProfile || {};
   if (!trend.ok || hasVerifiedPortfolioBuySetup(profile)) return false;
+  if (getPortfolioActionableThemeSupportGap(profile)) return false;
   const signal = trend.pullbackSetup?.signal || "";
   if (!["pullback_complete", "launch_setup"].includes(signal)) return false;
   if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback" || trend.entryBias === "avoid_now") return false;
@@ -5879,7 +5884,15 @@ function getPortfolioActionableThemeSupportGap(candidate = {}) {
   if (unconfirmedWarnings.length) return unconfirmedWarnings[0];
   const staleCatalystWarnings = getStaleCatalystThemeWarnings(candidate);
   if (staleCatalystWarnings.length) return staleCatalystWarnings[0];
-  if (!themeSignals.length || hasActionableThemeSupport(candidate)) return "";
+  if (!themeSignals.length) {
+    if (hasPortfolioCurrentThemeRadarSupport(candidate)) return "";
+    const requiredTheme = getPortfolioThemeSupportRequirement(candidate);
+    if (requiredTheme) {
+      return `基金名称/标签显示为${requiredTheme}方向，但当前题材雷达没有确认当前主力进场、题材预热或低位轮动支撑，不能只凭走势当启动买点。`;
+    }
+    return "";
+  }
+  if (hasActionableThemeSupport(candidate)) return "";
   return "缺少当前主力进场、题材预热或低位轮动支撑，不能把回调当成启动买点。";
 }
 
@@ -19470,6 +19483,7 @@ function classifyPullbackSetupCandidateForSummary(candidate = {}, options = {}) 
   if (hasThemeRetreatRisk(candidate)) return "watch_or_reject";
   if (hasStaleThemeCatchdownRisk(candidate)) return "watch_or_reject";
   if (getTextualCatchdownWarnings(candidate).length) return "watch_or_reject";
+  if (getPortfolioActionableThemeSupportGap(candidate)) return "watch_or_reject";
   if (getCandidateThemeSignals(candidate).length && !hasActionableThemeSupport(candidate)) return "watch_or_reject";
   if (hasSevereHoldingsOutlookRisk(candidate)) return "watch_or_reject";
   if (hasPullbackYearToDateChaseRisk(candidate)) return "watch_or_reject";
@@ -19595,6 +19609,10 @@ function buildPullbackSetupCandidateGaps(candidate = {}, options = {}) {
   }
   if (hasHighChaseTheme(candidate)) {
     gaps.push("题材拥挤或追涨风险未消化");
+  }
+  const actionableThemeSupportGap = getPortfolioActionableThemeSupportGap(candidate);
+  if (actionableThemeSupportGap) {
+    gaps.push(actionableThemeSupportGap);
   }
   if (hasStaleThemeCatchdownRisk(candidate)) {
     gaps.push(...getStaleThemeCatchdownWarnings(candidate));
@@ -19830,6 +19848,86 @@ function isExplicitThemeIndexVehicle(candidate = {}, themeSignals = []) {
       return value.length >= 2 && text.includes(value);
     })
   );
+}
+
+function getPortfolioThemeSupportRequirement(candidate = {}) {
+  const text = getPortfolioThemeSupportText(candidate);
+  if (!text) return "";
+  const sectorLabel = getPortfolioSectorThemeLabel(text);
+  if (sectorLabel) return sectorLabel;
+  const explicitThemeLabel = /主题|行业|板块|赛道|概念|产业链|专题/.test(text);
+  if (explicitThemeLabel && !isBroadPortfolioExposureText(text)) return "主题/行业";
+  return "";
+}
+
+function getPortfolioThemeSupportText(candidate = {}) {
+  const value = candidate && typeof candidate === "object" ? candidate : {};
+  const seed = value.seed && typeof value.seed === "object" ? value.seed : {};
+  const sources = [
+    value.name,
+    value.type,
+    value.category,
+    value.fundType,
+    value.focusTheme,
+    value.themeName,
+    value.sector,
+    value.industry,
+    seed.name,
+    seed.type,
+    seed.category,
+    seed.fundType,
+    seed.focusTheme,
+    seed.themeName,
+    seed.sector,
+    seed.industry,
+    ...normalizeStringArray(value.keywords),
+    ...normalizeStringArray(value.themeKeywords),
+    ...normalizeStringArray(value.fundKeywords),
+    ...normalizeStringArray(seed.keywords),
+    ...normalizeStringArray(seed.themeKeywords),
+    ...normalizeStringArray(seed.fundKeywords)
+  ];
+  return normalizeIntentText(sources.filter(Boolean).join(" "));
+}
+
+function hasPortfolioCurrentThemeRadarSupport(candidate = {}) {
+  const refresh = candidate?.marketThemeRefresh || candidate?.seed?.marketThemeRefresh || null;
+  if (!refresh || typeof refresh !== "object" || refresh.noCurrentThemeMatch) return false;
+  if (!normalizeStringArray(refresh.matchedThemeNames).length) return false;
+  const supportText = normalizeIntentText([
+    refresh.supportLabel,
+    refresh.summary,
+    refresh.evidence,
+    refresh.reason,
+    refresh.newsLogic,
+    ...normalizeStringArray(refresh.supportSignals),
+    ...normalizeStringArray(refresh.dataBasis)
+  ].filter(Boolean).join(" "));
+  return /当前主力进场|主力进场|题材预热|低位轮动|资金回流|资金净流入|主力资金|新闻催化|产业催化/.test(supportText);
+}
+
+function getPortfolioSectorThemeLabel(text = "") {
+  const value = String(text || "");
+  const rules = [
+    { label: "人工智能/算力", pattern: /人工智能|\bai\b|算力|cpo|光模块|通信|云计算|信创|数字经济|大数据|软件|互联网|网络安全|科技/i },
+    { label: "半导体/芯片", pattern: /半导体|芯片|集成电路/i },
+    { label: "机器人/高端制造", pattern: /机器人|自动化|智能制造|工业母机/i },
+    { label: "新能源/汽车", pattern: /新能源|电池|锂电|储能|光伏|风电|电力设备|新能源车|汽车/i },
+    { label: "医药/医疗", pattern: /医药|医疗|创新药|生物|中药|疫苗|健康/i },
+    { label: "消费", pattern: /消费|白酒|食品饮料|家电|旅游|酒店|免税/i },
+    { label: "金融/地产", pattern: /证券|券商|银行|保险|金融|地产|房地产/i },
+    { label: "周期资源", pattern: /有色|黄金|贵金属|稀土|煤炭|钢铁|石油|化工|资源|周期/i },
+    { label: "军工/低空经济", pattern: /军工|国防|航天|航空|低空经济|飞行汽车/i },
+    { label: "传媒/游戏", pattern: /传媒|游戏|影视|文化/i },
+    { label: "农业/养殖", pattern: /农业|养殖|猪|畜牧/i }
+  ];
+  return rules.find((rule) => rule.pattern.test(value))?.label || "";
+}
+
+function isBroadPortfolioExposureText(text = "") {
+  const value = String(text || "");
+  if (getPortfolioSectorThemeLabel(value)) return false;
+  return /沪深300|中证a?500|中证500|中证800|中证1000|中证2000|上证50|上证180|深证100|创业板|科创50|a500|a股|全市场|宽基|红利|低波|债券|货币|现金|纯债|短债|同业存单|可转债|均衡|平衡|灵活配置|多策略|量化|增强|核心|价值|成长|优选|精选/i.test(value);
 }
 
 function isActionableThemeSupport(theme = {}) {
@@ -28429,6 +28527,14 @@ function getActionabilityThemeRetreatDiscipline(digest = {}, { isMoneyMarket = f
       scoreCap: 54,
       scorePenalty: 10,
       blocker: `系统旧催化降级：${staleCatalystWarnings[0]}`
+    };
+  }
+  const themeSupportGap = getPortfolioActionableThemeSupportGap(digest);
+  if (themeSupportGap) {
+    return {
+      scoreCap: 44,
+      scorePenalty: 18,
+      blocker: `系统当前题材支撑拦截：${themeSupportGap}`
     };
   }
   const warnings = getCandidateThemeRetreatWarnings(digest);
