@@ -5974,6 +5974,30 @@ assert(
   !staleThemeWaitAnswerQuality.issues.some((issue) => issue.startsWith("stale_theme_candidate")),
   "quality gate should allow stale-theme candidates when the answer says 0 yuan observation and waits for capital return"
 );
+const staleThemeSoftBuyLeakQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000023 题材退潮修复基金C 先0元观察。原因是题材退潮、主力撤离；但激进用户可以做500元小仓验证，少量参与看看资金是否回流。",
+  workflow: "fund_qa",
+  userText: "000023 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [{ ...fadingVerifiedDigest, actionability: fadingVerifiedActionability }] } }
+});
+assert(
+  staleThemeSoftBuyLeakQuality.issues.includes("stale_theme_candidate_given_buy_execution"),
+  "quality gate must reject soft buy executions such as 500-yuan small validation positions for stale-theme catchdown candidates"
+);
+assert(
+  staleThemeSoftBuyLeakQuality.issues.includes("stale_theme_candidate_given_buy_signal"),
+  "quality gate must reject soft buy wording such as small validation or participation for stale-theme catchdown candidates"
+);
+const staleThemeHardNoBuyQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000023 题材退潮修复基金C 先0元观察。原因是题材退潮、主力撤离；不能做小仓验证，也不参与试探仓，等资金回流后再复核。",
+  workflow: "fund_qa",
+  userText: "000023 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [{ ...fadingVerifiedDigest, actionability: fadingVerifiedActionability }] } }
+});
+assert(
+  !staleThemeHardNoBuyQuality.issues.some((issue) => issue.startsWith("stale_theme_candidate")),
+  "quality gate must allow explicit no-validation/no-starter wording for stale-theme catchdown candidates"
+);
 const holdingRealtimeWeakBuyAnswerQuality = manager.evaluateFundAnswerQuality({
   text: "直接结论：000050 持仓走弱低位基金C 可以分批买入1000元。理由是回调完成，低位修复，适合小仓试探。",
   workflow: "fund_qa",

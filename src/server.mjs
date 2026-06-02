@@ -20845,10 +20845,14 @@ function hasPositiveBuyExecutionForFundCode(text, code) {
     if (!line.includes(fundCode)) return false;
     const contextLines = [line, lines[index + 1] || ""];
     return contextLines.some((contextLine, offset) => {
-      const clauses = String(contextLine || "").split(/[，,。；;\n]/);
+      const rawContext = String(contextLine || "");
+      const contextAfterCode = offset === 0 && rawContext.includes(fundCode)
+        ? rawContext.slice(rawContext.indexOf(fundCode))
+        : rawContext;
+      const clauses = contextAfterCode.split(/[，,。；;\n]/);
       return clauses.some((clause) => {
         const hasTargetCode = clause.includes(fundCode);
-        const isContinuation = offset > 0 && !/\b\d{6}\b/.test(clause);
+        const isContinuation = (offset > 0 || rawContext.includes(fundCode)) && !/\b\d{6}\b/.test(clause);
         if (!hasTargetCode && !isContinuation) return false;
         return hasPositiveBuyExecutionText(clause);
       });
@@ -20864,11 +20868,15 @@ function hasPositiveBuyIntentForFundCode(text, code) {
     if (!line.includes(fundCode)) return false;
     const contextLines = [line, lines[index + 1] || ""];
     return contextLines.some((contextLine, offset) => {
-      if (contextLine.includes(fundCode) && hasPositiveBuyIntentText(contextLine)) return true;
-      const clauses = String(contextLine || "").split(/[，,。；;\n]/);
+      const rawContext = String(contextLine || "");
+      const contextAfterCode = offset === 0 && rawContext.includes(fundCode)
+        ? rawContext.slice(rawContext.indexOf(fundCode))
+        : rawContext;
+      if (rawContext.includes(fundCode) && hasPositiveBuyIntentText(contextAfterCode)) return true;
+      const clauses = contextAfterCode.split(/[，,。；;\n]/);
       return clauses.some((clause) => {
         const hasTargetCode = clause.includes(fundCode);
-        const isContinuation = offset > 0 && !/\b\d{6}\b/.test(clause);
+        const isContinuation = (offset > 0 || rawContext.includes(fundCode)) && !/\b\d{6}\b/.test(clause);
         if (!hasTargetCode && !isContinuation) return false;
         return hasPositiveBuyIntentText(clause);
       });
@@ -20878,15 +20886,20 @@ function hasPositiveBuyIntentForFundCode(text, code) {
 
 function hasPositiveBuyExecutionText(text) {
   const body = String(text || "");
-  if (!/(买入|买|加仓|配置|投入|建仓|申购)/.test(body)) return false;
-  if (/(不买|不建议买|暂停买|停止买|别买|不要买|回避买|(?:^|[^\d.])0(?:\.0+)?\s*(?:元|%|成)|零元)/.test(body)) return false;
+  if (!/(买入|买|加仓|配置|投入|建仓|申购|试探|验证仓|试探仓|首仓|底仓|参与|小仓验证|微型验证|少量验证)/.test(body)) return false;
+  if (hasNegativeBuyIntentText(body)) return false;
   return /(?:(?:[1-9]\d*(?:\.\d+)?|0\.[1-9]\d*)\s*(?:元|万|%|成)|[一二三四五六七八九十]+成|半仓|底仓)/.test(body);
 }
 
 function hasPositiveBuyIntentText(text) {
   const body = String(text || "");
-  if (/(不买|不建议买|不能买|暂不买|暂停买|停止买|别买|不要买|回避|只观察|只放观察|等待条件|等.*再(?:买|加|配)|(?:^|[^\d.])0(?:\.0+)?\s*(?:元|%|成)|零元)/.test(body)) return false;
-  return /(可以买|可买|买入|分批|小仓位|试探|底仓|建仓|配置|申购|加仓|少买一点|买一点)/.test(body);
+  if (hasNegativeBuyIntentText(body)) return false;
+  return /(可以买|可买|买入|分批|小仓位|小仓|微型试探|试探|试探仓|验证仓|小仓验证|微型验证|少量验证|首仓|底仓|建仓|配置|申购|加仓|少买一点|买一点|少量参与|参与)/.test(body);
+}
+
+function hasNegativeBuyIntentText(text) {
+  const body = String(text || "");
+  return /(不买|不建议买|不能买|暂不买|暂停买|停止买|别买|不要买|回避买|只观察|只放观察|0元观察|等待条件|等.*再(?:买|加|配|参与|试探|验证)|(?:^|[^\d.])0(?:\.0+)?\s*(?:元|%|成)|零元|不(?:做|给|设|开|参与|启动)?[^，。；;\n]{0,10}(?:试探|验证|验证仓|试探仓|首仓|底仓|建仓|配置|申购|买入|买)|不能[^，。；;\n]{0,12}(?:试探|验证|验证仓|试探仓|首仓|底仓|参与|建仓|配置|申购|买入|买)|禁止[^，。；;\n]{0,12}(?:试探|验证|验证仓|试探仓|首仓|底仓|参与|建仓|配置|申购|买入|买))/.test(body);
 }
 
 function hasShareClassFeeEvidenceAvailable(candidate = {}) {

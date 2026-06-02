@@ -281,6 +281,14 @@ const requiredPatterns = [
     message: "fund answer quality gate must reject buy language for stale-theme catchdown candidates."
   },
   {
+    pattern: /function hasPositiveBuyIntentText[\s\S]{0,700}验证仓[\s\S]{0,700}小仓验证[\s\S]{0,700}少量参与[\s\S]{0,900}function hasNegativeBuyIntentText[\s\S]{0,900}不能[\s\S]{0,500}验证/,
+    message: "buy-language detection must catch soft starter wording such as validation positions while preserving explicit no-buy wording."
+  },
+  {
+    pattern: /function hasPositiveBuyExecutionForFundCode[\s\S]{0,900}contextAfterCode[\s\S]{0,900}rawContext\.includes\(fundCode\)[\s\S]{0,1600}function hasPositiveBuyIntentForFundCode[\s\S]{0,900}contextAfterCode/,
+    message: "fund-specific buy-language detection must inspect same-line clauses after the fund code, not only the code-containing clause."
+  },
+  {
     pattern: /(?=[\s\S]*function hasStaleThemeCatchdownEvidence[\s\S]{0,900}hasStaleThemeCatchdownRisk)(?=[\s\S]*function hasStaleThemeCatchdownEvidence[\s\S]{0,900}hasHoldingRealtimeCatchdownRisk)(?=[\s\S]*function hasStaleThemeCatchdownEvidence[\s\S]{0,1800}接盘风险)(?=[\s\S]*function hasStaleThemeCatchdownEvidence[\s\S]{0,1800}表面回调可能继续下探)/,
     message: "stale-theme answer quality must reuse structured catchdown risk, weak-holdings pulse, and Chinese blocker text."
   },
