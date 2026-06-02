@@ -1913,6 +1913,18 @@ const requiredPatterns = [
     message: "portfolio watchlist seeding must search replacements when candidates are blocked by trend/data-source gaps."
   },
   {
+    pattern: /async function fetchPortfolioWatchlistSeedCandidates[\s\S]{0,1800}shouldForcePortfolioThemeOpportunitySeedScan[\s\S]{0,900}PORTFOLIO_REDEPLOYMENT_SEED_LIMIT/,
+    message: "portfolio watchlist seeding must force candidate recall when live main-capital/preheat/low-rotation themes are not represented in the watchlist."
+  },
+  {
+    pattern: /function buildPortfolioWatchlistSeedSearchText[\s\S]{0,500}代表基金[\s\S]{0,500}inferPortfolioThemeOpportunitySearchKeywords/,
+    message: "portfolio watchlist seeding must search representative funds for live theme opportunities instead of generic low-position funds only."
+  },
+  {
+    pattern: /function buildPortfolioThemeOpportunityKeywordGroups[\s\S]{0,900}collectPortfolioThemeOpportunityLeaderboardItems[\s\S]{0,900}fundKeywords[\s\S]{0,900}keywords/,
+    message: "portfolio theme opportunity seed recall must derive grouped theme/fund keywords from main-capital, preheat, and low-rotation leaderboards."
+  },
+  {
     pattern: /function inferPortfolioBlockedFollowThroughSearchKeywords[\s\S]{0,2200}信息传媒[\s\S]{0,900}QDII[\s\S]{0,900}新能源车[\s\S]{0,900}医药/,
     message: "blocked or data-gapped replacement scans must infer theme keywords such as media, QDII, new-energy vehicles, and healthcare."
   },

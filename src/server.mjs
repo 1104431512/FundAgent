@@ -2963,16 +2963,17 @@ async function fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist =
   const dataBlockedCandidates = findPortfolioBacktestDataBlockedCandidates(activeWatchlist);
   const forceBlockedReplacementScan = shouldForcePortfolioBlockedFollowThroughSeedScan(options.account, activeWatchlist);
   const forceDataBlockedScan = shouldForcePortfolioDataBlockedSeedScan(options.account, activeWatchlist);
-  if (deficit <= 0 && !forceRedeploymentScan && !forceBlockedReplacementScan && !forceDataBlockedScan) return [];
+  const forceThemeOpportunityScan = shouldForcePortfolioThemeOpportunitySeedScan(marketSnapshot, activeWatchlist);
+  if (deficit <= 0 && !forceRedeploymentScan && !forceBlockedReplacementScan && !forceDataBlockedScan && !forceThemeOpportunityScan) return [];
 
   const userText = buildPortfolioWatchlistSeedSearchText([
     ...blockedFollowThroughCandidates,
     ...dataBlockedCandidates
-  ]);
+  ], marketSnapshot);
   const themeRadar = Array.isArray(marketSnapshot?.themeRadar) ? marketSnapshot.themeRadar : [];
   const candidates = await fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar);
   return selectPortfolioWatchlistSeedCandidates(candidates, activeWatchlist, themeRadar, {
-    limit: forceRedeploymentScan || forceBlockedReplacementScan || forceDataBlockedScan
+    limit: forceRedeploymentScan || forceBlockedReplacementScan || forceDataBlockedScan || forceThemeOpportunityScan
       ? finiteNumberOr(process.env.PORTFOLIO_REDEPLOYMENT_SEED_LIMIT, 8)
       : Math.min(deficit, finiteNumberOr(process.env.PORTFOLIO_WATCHLIST_SEED_LIMIT, 6))
   });
@@ -3003,9 +3004,65 @@ function shouldForcePortfolioDataBlockedSeedScan(account = {}, watchlist = []) {
   return findPortfolioBacktestDataBlockedCandidates(watchlist).length > 0;
 }
 
-function buildPortfolioWatchlistSeedSearchText(seedContextCandidates = []) {
+function shouldForcePortfolioThemeOpportunitySeedScan(marketSnapshot = null, watchlist = []) {
+  const keywordGroups = buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot);
+  if (!keywordGroups.length) return false;
+  const activeText = normalizeIntentText(normalizePortfolioWatchlist(watchlist)
+    .filter((item) => !["blocked", "removed"].includes(item.status))
+    .map((item) => [
+      item.name,
+      item.reason,
+      item.candidateRole,
+      item.positionPlan,
+      ...(item.setupEvidence || []),
+      ...(item.buyTriggers || []),
+      ...(item.lastSnapshot?.matchedThemes || []).flatMap((theme) => [theme.name, theme.id])
+    ].filter(Boolean).join(" "))
+    .join(" "));
+  return keywordGroups.some((group) =>
+    !group.keywords.some((keyword) => {
+      const value = normalizeIntentText(keyword);
+      return value && activeText.includes(value);
+    })
+  );
+}
+
+function buildPortfolioWatchlistSeedSearchText(seedContextCandidates = [], marketSnapshot = null) {
   const keywords = inferPortfolioBlockedFollowThroughSearchKeywords(seedContextCandidates);
-  return ["回调完成", "低位", "准备启动", "同主题替代", "基金", ...keywords].join(" ");
+  const themeKeywords = inferPortfolioThemeOpportunitySearchKeywords(marketSnapshot);
+  return ["回调完成", "低位", "准备启动", "同主题替代", "代表基金", "基金", ...themeKeywords, ...keywords].join(" ");
+}
+
+function inferPortfolioThemeOpportunitySearchKeywords(marketSnapshot = null) {
+  return [...new Set(buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot)
+    .flatMap((group) => group.keywords))]
+    .slice(0, 12);
+}
+
+function buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot = null) {
+  const leaderItems = collectPortfolioThemeOpportunityLeaderboardItems(marketSnapshot)
+    .filter((item) => ["mainCapital", "preheat", "lowRotation"].includes(item.laneKey))
+    .slice(0, 6);
+  if (!leaderItems.length) return [];
+  const radar = Array.isArray(marketSnapshot?.themeRadar) ? marketSnapshot.themeRadar : [];
+  const radarById = new Map(radar.map((theme) => [String(theme.id || theme.name || ""), theme]));
+  return leaderItems.map((item) => {
+    const theme = radarById.get(String(item.id || "")) || radar.find((candidate) => candidate.name === item.name) || {};
+    const keywords = [
+      item.name,
+      theme.name,
+      ...(Array.isArray(theme.fundKeywords) ? theme.fundKeywords : []),
+      ...(Array.isArray(theme.keywords) ? theme.keywords : [])
+    ];
+    return {
+      laneKey: item.laneKey,
+      name: item.name || theme.name || "",
+      keywords: [...new Set(keywords.map((value) => String(value || "").trim()).filter((value) =>
+        value.length >= 2
+        && !/^(基金|代表基金|主题|板块|概念|行业)$/.test(value)
+      ))]
+    };
+  }).filter((group) => group.keywords.length);
 }
 
 function inferPortfolioBlockedFollowThroughSearchKeywords(candidates = []) {
@@ -30950,6 +31007,7 @@ export {
   buildPortfolioBacktestDiagnostics,
   buildPortfolioManagerPerformanceStats,
   buildPortfolioMarketSnapshotPrioritySeeds,
+  buildPortfolioThemeOpportunityKeywordGroups,
   buildPortfolioCapabilityDiagnostics,
   buildPortfolioCapabilityActionQueue,
   buildPortfolioAccountStatusLines,
@@ -31088,6 +31146,7 @@ export {
   mergeChinaRealtimeIndexQuotes,
   matchCandidateThemes,
   inferPortfolioBlockedFollowThroughSearchKeywords,
+  inferPortfolioThemeOpportunitySearchKeywords,
   inferPullbackSetupSearchKeywords,
   inferEastmoneySecidFromHolding,
   inferFundShareClass,
@@ -31129,6 +31188,7 @@ export {
   shouldForcePortfolioBlockedFollowThroughSeedScan,
   shouldForcePortfolioDataBlockedSeedScan,
   shouldForcePortfolioRedeploymentSeedScan,
+  shouldForcePortfolioThemeOpportunitySeedScan,
   summarizePortfolioOrder,
   summarizePortfolioEquityBrief,
   capPortfolioSellAmountByDiscipline,

@@ -422,6 +422,38 @@ assert(
   "decision ranking preview must make same-day preheat seeds visible to the model priority queue"
 );
 assert.equal(decisionSeedPreviewDb.watchlist.length, 0, "decision ranking preview must not persist same-day seed candidates before formal watchlist updates");
+const liveThemeOpportunitySnapshot = {
+  themeRadar: [{
+    ...livePreheatSeedProfile.matchedThemes[0],
+    fundKeywords: ["低空经济", "通航", "eVTOL", "万丰奥威"],
+    keywords: ["飞行汽车", "低空经济"]
+  }]
+};
+liveThemeOpportunitySnapshot.themeLeaderboards = manager.buildThemeLeaderboards(liveThemeOpportunitySnapshot.themeRadar);
+const fullOldThemeWatchlist = Array.from({ length: 10 }, (_, index) => ({
+  code: `9000${index}`,
+  name: `旧观察基金${index}C`,
+  status: "waiting_pullback",
+  reason: "旧自选池已满，但都是上一轮普通观察方向。"
+}));
+assert.equal(
+  manager.shouldForcePortfolioThemeOpportunitySeedScan(liveThemeOpportunitySnapshot, fullOldThemeWatchlist),
+  true,
+  "live main-capital/preheat themes must force seed recall even when the old watchlist is already full"
+);
+const liveThemeSeedSearchText = manager.buildPortfolioWatchlistSeedSearchText([], liveThemeOpportunitySnapshot);
+assert(liveThemeSeedSearchText.includes("代表基金"), "theme opportunity seed search must ask for representative funds instead of generic funds");
+assert(liveThemeSeedSearchText.includes("低空经济") && liveThemeSeedSearchText.includes("万丰奥威"), "theme opportunity seed search must carry live theme and holdings keywords");
+assert.equal(
+  manager.shouldForcePortfolioThemeOpportunitySeedScan(liveThemeOpportunitySnapshot, [{
+    code: "000099",
+    name: "低空预热种子基金C",
+    status: "waiting_pullback",
+    reason: "已覆盖低空经济代表基金观察。"
+  }]),
+  false,
+  "theme opportunity seed recall must stop once the active watchlist already covers that live theme"
+);
 assert(rankingBoard.lists.find((item) => item.id === "decision_synthesis")?.items.some((item) => item.code === "000005"), "manager ranking board must expose integrated decision-synthesis candidates");
 assert(rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.some((item) => item.code === "000001"), "manager ranking board must expose buy-preparation candidates");
 assert(rankingBoard.lists.find((item) => item.id === "launch_setup")?.items.some((item) => item.code === "000001"), "manager ranking board must expose low-position launch candidates");
