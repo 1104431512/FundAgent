@@ -983,6 +983,10 @@ function renderPortfolioManagerPerformance(performance = {}, account = {}) {
       ? proofPoints.slice(0, 3).map(renderPortfolioPerformanceProofPoint).join("")
       : `<div class="portfolio-performance-note muted">等待经理历史复盘形成能力结论。</div>`;
   }
+  const kindMatrixRoot = document.querySelector("#portfolioOperationKindMatrix");
+  if (kindMatrixRoot) {
+    kindMatrixRoot.innerHTML = renderPortfolioOperationKindMatrix(performance.kindBreakdown || []);
+  }
   const review = performance.actionReview || {};
   const reviews = Array.isArray(performance.recentReviews) ? performance.recentReviews.slice(0, 6) : [];
   setText("#portfolioOperationReviewCount", formatPortfolioOperationReviewCount(review, reviews));
@@ -1040,6 +1044,39 @@ function renderPortfolioPerformanceProofPoint(point = {}) {
       <strong>${escapeHtml(point.detail || "等待更多复盘。")}</strong>
     </div>
   `;
+}
+
+function renderPortfolioOperationKindMatrix(items = []) {
+  const byId = new Map((Array.isArray(items) ? items : [])
+    .filter((item) => item && item.id)
+    .map((item) => [item.id, item]));
+  const definitions = [
+    { id: "buy", label: "买入复盘", empty: "暂无买入样本" },
+    { id: "sell", label: "卖出复盘", empty: "暂无卖出样本" },
+    { id: "hold", label: "持有复盘", empty: "暂无持有样本" },
+    { id: "watch", label: "等待复盘", empty: "暂无等待样本" }
+  ];
+  return definitions.map((definition) => {
+    const item = byId.get(definition.id) || { id: definition.id, label: definition.label, tone: "muted", total: 0 };
+    const correctness = isPresentFiniteNumber(item.correctnessPct)
+      ? `${formatNumber(item.correctnessPct, 1)}%`
+      : item.total ? "待验证" : "暂无样本";
+    const headline = item.headline || definition.empty;
+    const latest = item.latest
+      ? [item.latest.date, item.latest.code, item.latest.name, item.latest.verdict].filter(Boolean).join(" · ")
+      : "";
+    return `
+      <article class="portfolio-operation-kind-cell ${escapeHtml(item.tone || "muted")}">
+        <header>
+          <span>${escapeHtml(item.label || definition.label)}</span>
+          <em>${escapeHtml(String(item.total || 0))} 个</em>
+        </header>
+        <strong>${escapeHtml(correctness)}</strong>
+        <small>${escapeHtml(headline)}</small>
+        <p>${escapeHtml(latest || item.detail || "等待经理形成可复盘的历史动作。")}</p>
+      </article>
+    `;
+  }).join("");
 }
 
 function formatPortfolioOperationReviewCount(review = {}, reviews = []) {

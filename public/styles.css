@@ -1551,6 +1551,96 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   line-height: 1.42;
 }
 
+.portfolio-operation-kind-matrix {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.portfolio-operation-kind-cell {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 9px;
+  border: 1px solid #dfe7ef;
+  border-top: 3px solid #8aa0b3;
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.portfolio-operation-kind-cell.ok {
+  border-top-color: #15946a;
+  background: #f5fbf8;
+}
+
+.portfolio-operation-kind-cell.warn {
+  border-top-color: #b7791f;
+  background: #fffaf0;
+}
+
+.portfolio-operation-kind-cell.bad {
+  border-top-color: #c24136;
+  background: #fff7f6;
+}
+
+.portfolio-operation-kind-cell.muted {
+  border-top-color: #94a3b8;
+  background: #f7f9fb;
+}
+
+.portfolio-operation-kind-cell header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.portfolio-operation-kind-cell span,
+.portfolio-operation-kind-cell strong,
+.portfolio-operation-kind-cell small,
+.portfolio-operation-kind-cell p,
+.portfolio-operation-kind-cell em {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-operation-kind-cell span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.portfolio-operation-kind-cell em {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: #274456;
+  background: #e8f0f5;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.portfolio-operation-kind-cell strong {
+  color: #172635;
+  font-size: 18px;
+  line-height: 1.08;
+}
+
+.portfolio-operation-kind-cell small,
+.portfolio-operation-kind-cell p {
+  margin: 0;
+  color: #526271;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.portfolio-operation-kind-cell p {
+  color: #667789;
+}
+
 .portfolio-performance-body {
   min-height: 0;
   display: grid;
@@ -1771,6 +1861,12 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   border: 1px solid #dfe7ef;
   border-radius: 8px;
   background: #fbfcfd;
+}
+
+@media (max-width: 1180px) {
+  .portfolio-operation-kind-matrix {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .portfolio-workspace-cluster-head {
@@ -9575,6 +9671,7 @@ button.danger-button:hover {
   .portfolio-kpi-grid,
   .portfolio-performance-metrics,
   .portfolio-performance-narrative,
+  .portfolio-operation-kind-matrix,
   .portfolio-performance-body,
   .portfolio-operation-review-lanes,
   .portfolio-terminal-shell,

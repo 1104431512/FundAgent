@@ -13862,6 +13862,7 @@ function buildPortfolioManagerPerformanceStats(db = {}, options = {}) {
   const profitability = buildPortfolioManagerProfitabilityStats(db, account);
   const distribution = countPortfolioOperationReviewDistribution(recentReviews);
   const operationLanes = buildPortfolioManagerOperationReviewLanes(recentReviews);
+  const kindBreakdown = buildPortfolioOperationKindBreakdown(recentReviews);
   const lessons = buildPortfolioManagerPerformanceLessons({
     actionReview,
     backtestDiagnostics,
@@ -13892,6 +13893,7 @@ function buildPortfolioManagerPerformanceStats(db = {}, options = {}) {
     profitability,
     actionReview,
     distribution,
+    kindBreakdown,
     scorecards,
     proofPoints,
     operationLanes,
@@ -14227,6 +14229,50 @@ function buildPortfolioManagerOperationReviewLanes(reviews = []) {
       ...lane,
       count: items.length,
       items: items.slice(0, 4)
+    };
+  });
+}
+
+function buildPortfolioOperationKindBreakdown(reviews = []) {
+  const definitions = [
+    { kind: "BUY", label: "买入复盘", empty: "还没有买入样本", nextStep: "买入必须绑定低位、题材、费率和持仓前景。" },
+    { kind: "SELL", label: "卖出复盘", empty: "还没有卖出样本", nextStep: "卖出要证明保护利润或降低回撤。" },
+    { kind: "HOLD", label: "持有复盘", empty: "还没有持有样本", nextStep: "持有要说明继续拿的条件和失效线。" },
+    { kind: "WATCH", label: "等待复盘", empty: "还没有等待样本", nextStep: "等待要有复查时间，避免长期空泛观望。" }
+  ];
+  return definitions.map((definition) => {
+    const items = (reviews || []).filter((item) => normalizePortfolioOperationKind(item.kind || item.action) === definition.kind);
+    const correct = items.filter((item) => item.status === "correct").length;
+    const mistakes = items.filter((item) => item.status === "mistake").length;
+    const pending = items.filter((item) => ["review", "insufficient"].includes(item.status)).length;
+    const decisive = correct + mistakes;
+    const latest = items[0] || null;
+    const tone = mistakes ? "bad" : correct ? "ok" : pending ? "warn" : "muted";
+    const correctnessPct = decisive ? round(correct * 100 / decisive, 1) : null;
+    return {
+      id: definition.kind.toLowerCase(),
+      kind: definition.kind,
+      label: definition.label,
+      total: items.length,
+      correct,
+      mistakes,
+      pending,
+      decisive,
+      correctnessPct,
+      tone,
+      headline: items.length
+        ? `${correct} 对 / ${mistakes} 错 / ${pending} 待验证`
+        : definition.empty,
+      detail: latest
+        ? `${latest.verdict || "需要复盘"}：${latest.reason || latest.nextStep || definition.nextStep}`.slice(0, 140)
+        : definition.nextStep,
+      latest: latest ? {
+        date: latest.date || "",
+        code: latest.code || "",
+        name: latest.name || "",
+        verdict: latest.verdict || "",
+        nextStep: latest.nextStep || ""
+      } : null
     };
   });
 }

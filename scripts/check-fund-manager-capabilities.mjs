@@ -1288,6 +1288,8 @@ assert(backtestCapabilityDiagnostics.items.some((item) => item.label === "重复
 const managerPerformanceStats = manager.buildPortfolioManagerPerformanceStats(backtestFixture);
 assert(managerPerformanceStats.scorecards.some((item) => item.label === "操作正确率"), "manager performance stats must expose operation correctness rate");
 assert(managerPerformanceStats.scorecards.some((item) => item.label === "盈利能力"), "manager performance stats must expose profitability");
+assert(managerPerformanceStats.kindBreakdown?.some((item) => item.label === "买入复盘"), "manager performance stats must split proof by buy/sell/hold/watch operation kinds");
+assert(managerPerformanceStats.kindBreakdown?.some((item) => item.label === "等待复盘" && item.headline), "manager performance stats must expose customer-readable wait/over-wait review cells");
 assert(managerPerformanceStats.proofPoints?.some((item) => item.title.includes("已复盘") || item.title.includes("操作样本")), "manager performance stats must expose customer-readable proof points");
 assert(managerPerformanceStats.operationLanes?.some((lane) => lane.id === "correction" && lane.count >= 1), "manager performance stats must split reviewed actions into correction lanes");
 assert(managerPerformanceStats.recentReviews.some((item) => item.verdict === "纪律失误" || item.verdict === "需要纠偏"), "manager performance stats must replay recent actions into right/wrong verdicts");
@@ -2085,9 +2087,10 @@ assert(adminHtmlSource.includes("data-portfolio-view=\"matrix\""), "admin portfo
 assert(adminSource.includes("setPortfolioView"), "admin portfolio UI must switch between virtual account workspace views");
 assert(adminHtmlSource.includes("portfolioManagerScoreboard") && adminHtmlSource.includes("经理能力总览"), "admin portfolio overview must lead with manager ability proof instead of entry cards");
 assert(adminSource.includes("renderPortfolioManagerPerformance") && adminSource.includes("操作正确率") && adminSource.includes("盈利能力"), "admin portfolio overview must render correctness and profitability statistics");
+assert(adminHtmlSource.includes("portfolioOperationKindMatrix") && adminSource.includes("renderPortfolioOperationKindMatrix"), "admin portfolio overview must render a buy/sell/hold/watch operation proof matrix");
 assert(adminSource.includes("buildPortfolioAbilityProofWorkspaceCard") && adminSource.includes("能力证明"), "admin overview workspace must expose a first-screen manager ability proof shortcut");
 assert(adminSource.includes("renderPortfolioOperationReviewLanes") && adminSource.includes("做对的动作") && adminSource.includes("portfolioOperationReviews"), "admin portfolio overview must show recent action review verdict lanes");
-assert(adminStyleSource.includes("portfolio-performance-board") && adminStyleSource.includes("portfolio-operation-review"), "admin manager performance proof board must be styled as a bounded first-screen panel");
+assert(adminStyleSource.includes("portfolio-performance-board") && adminStyleSource.includes("portfolio-operation-kind-matrix") && adminStyleSource.includes("portfolio-operation-review"), "admin manager performance proof board must be styled as a bounded first-screen panel");
 assert(adminHtmlSource.includes("portfolioWorkspaceCards"), "admin portfolio overview must expose workspace shortcut cards");
 assert(adminSource.includes("renderPortfolioWorkspaceCards"), "admin portfolio overview must summarize each workspace with actionable shortcut cards");
 assert(adminHtmlSource.includes("portfolioRankingRadar"), "admin portfolio overview must expose a compact ranking radar");
