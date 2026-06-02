@@ -14683,9 +14683,17 @@ function isPortfolioThemeRepresentativeCoverageCandidate(item = {}) {
   const profile = buildPortfolioThemeCoverageProfile(item);
   const themes = getCandidateThemeSignals(profile);
   if (!themes.length) return false;
+  if (themes.some(isUnrefreshedMarketThemeSignal)) return false;
   if (hasStaleThemeCatchdownRisk(profile) || hasThemeRetreatRisk(profile) || hasHighChaseTheme(profile)) return false;
   if (themes.some(isActionableThemeSupport) && !hasVerifiedThemeCarrierEvidence(profile)) return false;
   return true;
+}
+
+function isUnrefreshedMarketThemeSignal(theme = {}) {
+  return theme.stage === "current_radar_unconfirmed"
+    || theme.positionSignal === "current_radar_unconfirmed"
+    || theme.actionBias === "wait_current_radar_confirmation"
+    || theme.catalystProfile?.fresh === false && /未被当前题材雷达确认/.test(String(theme.catalystProfile?.freshnessLabel || ""));
 }
 
 function buildPortfolioThemeCoverageProfile(item = {}) {

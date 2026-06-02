@@ -1997,8 +1997,12 @@ const requiredPatterns = [
     message: "theme coverage must only count usable representative candidates, not stale text matches in the watchlist."
   },
   {
-    pattern: /function isPortfolioThemeRepresentativeCoverageCandidate[\s\S]{0,1200}hasStaleThemeCatchdownRisk[\s\S]{0,700}hasVerifiedThemeCarrierEvidence/,
-    message: "usable theme representatives must reject stale/retreat/chase candidates and require verified carrier evidence for actionable live themes."
+    pattern: /function isPortfolioThemeRepresentativeCoverageCandidate[\s\S]{0,1200}isUnrefreshedMarketThemeSignal[\s\S]{0,700}hasStaleThemeCatchdownRisk[\s\S]{0,700}hasVerifiedThemeCarrierEvidence/,
+    message: "usable theme representatives must reject unconfirmed old themes, stale/retreat/chase candidates, and require verified carrier evidence for actionable live themes."
+  },
+  {
+    pattern: /function isUnrefreshedMarketThemeSignal[\s\S]{0,500}current_radar_unconfirmed[\s\S]{0,500}未被当前题材雷达确认/,
+    message: "theme representative coverage must detect old theme labels that were not confirmed by the current radar."
   },
   {
     pattern: /function inferPortfolioBlockedFollowThroughSearchKeywords[\s\S]{0,2200}信息传媒[\s\S]{0,900}QDII[\s\S]{0,900}新能源车[\s\S]{0,900}医药/,

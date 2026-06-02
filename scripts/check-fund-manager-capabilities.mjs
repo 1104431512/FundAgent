@@ -533,6 +533,34 @@ assert.equal(
   true,
   "same-theme watchlist items with capital-outflow or stale-catchdown risk must not block fresh representative recall"
 );
+const unconfirmedThemeWatchlist = [{
+  code: "000096",
+  name: "低空经济旧预热基金C",
+  status: "waiting_pullback",
+  reason: "旧低空经济候选，但当天题材雷达未重新确认。",
+  lastSnapshot: {
+    ...livePreheatSeedProfile,
+    code: "000096",
+    name: "低空经济旧预热基金C",
+    matchedThemes: [{
+      ...livePreheatSeedProfile.matchedThemes[0],
+      stage: "current_radar_unconfirmed",
+      positionSignal: "current_radar_unconfirmed",
+      actionBias: "wait_current_radar_confirmation",
+      catalystProfile: {
+        ...livePreheatSeedProfile.matchedThemes[0].catalystProfile,
+        fresh: false,
+        risk: true,
+        freshnessLabel: "未被当前题材雷达确认"
+      }
+    }]
+  }
+}];
+assert.equal(
+  manager.shouldForcePortfolioThemeOpportunitySeedScan(liveThemeOpportunitySnapshot, unconfirmedThemeWatchlist),
+  true,
+  "same-theme watchlist items whose old catalyst is not confirmed by current radar must not block fresh representative recall"
+);
 const themeRepresentativeGapDb = {
   account: { cash: 82000, totalAsset: 100000, positionWeightPct: 8, positions: [] },
   watchlist: fullOldThemeWatchlist,
