@@ -21180,6 +21180,45 @@ const THEME_NEWS_KEYWORD_EXPANSIONS = [
   }
 ];
 
+const THEME_NEWS_DISCOVERY_RULES = [
+  {
+    id: "data_elements",
+    name: "数据要素/数据资产",
+    keywords: ["数据要素", "数据资产", "数据确权", "数据交易", "数字经济", "政务数据"],
+    fundKeywords: ["数据", "大数据", "数字经济", "云计算", "人工智能"]
+  },
+  {
+    id: "synthetic_biology",
+    name: "合成生物",
+    keywords: ["合成生物", "生物制造", "生物经济", "酶制剂", "发酵"],
+    fundKeywords: ["生物", "医药", "创新药", "生物医药"]
+  },
+  {
+    id: "low_altitude_policy",
+    name: "低空经济/飞行汽车",
+    keywords: ["低空经济", "飞行汽车", "eVTOL", "无人机", "空域", "通航"],
+    fundKeywords: ["低空", "飞行汽车", "航空", "军工", "高端制造"]
+  },
+  {
+    id: "humanoid_robot",
+    name: "人形机器人",
+    keywords: ["人形机器人", "机器人", "具身智能", "减速器", "伺服", "灵巧手"],
+    fundKeywords: ["机器人", "智能制造", "高端制造", "人工智能"]
+  },
+  {
+    id: "commercial_space",
+    name: "商业航天/卫星",
+    keywords: ["商业航天", "低轨卫星", "卫星互联网", "火箭", "北斗", "航天"],
+    fundKeywords: ["航天", "军工", "卫星", "高端制造"]
+  },
+  {
+    id: "solid_state_battery",
+    name: "固态电池",
+    keywords: ["固态电池", "半固态", "锂电", "电解质", "电池材料"],
+    fundKeywords: ["电池", "锂电", "新能源", "新能源车", "储能"]
+  }
+];
+
 function expandThemeNewsKeywords(keywords = [], context = {}) {
   const base = [
     ...(Array.isArray(keywords) ? keywords : [keywords]),
@@ -21239,7 +21278,7 @@ function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], 
     .sort((a, b) => b.discoveryScore - a.discoveryScore)
     .slice(0, 10);
   const seen = new Set();
-  return boards
+  const boardRules = boards
     .map(({ board, keywords, newsKeywords }) => {
       const name = String(board.name || "").trim();
       const normalized = normalizeIntentText(name);
@@ -21251,6 +21290,45 @@ function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], 
         keywords,
         newsKeywords,
         fundKeywords: keywords,
+        dynamic: true
+      };
+    })
+    .filter(Boolean);
+  const newsRules = buildNewsDiscoveredThemeRadarRules({ fastNews, allFunds, staticNames, seen });
+  return [...boardRules, ...newsRules].slice(0, 12);
+}
+
+function buildNewsDiscoveredThemeRadarRules({ fastNews = [], allFunds = [], staticNames = new Set(), seen = new Set() } = {}) {
+  return THEME_NEWS_DISCOVERY_RULES
+    .map((rule) => {
+      const newsKeywords = expandThemeNewsKeywords(rule.keywords, { name: rule.name });
+      const matchedNews = (fastNews || []).filter((item) => textMatchesKeywords(`${item.title || ""} ${item.mediaName || ""}`, newsKeywords));
+      const catalystProfile = buildNewsCatalystProfile(matchedNews.slice(0, 5), { ...rule, keywords: newsKeywords });
+      const fundCount = (allFunds || []).filter((fund) => textMatchesKeywords(`${fund.name || ""} ${fund.type || ""} ${(fund.keywords || []).join(" ")}`, rule.fundKeywords || rule.keywords)).length;
+      const discoveryScore = matchedNews.length * 12
+        + Number(catalystProfile.score || 0) * 0.9
+        + Math.min(4, fundCount) * 4;
+      return {
+        rule,
+        newsKeywords,
+        matchedNews,
+        catalystProfile,
+        discoveryScore
+      };
+    })
+    .filter((item) => item.matchedNews.length && item.discoveryScore >= 18 && Number(item.catalystProfile.score || 0) >= 10)
+    .sort((a, b) => b.discoveryScore - a.discoveryScore)
+    .slice(0, 6)
+    .map(({ rule, newsKeywords }) => {
+      const normalized = normalizeIntentText(rule.name || rule.id);
+      if (!normalized || staticNames.has(normalized) || seen.has(normalized)) return null;
+      seen.add(normalized);
+      return {
+        id: `news_${rule.id}`,
+        name: rule.name,
+        keywords: [...new Set([...(rule.keywords || []), ...(newsKeywords || [])])],
+        newsKeywords,
+        fundKeywords: rule.fundKeywords || rule.keywords,
         dynamic: true
       };
     })

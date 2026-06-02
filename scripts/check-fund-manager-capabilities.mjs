@@ -4405,10 +4405,23 @@ const dynamicAliasThemeRadar = manager.buildThemeRadar({
 const flyingCarTheme = dynamicAliasThemeRadar.find((theme) => theme.name === "飞行汽车");
 assert(flyingCarTheme?.newsLogic.includes("低空经济示范区政策加速落地"), "dynamic theme news matching must connect board aliases such as flying cars with low-altitude policy news");
 assert(flyingCarTheme?.catalystProfile?.summary.includes("政策落地"), "dynamic alias-matched news must still classify the catalyst instead of only showing board price action");
+const newsOnlyThemeRadar = manager.buildThemeRadar({
+  conceptBoards: [],
+  industryBoards: [],
+  fastNews: [{ title: "数据要素政策落地 数据资产订单增加 产业链公司获机构调研", showTime: "09:42", mediaName: "测试快讯" }],
+  fundCandidates: {
+    indexFunds: [{ code: "159002", name: "数字经济ETF联接C", type: "指数型基金", oneMonthPct: 1.4, dailyPct: 0.3, shareClass: "C" }]
+  }
+});
+const dataElementsTheme = newsOnlyThemeRadar.find((theme) => theme.id === "news_data_elements");
+assert(dataElementsTheme?.dynamic, "theme radar must discover preheated themes from news even before a concept-board match appears");
+assert(dataElementsTheme.newsLogic.includes("数据要素政策落地") && dataElementsTheme.catalystProfile?.summary.includes("政策落地"), "news-discovered themes must preserve the news logic and catalyst type");
+assert(manager.buildThemeLeaderboards([dataElementsTheme]).preheat.items.some((item) => item.name.includes("数据要素")), "news-discovered catalyst themes must enter the preheat leaderboard when not crowded");
 const themeLeaderboards = manager.buildThemeLeaderboards([
   liveAiTheme,
   fadingAiTheme,
   lowAltitudeTheme,
+  dataElementsTheme,
   {
     id: "policy_preheat",
     name: "政策预热测试",

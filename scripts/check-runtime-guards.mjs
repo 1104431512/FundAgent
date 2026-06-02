@@ -1149,6 +1149,10 @@ const requiredPatterns = [
     message: "dynamic theme radar must expand news/current-event keywords so emerging sectors can explain why they are moving."
   },
   {
+    pattern: /function buildNewsDiscoveredThemeRadarRules[\s\S]{0,1800}THEME_NEWS_DISCOVERY_RULES[\s\S]{0,1600}news_\$\{rule\.id\}/,
+    message: "theme radar must discover preheated emerging themes from fast news before concept boards fully move."
+  },
+  {
     pattern: /(?=[\s\S]*function getCandidateThemeHoldingAnchors)(?=[\s\S]*leaderStocks)(?=[\s\S]*matchedThemeHoldings)(?=[\s\S]*前十大持仓未命中题材龙头)(?=[\s\S]*题材龙头=)/,
     message: "holdings outlook must connect emerging themes to live board leaders before treating a fund as a true theme vehicle."
   },
