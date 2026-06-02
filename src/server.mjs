@@ -4837,16 +4837,7 @@ function hasPortfolioThemeMicroStarterSetup(profile = {}) {
   if (profile?.actionability?.action === "avoid") return false;
   const blockers = normalizeStringArray(profile?.actionability?.decisionBlocker);
   if (profile?.actionability?.action === "wait" && !blockers.some((item) => item.includes("小仓试探"))) return false;
-  const r20 = finiteMetricNumber(trend.return20dPct);
-  const r60 = finiteMetricNumber(trend.return60dPct);
-  const low120 = finiteMetricNumber(trend.lowPositionPct120);
-  const low250 = finiteMetricNumber(trend.lowPositionPct250);
-  return (!Number.isFinite(r20) || r20 <= 8)
-    && (!Number.isFinite(r60) || r60 <= 18)
-    && (
-      (Number.isFinite(low120) && low120 <= 60)
-      || (Number.isFinite(low250) && low250 <= 65)
-    );
+  return hasThemeLowBaseMicroStarterTrendSetup(trend) || hasThemeLaunchProbeTrendSetup(trend);
 }
 
 function hasVerifiedPortfolioFeeEvidence(profile = {}) {
@@ -5544,11 +5535,19 @@ function evaluatePortfolioBuyDiscipline(action = {}, profile = null, positions =
   if (themeMicroStarter) {
     return {
       ok: true,
-      reason: "系统买入纪律确认：题材有主力进场/预热催化，基金处在低位温和转强，只允许微型试探仓验证，不允许重仓追随。",
+      reason: formatPortfolioThemeMicroStarterBuyReason(profile),
       evidence: [trendEvidence, formatCandidateThemeEvidence(profile), feeEvidence, "来源：portfolio_theme_micro_starter_guard"].filter(Boolean)
     };
   }
   return { ok: true, reason: "", evidence: [trendEvidence, feeEvidence].filter(Boolean) };
+}
+
+function formatPortfolioThemeMicroStarterBuyReason(profile = {}) {
+  const trend = profile?.trendProfile || {};
+  if (!hasThemeLowBaseMicroStarterTrendSetup(trend) && hasThemeLaunchProbeTrendSetup(trend)) {
+    return "系统买入纪律确认：题材有主力进场/预热催化，基金能承载主线且尚未过热，只允许微型验证仓跟随，不允许重仓追随。";
+  }
+  return "系统买入纪律确认：题材有主力进场/预热催化，基金处在低位温和转强，只允许微型试探仓验证，不允许重仓追随。";
 }
 
 function evaluatePortfolioBuyExposureDiscipline(action = {}, profile = null, positions = []) {
@@ -16105,7 +16104,7 @@ function getPortfolioBacktestThemeMomentumBlockingReason(item = {}, profile = {}
     return "题材退潮、主力撤离或追涨拥挤风险未解除";
   }
   if (!hasFreshThemeCatalystContext(theme)) return "缺少新鲜新闻/催化逻辑，不能解释题材大涨原因";
-  if (!themeMicroStarter) return "基金尚未同时满足低位、温和转强和主力预热微型试探条件";
+  if (!themeMicroStarter) return "基金尚未同时满足低位回调或主线启动验证条件";
   if (!hasVerifiedPortfolioFeeEvidence(profile)) return "费用/份额未核验，不能归为可执行主力预热机会";
   const readiness = resolvePortfolioBacktestWatchReadiness(item);
   const hardGap = [
@@ -27156,7 +27155,7 @@ function buildFundActionabilitySignals(digest) {
     formatIntradayTrendActionabilityEvidence(intradayTrend),
     formatValuationSourceAgreementEvidence(valuationSourceAgreement),
     formatCandidateThemeEvidence(digest),
-    microStarterOnly ? "主力预热和低位温和转强同时出现，但基金买点未完全确认，只允许0.5%-2.5%试探仓。" : "",
+    microStarterOnly ? formatThemeMicroStarterActionabilityEvidence(digest, trend) : "",
     risk.ok ? `近一年收益${risk.totalReturnPct}%，最大回撤${risk.maxDrawdownPct}%，夏普${risk.sharpe}` : "",
     holdingsOutlook.evidence,
     formatMoneyMarketEvidence(digest.moneyMarket),
@@ -27198,6 +27197,18 @@ function hasActionabilityMicroStarterSupport(digest = {}, trend = {}) {
   if (!digest || !trend || typeof trend !== "object") return false;
   if (hasThemeRetreatRisk(digest) || hasStaleThemeCatchdownRisk(digest)) return false;
   if (trend.entryBias === "avoid_now" || trend.trendLabel === "breakdown" || trend.trendLabel === "extended_uptrend") return false;
+  if (!hasVerifiedThemeCarrierEvidence(digest)) return false;
+  const lowBaseProbe = hasThemeLowBaseMicroStarterTrendSetup(trend);
+  const launchProbe = hasThemeLaunchProbeTrendSetup(trend);
+  if (!lowBaseProbe && !launchProbe) return false;
+  return getCandidateThemeSignals(digest).some((theme) =>
+    lowBaseProbe
+      ? isThemeLowBaseMicroStarterSupport(theme)
+      : isThemeLaunchProbeSupport(theme)
+  );
+}
+
+function hasThemeLowBaseMicroStarterTrendSetup(trend = {}) {
   const r5 = Number(trend.return5dPct);
   const r10 = Number(trend.return10dPct);
   const r20 = Number(trend.return20dPct);
@@ -27207,10 +27218,29 @@ function hasActionabilityMicroStarterSupport(digest = {}, trend = {}) {
     && Number.isFinite(r10) && r10 >= -1 && r10 <= 7
     && (!Number.isFinite(r20) || (r20 >= -5 && r20 <= 8));
   const lowEnough = (Number.isFinite(low120) && low120 <= 60) || (Number.isFinite(low250) && low250 <= 65);
-  if (!gentleTurn || !lowEnough) return false;
-  if (!hasVerifiedThemeCarrierEvidence(digest)) return false;
-  return getCandidateThemeSignals(digest).some((theme) =>
-    !hasThemeCapitalRetreatRisk(theme)
+  return Boolean(gentleTurn && lowEnough);
+}
+
+function hasThemeLaunchProbeTrendSetup(trend = {}) {
+  const r5 = Number(trend.return5dPct);
+  const r10 = Number(trend.return10dPct);
+  const r20 = Number(trend.return20dPct);
+  const r60 = Number(trend.return60dPct);
+  const low120 = Number(trend.lowPositionPct120);
+  const low250 = Number(trend.lowPositionPct250);
+  const drawdownFromHigh = Number(trend.drawdownFromRecentHighPct);
+  const earlyButNotHot = Number.isFinite(r5) && r5 >= 0.2 && r5 <= 6
+    && Number.isFinite(r10) && r10 >= 0.4 && r10 <= 10
+    && (!Number.isFinite(r20) || (r20 >= -3 && r20 <= 12))
+    && (!Number.isFinite(r60) || r60 <= 24);
+  const notTooHigh = (Number.isFinite(low120) && low120 <= 80)
+    || (Number.isFinite(low250) && low250 <= 82)
+    || (Number.isFinite(drawdownFromHigh) && drawdownFromHigh <= -2);
+  return Boolean(earlyButNotHot && notTooHigh);
+}
+
+function isThemeLowBaseMicroStarterSupport(theme = {}) {
+  return !hasThemeCapitalRetreatRisk(theme)
     && !isStaleThemeCatchdownRiskTheme(theme)
     && Number(theme.crowdingScore) < 45
     && Boolean(theme.catalystProfile?.summary || theme.newsLogic)
@@ -27219,8 +27249,37 @@ function hasActionabilityMicroStarterSupport(digest = {}, trend = {}) {
       || ["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)
       || Number(theme.capitalFollowScore) >= 58
       || Number(theme.preheatScore) >= 56
-    )
-  );
+    );
+}
+
+function isThemeLaunchProbeSupport(theme = {}) {
+  if (!isThemeLowBaseMicroStarterSupport(theme)) return false;
+  if (!hasFreshThemeCatalystContext(theme)) return false;
+  const crowding = finiteMetricNumber(theme.crowdingScore);
+  if (Number.isFinite(crowding) && crowding >= 42) return false;
+  const avgFlow = finiteMetricNumber(theme.avgMainNetInflowPct);
+  const flowOk = !Number.isFinite(avgFlow) || avgFlow >= 0;
+  const capitalFollow = finiteMetricNumber(theme.capitalFollowScore);
+  const preheat = finiteMetricNumber(theme.preheatScore);
+  const catalystScore = finiteMetricNumber(theme.catalystProfile?.score);
+  const mainCapital = theme.leaderSignal === "capital_entering"
+    || theme.positionSignal === "main_capital_entering"
+    || (Number.isFinite(capitalFollow) && capitalFollow >= 68 && flowOk);
+  const preheatWithCatalyst = theme.leaderSignal === "preheat_catalyst"
+    || theme.positionSignal === "preheat_catalyst_watch"
+    || (Number.isFinite(preheat) && preheat >= 66 && Number.isFinite(catalystScore) && catalystScore >= 18);
+  return Boolean((mainCapital || preheatWithCatalyst) && flowOk);
+}
+
+function formatThemeMicroStarterActionabilityEvidence(candidate = {}, trend = {}) {
+  const mode = hasThemeLowBaseMicroStarterTrendSetup(trend) ? "低位温和转强" : "主线启动验证";
+  const theme = selectPortfolioActionableThemeSignal(candidate) || getCandidateThemeSignals(candidate)[0] || {};
+  const logic = theme.newsLogic || theme.catalystProfile?.summary || theme.primaryCatalyst || "";
+  return [
+    `${mode}：题材有主力/预热线索，基金承载已验证`,
+    logic ? `上涨逻辑=${shortenPortfolioCustomerText(logic, 64)}` : "",
+    "只允许0.5%-2.5%试探仓"
+  ].filter(Boolean).join("，");
 }
 
 function getActionabilityEntryDiscipline(trend = {}, { isMoneyMarket = false, microStarterSupport = false } = {}) {

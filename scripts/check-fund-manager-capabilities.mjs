@@ -4746,6 +4746,65 @@ assert.equal(microStarterBuyGuard.ok, true, "buy discipline must allow a theme-s
 assert(microStarterBuyGuard.reason.includes("微型试探仓"), "theme micro-starter buy guard must label the action as a tiny probe");
 const microStarterTradeAmount = manager.resolvePortfolioTradeAmount(redeploymentAccount, { action: "BUY", code: "000024", amount: 8000, targetWeightPct: 8 }, "BUY", null, executableMicroStarterDigest);
 assert.equal(microStarterTradeAmount, 1200, "theme micro-starter sizing must cap a single order to the tiny 1.2% probe budget");
+const mainlineLaunchDigest = {
+  ...microStarterDigest,
+  code: "000025",
+  name: "主线启动验证基金C",
+  trendProfile: {
+    ok: true,
+    pullbackSetup: { signal: "none", score: 46 },
+    trendLabel: "uptrend",
+    entryBias: "wait_pullback",
+    return5dPct: 3.2,
+    return10dPct: 5.8,
+    return20dPct: 9.4,
+    return60dPct: 16.8,
+    lowPositionPct120: 74,
+    lowPositionPct250: 76,
+    drawdownFromRecentHighPct: -3.4
+  },
+  holdings: {
+    ok: true,
+    equityDisclosureDate: "2099-03-31",
+    equityTopHoldings: [
+      "601138 工业富联 7.2%",
+      "300502 新易盛 4.1%",
+      "300308 中际旭创 3.8%",
+      "002463 沪电股份 2.9%"
+    ]
+  },
+  seed: {
+    matchedThemes: [{
+      ...capitalEnteringDigest.seed.matchedThemes[0],
+      lowPositionScore: 46,
+      crowdingScore: 24,
+      capitalFollowScore: 82,
+      preheatScore: 64,
+      avgMainNetInflowPct: 2.9,
+      maxMainNetInflowPct: 5.1,
+      leaderStocks: ["工业富联", "新易盛", "中际旭创"],
+      themeKeywords: ["人工智能", "算力", "CPO"],
+      newsLogic: "主力刚进场：新闻催化：AI算力订单改善；板块验证：人工智能温和走强，龙头工业富联/新易盛承接资金；主力线索：相关板块资金均值净流入+2.9%"
+    }]
+  }
+};
+const mainlineLaunchActionability = manager.buildFundActionabilitySignals(mainlineLaunchDigest);
+assert(
+  mainlineLaunchDigest.trendProfile.lowPositionPct120 > 60 && mainlineLaunchDigest.trendProfile.lowPositionPct250 > 65,
+  "mainline launch fixture must not satisfy the old strict low-position micro-starter threshold"
+);
+assert.equal(mainlineLaunchActionability.action, "staged_buy", "news-backed mainline launches with verified carriers must allow a micro validation buy before perfect low-position pullback");
+assert(
+  mainlineLaunchActionability.decisiveEvidence.some((item) => item.includes("主线启动验证") && item.includes("上涨逻辑")),
+  "mainline launch evidence must explain why the theme is moving, not only list NAV numbers"
+);
+const executableMainlineLaunchDigest = { ...mainlineLaunchDigest, actionability: mainlineLaunchActionability };
+assert.equal(manager.hasPortfolioThemeMicroStarterSetup(executableMainlineLaunchDigest), true, "portfolio discipline must recognize news-backed mainline launch probes even when the fund is not at the old low-position threshold");
+const mainlineLaunchBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000025", targetWeightPct: 3 }, executableMainlineLaunchDigest, [], redeploymentAccount);
+assert.equal(mainlineLaunchBuyGuard.ok, true, "buy discipline must allow a tiny mainline launch validation order when news, capital, carrier, fees and trend all pass");
+assert(mainlineLaunchBuyGuard.reason.includes("微型验证仓"), "mainline launch buy guard must label the action as a tiny validation position");
+const mainlineLaunchTradeAmount = manager.resolvePortfolioTradeAmount(redeploymentAccount, { action: "BUY", code: "000025", amount: 8000, targetWeightPct: 8 }, "BUY", null, executableMainlineLaunchDigest);
+assert.equal(mainlineLaunchTradeAmount, 1200, "mainline launch validation sizing must stay capped to the 1.2% theme micro-starter budget");
 const noCarrierMicroStarterDigest = {
   ...microStarterDigest,
   code: "000046",
