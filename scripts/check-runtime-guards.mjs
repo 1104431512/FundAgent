@@ -3221,6 +3221,10 @@ const requiredPatterns = [
     message: "manager ranking boards must include a main-capital/preheat lane that links news logic to representative fund micro-starters."
   },
   {
+    pattern: /(?=[\s\S]*function buildPortfolioThemeMomentumRankingItem)(?=[\s\S]*capitalFlowGap)(?=[\s\S]*缺少正向主力资金或主力流入榜确认)(?=[\s\S]*主力资金还没有确认)/,
+    message: "portfolio theme momentum ranking must explain when preheat news lacks positive main-capital confirmation."
+  },
+  {
     pattern: /(?=[\s\S]*function buildPortfolioThemeOpportunityPlan)(?=[\s\S]*portfolio_theme_opportunity_plan)(?=[\s\S]*theme_micro_starter)(?=[\s\S]*function ensurePortfolioThemeOpportunityReviewed)(?=[\s\S]*portfolio_theme_opportunity_guard)/,
     message: "portfolio decisions must deterministically review main-capital/preheat theme opportunities instead of allowing generic waiting."
   },

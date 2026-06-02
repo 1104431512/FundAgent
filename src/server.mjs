@@ -11478,7 +11478,12 @@ function buildPortfolioThemeMomentumRankingItem(item = {}) {
   const catalystGap = hasThemeLeaderOrPreheatSignal(theme) && !hasFreshThemeCatalystContext(theme)
     ? "缺新闻时事/产业催化解释，不能把主力热度直接当买点。"
     : "";
-  const hardGap = catalystGap || structuralGaps.find(isPortfolioRedeploymentHardGap);
+  const capitalFlowGap = hasThemeLeaderOrPreheatSignal(theme)
+    && hasTraceableFreshThemeCatalystContext(theme)
+    && !hasPositiveThemeMainCapitalEvidence(theme)
+    ? "缺少正向主力资金或主力流入榜确认，不能把新闻预热直接写成微型试探。"
+    : "";
+  const hardGap = catalystGap || capitalFlowGap || structuralGaps.find(isPortfolioRedeploymentHardGap);
   const buyReady = !chase.shouldSurface && !fee.missingCritical && !hardGap && (verifiedBuy || starterBuy || themeMicroStarter);
   const score = Math.max(0, Math.min(100,
     readinessScore * 0.28
@@ -11508,6 +11513,8 @@ function buildPortfolioThemeMomentumRankingItem(item = {}) {
     action,
     reason: buyReady
       ? `${themeName}有主力进场或题材预热线索，且基金没有明显追涨拦截，可进入小仓动作复核。`
+      : capitalFlowGap
+        ? `${themeName}有新闻预热线索，但主力资金还没有确认，只能观察补证据，不能先做微型试探。`
       : `${themeName}有主力/预热线索，但基金买点、费用、持仓前景或追涨风险仍需补证据。`,
     facts: [
       `题材${themeName}`,
@@ -11526,11 +11533,13 @@ function buildPortfolioThemeMomentumRankingItem(item = {}) {
       risks: [
         chase.shouldSurface ? "追涨或拥挤风险未解除。" : "",
         fee.missingCritical ? "费用/份额证据不足。" : "",
+        capitalFlowGap || "",
         hardGap || "",
         !outlook.hasHoldings ? "缺前十大持仓承载验证。" : ""
       ].filter(Boolean),
       gaps: [
         !verifiedBuy && !starterBuy && !themeMicroStarter ? "基金自身低位转强还没有完全确认" : "",
+        capitalFlowGap ? "缺正向主力资金/主力流入榜确认" : "",
         fee.missingCritical ? "缺费用/份额核验" : "",
         !outlook.hasHoldings ? "缺前十大持仓" : ""
       ].filter(Boolean),

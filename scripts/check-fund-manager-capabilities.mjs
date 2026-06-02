@@ -5523,6 +5523,20 @@ assert(
   themeMomentumRanking.items.some((item) => item.code === "000024" && item.action.includes("微型试探") && item.facts.some((fact) => /催化|逻辑|主力进场/.test(fact))),
   "theme momentum ranking must connect main-capital/preheat news logic to the representative fund action"
 );
+const noCapitalFlowThemeMomentumRanking = manager.buildPortfolioThemeMomentumRanking([{
+  code: "000056",
+  name: "无主力确认预热基金C",
+  status: "watch",
+  readinessScore: 74,
+  lastSnapshot: noCapitalFlowMicroStarterDigest
+}]);
+const noCapitalFlowThemeMomentumItem = noCapitalFlowThemeMomentumRanking.items.find((item) => item.code === "000056");
+assert(
+  noCapitalFlowThemeMomentumItem?.action === "主力预热观察"
+    && noCapitalFlowThemeMomentumItem.reason.includes("主力资金还没有确认")
+    && noCapitalFlowThemeMomentumItem.decision?.gaps?.some((gap) => gap.includes("主力资金")),
+  "theme momentum ranking must explain that fresh preheat news still lacks positive main-capital confirmation before any micro-starter"
+);
 const noLogicMicroStarterDigest = {
   ...executableMicroStarterDigest,
   code: "000043",
