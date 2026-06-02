@@ -21969,6 +21969,9 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
     );
     const freshNewsCount = newsCatalystProfile.fresh === false ? 0 : news.length;
     const catalystScore = clampScore(freshNewsCount * 6 + newsCatalystProfile.score + metals.filter((item) => Number.isFinite(item.changePct)).length * 4 + overseasMarkets.filter((item) => Number.isFinite(item.changePct)).length * 3);
+    const newsOnlyPreheatBoost = rule.newsDiscovered && freshNewsCount > 0 && !newsCatalystProfile.risk
+      ? Math.min(18, Number(newsCatalystProfile.score || 0) * 0.35 + freshNewsCount * 4)
+      : 0;
     const boardScore = clampScore(
       boards.reduce((sum, item) => sum + Math.max(0, Number(item.changePct || 0)) * 4 + Math.max(0, Number(item.mainNetInflowPct || 0)) / 8, 0)
       - capitalRetreatScore * 0.35
@@ -22008,6 +22011,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + boardModerateRiseCount * 8
       + Math.max(0, 18 - boardScore) * 0.32
       + capitalFollowScore * 0.12
+      + newsOnlyPreheatBoost
       - crowdingScore * 0.46
       - capitalRetreatScore * 0.42
     );
@@ -22017,6 +22021,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + lowPositionScore * 0.45
       + capitalFollowScore * 0.12
       + preheatScore * 0.1
+      + newsOnlyPreheatBoost * 0.18
       + Math.max(0, 28 - boardScore) * 0.25
       - crowdingScore * 0.25
       - capitalRetreatScore * 0.22
@@ -22028,6 +22033,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + rotationScore * 0.16
       + capitalFollowScore * 0.2
       + preheatScore * 0.16
+      + newsOnlyPreheatBoost * 0.12
       - crowdingScore * 0.36
       - capitalRetreatScore * 0.32
     );
@@ -22062,6 +22068,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       newsKeywords,
       fundKeywords: rule.fundKeywords || rule.keywords,
       dynamic: Boolean(rule.dynamic),
+      newsDiscovered: Boolean(rule.newsDiscovered),
       stage,
       forwardScore: round(forwardScore, 1),
       catalystScore: round(catalystScore, 1),
@@ -22433,6 +22440,12 @@ const THEME_NEWS_DISCOVERY_RULES = [
   }
 ];
 
+const EMERGING_NEWS_TOPIC_STOPWORDS = new Set([
+  "市场", "股票", "基金", "主力", "资金", "北向", "南向", "机构", "公司", "公告", "行业", "板块", "概念", "方向", "主题",
+  "政策", "方案", "规划", "订单", "价格", "涨价", "需求", "供给", "产业链", "今日", "早盘", "午后", "尾盘", "指数",
+  "A股", "港股", "美股", "ETF", "利好", "消息", "新闻", "快讯", "交易", "行情"
+]);
+
 function expandThemeNewsKeywords(keywords = [], context = {}) {
   const base = [
     ...(Array.isArray(keywords) ? keywords : [keywords]),
@@ -22514,7 +22527,7 @@ function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], 
 }
 
 function buildNewsDiscoveredThemeRadarRules({ fastNews = [], allFunds = [], staticNames = new Set(), seen = new Set() } = {}) {
-  return THEME_NEWS_DISCOVERY_RULES
+  const catalogRules = THEME_NEWS_DISCOVERY_RULES
     .map((rule) => {
       const newsKeywords = expandThemeNewsKeywords(rule.keywords, { name: rule.name });
       const matchedNews = (fastNews || []).filter((item) => textMatchesKeywords(`${item.title || ""} ${item.mediaName || ""}`, newsKeywords));
@@ -22545,10 +22558,108 @@ function buildNewsDiscoveredThemeRadarRules({ fastNews = [], allFunds = [], stat
         keywords: [...new Set([...(rule.keywords || []), ...(newsKeywords || [])])],
         newsKeywords,
         fundKeywords: rule.fundKeywords || rule.keywords,
+        newsDiscovered: true,
         dynamic: true
       };
     })
     .filter(Boolean);
+  const emergingRules = buildEmergingNewsTopicRadarRules({ fastNews, allFunds, staticNames, seen });
+  return [...catalogRules, ...emergingRules].slice(0, 8);
+}
+
+function buildEmergingNewsTopicRadarRules({ fastNews = [], allFunds = [], staticNames = new Set(), seen = new Set() } = {}) {
+  const clusters = new Map();
+  for (const item of fastNews || []) {
+    const terms = extractEmergingNewsTopicTerms(item);
+    if (!terms.length) continue;
+    const catalystProfile = buildNewsCatalystProfile([item], { keywords: terms });
+    if (catalystProfile.fresh === false || catalystProfile.risk || Number(catalystProfile.score || 0) < 10) continue;
+    for (const term of terms) {
+      const normalized = normalizeIntentText(term);
+      if (!normalized || staticNames.has(normalized) || seen.has(normalized)) continue;
+      const existing = clusters.get(normalized) || {
+        term,
+        news: [],
+        catalystScore: 0,
+        keywords: new Set([term])
+      };
+      existing.news.push(item);
+      existing.catalystScore += Number(catalystProfile.score || 0);
+      for (const keyword of expandThemeNewsKeywords([term], { name: term })) existing.keywords.add(keyword);
+      clusters.set(normalized, existing);
+    }
+  }
+  return [...clusters.values()]
+    .map((cluster) => {
+      const keywords = [...cluster.keywords].slice(0, 18);
+      const catalystProfile = buildNewsCatalystProfile(cluster.news.slice(0, 5), { keywords });
+      const fundCount = (allFunds || []).filter((fund) => textMatchesKeywords(`${fund.name || ""} ${fund.type || ""} ${(fund.keywords || []).join(" ")}`, keywords)).length;
+      const discoveryScore = cluster.news.length * 14
+        + Number(catalystProfile.score || 0) * 1.05
+        + Math.min(4, fundCount) * 6
+        + Math.min(10, cluster.catalystScore / 8);
+      return { cluster, keywords, catalystProfile, fundCount, discoveryScore };
+    })
+    .filter((item) =>
+      item.catalystProfile.fresh !== false
+      && !item.catalystProfile.risk
+      && item.discoveryScore >= 28
+      && (item.cluster.news.length >= 2 || item.fundCount > 0 || Number(item.catalystProfile.score || 0) >= 24)
+    )
+    .sort((a, b) => b.discoveryScore - a.discoveryScore)
+    .slice(0, 4)
+    .map(({ cluster, keywords }) => {
+      const normalized = normalizeIntentText(cluster.term);
+      if (!normalized || staticNames.has(normalized) || seen.has(normalized)) return null;
+      seen.add(normalized);
+      return {
+        id: `news_auto_${normalized.replace(/[^\w\u4e00-\u9fff-]+/g, "_").slice(0, 36)}`,
+        name: `${cluster.term}（新闻预热）`,
+        keywords,
+        newsKeywords: keywords,
+        fundKeywords: keywords,
+        newsDiscovered: true,
+        dynamic: true
+      };
+    })
+    .filter(Boolean);
+}
+
+function extractEmergingNewsTopicTerms(item = {}) {
+  const title = String(item.title || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (!title) return [];
+  const terms = new Set();
+  for (const group of THEME_NEWS_KEYWORD_EXPANSIONS) {
+    const needles = (group.needles || []).map(normalizeIntentText).filter(Boolean);
+    const normalizedTitle = normalizeIntentText(title);
+    if (needles.some((needle) => normalizedTitle.includes(needle))) {
+      const alias = (group.aliases || []).find(Boolean);
+      if (alias) terms.add(alias);
+    }
+  }
+  const patterns = [
+    /([\u4e00-\u9fffA-Za-z0-9]{2,14})(?:板块|概念|产业链|行业|方向|主题)(?:走强|拉升|活跃|领涨|大涨|异动|升温|爆发|回暖|反弹)/g,
+    /(?:政策|试点|方案|规划|订单|涨价|出货|中标|招标|审批|突破|落地|加速|推进|扩产|装机|并网|机构调研)[^，。；、]{0,10}?([\u4e00-\u9fffA-Za-z0-9]{2,14})(?:产业|板块|行业|方向|主题|链)/g,
+    /([\u4e00-\u9fffA-Za-z0-9]{2,14})(?:政策|试点|方案|规划|订单|涨价|出货|中标|招标|审批|突破|落地|加速|推进|扩产|装机|并网|机构调研)/g
+  ];
+  for (const pattern of patterns) {
+    for (const match of title.matchAll(pattern)) {
+      const term = normalizeEmergingNewsTopicTerm(match[1]);
+      if (term) terms.add(term);
+    }
+  }
+  return [...terms].slice(0, 4);
+}
+
+function normalizeEmergingNewsTopicTerm(value = "") {
+  const term = String(value || "")
+    .replace(/^(?:多地|今日|早盘|午后|尾盘|国内|海外|相关|多个|首批|新一轮|本轮)/, "")
+    .replace(/(?:板块|概念|产业链|行业|方向|主题|示范区|试点|政策|方案|规划|订单|价格|涨价|走强|拉升|活跃|领涨|大涨|异动|升温|爆发|回暖|反弹)+$/g, "")
+    .trim();
+  if (term.length < 2 || term.length > 12) return "";
+  if (EMERGING_NEWS_TOPIC_STOPWORDS.has(term)) return "";
+  if (/^[0-9.]+$/.test(term)) return "";
+  return term;
 }
 
 function buildDynamicThemeKeywords(board = {}) {

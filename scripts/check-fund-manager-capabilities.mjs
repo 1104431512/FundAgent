@@ -5028,6 +5028,25 @@ assert(liveAiTheme.catalystProfile?.fresh !== false && liveAiTheme.catalystProfi
 const matchedAiThemes = manager.matchCandidateThemes({ code: "000024", name: "人工智能主题C", type: "股票型基金" }, [liveAiTheme]);
 assert(matchedAiThemes[0]?.catalystProfile?.summary.includes("产业订单"), "matched fund themes must preserve catalyst type so fund candidates inherit why the theme is rising");
 assert(matchedAiThemes[0]?.catalystProfile?.fresh !== false, "matched fund themes must preserve catalyst freshness so old news cannot support a buy");
+const emergingNewsOnlyRadar = manager.buildThemeRadar({
+  conceptBoards: [],
+  industryBoards: [],
+  fastNews: [
+    { title: "脑机接口政策试点加速落地 脑机接口板块活跃", showTime: "10:16", mediaName: "测试快讯" },
+    { title: "脑机接口产业链订单改善 机构调研升温", showTime: "10:22", mediaName: "测试快讯" }
+  ],
+  fundCandidates: {
+    stockFunds: [{ code: "000052", name: "脑机接口创新主题C", type: "股票型基金", oneMonthPct: 1.8, dailyPct: 0.2, shareClass: "C" }]
+  }
+});
+const emergingNewsTheme = emergingNewsOnlyRadar.find((theme) => theme.name.includes("脑机接口"));
+assert(emergingNewsTheme?.newsDiscovered, "theme radar must auto-discover emerging preheat themes from fresh news even when no preset rule exists");
+assert(emergingNewsTheme.newsLogic.includes("新闻催化") && emergingNewsTheme.newsLogic.includes("脑机接口"), "auto-discovered news themes must explain the current-event catalyst");
+assert(emergingNewsTheme.preheatScore >= 52, "auto-discovered news themes must receive preheat scoring before boards fully diffuse");
+assert(
+  manager.buildThemeLeaderboards([emergingNewsTheme]).preheat.items.some((item) => item.name.includes("脑机接口")),
+  "theme preheat leaderboard must surface auto-discovered current-event themes"
+);
 const staleNewsThemeRadar = manager.buildThemeRadar({
   conceptBoards: [
     { boardCode: "BKAIOLD", name: "人工智能", changePct: 1.2, mainNetInflowPct: 2.4, leadStock: "工业富联", quoteTime: "10:30" }
