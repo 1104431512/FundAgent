@@ -19297,6 +19297,7 @@ function classifyPullbackSetupCandidateForSummary(candidate = {}, options = {}) 
   if (hasHighChaseTheme(candidate)) return "watch_or_reject";
   if (hasThemeRetreatRisk(candidate)) return "watch_or_reject";
   if (hasStaleThemeCatchdownRisk(candidate)) return "watch_or_reject";
+  if (getTextualCatchdownWarnings(candidate).length) return "watch_or_reject";
   if (getCandidateThemeSignals(candidate).length && !hasActionableThemeSupport(candidate)) return "watch_or_reject";
   if (hasSevereHoldingsOutlookRisk(candidate)) return "watch_or_reject";
   if (hasPullbackYearToDateChaseRisk(candidate)) return "watch_or_reject";
@@ -19426,6 +19427,7 @@ function buildPullbackSetupCandidateGaps(candidate = {}, options = {}) {
   if (hasStaleThemeCatchdownRisk(candidate)) {
     gaps.push(...getStaleThemeCatchdownWarnings(candidate));
   }
+  gaps.push(...getTextualCatchdownWarnings(candidate));
   if (getCandidateThemeSignals(candidate).length && !hasActionableThemeSupport(candidate)) {
     gaps.push("缺少主力进场、题材预热或低位轮动支撑，暂不能把回调当启动");
   }
@@ -21273,6 +21275,11 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
   const requireThemeOpportunityBacking = shouldRequireThemeOpportunityBackingForDeepDive(deepDive);
   const main = ranked.filter((item) => item.bucket === "main_candidate").slice(0, 3);
   const watch = ranked.filter((item) => item.bucket !== "main_candidate").slice(0, 3);
+  const catchdownIssue = hasPullbackFallbackCatchdownIssue(issues);
+  const catchdownWarnings = collectPullbackFallbackCatchdownWarnings(ranked.map((item) => item.candidate));
+  const catchdownLine = catchdownIssue && catchdownWarnings.length
+    ? `接盘风险解释：${catchdownWarnings.slice(0, 2).join("；")}`
+    : "";
 
   if (!main.length) {
     const hottest = watch[0]?.candidate?.trendProfile || {};
@@ -21285,12 +21292,13 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
     return [
       "直接结论：这次先不买，也不硬凑基金代码。",
       `原因：${evidenceLine}`,
+      catchdownLine,
       ...(watchLines.length ? ["", "观察池（不是主推荐）：", ...watchLines] : []),
       "",
       "执行方案：1万元新资金暂时买入0元；激进、均衡、保守三档都先等待下一轮筛选。",
-      "复查条件：等候选出现回调幅度适中、处在120日区间偏低位置、5日/10日刚转强且近60日不过热，再进入分批买入评估。",
+      buildPullbackFallbackRecheckCondition({ catchdownMode: catchdownIssue }),
       "我对这条纪律判断把握度较高，因为当前证据不足以支持“回调完成、低位、准备启动”的主推荐。"
-    ].join("\n");
+    ].filter(Boolean).join("\n");
   }
 
   const recommendationLines = main.map((item, index) =>
@@ -21307,10 +21315,57 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
     ...recommendationLines,
     "",
     "1万元执行：激进2000元以内，均衡1000元以内，保守先0元观察；只分批，不追单。",
+    catchdownLine,
     watchLines.length ? "观察/排除：" : "",
     ...watchLines,
-    "决策边界：若近20日涨幅继续快速扩大，或近60日收益进入偏热区间，暂停买入并等下一次回撤确认。"
+    catchdownIssue
+      ? "接盘风险边界：旧催化、主力撤离或底层持仓走弱的候选一律不做验证仓，等资金回流和新鲜催化同时出现后再复核。"
+      : "决策边界：若近20日涨幅继续快速扩大，或近60日收益进入偏热区间，暂停买入并等下一次回撤确认。"
   ].filter(Boolean).join("\n");
+}
+
+function hasPullbackFallbackCatchdownIssue(issues = []) {
+  return (issues || []).some((issue) => [
+    "stale_theme_candidate_given_buy_execution",
+    "stale_theme_candidate_given_buy_signal"
+  ].includes(issue));
+}
+
+function collectPullbackFallbackCatchdownWarnings(candidates = []) {
+  const seen = new Set();
+  return (candidates || [])
+    .flatMap((candidate) => getPullbackFallbackCatchdownWarnings(candidate))
+    .map((item) => String(item || "").trim())
+    .filter((item) => {
+      if (!item || seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    })
+    .slice(0, 4);
+}
+
+function getPullbackFallbackCatchdownWarnings(candidate = {}) {
+  const seen = new Set();
+  return [
+    ...getTextualCatchdownWarnings(candidate),
+    ...getStaleThemeCatchdownWarnings(candidate),
+    ...getStaleCatalystThemeWarnings(candidate),
+    ...getCandidateThemeRetreatWarnings(candidate)
+  ]
+    .map((item) => String(item || "").trim())
+    .filter((item) => {
+      if (!item || seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    })
+    .slice(0, 3);
+}
+
+function buildPullbackFallbackRecheckCondition({ catchdownMode = false } = {}) {
+  if (catchdownMode) {
+    return "复查条件：等主力资金回流，出现当天或近两天的新鲜新闻/政策/订单/产业预热，代表持仓/前十大承载清楚，底层持仓止跌，再核验A/C份额费用和赎回规则；否则维持买入0元。";
+  }
+  return "复查条件：等候选出现回调幅度适中、处在120日区间偏低位置、5日/10日刚转强且近60日不过热，再进入分批买入评估。";
 }
 
 function formatPullbackFallbackCandidate(candidate = {}) {
@@ -21345,11 +21400,18 @@ function formatPullbackFallbackShareAndFee(candidate = {}) {
 
 function formatPullbackFallbackWatchCandidate(candidate = {}, options = {}) {
   const trend = candidate.trendProfile || {};
-  const reason = trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback"
-    ? "短期偏热或仍需等待回撤"
-    : "暂未形成主推荐信号";
+  const catchdownWarnings = getPullbackFallbackCatchdownWarnings(candidate);
+  let reason = "暂未形成主推荐信号";
+  if (catchdownWarnings.length) {
+    reason = "接盘风险，先0元观察";
+  } else if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback") {
+    reason = "短期偏热或仍需等待回撤";
+  }
   const gaps = formatPullbackSetupCandidateGaps(candidate, options);
-  return `${candidate.code || "待复核"} ${candidate.name || candidate.seed?.name || ""}：${reason}，近20日${formatFallbackPct(trend.return20dPct)}，近60日${formatFallbackPct(trend.return60dPct)}；还差：${gaps}。`;
+  const catchdownEvidence = catchdownWarnings.length
+    ? `；接盘证据：${catchdownWarnings.slice(0, 2).join("；")}`
+    : "";
+  return `${candidate.code || "待复核"} ${candidate.name || candidate.seed?.name || ""}：${reason}，近20日${formatFallbackPct(trend.return20dPct)}，近60日${formatFallbackPct(trend.return60dPct)}${catchdownEvidence}；还差：${gaps}。`;
 }
 
 function formatFallbackPct(value) {
@@ -25298,6 +25360,7 @@ function scoreResearchDigestForPullbackSetup(digest = {}) {
   if (hasPullbackLongPositionChaseRisk(digest)) score -= 18;
   if (hasThemeRetreatRisk(digest)) score -= 42;
   if (hasStaleThemeCatchdownRisk(digest)) score -= 60;
+  if (getTextualCatchdownWarnings(digest).length) score -= 60;
   if (getCandidateThemeSignals(digest).length && !hasActionableThemeSupport(digest)) score -= 24;
   score += scorePullbackThemeRotation(digest);
   score += scoreHoldingsOutlookForCandidate(digest);

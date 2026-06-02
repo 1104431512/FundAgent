@@ -297,6 +297,14 @@ const requiredPatterns = [
     message: "stale-theme answer quality must reuse text-only retreat/catchdown warnings."
   },
   {
+    pattern: /function classifyPullbackSetupCandidateForSummary[\s\S]{0,900}getTextualCatchdownWarnings\(candidate\)\.length/,
+    message: "pullback/setup candidate bucketing must demote text-only catchdown risks before deterministic fallback can recommend them."
+  },
+  {
+    pattern: /function buildPullbackFallbackRecheckCondition[\s\S]{0,600}新鲜新闻\/政策\/订单\/产业预热[\s\S]{0,300}代表持仓\/前十大承载/,
+    message: "catchdown fallback must explain the live catalyst, capital-return, and holdings-carrier evidence required to reopen review."
+  },
+  {
     pattern: /function hasStaleFundEvidence[\s\S]{0,900}系统数据时效降级[\s\S]{0,500}evaluatePullbackTrendFreshness/,
     message: "stale evidence quality gate must reuse structured freshness and actionability blockers."
   },
@@ -2955,6 +2963,10 @@ const requiredPatterns = [
   {
     pattern: /还差：\$\{gaps\}/,
     message: "no-main pullback fallback answers must expose missing setup, low-position, and overheat conditions."
+  },
+  {
+    pattern: /function formatPullbackFallbackWatchCandidate[\s\S]{0,800}getPullbackFallbackCatchdownWarnings\(candidate\)[\s\S]{0,800}接盘证据/,
+    message: "watch-only pullback fallback lines must surface catchdown evidence, not only missing numeric setup metrics."
   },
   {
     pattern: /const deterministicFallback = buildPullbackQualityFallbackAnswer[\s\S]{0,1200}FUND_ANSWER_QUALITY_REWRITE/,

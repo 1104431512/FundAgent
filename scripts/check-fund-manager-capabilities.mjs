@@ -5947,6 +5947,12 @@ const staleNewsFallback = manager.buildPullbackQualityFallbackAnswer({
 });
 assert(staleNewsFallback.includes("直接结论：这次先不买"), "deterministic fallback must fire when stale-theme catchdown issues are detected");
 assert(staleNewsFallback.includes("买入0元") && staleNewsFallback.includes("旧催化"), "stale-theme fallback must force zero-yuan execution and explain old-catalyst catchdown risk");
+assert(
+  staleNewsFallback.includes("资金回流")
+    && staleNewsFallback.includes("新鲜新闻/政策/订单/产业预热")
+    && staleNewsFallback.includes("代表持仓/前十大承载"),
+  "stale-theme fallback must tell users which live catalyst, capital-flow, and holdings-carrier evidence can reopen review"
+);
 const retreatThemeRadar = manager.buildThemeRadar({
   conceptBoards: [
     { boardCode: "BKAI9", name: "CPO", changePct: -3.4, mainNetInflowPct: -4.2, leadStock: "新易盛", quoteTime: "10:45", coverageSources: ["主力流出榜", "跌幅榜"] },
@@ -6815,6 +6821,41 @@ assert(
   textOnlyCatchdownAnswerQuality.issues.includes("stale_theme_candidate_given_buy_signal"),
   "quality gate must reject buy wording for text-only catchdown evidence even when structured themes are missing"
 );
+const textOnlyCatchdownFallback = manager.buildPullbackQualityFallbackAnswer({
+  userText: setupQuery,
+  issues: textOnlyCatchdownAnswerQuality.issues,
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      focus: "pullback_setup_discovery",
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      candidates: [{
+        code: "000014",
+        name: "文本退潮低位基金C",
+        ok: true,
+        trendProfile: {
+          pullbackSetup: { signal: "pullback_complete", score: 72 },
+          trendLabel: "pullback_complete",
+          entryBias: "buyable_now",
+          return5dPct: 1.2,
+          return10dPct: 2.1,
+          return20dPct: 1.8,
+          return60dPct: 3.4,
+          lowPositionPct120: 32,
+          lowPositionPct250: 44,
+          drawdownFromRecentHighPct: -8.2
+        },
+        riskNotes: ["资金流出，回调不是买点。"],
+        actionability: { score: 72, decisionBlocker: ["资金流出，回调不是买点。"] }
+      }]
+    }
+  }
+});
+assert(textOnlyCatchdownFallback.includes("直接结论：这次先不买"), "text-only catchdown fallback must not keep an otherwise-qualified pullback as a main recommendation");
+assert(textOnlyCatchdownFallback.includes("买入0元"), "text-only catchdown fallback must force zero-yuan execution");
+assert(textOnlyCatchdownFallback.includes("资金流出") && textOnlyCatchdownFallback.includes("回调不是买点"), "text-only catchdown fallback must show the textual catchdown evidence");
+assert(textOnlyCatchdownFallback.includes("资金回流"), "text-only catchdown fallback must wait for capital return before reopening review");
+assert(!textOnlyCatchdownFallback.includes("推荐清单："), "text-only catchdown fallback must not produce a recommendation section");
 const textOnlyCatchdownNoBuyQuality = manager.evaluateFundAnswerQuality({
   text: "直接结论：000014 文本退潮低位基金C 先0元观察。原因是资金流出，回调不是买点，等资金回流后再复核。",
   workflow: "fund_qa",
