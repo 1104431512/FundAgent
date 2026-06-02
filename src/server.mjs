@@ -23013,7 +23013,7 @@ function buildThemeLeaderboards(themeRadar = []) {
       id: "main_capital",
       title: "主力进场榜",
       subtitle: "资金开始配合、但拥挤度还没失控的方向。",
-      filter: (theme) => notRetreat(theme) && notCrowded(theme) && hasFreshThemeCatalystContext(theme) && (
+      filter: (theme) => notRetreat(theme) && notCrowded(theme) && hasFreshThemeCatalystContext(theme) && hasPositiveThemeMainCapitalEvidence(theme) && (
         theme.leaderSignal === "capital_entering"
         || theme.positionSignal === "main_capital_entering"
         || Number(theme.capitalFollowScore) >= 58

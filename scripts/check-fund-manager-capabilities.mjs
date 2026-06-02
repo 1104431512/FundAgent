@@ -5991,6 +5991,24 @@ assert(
   !manager.hasActionableThemeSupport({ code: "000054", name: "人工智能无时间新闻基金C", matchedThemes: [untimedAiTheme] }),
   "untimed news must not satisfy actionable main-capital/preheat theme support"
 );
+const noCapitalMainTheme = {
+  ...liveAiTheme,
+  id: "ai_no_capital_confirmation",
+  name: "AI无资金确认",
+  leaderSignal: "capital_entering",
+  positionSignal: "main_capital_entering",
+  capitalFollowScore: 68,
+  preheatScore: 62,
+  avgMainNetInflowPct: null,
+  maxMainNetInflowPct: null,
+  minMainNetInflowPct: null,
+  mainInflowRankScore: 0,
+  newsLogic: "主力刚进场：新闻催化：AI算力订单改善（10:10 测试快讯）；主力线索：资金流向待确认"
+};
+assert(
+  !manager.buildThemeLeaderboards([noCapitalMainTheme]).mainCapital.items.some((item) => item.name === "AI无资金确认"),
+  "main-capital theme leaderboard must not promote fresh-news themes whose positive capital flow or main-inflow rank is still unconfirmed"
+);
 const rankBackedThemeRadar = manager.buildThemeRadar({
   conceptBoards: [{
     boardCode: "BKAI3",

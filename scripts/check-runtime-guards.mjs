@@ -1201,6 +1201,10 @@ const requiredPatterns = [
     message: "main-capital and preheat leaderboards must both require fresh catalyst context."
   },
   {
+    pattern: /buildThemeLeaderboards[\s\S]{0,1200}main_capital[\s\S]{0,900}hasPositiveThemeMainCapitalEvidence\(theme\)/,
+    message: "main-capital leaderboard must require positive fund-flow or main-inflow leaderboard confirmation."
+  },
+  {
     pattern: /(?=[\s\S]*function buildNewsCatalystProfile)(?=[\s\S]*function scoreThemeCatalystQuality)(?=[\s\S]*政策落地)(?=[\s\S]*产业订单)(?=[\s\S]*外盘映射)(?=[\s\S]*风险提醒)(?=[\s\S]*催化性质)/,
     message: "theme news evidence must classify the catalyst type so the manager can explain why a sector is moving."
   },
