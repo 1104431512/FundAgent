@@ -1173,8 +1173,8 @@ const requiredPatterns = [
     message: "fund manager must identify main-capital entry, preheated themes, and news logic before ranking fund opportunities."
   },
   {
-    pattern: /(?=[\s\S]*function hasFreshThemeCatalystContext)(?=[\s\S]*function isActionableThemeSupport[\s\S]{0,1700}preheatCatalyst && catalystContext)(?=[\s\S]*function inferPullbackSetupSearchKeywords[\s\S]{0,1800}leaderCandidate && hasFreshThemeCatalystContext\(theme\))/,
-    message: "main-capital/preheat opportunities must require fresh news or industry catalyst logic before entering actionable recall."
+    pattern: /function isActionableThemeSupport[\s\S]{0,1700}traceableCatalystContext[\s\S]{0,700}preheatCatalyst && traceableCatalystContext/,
+    message: "main-capital/preheat opportunities must require traceable fresh news or industry catalyst logic before entering actionable recall."
   },
   {
     pattern: /(?=[\s\S]*function hasTraceableFreshThemeCatalystContext)(?=[\s\S]*latestNewsTime)(?=[\s\S]*快讯\|新闻源\|来源)(?=[\s\S]*function isThemeLowBaseMicroStarterSupport[\s\S]{0,500}hasTraceableFreshThemeCatalystContext\(theme\))/,
@@ -1225,8 +1225,8 @@ const requiredPatterns = [
     message: "old catalysts must downgrade actionability even when they are not yet classified as hard catchdown risk."
   },
   {
-    pattern: /buildThemeLeaderboards[\s\S]{0,1200}main_capital[\s\S]{0,700}hasFreshThemeCatalystContext\(theme\)[\s\S]{0,1800}preheat[\s\S]{0,700}hasFreshThemeCatalystContext\(theme\)/,
-    message: "main-capital and preheat leaderboards must both require fresh catalyst context."
+    pattern: /buildThemeLeaderboards[\s\S]{0,1200}main_capital[\s\S]{0,700}hasTraceableFreshThemeCatalystContext\(theme\)[\s\S]{0,1800}preheat[\s\S]{0,700}hasTraceableFreshThemeCatalystContext\(theme\)/,
+    message: "main-capital and preheat leaderboards must both require traceable fresh catalyst context."
   },
   {
     pattern: /buildThemeLeaderboards[\s\S]{0,1200}main_capital[\s\S]{0,900}hasPositiveThemeMainCapitalEvidence\(theme\)/,

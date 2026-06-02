@@ -733,8 +733,8 @@ const preciousLeaderTheme = {
   crowdingScore: 18,
   capitalRetreatScore: 8,
   avgMainNetInflowPct: 1.4,
-  catalystProfile: { score: 28, summary: "避险和降息预期共振", risk: false, fresh: true },
-  newsLogic: "主力刚进场：新闻催化：避险需求升温；主力线索：贵金属资金净流入",
+  catalystProfile: { score: 28, summary: "避险和降息预期共振", risk: false, fresh: true, freshnessLabel: "当日催化", latestNewsTime: "10:08" },
+  newsLogic: "主力刚进场：新闻催化：避险需求升温（10:08 测试快讯）；主力线索：贵金属资金净流入",
   keywords: ["黄金", "贵金属"],
   fundKeywords: ["黄金", "贵金属"],
   evidence: {
@@ -6678,6 +6678,27 @@ assert(
   !manager.buildThemeLeaderboards([noCapitalMainTheme]).mainCapital.items.some((item) => item.name === "AI无资金确认"),
   "main-capital theme leaderboard must not promote fresh-news themes whose positive capital flow or main-inflow rank is still unconfirmed"
 );
+const untraceableMainTheme = {
+  ...liveAiTheme,
+  id: "ai_untraceable_catalyst",
+  name: "AI无来源主力",
+  leaderSignal: "capital_entering",
+  positionSignal: "main_capital_entering",
+  capitalFollowScore: 72,
+  avgMainNetInflowPct: 2.4,
+  maxMainNetInflowPct: 3.1,
+  catalystProfile: { score: 30, tags: ["产业订单"], summary: "产业订单", risk: false, fresh: true, freshnessLabel: "", latestNewsTime: "" },
+  newsLogic: "主力刚进场：AI算力订单改善；主力线索：相关板块资金净流入",
+  primaryCatalyst: "AI算力订单改善"
+};
+assert(
+  !manager.buildThemeLeaderboards([untraceableMainTheme]).mainCapital.items.some((item) => item.name === "AI无来源主力"),
+  "main-capital leaderboard must not promote themes whose catalyst has no traceable news/current-event source"
+);
+assert(
+  !manager.hasActionableThemeSupport({ code: "000055", name: "AI无来源基金C", matchedThemes: [untraceableMainTheme] }),
+  "untraceable main-capital/preheat catalyst must not satisfy actionable theme support"
+);
 const rankBackedThemeRadar = manager.buildThemeRadar({
   conceptBoards: [{
     boardCode: "BKAI3",
@@ -7292,8 +7313,8 @@ const themeLeaderboards = manager.buildThemeLeaderboards([
     preheatScore: 68,
     lowPositionScore: 64,
     crowdingScore: 12,
-    catalystProfile: { score: 32, tags: ["政策落地"], summary: "政策落地", risk: false },
-    newsLogic: "题材预热：新闻催化：政策试点加速落地；催化性质：政策落地"
+    catalystProfile: { score: 32, tags: ["政策落地"], summary: "政策落地", risk: false, fresh: true, freshnessLabel: "当日催化", latestNewsTime: "10:18" },
+    newsLogic: "题材预热：新闻催化：政策试点加速落地（10:18 测试快讯）；催化性质：政策落地"
   },
   {
     id: "funded_preheat",
@@ -7305,8 +7326,8 @@ const themeLeaderboards = manager.buildThemeLeaderboards([
     lowPositionScore: 62,
     crowdingScore: 16,
     avgMainNetInflowPct: 1.2,
-    catalystProfile: { score: 30, tags: ["产业订单", "资金关注"], summary: "产业订单", risk: false, fresh: true },
-    newsLogic: "题材预热：新闻催化：订单加速；主力线索：相关板块资金净流入"
+    catalystProfile: { score: 30, tags: ["产业订单", "资金关注"], summary: "产业订单", risk: false, fresh: true, freshnessLabel: "当日催化", latestNewsTime: "10:20" },
+    newsLogic: "题材预热：新闻催化：订单加速（10:20 测试快讯）；主力线索：相关板块资金净流入"
   }
 ]);
 assert(themeLeaderboards.mainCapital.items.some((item) => item.name === "AI/算力"), "theme leaderboards must surface main-capital entry themes as a dedicated lane");

@@ -4188,8 +4188,8 @@ function buildPortfolioThemeOpportunityPlan(account = {}, watchlist = [], profil
       const starterBuy = Boolean(profile && hasPortfolioStarterBuySetup(profile));
       const themeMicroStarter = Boolean(profile && hasPortfolioThemeMicroStarterSetup(profile));
       const targetWeightPct = themeMicroStarter ? 1 : starterBuy ? 1.5 : verifiedBuy ? 2.5 : 0;
-      const catalystGap = hasThemeLeaderOrPreheatSignal(theme) && !hasFreshThemeCatalystContext(theme)
-        ? "缺新闻时事/产业催化解释，不能把主力热度直接当买点。"
+      const catalystGap = hasThemeLeaderOrPreheatSignal(theme) && !hasTraceableFreshThemeCatalystContext(theme)
+        ? "缺可追溯的新闻时事/产业催化来源，不能把主力热度直接当买点。"
         : "";
       const capitalFlowGap = hasThemeLeaderOrPreheatSignal(theme)
         && hasTraceableFreshThemeCatalystContext(theme)
@@ -11677,8 +11677,8 @@ function buildPortfolioThemeMomentumRankingItem(item = {}) {
   const starterBuy = hasPortfolioStarterBuySetup(profile);
   const themeMicroStarter = hasPortfolioThemeMicroStarterSetup(profile);
   const structuralGaps = buildPortfolioWatchStructuralReadinessGaps(item, profile);
-  const catalystGap = hasThemeLeaderOrPreheatSignal(theme) && !hasFreshThemeCatalystContext(theme)
-    ? "缺新闻时事/产业催化解释，不能把主力热度直接当买点。"
+  const catalystGap = hasThemeLeaderOrPreheatSignal(theme) && !hasTraceableFreshThemeCatalystContext(theme)
+    ? "缺可追溯的新闻时事/产业催化来源，不能把主力热度直接当买点。"
     : "";
   const capitalFlowGap = hasThemeLeaderOrPreheatSignal(theme)
     && hasTraceableFreshThemeCatalystContext(theme)
@@ -20656,18 +20656,19 @@ function isActionableThemeSupport(theme = {}) {
   const rotation = finiteMetricNumber(theme.rotationScore);
   const lowPosition = finiteMetricNumber(theme.lowPositionScore);
   const catalystContext = hasFreshThemeCatalystContext(theme);
+  const traceableCatalystContext = hasTraceableFreshThemeCatalystContext(theme);
   const mainCapitalSignal = theme.leaderSignal === "capital_entering"
     || theme.positionSignal === "main_capital_entering"
     || (Number.isFinite(capitalFollow) && capitalFollow >= 58 && flowNotWeak);
-  const mainCapital = mainCapitalSignal && catalystContext;
+  const mainCapital = mainCapitalSignal && traceableCatalystContext;
   const preheatCatalyst = theme.leaderSignal === "preheat_catalyst"
     || theme.positionSignal === "preheat_catalyst_watch"
     || (Number.isFinite(preheat) && preheat >= 56 && scoreThemeCatalystQuality(theme) >= 0);
   const lowRotation = theme.positionSignal === "low_position_rotation"
     || theme.stage === "low_position_rotation"
     || (Number.isFinite(rotation) && rotation >= 50 && Number.isFinite(lowPosition) && lowPosition >= 45 && flowNotWeak);
-  const unresolvedLeaderHeat = hasThemeLeaderOrPreheatSignal(theme) && !catalystContext;
-  return Boolean(mainCapital || (preheatCatalyst && catalystContext) || (lowRotation && !unresolvedLeaderHeat));
+  const unresolvedLeaderHeat = hasThemeLeaderOrPreheatSignal(theme) && !traceableCatalystContext;
+  return Boolean(mainCapital || (preheatCatalyst && traceableCatalystContext) || (lowRotation && !unresolvedLeaderHeat));
 }
 
 function hasThemeCatalystContext(theme = {}) {
@@ -24002,7 +24003,7 @@ function buildThemeLeaderboards(themeRadar = []) {
       id: "main_capital",
       title: "主力进场榜",
       subtitle: "资金开始配合、但拥挤度还没失控的方向。",
-      filter: (theme) => notRetreat(theme) && notCrowded(theme) && hasFreshThemeCatalystContext(theme) && hasPositiveThemeMainCapitalEvidence(theme) && (
+      filter: (theme) => notRetreat(theme) && notCrowded(theme) && hasTraceableFreshThemeCatalystContext(theme) && hasPositiveThemeMainCapitalEvidence(theme) && (
         theme.leaderSignal === "capital_entering"
         || theme.positionSignal === "main_capital_entering"
         || Number(theme.capitalFollowScore) >= 58
@@ -24014,7 +24015,7 @@ function buildThemeLeaderboards(themeRadar = []) {
       id: "preheat",
       title: "题材预热榜",
       subtitle: "有政策、产业或外盘催化，但还没有明显涨开的方向。",
-      filter: (theme) => notRetreat(theme) && notCrowded(theme) && hasFreshThemeCatalystContext(theme) && (
+      filter: (theme) => notRetreat(theme) && notCrowded(theme) && hasTraceableFreshThemeCatalystContext(theme) && (
         theme.leaderSignal === "preheat_catalyst"
         || theme.positionSignal === "preheat_catalyst_watch"
         || Number(theme.preheatScore) >= 52
