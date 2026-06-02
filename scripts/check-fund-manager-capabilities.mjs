@@ -4077,7 +4077,10 @@ assert(liveAiTheme, "theme radar must build an AI/compute theme from boards, new
 assert.equal(liveAiTheme.leaderSignal, "capital_entering", "theme radar must identify main-capital entry before the sector becomes crowded");
 assert(liveAiTheme.capitalFollowScore >= 55, "theme radar must expose a strong main-capital follow score");
 assert(liveAiTheme.newsLogic.includes("新闻催化") && liveAiTheme.newsLogic.includes("主力线索"), "theme radar must explain why the theme is moving with news and capital evidence");
+assert(liveAiTheme.newsLogic.includes("测试快讯") && liveAiTheme.newsLogic.includes("10:10"), "theme radar news logic must preserve news source and time for customer-facing catalyst explanations");
 assert(liveAiTheme.catalystProfile?.summary.includes("产业订单"), "theme radar must classify why a theme is moving instead of treating every headline as equal noise");
+const matchedAiThemes = manager.matchCandidateThemes({ code: "000024", name: "人工智能主题C", type: "股票型基金" }, [liveAiTheme]);
+assert(matchedAiThemes[0]?.catalystProfile?.summary.includes("产业订单"), "matched fund themes must preserve catalyst type so fund candidates inherit why the theme is rising");
 const retreatThemeRadar = manager.buildThemeRadar({
   conceptBoards: [
     { boardCode: "BKAI9", name: "CPO", changePct: -3.4, mainNetInflowPct: -4.2, leadStock: "新易盛", quoteTime: "10:45", coverageSources: ["主力流出榜", "跌幅榜"] },

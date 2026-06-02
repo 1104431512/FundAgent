@@ -1093,6 +1093,10 @@ const requiredPatterns = [
     message: "market snapshots must expose theme leaderboards for main-capital entry, preheat, low rotation, retreat, and chase-risk lanes."
   },
   {
+    pattern: /(?=[\s\S]*function formatThemeNewsHeadline)(?=[\s\S]*function compactMatchedThemeSignal)(?=[\s\S]*catalystProfile:\s*theme\.catalystProfile)(?=[\s\S]*newsLogic[\s\S]*formatThemeNewsHeadline\(news\[0\]\))/,
+    message: "theme news logic and matched fund themes must preserve catalyst source/time and catalyst type."
+  },
+  {
     pattern: /(?=[\s\S]*function hasStaleThemeCatchdownRisk)(?=[\s\S]*function hasActionableThemeSupport)(?=[\s\S]*接盘风险)(?=[\s\S]*hasPortfolioVerifiedSeedChaseRisk[\s\S]{0,900}hasStaleThemeCatchdownRisk)/,
     message: "pullback candidates must block stale theme catchdown risk and require actionable theme support before buy readiness."
   },
