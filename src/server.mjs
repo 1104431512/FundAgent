@@ -4085,7 +4085,7 @@ function buildPortfolioRedeploymentPlan(account = {}, watchlist = [], profiles =
 }
 
 function isPortfolioRedeploymentHardGap(gap = "") {
-  return /缺少可验证净值|走势下钻|基金规模.*(?:不能作为可直接买入|偏小)|前十大集中度.*(?:过高|偏高)|费用\/份额|特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛|题材拥挤|追涨风险|暂时回避|仍是回避|前十大持仓盘中|前十大持仓实际集中|底层持仓止跌|表面回调可能继续下探|题材退潮|主力资金撤离|主力撤离|接盘风险|旧新闻|旧催化|今天的买点/.test(String(gap || ""));
+  return /缺少可验证净值|走势下钻|基金规模.*(?:不能作为可直接买入|偏小)|前十大集中度.*(?:过高|偏高)|费用\/份额|特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛|题材拥挤|追涨风险|暂时回避|仍是回避|前十大持仓盘中|前十大持仓实际集中|底层持仓止跌|表面回调可能继续下探|题材退潮|主力资金撤离|主力撤离|接盘风险|旧新闻|旧催化|今天的买点|当前题材雷达.*(?:过期|缺少刷新时间|刷新时间无法验证)|重新刷新主力资金\/新闻催化/.test(String(gap || ""));
 }
 
 function formatPortfolioRealtimeEvidence(profile = {}) {
@@ -7044,7 +7044,7 @@ function buildPortfolioReadyStatusReadinessGuard(status, readiness = {}) {
 }
 
 function isPortfolioWatchStructuralReadinessGap(gap = "") {
-  return /基金规模|前十大集中度|持仓承载|前十大持仓未命中题材龙头|前十大持仓实际集中|承载逻辑需复核|目标主题匹配度不足|特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛|题材退潮|主力资金撤离|主力撤离|接盘风险/.test(String(gap || ""));
+  return /基金规模|前十大集中度|持仓承载|前十大持仓未命中题材龙头|前十大持仓实际集中|承载逻辑需复核|目标主题匹配度不足|特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛|题材退潮|主力资金撤离|主力撤离|接盘风险|当前题材雷达.*(?:过期|缺少刷新时间|刷新时间无法验证)|重新刷新主力资金\/新闻催化/.test(String(gap || ""));
 }
 
 function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
@@ -7300,7 +7300,7 @@ function evaluatePortfolioWatchReadiness(item = {}, profile = null) {
 
 function getPortfolioWatchStructuralReadinessCap(gaps = []) {
   const text = (gaps || []).join(" ");
-  if (/题材退潮|主力资金撤离|主力撤离|接盘风险/.test(text)) return 46;
+  if (/题材退潮|主力资金撤离|主力撤离|接盘风险|当前题材雷达.*(?:过期|缺少刷新时间|刷新时间无法验证)|重新刷新主力资金\/新闻催化/.test(text)) return 46;
   if (/当前主力进场|题材预热|低位轮动支撑/.test(text)) return 58;
   if (/特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛/.test(text)) return 58;
   if (/基金规模.*不能作为可直接买入|前十大集中度.*过高/.test(text)) return 58;
@@ -7323,7 +7323,7 @@ function scorePortfolioWatchReadinessGapPenalty(gap = "") {
   if (/近20日.*需降温|近60日.*需消化/.test(text)) return 16;
   if (/等待回撤|可操作性仍是等待|入场判断仍是等待/.test(text)) return 14;
   if (/暂时回避|仍是回避/.test(text)) return 28;
-  if (/题材退潮|主力资金撤离|主力撤离/.test(text)) return 34;
+  if (/题材退潮|主力资金撤离|主力撤离|当前题材雷达.*(?:过期|缺少刷新时间|刷新时间无法验证)|重新刷新主力资金\/新闻催化/.test(text)) return 34;
   if (/当前主力进场|题材预热|低位轮动支撑/.test(text)) return 24;
   if (/题材拥挤|追涨风险/.test(text)) return 16;
   if (/费用\/份额/.test(text)) return 10;

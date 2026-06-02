@@ -2393,6 +2393,18 @@ const requiredPatterns = [
     message: "watchlist readiness gaps must surface stale radar refresh evidence even when NAV/trend evidence is missing."
   },
   {
+    pattern: /function isPortfolioRedeploymentHardGap[\s\S]{0,900}重新刷新主力资金/,
+    message: "expired current-theme radar evidence must be treated as a hard redeployment no-buy gap."
+  },
+  {
+    pattern: /function isPortfolioWatchStructuralReadinessGap[\s\S]{0,900}重新刷新主力资金/,
+    message: "expired current-theme radar evidence must be treated as a hard watchlist readiness gap."
+  },
+  {
+    pattern: /function getPortfolioWatchStructuralReadinessCap[\s\S]{0,500}重新刷新主力资金/,
+    message: "expired current-theme radar evidence must cap watchlist readiness instead of sounding close to buyable."
+  },
+  {
     pattern: /buildPortfolioStaleCatchdownRiskRankingItem[\s\S]{0,1800}staleThemeRefreshRisk[\s\S]{0,2200}旧雷达接盘拦截[\s\S]{0,2600}当前主力资金\/新闻催化刷新/,
     message: "catchdown risk ranking must surface expired theme-radar support as an old-radar trap."
   },

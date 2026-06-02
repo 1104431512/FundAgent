@@ -4656,6 +4656,31 @@ assert(
   ),
   "unverified watchlist items must surface stale radar evidence before only saying NAV/trend data is missing"
 );
+const staleItemThemeReadiness = manager.evaluatePortfolioWatchReadiness({
+  code: "000047",
+  name: "人工智能主题低位基金C",
+  status: "ready",
+  marketThemeRefresh: staleMarketThemeRefreshProfile.marketThemeRefresh
+}, verifiedSeedProfile);
+assert(
+  staleItemThemeReadiness.score <= 46
+    && staleItemThemeReadiness.gaps.some((item) => item.includes("当前题材雷达已过期")),
+  "stale item-level theme refresh must cap readiness as a hard no-buy risk instead of a soft wait"
+);
+const staleThemeReadyGuard = manager.guardPortfolioWatchlistReadyUpdate({
+  code: "000047",
+  name: "人工智能主题低位基金C",
+  status: "ready",
+  priority: 1,
+  reason: "模型声称旧题材候选仍可买"
+}, verifiedSeedProfile, {
+  code: "000047",
+  name: "人工智能主题低位基金C",
+  status: "ready",
+  marketThemeRefresh: staleMarketThemeRefreshProfile.marketThemeRefresh
+});
+assert.equal(staleThemeReadyGuard.status, "watch", "watchlist write path must not keep ready status when item-level theme radar is expired");
+assert(staleThemeReadyGuard.reason.includes("当前题材雷达已过期"), "stale theme ready downgrade must explain the expired radar evidence");
 const staleMarketThemeRefreshActionability = manager.buildFundActionabilitySignals(staleMarketThemeRefreshProfile);
 assert(["wait", "avoid"].includes(staleMarketThemeRefreshActionability.action), "actionability must not surface stale-radar support as buy or staged-buy");
 assert(
