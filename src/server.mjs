@@ -20670,8 +20670,12 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
         coverageSources: Array.isArray(board.coverageSources) ? board.coverageSources.slice(0, 4) : [],
         rankSignals: Array.isArray(board.rankSignals) ? board.rankSignals.slice(0, 4) : []
       }));
+    const newsKeywords = expandThemeNewsKeywords(rule.newsKeywords || rule.keywords, {
+      name: rule.name,
+      leadStock: rule.leadStock || ""
+    });
     const news = fastNews
-      .filter((item) => textMatchesKeywords(`${item.title || ""} ${item.mediaName || ""}`, rule.keywords))
+      .filter((item) => textMatchesKeywords(`${item.title || ""} ${item.mediaName || ""}`, newsKeywords))
       .slice(0, 5)
       .map((item) => ({
         title: item.title || "",
@@ -20713,7 +20717,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
           }))
       : [];
 
-    const newsCatalystProfile = buildNewsCatalystProfile(news, rule);
+    const newsCatalystProfile = buildNewsCatalystProfile(news, { ...rule, keywords: newsKeywords });
     const boardFlowValues = boards.map((item) => Number(item.mainNetInflowPct)).filter(Number.isFinite);
     const boardChangeValues = boards.map((item) => Number(item.changePct)).filter(Number.isFinite);
     const boardOutflowCount = boardFlowValues.filter((value) => value < 0).length;
@@ -20827,6 +20831,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       id: rule.id,
       name: rule.name,
       keywords: rule.keywords,
+      newsKeywords,
       fundKeywords: rule.fundKeywords || rule.keywords,
       dynamic: Boolean(rule.dynamic),
       stage,
@@ -20962,6 +20967,57 @@ function compactThemeLeaderboardItem(theme = {}, reason = "", score = 0) {
   };
 }
 
+const THEME_NEWS_KEYWORD_EXPANSIONS = [
+  {
+    needles: ["低空", "飞行汽车", "无人机", "通航", "evtol"],
+    aliases: ["低空经济", "飞行汽车", "eVTOL", "无人机", "通航", "空域", "示范区"]
+  },
+  {
+    needles: ["机器人", "人形机器人", "智能制造"],
+    aliases: ["机器人", "人形机器人", "智能制造", "减速器", "伺服", "工业机器人"]
+  },
+  {
+    needles: ["算力", "cpo", "光模块", "数据中心", "液冷", "人工智能", "ai"],
+    aliases: ["算力", "CPO", "光模块", "数据中心", "液冷", "AI服务器", "大模型", "英伟达"]
+  },
+  {
+    needles: ["商业航天", "卫星", "航天", "北斗"],
+    aliases: ["商业航天", "卫星", "火箭", "发射", "北斗", "低轨"]
+  },
+  {
+    needles: ["固态电池", "锂电", "储能", "新能源"],
+    aliases: ["固态电池", "锂电", "储能", "电池", "新能源车", "充电"]
+  },
+  {
+    needles: ["创新药", "医药", "医疗", "cxO", "cxo"],
+    aliases: ["创新药", "医药", "医疗", "医保", "药品", "临床", "审批"]
+  },
+  {
+    needles: ["有色", "稀土", "铜", "铝", "小金属"],
+    aliases: ["有色", "稀土", "铜", "铝", "小金属", "资源", "涨价"]
+  }
+];
+
+function expandThemeNewsKeywords(keywords = [], context = {}) {
+  const base = [
+    ...(Array.isArray(keywords) ? keywords : [keywords]),
+    context.name || "",
+    context.leadStock || ""
+  ].map((item) => String(item || "").trim()).filter(Boolean);
+  const normalized = base.map(normalizeIntentText).filter(Boolean);
+  const expanded = new Set(base);
+  for (const group of THEME_NEWS_KEYWORD_EXPANSIONS) {
+    const needles = (group.needles || []).map(normalizeIntentText).filter(Boolean);
+    if (normalized.some((keyword) => needles.some((needle) => keyword.includes(needle) || needle.includes(keyword)))) {
+      for (const alias of group.aliases || []) expanded.add(alias);
+    }
+  }
+  return [...expanded]
+    .map((item) => String(item || "").trim())
+    .filter((item) => item.length >= 2)
+    .slice(0, 24);
+}
+
 function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], fastNews = [], allFunds = [] } = {}) {
   const staticNames = new Set(THEME_RADAR_RULES.flatMap((rule) => [rule.id, rule.name, ...(rule.keywords || [])]).map((item) => normalizeIntentText(item)).filter(Boolean));
   const boards = [...conceptBoards, ...industryBoards]
@@ -20969,7 +21025,13 @@ function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], 
     .filter((board) => !THEME_RADAR_RULES.some((rule) => textMatchesKeywords(`${board.name || ""} ${board.leadStock || ""}`, rule.keywords)))
     .map((board) => {
       const keywords = buildDynamicThemeKeywords(board);
-      const newsCount = (fastNews || []).filter((item) => textMatchesKeywords(`${item.title || ""} ${item.mediaName || ""}`, keywords)).length;
+      const newsKeywords = expandThemeNewsKeywords(keywords, {
+        name: board.name || "",
+        leadStock: board.leadStock || ""
+      });
+      const matchedNews = (fastNews || []).filter((item) => textMatchesKeywords(`${item.title || ""} ${item.mediaName || ""}`, newsKeywords));
+      const newsCatalystProfile = buildNewsCatalystProfile(matchedNews.slice(0, 5), { keywords: newsKeywords });
+      const newsCount = matchedNews.length;
       const fundCount = (allFunds || []).filter((fund) => textMatchesKeywords(`${fund.name || ""} ${fund.type || ""} ${(fund.keywords || []).join(" ")}`, keywords)).length;
       const change = Number(board.changePct || 0);
       const flow = Number(board.mainNetInflowPct || 0);
@@ -20977,7 +21039,13 @@ function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], 
       return {
         board,
         keywords,
-        discoveryScore: Math.max(0, change) * 6 + Math.max(0, flow) * 5 + newsCount * 12 + Math.min(4, fundCount) * 5 - retreatPenalty
+        newsKeywords,
+        discoveryScore: Math.max(0, change) * 6
+          + Math.max(0, flow) * 5
+          + newsCount * 12
+          + Number(newsCatalystProfile.score || 0) * 0.8
+          + Math.min(4, fundCount) * 5
+          - retreatPenalty
       };
     })
     .filter((item) => {
@@ -20990,7 +21058,7 @@ function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], 
     .slice(0, 10);
   const seen = new Set();
   return boards
-    .map(({ board, keywords }) => {
+    .map(({ board, keywords, newsKeywords }) => {
       const name = String(board.name || "").trim();
       const normalized = normalizeIntentText(name);
       if (!normalized || staticNames.has(normalized) || seen.has(normalized)) return null;
@@ -20999,6 +21067,7 @@ function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], 
         id: `dynamic_${String(board.boardCode || normalized).replace(/[^\w-]+/g, "_").slice(0, 40)}`,
         name,
         keywords,
+        newsKeywords,
         fundKeywords: keywords,
         dynamic: true
       };
@@ -21278,7 +21347,10 @@ function candidateHoldingsMatchThemeAnchors(candidate = {}, theme = {}) {
 
 function textMatchesKeywords(text, keywords = []) {
   const value = normalizeIntentText(text);
-  return (keywords || []).some((keyword) => keyword && value.includes(String(keyword).toLowerCase()));
+  return (keywords || []).some((keyword) => {
+    const needle = normalizeIntentText(keyword);
+    return needle && value.includes(needle);
+  });
 }
 
 function clampScore(value) {

@@ -4280,6 +4280,19 @@ assert(lowAltitudeTheme?.dynamic, "theme radar must create dynamic themes from l
 assert(["capital_entering", "preheat_catalyst", "trend_confirming"].includes(lowAltitudeTheme.leaderSignal), "dynamic themes must still receive actionable main-capital/preheat timing labels");
 assert(lowAltitudeTheme.newsLogic.includes("低空经济"), "dynamic themes must preserve news logic for emerging topics");
 assert(lowAltitudeTheme.newsLogic.includes("催化性质：政策落地"), "dynamic themes must explain policy/news catalyst type in plain Chinese");
+const dynamicAliasThemeRadar = manager.buildThemeRadar({
+  conceptBoards: [
+    { boardCode: "BKNEW2", name: "飞行汽车", changePct: 1.2, mainNetInflowPct: 1.9, leadStock: "万丰奥威", quoteTime: "10:50" }
+  ],
+  industryBoards: [],
+  fastNews: [{ title: "低空经济示范区政策加速落地 多地推进空域试点", showTime: "10:48", mediaName: "测试快讯" }],
+  fundCandidates: {
+    indexFunds: [{ code: "159001", name: "飞行汽车ETF联接C", type: "指数型基金", oneMonthPct: 1.8, dailyPct: 0.4, shareClass: "C" }]
+  }
+});
+const flyingCarTheme = dynamicAliasThemeRadar.find((theme) => theme.name === "飞行汽车");
+assert(flyingCarTheme?.newsLogic.includes("低空经济示范区政策加速落地"), "dynamic theme news matching must connect board aliases such as flying cars with low-altitude policy news");
+assert(flyingCarTheme?.catalystProfile?.summary.includes("政策落地"), "dynamic alias-matched news must still classify the catalyst instead of only showing board price action");
 const themeLeaderboards = manager.buildThemeLeaderboards([
   liveAiTheme,
   fadingAiTheme,

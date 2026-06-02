@@ -1133,6 +1133,10 @@ const requiredPatterns = [
     message: "theme radar must generate dynamic emerging themes from live concept and industry boards, not only a static dictionary."
   },
   {
+    pattern: /(?=[\s\S]*THEME_NEWS_KEYWORD_EXPANSIONS)(?=[\s\S]*function expandThemeNewsKeywords)(?=[\s\S]*newsKeywords)(?=[\s\S]*buildNewsCatalystProfile\(matchedNews)/,
+    message: "dynamic theme radar must expand news/current-event keywords so emerging sectors can explain why they are moving."
+  },
+  {
     pattern: /(?=[\s\S]*function getCandidateThemeHoldingAnchors)(?=[\s\S]*leaderStocks)(?=[\s\S]*matchedThemeHoldings)(?=[\s\S]*前十大持仓未命中题材龙头)(?=[\s\S]*题材龙头=)/,
     message: "holdings outlook must connect emerging themes to live board leaders before treating a fund as a true theme vehicle."
   },
