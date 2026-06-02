@@ -1141,6 +1141,18 @@ const requiredPatterns = [
     message: "pullback candidates must block stale theme catchdown risk and require actionable theme support before buy readiness."
   },
   {
+    pattern: /function hasThemeRetreatNoBuyOverride[\s\S]{0,300}hasStaleThemeCatchdownRisk[\s\S]{0,300}hasThemeRetreatRisk[\s\S]{0,700}function formatEntryBiasForCandidate[\s\S]{0,220}回调但不买/,
+    message: "user-facing trend evidence must override buyable entry labels for stale-theme or capital-outflow pullbacks."
+  },
+  {
+    pattern: /function formatPortfolioSeedVerifiedTrendEvidence[\s\S]{0,500}formatEntryBiasForCandidate\(trend\.entryBias,\s*profile\)[\s\S]{0,300}不能把回调当买点/,
+    message: "verified trend evidence must not describe stale-theme pullbacks as buyable."
+  },
+  {
+    pattern: /function getChartEntryDecision[\s\S]{0,300}hasThemeRetreatNoBuyOverride\(profile\)[\s\S]{0,220}回调不买/,
+    message: "fund report chart buy tiles must display a no-buy label for stale-theme pullbacks."
+  },
+  {
     pattern: /function inferPullbackSetupSearchKeywords[\s\S]{0,1200}isStaleThemeCatchdownRiskTheme\(theme\)/,
     message: "pullback setup discovery keywords must exclude stale outflow themes."
   },

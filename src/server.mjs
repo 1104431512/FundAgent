@@ -4639,7 +4639,8 @@ function formatPortfolioSeedVerifiedTrendEvidence(profile = null) {
   if (!trend.ok) return `净值验证：${trend.note || profile.error || "走势数据不足"}`;
   return [
     `净值验证：趋势${formatTrendLabel(trend.trendLabel)}`,
-    `入场${formatEntryBias(trend.entryBias)}`,
+    `入场${formatEntryBiasForCandidate(trend.entryBias, profile)}`,
+    hasThemeRetreatNoBuyOverride(profile) ? "题材退潮/主力撤离，不能把回调当买点" : "",
     Number.isFinite(Number(trend.return5dPct)) ? `5日${formatFallbackPct(trend.return5dPct)}` : "",
     Number.isFinite(Number(trend.return10dPct)) ? `10日${formatFallbackPct(trend.return10dPct)}` : "",
     Number.isFinite(Number(trend.return20dPct)) ? `20日${formatFallbackPct(trend.return20dPct)}` : "",
@@ -7537,12 +7538,12 @@ function buildPortfolioFundSnapshot(profile, position = null) {
     scale: profile.scale || null,
     holdingRealtimePulse: compactFundHoldingRealtimePulse(profile.holdingRealtimePulse),
     topHoldings,
-    trendSummary: buildPortfolioTrendSummary({ trendProfile, actionability, oneYear, threeYear }),
+    trendSummary: buildPortfolioTrendSummary({ trendProfile, actionability, oneYear, threeYear, profile }),
     sources: profile.sources || []
   };
 }
 
-function buildPortfolioTrendSummary({ trendProfile, actionability, oneYear = {}, threeYear = {} }) {
+function buildPortfolioTrendSummary({ trendProfile, actionability, oneYear = {}, threeYear = {}, profile = {} }) {
   if (trendProfile?.ok) {
     const parts = [
       trendProfile.return20dPct !== null && trendProfile.return20dPct !== undefined ? `20日${formatSignedNumber(trendProfile.return20dPct)}%` : "",
@@ -7550,7 +7551,8 @@ function buildPortfolioTrendSummary({ trendProfile, actionability, oneYear = {},
       trendProfile.return120dPct !== null && trendProfile.return120dPct !== undefined ? `120日${formatSignedNumber(trendProfile.return120dPct)}%` : "",
       trendProfile.drawdownFromRecentHighPct !== null && trendProfile.drawdownFromRecentHighPct !== undefined ? `距高点${formatSignedNumber(trendProfile.drawdownFromRecentHighPct)}%` : "",
       `趋势${formatTrendLabel(trendProfile.trendLabel)}`,
-      `入场${formatEntryBias(trendProfile.entryBias)}`,
+      `入场${formatEntryBiasForCandidate(trendProfile.entryBias, profile)}`,
+      hasThemeRetreatNoBuyOverride(profile) ? "题材退潮/主力撤离，回调不作为买点" : "",
       actionability?.action ? `自评${formatActionabilityAction(actionability.action)}${actionability.allocationBand ? ` ${actionability.allocationBand}` : ""}` : ""
     ].filter(Boolean);
     return parts.join("，");
@@ -7593,6 +7595,18 @@ function formatEntryBias(value) {
     avoid_now: "回避"
   };
   return labels[value] || value || "观察";
+}
+
+function hasThemeRetreatNoBuyOverride(candidate = {}) {
+  return Boolean(candidate && typeof candidate === "object" && (
+    hasStaleThemeCatchdownRisk(candidate)
+    || hasThemeRetreatRisk(candidate)
+  ));
+}
+
+function formatEntryBiasForCandidate(value, candidate = {}) {
+  if (hasThemeRetreatNoBuyOverride(candidate)) return "回调但不买";
+  return formatEntryBias(value);
 }
 
 function formatActionabilityAction(value) {
@@ -24573,8 +24587,9 @@ function drawReturnBarsPanel(canvas, { x, y, width, height, trend }) {
 function drawDecisionEvidenceStrip(canvas, { x, y, width, profile = {}, trend = {} }) {
   const actionability = profile?.actionability || {};
   const theme = getChartThemePosition(profile);
+  const entryDecision = getChartEntryDecision(profile, trend);
   const items = [
-    ["买点", formatChartEntryBias(trend.entryBias), chartDecisionColor(trend.entryBias)],
+    ["买点", entryDecision.label, chartDecisionColor(entryDecision.raw)],
     ["回调启动", formatChartSetupSignal(trend.pullbackSetup?.signal), chartSignalColor(trend.pullbackSetup?.signal)],
     ["板块位置", theme.label, chartThemePositionColor(theme.raw)],
     ["120日位置", formatChartMetricValue("LOW", trend.lowPositionPct120), chartLowPositionColor(trend.lowPositionPct120)],
@@ -24600,6 +24615,13 @@ function drawDecisionEvidenceStrip(canvas, { x, y, width, profile = {}, trend = 
       minAsciiScale: 4
     });
   });
+}
+
+function getChartEntryDecision(profile = {}, trend = {}) {
+  if (hasThemeRetreatNoBuyOverride(profile)) {
+    return { raw: "AVOID", label: "回调不买" };
+  }
+  return { raw: trend.entryBias, label: formatChartEntryBias(trend.entryBias) };
 }
 
 function drawSignalMetricsPanel(canvas, { x, y, width, height, profile = {}, trend = {} }) {
@@ -25624,7 +25646,7 @@ function buildFundActionabilitySignals(digest) {
   const evidenceCount = [trend.ok, risk.ok, holdingsOutlook.hasHoldings, feeEvidenceOk].filter(Boolean).length;
   const confidence = evidenceCount >= 4 ? "high" : evidenceCount >= 2 ? "medium" : "low";
   const decisiveEvidence = [
-    trend.ok ? formatTrendActionabilityEvidence(trend) : "",
+    trend.ok ? formatTrendActionabilityEvidence(trend, digest) : "",
     trend.pullbackSetup?.signal && trend.pullbackSetup.signal !== "none" ? `回调启动信号=${trend.pullbackSetup.signalText}，评分=${trend.pullbackSetup.score}` : "",
     formatIntradayTrendActionabilityEvidence(intradayTrend),
     formatValuationSourceAgreementEvidence(valuationSourceAgreement),
@@ -25846,10 +25868,11 @@ function buildFundValuationSourceAgreement(valuation = {}) {
   };
 }
 
-function formatTrendActionabilityEvidence(trend = {}) {
+function formatTrendActionabilityEvidence(trend = {}, candidate = {}) {
   return [
     `走势=${trend.trendLabelText || formatTrendLabel(trend.trendLabel)}`,
-    `入场=${trend.entryBiasText || formatEntryBias(trend.entryBias)}`,
+    `入场=${hasThemeRetreatNoBuyOverride(candidate) ? formatEntryBiasForCandidate(trend.entryBias, candidate) : trend.entryBiasText || formatEntryBias(trend.entryBias)}`,
+    hasThemeRetreatNoBuyOverride(candidate) ? "题材退潮/主力撤离，回调不作为买点" : "",
     Number.isFinite(Number(trend.return5dPct)) ? `5日=${trend.return5dPct}%` : "",
     Number.isFinite(Number(trend.return10dPct)) ? `10日=${trend.return10dPct}%` : "",
     Number.isFinite(Number(trend.return20dPct)) ? `20日=${trend.return20dPct}%` : "",
@@ -30967,7 +30990,9 @@ export {
   findDuplicatePortfolioSettlementGroups,
   findStalePortfolioActiveOrders,
   filterFocusedPullbackRankingCandidates,
+  formatPortfolioSeedVerifiedTrendEvidence,
   formatPortfolioCustomerActionLine,
+  getChartEntryDecision,
   getFeishuCardImageChunkSize,
   getFundReportChartLegendLines,
   getFundReportChartLimit,

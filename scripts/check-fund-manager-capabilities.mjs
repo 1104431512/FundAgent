@@ -4165,6 +4165,28 @@ assert(
   fadingActionability.decisionBlocker.some((item) => item.includes("题材退潮") || item.includes("主力资金撤离")),
   "actionability blockers must tell the customer that capital outflow makes the pullback unbuyable"
 );
+const fadingVerifiedDigest = {
+  ...fadingThemeDigest,
+  trendProfile: { ...fadingThemeDigest.trendProfile, ok: true }
+};
+const fadingTrendEvidenceText = manager.formatPortfolioSeedVerifiedTrendEvidence(fadingVerifiedDigest);
+assert(fadingTrendEvidenceText.includes("入场回调但不买"), "seed trend evidence must override buyable entry text when the theme is fading");
+assert(fadingTrendEvidenceText.includes("不能把回调当买点"), "seed trend evidence must explicitly explain stale-theme catchdown risk");
+assert(!fadingTrendEvidenceText.includes("入场可买"), "seed trend evidence must not say buyable for stale-theme catchdown candidates");
+const fadingVerifiedActionability = manager.buildFundActionabilitySignals(fadingVerifiedDigest);
+assert(
+  fadingVerifiedActionability.decisiveEvidence.some((item) => item.includes("入场=回调但不买") && item.includes("回调不作为买点")),
+  "actionability evidence must replace buyable entry wording with a stale-theme no-buy explanation"
+);
+assert.equal(
+  manager.getChartEntryDecision(fadingVerifiedDigest, fadingVerifiedDigest.trendProfile).label,
+  "回调不买",
+  "fund report charts must not show a green buyable tile for stale-theme pullbacks"
+);
+assert(
+  manager.formatPortfolioSeedVerifiedTrendEvidence({ ...setupDigest, trendProfile: { ...setupDigest.trendProfile, ok: true } }).includes("入场可买"),
+  "normal verified low-position pullbacks should keep the buyable entry label"
+);
 const fadingWatchReadiness = manager.evaluatePortfolioWatchReadiness({
   code: "000023",
   name: "题材退潮修复基金C",
