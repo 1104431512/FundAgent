@@ -5716,6 +5716,61 @@ assert(
   staleNewsPullbackActionability.decisionBlocker.some((item) => item.includes("旧催化") && item.includes("接盘风险")),
   "old-catalyst actionability blockers must call out catchdown risk in customer-readable Chinese"
 );
+const staleButFlowingTheme = {
+  ...executableMicroStarterDigest.seed.matchedThemes[0],
+  id: "ai_old_but_flowing",
+  name: "AI旧催化强资金",
+  leaderSignal: "capital_entering",
+  positionSignal: "main_capital_entering",
+  capitalFollowScore: 76,
+  preheatScore: 70,
+  forwardScore: 64,
+  rotationScore: 58,
+  lowPositionScore: 61,
+  crowdingScore: 20,
+  capitalRetreatScore: 8,
+  avgMainNetInflowPct: 4.2,
+  catalystProfile: { score: 34, summary: "政策落地", risk: false, fresh: false, freshnessLabel: "约5天前旧催化" },
+  newsLogic: "主力刚进场：新闻催化：旧政策消息；催化新鲜度：约5天前旧催化；主力线索：相关板块资金净流入"
+};
+const staleButFlowingDigest = {
+  ...executableMicroStarterDigest,
+  code: "000046",
+  name: "旧催化强资金基金C",
+  matchedThemes: [staleButFlowingTheme],
+  seed: {
+    ...(executableMicroStarterDigest.seed || {}),
+    matchedThemes: [staleButFlowingTheme]
+  }
+};
+assert.equal(
+  manager.hasStaleThemeCatchdownRisk(staleButFlowingDigest),
+  false,
+  "strong current flow can avoid hard catchdown classification, but old catalysts still need a separate downgrade"
+);
+assert.equal(
+  manager.hasPortfolioThemeMicroStarterSetup(staleButFlowingDigest),
+  false,
+  "theme micro-starters must require fresh news/current-event catalyst support even when main-capital flow looks strong"
+);
+const staleButFlowingActionability = manager.buildFundActionabilitySignals(staleButFlowingDigest);
+assert(["wait", "avoid"].includes(staleButFlowingActionability.action), "old-catalyst strong-flow setups must not receive staged-buy actionability");
+assert(
+  staleButFlowingActionability.decisionBlocker.some((item) => item.includes("旧催化") && item.includes("今天的买点")),
+  "old-catalyst strong-flow blockers must explain that stale news is not today's buy basis"
+);
+const staleButFlowingBuyGuard = manager.evaluatePortfolioBuyDiscipline(
+  { action: "BUY", code: "000046", name: "旧催化强资金基金C", targetWeightPct: 1 },
+  staleButFlowingDigest,
+  [],
+  redeploymentAccount
+);
+assert.equal(staleButFlowingBuyGuard.ok, false, "portfolio buy discipline must block old-catalyst strong-flow BUY attempts");
+assert(
+  staleButFlowingBuyGuard.reason.includes("旧新闻/旧催化")
+    && staleButFlowingBuyGuard.reason.includes("今天的买点"),
+  "old-catalyst strong-flow BUY blocks must use explicit customer-readable stale-catalyst wording"
+);
 const staleNewsLeaderboards = manager.buildThemeLeaderboards([staleNewsAiTheme]);
 assert(
   staleNewsLeaderboards.retreat.items.some((item) => item.name === "AI/算力" && item.reason.includes("接盘风险")),

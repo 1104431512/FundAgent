@@ -1117,6 +1117,10 @@ const requiredPatterns = [
     message: "theme catalyst logic must track headline freshness and block stale news from actionable main-capital/preheat support."
   },
   {
+    pattern: /(?=[\s\S]*function getStaleCatalystThemeWarnings[\s\S]{0,900}旧新闻\/旧催化[\s\S]{0,700}今天的买点)(?=[\s\S]*function getActionabilityThemeRetreatDiscipline[\s\S]{0,900}getStaleCatalystThemeWarnings\(digest\)[\s\S]{0,500}系统旧催化降级)/,
+    message: "old catalysts must downgrade actionability even when they are not yet classified as hard catchdown risk."
+  },
+  {
     pattern: /buildThemeLeaderboards[\s\S]{0,1200}main_capital[\s\S]{0,700}hasFreshThemeCatalystContext\(theme\)[\s\S]{0,1800}preheat[\s\S]{0,700}hasFreshThemeCatalystContext\(theme\)/,
     message: "main-capital and preheat leaderboards must both require fresh catalyst context."
   },
@@ -2009,6 +2013,10 @@ const requiredPatterns = [
     message: "fund actionability micro-starter support must reject stale-theme catchdown risk and require verified theme-carrier evidence."
   },
   {
+    pattern: /function isThemeLowBaseMicroStarterSupport[\s\S]{0,500}hasFreshThemeCatalystContext\(theme\)[\s\S]{0,700}function isThemeLaunchProbeSupport[\s\S]{0,300}hasFreshThemeCatalystContext\(theme\)/,
+    message: "theme micro-starter recognition must require fresh catalyst support for both low-base and launch-probe setups."
+  },
+  {
     pattern: /function collectCandidateHoldings[\s\S]{0,700}candidate\.topHoldings[\s\S]{0,500}candidate\.seed\?\.topHoldings/,
     message: "fund holding-carrier checks must read topHoldings arrays from seed previews and fund snapshots, not only nested holdings.equityTopHoldings."
   },
@@ -2137,7 +2145,7 @@ const requiredPatterns = [
     message: "portfolio BUY guard must explain when low-position launch or early-turn evidence is missing."
   },
   {
-    pattern: /function evaluatePortfolioBuyDiscipline[\s\S]{0,2600}getPortfolioActionableThemeSupportGap\(profile\)[\s\S]{0,500}portfolio_theme_support_guard[\s\S]{0,7000}function getPortfolioActionableThemeSupportGap[\s\S]{0,500}!themeSignals\.length \|\| hasActionableThemeSupport\(candidate\)/,
+    pattern: /(?=[\s\S]*function evaluatePortfolioBuyDiscipline[\s\S]{0,2600}getPortfolioActionableThemeSupportGap\(profile\)[\s\S]{0,500}portfolio_theme_support_guard)(?=[\s\S]*function getPortfolioActionableThemeSupportGap[\s\S]{0,900}!themeSignals\.length \|\| hasActionableThemeSupport\(candidate\))/,
     message: "portfolio BUY guard must block theme-labeled pullbacks that lack current actionable main-capital, preheat, or rotation support."
   },
   {

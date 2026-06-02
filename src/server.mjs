@@ -5854,6 +5854,8 @@ function getPortfolioActionableThemeSupportGap(candidate = {}) {
   if (catchdownWarnings.length) return catchdownWarnings[0];
   const unconfirmedWarnings = getUnrefreshedMarketThemeWarnings(candidate);
   if (unconfirmedWarnings.length) return unconfirmedWarnings[0];
+  const staleCatalystWarnings = getStaleCatalystThemeWarnings(candidate);
+  if (staleCatalystWarnings.length) return staleCatalystWarnings[0];
   if (!themeSignals.length || hasActionableThemeSupport(candidate)) return "";
   return "缺少当前主力进场、题材预热或低位轮动支撑，不能把回调当成启动买点。";
 }
@@ -5864,6 +5866,20 @@ function getUnrefreshedMarketThemeWarnings(candidate = {}) {
     .map((theme) => {
       const name = theme.name || theme.id || "相关题材";
       return `${name}旧题材线索未被当前题材雷达确认，不能拿历史热点、旧新闻或旧主力标签当今天的买入依据。`;
+    })
+    .slice(0, 3);
+}
+
+function getStaleCatalystThemeWarnings(candidate = {}) {
+  return getCandidateThemeSignals(candidate)
+    .filter((theme) =>
+      theme?.catalystProfile?.fresh === false
+      && !isUnrefreshedMarketThemeSignal(theme)
+    )
+    .map((theme) => {
+      const name = theme.name || theme.id || "相关题材";
+      const freshness = theme.catalystProfile?.freshnessLabel ? `（${theme.catalystProfile.freshnessLabel}）` : "";
+      return `${name}只有旧新闻/旧催化${freshness}，没有新的新闻时事或主力接力确认，不能把低位回调当今天的买点。`;
     })
     .slice(0, 3);
 }
@@ -27682,7 +27698,7 @@ function isThemeLowBaseMicroStarterSupport(theme = {}) {
   return !hasThemeCapitalRetreatRisk(theme)
     && !isStaleThemeCatchdownRiskTheme(theme)
     && Number(theme.crowdingScore) < 45
-    && Boolean(theme.catalystProfile?.summary || theme.newsLogic)
+    && hasFreshThemeCatalystContext(theme)
     && (
       ["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)
       || ["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)
@@ -27821,6 +27837,14 @@ function getActionabilityThemeRetreatDiscipline(digest = {}, { isMoneyMarket = f
       scoreCap: 44,
       scorePenalty: 18,
       blocker: `系统接盘风险拦截：${catchdownWarnings[0]}。`
+    };
+  }
+  const staleCatalystWarnings = getStaleCatalystThemeWarnings(digest);
+  if (staleCatalystWarnings.length) {
+    return {
+      scoreCap: 54,
+      scorePenalty: 10,
+      blocker: `系统旧催化降级：${staleCatalystWarnings[0]}`
     };
   }
   const warnings = getCandidateThemeRetreatWarnings(digest);
