@@ -2237,6 +2237,7 @@ assert(adminSource.includes("renderManagerCustomerActionCrossCheck") && adminSou
 assert(adminStyleSource.includes("ranking-action-leaderboard") && adminStyleSource.includes("portfolio-action-leaderboard"), "admin UI must style customer action leaderboards in both overview and full ranking terminal");
 assert(adminStyleSource.includes("ranking-action-boundary"), "admin UI must style action leaderboard execution boundaries clearly");
 assert(adminStyleSource.includes("ranking-action-crosscheck"), "admin UI must style action leaderboard cross-check evidence clearly");
+assert(adminSource.includes("底层持仓走弱") && adminSource.includes("表面回调可能继续下探"), "admin watchlist hard-risk strip must surface weak top-holding pulse as a first-class danger chip");
 assert(adminSource.includes("renderPortfolioConsensusRadar") && adminSource.includes("consensusRadar"), "admin manager ranking board must render the cross-list consensus radar in overview and ranking terminal");
 assert(adminStyleSource.includes("consensus-radar") && adminStyleSource.includes("consensus-radar-grid"), "admin UI must style consensus radar lanes as compact terminal entries");
 assert(adminStyleSource.includes("ranking-customer-digest"), "admin UI must style customer-facing ranking digest as a first-class panel");
