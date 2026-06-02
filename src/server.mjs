@@ -3180,8 +3180,9 @@ async function fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist =
     ...dataBlockedCandidates
   ], marketSnapshot);
   const themeRadar = Array.isArray(marketSnapshot?.themeRadar) ? marketSnapshot.themeRadar : [];
+  const themeCarrierSeedCandidates = buildPortfolioThemeOpportunitySeedCandidates(marketSnapshot);
   const candidates = await fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar);
-  return selectPortfolioWatchlistSeedCandidates(candidates, activeWatchlist, themeRadar, {
+  return selectPortfolioWatchlistSeedCandidates(mergeCandidateFunds(themeCarrierSeedCandidates, candidates), activeWatchlist, themeRadar, {
     limit: forceRedeploymentScan || forceBlockedReplacementScan || forceDataBlockedScan || forceThemeOpportunityScan
       ? finiteNumberOr(process.env.PORTFOLIO_REDEPLOYMENT_SEED_LIMIT, 8)
       : Math.min(deficit, finiteNumberOr(process.env.PORTFOLIO_WATCHLIST_SEED_LIMIT, 6))
@@ -3272,6 +3273,67 @@ function buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot = null) {
       })
     };
   }).filter((group) => group.keywords.length);
+}
+
+function buildPortfolioThemeOpportunitySeedCandidates(marketSnapshot = null) {
+  const themeRadar = Array.isArray(marketSnapshot?.themeRadar) ? marketSnapshot.themeRadar : [];
+  if (!themeRadar.length) return [];
+  const leaderItems = collectPortfolioThemeOpportunityLeaderboardItems(marketSnapshot)
+    .filter((item) => ["mainCapital", "preheat", "lowRotation"].includes(item.laneKey));
+  if (!leaderItems.length) return [];
+  const laneByThemeKey = new Map();
+  for (const item of leaderItems) {
+    for (const key of [item.id, item.name].map((value) => normalizeIntentText(value)).filter(Boolean)) {
+      if (!laneByThemeKey.has(key)) laneByThemeKey.set(key, item);
+    }
+  }
+  const seeds = [];
+  for (const theme of themeRadar) {
+    const themeKeys = [theme.id, theme.name].map((value) => normalizeIntentText(value)).filter(Boolean);
+    const lane = themeKeys.map((key) => laneByThemeKey.get(key)).find(Boolean);
+    if (!lane || !isPortfolioThemeOpportunitySeedTheme(theme)) continue;
+    const funds = Array.isArray(theme.evidence?.funds) ? theme.evidence.funds : [];
+    const keywords = collectThemeOpportunitySearchKeywords(theme, {
+      extra: [theme.name, theme.newsLogic, theme.primaryCatalyst, lane.title]
+    }).slice(0, 10);
+    const compactTheme = compactMatchedThemeSignal(theme);
+    for (const fund of funds.slice(0, 5)) {
+      const code = String(fund.code || "").match(/^\d{6}$/)?.[0] || "";
+      if (!code) continue;
+      seeds.push({
+        ...fund,
+        code,
+        name: fund.name || "",
+        shareClass: fund.shareClass || inferFundShareClass(fund.name || ""),
+        type: fund.type || "",
+        keywords: [...new Set([...(fund.keywords || []), ...keywords, "题材榜单代表基金"].filter(Boolean))],
+        matchedThemes: [compactTheme],
+        themeOpportunityRequirement: "require_current_theme_playbook",
+        candidateRole: `${lane.title || "主力/预热题材"}代表基金`,
+        setupDiscoverySource: `theme_leaderboard_carrier_seed:${lane.laneKey || lane.id || "theme"}`,
+        themeEvidence: formatCandidateThemeEvidence({ matchedThemes: [compactTheme] }),
+        dataBasis: [
+          `题材榜单：${lane.title || "主力/预热题材"}`,
+          theme.newsLogic ? `题材逻辑：${theme.newsLogic}` : "",
+          theme.catalystProfile?.summary ? `催化性质：${theme.catalystProfile.summary}` : "",
+          theme.primaryCatalyst ? `新闻线索：${theme.primaryCatalyst}` : ""
+        ].filter(Boolean),
+        source: fund.source || "market_theme_leaderboard"
+      });
+    }
+  }
+  return mergeCandidateFunds(seeds);
+}
+
+function isPortfolioThemeOpportunitySeedTheme(theme = {}) {
+  if (!theme || typeof theme !== "object") return false;
+  if (hasThemeCapitalRetreatRisk(theme) || isStaleThemeCatchdownRiskTheme(theme)) return false;
+  if (theme.positionSignal === "high_chase_risk" || theme.stage === "crowded" || Number(theme.crowdingScore) >= 55) return false;
+  const mainOrPreheat = hasFreshThemeCatalystContext(theme) && hasThemeLeaderOrPreheatSignal(theme);
+  const lowRotation = theme.positionSignal === "low_position_rotation"
+    || theme.stage === "low_position_rotation"
+    || (Number(theme.rotationScore) >= 50 && Number(theme.lowPositionScore) >= 45);
+  return Boolean(mainOrPreheat || (lowRotation && (hasFreshThemeCatalystContext(theme) || Number(theme.capitalFollowScore) >= 45)));
 }
 
 function getPortfolioThemeCoverageAnchors(group = {}) {
@@ -3439,6 +3501,7 @@ function formatPortfolioWatchSeedKind(candidate = {}, profile = null) {
   }
   if (isLowBaseLaunchWatchSeed(candidate)) return "低位启动前夜候选";
   const text = `${candidate.name || ""} ${(candidate.keywords || []).join(" ")} ${candidate.setupDiscoverySource || ""}`;
+  if (/theme_leaderboard_carrier_seed|题材榜单代表基金/.test(text)) return "主力预热代表基金候选";
   if (/近1周低位转强候选|weekly_reversal_scan/.test(text)) return "近1周低位转强候选";
   return "低位回调召回候选";
 }
@@ -3450,6 +3513,9 @@ function formatPortfolioWatchSeedCandidateRole(status, seedKind) {
   }
   if (seedKind === "低位主力预热候选") {
     return status === "ready" ? "低位主力预热微型试探备选" : "低位主力预热观察备选";
+  }
+  if (seedKind === "主力预热代表基金候选") {
+    return status === "ready" ? "主力预热代表基金微型复核备选" : "主力预热代表基金观察备选";
   }
   if (status === "ready") {
     return seedKind === "低位启动前夜候选" ? "净值验证低位启动前夜备选" : "净值验证低位启动备选";
@@ -3501,10 +3567,10 @@ function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = [], optio
         ...(candidate.keywords || []).slice(0, 3).map((keyword) => `召回标签：${keyword}`)
       ].filter(Boolean),
       buyTriggers: [
-        seedKind === "主线启动验证候选"
+        seedKind === "主线启动验证候选" || seedKind === "主力预热代表基金候选"
           ? "主力资金和新闻催化继续成立，代表持仓不冲高回落，才允许0.5%-1.2%微型验证。"
           : "后续5日/10日继续温和转强，且近20日涨幅不超过10%。",
-        seedKind === "主线启动验证候选"
+        seedKind === "主线启动验证候选" || seedKind === "主力预热代表基金候选"
           ? "题材不进入拥挤/追涨状态，基金前十大仍能承载龙头或指数标的。"
           : "主题不进入拥挤状态，120日低位或距高点回撤证据得到净值下钻确认。",
         "费用和份额类别适合计划持有期后，再小仓位分批。"
@@ -3523,7 +3589,7 @@ function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = [], optio
           : ""
       ].filter(Boolean),
       positionPlan: status === "ready"
-        ? seedKind === "主线启动验证候选"
+        ? seedKind === "主线启动验证候选" || seedKind === "主力预热代表基金候选"
           ? "只按主线启动微型验证处理，单笔0.5%-1.2%，若新闻或主力退潮立即撤回。"
           : "触发后先作为卫星仓小额分批，不直接重仓。"
         : status === "blocked"
@@ -24210,7 +24276,32 @@ function mergeCandidateFundRecord(existing = {}, incoming = {}) {
   if (merged.discoverySources.length) {
     merged.setupDiscoverySource = merged.discoverySources.join("/");
   }
+  merged.matchedThemes = mergeCandidateMatchedThemes(existing.matchedThemes, incoming.matchedThemes);
+  if (isMissingCandidateValue(merged.themeOpportunityRequirement) && !isMissingCandidateValue(incoming.themeOpportunityRequirement)) {
+    merged.themeOpportunityRequirement = incoming.themeOpportunityRequirement;
+  } else if (incoming.themeOpportunityRequirement === "require_current_theme_playbook") {
+    merged.themeOpportunityRequirement = "require_current_theme_playbook";
+  }
+  merged.dataBasis = mergeStringLists(existing.dataBasis, incoming.dataBasis).slice(0, 8);
+  if (isMissingCandidateValue(merged.themeEvidence) && !isMissingCandidateValue(incoming.themeEvidence)) {
+    merged.themeEvidence = incoming.themeEvidence;
+  }
+  if (isMissingCandidateValue(merged.candidateRole) && !isMissingCandidateValue(incoming.candidateRole)) {
+    merged.candidateRole = incoming.candidateRole;
+  }
   return merged;
+}
+
+function mergeCandidateMatchedThemes(...groups) {
+  const byKey = new Map();
+  for (const theme of groups.flat()) {
+    if (!theme || typeof theme !== "object") continue;
+    const compact = compactMatchedThemeSignal(theme);
+    const key = normalizeIntentText(compact.id || compact.name || JSON.stringify(compact).slice(0, 80));
+    if (!key || byKey.has(key)) continue;
+    byKey.set(key, compact);
+  }
+  return [...byKey.values()].slice(0, 3);
 }
 
 function isMissingCandidateValue(value) {
@@ -32621,6 +32712,7 @@ export {
   buildPortfolioBacktestDiagnostics,
   buildPortfolioManagerPerformanceStats,
   buildPortfolioMarketSnapshotPrioritySeeds,
+  buildPortfolioThemeOpportunitySeedCandidates,
   buildPortfolioThemeOpportunityKeywordGroups,
   buildPortfolioCapabilityDiagnostics,
   buildPortfolioCapabilityActionQueue,

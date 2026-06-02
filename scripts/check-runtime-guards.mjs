@@ -2021,7 +2021,7 @@ const requiredPatterns = [
     message: "portfolio watchlist seeding must search replacements when candidates are blocked by trend/data-source gaps."
   },
   {
-    pattern: /async function fetchPortfolioWatchlistSeedCandidates[\s\S]{0,1800}shouldForcePortfolioThemeOpportunitySeedScan[\s\S]{0,900}PORTFOLIO_REDEPLOYMENT_SEED_LIMIT/,
+    pattern: /async function fetchPortfolioWatchlistSeedCandidates[\s\S]{0,2200}shouldForcePortfolioThemeOpportunitySeedScan[\s\S]{0,1200}buildPortfolioThemeOpportunitySeedCandidates[\s\S]{0,900}PORTFOLIO_REDEPLOYMENT_SEED_LIMIT/,
     message: "portfolio watchlist seeding must force candidate recall when live main-capital/preheat/low-rotation themes are not represented in the watchlist."
   },
   {
@@ -2029,7 +2029,7 @@ const requiredPatterns = [
     message: "portfolio watchlist seeding must search representative funds for live theme opportunities instead of generic low-position funds only."
   },
   {
-    pattern: /function buildPortfolioThemeOpportunityKeywordGroups[\s\S]{0,1400}collectPortfolioThemeOpportunityLeaderboardItems[\s\S]{0,900}collectThemeOpportunitySearchKeywords[\s\S]{0,1400}function collectThemeOpportunitySearchKeywords[\s\S]{0,1200}fundKeywords[\s\S]{0,700}newsKeywords/,
+    pattern: /function buildPortfolioThemeOpportunityKeywordGroups[\s\S]{0,1400}collectPortfolioThemeOpportunityLeaderboardItems[\s\S]{0,900}collectThemeOpportunitySearchKeywords[\s\S]{0,2600}function buildPortfolioThemeOpportunitySeedCandidates[\s\S]{0,2200}题材榜单代表基金[\s\S]{0,2200}function collectThemeOpportunitySearchKeywords[\s\S]{0,1200}fundKeywords[\s\S]{0,700}newsKeywords/,
     message: "portfolio theme opportunity seed recall must derive grouped theme/fund keywords from main-capital, preheat, and low-rotation leaderboards."
   },
   {

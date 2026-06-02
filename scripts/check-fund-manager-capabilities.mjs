@@ -481,6 +481,50 @@ assert(liveThemeSeedSearchText.includes("新闻催化") && liveThemeSeedSearchTe
 const liveThemeKeywordGroup = manager.buildPortfolioThemeOpportunityKeywordGroups(liveThemeOpportunitySnapshot)[0];
 assert(liveThemeKeywordGroup?.anchors?.some((item) => /低空经济|万丰奥威/.test(item)), "theme representative coverage must keep specific theme or leader-stock anchors");
 assert(!liveThemeKeywordGroup?.anchors?.some((item) => /军工|高端制造/.test(item)), "theme representative coverage anchors must not be satisfied by broad sector labels alone");
+const directThemeCarrierSnapshot = {
+  themeRadar: [{
+    ...liveThemeOpportunitySnapshot.themeRadar[0],
+    evidence: {
+      ...(liveThemeOpportunitySnapshot.themeRadar[0].evidence || {}),
+      funds: [{
+        code: "000099",
+        name: "低空预热种子基金C",
+        type: "股票型",
+        shareClass: "C",
+        dailyPct: 0.6,
+        oneMonthPct: 3.2,
+        oneYearPct: -4.8
+      }]
+    }
+  }]
+};
+directThemeCarrierSnapshot.themeLeaderboards = manager.buildThemeLeaderboards(directThemeCarrierSnapshot.themeRadar);
+const directThemeSeeds = manager.buildPortfolioThemeOpportunitySeedCandidates(directThemeCarrierSnapshot);
+assert.equal(directThemeSeeds[0]?.code, "000099", "main-capital/preheat theme leaderboards must create direct representative-fund seed candidates");
+assert(
+  directThemeSeeds[0]?.setupDiscoverySource?.includes("theme_leaderboard_carrier_seed"),
+  "direct representative-fund seeds must carry the theme-leaderboard discovery source"
+);
+assert(
+  directThemeSeeds[0]?.matchedThemes?.[0]?.newsLogic?.includes("低空经济示范区政策加速落地"),
+  "direct representative-fund seeds must preserve fresh news/current-event logic"
+);
+const mergedDirectThemeSeed = manager.mergeCandidateFunds([{ code: "000099", name: "低空预热种子基金C" }], directThemeSeeds)[0];
+assert(
+  mergedDirectThemeSeed?.matchedThemes?.[0]?.leaderSignal === "preheat_catalyst",
+  "candidate merging must not drop matched theme evidence from direct leaderboard seeds"
+);
+const selectedDirectThemeSeeds = manager.selectPortfolioWatchlistSeedCandidates(directThemeSeeds, fullOldThemeWatchlist, directThemeCarrierSnapshot.themeRadar, { minScore: 0, limit: 3 });
+assert.equal(selectedDirectThemeSeeds[0]?.code, "000099", "direct leaderboard representative-fund seeds must be selectable for the portfolio watchlist");
+const directThemeSeedUpdates = manager.buildPortfolioWatchlistUpdatesFromSeedCandidates(selectedDirectThemeSeeds);
+assert(
+  directThemeSeedUpdates[0]?.candidateRole?.includes("主力预热代表基金"),
+  "watchlist updates from direct theme seeds must tell the manager this is a main-capital/preheat representative fund"
+);
+assert(
+  directThemeSeedUpdates[0]?.buyTriggers?.[0]?.includes("新闻催化"),
+  "watchlist updates from direct theme seeds must keep news catalyst validation as the first trigger"
+);
 assert.equal(
   manager.shouldForcePortfolioThemeOpportunitySeedScan(liveThemeOpportunitySnapshot, [{
     code: "000097",
