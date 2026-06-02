@@ -3697,6 +3697,27 @@ assert.equal(
   true,
   "portfolio buy discipline should allow verified low-position ready candidates"
 );
+const unsupportedThemeBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, {
+  ...verifiedSeedProfile,
+  matchedThemes: [{
+    id: "unsupported_preheat",
+    name: "无催化预热题材",
+    stage: "preheat_catalyst",
+    positionSignal: "preheat_catalyst_watch",
+    actionBias: "preheat_watch",
+    leaderSignal: "preheat_catalyst",
+    forwardScore: 58,
+    rotationScore: 54,
+    lowPositionScore: 62,
+    crowdingScore: 18,
+    capitalFollowScore: 61,
+    preheatScore: 74,
+    catalystProfile: { score: 0, tags: [], summary: "", risk: false },
+    newsLogic: ""
+  }]
+});
+assert.equal(unsupportedThemeBuyGuard.ok, false, "portfolio buy discipline must block BUY when a theme label lacks current main-capital/preheat/rotation support");
+assert(unsupportedThemeBuyGuard.reason.includes("当前主力进场") && unsupportedThemeBuyGuard.evidence.includes("来源：portfolio_theme_support_guard"), "unsupported theme buy block must explain the missing current theme support");
 const hotBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000011" }, hotVerifiedSeedProfile);
 assert.equal(hotBuyGuard.ok, false, "portfolio buy discipline must block verified chase-risk buys");
 assert(hotBuyGuard.reason.includes("系统买入纪律拦截"), "blocked portfolio buy must explain the execution-layer guard");

@@ -5319,6 +5319,14 @@ function evaluatePortfolioBuyDiscipline(action = {}, profile = null, positions =
   }
   const trendEvidence = formatPortfolioSeedVerifiedTrendEvidence(profile);
   const themeMicroStarter = hasPortfolioThemeMicroStarterSetup(profile);
+  const themeSignals = getCandidateThemeSignals(profile);
+  if (themeSignals.length && !hasActionableThemeSupport(profile)) {
+    return {
+      ok: false,
+      reason: "系统买入纪律拦截：缺少当前主力进场、题材预热或低位轮动支撑，不能把回调当成启动买点。",
+      evidence: [trendEvidence, formatCandidateThemeEvidence(profile), "来源：portfolio_theme_support_guard"].filter(Boolean)
+    };
+  }
   if (hasPortfolioVerifiedSeedChaseRisk(action, profile)
     || trend.entryBias === "wait_pullback"
     || trend.entryBias === "avoid_now"

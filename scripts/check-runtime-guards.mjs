@@ -2057,6 +2057,10 @@ const requiredPatterns = [
     message: "portfolio BUY guard must explain when low-position launch or early-turn evidence is missing."
   },
   {
+    pattern: /function evaluatePortfolioBuyDiscipline[\s\S]{0,2600}getCandidateThemeSignals\(profile\)[\s\S]{0,700}!hasActionableThemeSupport\(profile\)[\s\S]{0,500}当前主力进场、题材预热或低位轮动支撑[\s\S]{0,300}portfolio_theme_support_guard/,
+    message: "portfolio BUY guard must block theme-labeled pullbacks that lack current actionable main-capital, preheat, or rotation support."
+  },
+  {
     pattern: /还差5日\/10日刚转强证据/,
     message: "watchlist readiness gaps must expose missing early-turn evidence before buying."
   },
