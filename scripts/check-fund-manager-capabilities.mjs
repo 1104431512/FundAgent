@@ -1596,6 +1596,7 @@ assert(adminSource.includes("quality_score"), "admin UI must render the fund-qua
 assert(adminSource.includes("manager_stability"), "admin UI must render the manager-stability ranking lane");
 assert(adminSource.includes("portfolio_fit"), "admin UI must render the portfolio-fit ranking lane");
 assert(adminSource.includes("rotation_opportunity"), "admin UI must render the sector-rotation ranking lane");
+assert(adminSource.includes("theme_momentum") && adminSource.includes("主力预热"), "admin UI must render the main-capital/preheat opportunity ranking lane");
 assert(adminSource.includes("chase_risk"), "admin UI must render the chase-risk ranking lane");
 assert(adminSource.includes("drawdown_defense"), "admin UI must render the drawdown-defense ranking lane");
 assert(adminSource.includes("data_confidence"), "admin UI must render the data-confidence ranking lane");
@@ -4010,7 +4011,10 @@ assert(
 );
 const microStarterDigest = {
   ...capitalEnteringDigest,
+  unitNav: 1.118,
+  snapshotDate: todayIso,
   trendProfile: {
+    ok: true,
     pullbackSetup: { signal: "none", score: 42 },
     trendLabel: "range_or_mixed",
     entryBias: "wait_pullback",
@@ -4051,17 +4055,76 @@ const microStarterActionability = manager.buildFundActionabilitySignals(microSta
 assert.equal(microStarterActionability.action, "staged_buy", "main-capital/preheat setups with gentle low-position turns must allow a small starter instead of endless waiting");
 assert(microStarterActionability.allocationBand.includes("0.5%-2.5%"), "micro-starter actionability must cap sizing to a tiny starter band");
 assert(microStarterActionability.decisionBlocker.some((item) => item.includes("小仓试探")), "micro-starter actionability must explain that the normal buy point is not fully confirmed");
+const executableMicroStarterDigest = { ...microStarterDigest, actionability: microStarterActionability };
+assert.equal(manager.hasPortfolioThemeMicroStarterSetup(executableMicroStarterDigest), true, "portfolio discipline must recognize main-capital/preheat low-position micro-starters");
+const microStarterBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000024", targetWeightPct: 3 }, executableMicroStarterDigest, [], redeploymentAccount);
+assert.equal(microStarterBuyGuard.ok, true, "buy discipline must allow a theme-supported micro starter instead of forcing endless wait_pullback");
+assert(microStarterBuyGuard.reason.includes("微型试探仓"), "theme micro-starter buy guard must label the action as a tiny probe");
+const microStarterTradeAmount = manager.resolvePortfolioTradeAmount(redeploymentAccount, { action: "BUY", code: "000024", amount: 8000, targetWeightPct: 8 }, "BUY", null, executableMicroStarterDigest);
+assert.equal(microStarterTradeAmount, 1200, "theme micro-starter sizing must cap a single order to the tiny 1.2% probe budget");
 const capitalEnteringRotationRanking = manager.buildPortfolioRotationOpportunityRanking([{
   code: "000024",
   name: "主力预热低位基金C",
   status: "ready",
   readinessScore: 74,
-  lastSnapshot: capitalEnteringDigest
+  lastSnapshot: executableMicroStarterDigest
 }]);
 assert(
   capitalEnteringRotationRanking.items.some((item) => item.code === "000024" && item.action.includes("主力预热") && item.facts.some((fact) => /主力|逻辑/.test(fact))),
   "rotation ranking must surface main-capital entry and news logic instead of reducing the candidate to generic wait-and-see"
 );
+const themeMomentumRanking = manager.buildPortfolioThemeMomentumRanking([{
+  code: "000024",
+  name: "主力预热低位基金C",
+  status: "watch",
+  readinessScore: 74,
+  lastSnapshot: executableMicroStarterDigest
+}]);
+assert(
+  themeMomentumRanking.items.some((item) => item.code === "000024" && item.action.includes("微型试探") && item.facts.some((fact) => /催化|逻辑|主力进场/.test(fact))),
+  "theme momentum ranking must connect main-capital/preheat news logic to the representative fund action"
+);
+const themeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
+  redeploymentAccount,
+  [{
+    code: "000024",
+    name: "主力预热低位基金C",
+    status: "watch",
+    readinessScore: 74,
+    lastSnapshot: executableMicroStarterDigest
+  }],
+  [executableMicroStarterDigest],
+  {
+    fetchedAt: "2026-05-20T06:30:00.000Z",
+    themeRadar: executableMicroStarterDigest.seed.matchedThemes,
+    themeLeaderboards: manager.buildThemeLeaderboards(executableMicroStarterDigest.seed.matchedThemes)
+  }
+);
+assert.equal(themeOpportunityPlan.candidates[0].opportunityAction, "theme_micro_starter", "theme opportunity plan must convert actionable main-capital/preheat setups into micro-starter candidates");
+assert.equal(themeOpportunityPlan.candidates[0].executable, true, "theme opportunity candidates should be executable only after buy discipline and fee checks pass");
+assert(themeOpportunityPlan.candidates[0].newsLogic.includes("新闻催化"), "theme opportunity plan must preserve the news/current-event logic behind the move");
+const themeOpportunityDecision = manager.ensurePortfolioThemeOpportunityReviewed(
+  { actions: [], learningNotes: [] },
+  redeploymentAccount,
+  [{
+    code: "000024",
+    name: "主力预热低位基金C",
+    status: "watch",
+    readinessScore: 74,
+    lastSnapshot: executableMicroStarterDigest
+  }],
+  {
+    profiles: [executableMicroStarterDigest],
+    marketSnapshot: {
+      fetchedAt: "2026-05-20T06:30:00.000Z",
+      themeRadar: executableMicroStarterDigest.seed.matchedThemes,
+      themeLeaderboards: manager.buildThemeLeaderboards(executableMicroStarterDigest.seed.matchedThemes)
+    }
+  }
+);
+assert.equal(themeOpportunityDecision.actions[0].action, "BUY", "theme opportunity guard must inject a BUY review when micro-starter evidence is executable");
+assert.equal(themeOpportunityDecision.actions[0].targetWeightPct, 1, "theme opportunity guard must keep micro-starter target weight tiny");
+assert(themeOpportunityDecision.actions[0].dataBasis.includes("来源：portfolio_theme_opportunity_guard"), "theme opportunity guard must leave a traceable source");
 const liveThemeRadar = manager.buildThemeRadar({
   conceptBoards: [
     { boardCode: "BKAI1", name: "人工智能", changePct: 1.4, mainNetInflowPct: 2.6, leadStock: "工业富联", quoteTime: "10:30" },

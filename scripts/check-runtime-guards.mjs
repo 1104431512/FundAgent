@@ -1681,8 +1681,8 @@ const requiredPatterns = [
     message: "portfolio decision prompts must make the customer decision summary, action leaderboard, and action deck the first layer for client-facing buy, wait, avoid, sell, and data guidance."
   },
   {
-    pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,1900}cash_redeployment[\s\S]{0,500}position_sizing[\s\S]{0,500}quality_score[\s\S]{0,500}manager_stability[\s\S]{0,500}portfolio_fit[\s\S]{0,900}drawdown_defense[\s\S]{0,900}data_confidence[\s\S]{0,900}replacement_choice/,
-    message: "portfolio decision prompts must force the model to review the cash-redeployment, position-sizing, fund-quality, manager-stability, portfolio-fit, drawdown-defense, data-confidence, and replacement-choice ranking lanes."
+    pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,1900}cash_redeployment[\s\S]{0,500}position_sizing[\s\S]{0,500}quality_score[\s\S]{0,500}manager_stability[\s\S]{0,500}portfolio_fit[\s\S]{0,900}theme_momentum[\s\S]{0,900}drawdown_defense[\s\S]{0,900}data_confidence[\s\S]{0,900}replacement_choice/,
+    message: "portfolio decision prompts must force the model to review the cash-redeployment, position-sizing, fund-quality, manager-stability, portfolio-fit, main-capital/preheat, drawdown-defense, data-confidence, and replacement-choice ranking lanes."
   },
   {
     pattern: /buildPortfolioWatchlistStatusLines[\s\S]{0,1200}buildPortfolioWatchRankingCitationMap[\s\S]{0,1600}formatPortfolioWatchDetailLine/,
@@ -2721,8 +2721,8 @@ const requiredPatterns = [
     message: "ranking-board guards must add traceable fallback review actions when top ranked items are omitted."
   },
   {
-    pattern: /decision_synthesis[\s\S]*buy_preparation[\s\S]*launch_setup[\s\S]*cash_redeployment[\s\S]*position_sizing[\s\S]*quality_score[\s\S]*manager_stability[\s\S]*portfolio_fit[\s\S]*theme_allocation[\s\S]*rotation_opportunity[\s\S]*chase_risk[\s\S]*drawdown_defense[\s\S]*data_confidence[\s\S]*holdings_outlook[\s\S]*fee_suitability[\s\S]*replacement_choice[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
-    message: "manager ranking boards must cover decision synthesis, buy preparation, low-position launch, cash redeployment, position sizing, fund quality, manager stability, portfolio fit, theme allocation, sector rotation, chase risk, drawdown defense, data confidence, holdings outlook, fee suitability, replacement choice, opportunity cost, sell risk, and user holding alerts."
+    pattern: /decision_synthesis[\s\S]*buy_preparation[\s\S]*launch_setup[\s\S]*cash_redeployment[\s\S]*position_sizing[\s\S]*quality_score[\s\S]*manager_stability[\s\S]*portfolio_fit[\s\S]*theme_allocation[\s\S]*theme_momentum[\s\S]*rotation_opportunity[\s\S]*chase_risk[\s\S]*drawdown_defense[\s\S]*data_confidence[\s\S]*holdings_outlook[\s\S]*fee_suitability[\s\S]*replacement_choice[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
+    message: "manager ranking boards must cover decision synthesis, buy preparation, low-position launch, cash redeployment, position sizing, fund quality, manager stability, portfolio fit, theme allocation, main-capital/preheat momentum, sector rotation, chase risk, drawdown defense, data confidence, holdings outlook, fee suitability, replacement choice, opportunity cost, sell risk, and user holding alerts."
   },
   {
     pattern: /function buildPortfolioCashRedeploymentRanking[\s\S]{0,2600}现金再部署榜[\s\S]{0,2600}0\.5%-2\.5%/,
@@ -2747,6 +2747,14 @@ const requiredPatterns = [
   {
     pattern: /function buildPortfolioThemeAllocationRanking(?=[\s\S]{0,3600}主题配置榜)(?=[\s\S]{0,3600}代表基金)(?=[\s\S]{0,3600}低位)(?=[\s\S]{0,3600}拥挤)/,
     message: "manager ranking boards must include a theme-allocation lane that chooses sectors first, then representative funds, with low-position and crowding evidence."
+  },
+  {
+    pattern: /function buildPortfolioThemeMomentumRanking(?=[\s\S]{0,3600}主力预热机会榜)(?=[\s\S]{0,3600}新闻逻辑)(?=[\s\S]{0,3600}0\.5%-1\.2%微型试探)/,
+    message: "manager ranking boards must include a main-capital/preheat lane that links news logic to representative fund micro-starters."
+  },
+  {
+    pattern: /(?=[\s\S]*function buildPortfolioThemeOpportunityPlan)(?=[\s\S]*portfolio_theme_opportunity_plan)(?=[\s\S]*theme_micro_starter)(?=[\s\S]*function ensurePortfolioThemeOpportunityReviewed)(?=[\s\S]*portfolio_theme_opportunity_guard)/,
+    message: "portfolio decisions must deterministically review main-capital/preheat theme opportunities instead of allowing generic waiting."
   },
   {
     pattern: /function buildPortfolioDecisionSynthesisRanking[\s\S]{0,2200}买点[\s\S]{0,2200}费率[\s\S]{0,2200}持仓前景/,

@@ -38,6 +38,7 @@ const PORTFOLIO_RISK_LANES = [
 ];
 const PORTFOLIO_SECTOR_LANES = [
   { id: "theme_allocation", title: "主题配置", tone: "theme", empty: "暂无主题配置线索。" },
+  { id: "theme_momentum", title: "主力预热", tone: "theme", empty: "暂无主力预热机会。" },
   { id: "rotation_opportunity", title: "轮动启动", tone: "rotation", empty: "暂无低位轮动线索。" },
   { id: "holdings_outlook", title: "持仓前景", tone: "holdings", empty: "暂无前十大持仓前景线索。" },
   { id: "quality_score", title: "质量优选", tone: "quality", empty: "暂无风险收益质量线索。" }
@@ -84,7 +85,7 @@ const MANAGER_RANKING_GROUPS = [
     id: "opportunity",
     title: "机会",
     hint: "低位与轮动",
-    listIds: ["launch_setup", "theme_allocation", "rotation_opportunity", "holdings_outlook"]
+    listIds: ["launch_setup", "theme_allocation", "theme_momentum", "rotation_opportunity", "holdings_outlook"]
   },
   {
     id: "risk",
@@ -2651,6 +2652,7 @@ function getManagerRankingLensPurpose(list = {}, group = null) {
   if (id === "launch_setup") return "专门找回调完成、低位、准备启动的基金，防止追涨。";
   if (id === "cash_redeployment") return "现金过高时找小额再部署对象，避免一直空等。";
   if (id === "position_sizing") return "把候选转成 0 元观察、小仓试探或分批加仓的仓位方案。";
+  if (id === "theme_momentum") return "把主力进场、题材预热和新闻逻辑连接到代表基金动作。";
   if (id === "theme_allocation" || id === "rotation_opportunity") return "先判断板块和轮动，再选代表基金。";
   if (id === "chase_risk" || id === "drawdown_defense" || id === "sell_risk") return "先处理追涨、回撤和止盈风险，再讨论新增买入。";
   if (id === "data_confidence") return "净值、费率、份额、前十大持仓和来源缺失时，先补证据。";
@@ -3228,6 +3230,7 @@ function getManagerRankingListClass(id = "") {
   if (id === "manager_stability") return "manager";
   if (id === "portfolio_fit") return "fit";
   if (id === "theme_allocation") return "theme";
+  if (id === "theme_momentum") return "theme";
   if (id === "rotation_opportunity") return "rotation";
   if (id === "chase_risk") return "chase";
   if (id === "drawdown_defense") return "defense";
@@ -3249,7 +3252,7 @@ function getManagerRankingActionClass(text = "") {
   if (/质量|夏普|回撤|风险收益/.test(text)) return "quality";
   if (/经理|任期|主理|稳定|产品历史/.test(text)) return "manager";
   if (/组合|适配|补位|同线|重叠/.test(text)) return "fit";
-  if (/主题|赛道|配置|代表基金/.test(text)) return "theme";
+  if (/主力预热|主力进场|题材预热|主题|赛道|配置|代表基金/.test(text)) return "theme";
   if (/追涨|偏热|高位|拥挤|过热/.test(text)) return "chase";
   if (/回撤防线|防线|利润保护|高回撤|回撤/.test(text)) return "defense";
   if (/数据|证据|补证|净值|走势|过期|缺份额|缺费率|缺申购|缺销售服务费|缺数据来源/.test(text)) return "data";

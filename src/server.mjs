@@ -1355,15 +1355,20 @@ async function executePortfolioDecision(db, run, config) {
     ensurePortfolioHeldPositionsReviewed(
       ensurePortfolioMissedFollowThroughReviewed(
         ensurePortfolioStarterBuyFollowUpReviewed(
-          ensurePortfolioRedeploymentPlanReviewed(
-            ensurePortfolioReadyWatchlistReviewed(
-              normalizePortfolioDecision(raw),
+          ensurePortfolioThemeOpportunityReviewed(
+            ensurePortfolioRedeploymentPlanReviewed(
+              ensurePortfolioReadyWatchlistReviewed(
+                normalizePortfolioDecision(raw),
+                watchlist,
+                { profiles: watchlistProfiles }
+              ),
+              accountBefore,
               watchlist,
-              { profiles: watchlistProfiles }
+              { profiles: mergePortfolioProfiles(watchlistProfiles, seedProfiles) }
             ),
             accountBefore,
             watchlist,
-            { profiles: mergePortfolioProfiles(watchlistProfiles, seedProfiles) }
+            { profiles: mergePortfolioProfiles(watchlistProfiles, seedProfiles), marketSnapshot }
           ),
           db
         ),
@@ -1378,7 +1383,7 @@ async function executePortfolioDecision(db, run, config) {
   await yieldToEventLoop();
   const profileCodes = decision.actions.map((action) => action.code).filter(Boolean);
   const actionProfiles = profileCodes.length ? await enrichFunds(profileCodes) : [];
-  const executionProfiles = mergePortfolioProfiles(heldProfiles, actionProfiles);
+  const executionProfiles = mergePortfolioProfiles(actionProfiles, watchlistProfiles, seedProfiles, heldProfiles);
   decision.actions = enforcePortfolioRiskBudget(decision.actions, db.account, executionProfiles);
   decision.actions = enforcePortfolioBuyDiscipline(decision.actions, executionProfiles, db.account.positions, db.account);
   decision.actions = enforcePortfolioHeldPositionRiskOverrides(decision.actions, executionProfiles, db.account.positions);
@@ -1746,6 +1751,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     ? capabilityActionQueue
     : buildPortfolioCapabilityActionQueue({ account, watchlist });
   const redeploymentPlan = buildPortfolioRedeploymentPlan(account, watchlist, mergePortfolioProfiles(watchlistProfiles, seedProfiles));
+  const themeOpportunityPlan = buildPortfolioThemeOpportunityPlan(account, watchlist, mergePortfolioProfiles(watchlistProfiles, seedProfiles), marketSnapshot);
   const decisionManagerRankings = managerRankings || buildPortfolioRankingBoard({ account, watchlist, userPortfolios: [] });
   const compactManagerRankings = compactPortfolioRankingBoardForModel(decisionManagerRankings);
   const compactHeldProfiles = (heldProfiles || []).map(compactPortfolioReviewProfile);
@@ -1776,7 +1782,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，marketView、team 和 actions.dataBasis 必须写清数据缺口；缺少关键板块、排行、新闻或贵金属模块时，只能 WATCH、HOLD 或小额试探，不能当作完整联网证据下重仓 BUY。",
     "必须使用 marketSnapshot.marketIndicators.realtimeFundValuations 复核候选当下温度、盘中走势和数据新鲜度；若盘中走势显示冲高回落或尾盘转弱，不能把最新估算涨幅当作追买理由；成交和盈亏仍以确认净值为准。",
     "若操作或候选涉及 QDII/海外基金，必须使用 marketSnapshot.marketIndicators.globalMarkets 复核外盘和人民币汇率温度，并写清净值披露时差。",
-    "若现金再部署纪律提示 pressureActive=true 且存在 verified_buy 或 starter_buy 候选，actions 必须逐只给 BUY 或明确 WATCH 拦截理由；符合小仓启动条件时优先 0.5%-2.5% 试探，不要继续空泛观望。",
+    "若现金再部署纪律提示 pressureActive=true 且存在 verified_buy、starter_buy 或 theme_micro_starter 候选，actions 必须逐只给 BUY 或明确 WATCH 拦截理由；符合小仓启动条件时优先 0.5%-2.5% 试探，theme_micro_starter 只能 0.5%-1.2% 微型试探，不要继续空泛观望。",
     "给用户看的 summary、reason 和 riskControl 要先讲走势、轮动和操作边界，再放必要数字；不要把每个动作写成一长串指标。",
     "客户可见文本每只基金最多保留3个最能改变动作的数字；优先写“刚转强、仍偏高、回撤修复、费用拖累、持仓前景”，不要连续罗列5日/10日/20日/60日/120日。",
     "如果候选基金缺少可验证净值或走势数据，倾向 WATCH，不要强行 BUY。",
@@ -1801,7 +1807,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "经理多角度榜单（系统计算，必须先看榜单再决定）：",
     JSON.stringify(compactManagerRankings, null, 2),
     "客户视角要求：回答客户时优先使用 customerDecisionSummary、customerActionLeaderboard、customerActionDeck、alertCenter 和 customerDigest：customerDecisionSummary 决定开头先讲哪几件事；customerActionLeaderboard 决定买入优先、等待触发、暂不买、卖出/减仓、先补证据各自的行动排行；customerActionDeck 决定今天给客户先讲可买复核、等待触发、先回避、卖出/减仓、先补数据；alertCenter 决定今天必须先处理的买入复核、卖出风控、数据补证和用户持仓提醒；customerDigest 用于补充可买、观察、回避。先讲原因和动作，再补必要数字；不要把所有榜单指标原样堆给客户。",
-    "要求：榜单是本轮决策前置清单。必须先处理 alertCenter 每个 lane 的前2项和 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、cash_redeployment、position_sizing、quality_score、manager_stability、portfolio_fit、theme_allocation、rotation_opportunity、chase_risk、drawdown_defense、data_confidence、fee_suitability、replacement_choice、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。主题配置榜必须先回答哪个主题值得看，再选代表基金，不得把同主题多个基金全买；回撤防线榜必须先处理利润回吐、历史最大回撤和单仓风险，不得用补仓摊薄替代风控；数据体检榜出现净值过期、份额/费率缺失、持仓缺口时不得给买入执行。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
+    "要求：榜单是本轮决策前置清单。必须先处理 alertCenter 每个 lane 的前2项和 priorityQueue 前5项；actions 必须优先覆盖 decision_synthesis、buy_preparation、cash_redeployment、position_sizing、quality_score、manager_stability、portfolio_fit、theme_allocation、theme_momentum、rotation_opportunity、chase_risk、drawdown_defense、data_confidence、fee_suitability、replacement_choice、holdings_outlook、opportunity_cost、sell_risk、user_holding_alerts 排名前3项；若不采纳榜单项，必须给 WATCH/HOLD/SELL/BUY 之一并在 rankingBasis 写清“榜单、排名、采纳/不采纳理由”，dataBasis 写入“来源：manager_ranking_board”。主题配置榜必须先回答哪个主题值得看，再选代表基金，不得把同主题多个基金全买；主力预热机会榜必须解释题材大涨背后的新闻/资金逻辑，再判断代表基金是否能微型试探；回撤防线榜必须先处理利润回吐、历史最大回撤和单仓风险，不得用补仓摊薄替代风控；数据体检榜出现净值过期、份额/费率缺失、持仓缺口时不得给买入执行。不要推荐与榜单、持仓复核、购买准备队列和确定性召回都无关的基金。",
     "",
     "等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）：",
     JSON.stringify((missedFollowThroughQueue || []).slice(0, 5), null, 2),
@@ -1813,7 +1819,11 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "现金再部署纪律（系统计算；高现金低仓位时必须处理，不能只写等待机会）：",
     JSON.stringify(redeploymentPlan, null, 2),
-    "要求：若 pressureActive=true，优先处理 candidates 前三只；verified_buy/starter_buy 至少给 BUY 或写清本轮为何被风控拦截，blocked/watch 只能写触发条件。",
+    "要求：若 pressureActive=true，优先处理 candidates 前三只；verified_buy/starter_buy/theme_micro_starter 至少给 BUY 或写清本轮为何被风控拦截，blocked/watch 只能写触发条件。",
+    "",
+    "主力/预热题材机会纪律（系统计算；不能把新闻热度直接当买点，也不能看见主力线索后空泛等待）：",
+    JSON.stringify(themeOpportunityPlan, null, 2),
+    "要求：若 candidates 非空，前3只必须进入 actions；opportunityAction 为 verified_theme_buy/theme_starter_buy/theme_micro_starter 且 executable=true 时，给 BUY 小仓或写清风控拦截；theme_watch 只能写观察触发、新闻逻辑、主力延续条件和基金买点缺口。",
     "",
     "今日公开市场/基金候选快照：",
     JSON.stringify(compactMarketSnapshotForModel(marketSnapshot), null, 2),
@@ -2958,7 +2968,7 @@ async function fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist =
 function shouldForcePortfolioRedeploymentSeedScan(account = {}, watchlist = [], profiles = []) {
   const plan = buildPortfolioRedeploymentPlan(account, watchlist, profiles);
   if (!plan.pressureActive) return false;
-  return !plan.candidates.some((item) => ["verified_buy", "starter_buy"].includes(item.redeploymentAction));
+  return !plan.candidates.some((item) => ["verified_buy", "starter_buy", "theme_micro_starter"].includes(item.redeploymentAction));
 }
 
 function shouldForcePortfolioBlockedFollowThroughSeedScan(account = {}, watchlist = []) {
@@ -3427,20 +3437,24 @@ function buildPortfolioRedeploymentPlan(account = {}, watchlist = [], profiles =
       const readiness = evaluatePortfolioWatchReadiness(item, profile);
       const verifiedBuy = Boolean(profile && hasVerifiedPortfolioBuySetup(profile));
       const starterBuy = Boolean(profile && hasPortfolioStarterBuySetup(profile));
+      const themeMicroStarter = Boolean(profile && hasPortfolioThemeMicroStarterSetup(profile));
       const feeVerified = Boolean(profile && hasVerifiedPortfolioFeeEvidence(profile));
       const hardGap = readiness.gaps.find(isPortfolioRedeploymentHardGap);
-      const buyGuard = (verifiedBuy || starterBuy)
+      const buyTargetWeightPct = themeMicroStarter ? 1 : starterBuy ? 1.5 : 2.5;
+      const buyGuard = (verifiedBuy || starterBuy || themeMicroStarter)
         ? evaluatePortfolioBuyDiscipline(
-            { action: "BUY", code: item.code, name: item.name || profile?.name || "", targetWeightPct: starterBuy ? 1.5 : 2.5 },
+            { action: "BUY", code: item.code, name: item.name || profile?.name || "", targetWeightPct: buyTargetWeightPct },
             profile,
             account.positions || [],
             account
           )
         : { ok: false, reason: readiness.gaps?.[0] || "还没有形成可执行买点。", evidence: [] };
-      const executable = Boolean(buyGuard.ok && (verifiedBuy || starterBuy) && feeVerified && !hardGap);
-      const suggestedTargetWeightPct = executable ? (verifiedBuy ? 2.5 : 1.5) : 0;
+      const executable = Boolean(buyGuard.ok && (verifiedBuy || starterBuy || themeMicroStarter) && feeVerified && !hardGap);
+      const suggestedTargetWeightPct = executable ? buyTargetWeightPct : 0;
       const firstGap = executable
-        ? "低位/回调/费用条件支持小仓试探，仍需盘前确认。"
+        ? themeMicroStarter
+          ? "主力/预热题材和低位温和转强支持微型试探，仍需盘前确认。"
+          : "低位/回调/费用条件支持小仓试探，仍需盘前确认。"
         : hardGap || buyGuard.reason || readiness.gaps?.[0] || "等待下一次复核。";
       return {
         code: item.code,
@@ -3450,9 +3464,9 @@ function buildPortfolioRedeploymentPlan(account = {}, watchlist = [], profiles =
         priority: Number(item.priority || 3),
         readinessScore: readiness.score,
         readinessLabel: readiness.label,
-        redeploymentAction: executable ? (verifiedBuy ? "verified_buy" : "starter_buy") : "watch",
+        redeploymentAction: executable ? (verifiedBuy ? "verified_buy" : themeMicroStarter ? "theme_micro_starter" : "starter_buy") : "watch",
         redeploymentActionText: executable
-          ? (verifiedBuy ? "可分批首仓" : "可小仓试探")
+          ? (verifiedBuy ? "可分批首仓" : themeMicroStarter ? "可微型试探" : "可小仓试探")
           : "只观察触发条件",
         suggestedTargetWeightPct,
         suggestedAmount: suggestedTargetWeightPct && totalAsset > 0 ? round(totalAsset * suggestedTargetWeightPct / 100, 2) : 0,
@@ -3474,12 +3488,12 @@ function buildPortfolioRedeploymentPlan(account = {}, watchlist = [], profiles =
     })
     .filter((item) => item.code)
     .sort((a, b) =>
-      Number(["verified_buy", "starter_buy"].includes(b.redeploymentAction)) - Number(["verified_buy", "starter_buy"].includes(a.redeploymentAction))
+      Number(["verified_buy", "starter_buy", "theme_micro_starter"].includes(b.redeploymentAction)) - Number(["verified_buy", "starter_buy", "theme_micro_starter"].includes(a.redeploymentAction))
       || Number(b.readinessScore || 0) - Number(a.readinessScore || 0)
       || Number(a.priority || 3) - Number(b.priority || 3)
     )
     .slice(0, 6);
-  const executableCount = candidates.filter((item) => ["verified_buy", "starter_buy"].includes(item.redeploymentAction)).length;
+  const executableCount = candidates.filter((item) => ["verified_buy", "starter_buy", "theme_micro_starter"].includes(item.redeploymentAction)).length;
   const summary = pressureActive
     ? executableCount
       ? `现金${formatFallbackPct(cashPct)}且低仓位，发现${executableCount}只可小仓再部署候选。`
@@ -3527,7 +3541,7 @@ function ensurePortfolioRedeploymentPlanReviewed(decision = {}, account = {}, wa
     if (existingKeys.has(`BUY:${candidate.code}`) || existingKeys.has(`WATCH:${candidate.code}`) || existingKeys.has(`HOLD:${candidate.code}`)) {
       continue;
     }
-    const canBuy = ["verified_buy", "starter_buy"].includes(candidate.redeploymentAction);
+    const canBuy = ["verified_buy", "starter_buy", "theme_micro_starter"].includes(candidate.redeploymentAction);
     const action = canBuy ? "BUY" : "WATCH";
     const amount = canBuy ? candidate.suggestedAmount : 0;
     nextActions.push({
@@ -3544,7 +3558,9 @@ function ensurePortfolioRedeploymentPlanReviewed(decision = {}, account = {}, wa
       chaseRisk: candidate.firstGap,
       feeCheck: candidate.feeEvidence,
       riskControl: canBuy
-        ? "单笔只做0.5%-2.5%试探；若实时估算转弱、回撤修复失败或费用证据失效，下一轮撤回。"
+        ? candidate.redeploymentAction === "theme_micro_starter"
+          ? "单笔只做0.5%-1.2%微型试探；若主力线索变弱、新闻催化落空、实时估算转弱或费用证据失效，下一轮撤回。"
+          : "单笔只做0.5%-2.5%试探；若实时估算转弱、回撤修复失败或费用证据失效，下一轮撤回。"
         : "只放观察，触发条件未满足前不提交虚拟申购。",
       dataBasis: mergeStringLists(candidate.dataBasis, [
         "来源：portfolio_redeployment_guard",
@@ -3561,6 +3577,268 @@ function ensurePortfolioRedeploymentPlanReviewed(decision = {}, account = {}, wa
       `系统再部署纪律：${plan.summary}`
     ])
   };
+}
+
+function buildPortfolioThemeOpportunityPlan(account = {}, watchlist = [], profiles = [], marketSnapshot = null) {
+  const totalAsset = Number(account.totalAsset || 0);
+  const accountBudget = buildPortfolioAccountRiskBudget(account);
+  const profileByCode = new Map((profiles || []).filter((profile) => profile?.code).map((profile) => [profile.code, profile]));
+  const watchItems = normalizePortfolioWatchlist(watchlist).filter((item) => item.status !== "removed");
+  const itemByCode = new Map(watchItems.map((item) => [item.code, item]));
+  for (const profile of profiles || []) {
+    if (profile?.code && !itemByCode.has(profile.code)) {
+      itemByCode.set(profile.code, {
+        code: profile.code,
+        name: profile.name || "",
+        shareClass: profile.shareClass || profile.fees?.shareClass || "",
+        status: "watch",
+        priority: 3,
+        reason: "系统主力/预热题材候选联网资料，需要纳入机会复核。",
+        lastSnapshot: profile
+      });
+    }
+  }
+  const themeLaneItems = collectPortfolioThemeOpportunityLeaderboardItems(marketSnapshot);
+  const candidates = [...itemByCode.values()]
+    .filter((item) => item.code && ["ready", "waiting_pullback", "watch"].includes(normalizePortfolioWatchStatus(item.status || "watch")))
+    .map((item) => {
+      const profile = profileByCode.get(item.code) || item.lastSnapshot || null;
+      const evidenceSource = profile || item;
+      const theme = selectPortfolioActionableThemeSignal({
+        ...evidenceSource,
+        name: item.name || evidenceSource?.name || "",
+        matchedThemes: evidenceSource?.matchedThemes || item.matchedThemes || [],
+        seed: {
+          ...(evidenceSource?.seed || {}),
+          matchedThemes: evidenceSource?.seed?.matchedThemes || evidenceSource?.matchedThemes || item.matchedThemes || []
+        }
+      });
+      if (!theme) return null;
+      const lane = findPortfolioThemeOpportunityLaneForTheme(theme, themeLaneItems);
+      const readiness = evaluatePortfolioWatchReadiness(item, profile);
+      const verifiedBuy = Boolean(profile && hasVerifiedPortfolioBuySetup(profile));
+      const starterBuy = Boolean(profile && hasPortfolioStarterBuySetup(profile));
+      const themeMicroStarter = Boolean(profile && hasPortfolioThemeMicroStarterSetup(profile));
+      const targetWeightPct = themeMicroStarter ? 1 : starterBuy ? 1.5 : verifiedBuy ? 2.5 : 0;
+      const hardGap = readiness.gaps.find(isPortfolioRedeploymentHardGap);
+      const feeVerified = Boolean(profile && hasVerifiedPortfolioFeeEvidence(profile));
+      const buyGuard = targetWeightPct > 0
+        ? evaluatePortfolioBuyDiscipline(
+            { action: "BUY", code: item.code, name: item.name || profile?.name || "", targetWeightPct },
+            profile,
+            account.positions || [],
+            account
+          )
+        : { ok: false, reason: readiness.gaps?.[0] || "题材有线索，但基金买点还没有形成。", evidence: [] };
+      const executable = Boolean(targetWeightPct > 0 && buyGuard.ok && feeVerified && !hardGap && !accountBudget.blockNewBuys);
+      const opportunityAction = executable
+        ? verifiedBuy
+          ? "verified_theme_buy"
+          : themeMicroStarter
+            ? "theme_micro_starter"
+            : "theme_starter_buy"
+        : "theme_watch";
+      const trendEvidence = profile ? formatPortfolioSeedVerifiedTrendEvidence(profile) : item.lastSnapshot?.trendSummary || "";
+      const themeEvidence = formatCandidateThemeEvidence({ matchedThemes: [theme] });
+      const score = scorePortfolioThemeOpportunityCandidate({
+        item,
+        profile,
+        theme,
+        lane,
+        readinessScore: readiness.score,
+        executable,
+        hardGap,
+        buyGuard
+      });
+      return {
+        code: item.code,
+        name: item.name || profile?.name || "",
+        shareClass: item.shareClass || profile?.shareClass || profile?.fees?.shareClass || "",
+        status: normalizePortfolioWatchStatus(item.status || "watch"),
+        priority: Number(item.priority || 3),
+        score,
+        themeName: theme.name || theme.id || "",
+        laneTitle: lane?.title || formatPortfolioThemeOpportunityLaneTitle(theme),
+        opportunityAction,
+        opportunityActionText: formatPortfolioThemeOpportunityActionText(opportunityAction),
+        executable,
+        suggestedTargetWeightPct: executable ? targetWeightPct : 0,
+        suggestedAmount: executable && totalAsset > 0 ? round(totalAsset * targetWeightPct / 100, 2) : 0,
+        firstGap: executable
+          ? "主力/预热题材与基金买点同时成立，只允许小仓验证。"
+          : hardGap || buyGuard.reason || readiness.gaps?.[0] || "等待基金买点、费用或持仓前景补齐。",
+        themeEvidence,
+        trendEvidence,
+        catalyst: theme.catalystProfile?.summary || "",
+        newsLogic: theme.newsLogic || theme.primaryCatalyst || "",
+        buyGuard: {
+          ok: Boolean(buyGuard.ok),
+          reason: buyGuard.reason || "",
+          evidence: normalizeStringArray(buyGuard.evidence).slice(0, 4)
+        },
+        dataBasis: mergeStringLists([
+          "来源：portfolio_theme_opportunity_plan",
+          marketSnapshot?.fetchedAt ? `市场快照：${marketSnapshot.fetchedAt}` : "",
+          lane?.title ? `题材榜单：${lane.title}` : "",
+          themeEvidence,
+          theme.newsLogic ? `题材逻辑：${theme.newsLogic}` : "",
+          theme.catalystProfile?.summary ? `催化性质：${theme.catalystProfile.summary}` : "",
+          profile?.sources?.[0] || ""
+        ])
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) =>
+      Number(b.executable) - Number(a.executable)
+      || Number(b.score || 0) - Number(a.score || 0)
+      || Number(a.priority || 3) - Number(b.priority || 3)
+    )
+    .slice(0, 6);
+  return {
+    active: Boolean(themeLaneItems.length || candidates.length),
+    summary: candidates.length
+      ? `发现${candidates.length}只与主力进场/题材预热/低位轮动相关的基金机会，必须逐只给买入复核或观察拦截理由。`
+      : themeLaneItems.length
+        ? `题材榜单已有${themeLaneItems.length}条主力/预热线索，但自选池还没有匹配基金，必须扩展代表基金数据源。`
+        : "本轮题材榜单暂未形成主力/预热机会。",
+    themeLeaders: themeLaneItems.slice(0, 5),
+    candidates
+  };
+}
+
+function ensurePortfolioThemeOpportunityReviewed(decision = {}, account = {}, watchlist = [], options = {}) {
+  const plan = buildPortfolioThemeOpportunityPlan(account, watchlist, options.profiles || [], options.marketSnapshot || null);
+  if (!plan.candidates.length) return decision;
+  const normalized = {
+    ...decision,
+    actions: normalizePortfolioActions(decision?.actions),
+    watchlistUpdates: normalizePortfolioWatchlistUpdates(decision?.watchlistUpdates),
+    team: Array.isArray(decision?.team) ? decision.team : [],
+    riskNotes: Array.isArray(decision?.riskNotes) ? decision.riskNotes : [],
+    learningNotes: Array.isArray(decision?.learningNotes) ? decision.learningNotes : [],
+    sources: Array.isArray(decision?.sources) ? decision.sources : []
+  };
+  const existingKeys = new Set(normalized.actions.map((action) => `${action.action}:${action.code}`));
+  const nextActions = [...normalized.actions];
+  for (const candidate of plan.candidates.slice(0, 3)) {
+    if (existingKeys.has(`BUY:${candidate.code}`) || existingKeys.has(`WATCH:${candidate.code}`) || existingKeys.has(`HOLD:${candidate.code}`)) {
+      continue;
+    }
+    const canBuy = Boolean(candidate.executable);
+    const action = canBuy ? "BUY" : "WATCH";
+    nextActions.push({
+      action,
+      code: candidate.code,
+      name: candidate.name,
+      amount: canBuy ? candidate.suggestedAmount : 0,
+      targetWeightPct: canBuy ? candidate.suggestedTargetWeightPct : 0,
+      reason: canBuy
+        ? `系统主力/预热机会纪律：${candidate.themeName} 有${candidate.laneTitle}线索，${candidate.name || candidate.code} 同时通过买点和费用复核，本轮只做小仓验证。`
+        : `系统主力/预热机会纪律：${candidate.themeName} 有线索，但${candidate.name || candidate.code} 暂不买；${candidate.firstGap}`,
+      rankingBasis: `${candidate.laneTitle || "主力/预热题材"}机会处理器，${canBuy ? "采纳小仓复核" : "不采纳买入"}`,
+      rotationCheck: candidate.newsLogic || candidate.themeEvidence || "题材有主力/预热线索，但仍需基金自身买点确认。",
+      positionCheck: candidate.trendEvidence || "等待净值和低位证据复核。",
+      chaseRisk: candidate.firstGap,
+      feeCheck: canBuy ? "费用/份额已通过系统买入纪律复核；下单前仍需确认申赎规则。" : "费用/份额或结构性缺口未完全通过前，暂不提交申购。",
+      riskControl: canBuy
+        ? candidate.opportunityAction === "theme_micro_starter"
+          ? "微型试探上限1.2%；若主力流入消失、新闻催化落空或基金转弱，下一轮撤回。"
+          : "小仓试探上限2.5%；若题材拥挤、回调失败或盘中转弱，下一轮撤回。"
+        : "只放观察，下一轮先查主力资金是否延续、新闻逻辑是否兑现、基金是否温和转强。",
+      dataBasis: mergeStringLists(candidate.dataBasis, candidate.buyGuard?.evidence, ["来源：portfolio_theme_opportunity_guard"])
+    });
+    existingKeys.add(`${action}:${candidate.code}`);
+  }
+  return {
+    ...normalized,
+    actions: nextActions,
+    learningNotes: mergeStringLists(normalized.learningNotes, [
+      `系统主力/预热机会纪律：${plan.summary}`
+    ]),
+    sources: mergeStringLists(normalized.sources, ["portfolio_theme_opportunity_guard"])
+  };
+}
+
+function collectPortfolioThemeOpportunityLeaderboardItems(marketSnapshot = null) {
+  const leaderboards = marketSnapshot?.themeLeaderboards || buildThemeLeaderboards(marketSnapshot?.themeRadar || []);
+  const lanes = [
+    ["mainCapital", "主力进场榜"],
+    ["preheat", "题材预热榜"],
+    ["lowRotation", "低位轮动榜"]
+  ];
+  return lanes.flatMap(([key, fallbackTitle]) =>
+    (leaderboards?.[key]?.items || []).slice(0, 3).map((item) => ({
+      laneKey: key,
+      title: leaderboards?.[key]?.title || fallbackTitle,
+      id: item.id || "",
+      name: item.name || "",
+      score: Number(item.score || 0),
+      reason: item.reason || "",
+      catalyst: item.catalyst || "",
+      newsLogic: item.newsLogic || ""
+    }))
+  );
+}
+
+function selectPortfolioActionableThemeSignal(candidate = {}) {
+  return getCandidateThemeSignals(candidate)
+    .filter(isActionableThemeSupport)
+    .sort((a, b) => scorePortfolioActionableThemeSignal(b) - scorePortfolioActionableThemeSignal(a))[0] || null;
+}
+
+function scorePortfolioActionableThemeSignal(theme = {}) {
+  return Number(theme.capitalFollowScore || 0)
+    + Number(theme.preheatScore || 0) * 0.8
+    + Number(theme.rotationScore || 0) * 0.45
+    + Number(theme.lowPositionScore || 0) * 0.35
+    + Number(theme.catalystProfile?.score || 0) * 0.8
+    - Number(theme.crowdingScore || 0) * 0.4;
+}
+
+function findPortfolioThemeOpportunityLaneForTheme(theme = {}, laneItems = []) {
+  const themeKeys = new Set([theme.id, theme.name, ...(theme.themeKeywords || []), ...(theme.fundKeywords || []), ...(theme.keywords || [])]
+    .map((item) => normalizeIntentText(item)).filter(Boolean));
+  return (laneItems || []).find((item) => {
+    const itemKeys = [item.id, item.name].map((value) => normalizeIntentText(value)).filter(Boolean);
+    return itemKeys.some((key) =>
+      themeKeys.has(key)
+      || [...themeKeys].some((themeKey) => themeKey.includes(key) || key.includes(themeKey))
+    );
+  }) || null;
+}
+
+function formatPortfolioThemeOpportunityLaneTitle(theme = {}) {
+  if (theme.leaderSignal === "capital_entering" || theme.positionSignal === "main_capital_entering") return "主力进场榜";
+  if (theme.leaderSignal === "preheat_catalyst" || theme.positionSignal === "preheat_catalyst_watch") return "题材预热榜";
+  if (theme.positionSignal === "low_position_rotation" || theme.stage === "low_position_rotation") return "低位轮动榜";
+  return "主力/预热题材";
+}
+
+function formatPortfolioThemeOpportunityActionText(action = "") {
+  const labels = {
+    verified_theme_buy: "可分批首仓",
+    theme_starter_buy: "可小仓试探",
+    theme_micro_starter: "可微型试探",
+    theme_watch: "先观察补证据"
+  };
+  return labels[action] || "机会复核";
+}
+
+function scorePortfolioThemeOpportunityCandidate({ item = {}, profile = null, theme = {}, lane = null, readinessScore = 0, executable = false, hardGap = "", buyGuard = {} } = {}) {
+  const trend = profile?.trendProfile || item.lastSnapshot?.trendProfile || {};
+  const low120 = finiteMetricNumber(trend.lowPositionPct120);
+  const r20 = finiteMetricNumber(trend.return20dPct);
+  return Math.max(0, Math.min(100,
+    Number(readinessScore || 0) * 0.32
+    + scorePortfolioActionableThemeSignal(theme) * 0.45
+    + (lane ? 10 : 0)
+    + (executable ? 18 : 0)
+    + (hasPortfolioThemeMicroStarterSetup(profile) ? 8 : 0)
+    + (Number.isFinite(low120) && low120 <= 60 ? 7 : 0)
+    - (Number.isFinite(r20) && r20 > 8 ? 8 : 0)
+    - (hardGap ? 18 : 0)
+    - (buyGuard?.ok === false ? 6 : 0)
+  ));
 }
 
 function buildPortfolioMissedFollowThroughReviewQueue(db = {}) {
@@ -3765,7 +4043,7 @@ function inferPortfolioRankingBoardReviewAction(list = {}, item = {}) {
 function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = []) {
   const lists = Array.isArray(board?.lists) ? board.lists : [];
   const existingCodes = new Set((existingActions || []).map((action) => action.code).filter(Boolean));
-  const watchedListIds = new Set(["decision_synthesis", "buy_preparation", "launch_setup", "cash_redeployment", "position_sizing", "quality_score", "manager_stability", "portfolio_fit", "theme_allocation", "rotation_opportunity", "chase_risk", "drawdown_defense", "data_confidence", "fee_suitability", "replacement_choice", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
+  const watchedListIds = new Set(["decision_synthesis", "buy_preparation", "launch_setup", "cash_redeployment", "position_sizing", "quality_score", "manager_stability", "portfolio_fit", "theme_allocation", "theme_momentum", "rotation_opportunity", "chase_risk", "drawdown_defense", "data_confidence", "fee_suitability", "replacement_choice", "holdings_outlook", "opportunity_cost", "sell_risk", "user_holding_alerts"]);
   const actions = [];
   for (const list of lists) {
     if (!watchedListIds.has(String(list?.id || ""))) continue;
@@ -3973,12 +4251,12 @@ function selectPortfolioRankingBoardEntryForAction(action = {}, entries = []) {
   if (!entries.length) return null;
   const actionText = String(action.action || "").toUpperCase();
   const preferredIds = actionText === "BUY"
-    ? ["buy_preparation", "cash_redeployment", "position_sizing", "launch_setup", "data_confidence", "quality_score", "manager_stability", "portfolio_fit", "theme_allocation", "drawdown_defense", "decision_synthesis", "rotation_opportunity", "fee_suitability", "replacement_choice", "holdings_outlook", "opportunity_cost"]
+    ? ["buy_preparation", "cash_redeployment", "position_sizing", "launch_setup", "theme_momentum", "data_confidence", "quality_score", "manager_stability", "portfolio_fit", "theme_allocation", "drawdown_defense", "decision_synthesis", "rotation_opportunity", "fee_suitability", "replacement_choice", "holdings_outlook", "opportunity_cost"]
     : actionText === "SELL"
       ? ["sell_risk", "drawdown_defense", "chase_risk", "decision_synthesis", "opportunity_cost"]
       : actionText === "HOLD"
         ? ["sell_risk", "drawdown_defense", "data_confidence", "decision_synthesis", "holdings_outlook", "chase_risk"]
-        : ["buy_preparation", "cash_redeployment", "position_sizing", "launch_setup", "data_confidence", "quality_score", "manager_stability", "portfolio_fit", "theme_allocation", "drawdown_defense", "chase_risk", "decision_synthesis", "rotation_opportunity", "fee_suitability", "replacement_choice", "holdings_outlook"];
+        : ["buy_preparation", "cash_redeployment", "position_sizing", "launch_setup", "theme_momentum", "data_confidence", "quality_score", "manager_stability", "portfolio_fit", "theme_allocation", "drawdown_defense", "chase_risk", "decision_synthesis", "rotation_opportunity", "fee_suitability", "replacement_choice", "holdings_outlook"];
   return [...entries].sort((a, b) => {
     const aRank = preferredIds.indexOf(String(a.list?.id || ""));
     const bRank = preferredIds.indexOf(String(b.list?.id || ""));
@@ -4160,6 +4438,27 @@ function hasPortfolioStarterBuySetup(profile = {}) {
     && r60 <= 24
     && !hasHighChaseTheme(profile)
     && !hasStaleThemeCatchdownRisk(profile);
+}
+
+function hasPortfolioThemeMicroStarterSetup(profile = {}) {
+  const trend = profile?.trendProfile || {};
+  if (!trend.ok || hasVerifiedPortfolioBuySetup(profile) || hasPortfolioStarterBuySetup(profile)) return false;
+  if (!hasActionabilityMicroStarterSupport(profile, trend)) return false;
+  if (!isPullbackTrendFreshEnough(profile)) return false;
+  if (hasHighChaseTheme(profile) || hasThemeRetreatRisk(profile) || hasStaleThemeCatchdownRisk(profile)) return false;
+  if (profile?.actionability?.action === "avoid") return false;
+  const blockers = normalizeStringArray(profile?.actionability?.decisionBlocker);
+  if (profile?.actionability?.action === "wait" && !blockers.some((item) => item.includes("小仓试探"))) return false;
+  const r20 = finiteMetricNumber(trend.return20dPct);
+  const r60 = finiteMetricNumber(trend.return60dPct);
+  const low120 = finiteMetricNumber(trend.lowPositionPct120);
+  const low250 = finiteMetricNumber(trend.lowPositionPct250);
+  return (!Number.isFinite(r20) || r20 <= 8)
+    && (!Number.isFinite(r60) || r60 <= 18)
+    && (
+      (Number.isFinite(low120) && low120 <= 60)
+      || (Number.isFinite(low250) && low250 <= 65)
+    );
 }
 
 function hasVerifiedPortfolioFeeEvidence(profile = {}) {
@@ -4766,19 +5065,33 @@ function evaluatePortfolioBuyDiscipline(action = {}, profile = null, positions =
     };
   }
   const trendEvidence = formatPortfolioSeedVerifiedTrendEvidence(profile);
+  const themeMicroStarter = hasPortfolioThemeMicroStarterSetup(profile);
   if (hasPortfolioVerifiedSeedChaseRisk(action, profile)
     || trend.entryBias === "wait_pullback"
     || trend.entryBias === "avoid_now"
     || profile.actionability?.action === "wait"
     || profile.actionability?.action === "avoid") {
+    if (!themeMicroStarter) {
+      return {
+        ok: false,
+        reason: "系统买入纪律拦截：净值下钻显示偏热、等待回撤或追涨风险，不能提交虚拟申购。",
+        evidence: [trendEvidence]
+      };
+    }
+  }
+  const structuralHardGap = buildPortfolioWatchStructuralReadinessGaps(
+    { code: action.code, name: action.name || profile.name || "", status: "ready" },
+    profile
+  ).find(isPortfolioRedeploymentHardGap);
+  if (structuralHardGap) {
     return {
       ok: false,
-      reason: "系统买入纪律拦截：净值下钻显示偏热、等待回撤或追涨风险，不能提交虚拟申购。",
-      evidence: [trendEvidence]
+      reason: `系统买入纪律拦截：${structuralHardGap}`,
+      evidence: [trendEvidence, structuralHardGap]
     };
   }
   if (!hasVerifiedPortfolioBuySetup(profile)) {
-    if (!hasPortfolioStarterBuySetup(profile)) {
+    if (!hasPortfolioStarterBuySetup(profile) && !themeMicroStarter) {
       return {
         ok: false,
         reason: "系统买入纪律拦截：缺少回调完成/启动前夜、5日/10日刚转强和低位证据，不能提交虚拟申购。",
@@ -4815,6 +5128,13 @@ function evaluatePortfolioBuyDiscipline(action = {}, profile = null, positions =
       ok: true,
       reason: "系统买入纪律确认：低位回调已满足，小仓启动试探可执行，但仍需控制在卫星仓。",
       evidence: [trendEvidence, feeEvidence, "来源：portfolio_starter_buy_guard"].filter(Boolean)
+    };
+  }
+  if (themeMicroStarter) {
+    return {
+      ok: true,
+      reason: "系统买入纪律确认：题材有主力进场/预热催化，基金处在低位温和转强，只允许微型试探仓验证，不允许重仓追随。",
+      evidence: [trendEvidence, formatCandidateThemeEvidence(profile), feeEvidence, "来源：portfolio_theme_micro_starter_guard"].filter(Boolean)
     };
   }
   return { ok: true, reason: "", evidence: [trendEvidence, feeEvidence].filter(Boolean) };
@@ -7070,6 +7390,7 @@ function capPortfolioBuyAmountByDiscipline(account = {}, action = {}, amount = 0
   const maxSingleFundWeightPct = finiteNumberOr(process.env.PORTFOLIO_BUY_MAX_SINGLE_FUND_WEIGHT_PCT, 6);
   const maxSingleOrderWeightPct = finiteNumberOr(process.env.PORTFOLIO_BUY_MAX_SINGLE_ORDER_WEIGHT_PCT, 4);
   const starterMaxSingleOrderWeightPct = finiteNumberOr(process.env.PORTFOLIO_STARTER_BUY_MAX_SINGLE_ORDER_WEIGHT_PCT, 2.5);
+  const themeMicroStarterMaxSingleOrderWeightPct = finiteNumberOr(process.env.PORTFOLIO_THEME_MICRO_STARTER_MAX_SINGLE_ORDER_WEIGHT_PCT, 1.2);
   const maxSameExposureWeightPct = finiteNumberOr(process.env.PORTFOLIO_BUY_MAX_SAME_EXPOSURE_WEIGHT_PCT, 8);
   const minCashReservePct = finiteNumberOr(process.env.PORTFOLIO_BUY_MIN_CASH_RESERVE_PCT, 20);
   const accountBudget = buildPortfolioAccountRiskBudget(account);
@@ -7077,9 +7398,11 @@ function capPortfolioBuyAmountByDiscipline(account = {}, action = {}, amount = 0
   const drawdownThrottleWeightPct = accountBudget.throttleNewBuys
     ? Math.max(0, finiteNumberOr(process.env.PORTFOLIO_DRAWDOWN_BUY_MAX_SINGLE_ORDER_WEIGHT_PCT, 1))
     : maxSingleOrderWeightPct;
-  const setupMaxSingleOrderWeightPct = hasPortfolioStarterBuySetup(profile) && !hasVerifiedPortfolioBuySetup(profile)
-    ? Math.min(maxSingleOrderWeightPct, starterMaxSingleOrderWeightPct)
-    : maxSingleOrderWeightPct;
+  const setupMaxSingleOrderWeightPct = hasPortfolioThemeMicroStarterSetup(profile)
+    ? Math.min(maxSingleOrderWeightPct, themeMicroStarterMaxSingleOrderWeightPct)
+    : hasPortfolioStarterBuySetup(profile) && !hasVerifiedPortfolioBuySetup(profile)
+      ? Math.min(maxSingleOrderWeightPct, starterMaxSingleOrderWeightPct)
+      : maxSingleOrderWeightPct;
   const maxSingleFundValue = Math.max(0, totalAsset * maxSingleFundWeightPct / 100);
   const maxSingleOrderAmount = Math.max(0, totalAsset * Math.min(setupMaxSingleOrderWeightPct, drawdownThrottleWeightPct) / 100);
   const maxSameExposureValue = Math.max(0, totalAsset * maxSameExposureWeightPct / 100);
@@ -9133,6 +9456,7 @@ function buildPortfolioRankingBoard(db = {}) {
     buildPortfolioManagerStabilityRanking(watchlist),
     buildPortfolioFitRanking(db, watchlist),
     buildPortfolioThemeAllocationRanking(watchlist),
+    buildPortfolioThemeMomentumRanking(watchlist),
     buildPortfolioRotationOpportunityRanking(watchlist),
     buildPortfolioChaseRiskRanking(watchlist),
     buildPortfolioDrawdownDefenseRanking(watchlist, positions),
@@ -9190,8 +9514,8 @@ function buildPortfolioRankingBoardHealth({ watchlist = [], positions = [], user
     return {
       level: "ok",
       title: "榜单已生成",
-      summary: `当前有 ${totalItems} 个可复核对象，经理可以按综合决策、买入、低位启动、现金再部署、仓位方案、基金质量、经理稳定、组合适配、主题配置、板块轮动、追涨风险、回撤防线、数据体检、持仓前景、费率适配、替代优选、机会成本、卖出风险和用户持仓提醒分层处理。`,
-      actions: ["优先处理排名靠前项", "综合结论/买点/仓位/质量/经理稳定/组合适配/主题配置/轮动/追涨/回撤/数据/费率/替代/持仓分开复核", "把用户真实持仓提醒放入每日跟踪"]
+      summary: `当前有 ${totalItems} 个可复核对象，经理可以按综合决策、买入、低位启动、现金再部署、仓位方案、基金质量、经理稳定、组合适配、主题配置、主力预热、板块轮动、追涨风险、回撤防线、数据体检、持仓前景、费率适配、替代优选、机会成本、卖出风险和用户持仓提醒分层处理。`,
+      actions: ["优先处理排名靠前项", "综合结论/买点/仓位/质量/经理稳定/组合适配/主题配置/主力预热/轮动/追涨/回撤/数据/费率/替代/持仓分开复核", "把用户真实持仓提醒放入每日跟踪"]
     };
   }
   if (!watchlist.length && !positions.length && !userPortfolios.length) {
@@ -10212,6 +10536,109 @@ function hasPortfolioThemeLowEvidence(item = {}, rotation = {}) {
     || (Number.isFinite(low120) && low120 <= 55)
     || (Number.isFinite(low250) && low250 <= 65)
     || /低位|回调完成|启动前夜|轮动/.test(mergeStringLists(item.setupEvidence, item.buyTriggers, item.reason).join(" "));
+}
+
+function buildPortfolioThemeMomentumRanking(watchlist = []) {
+  const items = (watchlist || [])
+    .filter((item) => item?.code && ["ready", "waiting_pullback", "watch"].includes(item.status))
+    .map(buildPortfolioThemeMomentumRankingItem)
+    .filter(Boolean)
+    .sort(compareRankingItems)
+    .slice(0, 6);
+  return buildPortfolioRankingList({
+    id: "theme_momentum",
+    title: "主力预热机会榜",
+    subtitle: "把主力进场、题材预热、新闻逻辑和代表基金买点连起来，避免看见机会还只说等待。",
+    emptyText: "暂无主力进场或题材预热支撑的候选基金。",
+    nextAction: "下一步刷新题材雷达和代表基金数据；若主力/预热成立且基金低位温和转强，只能先做0.5%-1.2%微型试探。",
+    items
+  });
+}
+
+function buildPortfolioThemeMomentumRankingItem(item = {}) {
+  const profile = item.lastSnapshot || {};
+  const theme = selectPortfolioActionableThemeSignal({
+    ...profile,
+    name: item.name || profile.name,
+    matchedThemes: profile.matchedThemes || item.matchedThemes || [],
+    seed: {
+      ...(profile.seed || {}),
+      matchedThemes: profile.seed?.matchedThemes || profile.matchedThemes || item.matchedThemes || []
+    }
+  });
+  if (!theme) return null;
+  const trend = profile.trendProfile || {};
+  const readinessScore = Number(item.readinessScore || 0);
+  const chase = resolvePortfolioChaseRiskEvidence(item);
+  const fee = resolvePortfolioWatchFeeSuitabilityEvidence(item);
+  const outlook = resolvePortfolioWatchHoldingsOutlook(item);
+  const verifiedBuy = hasVerifiedPortfolioBuySetup(profile);
+  const starterBuy = hasPortfolioStarterBuySetup(profile);
+  const themeMicroStarter = hasPortfolioThemeMicroStarterSetup(profile);
+  const structuralGaps = buildPortfolioWatchStructuralReadinessGaps(item, profile);
+  const hardGap = structuralGaps.find(isPortfolioRedeploymentHardGap);
+  const buyReady = !chase.shouldSurface && !fee.missingCritical && !hardGap && (verifiedBuy || starterBuy || themeMicroStarter);
+  const score = Math.max(0, Math.min(100,
+    readinessScore * 0.28
+    + scorePortfolioActionableThemeSignal(theme) * 0.5
+    + (verifiedBuy ? 18 : starterBuy ? 14 : themeMicroStarter ? 12 : 0)
+    + (outlook.hasHoldings ? Math.max(0, Number(outlook.score || 0)) * 0.45 : -6)
+    - (chase.shouldSurface ? 24 : 0)
+    - (fee.missingCritical ? 14 : 0)
+    - (hardGap ? 16 : 0)
+  ));
+  const action = chase.shouldSurface
+    ? "主力热度降温观察"
+    : buyReady
+      ? themeMicroStarter
+        ? "主力预热微型试探"
+        : "主力预热买入复核"
+      : "主力预热观察";
+  const themeName = theme.name || theme.id || "相关题材";
+  const catalyst = theme.catalystProfile?.summary || "";
+  const newsLogic = theme.newsLogic || theme.primaryCatalyst || "";
+  return buildPortfolioRankingItem({
+    code: item.code,
+    name: item.name,
+    source: "主力预热",
+    score: round(score, 1),
+    action,
+    reason: buyReady
+      ? `${themeName}有主力进场或题材预热线索，且基金没有明显追涨拦截，可进入小仓动作复核。`
+      : `${themeName}有主力/预热线索，但基金买点、费用、持仓前景或追涨风险仍需补证据。`,
+    facts: [
+      `题材${themeName}`,
+      formatPortfolioThemeOpportunityLaneTitle(theme),
+      catalyst ? `催化${catalyst}` : "",
+      newsLogic ? `逻辑${shortenPortfolioCustomerText(newsLogic, 58)}` : "",
+      Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置${round(Number(trend.lowPositionPct120), 1)}%` : ""
+    ].filter(Boolean),
+    decision: {
+      highlights: [
+        theme.leaderSignal === "capital_entering" || theme.positionSignal === "main_capital_entering" ? "主力资金开始配合。" : "",
+        theme.leaderSignal === "preheat_catalyst" || theme.positionSignal === "preheat_catalyst_watch" ? "题材催化仍处预热阶段。" : "",
+        catalyst ? `催化性质：${catalyst}。` : "",
+        newsLogic ? `大涨逻辑：${shortenPortfolioCustomerText(newsLogic, 72)}。` : ""
+      ].filter(Boolean),
+      risks: [
+        chase.shouldSurface ? "追涨或拥挤风险未解除。" : "",
+        fee.missingCritical ? "费用/份额证据不足。" : "",
+        hardGap || "",
+        !outlook.hasHoldings ? "缺前十大持仓承载验证。" : ""
+      ].filter(Boolean),
+      gaps: [
+        !verifiedBuy && !starterBuy && !themeMicroStarter ? "基金自身低位转强还没有完全确认" : "",
+        fee.missingCritical ? "缺费用/份额核验" : "",
+        !outlook.hasHoldings ? "缺前十大持仓" : ""
+      ].filter(Boolean),
+      nextStep: buyReady
+        ? themeMicroStarter
+          ? "只允许0.5%-1.2%微型试探；下一轮复核主力是否延续、新闻催化是否兑现、基金是否继续温和转强。"
+          : "和买入准备、仓位方案、费率适配交叉确认后，只给0.5%-2.5%小仓或分批。"
+        : "先列入观察，补齐基金买点、费用和持仓承载；题材热但基金不合格时不得买入。"
+    },
+    status: chase.shouldSurface ? "warning" : buyReady ? "ready" : "watch"
+  });
 }
 
 function collectPortfolioWatchFitThemeTags(item = {}) {
@@ -11526,6 +11953,7 @@ function buildPortfolioRankingPriorityQueue(lists = []) {
     data_confidence: 37,
     cash_redeployment: 39,
     opportunity_cost: 38,
+    theme_momentum: 37,
     rotation_opportunity: 36,
     position_sizing: 33,
     quality_score: 31,
@@ -11587,6 +12015,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
   const managerStabilityItems = listById.get("manager_stability")?.items || [];
   const portfolioFitItems = listById.get("portfolio_fit")?.items || [];
   const themeAllocationItems = listById.get("theme_allocation")?.items || [];
+  const themeMomentumItems = listById.get("theme_momentum")?.items || [];
   const chaseItems = listById.get("chase_risk")?.items || [];
   const drawdownDefenseItems = listById.get("drawdown_defense")?.items || [];
   const dataConfidenceItems = listById.get("data_confidence")?.items || [];
@@ -11608,6 +12037,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
     ...managerStabilityItems.filter((item) => /稳定主理/.test(item.action || "")),
     ...portfolioFitItems.filter((item) => /组合补位|首仓适配/.test(item.action || "")),
     ...themeAllocationItems.filter((item) => /主题配置复核/.test(item.action || "")),
+    ...themeMomentumItems.filter((item) => /买入复核|微型试探|小仓/.test(item.action || "")),
     ...replacementItems.filter((item) => /低费|优选/.test(item.action || ""))
   ]
     .filter((item) => item?.code && !riskAvoidCodes.has(item.code))
@@ -11623,6 +12053,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
     ...managerStabilityItems,
     ...portfolioFitItems,
     ...themeAllocationItems,
+    ...themeMomentumItems,
     ...drawdownDefenseItems.filter((item) => !/优先|保护|降级/.test(item.action || "")),
     ...dataConfidenceItems.filter((item) => !/阻塞/.test(item.action || "")),
     ...feeItems,
@@ -12115,7 +12546,7 @@ function buildPortfolioRankingAlertCenter(lists = [], priorityQueue = [], decisi
       title: "买入复核",
       tone: "buy",
       hint: "只放可买、小仓试探、现金再部署和启动前夜候选。",
-      listIds: ["cash_redeployment", "buy_preparation", "position_sizing", "launch_setup", "decision_synthesis", "rotation_opportunity"]
+      listIds: ["cash_redeployment", "buy_preparation", "position_sizing", "launch_setup", "theme_momentum", "decision_synthesis", "rotation_opportunity"]
     },
     {
       id: "sell",
@@ -12404,7 +12835,7 @@ function formatPortfolioConsensusRadarAction(laneId = "", verdict = {}) {
 
 function getPortfolioRankingDecisionMatrixGroup(listId = "") {
   if (["decision_synthesis", "buy_preparation", "launch_setup", "cash_redeployment", "position_sizing"].includes(listId)) return "buy";
-  if (["theme_allocation", "rotation_opportunity", "holdings_outlook", "quality_score", "manager_stability", "portfolio_fit"].includes(listId)) return "sector";
+  if (["theme_allocation", "theme_momentum", "rotation_opportunity", "holdings_outlook", "quality_score", "manager_stability", "portfolio_fit"].includes(listId)) return "sector";
   if (["chase_risk", "drawdown_defense", "sell_risk", "user_holding_alerts", "opportunity_cost"].includes(listId)) return "risk";
   if (["data_confidence", "fee_suitability", "replacement_choice"].includes(listId)) return "data";
   return "";
@@ -29638,6 +30069,7 @@ export {
   buildPortfolioExposureSummary,
   buildPortfolioManagerProfileContext,
   buildPortfolioMissedFollowThroughReviewQueue,
+  buildPortfolioThemeOpportunityPlan,
   buildPortfolioPositionStatusLines,
   buildPortfolioStarterBuyFollowUpQueue,
   buildPortfolioWatchlistSeedSearchText,
@@ -29652,6 +30084,7 @@ export {
   buildPortfolioManagerStabilityRanking,
   buildPortfolioFitRanking,
   buildPortfolioThemeAllocationRanking,
+  buildPortfolioThemeMomentumRanking,
   buildPortfolioFeeSuitabilityRanking,
   buildPortfolioReplacementChoiceRanking,
   buildPortfolioRotationOpportunityRanking,
@@ -29738,11 +30171,13 @@ export {
   hasNumericDumpWithoutInterpretation,
   hasPortfolioTransactionForOrderDedupe,
   hasPortfolioStarterBuySetup,
+  hasPortfolioThemeMicroStarterSetup,
   hasStaleThemeCatchdownRisk,
   ensurePortfolioHeldPositionsReviewed,
   ensurePortfolioMissedFollowThroughReviewed,
   ensurePortfolioRankingBoardReviewed,
   ensurePortfolioRedeploymentPlanReviewed,
+  ensurePortfolioThemeOpportunityReviewed,
   ensurePortfolioReadyWatchlistReviewed,
   ensurePortfolioStarterBuyFollowUpReviewed,
   mergeFundWorkflowWatchlistIntoDeepDive,
