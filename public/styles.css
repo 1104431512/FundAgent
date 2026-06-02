@@ -4250,6 +4250,11 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   line-height: 1.42;
 }
 
+.theme-leaderboard-why {
+  color: #213747;
+  font-weight: 750;
+}
+
 .theme-leaderboard-facts {
   justify-content: flex-start;
   flex-wrap: wrap;

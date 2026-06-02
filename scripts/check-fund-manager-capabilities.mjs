@@ -6637,10 +6637,11 @@ assert(themeLeaderboards.retreat.items.some((item) => item.name === "AI/算力")
 const mainCapitalThemeCard = themeLeaderboards.mainCapital.items.find((item) => item.name === "AI/算力");
 assert(mainCapitalThemeCard?.nextStep?.includes("代表基金") && mainCapitalThemeCard?.invalidation?.includes("失效条件"), "theme leaderboards must tell the manager what to do next and when the theme thesis fails");
 assert(mainCapitalThemeCard?.evidence?.some((item) => /主力|催化|板块/.test(item)), "theme leaderboard cards must expose concise evidence chips instead of only a score");
+assert(mainCapitalThemeCard?.whyMove?.includes("为什么动") && /新闻催化|主力线索/.test(mainCapitalThemeCard.whyMove), "theme leaderboard cards must expose a customer-readable why-move line");
 assert(adminSource.includes("renderPortfolioThemeLeaderboards") && adminSource.includes("getPortfolioLatestThemeLeaderboards"), "admin sector board must render latest market theme leaderboards instead of hiding them in raw run JSON");
 assert(adminStyleSource.includes(".theme-leaderboard-board") && adminStyleSource.includes(".theme-leaderboard-lane-sell"), "admin styles must provide compact visible lanes for theme leaderboards and retreat risks");
-assert(adminSource.includes("theme-leaderboard-decision") && adminSource.includes("theme-leaderboard-evidence"), "admin theme leaderboards must render next-step and evidence blocks for each theme");
-assert(adminStyleSource.includes(".theme-leaderboard-decision") && adminStyleSource.includes(".theme-leaderboard-evidence"), "admin theme leaderboard next-step and evidence blocks must be styled visibly");
+assert(adminSource.includes("theme-leaderboard-decision") && adminSource.includes("theme-leaderboard-evidence") && adminSource.includes("theme-leaderboard-why"), "admin theme leaderboards must render why-move, next-step, and evidence blocks for each theme");
+assert(adminStyleSource.includes(".theme-leaderboard-decision") && adminStyleSource.includes(".theme-leaderboard-evidence") && adminStyleSource.includes(".theme-leaderboard-why"), "admin theme leaderboard why-move, next-step, and evidence blocks must be styled visibly");
 const actionablePullbackDigest = {
   ...setupDigest,
   code: "000041",

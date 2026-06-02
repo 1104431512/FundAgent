@@ -3269,7 +3269,7 @@ function buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot = null) {
   return leaderItems.map((item) => {
     const theme = radarById.get(String(item.id || "")) || radar.find((candidate) => candidate.name === item.name) || {};
     const keywords = collectThemeOpportunitySearchKeywords(theme, {
-      extra: [item.name, item.newsLogic, item.catalyst]
+      extra: [item.name, item.whyMove, item.newsLogic, item.catalyst]
     });
     return {
       laneKey: item.laneKey,
@@ -3303,7 +3303,7 @@ function buildPortfolioThemeOpportunitySeedCandidates(marketSnapshot = null) {
     if (!lane || !isPortfolioThemeOpportunitySeedTheme(theme)) continue;
     const funds = Array.isArray(theme.evidence?.funds) ? theme.evidence.funds : [];
     const keywords = collectThemeOpportunitySearchKeywords(theme, {
-      extra: [theme.name, theme.newsLogic, theme.primaryCatalyst, lane.title]
+      extra: [theme.name, lane.whyMove, theme.newsLogic, theme.primaryCatalyst, lane.title]
     }).slice(0, 10);
     const compactTheme = compactMatchedThemeSignal(theme);
     for (const fund of funds.slice(0, 5)) {
@@ -3323,6 +3323,7 @@ function buildPortfolioThemeOpportunitySeedCandidates(marketSnapshot = null) {
         themeEvidence: formatCandidateThemeEvidence({ matchedThemes: [compactTheme] }),
         dataBasis: [
           `题材榜单：${lane.title || "主力/预热题材"}`,
+          lane.whyMove ? `为什么动：${lane.whyMove}` : "",
           theme.newsLogic ? `题材逻辑：${theme.newsLogic}` : "",
           theme.catalystProfile?.summary ? `催化性质：${theme.catalystProfile.summary}` : "",
           theme.primaryCatalyst ? `新闻线索：${theme.primaryCatalyst}` : ""
@@ -4280,7 +4281,8 @@ function collectPortfolioThemeOpportunityLeaderboardItems(marketSnapshot = null)
       reason: item.reason || "",
       catalyst: item.catalyst || "",
       sourceType: item.sourceType || "",
-      newsLogic: item.newsLogic || ""
+      newsLogic: item.newsLogic || "",
+      whyMove: item.whyMove || ""
     }))
   );
 }
@@ -15284,6 +15286,7 @@ function compactThemeLeaderboardsForPublic(leaderboards = {}) {
         action: item.action || "",
         sourceType: item.sourceType || "",
         catalyst: item.catalyst || "",
+        whyMove: item.whyMove || item.newsLogic || item.primaryCatalyst || "",
         newsLogic: item.newsLogic || item.primaryCatalyst || "",
         nextStep: item.nextStep || "",
         invalidation: item.invalidation || "",
@@ -18293,6 +18296,7 @@ function compactThemeLeaderboardsForModel(leaderboards = {}) {
         操作倾向: item.action || "",
         来源: item.sourceType || "",
         催化性质: item.catalyst || "",
+        为什么动: item.whyMove || item.newsLogic || "",
         题材逻辑: item.newsLogic || "",
         下一步: item.nextStep || "",
         失效条件: item.invalidation || "",
@@ -23357,11 +23361,29 @@ function compactThemeLeaderboardItem(theme = {}, reason = "", score = 0) {
     catalyst: theme.catalystProfile?.summary || "",
     catalystFreshness: theme.catalystProfile?.freshnessLabel || "",
     newsLogic: theme.newsLogic || theme.primaryCatalyst || "",
+    whyMove: buildThemeLeaderboardWhyMove(theme),
     primaryCatalyst: theme.primaryCatalyst || "",
     nextStep: buildThemeLeaderboardNextStep(theme),
     invalidation: buildThemeLeaderboardInvalidation(theme),
     evidence: buildThemeLeaderboardEvidenceChips(theme)
   };
+}
+
+function buildThemeLeaderboardWhyMove(theme = {}) {
+  const logic = shortenPortfolioCustomerText(theme.newsLogic || theme.primaryCatalyst || "", 120);
+  if (logic) return `为什么动：${logic}`;
+  const catalyst = theme.catalystProfile?.summary || "";
+  const flow = finiteMetricNumber(theme.avgMainNetInflowPct);
+  const board = theme.evidence?.boards?.[0] || {};
+  if (hasThemeCapitalRetreatRisk(theme)) {
+    return "为什么回避：主力资金转弱或题材退潮，表面回调不能直接当买点。";
+  }
+  if (catalyst && Number.isFinite(flow)) {
+    return `为什么动：${catalyst}，主力资金${flow >= 0 ? "净流入" : "净流出"}${formatFallbackPlainPct(Math.abs(flow))}。`;
+  }
+  if (catalyst) return `为什么动：${catalyst}。`;
+  if (board.name) return `为什么动：${board.name}板块出现异动，仍需补新闻和资金证据。`;
+  return "为什么动：等待新闻、资金和板块证据补齐。";
 }
 
 function buildThemeLeaderboardNextStep(theme = {}) {

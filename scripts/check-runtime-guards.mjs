@@ -1233,6 +1233,10 @@ const requiredPatterns = [
     message: "theme leaderboards must expose next steps, invalidation boundaries, and evidence chips instead of score-only theme items."
   },
   {
+    pattern: /function compactThemeLeaderboardItem[\s\S]{0,700}whyMove:\s*buildThemeLeaderboardWhyMove\(theme\)[\s\S]{0,900}function buildThemeLeaderboardWhyMove[\s\S]{0,900}为什么动/,
+    message: "theme leaderboards must expose a customer-readable why-move line instead of only raw newsLogic or scores."
+  },
+  {
     pattern: /function renderPortfolioThemeLeaderboardItem[\s\S]{0,1300}theme-leaderboard-evidence[\s\S]{0,900}theme-leaderboard-decision/,
     message: "admin theme leaderboards must render evidence chips and next-step cards for each theme."
   },
@@ -1399,6 +1403,14 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*function renderPortfolioThemeLeaderboards)(?=[\s\S]*function renderPortfolioThemeLeaderboardLane)(?=[\s\S]*function getPortfolioLatestThemeLeaderboards)(?=[\s\S]*\.theme-leaderboard-board)(?=[\s\S]*\.theme-leaderboard-lane-sell)/,
     message: "admin sector board must show latest theme leaderboards with visible retreat/preheat lanes."
+  },
+  {
+    pattern: /function renderPortfolioThemeLeaderboardItem[\s\S]{0,800}whyMove[\s\S]{0,900}theme-leaderboard-why[\s\S]{0,700}theme-leaderboard-evidence/,
+    message: "admin theme leaderboard cards must lead with why-move narrative before evidence chips."
+  },
+  {
+    pattern: /\.theme-leaderboard-why\s*\{[\s\S]{0,160}font-weight:\s*750/,
+    message: "admin theme leaderboard why-move lines must be visually emphasized."
   },
   {
     pattern: /(?=[\s\S]*\.portfolio-performance-board\s*\{[\s\S]{0,620}border-left)(?=[\s\S]*\.portfolio-ability-lanes\s*\{[\s\S]{0,260}grid-template-columns:\s*repeat\(5)(?=[\s\S]*\.portfolio-operation-kind-matrix\s*\{[\s\S]{0,260}grid-template-columns:\s*repeat\(4)(?=[\s\S]*\.portfolio-operation-review-lanes\s*\{[\s\S]{0,420}grid-template-columns:\s*repeat\(3)(?=[\s\S]*\.portfolio-operation-review\s*\{[\s\S]{0,700}border-left)/,
