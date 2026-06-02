@@ -486,6 +486,23 @@ assert(
   decisionSeedPreviewRanking.priorityQueue.some((item) => item.code === "000099" && item.listId === "theme_momentum"),
   "decision ranking preview must make same-day preheat seeds visible to the model priority queue"
 );
+const decisionSeedBuyCard = decisionSeedPreviewRanking.customerActionDeck.cards.find((card) => card.id === "buy");
+assert(decisionSeedBuyCard?.title.includes("主力预热"), "customer buy action card must label fresh main-capital/preheat candidates as the priority buy review");
+assert(decisionSeedBuyCard?.items[0]?.code === "000099", "customer buy action card must rank fresh main-capital/preheat candidates ahead of ordinary buy reviews");
+assert(
+  decisionSeedBuyCard?.nextStep.includes("新闻来源/时间")
+    && decisionSeedBuyCard.nextStep.includes("主力资金延续")
+    && decisionSeedBuyCard.nextStep.includes("0.5%-1.2%"),
+  "main-capital/preheat buy cards must preserve news source, capital-flow, and micro-starter sizing constraints"
+);
+assert(
+  decisionSeedPreviewRanking.customerDecisionSummary?.lines?.some((line) => line.includes("主力预热微型复核") && line.includes("000099")),
+  "customer decision summary must translate fresh main-capital/preheat opportunities as micro-starter review, not generic small-buy review"
+);
+assert(
+  !(decisionSeedPreviewRanking.customerActionDeck.cards.find((card) => card.id === "data")?.items || []).some((item) => item.code === "000099"),
+  "ordinary fee suitability notes must not create a separate data-first card for a fund already cleared for main-capital/preheat micro review"
+);
 assert.equal(decisionSeedPreviewDb.watchlist.length, 0, "decision ranking preview must not persist same-day seed candidates before formal watchlist updates");
 const liveThemeOpportunitySnapshot = {
   fetchedAt: freshThemeRefreshAt,

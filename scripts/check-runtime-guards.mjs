@@ -1257,6 +1257,14 @@ const requiredPatterns = [
     message: "customer decision summaries must put catchdown avoidance before buy review when stale-theme pullbacks are present."
   },
   {
+    pattern: /(?=[\s\S]*function buildPortfolioRankingCustomerActionDeck[\s\S]*hasMainForceBuy)(?=[\s\S]*主力预热复核优先)(?=[\s\S]*新闻来源\/时间[\s\S]{0,180}主力资金延续[\s\S]{0,180}0\.5%-1\.2%)/,
+    message: "customer buy cards must prioritize fresh main-capital/preheat micro-starter opportunities with news, capital, and sizing constraints."
+  },
+  {
+    pattern: /(?=[\s\S]*function sortPortfolioCustomerBuyActionItems)(?=[\s\S]*function isPortfolioCustomerMainForceBuyAction)(?=[\s\S]*主力预热微型复核)(?=[\s\S]*新鲜新闻\/政策\/订单逻辑[\s\S]{0,220}正向主力资金)/,
+    message: "customer buy ordering and labels must distinguish main-capital/preheat micro-starter reviews from ordinary small-buy reviews."
+  },
+  {
     pattern: /function compactThemeLeaderboardItem[\s\S]{0,700}nextStep[\s\S]{0,260}invalidation[\s\S]{0,260}evidence/,
     message: "theme leaderboards must expose next steps, invalidation boundaries, and evidence chips instead of score-only theme items."
   },
@@ -3557,7 +3565,7 @@ const requiredPatterns = [
     message: "customer action cards must not classify generic review/watch-only theme candidates as buy-review items."
   },
   {
-    pattern: /function buildPortfolioRankingCustomerActionDeck[\s\S]{0,1800}blockedCodes[\s\S]{0,500}!blockedCodes\.has\(item\.code\)[\s\S]{0,700}!avoidBlockCodes\.has\(item\.code\)/,
+    pattern: /(?=[\s\S]*function buildPortfolioRankingCustomerActionDeck[\s\S]{0,1500}dataSourceItems\.filter\(isPortfolioCustomerHardDataBlocker\))(?=[\s\S]*function buildPortfolioRankingCustomerActionDeck[\s\S]{0,1900}buyCandidateCodes)(?=[\s\S]*function buildPortfolioRankingCustomerActionDeck[\s\S]{0,2600}isPortfolioCustomerHardAvoidAction)(?=[\s\S]*function buildPortfolioRankingCustomerActionDeck[\s\S]{0,3300}buySourceItems\.filter\(\(item\) => !blockedCodes\.has\(item\.code\)\))/,
     message: "customer action cards must let sell, avoid, and data blockers override buy-review while keeping watch-only trigger candidates visible."
   },
   {
