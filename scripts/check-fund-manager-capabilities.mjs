@@ -6495,6 +6495,75 @@ assert(
   manager.buildThemeLeaderboards(hardTechCatalystRadar).preheat.items.some((item) => /人形机器人|商业航天|AI\/算力|半导体/.test(item.name) && /产业落地|技术突破|政策落地/.test(item.catalyst)),
   "preheat leaderboards must surface hard-tech news catalysts with readable reason labels before the board fully diffuses"
 );
+const mainForceNewsRadar = manager.buildThemeRadar({
+  conceptBoards: [],
+  industryBoards: [],
+  fastNews: [
+    { title: "人形机器人获主力资金净流入 执行器订单加速 产业链公司密集调研", showTime: "10:16", mediaName: "测试快讯" }
+  ],
+  fundCandidates: {
+    stockFunds: [
+      { code: "159013", name: "人形机器人执行器主题C", type: "股票型基金", oneMonthPct: 1.1, dailyPct: 0.2, shareClass: "C", keywords: ["人形机器人", "执行器"] }
+    ]
+  }
+});
+const mainForceNewsTheme = mainForceNewsRadar.find((theme) => theme.id === "news_humanoid_robot" || theme.name.includes("人形机器人"));
+assert(mainForceNewsTheme?.catalystProfile?.summary.includes("资金抢筹"), "fresh main-capital news must be classified as capital grabbing, not only generic news heat");
+assert(
+  !mainForceNewsRadar.some((theme) => /获主力|^产业（新闻预热）/.test(theme.name)),
+  "main-capital news discovery must clean extracted theme names instead of surfacing fragmentary labels"
+);
+const mainForceNewsBoards = manager.buildThemeLeaderboards([mainForceNewsTheme]);
+assert(
+  [...mainForceNewsBoards.mainCapital.items, ...mainForceNewsBoards.preheat.items].some((item) =>
+    item.name.includes("人形机器人")
+    && item.evidence?.some((chip) => chip.includes("资金抢筹"))
+    && /主力|资金|题材/.test(`${item.reason} ${item.nextStep}`)
+  ),
+  "main-capital news-backed preheat themes must enter opportunity leaderboards with visible capital evidence and next-step logic"
+);
+const mainForceNewsMomentum = manager.buildPortfolioThemeMomentumRanking([{
+  code: "159013",
+  name: "人形机器人执行器主题C",
+  status: "ready",
+  readinessScore: 86,
+  lastSnapshot: {
+    ...setupDigest,
+    code: "159013",
+    name: "人形机器人执行器主题C",
+    matchedThemes: [mainForceNewsTheme],
+    seed: { matchedThemes: [mainForceNewsTheme] },
+    trendProfile: {
+      ...setupDigest.trendProfile,
+      ok: true
+    },
+    fees: {
+      shareClass: "C",
+      shareClassFeeModel: { type: "sales_service_fee", label: "C类：偏持续销售服务费模型" },
+      feeImpact: {
+        missingFeeData: [],
+        oneYearCostPer10000: 40,
+        feeDragLevel: "low",
+        holdingPeriodFit: "short_or_tactical_holding_fit"
+      }
+    },
+    holdingsOutlook: {
+      hasHoldings: true,
+      score: 12,
+      topHoldings: [{ code: "002050", name: "三花智控", pct: 8.2 }],
+      matchedThemeHoldings: [{ code: "002050", name: "三花智控" }],
+      risks: []
+    }
+  }
+}]);
+assert(
+  mainForceNewsMomentum.items.some((item) =>
+    item.code === "159013"
+    && /买入复核|微型试探/.test(item.action)
+    && !(item.decision?.risks || []).some((risk) => risk.includes("缺少正向主力资金"))
+  ),
+  "news-backed main-capital flow should remove the capital-flow gap for otherwise qualified low-position representative funds"
+);
 const staleNewsOnlyThemeRadar = manager.buildThemeRadar({
   conceptBoards: [],
   industryBoards: [],

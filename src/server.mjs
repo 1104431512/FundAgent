@@ -19874,7 +19874,22 @@ function hasPositiveThemeMainCapitalEvidence(theme = {}) {
   const minFlow = finiteMetricNumber(theme.minMainNetInflowPct);
   if (Number.isFinite(avgFlow) && avgFlow >= 0.5) return true;
   if (Number.isFinite(maxFlow) && maxFlow >= 1.5 && (!Number.isFinite(minFlow) || minFlow > -2)) return true;
-  return hasStrongMainInflowRankSignal(theme.mainInflowRankScore);
+  return hasStrongMainInflowRankSignal(theme.mainInflowRankScore) || hasNewsMainCapitalEvidence(theme);
+}
+
+function hasNewsMainCapitalEvidence(theme = {}) {
+  if (!hasTraceableFreshThemeCatalystContext(theme)) return false;
+  const text = [
+    ...(Array.isArray(theme.catalystProfile?.tags) ? theme.catalystProfile.tags : []),
+    theme.catalystProfile?.summary,
+    theme.newsLogic,
+    theme.primaryCatalyst,
+    theme.catalystProfile?.freshnessLabel,
+    theme.catalystProfile?.latestNewsTime
+  ].filter(Boolean).join(" ");
+  return /资金抢筹/.test(text)
+    || /(?:主力资金|资金|ETF资金|机构|北向|南向|融资客|龙虎榜|产业资本)[^，。；、]{0,24}(?:净流入|流入|抢筹|加仓|净买入|回流|增持|回购)/.test(text)
+    || /(?:净流入|抢筹|净买入|回流|加仓|增持|回购)[^，。；、]{0,24}(?:主力资金|资金|ETF资金|机构|北向|南向|融资客|龙虎榜|产业资本)/.test(text);
 }
 
 function hasThemeLeaderOrPreheatSignal(theme = {}) {
@@ -23383,6 +23398,8 @@ function buildThemeLeaderboardEvidenceChips(theme = {}) {
     chips.push(flow >= 0 ? `主力净流入${formatFallbackPlainPct(flow)}` : `主力净流出${formatFallbackPlainPct(Math.abs(flow))}`);
   } else if (Number.isFinite(maxFlow) && maxFlow > 0) {
     chips.push(`最强板块净流入${formatFallbackPlainPct(maxFlow)}`);
+  } else if (hasNewsMainCapitalEvidence(theme)) {
+    chips.push("新闻提示资金抢筹");
   }
   if (theme.catalystProfile?.summary) chips.push(`催化：${theme.catalystProfile.summary}`);
   if (theme.catalystProfile?.freshnessLabel && theme.catalystProfile.fresh !== undefined) chips.push(theme.catalystProfile.freshnessLabel);
@@ -23586,7 +23603,7 @@ const THEME_NEWS_DISCOVERY_RULES = [
 
 const EMERGING_NEWS_TOPIC_STOPWORDS = new Set([
   "市场", "股票", "基金", "主力", "资金", "北向", "南向", "机构", "公司", "公告", "行业", "板块", "概念", "方向", "主题",
-  "政策", "方案", "规划", "订单", "价格", "涨价", "需求", "供给", "产业链", "今日", "早盘", "午后", "尾盘", "指数",
+  "政策", "方案", "规划", "订单", "价格", "涨价", "需求", "供给", "产业", "产业链", "今日", "早盘", "午后", "尾盘", "指数",
   "A股", "港股", "美股", "ETF", "利好", "消息", "新闻", "快讯", "交易", "行情"
 ]);
 
@@ -23813,6 +23830,8 @@ function extractEmergingNewsTopicTerms(item = {}) {
   const patterns = [
     /([\u4e00-\u9fffA-Za-z0-9]{2,14})(?:板块|概念|产业链|行业|方向|主题)?(?:涨停潮|涨停|掀涨停|连板|走高|走强|拉升|活跃|领涨|大涨|异动|升温|爆发|回暖|反弹|延续强势)/g,
     /([\u4e00-\u9fffA-Za-z0-9]{2,14})(?:板块|概念|产业链|行业|方向|主题)(?:走强|拉升|活跃|领涨|大涨|异动|升温|爆发|回暖|反弹)/g,
+    /(?:主力资金|资金|ETF资金|机构|北向|南向|融资客|龙虎榜)[^，。；、]{0,12}?(?:净流入|流入|抢筹|加仓|净买入|回流|增持)[^，。；、]{0,10}?([\u4e00-\u9fffA-Za-z0-9]{2,14})(?:产业|板块|行业|方向|主题|链)?/g,
+    /([\u4e00-\u9fffA-Za-z0-9]{2,14}?)(?:产业|板块|行业|方向|主题|链)?[^，。；、]{0,10}?(?:获主力资金|获资金|获|主力资金|资金|ETF资金|机构|北向|南向|融资客|龙虎榜)[^，。；、]{0,12}?(?:净流入|流入|抢筹|加仓|净买入|回流|增持)/g,
     /(?:政策|试点|方案|规划|订单|涨价|出货|中标|招标|审批|突破|落地|加速|推进|扩产|装机|并网|机构调研|量产|商业化|牌照|发放|获批|受理|应用商店|技术突破|首发|发布|适配|验证|国产大模型|算力芯片|库存见底|需求恢复|订单超预期)[^，。；、]{0,10}?([\u4e00-\u9fffA-Za-z0-9]{2,14})(?:产业|板块|行业|方向|主题|链)/g,
     /([\u4e00-\u9fffA-Za-z0-9]{2,14})(?:政策|试点|方案|规划|订单|涨价|出货|中标|招标|审批|突破|落地|加速|推进|扩产|装机|并网|机构调研|量产|商业化|牌照|发放|获批|受理|应用商店|技术突破|首发|发布|适配|验证|国产大模型|算力芯片|库存见底|需求恢复|订单超预期)/g
   ];
@@ -23828,7 +23847,7 @@ function extractEmergingNewsTopicTerms(item = {}) {
 function normalizeEmergingNewsTopicTerm(value = "") {
   const term = String(value || "")
     .replace(/^(?:多地|今日|早盘|午后|尾盘|国内|海外|相关|多个|首批|新一轮|本轮)/, "")
-    .replace(/(?:板块|概念|产业链|行业|方向|主题|示范区|试点|政策|方案|规划|订单|价格|涨价|涨停潮|涨停|掀涨停|连板|走高|走强|拉升|活跃|领涨|大涨|异动|升温|爆发|回暖|反弹|量产|商业化|牌照|发放|获批|受理|应用商店|技术突破|首发|发布|适配|验证|库存见底|需求恢复|订单超预期)+$/g, "")
+    .replace(/(?:板块|概念|产业链|行业|方向|主题|示范区|试点|政策|方案|规划|订单|订单加速|订单改善|价格|涨价|涨停潮|涨停|掀涨停|连板|走高|走强|拉升|活跃|领涨|大涨|异动|升温|爆发|回暖|反弹|量产|商业化|牌照|发放|获批|受理|应用商店|技术突破|首发|发布|适配|验证|库存见底|需求恢复|订单超预期|资金抢筹|主力抢筹|获主力资金|获主力|获资金|净流入|资金净流入|ETF资金流入|机构净买入|龙虎榜|融资净买入|资金回流|加仓|增持|密集调研|公司密集调研|产业链公司密集调研)+$/g, "")
     .trim();
   if (term.length < 2 || term.length > 12) return "";
   if (EMERGING_NEWS_TOPIC_STOPWORDS.has(term)) return "";
@@ -23995,6 +24014,7 @@ function buildNewsCatalystProfile(news = [], rule = {}) {
   add(/涨价|提价|价格|库存下降|供需|稀缺|短缺|限产/i, "价格上行", 14);
   add(/业绩|利润|营收|预增|盈利|改善|超预期/i, "业绩改善", 12);
   add(/美股|海外|英伟达|苹果|特斯拉|微软|OpenAI|美联储|美元|美债|COMEX|日经|纳斯达克/i, "外盘映射", 10);
+  add(/(?:主力资金|资金|ETF资金|机构|北向|南向|融资客|龙虎榜|产业资本)[^，。；、]{0,18}(?:净流入|流入|抢筹|加仓|净买入|回流|增持|回购)|(?:净流入|抢筹|净买入|回流|加仓|增持|回购)[^，。；、]{0,18}(?:主力资金|资金|ETF资金|机构|北向|南向|融资客|龙虎榜|产业资本)/i, "资金抢筹", 15);
   add(/资金|主力|北向|南向|ETF|机构|增持|回购|净流入/i, "资金关注", 8);
   const hasRisk = /风险|利空|减持|跳水|大跌|杀跌|回落|回调|高位震荡|净流出|撤离|监管|调查/i.test(text);
   const stalePenalty = freshness.fresh === false ? 22 : 0;
