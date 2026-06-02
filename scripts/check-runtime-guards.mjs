@@ -1841,8 +1841,8 @@ const requiredPatterns = [
     message: "user holding risk evidence must reuse structured theme-retreat, stale-catchdown, and current-radar-unconfirmed warnings."
   },
   {
-    pattern: /function buildPortfolioBacktestThemeMomentumCandidate[\s\S]{0,900}!theme \|\| !hasFreshThemeCatalystContext\(theme\)/,
-    message: "missed theme momentum backtests must not count stale catalysts as missed executable opportunities."
+    pattern: /(?=[\s\S]*function buildPortfolioBacktestThemeMomentumCandidate[\s\S]{0,1000}!theme \|\| !hasFreshThemeCatalystContext\(theme\) \|\| !hasPositiveThemeMainCapitalEvidence\(theme\))(?=[\s\S]*function getPortfolioBacktestThemeMomentumBlockingReason[\s\S]{0,900}缺少正向主力资金或主力流入榜确认)/,
+    message: "missed theme momentum backtests must not count stale or capital-unconfirmed catalysts as missed executable opportunities."
   },
   {
     pattern: /候选质量缺口回测[\s\S]{0,700}不能直接算作可买机会成本[\s\S]{0,500}扩展数据源和同主题替代品/,

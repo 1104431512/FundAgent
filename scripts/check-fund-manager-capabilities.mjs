@@ -2023,6 +2023,25 @@ assert(
   themeOpportunityCostList?.items.some((item) => item.code === "000041" && item.action.includes("主力预热")),
   "opportunity-cost ranking must distinguish missed main-capital/preheat candidates from ordinary ready-candidate misses"
 );
+const noCapitalMissedThemeMomentumFixture = JSON.parse(JSON.stringify(missedThemeMomentumFixture));
+noCapitalMissedThemeMomentumFixture.watchlist[0].code = "000057";
+noCapitalMissedThemeMomentumFixture.watchlist[0].name = "无资金确认预热基金C";
+noCapitalMissedThemeMomentumFixture.watchlist[0].lastSnapshot.code = "000057";
+noCapitalMissedThemeMomentumFixture.watchlist[0].lastSnapshot.name = "无资金确认预热基金C";
+const noCapitalMissedTheme = noCapitalMissedThemeMomentumFixture.watchlist[0].lastSnapshot.matchedThemes[0];
+noCapitalMissedTheme.avgMainNetInflowPct = null;
+noCapitalMissedTheme.maxMainNetInflowPct = null;
+noCapitalMissedTheme.minMainNetInflowPct = null;
+noCapitalMissedTheme.mainInflowRankScore = 0;
+noCapitalMissedTheme.newsLogic = "题材预热：新闻催化：低空经济示范区政策加速落地（10:18 测试快讯）；主力线索：资金流向待确认";
+assert(
+  !manager.buildPortfolioBacktestDiagnostics(noCapitalMissedThemeMomentumFixture).items.some((item) => item.label === "主力预热错过回测"),
+  "fresh preheat news without positive main-capital proof must not be counted as a missed executable theme opportunity"
+);
+assert(
+  !manager.buildPortfolioMissedFollowThroughReviewQueue(noCapitalMissedThemeMomentumFixture).some((item) => item.code === "000057" && item.opportunityKind === "theme_momentum"),
+  "missed theme review queue must not inject micro-starter reviews when capital confirmation is missing"
+);
 const staleThemeMomentumFixture = {
   account: {
     cash: 88000,
