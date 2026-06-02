@@ -22594,7 +22594,8 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + boardRisingCount * 4
       + avgInflow * 10
       + maxInflow * 5
-      + mainInflowRankScore * 0.8
+      + mainInflowRankScore * 1.25
+      + (hasStrongMainInflowRankSignal(mainInflowRankScore) ? 12 : 0)
       + catalystScore * 0.16
       + vehicleScore * 0.14
       + Math.max(0, 5 - maxBoardChange) * 2
@@ -22639,14 +22640,14 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
     const retreatSignal = inferThemeRetreatSignal({ capitalRetreatScore, avgMainNetInflowPct, minMainNetInflowPct, boardOutflowCount, boardDeclineCount, forwardScore, rotationScore });
     const stage = retreatSignal
       ? "theme_fading"
-      : inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore, rotationScore, lowPositionScore, capitalFollowScore, preheatScore, avgMainNetInflowPct });
-    const leaderSignal = inferThemeLeaderSignal({ retreatSignal, stage, capitalFollowScore, preheatScore, forwardScore, crowdingScore, avgMainNetInflowPct, maxMainNetInflowPct });
+      : inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore, rotationScore, lowPositionScore, capitalFollowScore, preheatScore, avgMainNetInflowPct, maxMainNetInflowPct, mainInflowRankScore });
+    const leaderSignal = inferThemeLeaderSignal({ retreatSignal, stage, capitalFollowScore, preheatScore, forwardScore, crowdingScore, avgMainNetInflowPct, maxMainNetInflowPct, mainInflowRankScore });
     const actionBias = retreatSignal
       ? "avoid_until_capital_returns"
       : inferThemeActionBias({ stage, forwardScore, crowdingScore, rotationScore, lowPositionScore, capitalFollowScore, preheatScore });
     const positionSignal = retreatSignal
       ? "capital_outflow_watch"
-      : inferThemePositionSignal({ crowdingScore, rotationScore, lowPositionScore, maxFundOneMonth, maxBoardChange, capitalFollowScore, preheatScore });
+      : inferThemePositionSignal({ crowdingScore, rotationScore, lowPositionScore, maxFundOneMonth, maxBoardChange, capitalFollowScore, preheatScore, mainInflowRankScore });
     const newsLogic = buildThemeCatalystLogic({
       rule,
       news,
@@ -23485,9 +23486,18 @@ function formatThemeBoardRankSignal(boards = [], sourcePattern = /主力流入/)
     .join("；");
 }
 
-function inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore, rotationScore = 0, lowPositionScore = 0, capitalFollowScore = 0, preheatScore = 0, avgMainNetInflowPct = null }) {
+function hasStrongMainInflowRankSignal(mainInflowRankScore = 0) {
+  return Number(mainInflowRankScore || 0) >= 28;
+}
+
+function inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore, rotationScore = 0, lowPositionScore = 0, capitalFollowScore = 0, preheatScore = 0, avgMainNetInflowPct = null, maxMainNetInflowPct = null, mainInflowRankScore = 0 }) {
   if (crowdingScore >= 55) return "crowded";
-  if (capitalFollowScore >= 58 && Number(avgMainNetInflowPct) > 0 && crowdingScore < 48) return "capital_entering";
+  const avgFlow = Number(avgMainNetInflowPct);
+  const maxFlow = Number(maxMainNetInflowPct);
+  const mainFlowEvidence = Number.isFinite(avgFlow) && avgFlow > 0
+    || Number.isFinite(maxFlow) && maxFlow >= 2
+    || hasStrongMainInflowRankSignal(mainInflowRankScore);
+  if (capitalFollowScore >= 58 && mainFlowEvidence && crowdingScore < 48) return "capital_entering";
   if (rotationScore >= 50 && lowPositionScore >= 45 && catalystScore >= 8) return "low_position_rotation";
   if (preheatScore >= 52 && catalystScore >= 10 && boardScore < 32 && crowdingScore < 45) return "preheat_catalyst";
   if (catalystScore >= 18 && boardScore < 14) return "germination";
@@ -23532,12 +23542,15 @@ function inferThemeRetreatSignal({
   return "";
 }
 
-function inferThemeLeaderSignal({ retreatSignal = "", stage = "", capitalFollowScore = 0, preheatScore = 0, forwardScore = 0, crowdingScore = 0, avgMainNetInflowPct = null, maxMainNetInflowPct = null } = {}) {
+function inferThemeLeaderSignal({ retreatSignal = "", stage = "", capitalFollowScore = 0, preheatScore = 0, forwardScore = 0, crowdingScore = 0, avgMainNetInflowPct = null, maxMainNetInflowPct = null, mainInflowRankScore = 0 } = {}) {
   if (retreatSignal) return "capital_outflow";
   if (stage === "crowded" || crowdingScore >= 55) return "crowded";
   const avgFlow = Number(avgMainNetInflowPct);
   const maxFlow = Number(maxMainNetInflowPct);
-  if ((stage === "capital_entering" || capitalFollowScore >= 58) && (Number.isFinite(avgFlow) && avgFlow > 0 || Number.isFinite(maxFlow) && maxFlow >= 2)) {
+  const mainFlowEvidence = Number.isFinite(avgFlow) && avgFlow > 0
+    || Number.isFinite(maxFlow) && maxFlow >= 2
+    || hasStrongMainInflowRankSignal(mainInflowRankScore);
+  if ((stage === "capital_entering" || capitalFollowScore >= 58) && mainFlowEvidence) {
     return "capital_entering";
   }
   if (stage === "preheat_catalyst" || preheatScore >= 56) return "preheat_catalyst";
@@ -23545,9 +23558,9 @@ function inferThemeLeaderSignal({ retreatSignal = "", stage = "", capitalFollowS
   return "watch";
 }
 
-function inferThemePositionSignal({ crowdingScore, rotationScore, lowPositionScore, maxFundOneMonth, maxBoardChange, capitalFollowScore = 0, preheatScore = 0 }) {
+function inferThemePositionSignal({ crowdingScore, rotationScore, lowPositionScore, maxFundOneMonth, maxBoardChange, capitalFollowScore = 0, preheatScore = 0, mainInflowRankScore = 0 }) {
   if (crowdingScore >= 55 || maxFundOneMonth >= 25 || maxBoardChange >= 8) return "high_chase_risk";
-  if (capitalFollowScore >= 58 && crowdingScore < 48 && maxBoardChange < 6) return "main_capital_entering";
+  if ((capitalFollowScore >= 58 || hasStrongMainInflowRankSignal(mainInflowRankScore)) && crowdingScore < 48 && maxBoardChange < 6) return "main_capital_entering";
   if (preheatScore >= 54 && crowdingScore < 45 && maxBoardChange < 5) return "preheat_catalyst_watch";
   if (rotationScore >= 45 && lowPositionScore >= 45) return "low_position_rotation";
   if (lowPositionScore >= 35 && crowdingScore < 35) return "acceptable_position";

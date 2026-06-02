@@ -5650,6 +5650,41 @@ const rankBackedAiTheme = rankBackedThemeRadar.find((theme) => theme.id === "ai_
 assert.equal(rankBackedAiTheme?.leaderSignal, "capital_entering", "theme radar must treat top main-inflow board ranks as main-capital entry evidence before the sector fully rallies");
 assert(rankBackedAiTheme.mainInflowRankScore >= 30, "theme radar must score main-inflow leaderboard ranks as explicit capital-follow evidence");
 assert(rankBackedAiTheme.newsLogic.includes("榜单线索") && rankBackedAiTheme.newsLogic.includes("主力流入榜第1名"), "theme news logic must explain main-inflow leaderboard evidence behind the move");
+const rankOnlyThemeRadar = manager.buildThemeRadar({
+  conceptBoards: [{
+    boardCode: "BKROBOTRANK",
+    name: "机器人",
+    changePct: 0.4,
+    leadStock: "中大力德",
+    quoteTime: "10:36",
+    coverageSources: ["主力流入榜"],
+    rankSignals: [{ source: "主力流入榜", metric: "f184", direction: "desc", rank: 2 }]
+  }],
+  industryBoards: [],
+  fastNews: [{ title: "人形机器人执行器订单落地 产业链公司加速扩产", showTime: "10:28", mediaName: "测试快讯" }],
+  fundCandidates: {
+    stockFunds: [{ code: "000054", name: "机器人执行器主题C", type: "股票型基金", oneMonthPct: 1.8, dailyPct: 0.2, shareClass: "C", keywords: ["机器人", "执行器"] }]
+  }
+});
+const rankOnlyRobotTheme = rankOnlyThemeRadar.find((theme) => theme.name.includes("人形机器人") && Number(theme.mainInflowRankScore || 0) >= 28);
+assert.equal(
+  rankOnlyRobotTheme?.leaderSignal,
+  "capital_entering",
+  "theme radar must still identify main-capital entry when a top main-inflow rank exists but numeric inflow is unavailable"
+);
+assert.equal(
+  rankOnlyRobotTheme?.positionSignal,
+  "main_capital_entering",
+  "top main-inflow leaderboard ranks must mark the theme as main-capital entering before the price move diffuses"
+);
+assert(
+  rankOnlyRobotTheme?.newsLogic.includes("主力流入榜第2名") && rankOnlyRobotTheme.newsLogic.includes("执行器订单"),
+  "rank-only main-capital themes must explain both the leaderboard evidence and the fresh catalyst"
+);
+assert(
+  manager.buildThemeLeaderboards([rankOnlyRobotTheme]).mainCapital.items.some((item) => item.name.includes("机器人")),
+  "rank-only main-capital themes with fresh catalysts must enter the main-capital leaderboard for fast follow-up"
+);
 const emergingNewsOnlyRadar = manager.buildThemeRadar({
   conceptBoards: [],
   industryBoards: [],

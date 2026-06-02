@@ -1105,6 +1105,10 @@ const requiredPatterns = [
     message: "theme radar must score main-inflow/outflow leaderboard ranks and explain those board-rank signals in theme logic."
   },
   {
+    pattern: /(?=[\s\S]*function hasStrongMainInflowRankSignal)(?=[\s\S]*function inferThemeStage[\s\S]{0,1200}mainInflowRankScore)(?=[\s\S]*function inferThemeLeaderSignal[\s\S]{0,1400}mainInflowRankScore)(?=[\s\S]*function inferThemePositionSignal[\s\S]{0,1100}mainInflowRankScore)/,
+    message: "theme radar must treat top main-inflow leaderboard ranks as main-capital entry evidence even when numeric inflow is missing."
+  },
+  {
     pattern: /(?=[\s\S]*function inferThemeLeaderSignal)(?=[\s\S]*capitalFollowScore)(?=[\s\S]*preheatScore)(?=[\s\S]*主力跟随)(?=[\s\S]*题材逻辑)(?=[\s\S]*follow_main_small)/,
     message: "fund manager must identify main-capital entry, preheated themes, and news logic before ranking fund opportunities."
   },
