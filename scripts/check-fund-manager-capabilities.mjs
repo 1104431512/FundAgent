@@ -5878,6 +5878,30 @@ assert(
   !staleThemeWaitAnswerQuality.issues.some((issue) => issue.startsWith("stale_theme_candidate")),
   "quality gate should allow stale-theme candidates when the answer says 0 yuan observation and waits for capital return"
 );
+const holdingRealtimeWeakBuyAnswerQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000050 持仓走弱低位基金C 可以分批买入1000元。理由是回调完成，低位修复，适合小仓试探。",
+  workflow: "fund_qa",
+  userText: "000050 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [holdingRealtimeWeakExecutableDigest] } }
+});
+assert(
+  holdingRealtimeWeakBuyAnswerQuality.issues.includes("stale_theme_candidate_given_buy_execution"),
+  "quality gate must reject buy amounts when low-position pullback candidates have weakening top holdings"
+);
+assert(
+  holdingRealtimeWeakBuyAnswerQuality.issues.includes("stale_theme_candidate_given_buy_signal"),
+  "quality gate must reject buy-intent wording when low-position pullback candidates have weakening top holdings"
+);
+const holdingRealtimeWeakWaitAnswerQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000050 持仓走弱低位基金C 先0元观察。原因是前十大持仓盘中明显走弱，表面回调可能继续下探，等底层持仓止跌后再复核。",
+  workflow: "fund_qa",
+  userText: "000050 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [holdingRealtimeWeakExecutableDigest] } }
+});
+assert(
+  !holdingRealtimeWeakWaitAnswerQuality.issues.some((issue) => issue.startsWith("stale_theme_candidate")),
+  "quality gate should allow weak top-holding pullbacks only when the answer says 0 yuan observation and waits for bottom holdings to stop falling"
+);
 const earlyTurnTrend = manager.computeTrendProfile(buildEarlyTurnNavPoints());
 assert.equal(earlyTurnTrend.ok, true, "early-turn synthetic series should produce a trend profile");
 assert(

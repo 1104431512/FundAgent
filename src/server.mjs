@@ -20476,8 +20476,14 @@ function hasStaleFundEvidence(candidate = {}) {
 }
 
 function hasStaleThemeCatchdownEvidence(candidate = {}) {
-  if (hasStaleThemeCatchdownRisk(candidate) || hasThemeRetreatRisk(candidate)) return true;
+  if (
+    hasStaleThemeCatchdownRisk(candidate)
+    || hasThemeRetreatRisk(candidate)
+    || hasHoldingRealtimeCatchdownRisk(candidate)
+  ) return true;
   const actionability = candidate.actionability || {};
+  const holdingRealtimePulse = getCandidateHoldingRealtimePulse(candidate);
+  const holdingRealtimeWarning = getHoldingRealtimeCatchdownWarning(candidate);
   const text = [
     candidate.reason,
     candidate.trendSummary,
@@ -20486,11 +20492,14 @@ function hasStaleThemeCatchdownEvidence(candidate = {}) {
     candidate.riskNotes,
     candidate.setupEvidence,
     candidate.readinessGaps,
+    holdingRealtimeWarning,
+    holdingRealtimePulse?.label,
+    holdingRealtimePulse?.risks,
     actionability.decisionBlocker,
     actionability.blocker,
     actionability.decisiveEvidence
   ].flat().filter(Boolean).join(" ");
-  return /题材退潮|主力资金撤离|主力撤离|资金撤离|接盘风险|回调不能当买点|回调不作为买点/.test(text);
+  return /题材退潮|主力资金撤离|主力撤离|资金撤离|接盘风险|回调不能当买点|回调不作为买点|前十大持仓盘中明显走弱|底层持仓盘中明显走弱|表面回调可能继续下探|底层持仓止跌|持仓实时降级/.test(text);
 }
 
 function evaluateMarketDataQualityDisclosure({ text, workflow, evidence }) {
