@@ -13450,6 +13450,7 @@ function summarizePortfolioRunBrief(run, fallbackAccount = {}) {
     transactions: (run.transactions || []).slice(0, 6).map(summarizePortfolioTransactionBrief),
     executionNotes: sanitizePortfolioPublicReportValue((run.executionNotes || []).slice(0, 6), "", account),
     settlementEvents: sanitizePortfolioPublicReportValue((run.settlementEvents || []).slice(0, 6), "", account),
+    marketSnapshot: summarizePortfolioRunMarketSnapshot(run.marketSnapshot),
     error: run.error || ""
   };
 }
@@ -13478,10 +13479,43 @@ function summarizePortfolioRun(run, fallbackAccount = {}) {
     orderUpdates: (run.orderUpdates || []).slice(0, 10),
     executionNotes: sanitizePortfolioPublicReportValue((run.executionNotes || []).slice(0, 10), "", account),
     settlementEvents: sanitizePortfolioPublicReportValue((run.settlementEvents || []).slice(0, 10), "", account),
+    marketSnapshot: summarizePortfolioRunMarketSnapshot(run.marketSnapshot),
     sources: run.sources || [],
     push: run.push || null,
     error: run.error || ""
   };
+}
+
+function summarizePortfolioRunMarketSnapshot(snapshot = null) {
+  if (!snapshot || typeof snapshot !== "object") return null;
+  const leaderboards = snapshot.themeLeaderboards || buildThemeLeaderboards(snapshot.themeRadar || []);
+  return {
+    fetchedAt: snapshot.fetchedAt || "",
+    dataQuality: compactMarketDataQuality(snapshot.dataQuality),
+    themeLeaderboards: compactThemeLeaderboardsForPublic(leaderboards)
+  };
+}
+
+function compactThemeLeaderboardsForPublic(leaderboards = {}) {
+  const laneKeys = ["mainCapital", "preheat", "lowRotation", "retreat", "chaseRisk"];
+  return Object.fromEntries(laneKeys.map((key) => {
+    const lane = leaderboards?.[key] || {};
+    return [key, {
+      id: lane.id || key,
+      title: lane.title || "",
+      subtitle: lane.subtitle || "",
+      items: (lane.items || []).slice(0, 5).map((item) => ({
+        id: item.id || "",
+        name: item.name || item.id || "",
+        score: finiteMetricNumber(item.score),
+        reason: item.reason || "",
+        leader: item.leader || "",
+        action: item.action || "",
+        catalyst: item.catalyst || "",
+        newsLogic: item.newsLogic || item.primaryCatalyst || ""
+      }))
+    }];
+  }));
 }
 
 function getPortfolioRunAccountContext(run = {}, fallbackAccount = {}) {

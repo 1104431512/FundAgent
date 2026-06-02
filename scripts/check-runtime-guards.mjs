@@ -1093,6 +1093,10 @@ const requiredPatterns = [
     message: "market snapshots must expose theme leaderboards for main-capital entry, preheat, low rotation, retreat, and chase-risk lanes."
   },
   {
+    pattern: /(?=[\s\S]*function summarizePortfolioRunMarketSnapshot)(?=[\s\S]*compactThemeLeaderboardsForPublic)(?=[\s\S]*marketSnapshot:\s*summarizePortfolioRunMarketSnapshot\(run\.marketSnapshot\))/,
+    message: "portfolio public run summaries must expose compact market theme leaderboards for the admin UI."
+  },
+  {
     pattern: /(?=[\s\S]*function buildDynamicThemeRadarRules)(?=[\s\S]*buildDynamicThemeKeywords)(?=[\s\S]*dynamic_)(?=[\s\S]*discoveryScore)/,
     message: "theme radar must generate dynamic emerging themes from live concept and industry boards, not only a static dictionary."
   },
@@ -1119,6 +1123,10 @@ const requiredPatterns = [
   {
     pattern: /renderPortfolioDashboard[\s\S]{0,4200}renderPortfolioManagerPerformance\(managerPerformance,\s*account\)[\s\S]{0,900}renderPortfolioWorkspaceCards/,
     message: "admin portfolio overview must render manager performance before shortcut cards."
+  },
+  {
+    pattern: /(?=[\s\S]*function renderPortfolioThemeLeaderboards)(?=[\s\S]*function renderPortfolioThemeLeaderboardLane)(?=[\s\S]*function getPortfolioLatestThemeLeaderboards)(?=[\s\S]*\.theme-leaderboard-board)(?=[\s\S]*\.theme-leaderboard-lane-sell)/,
+    message: "admin sector board must show latest theme leaderboards with visible retreat/preheat lanes."
   },
   {
     pattern: /(?=[\s\S]*\.portfolio-performance-board\s*\{[\s\S]{0,620}border-left)(?=[\s\S]*\.portfolio-operation-review-lanes\s*\{[\s\S]{0,420}grid-template-columns:\s*repeat\(3)(?=[\s\S]*\.portfolio-operation-review\s*\{[\s\S]{0,700}border-left)/,

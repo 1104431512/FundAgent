@@ -1997,6 +1997,20 @@ const historicalRunWithAccount = {
     summary: "盘前提示：按初始本金口径为-0.33%。",
     sources: ["https://example.com/portfolio/report"]
   },
+  marketSnapshot: {
+    fetchedAt: "2099-05-20T10:30:00.000Z",
+    dataQuality: { ok: true, level: "good", summary: "市场数据较完整。" },
+    themeLeaderboards: {
+      mainCapital: {
+        title: "主力进场榜",
+        items: [{ name: "AI/算力", reason: "主力资金和题材逻辑同时出现", action: "跟随主力小仓试探", catalyst: "产业订单" }]
+      },
+      retreat: {
+        title: "退潮回避榜",
+        items: [{ name: "光模块/CPO", reason: "主力撤离或题材退潮，先等资金回流", action: "等资金回流后再看" }]
+      }
+    }
+  },
   accountAfter: { investedCost: 30002.28, cumulativePnlPct: -1.09, cumulativePnl: -328.07 }
 };
 const publicHistoricalRunBrief = manager.summarizePortfolioRunBrief(historicalRunWithAccount);
@@ -2009,6 +2023,8 @@ assert(publicHistoricalRunBrief.summary.includes("按实际投入成本30002.28�
 assert(publicHistoricalRunFull.card.includes("按实际投入成本30002.28元计-1.09%"), "public full run cards must use the run's invested-cost denominator");
 assert(publicHistoricalRunFull.team[0].reason.includes("按实际投入成本30002.28元计-1.09%"), "public nested run team notes must use the run's invested-cost denominator");
 assert(publicHistoricalRunFull.observation.summary.includes("按实际投入成本30002.28元计-1.09%"), "public nested run reports must use the run's invested-cost denominator");
+assert.equal(publicHistoricalRunBrief.marketSnapshot.themeLeaderboards.mainCapital.items[0].name, "AI/算力", "public brief run summaries must expose compact theme leaderboards for the admin sector board");
+assert.equal(publicHistoricalRunFull.marketSnapshot.themeLeaderboards.retreat.items[0].name, "光模块/CPO", "public full run summaries must expose retreat theme leaderboards for customer-visible diagnostics");
 assert.equal(publicHistoricalRunFull.observation.sources[0], "https://example.com/portfolio/report", "public run account-context sanitization must still preserve source URLs");
 assert(!/相对初始本金|初始资金口径|初始本金口径|本金口径/.test(publicHistoricalRunText), "public historical run output must not leak initial-capital denominator wording");
 const publicHistoricalRunWithFallback = manager.summarizePortfolioRunBrief(
@@ -4117,6 +4133,8 @@ const themeLeaderboards = manager.buildThemeLeaderboards([
 assert(themeLeaderboards.mainCapital.items.some((item) => item.name === "AI/算力"), "theme leaderboards must surface main-capital entry themes as a dedicated lane");
 assert(themeLeaderboards.preheat.items.some((item) => item.name === "政策预热测试" && item.catalyst.includes("政策落地")), "theme leaderboards must surface preheated policy catalysts with readable catalyst labels");
 assert(themeLeaderboards.retreat.items.some((item) => item.name === "AI/算力"), "theme leaderboards must keep capital-outflow themes in the avoid lane");
+assert(adminSource.includes("renderPortfolioThemeLeaderboards") && adminSource.includes("getPortfolioLatestThemeLeaderboards"), "admin sector board must render latest market theme leaderboards instead of hiding them in raw run JSON");
+assert(adminStyleSource.includes(".theme-leaderboard-board") && adminStyleSource.includes(".theme-leaderboard-lane-sell"), "admin styles must provide compact visible lanes for theme leaderboards and retreat risks");
 const holdingsSupportedDigest = {
   ...setupDigest,
   code: "000031",

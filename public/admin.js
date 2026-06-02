@@ -42,6 +42,13 @@ const PORTFOLIO_SECTOR_LANES = [
   { id: "holdings_outlook", title: "持仓前景", tone: "holdings", empty: "暂无前十大持仓前景线索。" },
   { id: "quality_score", title: "质量优选", tone: "quality", empty: "暂无风险收益质量线索。" }
 ];
+const PORTFOLIO_THEME_LEADERBOARD_LANES = [
+  { id: "mainCapital", title: "主力进场", tone: "buy", empty: "暂无主力进场信号。" },
+  { id: "preheat", title: "题材预热", tone: "watch", empty: "暂无预热催化。" },
+  { id: "lowRotation", title: "低位轮动", tone: "rotation", empty: "暂无低位轮动。" },
+  { id: "retreat", title: "退潮回避", tone: "sell", empty: "暂无退潮信号。" },
+  { id: "chaseRisk", title: "追涨风险", tone: "chase", empty: "暂无追涨风险。" }
+];
 const PORTFOLIO_ACTION_LANES = [
   { id: "buy", title: "买入动作", tone: "buy", empty: "暂无买入或试探动作。" },
   { id: "sell", title: "卖出动作", tone: "sell", empty: "暂无卖出或减仓动作。" },
@@ -882,6 +889,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   const sectorItems = collectPortfolioSectorBoardItems(portfolio.managerRankings || {});
   const dataItems = collectPortfolioDataBoardItems(portfolio.managerRankings || {});
   const matrixItems = collectPortfolioDecisionMatrixItems(portfolio.managerRankings || {});
+  const themeLeaderboardItems = collectPortfolioThemeLeaderboardItems(getPortfolioLatestThemeLeaderboards(portfolio));
   const ready = watchlist.filter((item) => item.status === "ready");
   const waiting = watchlist.filter((item) => item.status === "waiting_pullback");
   const launchEve = watchlist.filter(isWatchlistLaunchEveCandidate);
@@ -914,7 +922,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   setText("#portfolioNavAlertCount", String(alertItems.length));
   setText("#portfolioNavMatrixCount", String(matrixItems.length));
   setText("#portfolioNavRiskCount", String(riskItems.length));
-  setText("#portfolioNavSectorCount", String(sectorItems.length));
+  setText("#portfolioNavSectorCount", String(sectorItems.length + themeLeaderboardItems.length));
   setText("#portfolioNavDataCount", String(dataItems.length));
   setText(
     "#portfolioNavOverviewCount",
@@ -933,7 +941,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   renderPortfolioAlertBoard(portfolio.managerRankings || {});
   renderPortfolioDecisionMatrixBoard(portfolio.managerRankings || {});
   renderPortfolioRiskBoard(portfolio.managerRankings || {});
-  renderPortfolioSectorBoard(portfolio.managerRankings || {});
+  renderPortfolioSectorBoard(portfolio.managerRankings || {}, getPortfolioLatestThemeLeaderboards(portfolio));
   renderPortfolioDataBoard(portfolio.managerRankings || {});
   renderPortfolioOpportunityBoard({ ready, waiting, launchEve, blocked });
   renderInsightList("#portfolioManagerSummary", buildManagerInsightItems(portfolio, latestRun, activeOrders), "暂无经理运行摘要。");
@@ -2158,25 +2166,98 @@ function collectPortfolioSectorBoardItems(board = {}) {
   return items;
 }
 
-function renderPortfolioSectorBoard(board = {}) {
+function getPortfolioLatestThemeLeaderboards(portfolio = {}) {
+  const run = (portfolio.recentRuns || []).find((item) => item?.marketSnapshot?.themeLeaderboards);
+  return run?.marketSnapshot?.themeLeaderboards || null;
+}
+
+function collectPortfolioThemeLeaderboardItems(leaderboards = null) {
+  if (!leaderboards || typeof leaderboards !== "object") return [];
+  return PORTFOLIO_THEME_LEADERBOARD_LANES.flatMap((lane) =>
+    (leaderboards[lane.id]?.items || []).slice(0, 4).map((item) => ({
+      ...item,
+      laneId: lane.id,
+      laneTitle: lane.title,
+      laneTone: lane.tone
+    }))
+  );
+}
+
+function renderPortfolioSectorBoard(board = {}, themeLeaderboards = null) {
   const root = document.querySelector("#portfolioSectorBoard");
   if (!root) return;
   const listById = new Map((Array.isArray(board.lists) ? board.lists : []).map((list) => [list.id, list]));
   const total = collectPortfolioSectorBoardItems(board).length;
-  setText("#portfolioSectorState", total ? `${total} 个方向` : "暂无板块");
+  const themeTotal = collectPortfolioThemeLeaderboardItems(themeLeaderboards).length;
+  setText("#portfolioSectorState", total + themeTotal ? `${total + themeTotal} 个方向` : "暂无板块");
   root.innerHTML = `
     <section class="sector-terminal">
       <div class="sector-terminal-head">
         <div>
-          <strong>先看方向，再选基金</strong>
-          <small>把主题配置、轮动启动、持仓前景和基金质量合在一屏，减少新闻追涨和同题材重复买入。</small>
+          <strong>先看题材，再选基金</strong>
+          <small>主力进场、题材预热、退潮回避和追涨风险先分层；下方再看代表基金、买点和持仓前景。</small>
         </div>
         <button type="button" class="secondary" data-portfolio-view-target="rankings">进入完整榜单</button>
       </div>
+      ${renderPortfolioThemeLeaderboards(themeLeaderboards)}
       <div class="sector-lane-grid">
         ${PORTFOLIO_SECTOR_LANES.map((lane) => renderPortfolioSectorLane(lane, listById.get(lane.id))).join("")}
       </div>
     </section>
+  `;
+}
+
+function renderPortfolioThemeLeaderboards(leaderboards = null) {
+  if (!leaderboards || typeof leaderboards !== "object") {
+    return `
+      <section class="theme-leaderboard-empty">
+        <strong>题材雷达未同步</strong>
+        <small>运行一次盘前观察或今日操作后，这里会展示主力进场、预热和退潮方向。</small>
+      </section>
+    `;
+  }
+  return `
+    <section class="theme-leaderboard-board" aria-label="题材榜单">
+      ${PORTFOLIO_THEME_LEADERBOARD_LANES.map((lane) => renderPortfolioThemeLeaderboardLane(lane, leaderboards[lane.id])).join("")}
+    </section>
+  `;
+}
+
+function renderPortfolioThemeLeaderboardLane(lane = {}, list = {}) {
+  const items = Array.isArray(list?.items) ? list.items.slice(0, 3) : [];
+  return `
+    <section class="theme-leaderboard-lane theme-leaderboard-lane-${escapeHtml(lane.tone || "watch")}">
+      <div class="theme-leaderboard-lane-head">
+        <div>
+          <strong>${escapeHtml(list?.title || lane.title || "题材")}</strong>
+          <small>${escapeHtml(list?.subtitle || lane.empty || "")}</small>
+        </div>
+        <span>${items.length}</span>
+      </div>
+      <div class="theme-leaderboard-items">
+        ${items.length ? items.map((item) => renderPortfolioThemeLeaderboardItem(item, lane)).join("") : `<div class="empty compact-empty">${escapeHtml(lane.empty || "暂无题材。")}</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderPortfolioThemeLeaderboardItem(item = {}, lane = {}) {
+  const actionClass = getManagerRankingActionClass(`${item.action || ""} ${item.reason || ""}`) || lane.tone || "watch";
+  const facts = [
+    item.leader ? `节奏：${item.leader}` : "",
+    item.catalyst ? `催化：${item.catalyst}` : "",
+    item.score !== null && item.score !== undefined && item.score !== "" ? `评分：${formatNumber(item.score, 1)}` : ""
+  ].filter(Boolean);
+  return `
+    <article class="theme-leaderboard-item">
+      <div class="theme-leaderboard-item-title">
+        <strong>${escapeHtml(item.name || "未知题材")}</strong>
+        <span class="ranking-action ${actionClass}">${escapeHtml(item.action || "复核")}</span>
+      </div>
+      <p>${escapeHtml(item.reason || item.newsLogic || "等待下一轮题材雷达复核。")}</p>
+      ${facts.length ? `<div class="theme-leaderboard-facts">${facts.map((fact) => `<small>${escapeHtml(fact)}</small>`).join("")}</div>` : ""}
+      ${item.newsLogic ? `<small class="theme-leaderboard-logic">${escapeHtml(item.newsLogic)}</small>` : ""}
+    </article>
   `;
 }
 
