@@ -3244,12 +3244,8 @@ function shouldForcePortfolioDataBlockedSeedScan(account = {}, watchlist = []) {
 function shouldForcePortfolioThemeOpportunitySeedScan(marketSnapshot = null, watchlist = []) {
   const keywordGroups = buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot);
   if (!keywordGroups.length) return false;
-  const activeText = buildPortfolioWatchlistThemeCoverageText(watchlist);
   return keywordGroups.some((group) =>
-    !getPortfolioThemeCoverageAnchors(group).some((keyword) => {
-      const value = normalizeIntentText(keyword);
-      return value && activeText.includes(value);
-    })
+    !hasPortfolioThemeRepresentativeCoverageForGroup(watchlist, group)
   );
 }
 
@@ -15719,12 +15715,8 @@ function findPortfolioThemeRepresentativeGaps(db = {}, watchlist = []) {
   const snapshot = findLatestPortfolioMarketSnapshot(db);
   const keywordGroups = buildPortfolioThemeOpportunityKeywordGroups(snapshot);
   if (!keywordGroups.length) return [];
-  const activeText = buildPortfolioWatchlistThemeCoverageText(watchlist);
   return keywordGroups.filter((group) =>
-    !getPortfolioThemeCoverageAnchors(group).some((keyword) => {
-      const value = normalizeIntentText(keyword);
-      return value && activeText.includes(value);
-    })
+    !hasPortfolioThemeRepresentativeCoverageForGroup(watchlist, group)
   ).slice(0, 5);
 }
 
@@ -15738,17 +15730,35 @@ function findLatestPortfolioMarketSnapshot(db = {}) {
 function buildPortfolioWatchlistThemeCoverageText(watchlist = []) {
   return normalizeIntentText(normalizePortfolioWatchlist(watchlist)
     .filter(isPortfolioThemeRepresentativeCoverageCandidate)
-    .map((item) => [
-      item.name,
-      item.reason,
-      item.candidateRole,
-      item.positionPlan,
-      ...(item.setupEvidence || []),
-      ...(item.buyTriggers || []),
-      ...(item.lastSnapshot?.matchedThemes || []).flatMap((theme) => [theme.name, theme.id, ...(theme.themeKeywords || []), ...(theme.fundKeywords || []), ...(theme.keywords || []), ...(theme.leaderStocks || []), ...(theme.boardNames || [])]),
-      ...collectPortfolioWatchHoldingItems(item).map((holding) => `${holding.code || ""} ${holding.name || ""} ${holding.text || ""}`)
-    ].filter(Boolean).join(" "))
+    .map(buildPortfolioThemeCoverageItemText)
     .join(" "));
+}
+
+function hasPortfolioThemeRepresentativeCoverageForGroup(watchlist = [], group = {}) {
+  const anchors = getPortfolioThemeCoverageAnchors(group)
+    .map((keyword) => normalizeIntentText(keyword))
+    .filter(Boolean);
+  if (!anchors.length) return false;
+  return normalizePortfolioWatchlist(watchlist)
+    .filter(isPortfolioThemeRepresentativeCoverageCandidate)
+    .some((item) => {
+      const text = buildPortfolioThemeCoverageItemText(item);
+      return anchors.some((anchor) => text.includes(anchor));
+    });
+}
+
+function buildPortfolioThemeCoverageItemText(item = {}) {
+  const profile = buildPortfolioThemeCoverageProfile(item);
+  return normalizeIntentText([
+    item.name,
+    item.reason,
+    item.candidateRole,
+    item.positionPlan,
+    ...(item.setupEvidence || []),
+    ...(item.buyTriggers || []),
+    ...(profile.matchedThemes || []).flatMap((theme) => [theme.name, theme.id, ...(theme.themeKeywords || []), ...(theme.fundKeywords || []), ...(theme.keywords || []), ...(theme.leaderStocks || []), ...(theme.boardNames || [])]),
+    ...collectPortfolioWatchHoldingItems({ ...item, lastSnapshot: profile }).map((holding) => `${holding.code || ""} ${holding.name || ""} ${holding.text || ""}`)
+  ].filter(Boolean).join(" "));
 }
 
 function isPortfolioThemeRepresentativeCoverageCandidate(item = {}) {
@@ -15758,6 +15768,8 @@ function isPortfolioThemeRepresentativeCoverageCandidate(item = {}) {
   const themes = getCandidateThemeSignals(profile);
   if (!themes.length) return false;
   if (themes.some(isUnrefreshedMarketThemeSignal)) return false;
+  if (getStalePortfolioThemeRefreshWarnings(profile).length) return false;
+  if (getPortfolioActionableThemeSupportGap(profile)) return false;
   if (hasStaleThemeCatchdownRisk(profile) || hasThemeRetreatRisk(profile) || hasHighChaseTheme(profile)) return false;
   if (themes.some(isActionableThemeSupport) && !hasVerifiedThemeCarrierEvidence(profile)) return false;
   return true;
@@ -15778,9 +15790,13 @@ function buildPortfolioThemeCoverageProfile(item = {}) {
     name: profile.name || item.name || "",
     type: profile.type || item.type || "",
     matchedThemes: profile.matchedThemes || item.matchedThemes || [],
+    marketThemeRefresh: profile.marketThemeRefresh || item.marketThemeRefresh || null,
+    holdingThemeRefresh: profile.holdingThemeRefresh || item.holdingThemeRefresh || null,
     seed: {
       ...(profile.seed || {}),
-      matchedThemes: profile.seed?.matchedThemes || profile.matchedThemes || item.matchedThemes || []
+      matchedThemes: profile.seed?.matchedThemes || profile.matchedThemes || item.matchedThemes || [],
+      marketThemeRefresh: profile.seed?.marketThemeRefresh || item.seed?.marketThemeRefresh || null,
+      holdingThemeRefresh: profile.seed?.holdingThemeRefresh || item.seed?.holdingThemeRefresh || null
     },
     holdings: profile.holdings || item.holdings || null,
     topHoldings: profile.topHoldings || item.topHoldings || [],

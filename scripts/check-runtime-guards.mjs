@@ -2257,8 +2257,12 @@ const requiredPatterns = [
     message: "portfolio capability diagnostics must surface live main-capital/preheat themes whose representative funds are missing from the watchlist."
   },
   {
-    pattern: /function findPortfolioThemeRepresentativeGaps[\s\S]{0,1200}buildPortfolioThemeOpportunityKeywordGroups[\s\S]{0,900}buildPortfolioWatchlistThemeCoverageText/,
+    pattern: /function findPortfolioThemeRepresentativeGaps[\s\S]{0,1200}buildPortfolioThemeOpportunityKeywordGroups[\s\S]{0,900}hasPortfolioThemeRepresentativeCoverageForGroup/,
     message: "theme representative gap detection must compare theme leaderboard keywords against active watchlist coverage."
+  },
+  {
+    pattern: /(?=[\s\S]*function shouldForcePortfolioThemeOpportunitySeedScan[\s\S]{0,500}hasPortfolioThemeRepresentativeCoverageForGroup)(?=[\s\S]*function findPortfolioThemeRepresentativeGaps[\s\S]{0,800}hasPortfolioThemeRepresentativeCoverageForGroup)(?=[\s\S]*function hasPortfolioThemeRepresentativeCoverageForGroup[\s\S]{0,900}isPortfolioThemeRepresentativeCoverageCandidate)/,
+    message: "theme representative recall and diagnostics must use item-level usable coverage instead of pooled watchlist text."
   },
   {
     pattern: /function findLatestPortfolioMarketSnapshot[\s\S]{0,500}\[\.\.\.runs\]\.reverse\(\)\.find/,
@@ -2271,6 +2275,14 @@ const requiredPatterns = [
   {
     pattern: /function isPortfolioThemeRepresentativeCoverageCandidate[\s\S]{0,1200}isUnrefreshedMarketThemeSignal[\s\S]{0,700}hasStaleThemeCatchdownRisk[\s\S]{0,700}hasVerifiedThemeCarrierEvidence/,
     message: "usable theme representatives must reject unconfirmed old themes, stale/retreat/chase candidates, and require verified carrier evidence for actionable live themes."
+  },
+  {
+    pattern: /function isPortfolioThemeRepresentativeCoverageCandidate[\s\S]{0,520}getStalePortfolioThemeRefreshWarnings\(profile\)[\s\S]{0,260}getPortfolioActionableThemeSupportGap\(profile\)/,
+    message: "usable theme representatives must reject expired radar snapshots and current theme-support gaps."
+  },
+  {
+    pattern: /function buildPortfolioThemeCoverageProfile[\s\S]{0,900}marketThemeRefresh[\s\S]{0,500}holdingThemeRefresh/,
+    message: "theme coverage profiles must preserve market and holding theme refresh metadata for freshness guards."
   },
   {
     pattern: /function isUnrefreshedMarketThemeSignal[\s\S]{0,500}current_radar_unconfirmed[\s\S]{0,500}未被当前题材雷达确认/,

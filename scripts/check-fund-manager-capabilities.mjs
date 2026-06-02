@@ -844,6 +844,30 @@ assert.equal(
   true,
   "same-theme watchlist items whose old catalyst is not confirmed by current radar must not block fresh representative recall"
 );
+const staleRadarThemeWatchlist = [{
+  code: "000095",
+  name: "低空经济旧雷达基金C",
+  status: "waiting_pullback",
+  reason: "旧低空经济候选，仍挂着上一轮主力进场标签。",
+  lastSnapshot: {
+    ...livePreheatSeedProfile,
+    code: "000095",
+    name: "低空经济旧雷达基金C",
+    marketThemeRefresh: {
+      source: "current_market_theme_radar",
+      refreshedAt: "2000-01-01T00:00:00.000Z",
+      matchedThemeNames: ["低空经济"],
+      supportLabel: "当前主力进场",
+      supportSignals: ["低空经济主力资金净流入", "新闻催化保持新鲜"],
+      summary: "低空经济方向有主力进场和新闻催化确认"
+    }
+  }
+}];
+assert.equal(
+  manager.shouldForcePortfolioThemeOpportunitySeedScan(liveThemeOpportunitySnapshot, staleRadarThemeWatchlist),
+  true,
+  "same-theme watchlist items with expired market-theme radar support must not block fresh representative recall"
+);
 const themeRepresentativeGapDb = {
   account: { cash: 82000, totalAsset: 100000, positionWeightPct: 8, positions: [] },
   watchlist: fullOldThemeWatchlist,
