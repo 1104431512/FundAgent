@@ -19600,6 +19600,7 @@ function getCandidateThemeSignals(candidate = {}) {
       capitalRetreatScore: Number(theme?.capitalRetreatScore),
       capitalFollowScore: Number(theme?.capitalFollowScore),
       preheatScore: Number(theme?.preheatScore),
+      mainInflowRankScore: Number(theme?.mainInflowRankScore),
       avgMainNetInflowPct: Number(theme?.avgMainNetInflowPct),
       minMainNetInflowPct: Number(theme?.minMainNetInflowPct),
       maxMainNetInflowPct: Number(theme?.maxMainNetInflowPct),
@@ -19743,6 +19744,15 @@ function hasTraceableFreshThemeCatalystContext(theme = {}) {
     String(theme.catalystProfile?.latestNewsTime || "").trim()
     || /(?:\d{1,2}:\d{2}|今日|今天|当天|盘中|早盘|午后|近两天|财联社|东方财富|新浪|新华社|央视|证券时报|上海证券报|中证报|证券日报|中国基金报|第一财经|每经|公告|交易所|快讯|新闻源|来源)/.test(traceText)
   );
+}
+
+function hasPositiveThemeMainCapitalEvidence(theme = {}) {
+  const avgFlow = finiteMetricNumber(theme.avgMainNetInflowPct);
+  const maxFlow = finiteMetricNumber(theme.maxMainNetInflowPct);
+  const minFlow = finiteMetricNumber(theme.minMainNetInflowPct);
+  if (Number.isFinite(avgFlow) && avgFlow >= 0.5) return true;
+  if (Number.isFinite(maxFlow) && maxFlow >= 1.5 && (!Number.isFinite(minFlow) || minFlow > -2)) return true;
+  return hasStrongMainInflowRankSignal(theme.mainInflowRankScore);
 }
 
 function hasThemeLeaderOrPreheatSignal(theme = {}) {
@@ -24018,6 +24028,7 @@ function compactMatchedThemeSignal(theme = {}) {
     capitalRetreatScore: theme.capitalRetreatScore,
     capitalFollowScore: theme.capitalFollowScore,
     preheatScore: theme.preheatScore,
+    mainInflowRankScore: theme.mainInflowRankScore,
     avgMainNetInflowPct: theme.avgMainNetInflowPct,
     minMainNetInflowPct: theme.minMainNetInflowPct,
     maxMainNetInflowPct: theme.maxMainNetInflowPct,
@@ -28043,6 +28054,7 @@ function isThemeLowBaseMicroStarterSupport(theme = {}) {
     && !isStaleThemeCatchdownRiskTheme(theme)
     && Number(theme.crowdingScore) < 45
     && hasTraceableFreshThemeCatalystContext(theme)
+    && hasPositiveThemeMainCapitalEvidence(theme)
     && (
       ["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)
       || ["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)
@@ -28056,8 +28068,7 @@ function isThemeLaunchProbeSupport(theme = {}) {
   if (!hasTraceableFreshThemeCatalystContext(theme)) return false;
   const crowding = finiteMetricNumber(theme.crowdingScore);
   if (Number.isFinite(crowding) && crowding >= 42) return false;
-  const avgFlow = finiteMetricNumber(theme.avgMainNetInflowPct);
-  const flowOk = !Number.isFinite(avgFlow) || avgFlow >= 0;
+  const flowOk = hasPositiveThemeMainCapitalEvidence(theme);
   const capitalFollow = finiteMetricNumber(theme.capitalFollowScore);
   const preheat = finiteMetricNumber(theme.preheatScore);
   const catalystScore = finiteMetricNumber(theme.catalystProfile?.score);

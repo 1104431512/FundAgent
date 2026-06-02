@@ -5326,6 +5326,68 @@ assert.equal(
   false,
   "portfolio discipline must reject main-capital/preheat micro-starters whose news logic is not traceable"
 );
+const noCapitalFlowMicroStarterDigest = {
+  ...microStarterDigest,
+  code: "000056",
+  name: "无主力确认预热基金C",
+  seed: {
+    matchedThemes: [{
+      ...capitalEnteringDigest.seed.matchedThemes[0],
+      avgMainNetInflowPct: null,
+      maxMainNetInflowPct: null,
+      minMainNetInflowPct: null,
+      mainInflowRankScore: 0,
+      newsLogic: "主力刚进场：新闻催化：AI算力订单改善（10:10 测试快讯）；板块验证：人工智能温和走强；主力线索：资金流向待确认"
+    }]
+  }
+};
+const noCapitalFlowActionability = manager.buildFundActionabilitySignals(noCapitalFlowMicroStarterDigest);
+assert(["wait", "avoid"].includes(noCapitalFlowActionability.action), "micro-starter actionability must not buy when fresh news lacks positive main-capital flow or leaderboard confirmation");
+assert.equal(
+  manager.hasPortfolioThemeMicroStarterSetup({ ...noCapitalFlowMicroStarterDigest, actionability: noCapitalFlowActionability }),
+  false,
+  "portfolio discipline must reject traceable preheat themes until positive main-capital evidence is present"
+);
+const rankOnlyMicroStarterDigest = {
+  ...microStarterDigest,
+  code: "000057",
+  name: "榜单主力预热基金C",
+  holdings: {
+    ok: true,
+    equityDisclosureDate: "2099-03-31",
+    equityTopHoldings: ["002896 中大力德 6.2%", "002472 双环传动 4.8%"]
+  },
+  seed: {
+    matchedThemes: [{
+      id: "rank_only_robot",
+      name: "人形机器人",
+      stage: "capital_entering",
+      leaderSignal: "capital_entering",
+      positionSignal: "main_capital_entering",
+      actionBias: "follow_main_small",
+      forwardScore: 60,
+      rotationScore: 48,
+      lowPositionScore: 55,
+      crowdingScore: 20,
+      capitalFollowScore: 70,
+      preheatScore: 62,
+      avgMainNetInflowPct: null,
+      maxMainNetInflowPct: null,
+      mainInflowRankScore: 32,
+      catalystProfile: { score: 30, tags: ["产业订单"], summary: "产业订单", risk: false, fresh: true, freshnessLabel: "当日催化", latestNewsTime: "10:28" },
+      newsLogic: "主力刚进场：新闻催化：人形机器人执行器订单落地（10:28 测试快讯）；榜单线索：机器人进入主力流入榜第2名",
+      leaderStocks: ["中大力德"],
+      themeKeywords: ["人形机器人", "执行器"]
+    }]
+  }
+};
+const rankOnlyMicroStarterActionability = manager.buildFundActionabilitySignals(rankOnlyMicroStarterDigest);
+assert.equal(rankOnlyMicroStarterActionability.action, "staged_buy", "rank-only main-inflow evidence plus traceable catalyst must allow a tiny micro-starter");
+assert.equal(
+  manager.hasPortfolioThemeMicroStarterSetup({ ...rankOnlyMicroStarterDigest, actionability: rankOnlyMicroStarterActionability }),
+  true,
+  "portfolio discipline must treat main-inflow leaderboard evidence as valid main-capital confirmation for micro-starters"
+);
 const microStarterBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000024", targetWeightPct: 3 }, executableMicroStarterDigest, [], redeploymentAccount);
 assert.equal(microStarterBuyGuard.ok, true, "buy discipline must allow a theme-supported micro starter instead of forcing endless wait_pullback");
 assert(microStarterBuyGuard.reason.includes("微型试探仓"), "theme micro-starter buy guard must label the action as a tiny probe");
@@ -5966,6 +6028,14 @@ assert.equal(
 assert(
   rankOnlyRobotTheme?.newsLogic.includes("主力流入榜第2名") && rankOnlyRobotTheme.newsLogic.includes("执行器订单"),
   "rank-only main-capital themes must explain both the leaderboard evidence and the fresh catalyst"
+);
+const matchedRankOnlyRobotTheme = manager.matchCandidateThemes(
+  { code: "000054", name: "机器人执行器主题C", type: "股票型基金", topHoldings: ["002896 中大力德 6.2%"] },
+  [rankOnlyRobotTheme]
+)[0];
+assert(
+  Number(matchedRankOnlyRobotTheme?.mainInflowRankScore || 0) >= 28,
+  "matched fund themes must preserve main-inflow leaderboard evidence so rank-only main-force signals survive fund screening"
 );
 assert(
   manager.buildThemeLeaderboards([rankOnlyRobotTheme]).mainCapital.items.some((item) => item.name.includes("机器人")),

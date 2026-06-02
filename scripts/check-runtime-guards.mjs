@@ -1177,6 +1177,10 @@ const requiredPatterns = [
     message: "main-capital/preheat micro-starter buys must require traceable catalyst source or timestamp, not just generic newsLogic text."
   },
   {
+    pattern: /(?=[\s\S]*function hasPositiveThemeMainCapitalEvidence)(?=[\s\S]*avgMainNetInflowPct)(?=[\s\S]*maxMainNetInflowPct)(?=[\s\S]*mainInflowRankScore)(?=[\s\S]*function isThemeLowBaseMicroStarterSupport[\s\S]{0,650}hasPositiveThemeMainCapitalEvidence\(theme\))/,
+    message: "main-capital/preheat micro-starter buys must require positive fund-flow or main-inflow leaderboard confirmation."
+  },
+  {
     pattern: /(?=[\s\S]*function buildThemeNewsFreshnessProfile)(?=[\s\S]*function parseThemeNewsTimeMs)(?=[\s\S]*MARKET_THEME_NEWS_FRESH_HOURS)(?=[\s\S]*function hasFreshThemeCatalystContext[\s\S]{0,260}catalystProfile\?\.fresh !== false)/,
     message: "theme catalyst logic must track headline freshness and block stale news from actionable main-capital/preheat support."
   },
@@ -1249,7 +1253,7 @@ const requiredPatterns = [
     message: "theme news logic must use the source/time-aware headline formatter."
   },
   {
-    pattern: /function compactMatchedThemeSignal[\s\S]{0,900}catalystProfile:\s*theme\.catalystProfile/,
+    pattern: /function compactMatchedThemeSignal[\s\S]{0,1400}catalystProfile:\s*theme\.catalystProfile/,
     message: "matched fund themes must preserve catalyst type."
   },
   {
@@ -2103,6 +2107,10 @@ const requiredPatterns = [
   {
     pattern: /function isThemeLowBaseMicroStarterSupport[\s\S]{0,500}hasTraceableFreshThemeCatalystContext\(theme\)[\s\S]{0,700}function isThemeLaunchProbeSupport[\s\S]{0,300}hasTraceableFreshThemeCatalystContext\(theme\)/,
     message: "theme micro-starter recognition must require traceable fresh catalyst support for both low-base and launch-probe setups."
+  },
+  {
+    pattern: /function compactMatchedThemeSignal[\s\S]{0,800}mainInflowRankScore/,
+    message: "matched fund themes must preserve main-inflow leaderboard evidence for rank-only main-force opportunities."
   },
   {
     pattern: /function collectCandidateHoldings[\s\S]{0,700}candidate\.topHoldings[\s\S]{0,500}candidate\.seed\?\.topHoldings/,
