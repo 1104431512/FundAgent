@@ -109,7 +109,7 @@ const requiredPatterns = [
     message: "real-time fund valuation snapshots must use the existing Tiantian/FundGZ estimate endpoint with source traceability."
   },
   {
-    pattern: /async function fetchFundValuation[\s\S]{0,7000}fetchFundValuationFromPingzhongData[\s\S]{0,50000}function parseFundPingzhongLatestNav[\s\S]{0,700}Data_netWorthTrend/,
+    pattern: /async function fetchFundValuation\([\s\S]{0,7000}fetchFundValuationFromPingzhongData[\s\S]{0,65000}function parseFundPingzhongLatestNav[\s\S]{0,700}Data_netWorthTrend/,
     message: "fund valuation must fall back to Eastmoney pingzhongdata latest official NAV when intraday estimates are unavailable or stale."
   },
   {
@@ -125,12 +125,16 @@ const requiredPatterns = [
     message: "fund valuation must include HaoETF realtime QDII valuation before falling back to official NAV only."
   },
   {
-    pattern: /async function fetchFundValuation[\s\S]{0,900}YANGJIBAO_PLUGIN_TOKEN[\s\S]{0,900}fetchFundValuationFromYangjibaoSearch[\s\S]{0,1200}shouldPreferYangjibaoFundValuation/,
+    pattern: /async function fetchFundValuation\([\s\S]{0,900}YANGJIBAO_PLUGIN_TOKEN[\s\S]{0,900}fetchFundValuationFromYangjibaoSearch[\s\S]{0,1200}shouldPreferYangjibaoFundValuation/,
     message: "fund valuation must optionally use Yangjibao browser-plugin realtime fund data when a token is configured."
   },
   {
     pattern: /function normalizeYangjibaoFundSearchValuation[\s\S]{0,2400}yangjibao_search_fund_realtime[\s\S]{0,500}盘中估算（养基宝实时源）/,
     message: "Yangjibao fund search rows must be normalized into traceable realtime valuation evidence."
+  },
+  {
+    pattern: /(?=[\s\S]*async function fetchFundSearchCandidates[\s\S]{0,1200}fetchEastmoneyFundSearchCandidates[\s\S]{0,700}fetchYangjibaoFundSearchCandidates)(?=[\s\S]*function normalizeYangjibaoFundSearchCandidate[\s\S]{0,2600}yangjibao_search_fund_candidate[\s\S]{0,700}养基宝实时基金搜索)/,
+    message: "fund candidate recall must supplement Eastmoney search with Yangjibao realtime fund-search candidates when configured."
   },
   {
     pattern: /function parseHaoetfQdiiValuationRows[\s\S]{0,2400}realtimePremiumPct[\s\S]{0,2400}benchmarkName[\s\S]{0,1800}function normalizeHaoetfQdiiValuationRow/,

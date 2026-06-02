@@ -1273,6 +1273,23 @@ assert.equal(yangjibaoFundValuation.gszzl, 0.4, "Yangjibao fund parser must reco
 assert.equal(yangjibaoFundValuation.dwjz, 2.424, "Yangjibao fund parser must recover official unit NAV");
 assert.equal(yangjibaoFundValuation.sourceKind, "yangjibao_search_fund_realtime", "Yangjibao fund valuation must leave a traceable realtime source kind");
 assert(yangjibaoFundValuation.valuationBasis.includes("养基宝实时源"), "Yangjibao fund valuation must explain its realtime source in Chinese");
+const yangjibaoFundCandidate = manager.normalizeYangjibaoFundSearchCandidate({
+  ...yangjibaoFundRows[0],
+  fund_type: "QDII基金",
+  month_growth: "-1.2",
+  three_month_growth: "-6.4",
+  six_month_growth: "-8.8"
+}, "全球医疗");
+assert.equal(yangjibaoFundCandidate.code, "004877", "Yangjibao fund search candidate parser must recover fund codes for theme/fund recall");
+assert.equal(yangjibaoFundCandidate.sourceKind, "yangjibao_search_fund_candidate", "Yangjibao fund search candidates must leave a traceable candidate source kind");
+assert.equal(yangjibaoFundCandidate.realtimeEstimatedChangePct, 0.4, "Yangjibao fund search candidates must carry realtime estimated change into candidate scoring");
+assert(yangjibaoFundCandidate.dataBasis.some((item) => item.includes("养基宝实时基金搜索")), "Yangjibao fund search candidates must expose a customer-readable realtime source basis");
+const mergedYangjibaoCandidate = manager.mergeCandidateFunds(
+  [{ code: "004877", name: "汇添富全球医疗混合(QDII)人民币", keywords: ["东财搜索"], setupDiscoverySource: "keyword_search" }],
+  [yangjibaoFundCandidate]
+)[0];
+assert.equal(mergedYangjibaoCandidate.realtimeEstimatedChangePct, 0.4, "candidate merging must preserve Yangjibao realtime fields when Eastmoney search also returns the fund");
+assert(mergedYangjibaoCandidate.discoverySources.includes("yangjibao_search"), "candidate merging must preserve Yangjibao discovery source for fast theme recall");
 const yangjibaoIndexItems = manager.normalizeYangjibaoIndexData({
   "0.399006": { code: "0.399006", v: "4043.07", dir: "0.54", div: "21.91", date: "2026-05-26 16:30:02", show_code: "399006", name: "创业板指" },
   "1.000001": { code: "1.000001", v: "4145.37", dir: "-0.17", div: "-7.2", date: "2026-05-26 16:30:02", show_code: "000001", name: "上证指数" }

@@ -24321,6 +24321,21 @@ async function fetchPreciousMetalFundCandidates() {
 }
 
 async function fetchFundSearchCandidates(keyword) {
+  const [eastmoney, yangjibao] = await Promise.all([
+    fetchEastmoneyFundSearchCandidates(keyword).catch((error) => ({ ok: false, keyword, error: error.message, items: [] })),
+    fetchYangjibaoFundSearchCandidates(keyword).catch((error) => ({ ok: false, keyword, error: error.message, items: [] }))
+  ]);
+  const items = mergeCandidateFunds(eastmoney.items || [], yangjibao.items || []);
+  return {
+    ok: items.length > 0 || eastmoney.ok || yangjibao.ok,
+    keyword,
+    items,
+    sourceKinds: [...new Set([...(eastmoney.sourceKinds || []), ...(yangjibao.sourceKinds || [])])],
+    partialErrors: [eastmoney, yangjibao].filter((item) => item?.ok === false && item.error).map((item) => item.error)
+  };
+}
+
+async function fetchEastmoneyFundSearchCandidates(keyword) {
   const url = new URL("https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx");
   url.searchParams.set("m", "1");
   url.searchParams.set("key", keyword);
@@ -24330,6 +24345,7 @@ async function fetchFundSearchCandidates(keyword) {
   return {
     ok: true,
     keyword,
+    sourceKinds: ["eastmoney_fund_suggest"],
     items: rows.map((row) => {
       const base = row.FundBaseInfo || {};
       const code = row.CODE || base.FCODE || row._id || "";
@@ -24354,6 +24370,28 @@ async function fetchFundSearchCandidates(keyword) {
         source: code ? `https://fund.eastmoney.com/${code}.html` : "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx"
       };
     }).filter((item) => item.code && item.name)
+  };
+}
+
+async function fetchYangjibaoFundSearchCandidates(keyword) {
+  if (!process.env.YANGJIBAO_PLUGIN_TOKEN) {
+    return { ok: true, keyword, sourceKinds: [], items: [], tokenRequired: true };
+  }
+  const searchText = String(keyword || "").trim();
+  if (!searchText) return { ok: true, keyword, sourceKinds: [], items: [] };
+  const json = await fetchYangjibaoPluginJson(`/search_fund?keyword=${encodeURIComponent(searchText)}`);
+  const rows = normalizeYangjibaoFundSearchRows(json?.data);
+  const items = rows
+    .map((row) => normalizeYangjibaoFundSearchCandidate(row, searchText))
+    .filter(Boolean);
+  if (items.length) {
+    updateStats({ counters: { yangjibaoFundSearchCandidateFetches: 1 } });
+  }
+  return {
+    ok: true,
+    keyword,
+    sourceKinds: ["yangjibao_search_fund_candidate"],
+    items
   };
 }
 
@@ -24727,7 +24765,12 @@ function mergeCandidateFundRecord(existing = {}, incoming = {}) {
     "thisYearPct",
     "sourceRatePct",
     "currentRatePct",
-    "source"
+    "source",
+    "sourceKind",
+    "realtimeEstimatedNav",
+    "realtimeEstimatedChangePct",
+    "realtimeEstimateTime",
+    "valuationBasis"
   ]) {
     if (isMissingCandidateValue(merged[key]) && !isMissingCandidateValue(incoming[key])) {
       merged[key] = incoming[key];
@@ -28710,6 +28753,47 @@ function normalizeYangjibaoFundSearchValuation(row = {}, fallbackCode = "") {
     sourceKind: "yangjibao_search_fund_realtime",
     valuationBasis: "盘中估算（养基宝实时源）",
     source: `http://browser-plug-api.yangjibao.com/search_fund?keyword=${code}`
+  };
+}
+
+function normalizeYangjibaoFundSearchCandidate(row = {}, keyword = "") {
+  if (!row || typeof row !== "object") return null;
+  const valuation = normalizeYangjibaoFundSearchValuation(row, "");
+  const code = valuation?.fundcode || String(row.code || row.fund_id || row.fund_code || row.fundcode || "").match(/\d{6}/)?.[0] || "";
+  if (!code) return null;
+  const content = row.content || {};
+  const lastNav = content.last_nv || row.last_nv || row.nv_info || {};
+  const current = content.curr_rate || row.curr_rate || {};
+  const name = String(valuation?.name || row.short_name || row.name || row.fund_name || "").trim();
+  const shareClass = inferFundShareClass(name);
+  const source = `http://browser-plug-api.yangjibao.com/search_fund?keyword=${encodeURIComponent(String(keyword || code))}`;
+  return {
+    code,
+    name,
+    shareClass,
+    shareClassFeeModel: inferShareClassFeeModel(shareClass, {
+      sourceRatePct: "",
+      currentRatePct: "",
+      salesServiceFeePct: ""
+    }),
+    type: String(row.fund_type || row.type || row.category || row.fund_category || "").trim(),
+    navDate: valuation?.jzrq || normalizePortfolioEventDate(lastNav.net_time || row.net_time || row.navDate || ""),
+    unitNav: valuation?.dwjz ?? firstFiniteNumber(lastNav.dwjz, row.dwjz, row.unit_nav),
+    dailyPct: firstFiniteNumber(lastNav.rzzl, row.rzzl, row.dailyPct, row.day_growth, current.gszzl),
+    oneWeekPct: firstFiniteNumber(row.week_growth, row.one_week_growth, row.week_return, row.weekRate),
+    oneMonthPct: firstFiniteNumber(row.month_growth, row.one_month_growth, row.month_return, row.monthRate),
+    threeMonthPct: firstFiniteNumber(row.three_month_growth, row.threeMonthGrowth, row.quarter_return, row.quarterRate),
+    sixMonthPct: firstFiniteNumber(row.six_month_growth, row.sixMonthGrowth, row.half_year_return, row.halfYearRate),
+    oneYearPct: firstFiniteNumber(row.year_growth, row.one_year_growth, row.year_return, row.yearRate),
+    realtimeEstimatedNav: valuation?.gsz ?? "",
+    realtimeEstimatedChangePct: valuation?.gszzl ?? "",
+    realtimeEstimateTime: valuation?.gztime || "",
+    valuationBasis: valuation?.valuationBasis || "养基宝基金搜索",
+    keywords: [...new Set([keyword, "养基宝实时基金搜索"].filter(Boolean))],
+    setupDiscoverySource: "yangjibao_search",
+    sourceKind: "yangjibao_search_fund_candidate",
+    source,
+    dataBasis: [`来源：养基宝实时基金搜索 ${keyword || code}`]
   };
 }
 
@@ -33374,6 +33458,7 @@ export {
   summarizeFundIntradayValuationTrend,
   mergeFundValuationIntradaySupplement,
   normalizeHaoetfQdiiValuationRow,
+  normalizeYangjibaoFundSearchCandidate,
   normalizeYangjibaoFundSearchRows,
   normalizeYangjibaoFundSearchValuation,
   normalizeYangjibaoIndexData,
