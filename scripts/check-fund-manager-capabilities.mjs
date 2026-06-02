@@ -4634,6 +4634,28 @@ assert(
     .some((item) => item.includes("当前题材雷达已过期") && item.includes("重新刷新主力资金/新闻催化")),
   "watchlist readiness must expose stale radar snapshots instead of a vague wait state"
 );
+assert(
+  manager.buildPortfolioWatchReadinessGaps({
+    code: "000047",
+    name: "人工智能主题低位基金C",
+    status: "ready",
+    marketThemeRefresh: staleMarketThemeRefreshProfile.marketThemeRefresh
+  }, verifiedSeedProfile).some((item) =>
+    item.includes("当前题材雷达已过期") && item.includes("重新刷新主力资金/新闻催化")
+  ),
+  "watchlist readiness must also catch stale market-theme refresh evidence stored on the watch item itself"
+);
+assert(
+  manager.buildPortfolioWatchReadinessGaps({
+    code: "000047",
+    name: "人工智能主题低位基金C",
+    status: "ready",
+    marketThemeRefresh: staleMarketThemeRefreshProfile.marketThemeRefresh
+  }).some((item) =>
+    item.includes("当前题材雷达已过期") && item.includes("重新刷新主力资金/新闻催化")
+  ),
+  "unverified watchlist items must surface stale radar evidence before only saying NAV/trend data is missing"
+);
 const staleMarketThemeRefreshActionability = manager.buildFundActionabilitySignals(staleMarketThemeRefreshProfile);
 assert(["wait", "avoid"].includes(staleMarketThemeRefreshActionability.action), "actionability must not surface stale-radar support as buy or staged-buy");
 assert(

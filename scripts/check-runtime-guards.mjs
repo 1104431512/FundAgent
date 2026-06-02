@@ -2385,6 +2385,14 @@ const requiredPatterns = [
     message: "theme support gaps must surface stale radar refresh snapshots before vague wait-state language."
   },
   {
+    pattern: /function getPortfolioWatchThemeSupportGap[\s\S]{0,700}marketThemeRefresh:\s*profile\.marketThemeRefresh \|\| item\.marketThemeRefresh[\s\S]{0,500}holdingThemeRefresh:\s*profile\.holdingThemeRefresh \|\| item\.holdingThemeRefresh/,
+    message: "watchlist theme-support gaps must preserve item-level market and holding theme refresh evidence."
+  },
+  {
+    pattern: /function buildPortfolioWatchReadinessGaps[\s\S]{0,1300}getStalePortfolioThemeRefreshWarnings\(evidence\)[\s\S]{0,120}getStalePortfolioThemeRefreshWarnings\(item\)/,
+    message: "watchlist readiness gaps must surface stale radar refresh evidence even when NAV/trend evidence is missing."
+  },
+  {
     pattern: /buildPortfolioStaleCatchdownRiskRankingItem[\s\S]{0,1800}staleThemeRefreshRisk[\s\S]{0,2200}旧雷达接盘拦截[\s\S]{0,2600}当前主力资金\/新闻催化刷新/,
     message: "catchdown risk ranking must surface expired theme-radar support as an old-radar trap."
   },

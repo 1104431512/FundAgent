@@ -6108,9 +6108,13 @@ function getPortfolioWatchThemeSupportGap(item = {}, evidence = null) {
     name: profile.name || item.name || "",
     type: profile.type || item.type || "",
     matchedThemes: profile.matchedThemes || item.matchedThemes || [],
+    marketThemeRefresh: profile.marketThemeRefresh || item.marketThemeRefresh || null,
+    holdingThemeRefresh: profile.holdingThemeRefresh || item.holdingThemeRefresh || null,
     seed: {
       ...(profile.seed || {}),
-      matchedThemes: profile.seed?.matchedThemes || profile.matchedThemes || item.matchedThemes || []
+      matchedThemes: profile.seed?.matchedThemes || profile.matchedThemes || item.matchedThemes || [],
+      marketThemeRefresh: profile.seed?.marketThemeRefresh || item.seed?.marketThemeRefresh || null,
+      holdingThemeRefresh: profile.seed?.holdingThemeRefresh || item.seed?.holdingThemeRefresh || null
     }
   });
 }
@@ -7055,7 +7059,9 @@ function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
     ...getStaleThemeCatchdownWarnings(evidence),
     ...getStaleThemeCatchdownWarnings(item),
     ...getStaleCatalystThemeWarnings(evidence),
-    ...getStaleCatalystThemeWarnings(item)
+    ...getStaleCatalystThemeWarnings(item),
+    ...getStalePortfolioThemeRefreshWarnings(evidence),
+    ...getStalePortfolioThemeRefreshWarnings(item)
   ];
   if (!evidence || !trend.ok) {
     gaps.push(...themeRetreatWarnings);
