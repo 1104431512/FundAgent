@@ -988,8 +988,10 @@ assert(rankingBoard.customerActionDeck.cards.find((card) => card.id === "data")?
 const actionDeckNarrativeItems = rankingBoard.customerActionDeck.cards.flatMap((card) => card.items || []);
 assert(actionDeckNarrativeItems.some((item) => item.themeLogic || item.carrierLogic || item.riskBoundary), "customer action deck items must expose a customer-readable action story instead of only a raw reason");
 assert(rankingBoard.customerActionDeck.cards.find((card) => card.id === "sell")?.items.some((item) => item.code === "008327" && item.riskBoundary), "customer sell action cards must expose the risk boundary for de-risk review");
-assert(rankingBoard.customerDecisionSummary?.primaryAction?.includes("008327"), "customer decision summary must put the most urgent sell/de-risk object into the first conclusion");
-assert(rankingBoard.customerDecisionSummary?.lines?.some((line) => line.includes("先处理卖出/减仓") && line.includes("008327")), "customer decision summary must translate sell-risk rankings into a customer-readable first line");
+const sellActionCodes = rankingBoard.customerActionDeck.cards.find((card) => card.id === "sell")?.items.map((item) => item.code) || [];
+assert(sellActionCodes.includes("000042"), "customer action deck must promote real user-held stale-theme catchdown positions into sell/de-risk reminders");
+assert(sellActionCodes.some((code) => rankingBoard.customerDecisionSummary?.primaryAction?.includes(code)), "customer decision summary must put the most urgent sell/de-risk object into the first conclusion");
+assert(rankingBoard.customerDecisionSummary?.lines?.some((line) => line.includes("先处理卖出/减仓") && sellActionCodes.some((code) => line.includes(code))), "customer decision summary must translate sell-risk rankings into a customer-readable first line");
 const buyActionCodes = rankingBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items.map((item) => item.code) || [];
 const avoidActionCodes = rankingBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items.map((item) => item.code) || [];
 const dataActionCodes = rankingBoard.customerActionDeck.cards.find((card) => card.id === "data")?.items.map((item) => item.code) || [];
@@ -7478,6 +7480,19 @@ assert(staleCatchdownBoard.lists.find((item) => item.id === "stale_catchdown_ris
 assert(staleCatchdownBoard.priorityQueue.some((item) => item.code === "000042" && item.listId === "stale_catchdown_risk"), "priority queue must put stale-catchdown risk ahead of ordinary watch review");
 assert(!(staleCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "000042"), "customer action deck must not place stale catchdown candidates in buy-review");
 assert((staleCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000042"), "customer action deck must present stale catchdown candidates as no-buy/avoid items");
+const staleCatchdownAvoidCard = staleCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "avoid");
+assert(staleCatchdownAvoidCard?.title.includes("接盘风险"), "customer action deck must label stale-theme pullbacks as catchdown risk, not generic waiting");
+assert(
+  staleCatchdownAvoidCard?.nextStep.includes("新鲜新闻/政策催化")
+    && staleCatchdownAvoidCard.nextStep.includes("主力资金回流")
+    && staleCatchdownAvoidCard.nextStep.includes("代表持仓止跌"),
+  "catchdown avoid card must explain the live catalyst, capital-return, and holdings-carrier evidence required before reopening buy review"
+);
+assert(
+  staleCatchdownBoard.customerDecisionSummary?.primaryAction?.includes("先排除接盘风险")
+    && staleCatchdownBoard.customerDecisionSummary.primaryAction.includes("000042"),
+  "customer decision summary must put catchdown avoidance ahead of ordinary buy review when stale-theme pullbacks are present"
+);
 const oldPreheatCurrentRetreatDb = manager.normalizePortfolioDb({
   account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
   watchlist: [{

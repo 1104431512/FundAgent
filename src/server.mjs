@@ -13398,7 +13398,11 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
 function buildPortfolioRankingCustomerActionDeck({ customerDigest = {}, alertCenter = {}, decisionMatrix = {}, priorityQueue = [] } = {}) {
   const lanes = new Map((alertCenter.lanes || []).map((lane) => [lane.id, lane]));
   const sellLaneItems = lanes.get("sell")?.items || [];
-  const sellSourceItems = sellLaneItems.filter((item) => isPortfolioCustomerSellAction(item));
+  const userLaneItems = lanes.get("user")?.items || [];
+  const sellSourceItems = sortPortfolioCustomerUrgentActionItems([
+    ...sellLaneItems,
+    ...userLaneItems.filter((item) => isPortfolioCustomerSellAction(item))
+  ]).filter((item) => isPortfolioCustomerSellAction(item));
   const sellBlockCodes = new Set(sellSourceItems.map((item) => item.code).filter(Boolean));
   const sellItems = uniquePortfolioCustomerActionItems(sellSourceItems, 3);
   const dataSourceItems = (lanes.get("data")?.items || [])
@@ -13411,7 +13415,8 @@ function buildPortfolioRankingCustomerActionDeck({ customerDigest = {}, alertCen
     ...sellLaneItems.filter((item) => !sellBlockCodes.has(item.code) && isPortfolioCustomerAvoidAction(item))
   ];
   const avoidBlockCodes = new Set(avoidSourceItems.map((item) => item.code).filter(Boolean));
-  const avoidItems = uniquePortfolioCustomerActionItems(avoidSourceItems, 3);
+  const avoidItems = sortPortfolioCustomerAvoidActionItems(uniquePortfolioCustomerActionItems(avoidSourceItems, 8)).slice(0, 3);
+  const hasCatchdownAvoid = avoidItems.some((item) => isPortfolioCustomerCatchdownAvoidAction(item));
   const dataItems = uniquePortfolioCustomerActionItems(
     dataSourceItems.filter((item) => !avoidBlockCodes.has(item.code)),
     3
@@ -13448,10 +13453,14 @@ function buildPortfolioRankingCustomerActionDeck({ customerDigest = {}, alertCen
     buildPortfolioCustomerActionCard({
       id: "avoid",
       tone: "avoid",
-      title: "先回避",
+      title: hasCatchdownAvoid ? "接盘风险优先" : "先回避",
       emptyText: "暂无回避提醒",
-      summary: "高位、追涨、拥挤或证据不完整时先排除。",
-      nextStep: "等回撤、降温、补齐证据后再恢复复核。",
+      summary: hasCatchdownAvoid
+        ? "先排除旧题材、退潮和主力撤离后的表面回调，避免把低位看成接盘点。"
+        : "高位、追涨、拥挤或证据不完整时先排除。",
+      nextStep: hasCatchdownAvoid
+        ? "必须等新鲜新闻/政策催化、主力资金回流、代表持仓止跌和基金低位温和转强同时出现，再恢复买入复核。"
+        : "等回撤、降温、补齐证据后再恢复复核。",
       items: avoidItems
     }),
     buildPortfolioCustomerActionCard({
@@ -13487,7 +13496,11 @@ function buildPortfolioRankingCustomerActionDeck({ customerDigest = {}, alertCen
 function buildPortfolioRankingCustomerDecisionSummary({ customerActionDeck = {}, alertCenter = {}, decisionMatrix = {}, priorityQueue = [] } = {}) {
   const cards = Array.isArray(customerActionDeck.cards) ? customerActionDeck.cards : [];
   const cardById = new Map(cards.map((card) => [String(card.id || ""), card]));
-  const orderedCards = ["sell", "buy", "wait", "avoid", "data"]
+  const hasCatchdownAvoid = isPortfolioCustomerCatchdownAvoidCard(cardById.get("avoid"));
+  const orderedCardIds = hasCatchdownAvoid
+    ? ["sell", "avoid", "buy", "wait", "data"]
+    : ["sell", "buy", "wait", "avoid", "data"];
+  const orderedCards = orderedCardIds
     .map((id) => cardById.get(id))
     .filter(Boolean);
   const lines = orderedCards
@@ -13511,7 +13524,7 @@ function buildPortfolioRankingCustomerDecisionSummary({ customerActionDeck = {},
     lines,
     chips: orderedCards.map((card) => ({
       id: card.id || "",
-      title: getPortfolioCustomerDecisionSummaryLabel(card.id),
+      title: getPortfolioCustomerDecisionSummaryLabel(card.id, Array.isArray(card.items) ? card.items[0] : null),
       tone: card.tone || card.id || "watch",
       count: Number(card.count || 0),
       target: getPortfolioCustomerDecisionSummaryTarget(card.id)
@@ -13533,7 +13546,7 @@ function buildPortfolioRankingCustomerDecisionSummary({ customerActionDeck = {},
 function buildPortfolioCustomerDecisionSummaryLine(card = {}) {
   if (!card || Number(card.count || 0) <= 0) return "";
   const item = Array.isArray(card.items) ? card.items[0] : null;
-  const label = getPortfolioCustomerDecisionSummaryLabel(card.id);
+  const label = getPortfolioCustomerDecisionSummaryLabel(card.id, item);
   const subject = item ? [item.code, item.name].filter(Boolean).join(" ") : "";
   const reason = shortenPortfolioCustomerText(item?.reason || card.summary || "", 58);
   const nextStep = shortenPortfolioCustomerText(item?.nextStep || card.nextStep || "", 58);
@@ -13543,17 +13556,18 @@ function buildPortfolioCustomerDecisionSummaryLine(card = {}) {
 }
 
 function buildPortfolioCustomerDecisionPrimaryAction(card = {}, item = null) {
-  const label = getPortfolioCustomerDecisionSummaryLabel(card.id);
+  const label = getPortfolioCustomerDecisionSummaryLabel(card.id, item);
   const subject = item ? [item.code, item.name].filter(Boolean).join(" ") : "";
   if (subject) return `${label} ${subject}`;
   return `${label} ${card.summary || ""}`.trim();
 }
 
-function getPortfolioCustomerDecisionSummaryLabel(cardId = "") {
+function getPortfolioCustomerDecisionSummaryLabel(cardId = "", item = null) {
   const id = String(cardId || "").trim();
   if (id === "sell") return "先处理卖出/减仓";
   if (id === "buy") return "可小仓复核";
   if (id === "wait") return "加入备选等待触发";
+  if (id === "avoid" && isPortfolioCustomerCatchdownAvoidAction(item)) return "先排除接盘风险（暂不买）";
   if (id === "avoid") return "暂不买";
   if (id === "data") return "先补证据";
   return "继续复核";
@@ -13762,6 +13776,13 @@ function buildPortfolioCustomerActionBoundary(laneId = "", item = {}, context = 
     };
   }
   if (laneId === "avoid") {
+    if (isPortfolioCustomerCatchdownAvoidAction(item) || /接盘|退潮|主力撤离|旧题材|旧催化|历史热点/.test(text)) {
+      return {
+        reviewWindow: "每天盘中只复核风险是否解除，不主动追买。",
+        trigger: "不设买入触发；先等新鲜新闻/政策催化、主力资金回流、代表持仓止跌和基金低位温和转强同时出现。",
+        invalidation: "没有资金回流和当前题材雷达重新确认前，继续0元观察，不能把回调当启动。"
+      };
+    }
     return {
       reviewWindow: "每天只检查风险是否解除，不主动追买。",
       trigger: "不设买入触发；先等回撤、降温和拥挤度下降。",
@@ -13813,6 +13834,40 @@ function uniquePortfolioCustomerActionItems(items = [], limit = 3) {
   return [...byKey.values()].slice(0, limit);
 }
 
+function sortPortfolioCustomerUrgentActionItems(items = []) {
+  return (items || [])
+    .map((item, index) => ({ item, index, score: scorePortfolioCustomerUrgency(item) }))
+    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0) || a.index - b.index)
+    .map(({ item }) => item);
+}
+
+function sortPortfolioCustomerAvoidActionItems(items = []) {
+  return (items || [])
+    .map((item, index) => ({ item, index, score: scorePortfolioCustomerAvoidPriority(item) }))
+    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0) || a.index - b.index)
+    .map(({ item }) => item);
+}
+
+function scorePortfolioCustomerUrgency(item = {}) {
+  const text = getPortfolioCustomerActionSearchText(item);
+  let score = Number(item.alertScore || item.priorityScore || item.score || 0);
+  if (item.userId) score += 28;
+  if (/卖出|减仓|止损|止盈|回吐|用户持仓/.test(text)) score += 30;
+  if (isPortfolioCustomerCatchdownAvoidAction(item)) score += 26;
+  if (/接盘|退潮|主力撤离|旧题材|旧催化|历史热点/.test(text)) score += 18;
+  return score;
+}
+
+function scorePortfolioCustomerAvoidPriority(item = {}) {
+  const text = getPortfolioCustomerActionSearchText(item);
+  let score = Number(item.alertScore || item.priorityScore || item.score || 0);
+  if (isPortfolioCustomerCatchdownAvoidAction(item)) score += 80;
+  if (/旧题材|旧雷达|历史热点|未被当前题材雷达确认/.test(text)) score += 22;
+  if (/追涨|高位|拥挤|chase_risk/.test(text)) score += 16;
+  if (/数据|过期|缺/.test(text)) score += 8;
+  return score;
+}
+
 function buildPortfolioCustomerActionItem(item = {}) {
   const tags = normalizeStringArray([
     ...(item.tags || []),
@@ -13859,31 +13914,45 @@ function buildPortfolioCustomerActionStory(item = {}) {
   };
 }
 
-function isPortfolioCustomerSellAction(item = {}) {
-  const text = [
+function getPortfolioCustomerActionSearchText(item = {}) {
+  if (!item || typeof item !== "object") return "";
+  return [
     item.action,
     item.reason,
     item.nextStep,
     item.listId,
     item.listTitle,
-    ...(item.facts || []),
-    ...(item.risks || []),
-    ...(item.gaps || [])
+    item.matrixAction,
+    item.themeLogic,
+    item.carrierLogic,
+    item.riskBoundary,
+    ...normalizeStringArray(item.facts),
+    ...normalizeStringArray(item.risks),
+    ...normalizeStringArray(item.gaps),
+    ...normalizeStringArray(item.tags),
+    ...normalizeStringArray(item.decision?.highlights),
+    ...normalizeStringArray(item.decision?.risks),
+    ...normalizeStringArray(item.decision?.gaps),
+    item.decision?.nextStep
   ].filter(Boolean).join(" ");
+}
+
+function isPortfolioCustomerCatchdownAvoidCard(card = {}) {
+  return Array.isArray(card?.items) && card.items.some((item) => isPortfolioCustomerCatchdownAvoidAction(item));
+}
+
+function isPortfolioCustomerCatchdownAvoidAction(item = {}) {
+  const text = getPortfolioCustomerActionSearchText(item);
+  return /stale_catchdown_risk|接盘|退潮|主力(?:资金)?撤离|资金撤离|旧新闻|旧催化|旧题材|旧雷达|历史热点|当前题材雷达.*未确认|未被当前题材雷达确认|回调(?:不|不能)作?为买点|回调不能当买点|表面回调|资金回流|底层持仓止跌|代表持仓止跌/.test(text);
+}
+
+function isPortfolioCustomerSellAction(item = {}) {
+  const text = getPortfolioCustomerActionSearchText(item);
   return /sell_risk|卖出|减仓|止盈|止损|回吐|赎回|用户持仓/.test(text);
 }
 
 function isPortfolioCustomerBuyAction(item = {}) {
-  const text = [
-    item.action,
-    item.reason,
-    item.nextStep,
-    item.listId,
-    item.listTitle,
-    ...(item.facts || []),
-    ...(item.risks || []),
-    ...(item.gaps || [])
-  ].filter(Boolean).join(" ");
+  const text = getPortfolioCustomerActionSearchText(item);
   if (/卖出|减仓|止盈|止损|回吐|追涨|高位|拥挤|回避|接盘|退潮|主力撤离|旧新闻|旧催化|数据阻塞|持仓数据阻塞|阻塞|过期|不能提交买入|不得买入|不给买入|不买|不能把/.test(text)) {
     return false;
   }
@@ -13895,16 +13964,7 @@ function hasPortfolioCustomerExecutableBuyIntent(text = "") {
 }
 
 function isPortfolioCustomerAvoidAction(item = {}) {
-  const text = [
-    item.action,
-    item.reason,
-    item.nextStep,
-    item.listId,
-    item.listTitle,
-    ...(item.facts || []),
-    ...(item.risks || []),
-    ...(item.gaps || [])
-  ].filter(Boolean).join(" ");
+  const text = getPortfolioCustomerActionSearchText(item);
   return /追涨|高位|拥挤|回避|暂不|blocked|chase_risk|接盘|退潮|主力撤离|风险/.test(text);
 }
 

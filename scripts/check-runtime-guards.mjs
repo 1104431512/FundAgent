@@ -1249,6 +1249,14 @@ const requiredPatterns = [
     message: "market snapshots must expose theme leaderboards and route stale catchdown themes into retreat/avoid instead of low-rotation opportunity lanes."
   },
   {
+    pattern: /(?=[\s\S]*function buildPortfolioRankingCustomerActionDeck[\s\S]*hasCatchdownAvoid)(?=[\s\S]*接盘风险优先)(?=[\s\S]*新鲜新闻\/政策催化[\s\S]{0,180}主力资金回流[\s\S]{0,180}代表持仓止跌)/,
+    message: "customer action cards must promote stale-theme catchdown risk above generic avoid guidance and explain the live evidence needed to reopen review."
+  },
+  {
+    pattern: /(?=[\s\S]*function buildPortfolioRankingCustomerDecisionSummary[\s\S]{0,900}isPortfolioCustomerCatchdownAvoidCard)(?=[\s\S]*\["sell", "avoid", "buy", "wait", "data"\])(?=[\s\S]*先排除接盘风险（暂不买）)/,
+    message: "customer decision summaries must put catchdown avoidance before buy review when stale-theme pullbacks are present."
+  },
+  {
     pattern: /function compactThemeLeaderboardItem[\s\S]{0,700}nextStep[\s\S]{0,260}invalidation[\s\S]{0,260}evidence/,
     message: "theme leaderboards must expose next steps, invalidation boundaries, and evidence chips instead of score-only theme items."
   },
