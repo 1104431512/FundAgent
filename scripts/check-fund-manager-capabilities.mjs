@@ -5773,6 +5773,60 @@ assert(
     && staleButFlowingBuyGuard.reason.includes("今天的买点"),
   "old-catalyst strong-flow BUY blocks must use explicit customer-readable stale-catalyst wording"
 );
+const staleButFlowingRiskRanking = manager.buildPortfolioStaleCatchdownRiskRanking([{
+  code: "000046",
+  name: "旧催化强资金基金C",
+  status: "ready",
+  readinessScore: 89,
+  lastSnapshot: staleButFlowingDigest
+}]);
+assert(
+  staleButFlowingRiskRanking.items.some((item) =>
+    item.code === "000046"
+    && item.action.includes("旧催化")
+    && item.reason.includes("旧新闻/旧催化")
+    && item.decision?.gaps?.some((gap) => gap.includes("新鲜新闻"))
+  ),
+  "old-catalyst strong-flow candidates must surface in the stale-catchdown risk ranking instead of disappearing as a soft wait"
+);
+const staleButFlowingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
+  account: redeploymentAccount,
+  watchlist: [{
+    code: "000046",
+    name: "旧催化强资金基金C",
+    status: "ready",
+    readinessScore: 89,
+    lastSnapshot: staleButFlowingDigest
+  }]
+}));
+assert(
+  staleButFlowingBoard.lists.find((item) => item.id === "stale_catchdown_risk")?.items.some((item) => item.code === "000046"),
+  "manager ranking board must place old-catalyst strong-flow candidates into the risk lane"
+);
+assert(
+  !(staleButFlowingBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "000046"),
+  "customer action deck must not put old-catalyst strong-flow candidates into buy-review"
+);
+assert(
+  (staleButFlowingBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000046"),
+  "customer action deck must present old-catalyst strong-flow candidates as no-buy/avoid items"
+);
+const staleButFlowingRedeployment = manager.buildPortfolioRedeploymentPlan(redeploymentAccount, [{
+  code: "000046",
+  name: "旧催化强资金基金C",
+  status: "ready",
+  readinessScore: 89,
+  lastSnapshot: staleButFlowingDigest
+}], [staleButFlowingDigest]);
+assert.equal(
+  staleButFlowingRedeployment.candidates[0]?.redeploymentAction,
+  "watch",
+  "cash redeployment must not convert old-catalyst strong-flow candidates into starter buys"
+);
+assert(
+  staleButFlowingRedeployment.candidates[0]?.firstGap.includes("旧新闻/旧催化"),
+  "cash redeployment hard gaps must explain old catalysts as a no-buy reason"
+);
 const staleNewsLeaderboards = manager.buildThemeLeaderboards([staleNewsAiTheme]);
 assert(
   staleNewsLeaderboards.retreat.items.some((item) => item.name === "AI/算力" && item.reason.includes("接盘风险")),

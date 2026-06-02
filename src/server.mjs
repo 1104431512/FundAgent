@@ -4007,7 +4007,7 @@ function buildPortfolioRedeploymentPlan(account = {}, watchlist = [], profiles =
 }
 
 function isPortfolioRedeploymentHardGap(gap = "") {
-  return /缺少可验证净值|走势下钻|基金规模.*(?:不能作为可直接买入|偏小)|前十大集中度.*(?:过高|偏高)|费用\/份额|特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛|题材拥挤|追涨风险|暂时回避|仍是回避|前十大持仓盘中|底层持仓止跌|表面回调可能继续下探|题材退潮|主力资金撤离|主力撤离|接盘风险/.test(String(gap || ""));
+  return /缺少可验证净值|走势下钻|基金规模.*(?:不能作为可直接买入|偏小)|前十大集中度.*(?:过高|偏高)|费用\/份额|特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛|题材拥挤|追涨风险|暂时回避|仍是回避|前十大持仓盘中|底层持仓止跌|表面回调可能继续下探|题材退潮|主力资金撤离|主力撤离|接盘风险|旧新闻|旧催化|今天的买点/.test(String(gap || ""));
 }
 
 function formatPortfolioRealtimeEvidence(profile = {}) {
@@ -6834,7 +6834,9 @@ function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
     ...getCandidateThemeRetreatWarnings(evidence),
     ...getCandidateThemeRetreatWarnings(item),
     ...getStaleThemeCatchdownWarnings(evidence),
-    ...getStaleThemeCatchdownWarnings(item)
+    ...getStaleThemeCatchdownWarnings(item),
+    ...getStaleCatalystThemeWarnings(evidence),
+    ...getStaleCatalystThemeWarnings(item)
   ];
   if (!evidence || !trend.ok) {
     gaps.push(...themeRetreatWarnings);
@@ -11760,13 +11762,14 @@ function buildPortfolioStaleCatchdownRiskRanking(watchlist = []) {
 
 function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
   const evidence = resolvePortfolioChaseRiskEvidence(item);
-  if (!evidence.staleCatchdownRisk && !evidence.themeRetreatRisk && !evidence.holdingRealtimeCatchdownRisk) return null;
+  if (!evidence.staleCatchdownRisk && !evidence.staleCatalystRisk && !evidence.themeRetreatRisk && !evidence.holdingRealtimeCatchdownRisk) return null;
   const theme = evidence.theme || {};
   const trend = evidence.trend || {};
-  const staleCatalyst = theme.catalystProfile?.fresh === false;
+  const staleCatalyst = evidence.staleCatalystRisk || theme.catalystProfile?.fresh === false;
   const retreatFacts = [
     evidence.holdingRealtimeWarning || "",
     ...(evidence.holdingRealtimeFacts || []),
+    ...(evidence.staleCatalystWarnings || []),
     ...(evidence.staleThemeWarnings || []),
     ...(evidence.themeRetreatWarnings || []),
     theme.newsLogic ? `逻辑${shortenPortfolioCustomerText(theme.newsLogic, 72)}` : "",
@@ -11776,6 +11779,7 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
   const score = Math.max(50, Math.min(100,
     Number(evidence.score || 0)
     + (evidence.staleCatchdownRisk ? 24 : 0)
+    + (evidence.staleCatalystRisk ? 20 : 0)
     + (evidence.themeRetreatRisk ? 18 : 0)
     + (evidence.holdingRealtimeCatchdownRisk ? 28 : 0)
     + Math.min(18, Number(theme.capitalRetreatScore || 0) / 4)
@@ -11869,12 +11873,15 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
   const text = mergeStringLists(item.riskNotes, item.readinessGaps, item.reason, item.setupEvidence).join(" ");
   const themeRetreatWarnings = getCandidateThemeRetreatWarnings({ matchedThemes: themes });
   const staleThemeWarnings = getStaleThemeCatchdownWarnings({ matchedThemes: themes });
+  const staleCatalystWarnings = getStaleCatalystThemeWarnings({ matchedThemes: themes });
   const themeRetreatRisk = themeRetreatWarnings.length > 0;
   const staleCatchdownRisk = staleThemeWarnings.length > 0;
+  const staleCatalystRisk = staleCatalystWarnings.length > 0;
   const holdingRealtimeProfile = buildPortfolioHoldingRealtimeEvidenceProfile(item, profile);
   const holdingRealtimeCatchdownRisk = Boolean(holdingRealtimeProfile.warning);
   const hotEvidence = [
     holdingRealtimeProfile.warning || "",
+    staleCatalystWarnings[0] || "",
     staleThemeWarnings[0] || "",
     themeRetreatWarnings[0] || "",
     Number.isFinite(r20) && r20 > 12 ? `近20日涨幅偏热${formatFallbackPlainPct(r20)}` : "",
@@ -11894,6 +11901,7 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
     theme.stage === "crowded" ? 18 : 0,
     themeRetreatRisk ? 34 : 0,
     staleCatchdownRisk ? 40 : 0,
+    staleCatalystRisk ? 30 : 0,
     holdingRealtimeCatchdownRisk ? 36 : 0,
     Number.isFinite(crowding) && crowding >= 55 ? 14 : Number.isFinite(crowding) && crowding >= 40 ? 8 : 0,
     /追涨|偏热|高位|拥挤|等待回撤/.test(text) ? 10 : 0
@@ -11903,11 +11911,13 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
     theme,
     themeRetreatRisk,
     staleCatchdownRisk,
+    staleCatalystRisk,
     holdingRealtimeCatchdownRisk,
     holdingRealtimeWarning: holdingRealtimeProfile.warning,
     holdingRealtimeFacts: holdingRealtimeProfile.facts,
     themeRetreatWarnings,
     staleThemeWarnings,
+    staleCatalystWarnings,
     score,
     shouldSurface: score >= 20,
     hotEvidence,
@@ -11915,13 +11925,15 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
       ? "前十大持仓盘中走弱，先等底层持仓止跌。"
       : staleCatchdownRisk
       ? "题材缺少主力进场或预热催化，回调先按接盘风险处理。"
+      : staleCatalystRisk
+      ? "题材逻辑停留在旧新闻/旧催化，不能当作今天的买点。"
       : themeRetreatRisk
       ? "题材退潮或主力资金撤离，先等资金回流。"
       : theme.name ? `${theme.name}题材偏热或拥挤，需要等降温。` : "",
     positionRisk: Number.isFinite(low120) && low120 > 80 ? "基金处在区间高位，不是低位启动。" : "",
     needsPullback: Number.isFinite(r20) && r20 > 12,
     needsLowPosition: Number.isFinite(low120) && low120 > 65 || Number.isFinite(low250) && low250 > 80,
-    needsCooling: holdingRealtimeCatchdownRisk || staleCatchdownRisk || themeRetreatRisk || Number.isFinite(crowding) && crowding >= 40 || theme.positionSignal === "high_chase_risk" || theme.stage === "crowded"
+    needsCooling: holdingRealtimeCatchdownRisk || staleCatchdownRisk || staleCatalystRisk || themeRetreatRisk || Number.isFinite(crowding) && crowding >= 40 || theme.positionSignal === "high_chase_risk" || theme.stage === "crowded"
   };
 }
 
@@ -13020,25 +13032,35 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
 
 function buildPortfolioRankingCustomerActionDeck({ customerDigest = {}, alertCenter = {}, decisionMatrix = {}, priorityQueue = [] } = {}) {
   const lanes = new Map((alertCenter.lanes || []).map((lane) => [lane.id, lane]));
+  const sellLaneItems = lanes.get("sell")?.items || [];
+  const sellSourceItems = sellLaneItems.filter((item) => isPortfolioCustomerSellAction(item));
+  const sellBlockCodes = new Set(sellSourceItems.map((item) => item.code).filter(Boolean));
+  const sellItems = uniquePortfolioCustomerActionItems(sellSourceItems, 3);
+  const dataSourceItems = (lanes.get("data")?.items || [])
+    .filter((item) => !sellBlockCodes.has(item.code));
+  const dataBlockCodes = new Set(dataSourceItems.map((item) => item.code).filter(Boolean));
+  const avoidSourceItems = [
+    ...(customerDigest.riskAvoid || []).filter((item) =>
+      !sellBlockCodes.has(item.code) && (isPortfolioCustomerAvoidAction(item) || !dataBlockCodes.has(item.code))
+    ),
+    ...sellLaneItems.filter((item) => !sellBlockCodes.has(item.code) && isPortfolioCustomerAvoidAction(item))
+  ];
+  const avoidBlockCodes = new Set(avoidSourceItems.map((item) => item.code).filter(Boolean));
+  const avoidItems = uniquePortfolioCustomerActionItems(avoidSourceItems, 3);
+  const dataItems = uniquePortfolioCustomerActionItems(
+    dataSourceItems.filter((item) => !avoidBlockCodes.has(item.code)),
+    3
+  );
+  const blockedCodes = new Set([...sellBlockCodes, ...avoidBlockCodes, ...dataBlockCodes]);
   const buyItems = uniquePortfolioCustomerActionItems([
     ...(customerDigest.buyReview || []),
     ...((lanes.get("buy")?.items || []))
-  ].filter(isPortfolioCustomerBuyAction), 3);
-  const sellLaneItems = lanes.get("sell")?.items || [];
-  const sellItems = uniquePortfolioCustomerActionItems(
-    sellLaneItems.filter((item) => isPortfolioCustomerSellAction(item)),
-    3
-  );
-  const sellCodes = new Set(sellItems.map((item) => item.code).filter(Boolean));
-  const avoidItems = uniquePortfolioCustomerActionItems([
-    ...(customerDigest.riskAvoid || []).filter((item) => !sellCodes.has(item.code)),
-    ...sellLaneItems.filter((item) => !sellCodes.has(item.code) && isPortfolioCustomerAvoidAction(item))
-  ], 3);
-  const dataItems = uniquePortfolioCustomerActionItems(lanes.get("data")?.items || [], 3);
+  ].filter((item) => item?.code && !blockedCodes.has(item.code) && isPortfolioCustomerBuyAction(item)), 3);
+  const buyCodes = new Set(buyItems.map((item) => item.code).filter(Boolean));
   const waitItems = uniquePortfolioCustomerActionItems([
     ...(customerDigest.watchFocus || []),
     ...((decisionMatrix.items || []).filter((item) => /方向观察|继续观察|先补证据/.test(item.action || "")))
-  ].filter((item) => !sellCodes.has(item.code)), 3);
+  ].filter((item) => item?.code && !sellBlockCodes.has(item.code) && !avoidBlockCodes.has(item.code) && !buyCodes.has(item.code)), 3);
   const cards = [
     buildPortfolioCustomerActionCard({
       id: "buy",
@@ -13497,7 +13519,7 @@ function isPortfolioCustomerBuyAction(item = {}) {
     ...(item.risks || []),
     ...(item.gaps || [])
   ].filter(Boolean).join(" ");
-  if (/卖出|减仓|止盈|止损|回吐|追涨|高位|拥挤|回避|接盘|退潮|主力撤离|数据阻塞|持仓数据阻塞|阻塞|过期|不能提交买入|不得买入|不给买入|不买|不能把/.test(text)) {
+  if (/卖出|减仓|止盈|止损|回吐|追涨|高位|拥挤|回避|接盘|退潮|主力撤离|旧新闻|旧催化|数据阻塞|持仓数据阻塞|阻塞|过期|不能提交买入|不得买入|不给买入|不买|不能把/.test(text)) {
     return false;
   }
   return hasPortfolioCustomerExecutableBuyIntent(text);

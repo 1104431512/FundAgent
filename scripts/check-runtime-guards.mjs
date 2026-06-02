@@ -2157,8 +2157,8 @@ const requiredPatterns = [
     message: "watchlist readiness must downgrade stale-catchdown and theme-labeled pullbacks that lack current actionable theme support."
   },
   {
-    pattern: /function isPortfolioRedeploymentHardGap[\s\S]{0,700}题材退潮[\s\S]{0,260}接盘风险/,
-    message: "cash redeployment must treat stale-theme catchdown risk as a hard no-buy gap."
+    pattern: /function isPortfolioRedeploymentHardGap[\s\S]{0,700}题材退潮[\s\S]{0,260}接盘风险[\s\S]{0,260}旧新闻[\s\S]{0,120}旧催化/,
+    message: "cash redeployment must treat stale-theme catchdown and old-catalyst risk as hard no-buy gaps."
   },
   {
     pattern: /function resolvePortfolioDecisionSynthesisEvidence[\s\S]{0,1200}themeSupportGap[\s\S]{0,1200}先补题材证据/,
@@ -3113,6 +3113,10 @@ const requiredPatterns = [
     message: "manager ranking boards must include a stale-catchdown risk lane that blocks retreating themes from masquerading as pullback setups."
   },
   {
+    pattern: /function buildPortfolioStaleCatchdownRiskRankingItem[\s\S]{0,900}staleCatalystRisk[\s\S]{0,1200}旧催化接盘强拦截[\s\S]{0,900}旧新闻\/旧催化[\s\S]{0,800}缺新鲜新闻\/政策\/产业预热/,
+    message: "stale-catchdown risk ranking must surface old catalysts even when strong current flow avoids hard catchdown classification."
+  },
+  {
     pattern: /function buildPortfolioStaleCatchdownRiskRankingItem[\s\S]{0,7000}holdingRealtimeCatchdownRisk[\s\S]{0,3200}底层持仓接盘拦截[\s\S]{0,3200}缺底层持仓止跌确认[\s\S]{0,16000}function resolvePortfolioChaseRiskEvidence[\s\S]{0,7000}buildPortfolioHoldingRealtimeEvidenceProfile[\s\S]{0,7000}function buildPortfolioHoldingRealtimeEvidenceProfile/,
     message: "stale-catchdown risk lane must surface intraday weak top-holding pulse as a customer-readable no-buy blocker."
   },
@@ -3179,6 +3183,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*function hasPortfolioCustomerExecutableBuyIntent)(?=[\s\S]*function isPortfolioCustomerBuyAction[\s\S]{0,900}不得买入)(?=[\s\S]*function shouldIncludePortfolioAlertItem[\s\S]{0,900}只能观察)/,
     message: "customer action cards must not classify generic review/watch-only theme candidates as buy-review items."
+  },
+  {
+    pattern: /function buildPortfolioRankingCustomerActionDeck[\s\S]{0,1800}blockedCodes[\s\S]{0,500}!blockedCodes\.has\(item\.code\)[\s\S]{0,700}!avoidBlockCodes\.has\(item\.code\)/,
+    message: "customer action cards must let sell, avoid, and data blockers override buy-review while keeping watch-only trigger candidates visible."
   },
   {
     pattern: /(?=[\s\S]*function buildPortfolioCustomerDecisionSummaryStatusLines[\s\S]{0,700}客户决策摘要)(?=[\s\S]*function buildPortfolioStatusAnswer[\s\S]{0,6200}buildPortfolioCustomerDecisionSummaryStatusLines)/,
