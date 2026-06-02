@@ -5029,6 +5029,27 @@ assert(liveAiTheme.catalystProfile?.fresh !== false && liveAiTheme.catalystProfi
 const matchedAiThemes = manager.matchCandidateThemes({ code: "000024", name: "人工智能主题C", type: "股票型基金" }, [liveAiTheme]);
 assert(matchedAiThemes[0]?.catalystProfile?.summary.includes("产业订单"), "matched fund themes must preserve catalyst type so fund candidates inherit why the theme is rising");
 assert(matchedAiThemes[0]?.catalystProfile?.fresh !== false, "matched fund themes must preserve catalyst freshness so old news cannot support a buy");
+const rankBackedThemeRadar = manager.buildThemeRadar({
+  conceptBoards: [{
+    boardCode: "BKAI3",
+    name: "人工智能",
+    changePct: 0.8,
+    mainNetInflowPct: 1.2,
+    leadStock: "工业富联",
+    quoteTime: "10:28",
+    coverageSources: ["主力流入榜"],
+    rankSignals: [{ source: "主力流入榜", metric: "f184", direction: "desc", rank: 1 }]
+  }],
+  industryBoards: [],
+  fastNews: [{ title: "AI算力订单改善 产业链公司获机构调研", showTime: "10:18", mediaName: "测试快讯" }],
+  fundCandidates: {
+    stockFunds: [{ code: "000053", name: "人工智能低位主题C", type: "股票型基金", oneMonthPct: 2.1, dailyPct: 0.3, shareClass: "C" }]
+  }
+});
+const rankBackedAiTheme = rankBackedThemeRadar.find((theme) => theme.id === "ai_compute");
+assert.equal(rankBackedAiTheme?.leaderSignal, "capital_entering", "theme radar must treat top main-inflow board ranks as main-capital entry evidence before the sector fully rallies");
+assert(rankBackedAiTheme.mainInflowRankScore >= 30, "theme radar must score main-inflow leaderboard ranks as explicit capital-follow evidence");
+assert(rankBackedAiTheme.newsLogic.includes("榜单线索") && rankBackedAiTheme.newsLogic.includes("主力流入榜第1名"), "theme news logic must explain main-inflow leaderboard evidence behind the move");
 const emergingNewsOnlyRadar = manager.buildThemeRadar({
   conceptBoards: [],
   industryBoards: [],

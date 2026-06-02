@@ -21969,6 +21969,8 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
     const boardPositiveFlowCount = boardFlowValues.filter((value) => value > 0).length;
     const boardRisingCount = boardChangeValues.filter((value) => value > 0).length;
     const boardModerateRiseCount = boardChangeValues.filter((value) => value >= 0 && value <= 4.5).length;
+    const mainInflowRankScore = scoreThemeBoardRankSignals(boards, /主力流入/);
+    const mainOutflowRankScore = scoreThemeBoardRankSignals(boards, /主力流出/);
     const avgMainNetInflowPct = boardFlowValues.length ? averageNumeric(boardFlowValues) : null;
     const minMainNetInflowPct = boardFlowValues.length ? Math.min(...boardFlowValues) : null;
     const maxMainNetInflowPct = boardFlowValues.length ? Math.max(...boardFlowValues) : null;
@@ -21983,6 +21985,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + avgOutflow * 12
       + maxOutflow * 6
       + Math.abs(maxBoardDropPct) * 8
+      + mainOutflowRankScore * 0.7
     );
     const freshNewsCount = newsCatalystProfile.fresh === false ? 0 : news.length;
     const catalystScore = clampScore(freshNewsCount * 6 + newsCatalystProfile.score + metals.filter((item) => Number.isFinite(item.changePct)).length * 4 + overseasMarkets.filter((item) => Number.isFinite(item.changePct)).length * 3);
@@ -22014,6 +22017,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + boardRisingCount * 4
       + avgInflow * 10
       + maxInflow * 5
+      + mainInflowRankScore * 0.8
       + catalystScore * 0.16
       + vehicleScore * 0.14
       + Math.max(0, 5 - maxBoardChange) * 2
@@ -22028,6 +22032,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + boardModerateRiseCount * 8
       + Math.max(0, 18 - boardScore) * 0.32
       + capitalFollowScore * 0.12
+      + mainInflowRankScore * 0.12
       + newsOnlyPreheatBoost
       - crowdingScore * 0.46
       - capitalRetreatScore * 0.42
@@ -22105,6 +22110,8 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       boardDeclineCount,
       boardPositiveFlowCount,
       boardRisingCount,
+      mainInflowRankScore: round(mainInflowRankScore, 1),
+      mainOutflowRankScore: round(mainOutflowRankScore, 1),
       maxBoardDropPct: round(maxBoardDropPct, 2),
       retreatSignal,
       leaderSignal,
@@ -22711,6 +22718,38 @@ function scoreThemeBoardEvidence(board = {}) {
   );
 }
 
+function scoreThemeBoardRankSignals(boards = [], sourcePattern = /主力流入/) {
+  const score = (boards || []).reduce((sum, board) => {
+    const sources = Array.isArray(board.coverageSources) ? board.coverageSources.join(" ") : "";
+    const sourceHit = sourcePattern.test(sources) ? 8 : 0;
+    const rankHit = (board.rankSignals || [])
+      .filter((signal) => sourcePattern.test(String(signal.source || "")))
+      .reduce((rankSum, signal) => {
+        const rank = Number(signal.rank || 99);
+        return rankSum + Math.max(0, 9 - Math.min(9, rank)) * 3;
+      }, 0);
+    return sum + sourceHit + rankHit;
+  }, 0);
+  return clampScore(score);
+}
+
+function formatThemeBoardRankSignal(boards = [], sourcePattern = /主力流入/) {
+  const entries = (boards || [])
+    .flatMap((board) => (board.rankSignals || [])
+      .filter((signal) => sourcePattern.test(String(signal.source || "")))
+      .map((signal) => ({
+        name: board.name || board.boardCode || "",
+        source: signal.source || "",
+        rank: Number(signal.rank || 0)
+      })))
+    .filter((entry) => entry.name && Number.isFinite(entry.rank) && entry.rank > 0)
+    .sort((a, b) => Number(a.rank || 99) - Number(b.rank || 99))
+    .slice(0, 2);
+  return entries
+    .map((entry) => `${entry.name}进入${entry.source}第${entry.rank}名`)
+    .join("；");
+}
+
 function inferThemeStage({ catalystScore, boardScore, vehicleScore, crowdingScore, rotationScore = 0, lowPositionScore = 0, capitalFollowScore = 0, preheatScore = 0, avgMainNetInflowPct = null }) {
   if (crowdingScore >= 55) return "crowded";
   if (capitalFollowScore >= 58 && Number(avgMainNetInflowPct) > 0 && crowdingScore < 48) return "capital_entering";
@@ -22882,6 +22921,10 @@ function buildThemeCatalystLogic({ rule = {}, news = [], boards = [], metals = [
     const lead = topBoard.leadStock ? `，龙头${topBoard.leadStock}` : "";
     facts.push(`板块验证：${topBoard.name}${formatSignedNumber(topBoard.changePct)}%${lead}`);
   }
+  const inflowRank = formatThemeBoardRankSignal(boards, /主力流入/);
+  const outflowRank = formatThemeBoardRankSignal(boards, /主力流出/);
+  if (inflowRank) facts.push(`榜单线索：${inflowRank}`);
+  if (outflowRank) facts.push(`风险榜单：${outflowRank}`);
   if (Number.isFinite(avgFlow) && avgFlow < 0) facts.push(`主力线索：相关板块资金均值净流出${formatFallbackPlainPct(Math.abs(avgFlow))}`);
   else if (Number.isFinite(minFlow) && minFlow < 0) facts.push(`主力线索：最弱相关板块资金净流出${formatFallbackPlainPct(Math.abs(minFlow))}`);
   else if (Number.isFinite(avgFlow) && avgFlow > 0) facts.push(`主力线索：相关板块资金均值净流入${formatFallbackPlainPct(avgFlow)}`);

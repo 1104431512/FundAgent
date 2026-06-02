@@ -1089,6 +1089,10 @@ const requiredPatterns = [
     message: "market board snapshots must merge gainers, losers, main inflow, and main outflow lists so theme-retreat detection is not blind to capital leaving."
   },
   {
+    pattern: /(?=[\s\S]*function scoreThemeBoardRankSignals)(?=[\s\S]*mainInflowRankScore)(?=[\s\S]*mainOutflowRankScore)(?=[\s\S]*榜单线索)(?=[\s\S]*主力流入榜)/,
+    message: "theme radar must score main-inflow/outflow leaderboard ranks and explain those board-rank signals in theme logic."
+  },
+  {
     pattern: /(?=[\s\S]*function inferThemeLeaderSignal)(?=[\s\S]*capitalFollowScore)(?=[\s\S]*preheatScore)(?=[\s\S]*主力跟随)(?=[\s\S]*题材逻辑)(?=[\s\S]*follow_main_small)/,
     message: "fund manager must identify main-capital entry, preheated themes, and news logic before ranking fund opportunities."
   },
