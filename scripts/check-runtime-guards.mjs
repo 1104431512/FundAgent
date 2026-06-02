@@ -2049,6 +2049,10 @@ const requiredPatterns = [
     message: "portfolio theme opportunity seed recall must derive grouped theme/fund keywords from main-capital, preheat, and low-rotation leaderboards."
   },
   {
+    pattern: /function collectThemeOpportunitySearchKeywords[\s\S]{0,600}collectThemeCatalystSearchKeywords\(theme,\s*options\)[\s\S]{0,1200}function collectThemeCatalystSearchKeywords[\s\S]{0,1200}extractEmergingNewsTopicTerms[\s\S]{0,900}THEME_NEWS_KEYWORD_EXPANSIONS/,
+    message: "portfolio theme opportunity recall must extract specific catalyst terms from fresh news logic so preheated topics become representative-fund searches quickly."
+  },
+  {
     pattern: /function filterPortfolioDefaultThemeOpportunityItems[\s\S]{0,900}isPreciousPortfolioThemeOpportunityItem[\s\S]{0,900}function isPreciousPortfolioThemeOpportunityItem[\s\S]{0,500}黄金\|贵金属/,
     message: "portfolio default theme recall must suppress precious-metal seeds when non-precious mainline themes are available, without disabling gold-only opportunities."
   },

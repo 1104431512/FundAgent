@@ -3357,8 +3357,10 @@ function getPortfolioThemeCoverageAnchors(group = {}) {
 
 function collectThemeOpportunitySearchKeywords(theme = {}, options = {}) {
   const boards = Array.isArray(theme.evidence?.boards) ? theme.evidence.boards : [];
+  const catalystKeywords = collectThemeCatalystSearchKeywords(theme, options);
   const values = [
     theme.name,
+    ...catalystKeywords,
     ...(Array.isArray(theme.fundKeywords) ? theme.fundKeywords : []),
     ...(Array.isArray(theme.keywords) ? theme.keywords : []),
     ...(Array.isArray(theme.themeKeywords) ? theme.themeKeywords : []),
@@ -3372,6 +3374,33 @@ function collectThemeOpportunitySearchKeywords(theme = {}, options = {}) {
     .flatMap((value) => String(value || "").split(/[，,、/；;\s]+/))
     .map((value) => value.trim())
     .filter(isThemeOpportunitySearchKeywordUseful))].slice(0, 18);
+}
+
+function collectThemeCatalystSearchKeywords(theme = {}, options = {}) {
+  const newsItems = Array.isArray(theme.evidence?.news) ? theme.evidence.news : [];
+  const texts = [
+    theme.newsLogic,
+    theme.primaryCatalyst,
+    theme.catalystProfile?.summary,
+    ...(Array.isArray(options.extra) ? options.extra : []),
+    ...newsItems.slice(0, 5).map((item) => `${item.title || ""} ${item.mediaName || ""}`)
+  ].map((item) => String(item || "").trim()).filter(Boolean);
+  const extracted = new Set();
+  for (const text of texts) {
+    for (const term of extractEmergingNewsTopicTerms({ title: text })) {
+      extracted.add(term);
+    }
+    const normalized = normalizeIntentText(text);
+    for (const group of THEME_NEWS_KEYWORD_EXPANSIONS) {
+      const needles = (group.needles || []).map(normalizeIntentText).filter(Boolean);
+      if (needles.some((needle) => needle && normalized.includes(needle))) {
+        for (const alias of group.aliases || []) extracted.add(alias);
+      }
+    }
+  }
+  return [...new Set(expandThemeNewsKeywords([...extracted], { name: theme.name || "" }))]
+    .filter(isThemeOpportunitySearchKeywordUseful)
+    .slice(0, 10);
 }
 
 function collectThemeOpportunityAnchorKeywords(theme = {}, options = {}) {

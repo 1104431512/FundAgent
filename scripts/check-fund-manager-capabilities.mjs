@@ -478,6 +478,34 @@ const liveThemeSeedSearchText = manager.buildPortfolioWatchlistSeedSearchText([]
 assert(liveThemeSeedSearchText.includes("代表基金"), "theme opportunity seed search must ask for representative funds instead of generic funds");
 assert(liveThemeSeedSearchText.includes("低空经济") && liveThemeSeedSearchText.includes("万丰奥威"), "theme opportunity seed search must carry live theme and holdings keywords");
 assert(liveThemeSeedSearchText.includes("新闻催化") && liveThemeSeedSearchText.includes("前十大持仓"), "theme opportunity seed search must require news logic and holdings-carrier evidence");
+const robotCatalystSnapshot = {
+  themeRadar: [{
+    id: "robot_executor_preheat",
+    name: "智能制造",
+    leaderSignal: "preheat_catalyst",
+    positionSignal: "preheat_catalyst_watch",
+    capitalFollowScore: 59,
+    preheatScore: 72,
+    rotationScore: 51,
+    lowPositionScore: 57,
+    crowdingScore: 19,
+    avgMainNetInflowPct: 0.8,
+    fundKeywords: ["高端制造"],
+    keywords: ["智能制造"],
+    catalystProfile: { score: 32, summary: "产业订单", risk: false, fresh: true },
+    newsLogic: "题材预热：新闻催化：人形机器人执行器订单落地；主力线索：相关板块资金净流入",
+    primaryCatalyst: "人形机器人执行器订单密集落地",
+    evidence: {
+      news: [{ title: "人形机器人执行器订单密集落地，产业链公司加速扩产", mediaName: "财联社", showTime: "10:18" }]
+    }
+  }]
+};
+robotCatalystSnapshot.themeLeaderboards = manager.buildThemeLeaderboards(robotCatalystSnapshot.themeRadar);
+const robotCatalystSearchText = manager.buildPortfolioWatchlistSeedSearchText([], robotCatalystSnapshot);
+assert(
+  /人形机器人|执行器|机器人/.test(robotCatalystSearchText),
+  "theme opportunity seed search must extract specific catalyst terms from fresh news logic instead of only using broad sector labels"
+);
 const liveThemeKeywordGroup = manager.buildPortfolioThemeOpportunityKeywordGroups(liveThemeOpportunitySnapshot)[0];
 assert(liveThemeKeywordGroup?.anchors?.some((item) => /低空经济|万丰奥威/.test(item)), "theme representative coverage must keep specific theme or leader-stock anchors");
 assert(!liveThemeKeywordGroup?.anchors?.some((item) => /军工|高端制造/.test(item)), "theme representative coverage anchors must not be satisfied by broad sector labels alone");
