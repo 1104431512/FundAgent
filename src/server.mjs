@@ -14098,7 +14098,10 @@ function compactThemeLeaderboardsForPublic(leaderboards = {}) {
         leader: item.leader || "",
         action: item.action || "",
         catalyst: item.catalyst || "",
-        newsLogic: item.newsLogic || item.primaryCatalyst || ""
+        newsLogic: item.newsLogic || item.primaryCatalyst || "",
+        nextStep: item.nextStep || "",
+        invalidation: item.invalidation || "",
+        evidence: normalizeStringArray(item.evidence).slice(0, 4)
       }))
     }];
   }));
@@ -16770,7 +16773,10 @@ function compactThemeLeaderboardsForModel(leaderboards = {}) {
         主力节奏: item.leader || "",
         操作倾向: item.action || "",
         催化性质: item.catalyst || "",
-        题材逻辑: item.newsLogic || ""
+        题材逻辑: item.newsLogic || "",
+        下一步: item.nextStep || "",
+        失效条件: item.invalidation || "",
+        关键证据: normalizeStringArray(item.evidence).slice(0, 4)
       }))
     }];
   }));
@@ -21084,8 +21090,63 @@ function compactThemeLeaderboardItem(theme = {}, reason = "", score = 0) {
     action: formatUserFacingFundLabel(theme.actionBias || ""),
     catalyst: theme.catalystProfile?.summary || "",
     newsLogic: theme.newsLogic || theme.primaryCatalyst || "",
-    primaryCatalyst: theme.primaryCatalyst || ""
+    primaryCatalyst: theme.primaryCatalyst || "",
+    nextStep: buildThemeLeaderboardNextStep(theme),
+    invalidation: buildThemeLeaderboardInvalidation(theme),
+    evidence: buildThemeLeaderboardEvidenceChips(theme)
   };
+}
+
+function buildThemeLeaderboardNextStep(theme = {}) {
+  if (hasThemeCapitalRetreatRisk(theme)) return "不碰同题材回调，等资金重新回流和板块止跌后再复核。";
+  if (theme.positionSignal === "high_chase_risk" || theme.stage === "crowded" || Number(theme.crowdingScore) >= 55) {
+    return "先等降温和回踩，不把新闻热度当追涨理由。";
+  }
+  if (theme.leaderSignal === "capital_entering" || theme.positionSignal === "main_capital_entering") {
+    return "找承载题材的代表基金，只有低位温和转强且费率/持仓过关时才做微型试探。";
+  }
+  if (theme.leaderSignal === "preheat_catalyst" || theme.positionSignal === "preheat_catalyst_watch") {
+    return "先加观察池，等新闻催化兑现、主力流入延续、基金走势转强后再进入试探。";
+  }
+  if (theme.positionSignal === "low_position_rotation" || theme.stage === "low_position_rotation") {
+    return "从代表基金里筛低位启动前夜，补齐前十大持仓和费用后再小仓。";
+  }
+  return "继续观察题材与代表基金是否形成同向证据。";
+}
+
+function buildThemeLeaderboardInvalidation(theme = {}) {
+  if (hasThemeCapitalRetreatRisk(theme)) return "失效条件：资金重新净流入、跌幅收敛且新闻逻辑重新转强。";
+  if (theme.positionSignal === "high_chase_risk" || theme.stage === "crowded" || Number(theme.crowdingScore) >= 55) {
+    return "失效条件：涨幅降温、拥挤度下降且代表基金出现健康回踩。";
+  }
+  if (theme.leaderSignal === "capital_entering" || theme.positionSignal === "main_capital_entering") {
+    return "失效条件：主力净流入转弱、龙头回落或新闻催化被证伪。";
+  }
+  if (theme.leaderSignal === "preheat_catalyst" || theme.positionSignal === "preheat_catalyst_watch") {
+    return "失效条件：催化落空、资金没有继续跟进或代表基金先涨成追高。";
+  }
+  if (theme.positionSignal === "low_position_rotation" || theme.stage === "low_position_rotation") {
+    return "失效条件：低位轮动失败、板块继续破位或基金买点迟迟不转强。";
+  }
+  return "失效条件：题材证据断裂或代表基金走势变弱。";
+}
+
+function buildThemeLeaderboardEvidenceChips(theme = {}) {
+  const chips = [];
+  const flow = Number(theme.avgMainNetInflowPct);
+  const maxFlow = Number(theme.maxMainNetInflowPct);
+  const retreat = Number(theme.capitalRetreatScore);
+  const board = theme.evidence?.boards?.[0] || {};
+  if (Number.isFinite(flow)) {
+    chips.push(flow >= 0 ? `主力净流入${formatFallbackPlainPct(flow)}` : `主力净流出${formatFallbackPlainPct(Math.abs(flow))}`);
+  } else if (Number.isFinite(maxFlow) && maxFlow > 0) {
+    chips.push(`最强板块净流入${formatFallbackPlainPct(maxFlow)}`);
+  }
+  if (theme.catalystProfile?.summary) chips.push(`催化：${theme.catalystProfile.summary}`);
+  if (board.name) chips.push(`板块：${board.name}${formatSignedNumber(board.changePct)}%`);
+  if (theme.primaryCatalyst && !theme.catalystProfile?.summary) chips.push(shortenPortfolioCustomerText(theme.primaryCatalyst, 28));
+  if (Number.isFinite(retreat) && retreat >= 45) chips.push("退潮风险高");
+  return chips.filter(Boolean).slice(0, 4);
 }
 
 const THEME_NEWS_KEYWORD_EXPANSIONS = [

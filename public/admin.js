@@ -2272,6 +2272,7 @@ function renderPortfolioThemeLeaderboardItem(item = {}, lane = {}) {
     item.catalyst ? `催化：${item.catalyst}` : "",
     item.score !== null && item.score !== undefined && item.score !== "" ? `评分：${formatNumber(item.score, 1)}` : ""
   ].filter(Boolean);
+  const evidence = Array.isArray(item.evidence) ? item.evidence.slice(0, 4) : [];
   return `
     <article class="theme-leaderboard-item">
       <div class="theme-leaderboard-item-title">
@@ -2280,7 +2281,14 @@ function renderPortfolioThemeLeaderboardItem(item = {}, lane = {}) {
       </div>
       <p>${escapeHtml(item.reason || item.newsLogic || "等待下一轮题材雷达复核。")}</p>
       ${facts.length ? `<div class="theme-leaderboard-facts">${facts.map((fact) => `<small>${escapeHtml(fact)}</small>`).join("")}</div>` : ""}
+      ${evidence.length ? `<div class="theme-leaderboard-evidence">${evidence.map((fact) => `<small>${escapeHtml(fact)}</small>`).join("")}</div>` : ""}
       ${item.newsLogic ? `<small class="theme-leaderboard-logic">${escapeHtml(item.newsLogic)}</small>` : ""}
+      ${(item.nextStep || item.invalidation) ? `
+        <div class="theme-leaderboard-decision">
+          ${item.nextStep ? `<small><b>下一步</b>${escapeHtml(item.nextStep)}</small>` : ""}
+          ${item.invalidation ? `<small><b>失效</b>${escapeHtml(item.invalidation)}</small>` : ""}
+        </div>
+      ` : ""}
     </article>
   `;
 }

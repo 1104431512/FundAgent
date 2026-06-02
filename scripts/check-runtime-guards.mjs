@@ -1097,6 +1097,14 @@ const requiredPatterns = [
     message: "market snapshots must expose theme leaderboards for main-capital entry, preheat, low rotation, retreat, and chase-risk lanes."
   },
   {
+    pattern: /function compactThemeLeaderboardItem[\s\S]{0,700}nextStep[\s\S]{0,260}invalidation[\s\S]{0,260}evidence/,
+    message: "theme leaderboards must expose next steps, invalidation boundaries, and evidence chips instead of score-only theme items."
+  },
+  {
+    pattern: /function renderPortfolioThemeLeaderboardItem[\s\S]{0,1300}theme-leaderboard-evidence[\s\S]{0,900}theme-leaderboard-decision/,
+    message: "admin theme leaderboards must render evidence chips and next-step cards for each theme."
+  },
+  {
     pattern: /function formatThemeNewsHeadline/,
     message: "theme news logic must preserve source/time for catalyst explanations."
   },
