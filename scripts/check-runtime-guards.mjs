@@ -2089,6 +2089,10 @@ const requiredPatterns = [
     message: "portfolio BUY guard must block theme-labeled pullbacks that lack current actionable main-capital, preheat, or rotation support."
   },
   {
+    pattern: /(?=[\s\S]*function evaluatePortfolioBuyDiscipline)(?=[\s\S]*getHoldingRealtimeCatchdownWarning\(profile\))(?=[\s\S]*portfolio_holding_realtime_guard)(?=[\s\S]*function hasPortfolioThemeMicroStarterSetup[\s\S]{0,1200}hasHoldingRealtimeCatchdownRisk\(profile\))/,
+    message: "portfolio BUY guard and micro-starter recognition must block intraday weak top-holding pulse as catchdown risk."
+  },
+  {
     pattern: /function buildPortfolioWatchReadinessGaps[\s\S]{0,2600}getPortfolioWatchThemeSupportGap\(item,\s*evidence\)[\s\S]{0,260}gaps\.push\(themeSupportGap\)/,
     message: "watchlist readiness must downgrade theme-labeled pullbacks that lack current actionable theme support."
   },

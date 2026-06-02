@@ -3800,7 +3800,7 @@ function buildPortfolioRedeploymentPlan(account = {}, watchlist = [], profiles =
 }
 
 function isPortfolioRedeploymentHardGap(gap = "") {
-  return /缺少可验证净值|走势下钻|基金规模.*(?:不能作为可直接买入|偏小)|前十大集中度.*(?:过高|偏高)|费用\/份额|特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛|题材拥挤|追涨风险|暂时回避|仍是回避/.test(String(gap || ""));
+  return /缺少可验证净值|走势下钻|基金规模.*(?:不能作为可直接买入|偏小)|前十大集中度.*(?:过高|偏高)|费用\/份额|特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛|题材拥挤|追涨风险|暂时回避|仍是回避|前十大持仓盘中|底层持仓止跌|表面回调可能继续下探/.test(String(gap || ""));
 }
 
 function formatPortfolioRealtimeEvidence(profile = {}) {
@@ -4767,7 +4767,8 @@ function hasPortfolioStarterBuySetup(profile = {}) {
     && Number.isFinite(r60)
     && r60 <= 24
     && !hasHighChaseTheme(profile)
-    && !hasStaleThemeCatchdownRisk(profile);
+    && !hasStaleThemeCatchdownRisk(profile)
+    && !hasHoldingRealtimeCatchdownRisk(profile);
 }
 
 function hasPortfolioThemeMicroStarterSetup(profile = {}) {
@@ -4777,6 +4778,7 @@ function hasPortfolioThemeMicroStarterSetup(profile = {}) {
   if (!hasVerifiedThemeCarrierEvidence(profile)) return false;
   if (!isPullbackTrendFreshEnough(profile)) return false;
   if (hasHighChaseTheme(profile) || hasThemeRetreatRisk(profile) || hasStaleThemeCatchdownRisk(profile)) return false;
+  if (hasHoldingRealtimeCatchdownRisk(profile)) return false;
   if (profile?.actionability?.action === "avoid") return false;
   const blockers = normalizeStringArray(profile?.actionability?.decisionBlocker);
   if (profile?.actionability?.action === "wait" && !blockers.some((item) => item.includes("小仓试探"))) return false;
@@ -5410,6 +5412,14 @@ function evaluatePortfolioBuyDiscipline(action = {}, profile = null, positions =
       ok: false,
       reason: `系统买入纪律拦截：${themeSupportGap}`,
       evidence: [trendEvidence, formatCandidateThemeEvidence(profile), "来源：portfolio_theme_support_guard"].filter(Boolean)
+    };
+  }
+  const holdingRealtimeWarning = getHoldingRealtimeCatchdownWarning(profile);
+  if (holdingRealtimeWarning) {
+    return {
+      ok: false,
+      reason: `系统买入纪律拦截：${holdingRealtimeWarning}`,
+      evidence: [trendEvidence, holdingRealtimeWarning, "来源：portfolio_holding_realtime_guard"].filter(Boolean)
     };
   }
   if (hasPortfolioVerifiedSeedChaseRisk(action, profile)
@@ -6558,6 +6568,10 @@ function buildPortfolioWatchStructuralReadinessGaps(item = {}, evidence = null) 
     ...item,
     lastSnapshot: evidence || item.lastSnapshot
   });
+  const holdingRealtimeWarning = getHoldingRealtimeCatchdownWarning(evidence || item.lastSnapshot || item);
+  if (holdingRealtimeWarning) {
+    gaps.push(holdingRealtimeWarning);
+  }
   const holdingCarrierRisk = normalizeStringArray(holdingsOutlook.risks).find((risk) =>
     /前十大持仓未命中题材龙头|前十大持仓与目标主题匹配度不足/.test(risk)
   );

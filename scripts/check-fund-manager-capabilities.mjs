@@ -4859,6 +4859,29 @@ assert(
   holdingRealtimeWeakActionability.decisionBlocker.some((item) => item.includes("持仓实时降级") || item.includes("底层持仓止跌")),
   "holding realtime weakness must become a customer-readable actionability blocker"
 );
+const holdingRealtimeWeakExecutableDigest = {
+  ...executableMicroStarterDigest,
+  code: "000050",
+  name: "持仓走弱低位基金C",
+  holdingRealtimePulse: holdingRealtimeWeakSetupDigest.holdingRealtimePulse
+};
+assert.equal(
+  manager.hasPortfolioThemeMicroStarterSetup(holdingRealtimeWeakExecutableDigest),
+  false,
+  "theme micro-starter recognition must not allow weak top-holding pulse to bypass catchdown risk"
+);
+const holdingRealtimeWeakBuyGuard = manager.evaluatePortfolioBuyDiscipline(
+  { action: "BUY", code: "000050", name: "持仓走弱低位基金C", targetWeightPct: 1 },
+  holdingRealtimeWeakExecutableDigest,
+  [],
+  redeploymentAccount
+);
+assert.equal(holdingRealtimeWeakBuyGuard.ok, false, "portfolio buy discipline must block BUY when top holdings are weakening intraday");
+assert(
+  holdingRealtimeWeakBuyGuard.reason.includes("表面回调可能继续下探")
+    && holdingRealtimeWeakBuyGuard.evidence.includes("来源：portfolio_holding_realtime_guard"),
+  "portfolio buy discipline must explain weak top-holding pulse as a traceable catchdown blocker"
+);
 const holdingRealtimeCatchdownRanking = manager.buildPortfolioStaleCatchdownRiskRanking([{
   code: "000050",
   name: "持仓走弱低位基金C",
