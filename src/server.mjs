@@ -15828,6 +15828,16 @@ function buildPortfolioCapabilityDiagnostics(db = {}) {
     );
   }
 
+  const marketSnapshotFreshnessIssues = findPortfolioMarketSnapshotFreshnessIssues(db);
+  if (marketSnapshotFreshnessIssues.length) {
+    add(
+      "warning",
+      "主力题材快照待刷新",
+      "实时证据不可用",
+      `${marketSnapshotFreshnessIssues[0]}；下一轮必须先刷新新闻、板块资金、题材榜和代表基金承载，再判断是否跟随主力。`
+    );
+  }
+
   const backtestDiagnostics = buildPortfolioBacktestDiagnostics(db);
   for (const item of backtestDiagnostics.items || []) {
     add(
@@ -15979,6 +15989,38 @@ function findLatestPortfolioMarketSnapshot(db = {}) {
     }
   }
   return null;
+}
+
+function findPortfolioMarketSnapshotFreshnessIssues(db = {}) {
+  const freshSnapshot = findLatestPortfolioMarketSnapshot(db);
+  if (freshSnapshot && hasPortfolioMarketSnapshotThemeEvidence(freshSnapshot)) return [];
+  const candidates = [
+    { label: "当前市场题材快照", snapshot: db.marketSnapshot, fallbackDate: db.marketSnapshotAt || "" },
+    { label: "最近市场题材快照", snapshot: db.latestMarketSnapshot, fallbackDate: db.latestMarketSnapshotAt || db.lastMarketSnapshotAt || "" },
+    ...(Array.isArray(db.runs) ? [...db.runs]
+      .filter((run) => run?.marketSnapshot && typeof run.marketSnapshot === "object")
+      .sort((a, b) => Date.parse(b.completedAt || b.startedAt || b.date || "") - Date.parse(a.completedAt || a.startedAt || a.date || ""))
+      .slice(0, 3)
+      .map((run) => ({
+        label: "历史运行题材快照",
+        snapshot: run.marketSnapshot,
+        fallbackDate: run.completedAt || run.startedAt || run.date || ""
+      })) : [])
+  ];
+  const issues = [];
+  const seen = new Set();
+  for (const candidate of candidates) {
+    if (!candidate.snapshot || typeof candidate.snapshot !== "object") continue;
+    if (!hasPortfolioMarketSnapshotThemeEvidence(candidate.snapshot)) continue;
+    const freshness = evaluatePortfolioMarketSnapshotFreshness(candidate.snapshot, {
+      label: candidate.label,
+      fallbackDate: candidate.fallbackDate
+    });
+    if (freshness.ok || !freshness.issue || seen.has(freshness.issue)) continue;
+    seen.add(freshness.issue);
+    issues.push(freshness.issue);
+  }
+  return issues.slice(0, 3);
 }
 
 function isFreshPortfolioMarketSnapshot(snapshot = null, options = {}) {
@@ -17381,6 +17423,8 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "补净值、走势、前十大持仓或费用证据；证据补齐前只能观察或降低把握度。", "基金研究员");
     } else if (item.label === "成交净值待核验") {
       addTask(item, "优先补齐成交净值、份额和来源，否则不要把交易盈亏归因说满。", "基金研究员");
+    } else if (item.label === "主力题材快照待刷新") {
+      addTask(item, "立即刷新新闻快讯、板块资金、题材榜和代表基金承载；刷新前不能把旧主线当作当前可跟随机会。", "题材分析师");
     } else if (item.label === "运行连续性不足") {
       addTask(item, "在 learningNotes 写清失败原因和恢复动作，避免客户只看到进度文案。", "主席");
     } else if (item.label === "现金闲置风险") {

@@ -2289,6 +2289,14 @@ const requiredPatterns = [
     message: "market snapshot freshness must have an explicit age cap before treating theme radar as live."
   },
   {
+    pattern: /function buildPortfolioCapabilityDiagnostics[\s\S]{0,5200}findPortfolioMarketSnapshotFreshnessIssues[\s\S]{0,700}主力题材快照待刷新/,
+    message: "stale theme snapshots must become visible refresh tasks instead of silent waiting."
+  },
+  {
+    pattern: /function buildPortfolioCapabilityActionQueue[\s\S]{0,2200}主力题材快照待刷新[\s\S]{0,500}新闻快讯/,
+    message: "stale theme snapshot refresh tasks must ask for news, capital flow, and representative-fund refresh."
+  },
+  {
     pattern: /function findLatestPortfolioThemeLeaderboardsFromRuns[\s\S]{0,900}isFreshPortfolioMarketSnapshot[\s\S]{0,500}themeLeaderboards/,
     message: "manager ability proof must reject stale theme leaderboards before showing main-capital follow evidence."
   },

@@ -942,6 +942,20 @@ assert(
   !manager.buildPortfolioCapabilityDiagnostics(staleThemeRepresentativeGapDb).items.some((item) => item.label === "主力预热代表基金缺口"),
   "stale market theme snapshots must not create live representative-fund gaps"
 );
+assert(
+  manager.buildPortfolioCapabilityDiagnostics(staleThemeRepresentativeGapDb).items.some((item) =>
+    item.label === "主力题材快照待刷新"
+    && /刷新新闻|板块资金|题材榜|旧主线/.test(item.note)
+  ),
+  "stale market theme snapshots must create a refresh task instead of silent waiting"
+);
+assert(
+  manager.buildPortfolioCapabilityActionQueue(staleThemeRepresentativeGapDb).some((item) =>
+    item.label === "主力题材快照待刷新"
+    && /新闻快讯|板块资金|代表基金/.test(item.action)
+  ),
+  "capability action queue must turn stale theme snapshots into a concrete news/capital refresh task"
+);
 assert(rankingBoard.lists.find((item) => item.id === "decision_synthesis")?.items.some((item) => item.code === "000005"), "manager ranking board must expose integrated decision-synthesis candidates");
 assert(rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.some((item) => item.code === "000001"), "manager ranking board must expose buy-preparation candidates");
 assert(rankingBoard.lists.find((item) => item.id === "launch_setup")?.items.some((item) => item.code === "000001"), "manager ranking board must expose low-position launch candidates");
