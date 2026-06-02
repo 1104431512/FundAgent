@@ -4436,6 +4436,104 @@ assert(
   !noRadarThemeWaitAnswerQuality.issues.some((issue) => issue.startsWith("stale_theme_candidate")),
   "quality gate should allow no-radar theme-name candidates only when the answer keeps them at zero-yuan observation"
 );
+const genericHoldingNoRadarProfile = {
+  ...verifiedSeedProfile,
+  code: "000018",
+  name: "成长精选混合C",
+  matchedThemes: [],
+  seed: {
+    ...(verifiedSeedProfile.seed || {}),
+    name: "成长精选混合C",
+    matchedThemes: [],
+    keywords: ["成长", "精选"]
+  },
+  holdings: {
+    ok: true,
+    equityDisclosureDate: "2099-03-31",
+    equityTopHoldings: [
+      "300502 新易盛 8.7%",
+      "300308 中际旭创 7.9%",
+      "601138 工业富联 5.6%",
+      "002463 沪电股份 4.1%",
+      "002475 立讯精密 3.2%",
+      "600519 贵州茅台 2.4%",
+      "600036 招商银行 2.1%",
+      "300750 宁德时代 1.8%"
+    ]
+  }
+};
+const genericHoldingNoRadarOutlook = manager.buildHoldingsOutlookProfile(genericHoldingNoRadarProfile);
+assert.equal(genericHoldingNoRadarOutlook.dominantHoldingTheme?.label, "科技", "holdings outlook must expose dominant bottom-layer theme exposure for generic-name funds");
+assert(
+  genericHoldingNoRadarOutlook.evidence.includes("底层集中")
+    && genericHoldingNoRadarOutlook.evidence.includes("新易盛"),
+  "dominant holding theme evidence must name representative top holdings instead of hiding behind a score"
+);
+const genericHoldingNoRadarBuyGuard = manager.evaluatePortfolioBuyDiscipline(
+  { action: "BUY", code: "000018", name: "成长精选混合C", amount: 1000 },
+  genericHoldingNoRadarProfile
+);
+assert.equal(genericHoldingNoRadarBuyGuard.ok, false, "generic-name funds with concentrated theme holdings must not buy when current radar support is absent");
+assert(
+  genericHoldingNoRadarBuyGuard.reason.includes("前十大持仓实际集中")
+    && genericHoldingNoRadarBuyGuard.reason.includes("当前题材雷达")
+    && genericHoldingNoRadarBuyGuard.evidence.includes("来源：portfolio_theme_support_guard"),
+  "generic-name no-radar BUY blocks must explain that top holdings revealed an unsupported bottom-layer theme"
+);
+assert(
+  manager.buildPortfolioWatchReadinessGaps({ code: "000018", name: "成长精选混合C", status: "ready" }, genericHoldingNoRadarProfile)
+    .some((item) => item.includes("前十大持仓实际集中") && item.includes("当前题材雷达")),
+  "watchlist readiness must downgrade generic-name funds whose concentrated holdings lack current radar support"
+);
+const genericHoldingNoRadarActionability = manager.buildFundActionabilitySignals(genericHoldingNoRadarProfile);
+assert(["wait", "avoid"].includes(genericHoldingNoRadarActionability.action), "actionability must not surface generic-name no-radar holding-theme candidates as buy or staged-buy");
+assert(
+  genericHoldingNoRadarActionability.decisionBlocker.some((item) => item.includes("系统当前题材支撑拦截") && item.includes("前十大持仓实际集中")),
+  "actionability blockers must carry holding-derived no-radar evidence into cards and prompts"
+);
+const genericHoldingNoRadarQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000018 成长精选混合C 可以小仓买入1000元。理由是走势回调完成、到了低位，适合启动前先买一点。",
+  workflow: "fund_qa",
+  userText: "000018 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [genericHoldingNoRadarProfile] } }
+});
+assert(
+  genericHoldingNoRadarQuality.issues.includes("stale_theme_candidate_given_buy_execution")
+    && genericHoldingNoRadarQuality.issues.includes("stale_theme_candidate_given_buy_signal"),
+  "quality gate must reject buy wording for generic-name funds whose top holdings reveal unsupported theme exposure"
+);
+const genericHoldingNoRadarBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
+  account: { cash: 90000, totalAsset: 100000, positionWeightPct: 5 },
+  watchlist: [{
+    code: "000018",
+    name: "成长精选混合C",
+    shareClass: "C",
+    status: "ready",
+    lastSnapshot: genericHoldingNoRadarProfile
+  }]
+}));
+assert(
+  genericHoldingNoRadarBoard.lists.find((item) => item.id === "stale_catchdown_risk")?.items.some((item) =>
+    item.code === "000018"
+    && item.action.includes("底层题材未确认")
+    && item.facts.some((fact) => fact.includes("前十大持仓实际集中"))
+  ),
+  "manager ranking board must surface generic-name unsupported holding-theme exposure in the catchdown risk lane"
+);
+const genericHoldingCurrentSupportedProfile = {
+  ...genericHoldingNoRadarProfile,
+  marketThemeRefresh: {
+    matchedThemeNames: ["AI/算力"],
+    supportLabel: "当前主力进场",
+    supportSignals: ["AI/算力主力资金净流入", "新闻催化保持新鲜"],
+    summary: "AI/算力方向有主力进场和新闻催化确认"
+  }
+};
+assert.equal(
+  manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000018", name: "成长精选混合C", amount: 1000 }, genericHoldingCurrentSupportedProfile).ok,
+  true,
+  "holding-theme support guard must reopen review when the same bottom-layer theme has current main-capital/news radar support"
+);
 const broadNoRadarProfile = {
   ...verifiedSeedProfile,
   matchedThemes: [],

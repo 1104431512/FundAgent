@@ -2013,7 +2013,7 @@ const requiredPatterns = [
     message: "unrefreshed theme labels must become non-actionable and carry a readable current-radar warning."
   },
   {
-    pattern: /function getPortfolioActionableThemeSupportGap[\s\S]{0,900}getUnrefreshedMarketThemeWarnings\(candidate\)[\s\S]{0,900}旧题材线索未被当前题材雷达确认[\s\S]{0,700}历史热点/,
+    pattern: /function getPortfolioActionableThemeSupportGap(?=[\s\S]{0,1800}getUnrefreshedMarketThemeWarnings\(candidate\))(?=[\s\S]{0,2800}旧题材线索未被当前题材雷达确认)(?=[\s\S]{0,3200}历史热点)/,
     message: "portfolio BUY discipline must explicitly block old theme labels that are not confirmed by the current radar."
   },
   {
@@ -2325,7 +2325,19 @@ const requiredPatterns = [
     message: "portfolio theme support gaps must block theme-named funds when current radar support is absent."
   },
   {
-    pattern: /function getPortfolioThemeSupportRequirement[\s\S]{0,4200}function isBroadPortfolioExposureText/,
+    pattern: /(?=[\s\S]*function getPortfolioActionableThemeSupportGap[\s\S]{0,1400}getPortfolioHoldingThemeSupportGap\(candidate\))(?=[\s\S]*function getPortfolioHoldingThemeSupportGap[\s\S]{0,1000}前十大持仓实际集中)/,
+    message: "portfolio theme support gaps must block generic-name funds when concentrated top holdings reveal an unsupported bottom-layer theme."
+  },
+  {
+    pattern: /function buildHoldingThemeExposureProfile[\s\S]{0,2200}dominant[\s\S]{0,900}function isDominantHoldingThemeExposure[\s\S]{0,1200}function formatHoldingThemeExposureSummary/,
+    message: "holdings outlook must compute dominant bottom-layer theme exposure from top-ten holdings."
+  },
+  {
+    pattern: /function hasPortfolioCurrentSupportForHoldingTheme[\s\S]{0,1600}isActionableThemeSupport[\s\S]{0,1200}function isThemeSignalRelatedToHoldingTheme/,
+    message: "holding-derived theme exposure must reopen only when same-direction current radar, main-capital, or news support is present."
+  },
+  {
+    pattern: /function getPortfolioThemeSupportRequirement[\s\S]{0,7600}function isBroadPortfolioExposureText/,
     message: "portfolio theme support guard must exempt broad/core funds from sector-radar-only blocking."
   },
   {
@@ -2339,6 +2351,10 @@ const requiredPatterns = [
   {
     pattern: /function getTextualCatchdownWarnings[\s\S]{0,900}文本证据显示题材退潮/,
     message: "portfolio BUY guard must define a text-only retreat/catchdown warning extractor."
+  },
+  {
+    pattern: /(?=[\s\S]*function resolvePortfolioChaseRiskEvidence[\s\S]{0,2600}unsupportedHoldingThemeRisk)(?=[\s\S]*function buildPortfolioStaleCatchdownRiskRankingItem[\s\S]{0,3000}底层题材未确认拦截)/,
+    message: "catchdown rankings must surface generic-name candidates whose top holdings reveal unsupported bottom-layer theme exposure."
   },
   {
     pattern: /function isTextualCatchdownRiskSegment[\s\S]{0,1200}旧主力标签[\s\S]{0,500}历史热点[\s\S]{0,500}当前题材雷达/,
@@ -2363,6 +2379,10 @@ const requiredPatterns = [
   {
     pattern: /function isPortfolioRedeploymentHardGap[\s\S]{0,700}题材退潮[\s\S]{0,260}接盘风险[\s\S]{0,260}旧新闻[\s\S]{0,120}旧催化/,
     message: "cash redeployment must treat stale-theme catchdown and old-catalyst risk as hard no-buy gaps."
+  },
+  {
+    pattern: /function isPortfolioRedeploymentHardGap[\s\S]{0,900}前十大持仓实际集中/,
+    message: "cash redeployment must treat concentrated top-holding themes without current radar support as hard no-buy gaps."
   },
   {
     pattern: /function resolvePortfolioDecisionSynthesisEvidence[\s\S]{0,1200}themeSupportGap[\s\S]{0,1200}先补题材证据/,
@@ -3029,6 +3049,10 @@ const requiredPatterns = [
     message: "pullback/setup deep-dive ranking must score top-ten holdings outlook, not only NAV trend."
   },
   {
+    pattern: /scoreResearchDigestForPullbackSetup[\s\S]{0,2200}getPortfolioActionableThemeSupportGap\(digest\)[\s\S]{0,900}score -= 54/,
+    message: "pullback/setup deep-dive ranking must demote unsupported holding-derived theme exposure before recommendation ordering."
+  },
+  {
     pattern: /buildFundActionabilitySignals[\s\S]{0,1400}buildHoldingsOutlookProfile/,
     message: "fund actionability must incorporate structured top-ten holdings outlook."
   },
@@ -3325,7 +3349,7 @@ const requiredPatterns = [
     message: "manager ranking boards must include a stale-catchdown risk lane that blocks retreating themes from masquerading as pullback setups."
   },
   {
-    pattern: /function buildPortfolioStaleCatchdownRiskRankingItem[\s\S]{0,900}staleCatalystRisk[\s\S]{0,1200}旧催化接盘强拦截[\s\S]{0,900}旧新闻\/旧催化[\s\S]{0,800}缺新鲜新闻\/政策\/产业预热/,
+    pattern: /function buildPortfolioStaleCatchdownRiskRankingItem(?=[\s\S]{0,2400}staleCatalystRisk)(?=[\s\S]{0,3600}旧催化接盘强拦截)(?=[\s\S]{0,3600}旧新闻\/旧催化)(?=[\s\S]{0,4200}缺新鲜新闻\/政策\/产业预热)/,
     message: "stale-catchdown risk ranking must surface old catalysts even when strong current flow avoids hard catchdown classification."
   },
   {
