@@ -26510,6 +26510,9 @@ function compactHoldingRealtimePulseItem(item = {}) {
 const HOLDING_THEME_GROUPS = [
   ["贵金属", "黄金", "有色", "资源", "矿业", "铜", "铝", "锂"],
   ["医药", "医疗", "创新药", "生物医药", "CXO", "医疗器械"],
+  ["CPO/光模块", "CPO", "光模块", "光通信", "光芯片", "光器件", "光电共封装", "800G", "1.6T"],
+  ["AI服务器/液冷", "AI服务器", "服务器", "液冷", "数据中心", "算力基础设施", "IDC"],
+  ["半导体/芯片", "半导体", "芯片", "集成电路", "先进封装", "存储", "HBM", "光刻"],
   ["科技", "半导体", "芯片", "AI", "人工智能", "算力", "通信", "电子"],
   ["新能源", "电池", "光伏", "储能", "电力设备", "智能车", "汽车"],
   ["消费", "白酒", "食品饮料", "家电", "农业"],
@@ -26521,6 +26524,9 @@ const HOLDING_THEME_GROUPS = [
 const HOLDING_THEME_PATTERNS = [
   { tag: "贵金属", pattern: /紫金矿业|山东黄金|中金黄金|赤峰黄金|湖南黄金|银泰黄金|招金矿业|黄金|白银|贵金属|铜|铝|锂|洛阳钼业|江西铜业|中国铝业|天齐锂业|赣锋锂业/ },
   { tag: "医药", pattern: /恒瑞医药|药明康德|药明生物|迈瑞医疗|爱尔眼科|片仔癀|泰格医药|百济神州|智飞生物|长春高新|康方生物|医疗|医药|创新药|生物/ },
+  { tag: "CPO/光模块", pattern: /新易盛|中际旭创|天孚通信|源杰科技|太辰光|光迅科技|博创科技|华工科技|剑桥科技|联特科技|德科立|CPO|光模块|光通信|光芯片|光器件|光电共封装|800G|1\.6T/i },
+  { tag: "AI服务器/液冷", pattern: /工业富联|浪潮信息|中科曙光|曙光数创|寒武纪|海光信息|紫光股份|拓维信息|英维克|高澜股份|佳力图|数据中心|AI服务器|服务器|液冷|算力基础设施|IDC/i },
+  { tag: "半导体/芯片", pattern: /中芯国际|海光信息|寒武纪|北方华创|兆易创新|韦尔股份|紫光国微|长电科技|中微公司|澜起科技|华海清科|芯源微|盛美上海|佰维存储|半导体|芯片|集成电路|先进封装|存储|HBM|光刻/i },
   { tag: "科技", pattern: /中芯国际|海光信息|寒武纪|北方华创|兆易创新|韦尔股份|中际旭创|新易盛|工业富联|沪电股份|立讯精密|紫光国微|长电科技|中微公司|澜起科技|半导体|芯片|算力|人工智能|AI/i },
   { tag: "新能源", pattern: /宁德时代|比亚迪|阳光电源|隆基绿能|通威股份|亿纬锂能|天赐材料|华友钴业|三花智控|光伏|储能|电池|新能源|电动车|智能车/ },
   { tag: "消费", pattern: /贵州茅台|五粮液|泸州老窖|山西汾酒|伊利股份|海天味业|美的集团|格力电器|牧原股份|温氏股份|消费|白酒|食品饮料|家电|农业/ },
@@ -26820,10 +26826,24 @@ function buildHoldingThemeExposureProfile(holdings = []) {
       || Number(b.count || 0) - Number(a.count || 0)
       || Number(b.top3Count || 0) - Number(a.top3Count || 0)
     );
+  const dominantCandidates = exposures
+    .filter(isDominantHoldingThemeExposure)
+    .sort((a, b) =>
+      getHoldingThemeExposureSpecificityScore(b.label) - getHoldingThemeExposureSpecificityScore(a.label)
+      || Number(b.pct ?? 0) - Number(a.pct ?? 0)
+      || Number(b.count || 0) - Number(a.count || 0)
+    );
   return {
     exposures,
-    dominant: exposures.find(isDominantHoldingThemeExposure) || null
+    dominant: dominantCandidates[0] || null
   };
+}
+
+function getHoldingThemeExposureSpecificityScore(label = "") {
+  if (/CPO|光模块|AI服务器|液冷|半导体|芯片/.test(String(label || ""))) return 3;
+  if (/贵金属|医药|新能源|港股互联网/.test(String(label || ""))) return 2;
+  if (/科技|消费|金融|红利/.test(String(label || ""))) return 1;
+  return 0;
 }
 
 function isDominantHoldingThemeExposure(exposure = {}) {

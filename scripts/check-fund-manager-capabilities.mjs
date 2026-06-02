@@ -4496,7 +4496,7 @@ const genericHoldingNoRadarProfile = {
   }
 };
 const genericHoldingNoRadarOutlook = manager.buildHoldingsOutlookProfile(genericHoldingNoRadarProfile);
-assert.equal(genericHoldingNoRadarOutlook.dominantHoldingTheme?.label, "科技", "holdings outlook must expose dominant bottom-layer theme exposure for generic-name funds");
+assert.equal(genericHoldingNoRadarOutlook.dominantHoldingTheme?.label, "CPO/光模块", "holdings outlook must expose precise bottom-layer theme exposure for generic-name funds");
 assert(
   genericHoldingNoRadarOutlook.evidence.includes("底层集中")
     && genericHoldingNoRadarOutlook.evidence.includes("新易盛"),
@@ -4556,16 +4556,39 @@ assert(
 const genericHoldingCurrentSupportedProfile = {
   ...genericHoldingNoRadarProfile,
   marketThemeRefresh: {
-    matchedThemeNames: ["AI/算力"],
+    matchedThemeNames: ["CPO/光模块"],
     supportLabel: "当前主力进场",
-    supportSignals: ["AI/算力主力资金净流入", "新闻催化保持新鲜"],
-    summary: "AI/算力方向有主力进场和新闻催化确认"
+    supportSignals: ["CPO/光模块主力资金净流入", "新闻催化保持新鲜"],
+    summary: "CPO/光模块方向有主力进场和新闻催化确认"
   }
 };
 assert.equal(
   manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000018", name: "成长精选混合C", amount: 1000 }, genericHoldingCurrentSupportedProfile).ok,
   true,
   "holding-theme support guard must reopen review when the same bottom-layer theme has current main-capital/news radar support"
+);
+const genericHoldingBroadAiSupportedProfile = {
+  ...genericHoldingNoRadarProfile,
+  marketThemeRefresh: {
+    matchedThemeNames: ["AI/算力"],
+    supportLabel: "当前主力进场",
+    supportSignals: ["AI应用主力资金净流入", "大模型新闻催化保持新鲜"],
+    summary: "AI/算力方向有主力进场和新闻催化确认"
+  }
+};
+const genericHoldingBroadAiGuard = manager.evaluatePortfolioBuyDiscipline(
+  { action: "BUY", code: "000018", name: "成长精选混合C", amount: 1000 },
+  genericHoldingBroadAiSupportedProfile
+);
+assert.equal(
+  genericHoldingBroadAiGuard.ok,
+  false,
+  "broad AI support must not reopen a fund whose top holdings are concentrated in the CPO/optical-module subtheme"
+);
+assert(
+  genericHoldingBroadAiGuard.reason.includes("CPO/光模块")
+    && genericHoldingBroadAiGuard.reason.includes("当前题材雷达"),
+  "broad AI support blocks must explain the unsupported precise bottom-layer holding theme"
 );
 const broadNoRadarProfile = {
   ...verifiedSeedProfile,

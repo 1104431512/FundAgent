@@ -2333,8 +2333,12 @@ const requiredPatterns = [
     message: "portfolio theme support gaps must block generic-name funds when concentrated top holdings reveal an unsupported bottom-layer theme."
   },
   {
-    pattern: /function buildHoldingThemeExposureProfile[\s\S]{0,2200}dominant[\s\S]{0,900}function isDominantHoldingThemeExposure[\s\S]{0,1200}function formatHoldingThemeExposureSummary/,
+    pattern: /function buildHoldingThemeExposureProfile[\s\S]{0,2500}getHoldingThemeExposureSpecificityScore[\s\S]{0,900}dominant[\s\S]{0,900}function getHoldingThemeExposureSpecificityScore[\s\S]{0,500}CPO\|光模块\|AI服务器\|液冷\|半导体\|芯片[\s\S]{0,900}function isDominantHoldingThemeExposure[\s\S]{0,1200}function formatHoldingThemeExposureSummary/,
     message: "holdings outlook must compute dominant bottom-layer theme exposure from top-ten holdings."
+  },
+  {
+    pattern: /const HOLDING_THEME_GROUPS[\s\S]{0,900}CPO\/光模块[\s\S]{0,700}AI服务器\/液冷[\s\S]{0,700}半导体\/芯片[\s\S]{0,1800}const HOLDING_THEME_PATTERNS[\s\S]{0,900}CPO\/光模块[\s\S]{0,900}AI服务器\/液冷[\s\S]{0,900}半导体\/芯片/,
+    message: "top-ten holding exposure must split broad technology into precise CPO/optical-module, AI-server/liquid-cooling, and semiconductor subthemes."
   },
   {
     pattern: /function hasPortfolioCurrentSupportForHoldingTheme[\s\S]{0,1600}isActionableThemeSupport[\s\S]{0,1200}function isThemeSignalRelatedToHoldingTheme/,
