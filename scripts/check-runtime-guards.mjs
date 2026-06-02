@@ -297,6 +297,14 @@ const requiredPatterns = [
     message: "stale-theme answer quality must reuse text-only retreat/catchdown warnings."
   },
   {
+    pattern: /function getActionabilityThemeRetreatDiscipline[\s\S]{0,700}getTextualCatchdownWarnings\(digest\)[\s\S]{0,500}系统文本接盘风险拦截/,
+    message: "fund actionability must downgrade text-only catchdown risks before UI cards or model prompts can surface them as buyable."
+  },
+  {
+    pattern: /function hasActionabilityMicroStarterSupport[\s\S]{0,500}getTextualCatchdownWarnings\(digest\)\.length/,
+    message: "theme micro-starter logic must not override text-only catchdown warnings."
+  },
+  {
     pattern: /function classifyPullbackSetupCandidateForSummary[\s\S]{0,900}getTextualCatchdownWarnings\(candidate\)\.length/,
     message: "pullback/setup candidate bucketing must demote text-only catchdown risks before deterministic fallback can recommend them."
   },

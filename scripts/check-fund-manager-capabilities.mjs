@@ -4094,6 +4094,17 @@ assert(
     .some((item) => item.includes("文本证据显示题材退潮")),
   "watchlist readiness must downgrade candidates whose textual evidence says the theme is fading even when matchedThemes are missing"
 );
+const textOnlyCatchdownActionability = manager.buildFundActionabilitySignals({
+  ...verifiedSeedProfile,
+  code: "000014",
+  name: "文本退潮低位基金C",
+  riskNotes: ["题材退潮，主力资金撤离，回调不是买点。"]
+});
+assert.equal(textOnlyCatchdownActionability.action, "avoid", "actionability must not surface text-only catchdown candidates as buy or staged-buy");
+assert(
+  textOnlyCatchdownActionability.decisionBlocker.some((item) => item.includes("系统文本接盘风险拦截") && item.includes("主力资金撤离")),
+  "actionability blocker must carry text-only catchdown evidence into UI cards and model prompts"
+);
 const enforcedTextOnlyCatchdownBuy = manager.enforcePortfolioBuyDiscipline([
   { action: "BUY", code: "000014", name: "文本退潮低位基金C", amount: 1000, reason: "模型仍想买入。" }
 ], [textOnlyCatchdownProfile]);
