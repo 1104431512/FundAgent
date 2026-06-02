@@ -22225,7 +22225,8 @@ function scoreThemeRadarPriority(theme = {}) {
 
 function buildThemeLeaderboards(themeRadar = []) {
   const themes = Array.isArray(themeRadar) ? themeRadar.filter(Boolean) : [];
-  const notRetreat = (theme) => !hasThemeCapitalRetreatRisk(theme);
+  const hasRetreatOrCatchdownRisk = (theme) => hasThemeCapitalRetreatRisk(theme) || isStaleThemeCatchdownRiskTheme(theme);
+  const notRetreat = (theme) => !hasRetreatOrCatchdownRisk(theme);
   const notCrowded = (theme) => theme.positionSignal !== "high_chase_risk" && theme.stage !== "crowded" && Number(theme.crowdingScore) < 55;
   const makeLane = ({ id, title, subtitle, filter, score, reason }) => ({
     id,
@@ -22278,9 +22279,11 @@ function buildThemeLeaderboards(themeRadar = []) {
       id: "retreat",
       title: "退潮回避榜",
       subtitle: "主力流出或板块转弱，回调不能当买点。",
-      filter: (theme) => hasThemeCapitalRetreatRisk(theme),
-      score: (theme) => Number(theme.capitalRetreatScore || 0) + Math.max(0, -Number(theme.avgMainNetInflowPct || 0)) * 10,
-      reason: () => "主力撤离或题材退潮，先等资金回流"
+      filter: (theme) => hasRetreatOrCatchdownRisk(theme),
+      score: (theme) => Number(theme.capitalRetreatScore || 0) + Math.max(0, -Number(theme.avgMainNetInflowPct || 0)) * 10 + (isStaleThemeCatchdownRiskTheme(theme) ? 18 : 0),
+      reason: (theme) => isStaleThemeCatchdownRiskTheme(theme)
+        ? "缺少新催化且资金边际转弱，回调按接盘风险处理"
+        : "主力撤离或题材退潮，先等资金回流"
     }),
     chaseRisk: makeLane({
       id: "chase_risk",

@@ -1117,8 +1117,8 @@ const requiredPatterns = [
     message: "actionability must allow tiny starter positions for catalyst-backed main-capital setups without turning them into heavy buys."
   },
   {
-    pattern: /(?=[\s\S]*function buildThemeLeaderboards)(?=[\s\S]*主力进场榜)(?=[\s\S]*题材预热榜)(?=[\s\S]*低位轮动榜)(?=[\s\S]*退潮回避榜)(?=[\s\S]*追涨风险榜)(?=[\s\S]*题材榜单)/,
-    message: "market snapshots must expose theme leaderboards for main-capital entry, preheat, low rotation, retreat, and chase-risk lanes."
+    pattern: /(?=[\s\S]*function buildThemeLeaderboards)(?=[\s\S]*hasRetreatOrCatchdownRisk)(?=[\s\S]*isStaleThemeCatchdownRiskTheme)(?=[\s\S]*主力进场榜)(?=[\s\S]*题材预热榜)(?=[\s\S]*低位轮动榜)(?=[\s\S]*退潮回避榜)(?=[\s\S]*接盘风险)(?=[\s\S]*追涨风险榜)(?=[\s\S]*题材榜单)/,
+    message: "market snapshots must expose theme leaderboards and route stale catchdown themes into retreat/avoid instead of low-rotation opportunity lanes."
   },
   {
     pattern: /function compactThemeLeaderboardItem[\s\S]{0,700}nextStep[\s\S]{0,260}invalidation[\s\S]{0,260}evidence/,

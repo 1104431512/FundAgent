@@ -4912,6 +4912,15 @@ assert(
     manager.scoreResearchDigestForPullbackSetup(staleCatchdownOnlyDigest) + 45,
   "pullback discovery scoring must demote stale-theme catchdown candidates far below fresh main-capital setups"
 );
+const staleCatchdownThemeLeaderboards = manager.buildThemeLeaderboards([staleCatchdownOnlyTheme]);
+assert(
+  staleCatchdownThemeLeaderboards.retreat.items.some((item) => item.name === "旧算力回调" && item.reason.includes("接盘风险")),
+  "theme leaderboards must put old-theme catchdown risks into the retreat/avoid lane"
+);
+assert(
+  !staleCatchdownThemeLeaderboards.lowRotation.items.some((item) => item.name === "旧算力回调"),
+  "theme leaderboards must not show stale catchdown themes as low-position rotation opportunities"
+);
 const holdingRealtimeWeakExecutableDigest = {
   ...executableMicroStarterDigest,
   code: "000050",
