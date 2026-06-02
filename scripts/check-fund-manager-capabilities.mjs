@@ -478,6 +478,19 @@ const liveThemeSeedSearchText = manager.buildPortfolioWatchlistSeedSearchText([]
 assert(liveThemeSeedSearchText.includes("代表基金"), "theme opportunity seed search must ask for representative funds instead of generic funds");
 assert(liveThemeSeedSearchText.includes("低空经济") && liveThemeSeedSearchText.includes("万丰奥威"), "theme opportunity seed search must carry live theme and holdings keywords");
 assert(liveThemeSeedSearchText.includes("新闻催化") && liveThemeSeedSearchText.includes("前十大持仓"), "theme opportunity seed search must require news logic and holdings-carrier evidence");
+const liveThemeKeywordGroup = manager.buildPortfolioThemeOpportunityKeywordGroups(liveThemeOpportunitySnapshot)[0];
+assert(liveThemeKeywordGroup?.anchors?.some((item) => /低空经济|万丰奥威/.test(item)), "theme representative coverage must keep specific theme or leader-stock anchors");
+assert(!liveThemeKeywordGroup?.anchors?.some((item) => /军工|高端制造/.test(item)), "theme representative coverage anchors must not be satisfied by broad sector labels alone");
+assert.equal(
+  manager.shouldForcePortfolioThemeOpportunitySeedScan(liveThemeOpportunitySnapshot, [{
+    code: "000097",
+    name: "普通军工高端制造基金C",
+    status: "waiting_pullback",
+    reason: "军工和高端制造普通观察，不是低空经济代表基金。"
+  }]),
+  true,
+  "broad sector watchlist items must not block recall for a specific live main-capital/preheat theme"
+);
 assert.equal(
   manager.shouldForcePortfolioThemeOpportunitySeedScan(liveThemeOpportunitySnapshot, [{
     code: "000099",

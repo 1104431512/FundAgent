@@ -3218,7 +3218,7 @@ function shouldForcePortfolioThemeOpportunitySeedScan(marketSnapshot = null, wat
   if (!keywordGroups.length) return false;
   const activeText = buildPortfolioWatchlistThemeCoverageText(watchlist);
   return keywordGroups.some((group) =>
-    !group.keywords.some((keyword) => {
+    !getPortfolioThemeCoverageAnchors(group).some((keyword) => {
       const value = normalizeIntentText(keyword);
       return value && activeText.includes(value);
     })
@@ -3266,9 +3266,17 @@ function buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot = null) {
     return {
       laneKey: item.laneKey,
       name: item.name || theme.name || "",
-      keywords
+      keywords,
+      anchors: collectThemeOpportunityAnchorKeywords(theme, {
+        extra: [item.name]
+      })
     };
   }).filter((group) => group.keywords.length);
+}
+
+function getPortfolioThemeCoverageAnchors(group = {}) {
+  const anchors = normalizeStringArray(group.anchors).filter(Boolean);
+  return anchors.length ? anchors : normalizeStringArray(group.keywords);
 }
 
 function collectThemeOpportunitySearchKeywords(theme = {}, options = {}) {
@@ -3290,12 +3298,37 @@ function collectThemeOpportunitySearchKeywords(theme = {}, options = {}) {
     .filter(isThemeOpportunitySearchKeywordUseful))].slice(0, 18);
 }
 
+function collectThemeOpportunityAnchorKeywords(theme = {}, options = {}) {
+  const boards = Array.isArray(theme.evidence?.boards) ? theme.evidence.boards : [];
+  const values = [
+    theme.name,
+    ...(Array.isArray(theme.boardNames) ? theme.boardNames : []),
+    ...(Array.isArray(theme.leaderStocks) ? theme.leaderStocks : []),
+    ...boards.flatMap((board) => [board.name, board.leadStock]),
+    ...(Array.isArray(theme.newsKeywords) ? theme.newsKeywords : []),
+    ...(Array.isArray(options.extra) ? options.extra : [])
+  ];
+  return [...new Set(values
+    .flatMap((value) => String(value || "").split(/[，,、/；;\s]+/))
+    .map((value) => value.trim())
+    .filter(isThemeOpportunityAnchorKeywordUseful))].slice(0, 10);
+}
+
 function isThemeOpportunitySearchKeywordUseful(value = "") {
   const text = String(value || "").trim();
   if (text.length < 2 || text.length > 18) return false;
   if (/^(基金|代表基金|主题|板块|概念|行业|方向|逻辑|催化|新闻|预热|主力|资金|低位|轮动|回调|机会|测试)$/.test(text)) return false;
   if (/^(news|dynamic|theme|main|preheat|low|capital)[_-]/i.test(text)) return false;
   if (/^\d+(?:\.\d+)?%?$/.test(text)) return false;
+  return true;
+}
+
+function isThemeOpportunityAnchorKeywordUseful(value = "") {
+  const text = String(value || "").trim();
+  if (!isThemeOpportunitySearchKeywordUseful(text)) return false;
+  const normalized = normalizeIntentText(text);
+  if (GENERIC_THEME_NEWS_MATCH_TERMS?.has?.(normalized)) return false;
+  if (/^(科技|电子|通信|汽车|新能源|高端制造|军工|医药|医疗|资源|材料|设备|行业|概念)$/.test(text)) return false;
   return true;
 }
 
@@ -14975,7 +15008,7 @@ function findPortfolioThemeRepresentativeGaps(db = {}, watchlist = []) {
   if (!keywordGroups.length) return [];
   const activeText = buildPortfolioWatchlistThemeCoverageText(watchlist);
   return keywordGroups.filter((group) =>
-    !group.keywords.some((keyword) => {
+    !getPortfolioThemeCoverageAnchors(group).some((keyword) => {
       const value = normalizeIntentText(keyword);
       return value && activeText.includes(value);
     })
@@ -14999,7 +15032,8 @@ function buildPortfolioWatchlistThemeCoverageText(watchlist = []) {
       item.positionPlan,
       ...(item.setupEvidence || []),
       ...(item.buyTriggers || []),
-      ...(item.lastSnapshot?.matchedThemes || []).flatMap((theme) => [theme.name, theme.id, ...(theme.themeKeywords || []), ...(theme.fundKeywords || []), ...(theme.keywords || [])])
+      ...(item.lastSnapshot?.matchedThemes || []).flatMap((theme) => [theme.name, theme.id, ...(theme.themeKeywords || []), ...(theme.fundKeywords || []), ...(theme.keywords || []), ...(theme.leaderStocks || []), ...(theme.boardNames || [])]),
+      ...collectPortfolioWatchHoldingItems(item).map((holding) => `${holding.code || ""} ${holding.name || ""} ${holding.text || ""}`)
     ].filter(Boolean).join(" "))
     .join(" "));
 }
