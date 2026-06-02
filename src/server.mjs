@@ -30696,10 +30696,10 @@ function selectFeishuHeadlineLine(lines = []) {
 
 function selectFeishuHighlightLines(lines = [], type, headline = "") {
   const strongPattern = type === "risk"
-    ? /^(?:风险|风险边界|待确认|待复核|缺失数据|执行|触发|纪律|下一步|接盘风险|退潮回避)\s*[：:]/
+    ? /^(?:风险|风险边界|待确认|待复核|缺失数据|执行|触发|纪律|下一步|接盘风险|退潮回避|旧题材未确认|当前题材雷达)\s*[：:]/
     : /^(?:关键证据|证据|依据|买点依据|原因|为什么|题材为什么动|题材逻辑|新闻催化|主力资金|代表基金)\s*[：:]/;
   const fallbackPattern = type === "risk"
-    ? /(?:风险|待确认|待复核|缺失|缺口|等待|回避|暂不|不买|追涨|偏热|过热|回撤|止损|减仓|触发|边界|数据|接盘|题材退潮|主力撤离|资金撤离)/
+    ? /(?:风险|待确认|待复核|缺失|缺口|等待|回避|暂不|不买|追涨|偏热|过热|回撤|止损|减仓|触发|边界|数据|接盘|题材退潮|主力撤离|资金撤离|旧题材|当前题材雷达|未被当前题材雷达确认|历史热点|旧主力标签)/
     : /(?:证据|依据|原因|买点|回调|低位|轮动|板块|近\d+日|120日|250日|费用|份额|持仓|前十大|规模|成本|为什么|题材为什么动|题材逻辑|新闻|催化|政策|订单|产业|主力资金|代表基金|承载)/;
   const excluded = new Set([headline]);
   const candidates = lines
@@ -30744,7 +30744,7 @@ function escapeFeishuInlineText(text = "") {
 function inferFeishuCardTone(content = "", kind = "reply") {
   if (kind === "error") return { label: "异常", template: "red", markdownColor: "red", riskColor: "red", icon: "!" };
   const body = String(content || "");
-  if (/(?:回避|暂不买|暂不加仓|不买|暂停买入|风险偏高|追涨风险|偏热|过热|止损|减仓|卖出|SELL)/i.test(body)) {
+  if (/(?:回避|暂不买|暂不加仓|不买|暂停买入|风险偏高|追涨风险|偏热|过热|止损|减仓|卖出|旧题材未确认|未被当前题材雷达确认|历史热点|旧主力标签|SELL)/i.test(body)) {
     return { label: "风险优先", template: "red", markdownColor: "red", riskColor: "red", icon: "!" };
   }
   if (/(?:等待|等回调|待确认|待复核|观察|备选|暂缓|只观察|WATCH)/i.test(body)) {

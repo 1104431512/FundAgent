@@ -805,8 +805,12 @@ const requiredPatterns = [
     message: "Feishu cards must expose key evidence and risk sections as scannable blocks."
   },
   {
-    pattern: /function selectFeishuHighlightLines(?=[\s\S]{0,1200}题材为什么动)(?=[\s\S]{0,1200}主力资金)(?=[\s\S]{0,1200}代表基金)(?=[\s\S]{0,1200}接盘风险)/,
-    message: "Feishu card summaries must prioritize theme catalyst, capital-flow, representative-fund carrier logic, and catchdown warnings."
+    pattern: /function selectFeishuHighlightLines(?=[\s\S]{0,1200}题材为什么动)(?=[\s\S]{0,1200}主力资金)(?=[\s\S]{0,1200}代表基金)(?=[\s\S]{0,1200}接盘风险)(?=[\s\S]{0,1200}旧题材未确认)(?=[\s\S]{0,1200}历史热点)/,
+    message: "Feishu card summaries must prioritize theme catalyst, capital-flow, representative-fund carrier logic, catchdown warnings, and current-radar-unconfirmed old-theme risks."
+  },
+  {
+    pattern: /function inferFeishuCardTone[\s\S]{0,700}旧题材未确认[\s\S]{0,260}未被当前题材雷达确认/,
+    message: "Feishu card headers must turn current-radar-unconfirmed old-theme replies into risk-first cards."
   },
   {
     pattern: /function formatPortfolioCustomerNextStepLines[\s\S]{0,1600}确认前不追加[\s\S]{0,900}不急着追进同一热门方向/,

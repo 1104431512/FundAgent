@@ -7828,6 +7828,15 @@ const themeLogicFeishuCard = manager.buildFeishuCard([
 const themeLogicCardText = JSON.stringify(themeLogicFeishuCard);
 assert(themeLogicCardText.includes("题材为什么动") && themeLogicCardText.includes("主力资金") && themeLogicCardText.includes("代表基金"), "Feishu card summaries must lift theme catalyst, capital-flow, and representative-fund carrier logic into key evidence");
 assert(themeLogicCardText.includes("接盘风险"), "Feishu card summaries must lift stale-catchdown and capital-retreat warnings into risk highlights");
+const unconfirmedThemeFeishuCard = manager.buildFeishuCard([
+  "直接结论：先0元观察，不把旧热点回调当买点。",
+  "旧题材未确认：AI/算力旧题材线索未被当前题材雷达确认，不能拿历史热点或旧主力标签当今天买入依据。",
+  "下一步：等当前题材雷达重新确认、主力资金回流和新鲜催化出现后再复核。"
+].join("\n"), "answer");
+const unconfirmedThemeCardText = JSON.stringify(unconfirmedThemeFeishuCard);
+assert.equal(unconfirmedThemeFeishuCard.header.template, "red", "Feishu cards must use a risk-first header when old theme labels are not confirmed by the current radar");
+assert(unconfirmedThemeCardText.includes("旧题材未确认") && unconfirmedThemeCardText.includes("历史热点"), "Feishu card summaries must lift current-radar-unconfirmed old-theme risk into the first screen");
+assert(unconfirmedThemeCardText.includes("**风险/待确认**"), "Feishu card summaries must place current-radar-unconfirmed old themes in the risk block");
 const portfolioFeishuCard = manager.buildFeishuCard([
   "虚拟基金经理日报 2026-05-25",
   "今日手法：高位科技减仓复核 + 低位医药小额试探，不做重仓追涨。",
