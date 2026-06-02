@@ -19366,10 +19366,35 @@ function isStaleThemeCatchdownRiskTheme(theme = {}) {
   const weakTheme = (!Number.isFinite(forward) || forward < 42)
     || (!Number.isFinite(rotation) || rotation < 42)
     || declineBoards >= 2;
+  if (hasStaleCatalystCatchdownRisk(theme, { avgFlow, retreat, follow, preheat, forward, rotation })) return true;
   if (explicitRetreat && (lacksFreshSupport || weakFlow || Number.isFinite(retreat) && retreat >= 45)) return true;
   if (weakFlow && lacksFreshSupport && weakTheme) return true;
   if (Number.isFinite(retreat) && retreat >= 58 && lacksFreshSupport) return true;
   return false;
+}
+
+function hasStaleCatalystCatchdownRisk(theme = {}, metrics = {}) {
+  if (theme?.catalystProfile?.fresh !== false) return false;
+  const avgFlow = finiteMetricNumber(metrics.avgFlow ?? theme.avgMainNetInflowPct);
+  const retreat = finiteMetricNumber(metrics.retreat ?? theme.capitalRetreatScore);
+  const follow = finiteMetricNumber(metrics.follow ?? theme.capitalFollowScore);
+  const preheat = finiteMetricNumber(metrics.preheat ?? theme.preheatScore);
+  const forward = finiteMetricNumber(metrics.forward ?? theme.forwardScore);
+  const rotation = finiteMetricNumber(metrics.rotation ?? theme.rotationScore);
+  const staleLabel = String(theme.catalystProfile?.freshnessLabel || "");
+  const oldCatalyst = /旧催化|过期|未被当前题材雷达确认/.test(staleLabel) || theme.catalystProfile?.fresh === false;
+  if (!oldCatalyst) return false;
+  const currentMainForceStrong = Number.isFinite(avgFlow) && avgFlow >= 3.5
+    && Number.isFinite(follow) && follow >= 68
+    && Number.isFinite(forward) && forward >= 52;
+  const staleButBeingMarketedAsOpportunity = hasThemeLeaderOrPreheatSignal(theme)
+    || theme.positionSignal === "low_position_rotation"
+    || theme.stage === "low_position_rotation"
+    || (Number.isFinite(rotation) && rotation >= 45);
+  const weakFreshSupport = !currentMainForceStrong
+    || (Number.isFinite(preheat) && preheat < 56)
+    || (Number.isFinite(retreat) && retreat >= 25);
+  return Boolean(staleButBeingMarketedAsOpportunity && weakFreshSupport);
 }
 
 function hasThemeCapitalRetreatRisk(theme = {}) {
@@ -19417,9 +19442,10 @@ function getStaleThemeCatchdownWarnings(candidate = {}) {
         Number.isFinite(theme.avgMainNetInflowPct) ? `主力均值${formatFallbackPlainPct(theme.avgMainNetInflowPct)}` : "",
         Number.isFinite(theme.capitalRetreatScore) ? `退潮分${round(theme.capitalRetreatScore, 0)}` : "",
         Number.isFinite(theme.capitalFollowScore) ? `主力跟随${round(theme.capitalFollowScore, 0)}` : "",
-        Number.isFinite(theme.preheatScore) ? `预热${round(theme.preheatScore, 0)}` : ""
+        Number.isFinite(theme.preheatScore) ? `预热${round(theme.preheatScore, 0)}` : "",
+        theme.catalystProfile?.fresh === false && theme.catalystProfile?.freshnessLabel ? `催化${theme.catalystProfile.freshnessLabel}` : ""
       ].filter(Boolean);
-      return `${name}缺少主力进场或预热催化，且出现题材退潮/主力资金撤离迹象；这类回调先按接盘风险处理${facts.length ? `（${facts.join("，")}）` : ""}`;
+      return `${name}缺少主力进场或新鲜预热催化，且出现旧催化/题材退潮/主力资金撤离迹象；这类回调先按接盘风险处理${facts.length ? `（${facts.join("，")}）` : ""}`;
     })
     .slice(0, 3);
 }

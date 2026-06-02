@@ -5310,6 +5310,41 @@ assert(
   !manager.hasActionableThemeSupport({ code: "000044", name: "人工智能旧催化基金C", matchedThemes: [staleNewsAiTheme] }),
   "stale news must not satisfy actionable main-capital/preheat theme support"
 );
+const staleNewsPullbackDigest = {
+  ...newsBackedRequiredSetupDigest,
+  code: "000044",
+  name: "人工智能旧催化基金C",
+  matchedThemes: [staleNewsAiTheme],
+  seed: {
+    ...(newsBackedRequiredSetupDigest.seed || {}),
+    matchedThemes: [staleNewsAiTheme]
+  },
+  holdings: {
+    ok: true,
+    equityDisclosureDate: "2099-03-31",
+    equityTopHoldings: ["601138 工业富联 7.2%", "300502 新易盛 4.1%", "300308 中际旭创 3.8%"]
+  }
+};
+assert(
+  manager.hasStaleThemeCatchdownRisk(staleNewsPullbackDigest),
+  "stale current-event catalysts must become catchdown risk when a pullback-complete fund is being marketed as a starter"
+);
+const staleNewsPullbackActionability = manager.buildFundActionabilitySignals(staleNewsPullbackDigest);
+assert(["wait", "avoid"].includes(staleNewsPullbackActionability.action), "old-catalyst pullbacks must not receive staged-buy actionability");
+assert(
+  staleNewsPullbackActionability.decisionBlocker.some((item) => item.includes("旧催化") && item.includes("接盘风险")),
+  "old-catalyst actionability blockers must call out catchdown risk in customer-readable Chinese"
+);
+const staleNewsLeaderboards = manager.buildThemeLeaderboards([staleNewsAiTheme]);
+assert(
+  staleNewsLeaderboards.retreat.items.some((item) => item.name === "AI/算力" && item.reason.includes("接盘风险")),
+  "old-catalyst themes must move into the retreat/catchdown lane instead of quietly disappearing from opportunity boards"
+);
+assert(
+  !staleNewsLeaderboards.preheat.items.some((item) => item.name === "AI/算力")
+    && !staleNewsLeaderboards.mainCapital.items.some((item) => item.name === "AI/算力"),
+  "old-catalyst themes must not appear in preheat or main-capital leaderboards"
+);
 const retreatThemeRadar = manager.buildThemeRadar({
   conceptBoards: [
     { boardCode: "BKAI9", name: "CPO", changePct: -3.4, mainNetInflowPct: -4.2, leadStock: "新易盛", quoteTime: "10:45", coverageSources: ["主力流出榜", "跌幅榜"] },
