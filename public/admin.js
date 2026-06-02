@@ -5207,6 +5207,7 @@ function renderRunThinkingCards(run = {}) {
     <article class="thought-card">
       <span>${escapeHtml(action.action || "ACTION")}</span>
       <strong>${escapeHtml([action.code, action.name].filter(Boolean).join(" ") || "组合动作")}</strong>
+      ${renderRunActionRiskStrip(action)}
       <p>${escapeHtml(action.reason || "暂无动作理由")}</p>
       ${renderRunActionAudit(action)}
     </article>
@@ -5272,6 +5273,43 @@ function renderRunActionAudit(action = {}) {
       `).join("")}
     </div>
   `;
+}
+
+function renderRunActionRiskStrip(action = {}) {
+  const risks = collectRunActionHardRisks(action);
+  if (!risks.length) return "";
+  return `
+    <div class="watchlist-hard-risk-strip action-hard-risk-strip" aria-label="动作关键风险">
+      ${risks.map((risk) => `
+        <span class="watchlist-risk-chip watchlist-risk-${escapeHtml(risk.tone)}" title="${escapeHtml(risk.detail || risk.label)}">
+          <strong>${escapeHtml(risk.label)}</strong>
+          ${risk.detail ? `<small>${escapeHtml(shortenText(risk.detail, 34))}</small>` : ""}
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
+function collectRunActionHardRisks(action = {}) {
+  const texts = mergeTextList(
+    [
+      action.reason,
+      action.riskControl,
+      action.chaseRisk,
+      action.positionCheck,
+      action.rotationCheck,
+      action.rankingBasis
+    ],
+    action.dataBasis,
+    action.executionNotes,
+    action.riskNotes
+  );
+  const risks = [];
+  for (const rule of WATCHLIST_HARD_RISK_RULES) {
+    const detail = texts.find((text) => rule.pattern.test(text));
+    if (detail) risks.push({ ...rule, detail });
+  }
+  return risks.slice(0, 3);
 }
 
 function formatRunTypeLabel(type) {

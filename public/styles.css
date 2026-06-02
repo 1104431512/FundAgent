@@ -7217,6 +7217,10 @@ button.danger-button:hover {
   margin-top: 4px;
 }
 
+.action-hard-risk-strip {
+  margin: 8px 0 10px;
+}
+
 .watchlist-risk-chip {
   min-width: 0;
   display: inline-flex;

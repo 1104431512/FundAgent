@@ -3405,6 +3405,10 @@ const requiredPatterns = [
     message: "admin run timeline must audit whether each manager action cites ranking, trend, and boundary evidence."
   },
   {
+    pattern: /(?=[\s\S]*function renderRunThinkingCards[\s\S]{0,900}renderRunActionRiskStrip\(action\))(?=[\s\S]*function collectRunActionHardRisks[\s\S]{0,1200}WATCHLIST_HARD_RISK_RULES)(?=[\s\S]*\.action-hard-risk-strip)/,
+    message: "admin run timeline action cards must render hard-risk chips for stale catalysts and catchdown warnings before long reasons."
+  },
+  {
     pattern: /rankingActionAudit:\s*buildPortfolioRankingActionAudit\(db\)[\s\S]*function buildPortfolioRankingActionAudit[\s\S]{0,2600}coveragePct/,
     message: "portfolio API must expose ranking-board citation coverage for recent manager actions."
   },
