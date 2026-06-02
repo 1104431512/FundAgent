@@ -3196,8 +3196,9 @@ function selectPortfolioWatchlistSeedCandidates(candidates = [], watchlist = [],
   const scored = (candidates || [])
     .filter((candidate) => candidate?.code && !activeCodes.has(candidate.code))
     .map((candidate) => {
-      const matchedThemes = candidate.matchedThemes?.length ? candidate.matchedThemes : matchCandidateThemes(candidate, themeRadar);
-      const enriched = { ...candidate, matchedThemes };
+      const currentThemeCandidate = refreshPortfolioCandidateThemesWithMarketRadar(candidate, themeRadar);
+      const matchedThemes = currentThemeCandidate.matchedThemes?.length ? currentThemeCandidate.matchedThemes : matchCandidateThemes(candidate, themeRadar);
+      const enriched = { ...candidate, ...currentThemeCandidate, matchedThemes };
       return {
         ...enriched,
         portfolioWatchlistSeedScore: round(scorePullbackSetupSeedCandidate(enriched, themeRadar, "回调完成 低位 准备启动 基金"), 1)
@@ -23120,7 +23121,8 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
   }
   if (Number.isFinite(daily) && daily > 5) score -= 10;
 
-  const matchedThemes = item.matchedThemes?.length ? item.matchedThemes : matchCandidateThemes(item, themeRadar);
+  const currentThemeItem = refreshPortfolioCandidateThemesWithMarketRadar(item, themeRadar);
+  const matchedThemes = currentThemeItem.matchedThemes?.length ? currentThemeItem.matchedThemes : matchCandidateThemes(item, themeRadar);
   for (const theme of matchedThemes.slice(0, 2)) {
     const mainForceScore = scoreThemeMainForceOpportunity(theme);
     score += Math.min(14, Number(theme.lowPositionScore || 0) / 6);
@@ -23173,7 +23175,8 @@ function scoreDeepDiveCandidate(item, themeRadar = []) {
   if (/ETF|联接|指数/.test(text)) score += 6;
   if (/C$|C类/.test(text)) score += 2;
   if (/A$|A类/.test(text)) score += 1;
-  const matchedThemes = item.matchedThemes?.length ? item.matchedThemes : matchCandidateThemes(item, themeRadar);
+  const currentThemeItem = refreshPortfolioCandidateThemesWithMarketRadar(item, themeRadar);
+  const matchedThemes = currentThemeItem.matchedThemes?.length ? currentThemeItem.matchedThemes : matchCandidateThemes(item, themeRadar);
   for (const theme of matchedThemes.slice(0, 2)) {
     const mainForceScore = scoreThemeMainForceOpportunity(theme);
     score += 8 + Math.min(16, Number(theme.forwardScore || 0) / 5);

@@ -2525,6 +2525,18 @@ const requiredPatterns = [
     message: "generic pullback/setup scoring must strongly suppress gold candidates unless explicitly requested."
   },
   {
+    pattern: /function selectPortfolioWatchlistSeedCandidates[\s\S]{0,900}refreshPortfolioCandidateThemesWithMarketRadar\(candidate,\s*themeRadar\)[\s\S]{0,500}portfolioWatchlistSeedScore/,
+    message: "watchlist seed selection must refresh candidate theme labels with the current market radar before scoring."
+  },
+  {
+    pattern: /function scorePullbackSetupSeedCandidate[\s\S]{0,3400}refreshPortfolioCandidateThemesWithMarketRadar\(item,\s*themeRadar\)[\s\S]{0,400}matchedThemes/,
+    message: "pullback/setup scoring must prefer current-radar theme labels over stale candidate labels."
+  },
+  {
+    pattern: /function scoreDeepDiveCandidate[\s\S]{0,500}refreshPortfolioCandidateThemesWithMarketRadar\(item,\s*themeRadar\)[\s\S]{0,300}matchedThemes/,
+    message: "deep-dive scoring must prefer current-radar theme labels over stale candidate labels."
+  },
+  {
     pattern: /function fetchMarketDeepDive[\s\S]{0,1800}\.filter\(\(item\)\s*=>\s*!shouldSuppressPreciousMetalCandidate\(userText,\s*item\)\)/,
     message: "generic recommendation deep dives must not let gold candidates crowd out other sectors."
   },

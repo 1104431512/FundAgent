@@ -4943,6 +4943,13 @@ const selectedThemeSeeds = manager.selectPortfolioWatchlistSeedCandidates([
 ], [], [liveAiTheme, fadingAiTheme], { minScore: 20, limit: 4 });
 assert(selectedThemeSeeds.some((item) => item.code === "000041"), "watchlist seed selection must keep main-capital supported low-position candidates");
 assert(!selectedThemeSeeds.some((item) => item.code === "000042"), "watchlist seed selection must not promote stale catchdown candidates after main capital has left");
+const staleLabeledSeedSelection = manager.selectPortfolioWatchlistSeedCandidates([
+  { code: "000045", name: "CPO光模块人工智能主题C", oneWeekPct: 1.1, oneMonthPct: 2.1, threeMonthPct: -5, sixMonthPct: -10, shareClass: "C", matchedThemes: [liveAiTheme], seed: { matchedThemes: [liveAiTheme] } }
+], [], [fadingAiTheme], { minScore: 20, limit: 2 });
+assert(
+  !staleLabeledSeedSelection.some((item) => item.code === "000045"),
+  "watchlist seed selection must refresh stale candidate theme labels with current radar before scoring"
+);
 const catalystAwareSeedSelection = manager.selectPortfolioWatchlistSeedCandidates([
   { code: "000041", name: "主力低位启动基金C", oneWeekPct: 1.2, oneMonthPct: 2.4, threeMonthPct: -4, sixMonthPct: -8, shareClass: "C", matchedThemes: [liveAiTheme] },
   { code: "000043", name: "无逻辑预热基金C", oneWeekPct: 1.2, oneMonthPct: 2.4, threeMonthPct: -4, sixMonthPct: -8, shareClass: "C", matchedThemes: [preheatWithoutNewsTheme] }
