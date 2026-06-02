@@ -1777,6 +1777,18 @@ const requiredPatterns = [
     message: "portfolio decision ranking boards must refresh current market theme radar and preview same-day seed candidates before model prompts."
   },
   {
+    pattern: /function refreshPortfolioWatchlistThemesWithMarketRadar[\s\S]{0,2600}retreatWarnings\.length[\s\S]{0,240}\["ready",\s*"waiting_pullback",\s*"watch"\]\.includes\(item\.status\)[\s\S]{0,160}\?\s*"blocked"/,
+    message: "current market retreat radar must block buy-candidate watchlist statuses instead of leaving them as vague wait states."
+  },
+  {
+    pattern: /function buildPortfolioStaleCatchdownRiskRanking[\s\S]{0,260}\["ready",\s*"waiting_pullback",\s*"watch",\s*"blocked"\]\.includes\(item\.status\)/,
+    message: "stale-catchdown risk ranking must still show blocked candidates so current-radar retreats remain visible."
+  },
+  {
+    pattern: /function buildPortfolioChaseRiskRanking[\s\S]{0,260}\["ready",\s*"waiting_pullback",\s*"watch",\s*"blocked"\]\.includes\(item\.status\)/,
+    message: "chase-risk ranking must still show blocked candidates so risk blocks remain visible."
+  },
+  {
     pattern: /const managerRankings = buildPortfolioDecisionRankingBoard\(db,\s*watchlistSeedCandidates,\s*\{[\s\S]{0,160}profiles:\s*seedProfiles,[\s\S]{0,160}watchlistProfiles,[\s\S]{0,160}marketSnapshot[\s\S]{0,900}managerRankings/,
     message: "portfolio decision runs must compute current-radar refreshed, seed-aware manager ranking boards and pass them into the model prompt."
   },

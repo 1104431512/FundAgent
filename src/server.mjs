@@ -1370,11 +1370,14 @@ function refreshPortfolioWatchlistThemesWithMarketRadar(db = {}, options = {}) {
     const setupEvidence = mergeStringLists(item.setupEvidence, [
       `当前题材雷达：${(current.matchedThemes || []).map((theme) => theme.name || theme.id).filter(Boolean).slice(0, 2).join("、")}`
     ]).slice(0, 8);
+    const status = retreatWarnings.length && ["ready", "waiting_pullback", "watch"].includes(item.status)
+      ? "blocked"
+      : item.status;
     refreshed.push(item.code);
     return {
       ...item,
-      status: retreatWarnings.length && item.status === "ready" ? "waiting_pullback" : item.status,
-      priority: retreatWarnings.length ? Math.max(Number(item.priority || 3), 4) : item.priority,
+      status,
+      priority: retreatWarnings.length && status === "blocked" ? 5 : retreatWarnings.length ? Math.max(Number(item.priority || 3), 4) : item.priority,
       reason: retreatWarnings.length
         ? [item.reason, `系统当前题材雷达复核：${retreatWarnings[0]}`].filter(Boolean).join(" ").slice(0, 1200)
         : item.reason,
@@ -11147,7 +11150,7 @@ function buildPortfolioRotationOpportunityFacts(evidence = {}) {
 
 function buildPortfolioChaseRiskRanking(watchlist = []) {
   const items = (watchlist || [])
-    .filter((item) => item?.code && ["ready", "waiting_pullback", "watch"].includes(item.status))
+    .filter((item) => item?.code && ["ready", "waiting_pullback", "watch", "blocked"].includes(item.status))
     .map(buildPortfolioChaseRiskRankingItem)
     .filter(Boolean)
     .sort(compareRankingItems)
@@ -11164,7 +11167,7 @@ function buildPortfolioChaseRiskRanking(watchlist = []) {
 
 function buildPortfolioStaleCatchdownRiskRanking(watchlist = []) {
   const items = (watchlist || [])
-    .filter((item) => item?.code && ["ready", "waiting_pullback", "watch"].includes(item.status))
+    .filter((item) => item?.code && ["ready", "waiting_pullback", "watch", "blocked"].includes(item.status))
     .map(buildPortfolioStaleCatchdownRiskRankingItem)
     .filter(Boolean)
     .sort(compareRankingItems)
