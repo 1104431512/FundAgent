@@ -4921,6 +4921,30 @@ assert(
   !staleCatchdownThemeLeaderboards.lowRotation.items.some((item) => item.name === "旧算力回调"),
   "theme leaderboards must not show stale catchdown themes as low-position rotation opportunities"
 );
+const staleCatchdownReadiness = manager.evaluatePortfolioWatchReadiness({
+  code: "000051",
+  name: "边际退潮回调基金C",
+  status: "ready",
+  lastSnapshot: staleCatchdownOnlyDigest
+}, staleCatchdownOnlyDigest);
+assert(
+  staleCatchdownReadiness.score <= 46 && staleCatchdownReadiness.gaps.some((item) => item.includes("接盘风险")),
+  "ready watchlist readiness must cap stale-theme catchdown candidates and show catchdown risk as the first-screen gap"
+);
+const staleCatchdownRedeployment = manager.buildPortfolioRedeploymentPlan(
+  { cash: 90000, totalAsset: 100000, positionWeightPct: 3, positions: [], riskBudget: { blockNewBuys: false } },
+  [{ code: "000051", name: "边际退潮回调基金C", status: "ready", readinessScore: 90, lastSnapshot: staleCatchdownOnlyDigest }],
+  [staleCatchdownOnlyDigest]
+);
+assert(
+  staleCatchdownRedeployment.candidates.some((item) =>
+    item.code === "000051"
+    && item.redeploymentAction === "watch"
+    && Number(item.suggestedTargetWeightPct || 0) === 0
+    && item.firstGap.includes("接盘风险")
+  ),
+  "cash redeployment must not turn stale-theme catchdown ready items into executable starter buys"
+);
 const holdingRealtimeWeakExecutableDigest = {
   ...executableMicroStarterDigest,
   code: "000050",

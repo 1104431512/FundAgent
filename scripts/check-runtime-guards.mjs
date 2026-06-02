@@ -2093,8 +2093,12 @@ const requiredPatterns = [
     message: "portfolio BUY guard and micro-starter recognition must block intraday weak top-holding pulse as catchdown risk."
   },
   {
-    pattern: /function buildPortfolioWatchReadinessGaps[\s\S]{0,2600}getPortfolioWatchThemeSupportGap\(item,\s*evidence\)[\s\S]{0,260}gaps\.push\(themeSupportGap\)/,
-    message: "watchlist readiness must downgrade theme-labeled pullbacks that lack current actionable theme support."
+    pattern: /function buildPortfolioWatchReadinessGaps[\s\S]{0,2600}getStaleThemeCatchdownWarnings\(evidence\)[\s\S]{0,2600}getPortfolioWatchThemeSupportGap\(item,\s*evidence\)[\s\S]{0,260}gaps\.push\(themeSupportGap\)/,
+    message: "watchlist readiness must downgrade stale-catchdown and theme-labeled pullbacks that lack current actionable theme support."
+  },
+  {
+    pattern: /function isPortfolioRedeploymentHardGap[\s\S]{0,700}题材退潮[\s\S]{0,260}接盘风险/,
+    message: "cash redeployment must treat stale-theme catchdown risk as a hard no-buy gap."
   },
   {
     pattern: /function resolvePortfolioDecisionSynthesisEvidence[\s\S]{0,1200}themeSupportGap[\s\S]{0,1200}先补题材证据/,
