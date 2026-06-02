@@ -2679,6 +2679,7 @@ assert(adminSource.includes("buildPortfolioAbilityProofWorkspaceCard") && adminS
 assert(adminSource.includes("renderPortfolioOperationReviewLanes") && adminSource.includes("做对的动作") && adminSource.includes("portfolioOperationReviews"), "admin portfolio overview must show recent action review verdict lanes");
 assert(adminStyleSource.includes("portfolio-performance-board") && adminStyleSource.includes("portfolio-operation-kind-matrix") && adminStyleSource.includes("portfolio-operation-review"), "admin manager performance proof board must be styled as a bounded first-screen panel");
 assert(adminStyleSource.includes(".portfolio-ability-proof-list") && adminStyleSource.includes(".portfolio-ability-proof-item"), "admin manager ability proof items must be styled as compact evidence strips");
+assert(adminSource.includes("selectPortfolioAbilityRepairFocus") && adminSource.includes("capabilityActionQueue"), "admin ability-proof shortcut must surface the top capability repair task instead of only static correctness metrics");
 assert(adminHtmlSource.includes("portfolioWorkspaceCards"), "admin portfolio overview must expose workspace shortcut cards");
 assert(adminSource.includes("renderPortfolioWorkspaceCards"), "admin portfolio overview must summarize each workspace with actionable shortcut cards");
 assert(adminHtmlSource.includes("portfolioRankingRadar"), "admin portfolio overview must expose a compact ranking radar");

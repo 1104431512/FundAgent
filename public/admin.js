@@ -1384,7 +1384,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
   const topPosition = [...positions].sort((a, b) => Number(b.weightPct || 0) - Number(a.weightPct || 0))[0] || null;
   const topWatch = ready[0] || waiting[0] || watchlist[0] || null;
   const actionDeskItems = collectPortfolioActionDeskItems(latestRun, activeOrders);
-  const abilityProofCard = buildPortfolioAbilityProofWorkspaceCard(portfolio.managerPerformance || {}, diagnosticCount);
+  const abilityProofCard = buildPortfolioAbilityProofWorkspaceCard(portfolio.managerPerformance || {}, diagnosticCount, portfolio);
   const cards = [
     abilityProofCard,
     {
@@ -1514,7 +1514,7 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
   root.innerHTML = renderPortfolioWorkspaceGroups(cards);
 }
 
-function buildPortfolioAbilityProofWorkspaceCard(performance = {}, diagnosticCount = 0) {
+function buildPortfolioAbilityProofWorkspaceCard(performance = {}, diagnosticCount = 0, portfolio = {}) {
   const review = performance.actionReview || {};
   const profitability = performance.profitability || {};
   const correctness = isPresentFiniteNumber(review.correctnessPct)
@@ -1524,14 +1524,39 @@ function buildPortfolioAbilityProofWorkspaceCard(performance = {}, diagnosticCou
     ? `${formatSigned(profitability.cumulativePnl)}元`
     : "待证明";
   const correction = Number(review.mistakes || 0) + Number(review.needsReview || 0);
+  const repairFocus = selectPortfolioAbilityRepairFocus(portfolio);
   return {
     view: "diagnostics",
     group: "decision",
     label: "能力证明",
     value: correctness,
-    detail: `盈利 ${pnl} · 纠偏 ${correction} 项`,
-    meta: performance.summary || (diagnosticCount ? `${diagnosticCount} 项能力/回测需要复核` : "用复盘证明经理是否靠谱")
+    detail: repairFocus
+      ? `${repairFocus.label}：${repairFocus.value}`
+      : `盈利 ${pnl} · 纠偏 ${correction} 项`,
+    meta: repairFocus
+      ? repairFocus.meta
+      : performance.summary || (diagnosticCount ? `${diagnosticCount} 项能力/回测需要复核` : "用复盘证明经理是否靠谱")
   };
+}
+
+function selectPortfolioAbilityRepairFocus(portfolio = {}) {
+  const task = Array.isArray(portfolio.capabilityActionQueue) ? portfolio.capabilityActionQueue[0] : null;
+  if (task) {
+    return {
+      label: task.label || "能力修复",
+      value: task.owner ? `${task.owner}处理` : formatDiagnosticSeverity(task.severity || "info"),
+      meta: task.action || task.evidence || "进入诊断页查看修复队列"
+    };
+  }
+  const item = Array.isArray(portfolio.capabilityDiagnostics?.items) ? portfolio.capabilityDiagnostics.items[0] : null;
+  if (item) {
+    return {
+      label: item.label || "能力短板",
+      value: item.value || formatDiagnosticSeverity(item.severity || "info"),
+      meta: item.note || portfolio.capabilityDiagnostics?.summary || "进入诊断页查看能力短板"
+    };
+  }
+  return null;
 }
 
 function renderPortfolioWorkspaceGroups(cards = []) {
