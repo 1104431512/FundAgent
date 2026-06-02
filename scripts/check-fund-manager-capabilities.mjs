@@ -525,6 +525,33 @@ assert(
   directThemeSeedUpdates[0]?.buyTriggers?.[0]?.includes("新闻催化"),
   "watchlist updates from direct theme seeds must keep news catalyst validation as the first trigger"
 );
+const noCarrierDirectThemeProfile = {
+  ...livePreheatSeedProfile,
+  code: "000099",
+  name: "低空预热种子基金C",
+  matchedThemes: directThemeSeeds[0].matchedThemes,
+  themeOpportunityRequirement: "require_current_theme_playbook",
+  seed: {
+    ...(livePreheatSeedProfile.seed || {}),
+    matchedThemes: directThemeSeeds[0].matchedThemes,
+    themeOpportunityRequirement: "require_current_theme_playbook"
+  },
+  holdings: {
+    ok: true,
+    equityDisclosureDate: "2099-03-31",
+    equityTopHoldings: ["600519 贵州茅台 8.1%", "000858 五粮液 7.4%", "601318 中国平安 4.2%"]
+  },
+  topHoldings: ["600519 贵州茅台 8.1%", "000858 五粮液 7.4%", "601318 中国平安 4.2%"],
+  holdingsOutlook: null,
+  actionability: null
+};
+const noCarrierDirectThemeUpdate = manager.buildPortfolioWatchlistUpdatesFromSeedCandidates(directThemeSeeds, {
+  profiles: [noCarrierDirectThemeProfile]
+})[0];
+assert(
+  noCarrierDirectThemeUpdate?.reason?.includes("题材预热") && /前十大|承载|持仓/.test(noCarrierDirectThemeUpdate.reason),
+  "waiting reasons for direct theme seeds must explain the theme is alive but the fund carrier evidence is not enough"
+);
 assert.equal(
   manager.shouldForcePortfolioThemeOpportunitySeedScan(liveThemeOpportunitySnapshot, [{
     code: "000097",

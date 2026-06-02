@@ -5086,7 +5086,21 @@ function formatPortfolioSeedStatusReason(status, profile = null) {
   if (status === "blocked") {
     return "净值下钻显示偏热、等待消化或追涨风险，暂不作为可买候选。";
   }
+  const themeWaitingReason = formatPortfolioThemeSeedWaitingReason(profile);
+  if (themeWaitingReason) return themeWaitingReason;
   return "净值下钻尚未证明回调完成和低位启动，等待下一轮信号确认。";
+}
+
+function formatPortfolioThemeSeedWaitingReason(profile = {}) {
+  const theme = selectPortfolioActionableThemeSignal(profile);
+  if (!theme || !hasFreshThemeCatalystContext(theme)) return "";
+  const gaps = buildPullbackSetupCandidateGaps(profile, { requireThemeOpportunityBacking: true });
+  const firstGap = gaps.find((item) =>
+    /前十大|承载|持仓|回调完成|启动前夜|5日\/10日|低位|过热|追涨|费用|份额|净值|数据/.test(item)
+  ) || gaps[0] || "";
+  const lane = formatPortfolioThemeOpportunityLaneTitle(theme);
+  const name = theme.name || theme.id || "相关题材";
+  return `${lane}（${name}）已有新闻/资金线索，但${firstGap || "基金买点、持仓承载或费用证据还没过关"}，先观察补证据，不能把题材热度直接当买点。`;
 }
 
 function formatPortfolioSeedVerifiedTrendEvidence(profile = null) {
@@ -5125,10 +5139,10 @@ function formatPortfolioFeeVerificationEvidence(profile = {}) {
 
 function scorePortfolioWatchSeedPriority(seedScore, status, seedKind = "") {
   if (status === "blocked") return 5;
-  if (status === "ready" && ["主线启动验证候选", "低位主力预热候选"].includes(seedKind)) return 1;
+  if (status === "ready" && ["主线启动验证候选", "低位主力预热候选", "主力预热代表基金候选"].includes(seedKind)) return 1;
   if (status === "ready" && (seedScore >= 72 || seedKind === "低位启动前夜候选")) return 1;
   if (status === "ready") return 2;
-  if (status === "waiting_pullback" && ["主线启动验证候选", "低位主力预热候选"].includes(seedKind)) return 2;
+  if (status === "waiting_pullback" && ["主线启动验证候选", "低位主力预热候选", "主力预热代表基金候选"].includes(seedKind)) return 2;
   if (status === "waiting_pullback" && (seedScore >= 64 || seedKind === "低位启动前夜候选")) return 3;
   if (seedScore >= 56) return 4;
   return 4;

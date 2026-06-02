@@ -2033,6 +2033,10 @@ const requiredPatterns = [
     message: "portfolio theme opportunity seed recall must derive grouped theme/fund keywords from main-capital, preheat, and low-rotation leaderboards."
   },
   {
+    pattern: /function formatPortfolioThemeSeedWaitingReason[\s\S]{0,1200}已有新闻\/资金线索[\s\S]{0,900}不能把题材热度直接当买点/,
+    message: "theme representative fund seeds that are not executable must explain the live theme logic and the fund-carrier/buy-point gap."
+  },
+  {
     pattern: /function buildPortfolioCapabilityDiagnostics[\s\S]{0,5200}findPortfolioThemeRepresentativeGaps[\s\S]{0,900}主力预热代表基金缺口/,
     message: "portfolio capability diagnostics must surface live main-capital/preheat themes whose representative funds are missing from the watchlist."
   },
