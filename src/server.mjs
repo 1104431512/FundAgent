@@ -16109,6 +16109,7 @@ function summarizePortfolioBacktestStaleCatchdownEvidence(text = "") {
   const normalized = String(text || "");
   const evidence = [];
   if (/stale_catchdown|接盘风险/.test(normalized)) evidence.push("接盘风险");
+  if (/旧题材未确认|旧题材线索未被当前题材雷达确认|历史热点|current_radar_unconfirmed|wait_current_radar_confirmation/.test(normalized)) evidence.push("旧题材未确认");
   if (/题材退潮|theme_fading/.test(normalized)) evidence.push("题材退潮");
   if (/主力撤离|主力资金撤离|资金撤离|capital_outflow/.test(normalized)) evidence.push("主力撤离");
   if (/缺少主力进场|缺少预热催化|缺少新闻\/催化|缺少新闻|催化逻辑.*缺/.test(normalized)) evidence.push("缺少主力/催化支撑");

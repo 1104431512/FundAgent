@@ -1731,6 +1731,46 @@ const staleCatchdownLossItem = staleCatchdownLossBacktest.items.find((item) => i
 assert(staleCatchdownLossItem, "backtest diagnostics must catch stale-theme catchdown buys that later lose money");
 assert(staleCatchdownLossItem.note.includes("题材退潮") && staleCatchdownLossItem.note.includes("主力撤离"), "stale catchdown loss replay must explain the retreating theme and main-capital exit");
 assert(staleCatchdownLossItem.note.includes("亏损约2400元"), "stale catchdown loss replay must translate the mistake into estimated yuan damage");
+const unconfirmedOldThemeLossBacktest = manager.buildPortfolioBacktestDiagnostics({
+  account: {
+    cash: 90000,
+    totalAsset: 100000,
+    positions: [{
+      code: "000046",
+      name: "人工智能旧预热主题C",
+      costAmount: 10000,
+      currentValue: 7600,
+      unrealizedPnlPct: -24
+    }]
+  },
+  watchlist: [{
+    code: "000046",
+    name: "人工智能旧预热主题C",
+    status: "watch",
+    reason: "历史快照显示AI/算力主力进场，但当前题材雷达未确认，存在历史热点接盘风险。",
+    lastSnapshot: {
+      matchedThemes: [{
+        id: "old_ai_unconfirmed",
+        name: "AI/算力旧热点",
+        stage: "current_radar_unconfirmed",
+        positionSignal: "current_radar_unconfirmed",
+        actionBias: "wait_current_radar_confirmation",
+        catalystProfile: { fresh: false, risk: true, freshnessLabel: "未被当前题材雷达确认" },
+        newsLogic: "旧题材线索未被当前雷达确认：只有历史热点标签。"
+      }]
+    }
+  }],
+  transactions: [
+    { date: "2026-05-12", side: "BUY", code: "000046", name: "人工智能旧预热主题C", amount: 10000, nav: 1, navDate: "2026-05-12" }
+  ],
+  runs: [
+    { date: "2026-05-12", type: "decision", status: "completed", summary: "000046 历史热点回调完成，经理仍买入试探。", actions: [{ action: "BUY", code: "000046", reason: "回调完成，小仓试探" }] },
+    { date: "2026-05-20", type: "valuation", status: "completed", summary: "000046 买入后亏损24%，当前浮亏2400元。" }
+  ]
+});
+const unconfirmedOldThemeLossItem = unconfirmedOldThemeLossBacktest.items.find((item) => item.label === "退潮接盘亏损回测");
+assert(unconfirmedOldThemeLossItem, "backtest diagnostics must catch current-radar-unconfirmed old-theme buys that later lose money");
+assert(unconfirmedOldThemeLossItem.note.includes("旧题材未确认") || unconfirmedOldThemeLossItem.note.includes("历史热点"), "old-theme loss replay must name the current-radar-unconfirmed historical-hotspot pattern");
 assert(
   manager.buildPortfolioCapabilityActionQueue(staleCatchdownLossBacktestFixture).some((item) =>
     item.action.includes("退潮接盘不是低位启动")

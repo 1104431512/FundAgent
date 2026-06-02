@@ -1797,6 +1797,10 @@ const requiredPatterns = [
     message: "portfolio backtests must identify stale-theme catchdown buys that become real losses."
   },
   {
+    pattern: /function summarizePortfolioBacktestStaleCatchdownEvidence[\s\S]{0,700}current_radar_unconfirmed[\s\S]{0,120}旧题材未确认/,
+    message: "stale catchdown backtests must classify current-radar-unconfirmed historical-hotspot buys as old-theme catchdown mistakes."
+  },
+  {
     pattern: /退潮接盘亏损回测[\s\S]{0,1000}资金回流[\s\S]{0,800}新闻催化[\s\S]{0,800}代表持仓承载/,
     message: "stale catchdown loss diagnostics must require capital-flow recovery, catalyst logic, and holding-carrier validation before re-entry."
   },
