@@ -331,6 +331,97 @@ const realtimeSeedItems = manager.buildRealtimeFundValuationSeedItems({
 });
 assert.equal(realtimeSeedItems[0].code, "008327", "realtime valuation queue must keep portfolio priority seeds before broad market candidates");
 const rankingBoard = manager.buildPortfolioRankingBoard(normalizedRankingDb);
+const decisionSeedPreviewDb = manager.normalizePortfolioDb({
+  account: { initialCapital: 100000, cash: 85000, totalAsset: 100000, positionWeightPct: 4, positions: [] },
+  watchlist: []
+});
+const livePreheatSeedProfile = {
+  code: "000099",
+  name: "低空预热种子基金C",
+  unitNav: 1.234,
+  navDate: todayIso,
+  snapshotDate: todayIso,
+  shareClass: "C",
+  fees: {
+    shareClass: "C",
+    shareClassFeeModel: { type: "sales_service_fee", label: "C类：销售服务费", selectionRule: "适合30-180天战术观察。" },
+    salesServiceFeePct: 0.35,
+    feeImpact: { oneYearCostPer10000: 35, missingFeeData: [] }
+  },
+  trendProfile: {
+    ok: true,
+    trendLabel: "uptrend",
+    entryBias: "staged_buy",
+    return5dPct: 0.9,
+    return10dPct: 1.8,
+    return20dPct: 3.4,
+    return60dPct: -2.2,
+    lowPositionPct120: 42,
+    lowPositionPct250: 54,
+    pullbackSetup: { signal: "none", signalText: "低位温和转强" }
+  },
+  matchedThemes: [{
+    id: "low_altitude_seed",
+    name: "低空经济",
+    leaderSignal: "preheat_catalyst",
+    positionSignal: "preheat_catalyst_watch",
+    capitalFollowScore: 61,
+    preheatScore: 67,
+    rotationScore: 56,
+    lowPositionScore: 63,
+    crowdingScore: 21,
+    avgMainNetInflowPct: 1.4,
+    catalystProfile: { score: 30, summary: "低空经济示范区政策加速落地", risk: false, fresh: true },
+    newsLogic: "题材预热：新闻催化：低空经济示范区政策加速落地；主力线索：相关板块资金净流入"
+  }],
+  topHoldings: [
+    "000099 万丰奥威 6.1%",
+    "000100 中信海直 4.2%",
+    "000101 宗申动力 3.9%"
+  ],
+  holdingsOutlook: {
+    hasHoldings: true,
+    score: 16,
+    label: "题材承载",
+    evidence: "前十大持仓命中低空经济龙头万丰奥威",
+    positives: ["题材龙头万丰奥威"],
+    risks: [],
+    holdingTags: ["低空经济"],
+    matchedTags: ["低空经济"],
+    concentration: { top10Pct: 42 }
+  },
+  sources: ["synthetic://decision-seed-profile"]
+};
+const livePreheatSeedCandidate = {
+  code: "000099",
+  name: "低空预热种子基金C",
+  type: "股票型",
+  shareClass: "C",
+  oneWeekPct: 1.1,
+  oneMonthPct: 3.2,
+  threeMonthPct: -4.5,
+  sixMonthPct: -8.2,
+  portfolioWatchlistSeedScore: 66,
+  setupDiscoverySource: "market_theme_discovery",
+  matchedThemes: livePreheatSeedProfile.matchedThemes
+};
+assert.equal(
+  manager.buildPortfolioRankingBoard(decisionSeedPreviewDb).lists.find((item) => item.id === "theme_momentum")?.items.some((item) => item.code === "000099"),
+  false,
+  "plain ranking board should not see same-day seed candidates before the preview merge"
+);
+const decisionSeedPreviewRanking = manager.buildPortfolioDecisionRankingBoard(decisionSeedPreviewDb, [livePreheatSeedCandidate], {
+  profiles: [livePreheatSeedProfile]
+});
+assert(
+  decisionSeedPreviewRanking.lists.find((item) => item.id === "theme_momentum")?.items.some((item) => item.code === "000099" && item.action.includes("微型试探")),
+  "decision ranking preview must send same-day news-backed main-capital/preheat seed candidates into the theme-momentum lane"
+);
+assert(
+  decisionSeedPreviewRanking.priorityQueue.some((item) => item.code === "000099" && item.listId === "theme_momentum"),
+  "decision ranking preview must make same-day preheat seeds visible to the model priority queue"
+);
+assert.equal(decisionSeedPreviewDb.watchlist.length, 0, "decision ranking preview must not persist same-day seed candidates before formal watchlist updates");
 assert(rankingBoard.lists.find((item) => item.id === "decision_synthesis")?.items.some((item) => item.code === "000005"), "manager ranking board must expose integrated decision-synthesis candidates");
 assert(rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.some((item) => item.code === "000001"), "manager ranking board must expose buy-preparation candidates");
 assert(rankingBoard.lists.find((item) => item.id === "launch_setup")?.items.some((item) => item.code === "000001"), "manager ranking board must expose low-position launch candidates");
@@ -1619,7 +1710,7 @@ const portfolioDecisionCapabilitySource = serverSource.slice(
 assert(portfolioDecisionCapabilitySource.includes("const capabilityDiagnostics = buildPortfolioCapabilityDiagnostics(db)"), "portfolio decision must compute full-ledger capability diagnostics after order lifecycle processing");
 assert(portfolioDecisionCapabilitySource.includes("const capabilityActionQueue = buildPortfolioCapabilityActionQueue(db)"), "portfolio decision must compute full-ledger capability repair tasks");
 assert(portfolioDecisionCapabilitySource.includes("capabilityDiagnostics,") && portfolioDecisionCapabilitySource.includes("capabilityActionQueue"), "portfolio decision must pass capability diagnostics and repair tasks into the model prompt");
-assert(portfolioDecisionCapabilitySource.includes("const managerRankings = buildPortfolioRankingBoard(db)"), "portfolio decision must compute current manager ranking boards before model calls");
+assert(portfolioDecisionCapabilitySource.includes("const managerRankings = buildPortfolioDecisionRankingBoard(db, watchlistSeedCandidates, { profiles: seedProfiles })"), "portfolio decision must compute seed-aware manager ranking boards before model calls");
 assert(portfolioDecisionCapabilitySource.includes("managerRankings"), "portfolio decision must pass manager ranking boards into the model prompt and run audit");
 const pollutedLocalStatsDiagnostics = manager.buildRuntimeDiagnostics({
   counters: {

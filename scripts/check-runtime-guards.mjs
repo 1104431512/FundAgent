@@ -1753,8 +1753,12 @@ const requiredPatterns = [
     message: "portfolio decision prompt must force capability repair before new buy decisions."
   },
   {
-    pattern: /const managerRankings = buildPortfolioRankingBoard\(db\)[\s\S]{0,900}managerRankings/,
-    message: "portfolio decision runs must compute and pass manager ranking boards into the model prompt."
+    pattern: /function buildPortfolioDecisionRankingBoard[\s\S]{0,900}buildPortfolioWatchlistUpdatesFromSeedCandidates\(watchlistSeedCandidates,\s*\{\s*profiles\s*\}\)[\s\S]{0,900}buildPortfolioRankingBoard\(virtualDb\)/,
+    message: "portfolio decision ranking boards must preview same-day seed candidates before model prompts."
+  },
+  {
+    pattern: /const managerRankings = buildPortfolioDecisionRankingBoard\(db,\s*watchlistSeedCandidates,\s*\{\s*profiles:\s*seedProfiles\s*\}\)[\s\S]{0,900}managerRankings/,
+    message: "portfolio decision runs must compute seed-aware manager ranking boards and pass them into the model prompt."
   },
   {
     pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,900}rankingBasis[\s\S]{0,900}来源：manager_ranking_board/,
@@ -2069,11 +2073,11 @@ const requiredPatterns = [
     message: "admin portfolio watchlist must expose evidence blocks, not only fund names."
   },
   {
-    pattern: /function compactPortfolioReviewProfile[\s\S]{0,260}topHoldings = \(profile\.holdings\?\.equityTopHoldings \|\| profile\.topStocks \|\| \[\]\)\.slice\(0, 10\)/,
+    pattern: /function compactPortfolioReviewProfile[\s\S]{0,300}topHoldings = \(profile\.holdings\?\.equityTopHoldings \|\| profile\.topHoldings \|\| profile\.topStocks \|\| \[\]\)\.slice\(0, 10\)/,
     message: "portfolio model review context must preserve all ten top holdings instead of truncating to five."
   },
   {
-    pattern: /function buildPortfolioFundSnapshot[\s\S]{0,500}topHoldings = \(profile\.holdings\?\.equityTopHoldings \|\| profile\.topStocks \|\| \[\]\)\.slice\(0, 10\)/,
+    pattern: /function buildPortfolioFundSnapshot[\s\S]{0,1000}topHoldings = \(profile\.holdings\?\.equityTopHoldings \|\| profile\.topHoldings \|\| profile\.topStocks \|\| \[\]\)\.slice\(0, 10\)/,
     message: "portfolio fund snapshots must preserve all ten top holdings instead of truncating to five."
   },
   {

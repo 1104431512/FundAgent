@@ -1283,6 +1283,19 @@ function buildPortfolioMarketSnapshotPrioritySeeds(db = {}, watchlist = []) {
     .slice(0, Number(process.env.PORTFOLIO_REALTIME_PRIORITY_LIMIT || 24));
 }
 
+function buildPortfolioDecisionRankingBoard(db = {}, watchlistSeedCandidates = [], options = {}) {
+  const profiles = Array.isArray(options) ? options : options.profiles || [];
+  const virtualDb = normalizePortfolioDb(JSON.parse(JSON.stringify(db || {})));
+  const seedUpdates = buildPortfolioWatchlistUpdatesFromSeedCandidates(watchlistSeedCandidates, { profiles });
+  if (seedUpdates.length) {
+    applyPortfolioWatchlistUpdates(virtualDb, seedUpdates, {
+      profiles,
+      source: "decision_ranking_seed_preview"
+    });
+  }
+  return buildPortfolioRankingBoard(virtualDb);
+}
+
 async function executePortfolioDecision(db, run, config) {
   const profileContext = buildPortfolioManagerProfileContext(config, db);
   markPortfolioRunProgress(db, run, "正在处理上一轮订单和确认状态。");
@@ -1328,7 +1341,7 @@ async function executePortfolioDecision(db, run, config) {
   const seedProfiles = watchlistSeedCandidates.length
     ? await enrichFunds(watchlistSeedCandidates.map((item) => item.code))
     : [];
-  const managerRankings = buildPortfolioRankingBoard(db);
+  const managerRankings = buildPortfolioDecisionRankingBoard(db, watchlistSeedCandidates, { profiles: seedProfiles });
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, `资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度生成今日操作。`);
   await yieldToEventLoop();
@@ -1752,7 +1765,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     : buildPortfolioCapabilityActionQueue({ account, watchlist });
   const redeploymentPlan = buildPortfolioRedeploymentPlan(account, watchlist, mergePortfolioProfiles(watchlistProfiles, seedProfiles));
   const themeOpportunityPlan = buildPortfolioThemeOpportunityPlan(account, watchlist, mergePortfolioProfiles(watchlistProfiles, seedProfiles), marketSnapshot);
-  const decisionManagerRankings = managerRankings || buildPortfolioRankingBoard({ account, watchlist, userPortfolios: [] });
+  const decisionManagerRankings = managerRankings || buildPortfolioDecisionRankingBoard({ account, watchlist, userPortfolios: [] }, watchlistSeedCandidates, { profiles: seedProfiles });
   const compactManagerRankings = compactPortfolioRankingBoardForModel(decisionManagerRankings);
   const compactHeldProfiles = (heldProfiles || []).map(compactPortfolioReviewProfile);
   const compactWatchlistProfiles = (watchlistProfiles || []).map(compactPortfolioReviewProfile);
@@ -1976,7 +1989,7 @@ async function buildPortfolioValuationWithModel({ accountBefore, accountAfter, p
 
 function compactPortfolioReviewProfile(profile = {}) {
   const oneYear = profile.riskMetrics?.periods?.["1y"] || {};
-  const topHoldings = (profile.holdings?.equityTopHoldings || profile.topStocks || []).slice(0, 10).map((item) => {
+  const topHoldings = (profile.holdings?.equityTopHoldings || profile.topHoldings || profile.topStocks || []).slice(0, 10).map((item) => {
     if (typeof item === "string") return item;
     return [item.code, item.name, item.netValuePct ? `${item.netValuePct}%` : ""].filter(Boolean).join(" ");
   });
@@ -7504,7 +7517,7 @@ function buildPortfolioFundSnapshot(profile, position = null) {
   const fiveYear = periods["5y"] || {};
   const trendProfile = profile.trendProfile || null;
   const actionability = profile.actionability || null;
-  const topHoldings = (profile.holdings?.equityTopHoldings || profile.topStocks || []).slice(0, 10).map((item) => {
+  const topHoldings = (profile.holdings?.equityTopHoldings || profile.topHoldings || profile.topStocks || []).slice(0, 10).map((item) => {
     if (typeof item === "string") return item;
     return [item.code, item.name, item.netValuePct ? `${item.netValuePct}%` : ""].filter(Boolean).join(" ");
   });
@@ -7526,6 +7539,8 @@ function buildPortfolioFundSnapshot(profile, position = null) {
     },
     trendProfile,
     actionability,
+    matchedThemes: Array.isArray(profile.matchedThemes) ? profile.matchedThemes : [],
+    holdingsOutlook: profile.holdingsOutlook || profile.actionability?.holdingsOutlook || null,
     fees: profile.fees ? {
       shareClass: profile.fees.shareClass || profile.shareClass || "",
       shareClassFeeModel: profile.fees.shareClassFeeModel || profile.shareClassFeeModel || null,
@@ -12089,7 +12104,7 @@ function buildPortfolioRankingPriorityQueue(lists = []) {
     data_confidence: 37,
     cash_redeployment: 39,
     opportunity_cost: 38,
-    theme_momentum: 37,
+    theme_momentum: 42,
     rotation_opportunity: 36,
     position_sizing: 33,
     quality_score: 31,
@@ -30946,6 +30961,7 @@ export {
   buildPortfolioStatusDirectConclusionLines,
   buildPortfolioDecisionCard,
   buildPortfolioDecisionReadinessQueue,
+  buildPortfolioDecisionRankingBoard,
   buildPortfolioActiveOrderStatusLines,
   buildPortfolioRedeploymentPlan,
   buildPortfolioRecentDecisionStatusLines,
