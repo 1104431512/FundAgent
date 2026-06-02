@@ -25128,6 +25128,13 @@ function isMissingCandidateValue(value) {
 function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
   if (shouldSuppressPreciousMetalCandidate(userText, item)) return -1000;
   const text = `${item.name || ""} ${item.type || ""} ${(item.keywords || []).join(" ")}`;
+  const seedContextText = [
+    text,
+    item.candidateRole,
+    item.setupDiscoverySource,
+    item.themeOpportunityRequirement,
+    ...(Array.isArray(item.dataBasis) ? item.dataBasis : [])
+  ].filter(Boolean).join(" ");
   const oneMonth = toNumber(item?.oneMonthPct);
   const oneWeek = toNumber(item?.oneWeekPct);
   const threeMonth = toNumber(item?.threeMonthPct);
@@ -25145,6 +25152,8 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
   if (/货币|短债|纯债|债券/.test(text) && !hasAny(normalizeIntentText(userText), ["债", "固收", "现金"])) score -= 24;
   if (/近1周低位转强候选/.test(text)) score += 10;
   if (/低位启动前夜候选/.test(text)) score += 16;
+  if (/theme_leaderboard_carrier_seed|题材榜单代表基金/.test(seedContextText)) score += 14;
+  if (item.themeOpportunityRequirement === "require_current_theme_playbook") score += 8;
 
   if (Number.isFinite(oneWeek)) {
     if (oneWeek >= 0.3 && oneWeek <= 5) score += 18;

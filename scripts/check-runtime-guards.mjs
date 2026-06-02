@@ -2181,6 +2181,10 @@ const requiredPatterns = [
     message: "portfolio theme opportunity seed recall must derive grouped theme/fund keywords from main-capital, preheat, and low-rotation leaderboards."
   },
   {
+    pattern: /function scorePullbackSetupSeedCandidate[\s\S]{0,260}shouldSuppressPreciousMetalCandidate\(userText,\s*item\)[\s\S]{0,1200}seedContextText[\s\S]{0,1200}theme_leaderboard_carrier_seed\|题材榜单代表基金[\s\S]{0,1200}require_current_theme_playbook/,
+    message: "theme-leaderboard representative fund seeds must receive scoring lift without weakening gold suppression."
+  },
+  {
     pattern: /function collectThemeOpportunitySearchKeywords[\s\S]{0,600}collectThemeCatalystSearchKeywords\(theme,\s*options\)[\s\S]{0,1200}function collectThemeCatalystSearchKeywords[\s\S]{0,1200}extractEmergingNewsTopicTerms[\s\S]{0,900}THEME_NEWS_KEYWORD_EXPANSIONS/,
     message: "portfolio theme opportunity recall must extract specific catalyst terms from fresh news logic so preheated topics become representative-fund searches quickly."
   },

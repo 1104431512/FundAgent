@@ -580,6 +580,19 @@ assert(
   directThemeSeeds[0]?.matchedThemes?.[0]?.newsLogic?.includes("低空经济示范区政策加速落地"),
   "direct representative-fund seeds must preserve fresh news/current-event logic"
 );
+assert(
+  manager.scorePullbackSetupSeedCandidate(directThemeSeeds[0], directThemeCarrierSnapshot.themeRadar, setupQuery) >
+    manager.scorePullbackSetupSeedCandidate({
+      code: "000100",
+      name: "普通低位种子基金C",
+      type: "股票型",
+      shareClass: "C",
+      dailyPct: 0.6,
+      oneMonthPct: 3.2,
+      oneYearPct: -4.8
+    }, directThemeCarrierSnapshot.themeRadar, setupQuery) + 18,
+  "theme-leaderboard representative fund seeds must receive a scoring lift over generic same-return seeds"
+);
 const mergedDirectThemeSeed = manager.mergeCandidateFunds([{ code: "000099", name: "低空预热种子基金C" }], directThemeSeeds)[0];
 assert(
   mergedDirectThemeSeed?.matchedThemes?.[0]?.leaderSignal === "preheat_catalyst",
