@@ -20391,9 +20391,21 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
 function evaluateThemeNewsLogicAnswerCoverage({ text, workflow, userText, evidence }) {
   if (!shouldRequireThemeNewsLogicExplanation({ workflow, userText, evidence })) return [];
   const body = String(text || "");
-  const hasThemeLogic = /(?:题材|板块|行业|赛道|方向).{0,36}(?:新闻|快讯|催化|政策|订单|产业|主力|资金|逻辑|为什么|大涨|上涨|轮动)|(?:新闻|快讯|催化|政策|订单|产业).{0,36}(?:催化|逻辑|落地|改善|加速|支撑|驱动|主力|资金|订单|政策)|主力.{0,24}(?:进场|流入|跟进|撤离|流出)|资金.{0,24}(?:净流入|流入|净流出|流出|回流)/.test(body);
+  const hasCatalystLogic = /(?:题材|板块|行业|赛道|方向).{0,36}(?:新闻|快讯|催化|政策|订单|产业|时事|公告|业绩|价格|外盘|事件|为什么|大涨|上涨原因)|(?:新闻|快讯|催化|政策|订单|产业|时事|公告|业绩|价格|外盘|事件).{0,42}(?:催化|逻辑|落地|改善|加速|支撑|驱动|订单|政策|兑现|发酵)|(?:为什么动|大涨逻辑|上涨原因)/.test(body);
+  const hasCapitalOrBoardConfirmation = /(?:主力|资金|机构|北向|南向).{0,28}(?:进场|流入|跟进|净流入|回流|撤离|流出|净流出)|(?:板块|行业|赛道|方向|龙头|指数).{0,32}(?:走强|确认|发酵|轮动|跟进|分化|退潮|回落|拥挤)/.test(body);
+  const hasFundCarrierLogic = /(?:前十大|持仓|底层|成分|指数|ETF|联接|代表基金|基金).{0,42}(?:承载|映射|匹配|覆盖|暴露|龙头|成分|方向|题材|行业|赛道)|(?:承载|映射).{0,28}(?:题材|板块|行业|赛道|方向)/.test(body);
+  const hasLooseThemeLogic = /(?:题材|板块|行业|赛道|方向).{0,36}(?:新闻|快讯|催化|政策|订单|产业|主力|资金|逻辑|为什么|大涨|上涨|轮动)|(?:新闻|快讯|催化|政策|订单|产业).{0,36}(?:催化|逻辑|落地|改善|加速|支撑|驱动|主力|资金|订单|政策)|主力.{0,24}(?:进场|流入|跟进|撤离|流出)|资金.{0,24}(?:净流入|流入|净流出|流出|回流)/.test(body);
+  const hasThemeLogic = shouldRequireStrictThemePlaybookExplanation(evidence)
+    ? hasCatalystLogic && hasCapitalOrBoardConfirmation && hasFundCarrierLogic
+    : hasLooseThemeLogic;
   const hasDecisionTranslation = /(买入|分批|观察|等待|回避|排除|备选|小仓|试探|不买|少买|暂停|触发)/.test(body);
   return hasThemeLogic && hasDecisionTranslation ? [] : ["missing_theme_news_logic_explanation"];
+}
+
+function shouldRequireStrictThemePlaybookExplanation(evidence = {}) {
+  const deepDive = evidence?.marketDeepDive || {};
+  return deepDive.themeOpportunityRequirement === "require_current_theme_playbook"
+    || deepDive.requireThemeOpportunityBacking === true;
 }
 
 function shouldRequireThemeNewsLogicExplanation({ workflow, userText, evidence }) {

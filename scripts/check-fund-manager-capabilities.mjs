@@ -5974,6 +5974,45 @@ const missingThemeLogicQuality = manager.evaluateFundAnswerQuality({
   }
 });
 assert(missingThemeLogicQuality.issues.includes("missing_theme_news_logic_explanation"), "quality gate must reject theme recommendations that omit why the sector is moving");
+const themeCapitalOnlyQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：分批买入1000元。\n题材为什么动：主力资金净流入，板块走强，000048 走势低位修复。\n执行：激进1000元，均衡500元，保守先观察。",
+  workflow: "fund_recommendation",
+  userText: "按最近主力预热题材推荐几个基金",
+  evidence: {
+    marketDeepDive: {
+      themeOpportunityRequirement: "require_current_theme_playbook",
+      themeRadar: capitalEnteringDigest.seed.matchedThemes,
+      candidates: [newsBackedRequiredSetupDigest]
+    }
+  }
+});
+assert(themeCapitalOnlyQuality.issues.includes("missing_theme_news_logic_explanation"), "quality gate must reject theme answers that cite capital flow but omit the news or industry catalyst");
+const themeCatalystOnlyQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：分批买入1000元。\n题材为什么动：AI算力订单改善是新闻催化，000048 前十大持仓工业富联和新易盛能承载算力方向。\n执行：激进1000元，均衡500元，保守先观察。",
+  workflow: "fund_recommendation",
+  userText: "按最近主力预热题材推荐几个基金",
+  evidence: {
+    marketDeepDive: {
+      themeOpportunityRequirement: "require_current_theme_playbook",
+      themeRadar: capitalEnteringDigest.seed.matchedThemes,
+      candidates: [newsBackedRequiredSetupDigest]
+    }
+  }
+});
+assert(themeCatalystOnlyQuality.issues.includes("missing_theme_news_logic_explanation"), "quality gate must reject theme answers that explain the catalyst but omit capital or board confirmation");
+const themeNoCarrierQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：分批买入1000元。\n题材为什么动：AI算力订单改善是新闻催化，主力资金净流入，板块走强。\n执行：激进1000元，均衡500元，保守先观察。",
+  workflow: "fund_recommendation",
+  userText: "按最近主力预热题材推荐几个基金",
+  evidence: {
+    marketDeepDive: {
+      themeOpportunityRequirement: "require_current_theme_playbook",
+      themeRadar: capitalEnteringDigest.seed.matchedThemes,
+      candidates: [newsBackedRequiredSetupDigest]
+    }
+  }
+});
+assert(themeNoCarrierQuality.issues.includes("missing_theme_news_logic_explanation"), "quality gate must reject theme answers that omit why the recommended fund actually carries the live theme");
 const themeLogicQuality = manager.evaluateFundAnswerQuality({
   text: "直接结论：分批买入1000元。\n题材为什么动：AI算力订单改善是新闻催化，主力资金净流入，000048 前十大持仓工业富联和新易盛能承载算力方向。\n执行：激进1000元，均衡500元，保守先观察；若资金转流出就暂停。",
   workflow: "fund_recommendation",
