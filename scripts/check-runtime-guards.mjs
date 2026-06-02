@@ -1193,6 +1193,18 @@ const requiredPatterns = [
     message: "theme radar must treat fresh traceable main-capital news as positive capital evidence for preheat follow-through."
   },
   {
+    pattern: /function scoreNewsMainCapitalConfirmation[\s\S]{0,1500}资金抢筹[\s\S]{0,900}主力资金[\s\S]{0,900}return Math\.min\(44,\s*score\)/,
+    message: "theme radar must convert explicit main-capital news into a bounded capital-follow boost."
+  },
+  {
+    pattern: /scoreNewsMainCapitalConfirmation\(newsCatalystProfile,\s*news\);[\s\S]{0,4500}\+ newsMainCapitalScore/,
+    message: "theme radar scoring must feed news main-capital confirmation into theme scores."
+  },
+  {
+    pattern: /newsMainCapitalScore:\s*round\(newsMainCapitalScore,\s*1\)/,
+    message: "theme radar must expose the news main-capital confirmation score for diagnostics."
+  },
+  {
     pattern: /(?=[\s\S]*function buildThemeNewsFreshnessProfile)(?=[\s\S]*function parseThemeNewsTimeMs)(?=[\s\S]*MARKET_THEME_NEWS_FRESH_HOURS)(?=[\s\S]*function hasFreshThemeCatalystContext[\s\S]{0,260}catalystProfile\?\.fresh !== false)/,
     message: "theme catalyst logic must track headline freshness and block stale news from actionable main-capital/preheat support."
   },

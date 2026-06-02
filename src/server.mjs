@@ -23075,6 +23075,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
     const evidenceCoverageCount = marketEvidenceCoverageCount + funds.length;
 
     const newsCatalystProfile = buildNewsCatalystProfile(news, { ...rule, keywords: newsKeywords });
+    const newsMainCapitalScore = scoreNewsMainCapitalConfirmation(newsCatalystProfile, news);
     const boardFlowValues = boards.map((item) => Number(item.mainNetInflowPct)).filter(Number.isFinite);
     const boardChangeValues = boards.map((item) => Number(item.changePct)).filter(Number.isFinite);
     const boardOutflowCount = boardFlowValues.filter((value) => value < 0).length;
@@ -23132,6 +23133,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + maxInflow * 5
       + mainInflowRankScore * 1.25
       + (hasStrongMainInflowRankSignal(mainInflowRankScore) ? 12 : 0)
+      + newsMainCapitalScore
       + catalystScore * 0.16
       + vehicleScore * 0.14
       + Math.max(0, 5 - maxBoardChange) * 2
@@ -23147,6 +23149,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + Math.max(0, 18 - boardScore) * 0.32
       + capitalFollowScore * 0.12
       + mainInflowRankScore * 0.12
+      + newsMainCapitalScore * 0.25
       + newsOnlyPreheatBoost
       - crowdingScore * 0.46
       - capitalRetreatScore * 0.42
@@ -23169,6 +23172,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + rotationScore * 0.16
       + capitalFollowScore * 0.2
       + preheatScore * 0.16
+      + newsMainCapitalScore * 0.16
       + newsOnlyPreheatBoost * 0.12
       - crowdingScore * 0.36
       - capitalRetreatScore * 0.32
@@ -23208,6 +23212,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       stage,
       forwardScore: round(forwardScore, 1),
       catalystScore: round(catalystScore, 1),
+      newsMainCapitalScore: round(newsMainCapitalScore, 1),
       marketConfirmationScore: round(boardScore, 1),
       vehicleScore: round(vehicleScore, 1),
       crowdingScore: round(crowdingScore, 1),
@@ -24166,6 +24171,20 @@ function buildNewsCatalystProfile(news = [], rule = {}) {
     freshnessLabel: freshness.freshnessLabel,
     latestNewsTime: freshness.latestNewsTime
   };
+}
+
+function scoreNewsMainCapitalConfirmation(newsCatalystProfile = {}, news = []) {
+  if (!newsCatalystProfile || newsCatalystProfile.risk || newsCatalystProfile.fresh === false) return 0;
+  const text = [
+    ...(Array.isArray(newsCatalystProfile.tags) ? newsCatalystProfile.tags : []),
+    newsCatalystProfile.summary,
+    ...(news || []).map((item) => `${item.title || ""} ${item.mediaName || ""}`)
+  ].filter(Boolean).join(" ");
+  let score = 0;
+  if (/资金抢筹/.test(text)) score += 28;
+  if (/(?:主力资金|ETF资金|机构|北向|南向|融资客|龙虎榜|产业资本)[^，。；、]{0,24}(?:净流入|流入|抢筹|加仓|净买入|回流|增持|回购)|(?:净流入|抢筹|净买入|回流|加仓|增持|回购)[^，。；、]{0,24}(?:主力资金|ETF资金|机构|北向|南向|融资客|龙虎榜|产业资本)/.test(text)) score += 20;
+  if (/资金关注|资金|主力/.test(text)) score += 8;
+  return Math.min(44, score);
 }
 
 function buildThemeNewsFreshnessProfile(news = []) {

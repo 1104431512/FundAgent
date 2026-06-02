@@ -536,6 +536,39 @@ assert(
   /人形机器人|执行器|机器人/.test(robotCatalystSearchText),
   "theme opportunity seed search must extract specific catalyst terms from fresh news logic instead of only using broad sector labels"
 );
+const fundedRobotNewsRadar = manager.buildThemeRadar({
+  fastNews: [{
+    title: "人形机器人执行器产业链获主力资金净流入，机构称订单加速落地",
+    mediaName: "财联社",
+    showTime: "10:18"
+  }],
+  fundCandidates: {
+    stockFunds: [
+      { code: "000177", name: "人形机器人主题股票C", type: "股票型基金", oneMonthPct: 2.4, dailyPct: 0.6 }
+    ]
+  }
+});
+const fundedRobotNewsTheme = fundedRobotNewsRadar.find((theme) =>
+  /人形机器人|机器人/.test(`${theme.name || ""} ${(theme.keywords || []).join(" ")}`)
+  && Number(theme.newsMainCapitalScore || 0) > 0
+);
+assert(
+  Number(fundedRobotNewsTheme?.newsMainCapitalScore || 0) >= 28,
+  "theme radar must score explicit main-capital news instead of treating it as ordinary catalyst text"
+);
+assert(
+  Number(fundedRobotNewsTheme?.capitalFollowScore || 0) >= 58
+    || fundedRobotNewsTheme?.leaderSignal === "capital_entering"
+    || fundedRobotNewsTheme?.positionSignal === "main_capital_entering",
+  "fresh news that explicitly says main capital is flowing in must promote the theme into main-capital follow-up"
+);
+assert(
+  manager.buildThemeLeaderboards(fundedRobotNewsRadar).mainCapital.items.some((item) =>
+    /机器人/.test(`${item.name || ""} ${item.whyMove || ""}`)
+    && /主力资金|净流入/.test(`${item.whyMove || ""} ${item.newsLogic || ""}`)
+  ),
+  "main-capital leaderboard must surface news-funded preheat themes with a readable why-move explanation"
+);
 const robotCatalystKeywordGroup = manager.buildPortfolioThemeOpportunityKeywordGroups(robotCatalystSnapshot)[0];
 assert(
   robotCatalystKeywordGroup?.anchors?.some((item) => /人形机器人|执行器|机器人/.test(item)),
