@@ -7140,6 +7140,137 @@ const overriddenRetreatHold = manager.enforcePortfolioHeldPositionRiskOverrides(
 assert.equal(overriddenRetreatHold[0].action, "SELL", "held-position risk override must convert under-reactive HOLD into staged SELL when current theme radar shows retreat");
 assert(overriddenRetreatHold[0].dataBasis.includes("来源：portfolio_held_position_risk_override"), "theme-retreat held-position override must leave a traceable source");
 assert(overriddenRetreatHold[0].dataBasis.some((item) => item.includes("系统卖出纪律确认") && item.includes("主力资金撤离")), "theme-retreat held-position override must pass sell discipline with retreat evidence");
+const broadAiStillLiveTheme = {
+  ...liveAiTheme,
+  id: "ai_general_still_live",
+  name: "AI/算力",
+  stage: "capital_entering",
+  leaderSignal: "capital_entering",
+  positionSignal: "main_capital_entering",
+  capitalFollowScore: 70,
+  preheatScore: 61,
+  avgMainNetInflowPct: 1.8,
+  capitalRetreatScore: 8,
+  themeKeywords: ["AI", "人工智能", "算力"],
+  fundKeywords: ["人工智能", "算力"],
+  keywords: ["AI", "人工智能", "算力"],
+  leaderStocks: ["工业富联", "浪潮信息"],
+  newsLogic: "AI/算力大主题仍有新闻催化和主力净流入，但本条不包含CPO/光模块同方向确认。"
+};
+const cpoSubthemeRetreat = {
+  id: "cpo_optical_module_retreat",
+  name: "CPO/光模块",
+  stage: "theme_fading",
+  retreatSignal: "capital_outflow",
+  leaderSignal: "capital_outflow",
+  positionSignal: "capital_outflow_watch",
+  actionBias: "avoid",
+  forwardScore: 22,
+  rotationScore: 18,
+  lowPositionScore: 20,
+  crowdingScore: 46,
+  capitalFollowScore: 18,
+  preheatScore: 14,
+  capitalRetreatScore: 88,
+  avgMainNetInflowPct: -4.2,
+  minMainNetInflowPct: -7.1,
+  boardOutflowCount: 3,
+  boardDeclineCount: 3,
+  themeKeywords: ["CPO", "光模块", "光通信"],
+  fundKeywords: ["CPO", "光模块", "光通信"],
+  keywords: ["CPO", "光模块", "光通信"],
+  leaderStocks: ["新易盛", "中际旭创", "天孚通信"],
+  catalystProfile: { score: -12, summary: "前期订单催化退潮", risk: true, fresh: false, freshnessLabel: "旧催化退潮" },
+  newsLogic: "CPO/光模块主力净流出，龙头转弱，旧订单催化没有新资金接力。"
+};
+const cpoLookthroughHeldProfile = {
+  ...setupDigest,
+  code: "000048",
+  name: "人工智能成长精选C",
+  unitNav: 1.226,
+  snapshotDate: todayIso,
+  matchedThemes: [broadAiStillLiveTheme],
+  seed: { matchedThemes: [broadAiStillLiveTheme] },
+  holdings: {
+    ok: true,
+    equityDisclosureDate: todayIso,
+    equityTopHoldings: [
+      "300502 新易盛 7.2%",
+      "300308 中际旭创 6.8%",
+      "300394 天孚通信 5.1%",
+      "300570 太辰光 3.6%",
+      "601138 工业富联 2.4%"
+    ]
+  },
+  topHoldings: [
+    "300502 新易盛 7.2%",
+    "300308 中际旭创 6.8%",
+    "300394 天孚通信 5.1%",
+    "300570 太辰光 3.6%",
+    "601138 工业富联 2.4%"
+  ]
+};
+const cpoLookthroughHeldDb = manager.normalizePortfolioDb({
+  account: {
+    cash: 88000,
+    totalAsset: 100000,
+    positionWeightPct: 7,
+    positions: [{
+      code: "000048",
+      name: "人工智能成长精选C",
+      currentValue: 7000,
+      costAmount: 6800,
+      weightPct: 7,
+      unrealizedPnlPct: 2.9,
+      lastNav: 1.226,
+      lastNavDate: todayIso,
+      fundSnapshot: {
+        ...cpoLookthroughHeldProfile,
+        matchedThemes: [broadAiStillLiveTheme],
+        seed: { matchedThemes: [broadAiStillLiveTheme] }
+      }
+    }]
+  },
+  watchlist: []
+});
+manager.refreshPortfolioHeldPositionsThemesWithMarketRadar(cpoLookthroughHeldDb, {
+  profiles: [cpoLookthroughHeldProfile],
+  marketSnapshot: {
+    fetchedAt: "2026-05-20T11:18:00.000Z",
+    themeRadar: [broadAiStillLiveTheme, cpoSubthemeRetreat]
+  }
+});
+const cpoLookthroughSnapshot = cpoLookthroughHeldDb.account.positions[0].fundSnapshot;
+assert(
+  cpoLookthroughSnapshot.holdingThemeRefresh?.retreatWarnings?.some((item) => item.includes("CPO/光模块") && item.includes("泛题材热度不能覆盖底层退潮")),
+  "held-position theme refresh must detect precise CPO/optical-module retreat even when broad AI remains live"
+);
+assert(
+  cpoLookthroughHeldDb.account.positions[0].riskBudget.triggers.some((item) => item.includes("CPO/光模块") && item.includes("主力资金撤离")),
+  "position risk budget must reduce holdings whose top-ten look-through subtheme is retreating"
+);
+const cpoLookthroughReviewQueue = manager.buildPortfolioHeldPositionReviewQueue(cpoLookthroughHeldDb.account.positions, [cpoLookthroughSnapshot]);
+assert(
+  cpoLookthroughReviewQueue[0].riskReview.some((item) => item.includes("CPO/光模块") && item.includes("泛题材热度不能覆盖底层退潮")),
+  "held-position review must explain that broad AI support cannot mask a retreating CPO subtheme"
+);
+const cpoLookthroughFallbackActions = manager.buildPortfolioHeldPositionReviewActions(cpoLookthroughHeldDb.account.positions, [], {
+  profiles: [cpoLookthroughSnapshot]
+});
+assert.equal(cpoLookthroughFallbackActions[0].action, "SELL", "held-position fallback must create a staged SELL when the precise top-holding subtheme is retreating");
+assert(cpoLookthroughFallbackActions[0].dataBasis.some((item) => item.includes("系统卖出纪律确认") && item.includes("CPO/光模块")), "precise-subtheme held-position SELL must pass sell discipline with look-through retreat evidence");
+const cpoLookthroughOverride = manager.enforcePortfolioHeldPositionRiskOverrides([
+  {
+    action: "HOLD",
+    code: "000048",
+    name: "人工智能成长精选C",
+    amount: 0,
+    reason: "模型认为AI大类仍有资金，所以继续持有。",
+    riskControl: "等待下次复核。"
+  }
+], [cpoLookthroughSnapshot], cpoLookthroughHeldDb.account.positions);
+assert.equal(cpoLookthroughOverride[0].action, "SELL", "held-position risk override must not let broad AI support override retreating CPO top-holding exposure");
+assert(cpoLookthroughOverride[0].reason.includes("泛题材热度不能覆盖底层退潮"), "precise-subtheme override must explain the true sell reason in customer-readable Chinese");
 const oldPreheatNoCurrentMatchDb = manager.normalizePortfolioDb({
   account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
   watchlist: [{

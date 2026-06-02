@@ -1697,6 +1697,10 @@ const requiredPatterns = [
     message: "held-position fallback reductions must pass the sell-discipline guard before creating SELL actions."
   },
   {
+    pattern: /(?=[\s\S]*function buildPortfolioHoldingThemeRefresh)(?=[\s\S]*current_market_holding_theme_radar)(?=[\s\S]*getPortfolioHoldingThemeRetreatWarnings)(?=[\s\S]*泛题材热度不能覆盖底层退潮)(?=[\s\S]*buildPortfolioHeldPositionRiskReview[\s\S]{0,2600}getPortfolioHoldingThemeRetreatWarnings)(?=[\s\S]*collectPortfolioSellDisciplineSignals[\s\S]{0,1800}getPortfolioHoldingThemeRetreatWarnings)/,
+    message: "held-position sell discipline must inspect precise top-holding subtheme retreat instead of relying on broad sector support."
+  },
+  {
     pattern: /held_position_review_fallback/,
     message: "held-position fallback actions must be traceable and not look like model-written trades."
   },
@@ -2005,7 +2009,7 @@ const requiredPatterns = [
     message: "current market retreat radar must block buy-candidate watchlist statuses instead of leaving them as vague wait states."
   },
   {
-    pattern: /function refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,900}noCurrentThemeMatch:\s*true[\s\S]{0,900}markUnrefreshedMarketThemeSignal/,
+    pattern: /(?=[\s\S]*function refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,1600}markUnrefreshedMarketThemeSignal)(?=[\s\S]*function refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,2600}noCurrentThemeMatch:\s*true)/,
     message: "current market radar refresh must downgrade old theme labels that are not confirmed today."
   },
   {
@@ -2345,7 +2349,7 @@ const requiredPatterns = [
     message: "holding-derived theme exposure must reopen only when same-direction current radar, main-capital, or news support is present."
   },
   {
-    pattern: /function getPortfolioThemeSupportRequirement[\s\S]{0,7600}function isBroadPortfolioExposureText/,
+    pattern: /(?=[\s\S]*function getPortfolioThemeSupportRequirement[\s\S]{0,900}isBroadPortfolioExposureText)(?=[\s\S]*function isBroadPortfolioExposureText)/,
     message: "portfolio theme support guard must exempt broad/core funds from sector-radar-only blocking."
   },
   {
