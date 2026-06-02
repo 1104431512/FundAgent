@@ -774,6 +774,19 @@ assert(
   manager.buildPortfolioCapabilityActionQueue(themeRepresentativeGapDb).some((item) => item.action.includes("代表基金候选") && item.action.includes("前十大持仓")),
   "capability action queue must turn missing theme representatives into concrete candidate expansion work"
 );
+const latestRunThemeRepresentativeGapDb = {
+  ...themeRepresentativeGapDb,
+  marketSnapshot: null,
+  latestMarketSnapshot: null,
+  runs: [
+    { date: "2026-05-20", type: "decision", status: "completed", marketSnapshot: { themeRadar: [], themeLeaderboards: manager.buildThemeLeaderboards([]) } },
+    { date: "2026-05-21", type: "decision", status: "completed", marketSnapshot: liveThemeOpportunitySnapshot }
+  ]
+};
+assert(
+  manager.buildPortfolioCapabilityDiagnostics(latestRunThemeRepresentativeGapDb).items.some((item) => item.label === "主力预热代表基金缺口"),
+  "capability diagnostics must use the latest run market snapshot rather than an older empty theme radar"
+);
 assert(rankingBoard.lists.find((item) => item.id === "decision_synthesis")?.items.some((item) => item.code === "000005"), "manager ranking board must expose integrated decision-synthesis candidates");
 assert(rankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.some((item) => item.code === "000001"), "manager ranking board must expose buy-preparation candidates");
 assert(rankingBoard.lists.find((item) => item.id === "launch_setup")?.items.some((item) => item.code === "000001"), "manager ranking board must expose low-position launch candidates");

@@ -15488,7 +15488,7 @@ function findLatestPortfolioMarketSnapshot(db = {}) {
   const direct = db.marketSnapshot || db.latestMarketSnapshot;
   if (direct && typeof direct === "object") return direct;
   const runs = Array.isArray(db.runs) ? db.runs : [];
-  return runs.find((run) => run?.marketSnapshot && typeof run.marketSnapshot === "object")?.marketSnapshot || null;
+  return [...runs].reverse().find((run) => run?.marketSnapshot && typeof run.marketSnapshot === "object")?.marketSnapshot || null;
 }
 
 function buildPortfolioWatchlistThemeCoverageText(watchlist = []) {
