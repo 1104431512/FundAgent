@@ -7179,6 +7179,33 @@ const themeLogicQuality = manager.evaluateFundAnswerQuality({
 });
 assert(!themeLogicQuality.issues.includes("missing_theme_news_logic_explanation"), "quality gate must pass answers that explain fresh news source/time, main capital, and fund carrier logic");
 assert(!themeLogicQuality.issues.includes("missing_theme_action_trigger"), "quality gate must pass theme replies that include concrete invalidation or trigger boundaries");
+const themePlaybookFallback = manager.buildThemePlaybookQualityFallbackAnswer({
+  workflow: "fund_recommendation",
+  userText: "按最近主力预热题材推荐几个基金",
+  evidence: {
+    marketDeepDive: {
+      themeOpportunityRequirement: "require_current_theme_playbook",
+      themeRadar: capitalEnteringDigest.seed.matchedThemes,
+      candidates: [newsBackedRequiredSetupDigest]
+    }
+  },
+  issues: ["missing_theme_action_trigger"]
+});
+assert(themePlaybookFallback.includes("0元观察") && themePlaybookFallback.includes("题材为什么动"), "theme playbook fallback must avoid generic waiting and explain why the theme is moving");
+assert(themePlaybookFallback.includes("代表基金") && themePlaybookFallback.includes("触发") && themePlaybookFallback.includes("失效条件"), "theme playbook fallback must include carrier evidence, triggers, and invalidation boundaries");
+const themePlaybookFallbackQuality = manager.evaluateFundAnswerQuality({
+  text: themePlaybookFallback,
+  workflow: "fund_recommendation",
+  userText: "按最近主力预热题材推荐几个基金",
+  evidence: {
+    marketDeepDive: {
+      themeOpportunityRequirement: "require_current_theme_playbook",
+      themeRadar: capitalEnteringDigest.seed.matchedThemes,
+      candidates: [newsBackedRequiredSetupDigest]
+    }
+  }
+});
+assert(!themePlaybookFallbackQuality.issues.includes("missing_theme_news_logic_explanation") && !themePlaybookFallbackQuality.issues.includes("missing_theme_action_trigger"), "theme playbook deterministic fallback must pass theme quality gates");
 const denseSingleFundLine = "000001 低位基金C：近5日+1.1%，近10日+2.2%，近20日+3.3%，近60日-4.4%，近120日+5.5%，120日位置38.5%，250日位置42.2%，距高点-7.1%，夏普0.8，回撤-12.3%，规模42亿，费率0.4%，走势低位修复，买点需要等待启动确认。";
 assert(manager.hasNumericDumpWithoutInterpretation(`直接结论：分批观察。\n${denseSingleFundLine}\n风险边界：不追涨。`), "quality gate must reject a single dense fund line that reads like a metric dump");
 const compactedDenseSingleFundLine = manager.normalizeUserFacingFundAnswer(denseSingleFundLine);

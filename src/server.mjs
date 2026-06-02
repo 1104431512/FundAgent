@@ -20799,6 +20799,11 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
     }
   });
 
+  const themePlaybookFallback = buildThemePlaybookQualityFallbackAnswer({ workflow, userText, evidence, issues: localizedEvaluation.issues });
+  if (themePlaybookFallback) {
+    updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
+    return themePlaybookFallback;
+  }
   const deterministicFallback = buildPullbackQualityFallbackAnswer({ userText, evidence, issues: localizedEvaluation.issues });
   if (deterministicFallback) {
     updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
@@ -20884,6 +20889,11 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       }
     });
     if (!secondPass.ok) {
+      const themePlaybookFallback = buildThemePlaybookQualityFallbackAnswer({ workflow, userText, evidence, issues: secondPass.issues });
+      if (themePlaybookFallback) {
+        updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
+        return themePlaybookFallback;
+      }
       const deterministicFallback = buildPullbackQualityFallbackAnswer({ userText, evidence, issues: secondPass.issues });
       if (deterministicFallback) {
         updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
@@ -20894,6 +20904,11 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
   } catch (error) {
     console.error("[fund-answer-quality-rewrite-error]", error);
     recordError(error, { fundAnswerQualityRewriteFailures: 1 });
+    const themePlaybookFallback = buildThemePlaybookQualityFallbackAnswer({ workflow, userText, evidence, issues: localizedEvaluation.issues });
+    if (themePlaybookFallback) {
+      updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
+      return themePlaybookFallback;
+    }
     const deterministicFallback = buildPullbackQualityFallbackAnswer({ userText, evidence, issues: localizedEvaluation.issues });
     if (deterministicFallback) {
       updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
@@ -21336,6 +21351,43 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
       ? "接盘风险边界：旧催化、主力撤离或底层持仓走弱的候选一律不做验证仓，等资金回流和新鲜催化同时出现后再复核。"
       : "决策边界：若近20日涨幅继续快速扩大，或近60日收益进入偏热区间，暂停买入并等下一次回撤确认。"
   ].filter(Boolean).join("\n");
+}
+
+function buildThemePlaybookQualityFallbackAnswer({ workflow, userText, evidence, issues = [] } = {}) {
+  const themeIssues = new Set(["missing_theme_news_logic_explanation", "missing_theme_action_trigger"]);
+  if (!(issues || []).some((issue) => themeIssues.has(issue))) return "";
+  if (!shouldRequireThemeNewsLogicExplanation({ workflow, userText, evidence })) return "";
+  const deepDive = evidence?.marketDeepDive || {};
+  const snapshot = evidence?.marketSnapshot || {};
+  const themes = [
+    ...(Array.isArray(deepDive.themeRadar) ? deepDive.themeRadar : []),
+    ...(Array.isArray(snapshot.themeRadar) ? snapshot.themeRadar : []),
+    ...(Array.isArray(snapshot.themes?.themeRadar) ? snapshot.themes.themeRadar : [])
+  ].filter(isThemeNewsLogicRelevantForAnswer);
+  const theme = themes[0] || {};
+  const candidates = Array.isArray(deepDive.candidates) ? deepDive.candidates : [];
+  const candidate = candidates.find((item) => item?.code || item?.seed?.code) || {};
+  const candidateLabel = [candidate.code || candidate.seed?.code || "待复核代表基金", candidate.name || candidate.seed?.name || ""].filter(Boolean).join(" ");
+  const themeName = theme.name || theme.id || "当前题材";
+  const themeLogic = shortenPortfolioCustomerText(
+    theme.newsLogic || theme.primaryCatalyst || theme.catalystProfile?.summary || "新闻催化来源和时间还没补齐，不能把题材热度直接当买点",
+    110
+  );
+  const flow = Number(theme.avgMainNetInflowPct ?? theme.maxMainNetInflowPct);
+  const capitalLine = Number.isFinite(flow)
+    ? `主力资金/板块：当前线索显示主力资金${flow >= 0 ? "净流入" : "净流出"}${formatFallbackPlainPct(Math.abs(flow))}，下一轮必须复核是否延续。`
+    : "主力资金/板块：主力资金是否净流入还要复核，确认前不把观察写成买入。";
+  const carrierLine = candidateLabel
+    ? `代表基金：${candidateLabel} 只能作为候选，必须确认前十大持仓、指数名称或底层成分能承载${themeName}。`
+    : `代表基金：当前还缺可验证代表基金，必须先补前十大持仓或指数名称承载证据。`;
+  return [
+    "直接结论：先按0元观察处理，不把“等待机会”当操作结论。",
+    `题材为什么动：${themeName}；${themeLogic}。来源/时间必须用当天快讯、公告或盘中数据复核。`,
+    capitalLine,
+    carrierLine,
+    "触发：新闻/政策/订单催化仍新鲜，主力资金继续净流入，代表基金5日/10日温和转强且不追高，再允许小仓复核。",
+    "失效条件：催化落空、主力转净流出、代表持仓走弱或基金先涨成追高，维持0元观察。"
+  ].join("\n");
 }
 
 function hasPullbackFallbackCatchdownIssue(issues = []) {
@@ -33359,6 +33411,7 @@ export {
   buildPortfolioWatchlistStatusLines,
   buildPortfolioWatchlistLaunchEveLines,
   buildPortfolioWatchlistUpdatesFromAnswerProfiles,
+  buildThemePlaybookQualityFallbackAnswer,
   buildYangjibaoPluginHeaders,
   buildFeishuCard,
   buildFeishuFundImageLegendNote,

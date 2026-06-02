@@ -1325,6 +1325,10 @@ const requiredPatterns = [
     message: "fund answer quality must reject generic waiting on live theme opportunities unless the reply includes actionable triggers and invalidation boundaries."
   },
   {
+    pattern: /(?=[\s\S]*async function enforceFundAnswerQuality[\s\S]{0,1600}buildThemePlaybookQualityFallbackAnswer)(?=[\s\S]*function buildThemePlaybookQualityFallbackAnswer[\s\S]{0,2400}0元观察[\s\S]{0,1200}触发[\s\S]{0,800}失效条件)/,
+    message: "fund answer quality must use a deterministic theme-playbook fallback with zero-yuan observation, triggers, and invalidation when rewrites fail."
+  },
+  {
     pattern: /(?=[\s\S]*function getActionabilityHoldingsOutlookDiscipline)(?=[\s\S]*系统持仓承载降级)(?=[\s\S]*前十大持仓没有证明基金真实承载该题材)(?=[\s\S]*getPortfolioWatchStructuralReadinessCap[\s\S]*前十大持仓未命中题材龙头)/,
     message: "buy/actionability and watchlist readiness must be capped when holdings do not prove theme-carrier alignment."
   },
