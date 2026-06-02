@@ -15275,6 +15275,10 @@ function findLatestPortfolioThemeLeaderboardsFromRuns(runs = []) {
     .sort((a, b) => Date.parse(b.completedAt || b.startedAt || b.date || "") - Date.parse(a.completedAt || a.startedAt || a.date || ""));
   for (const run of sortedRuns) {
     const snapshot = run.marketSnapshot || {};
+    if (!isFreshPortfolioMarketSnapshot(snapshot, {
+      label: "历史运行题材快照",
+      fallbackDate: run.completedAt || run.startedAt || run.date || ""
+    })) continue;
     if (snapshot.themeLeaderboards) return snapshot.themeLeaderboards;
     if (Array.isArray(snapshot.themeRadar) && snapshot.themeRadar.length) {
       return buildThemeLeaderboards(snapshot.themeRadar);
@@ -15946,10 +15950,104 @@ function findPortfolioThemeRepresentativeGaps(db = {}, watchlist = []) {
 }
 
 function findLatestPortfolioMarketSnapshot(db = {}) {
-  const direct = db.marketSnapshot || db.latestMarketSnapshot;
-  if (direct && typeof direct === "object") return direct;
+  const directCandidates = [
+    { snapshot: db.marketSnapshot, fallbackDate: db.marketSnapshotAt || "" },
+    { snapshot: db.latestMarketSnapshot, fallbackDate: db.latestMarketSnapshotAt || db.lastMarketSnapshotAt || "" }
+  ];
+  for (const candidate of directCandidates) {
+    if (
+      candidate.snapshot
+      && typeof candidate.snapshot === "object"
+      && isFreshPortfolioMarketSnapshot(candidate.snapshot, {
+        label: "当前市场题材快照",
+        fallbackDate: candidate.fallbackDate
+      })
+    ) {
+      return candidate.snapshot;
+    }
+  }
   const runs = Array.isArray(db.runs) ? db.runs : [];
-  return [...runs].reverse().find((run) => run?.marketSnapshot && typeof run.marketSnapshot === "object")?.marketSnapshot || null;
+  const sortedRuns = [...runs]
+    .filter((run) => run?.marketSnapshot && typeof run.marketSnapshot === "object")
+    .sort((a, b) => Date.parse(b.completedAt || b.startedAt || b.date || "") - Date.parse(a.completedAt || a.startedAt || a.date || ""));
+  for (const run of sortedRuns) {
+    if (isFreshPortfolioMarketSnapshot(run.marketSnapshot, {
+      label: "历史运行题材快照",
+      fallbackDate: run.completedAt || run.startedAt || run.date || ""
+    })) {
+      return run.marketSnapshot;
+    }
+  }
+  return null;
+}
+
+function isFreshPortfolioMarketSnapshot(snapshot = null, options = {}) {
+  return evaluatePortfolioMarketSnapshotFreshness(snapshot, options).ok;
+}
+
+function evaluatePortfolioMarketSnapshotFreshness(snapshot = null, options = {}) {
+  if (!snapshot || typeof snapshot !== "object") {
+    return { ok: false, ageDays: null, issue: "缺少市场题材快照，需要重新刷新主力资金和新闻催化。" };
+  }
+  if (!hasPortfolioMarketSnapshotThemeEvidence(snapshot)) return { ok: true, ageDays: null, issue: "" };
+  const label = options.label || "市场题材快照";
+  const refreshedAt = getPortfolioMarketSnapshotRefreshTime(snapshot, options.fallbackDate || "");
+  if (!refreshedAt) {
+    return {
+      ok: false,
+      ageDays: null,
+      issue: `${label}缺少刷新时间，需要重新抓取新闻、板块资金和题材榜后再判断买点。`
+    };
+  }
+  const nowMs = Date.parse(options.now || new Date().toISOString());
+  const ageDays = daysSincePortfolioDate(refreshedAt, nowMs);
+  if (!Number.isFinite(ageDays)) {
+    return {
+      ok: false,
+      ageDays: null,
+      issue: `${label}刷新时间无法验证，需要重新抓取新闻、板块资金和题材榜后再判断买点。`
+    };
+  }
+  const maxAgeDays = finiteNumberOr(
+    options.maxAgeDays
+      ?? process.env.PORTFOLIO_MARKET_SNAPSHOT_MAX_AGE_DAYS
+      ?? process.env.PORTFOLIO_THEME_REFRESH_MAX_AGE_DAYS,
+    2
+  );
+  if (ageDays > maxAgeDays) {
+    return {
+      ok: false,
+      ageDays,
+      issue: `${label}已过期${ageDays}天，旧主线只能列为复查对象，不能当作当前主力跟随机会。`
+    };
+  }
+  return { ok: true, ageDays, issue: "" };
+}
+
+function getPortfolioMarketSnapshotRefreshTime(snapshot = {}, fallbackDate = "") {
+  return String(
+    snapshot.fetchedAt
+    || snapshot.refreshedAt
+    || snapshot.updatedAt
+    || snapshot.createdAt
+    || snapshot.generatedAt
+    || snapshot.asOf
+    || snapshot.snapshotDate
+    || snapshot.date
+    || fallbackDate
+    || ""
+  ).trim();
+}
+
+function hasPortfolioMarketSnapshotThemeEvidence(snapshot = {}) {
+  if (!snapshot || typeof snapshot !== "object") return false;
+  if (Array.isArray(snapshot.themeRadar) && snapshot.themeRadar.length) return true;
+  const leaderboards = snapshot.themeLeaderboards;
+  if (!leaderboards || typeof leaderboards !== "object") return false;
+  return Object.values(leaderboards).some((lane) => {
+    if (Array.isArray(lane)) return lane.length > 0;
+    return Array.isArray(lane?.items) && lane.items.length > 0;
+  });
 }
 
 function buildPortfolioWatchlistThemeCoverageText(watchlist = []) {

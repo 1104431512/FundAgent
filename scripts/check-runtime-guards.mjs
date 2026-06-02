@@ -2281,8 +2281,16 @@ const requiredPatterns = [
     message: "theme representative recall and diagnostics must use item-level usable coverage instead of pooled watchlist text."
   },
   {
-    pattern: /function findLatestPortfolioMarketSnapshot[\s\S]{0,500}\[\.\.\.runs\]\.reverse\(\)\.find/,
-    message: "portfolio diagnostics must use the latest run market snapshot instead of the oldest cached theme radar."
+    pattern: /function findLatestPortfolioMarketSnapshot[\s\S]{0,2600}isFreshPortfolioMarketSnapshot[\s\S]{0,1400}Date\.parse\(b\.completedAt/,
+    message: "portfolio diagnostics must use the latest fresh market snapshot instead of stale cached theme radar."
+  },
+  {
+    pattern: /function evaluatePortfolioMarketSnapshotFreshness[\s\S]{0,1800}PORTFOLIO_MARKET_SNAPSHOT_MAX_AGE_DAYS/,
+    message: "market snapshot freshness must have an explicit age cap before treating theme radar as live."
+  },
+  {
+    pattern: /function findLatestPortfolioThemeLeaderboardsFromRuns[\s\S]{0,900}isFreshPortfolioMarketSnapshot[\s\S]{0,500}themeLeaderboards/,
+    message: "manager ability proof must reject stale theme leaderboards before showing main-capital follow evidence."
   },
   {
     pattern: /function buildPortfolioWatchlistThemeCoverageText[\s\S]{0,500}filter\(isPortfolioThemeRepresentativeCoverageCandidate\)/,
