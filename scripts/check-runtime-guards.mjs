@@ -1237,6 +1237,10 @@ const requiredPatterns = [
     message: "theme leaderboards must expose a customer-readable why-move line instead of only raw newsLogic or scores."
   },
   {
+    pattern: /function buildThemeLeaderboardNextStep[\s\S]{0,900}preheat_catalyst_watch[\s\S]{0,500}hasPositiveThemeMainCapitalEvidence\(theme\)[\s\S]{0,500}0\.5%-1\.2%微型试探/,
+    message: "funded preheat themes must escalate to representative-fund micro-starter review instead of generic observation."
+  },
+  {
     pattern: /function renderPortfolioThemeLeaderboardItem[\s\S]{0,1300}theme-leaderboard-evidence[\s\S]{0,900}theme-leaderboard-decision/,
     message: "admin theme leaderboards must render evidence chips and next-step cards for each theme."
   },

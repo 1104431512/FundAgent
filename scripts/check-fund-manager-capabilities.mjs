@@ -6629,10 +6629,24 @@ const themeLeaderboards = manager.buildThemeLeaderboards([
     crowdingScore: 12,
     catalystProfile: { score: 32, tags: ["政策落地"], summary: "政策落地", risk: false },
     newsLogic: "题材预热：新闻催化：政策试点加速落地；催化性质：政策落地"
+  },
+  {
+    id: "funded_preheat",
+    name: "资金确认预热测试",
+    leaderSignal: "preheat_catalyst",
+    positionSignal: "preheat_catalyst_watch",
+    actionBias: "preheat_watch",
+    preheatScore: 70,
+    lowPositionScore: 62,
+    crowdingScore: 16,
+    avgMainNetInflowPct: 1.2,
+    catalystProfile: { score: 30, tags: ["产业订单", "资金关注"], summary: "产业订单", risk: false, fresh: true },
+    newsLogic: "题材预热：新闻催化：订单加速；主力线索：相关板块资金净流入"
   }
 ]);
 assert(themeLeaderboards.mainCapital.items.some((item) => item.name === "AI/算力"), "theme leaderboards must surface main-capital entry themes as a dedicated lane");
 assert(themeLeaderboards.preheat.items.some((item) => item.name === "政策预热测试" && item.catalyst.includes("政策落地")), "theme leaderboards must surface preheated policy catalysts with readable catalyst labels");
+assert(themeLeaderboards.preheat.items.some((item) => item.name === "资金确认预热测试" && item.nextStep.includes("0.5%-1.2%")), "funded preheat themes must move to representative-fund micro-starter review instead of generic observation");
 assert(themeLeaderboards.retreat.items.some((item) => item.name === "AI/算力"), "theme leaderboards must keep capital-outflow themes in the avoid lane");
 const mainCapitalThemeCard = themeLeaderboards.mainCapital.items.find((item) => item.name === "AI/算力");
 assert(mainCapitalThemeCard?.nextStep?.includes("代表基金") && mainCapitalThemeCard?.invalidation?.includes("失效条件"), "theme leaderboards must tell the manager what to do next and when the theme thesis fails");

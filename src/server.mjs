@@ -23395,6 +23395,9 @@ function buildThemeLeaderboardNextStep(theme = {}) {
     return "找承载题材的代表基金，只有低位温和转强且费率/持仓过关时才做微型试探。";
   }
   if (theme.leaderSignal === "preheat_catalyst" || theme.positionSignal === "preheat_catalyst_watch") {
+    if (hasPositiveThemeMainCapitalEvidence(theme)) {
+      return "预热已有资金确认，立即找代表基金；只有低位温和转强、持仓承载和费率过关时才做0.5%-1.2%微型试探。";
+    }
     return "先加观察池，等新闻催化兑现、主力流入延续、基金走势转强后再进入试探。";
   }
   if (theme.positionSignal === "low_position_rotation" || theme.stage === "low_position_rotation") {
