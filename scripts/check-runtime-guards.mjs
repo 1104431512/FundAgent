@@ -1081,8 +1081,8 @@ const requiredPatterns = [
     message: "admin portfolio UI must provide a manager dashboard with summary, holdings exposure, and buy-preparation panels."
   },
   {
-    pattern: /(?=[\s\S]*function inferThemeRetreatSignal)(?=[\s\S]*capitalRetreatScore)(?=[\s\S]*avgMainNetInflowPct)(?=[\s\S]*getActionabilityThemeRetreatDiscipline)(?=[\s\S]*题材退潮)(?=[\s\S]*主力资金撤离)/,
-    message: "fund manager must block pullback-looking candidates when the theme is fading and main capital is leaving."
+    pattern: /(?=[\s\S]*function inferThemeRetreatSignal)(?=[\s\S]*capitalRetreatScore)(?=[\s\S]*avgMainNetInflowPct)(?=[\s\S]*getActionabilityThemeRetreatDiscipline)(?=[\s\S]*getStaleThemeCatchdownWarnings)(?=[\s\S]*系统接盘风险拦截)(?=[\s\S]*题材退潮)(?=[\s\S]*主力资金撤离)/,
+    message: "fund manager must block pullback-looking candidates when the theme is fading, main capital is leaving, or stale catchdown risk is detected."
   },
   {
     pattern: /(?=[\s\S]*const MARKET_BOARD_FETCH_MODES\s*=\s*\[[\s\S]*涨幅榜[\s\S]*跌幅榜[\s\S]*主力流入榜[\s\S]*主力流出榜)(?=[\s\S]*function fetchEastmoneyBoardCoverage)(?=[\s\S]*fetchEastmoneyBoardCoverage\("concept"\))(?=[\s\S]*fetchEastmoneyBoardCoverage\("industry"\))(?=[\s\S]*mergeMarketBoardCoverageItems)(?=[\s\S]*scoreThemeRadarPriority[\s\S]*capitalRetreatScore)/,
@@ -1969,8 +1969,8 @@ const requiredPatterns = [
     message: "portfolio theme micro-starter setup must block buy-like actions when representative-fund carrier evidence fails."
   },
   {
-    pattern: /function hasActionabilityMicroStarterSupport[\s\S]{0,900}hasVerifiedThemeCarrierEvidence/,
-    message: "fund actionability micro-starter support must require verified theme-carrier evidence, not only a theme label."
+    pattern: /function hasActionabilityMicroStarterSupport[\s\S]{0,900}hasStaleThemeCatchdownRisk[\s\S]{0,900}hasVerifiedThemeCarrierEvidence/,
+    message: "fund actionability micro-starter support must reject stale-theme catchdown risk and require verified theme-carrier evidence."
   },
   {
     pattern: /function collectCandidateHoldings[\s\S]{0,700}candidate\.topHoldings[\s\S]{0,500}candidate\.seed\?\.topHoldings/,

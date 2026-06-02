@@ -4863,6 +4863,55 @@ assert(
   holdingRealtimeWeakActionability.decisionBlocker.some((item) => item.includes("持仓实时降级") || item.includes("底层持仓止跌")),
   "holding realtime weakness must become a customer-readable actionability blocker"
 );
+const staleCatchdownOnlyTheme = {
+  id: "old_compute_catchdown",
+  name: "旧算力回调",
+  stage: "confirmation",
+  positionSignal: "low_position_rotation",
+  avgMainNetInflowPct: -0.9,
+  minMainNetInflowPct: -2.4,
+  boardOutflowCount: 1,
+  boardDeclineCount: 1,
+  capitalRetreatScore: 44,
+  capitalFollowScore: 32,
+  preheatScore: 20,
+  forwardScore: 36,
+  rotationScore: 40,
+  crowdingScore: 25,
+  leaderStocks: ["工业富联", "新易盛"],
+  themeKeywords: ["人工智能", "算力", "CPO"],
+  newsLogic: "前期热点降温，缺少新的订单或政策催化，资金边际转弱。"
+};
+const staleCatchdownOnlyDigest = {
+  ...newsBackedRequiredSetupDigest,
+  code: "000051",
+  name: "边际退潮回调基金C",
+  matchedThemes: [staleCatchdownOnlyTheme],
+  seed: {
+    ...(newsBackedRequiredSetupDigest.seed || {}),
+    matchedThemes: [staleCatchdownOnlyTheme]
+  }
+};
+assert(manager.hasStaleThemeCatchdownRisk(staleCatchdownOnlyDigest), "stale catchdown detector must catch weak-flow old themes even before hard retreat thresholds trigger");
+const staleCatchdownOnlyActionability = manager.buildFundActionabilitySignals(staleCatchdownOnlyDigest);
+assert(
+  ["wait", "avoid"].includes(staleCatchdownOnlyActionability.action),
+  "actionability must not let a pullback-complete shape override stale-theme catchdown risk"
+);
+assert(
+  staleCatchdownOnlyActionability.decisionBlocker.some((item) => item.includes("接盘风险") && item.includes("缺少主力进场")),
+  "stale-theme catchdown actionability blocker must explain that the pullback is a catchdown risk, not a low-position starter"
+);
+assert.equal(
+  manager.hasPortfolioThemeMicroStarterSetup({ ...staleCatchdownOnlyDigest, actionability: staleCatchdownOnlyActionability }),
+  false,
+  "portfolio micro-starter setup must reject old-theme catchdown candidates even when the NAV trend looks repaired"
+);
+assert(
+  manager.scoreResearchDigestForPullbackSetup(newsBackedRequiredSetupDigest) >
+    manager.scoreResearchDigestForPullbackSetup(staleCatchdownOnlyDigest) + 45,
+  "pullback discovery scoring must demote stale-theme catchdown candidates far below fresh main-capital setups"
+);
 const holdingRealtimeWeakExecutableDigest = {
   ...executableMicroStarterDigest,
   code: "000050",

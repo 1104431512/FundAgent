@@ -19274,7 +19274,7 @@ function getStaleThemeCatchdownWarnings(candidate = {}) {
         Number.isFinite(theme.capitalFollowScore) ? `主力跟随${round(theme.capitalFollowScore, 0)}` : "",
         Number.isFinite(theme.preheatScore) ? `预热${round(theme.preheatScore, 0)}` : ""
       ].filter(Boolean);
-      return `${name}缺少主力进场或预热催化，且出现资金撤离/退潮迹象；这类回调先按接盘风险处理${facts.length ? `（${facts.join("，")}）` : ""}`;
+      return `${name}缺少主力进场或预热催化，且出现题材退潮/主力资金撤离迹象；这类回调先按接盘风险处理${facts.length ? `（${facts.join("，")}）` : ""}`;
     })
     .slice(0, 3);
 }
@@ -26835,6 +26835,7 @@ function buildFundActionabilitySignals(digest) {
   score += Math.round(holdingsOutlook.score * 0.45);
   const leaderThemeSupport = getCandidateThemeSignals(digest).some((theme) =>
     !hasThemeCapitalRetreatRisk(theme)
+    && !isStaleThemeCatchdownRiskTheme(theme)
     && (
       ["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)
       || ["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)
@@ -26961,6 +26962,7 @@ function buildFundActionabilitySignals(digest) {
 
 function hasActionabilityMicroStarterSupport(digest = {}, trend = {}) {
   if (!digest || !trend || typeof trend !== "object") return false;
+  if (hasThemeRetreatRisk(digest) || hasStaleThemeCatchdownRisk(digest)) return false;
   if (trend.entryBias === "avoid_now" || trend.trendLabel === "breakdown" || trend.trendLabel === "extended_uptrend") return false;
   const r5 = Number(trend.return5dPct);
   const r10 = Number(trend.return10dPct);
@@ -26975,6 +26977,7 @@ function hasActionabilityMicroStarterSupport(digest = {}, trend = {}) {
   if (!hasVerifiedThemeCarrierEvidence(digest)) return false;
   return getCandidateThemeSignals(digest).some((theme) =>
     !hasThemeCapitalRetreatRisk(theme)
+    && !isStaleThemeCatchdownRiskTheme(theme)
     && Number(theme.crowdingScore) < 45
     && Boolean(theme.catalystProfile?.summary || theme.newsLogic)
     && (
@@ -27079,6 +27082,14 @@ function getActionabilityValuationSourceDiscipline(digest = {}, { isMoneyMarket 
 function getActionabilityThemeRetreatDiscipline(digest = {}, { isMoneyMarket = false } = {}) {
   if (isMoneyMarket || !digest || typeof digest !== "object") {
     return { scoreCap: null, scorePenalty: 0, blocker: "" };
+  }
+  const catchdownWarnings = getStaleThemeCatchdownWarnings(digest);
+  if (catchdownWarnings.length) {
+    return {
+      scoreCap: 44,
+      scorePenalty: 18,
+      blocker: `系统接盘风险拦截：${catchdownWarnings[0]}。`
+    };
   }
   const warnings = getCandidateThemeRetreatWarnings(digest);
   if (!warnings.length) return { scoreCap: null, scorePenalty: 0, blocker: "" };
