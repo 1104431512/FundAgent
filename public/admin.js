@@ -2809,6 +2809,7 @@ function renderManagerCustomerActionLeaderboardItem(item = {}) {
       </div>
       <p>${escapeHtml(item.reason || item.action || "等待经理复核。")}</p>
       <small>${escapeHtml(item.nextStep || "进入对应工作区查看边界。")}</small>
+      ${renderManagerCustomerActionStory(item)}
       ${renderManagerCustomerActionCrossCheck(item)}
       <div class="ranking-action-boundary">
         ${item.reviewWindow ? `<span>复核：${escapeHtml(item.reviewWindow)}</span>` : ""}
@@ -2856,18 +2857,35 @@ function renderManagerRankingActionDeck(deck = {}) {
 
 function renderManagerRankingActionCard(card = {}) {
   const items = Array.isArray(card.items) ? card.items : [];
+  const topItem = items[0] || null;
   return `
     <article class="ranking-action-card ranking-action-card-${escapeHtml(card.tone || card.id || "watch")}">
       <div>
         <span>${escapeHtml(card.title || "行动")}</span>
-        <strong>${escapeHtml(items[0] ? `${items[0].code || ""} ${items[0].name || ""}`.trim() || card.summary : card.emptyText || card.summary || "暂无")}</strong>
+        <strong>${escapeHtml(topItem ? `${topItem.code || ""} ${topItem.name || ""}`.trim() || card.summary : card.emptyText || card.summary || "暂无")}</strong>
       </div>
-      <small>${escapeHtml(items[0]?.reason || card.summary || "")}</small>
+      <small>${escapeHtml(topItem?.reason || card.summary || "")}</small>
+      ${renderManagerCustomerActionStory(topItem)}
       <div class="ranking-action-card-items">
         ${items.length ? items.slice(0, 3).map((item) => renderManagerRankingActionChip(item)).join("") : `<em>${escapeHtml(card.emptyText || "暂无触发项")}</em>`}
       </div>
-      <p>${escapeHtml(items[0]?.nextStep || card.nextStep || "")}</p>
+      <p>${escapeHtml(topItem?.nextStep || card.nextStep || "")}</p>
     </article>
+  `;
+}
+
+function renderManagerCustomerActionStory(item = {}) {
+  if (!item) return "";
+  const rows = [
+    item.themeLogic ? ["逻辑", item.themeLogic] : null,
+    item.carrierLogic ? ["承载", item.carrierLogic] : null,
+    item.riskBoundary ? ["边界", item.riskBoundary] : null
+  ].filter(Boolean);
+  if (!rows.length) return "";
+  return `
+    <div class="ranking-action-story">
+      ${rows.map(([label, value]) => `<span><b>${escapeHtml(label)}</b>${escapeHtml(value)}</span>`).join("")}
+    </div>
   `;
 }
 

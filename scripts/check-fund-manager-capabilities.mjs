@@ -612,6 +612,9 @@ assert(rankingBoard.customerActionDeck.cards.find((card) => card.id === "wait")?
 assert(rankingBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items.some((item) => item.code === "000006"), "customer action deck must surface chase-risk avoid candidates");
 assert(rankingBoard.customerActionDeck.cards.find((card) => card.id === "sell")?.items.some((item) => item.code === "008327"), "customer action deck must surface sell or de-risk candidates separately from avoid candidates");
 assert(rankingBoard.customerActionDeck.cards.find((card) => card.id === "data")?.items.some((item) => item.code === "000010"), "customer action deck must surface data-first blockers before buy execution");
+const actionDeckNarrativeItems = rankingBoard.customerActionDeck.cards.flatMap((card) => card.items || []);
+assert(actionDeckNarrativeItems.some((item) => item.themeLogic || item.carrierLogic || item.riskBoundary), "customer action deck items must expose a customer-readable action story instead of only a raw reason");
+assert(rankingBoard.customerActionDeck.cards.find((card) => card.id === "sell")?.items.some((item) => item.code === "008327" && item.riskBoundary), "customer sell action cards must expose the risk boundary for de-risk review");
 assert(rankingBoard.customerDecisionSummary?.primaryAction?.includes("008327"), "customer decision summary must put the most urgent sell/de-risk object into the first conclusion");
 assert(rankingBoard.customerDecisionSummary?.lines?.some((line) => line.includes("先处理卖出/减仓") && line.includes("008327")), "customer decision summary must translate sell-risk rankings into a customer-readable first line");
 const buyActionCodes = rankingBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items.map((item) => item.code) || [];
@@ -626,6 +629,7 @@ assert(rankingBoard.customerActionLeaderboard?.lanes?.length === 5, "customer ac
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "sell")?.items.some((item) => item.code === "008327" && item.rank === 1), "customer action leaderboard must rank urgent sell/de-risk positions in the sell lane");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.items.every((item) => item.rank && item.reason && item.nextStep && item.reviewWindow && item.trigger && item.invalidation), "customer action leaderboard buy lane items must be ranked with reasons, next steps, review windows, triggers, and invalidation boundaries");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.items.every((item) => item.crossCheckSummary && item.supportingEvidence?.length && Array.isArray(item.constraintEvidence)), "customer action leaderboard buy lane items must expose cross-ranking supporting evidence and unresolved constraints");
+assert(rankingBoard.customerActionLeaderboard.lanes.flatMap((lane) => lane.items || []).some((item) => item.themeLogic || item.carrierLogic || item.riskBoundary), "customer action leaderboard must split action stories into theme logic, carrier, or boundary lines");
 const preheatWatchOnlyBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
   account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
   watchlist: [{
@@ -2098,6 +2102,8 @@ assert(adminSource.includes("renderPortfolioRankingRadar") && adminSource.includ
 assert(adminSource.includes("renderPortfolioCustomerDecisionSummary") && adminSource.includes("customerDecisionSummary"), "admin portfolio overview must render customer decision summary before detailed action cards");
 assert(adminSource.includes("renderPortfolioCustomerActionLeaderboard") && adminSource.includes("customerActionLeaderboard"), "admin portfolio overview must render customer action leaderboards before detailed ranking lists");
 assert(adminSource.includes("customerActionLeaderboard") && adminSource.includes('label: "行动排行"') && adminSource.includes("topActionItem"), "admin portfolio overview ranking shortcut must prioritize the customer action leaderboard as the first-scan entry");
+assert(adminSource.includes("renderManagerCustomerActionStory") && adminSource.includes("ranking-action-story"), "admin customer action cards must render separated logic/carrier/boundary story rows");
+assert(adminStyleSource.includes(".ranking-action-story") && adminStyleSource.includes(".ranking-action-story b"), "admin customer action story rows must be styled for quick scanning");
 assert(adminHtmlSource.includes("portfolioDeploymentStatus") && adminHtmlSource.includes("portfolioRailDeploymentStatus") && adminSource.includes("renderPortfolioDeploymentStatus") && adminSource.includes("currentDeployment"), "admin portfolio dashboard must show deployment freshness so stale server builds are visible in the manager workspace");
 assert(adminHtmlSource.includes("今日行动中心") && adminHtmlSource.includes("portfolio-launch-actions"), "admin portfolio overview must show a nonblank action center before data finishes loading");
 assert(adminSource.includes("portfolio-launch-center") && adminSource.includes('data-portfolio-view-target="opportunities"'), "admin portfolio empty action radar must guide users to runner, opportunities, and rankings");

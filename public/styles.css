@@ -5320,6 +5320,30 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   display: none;
 }
 
+.ranking-action-story {
+  display: grid;
+  gap: 4px;
+}
+
+.ranking-action-story span {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 4px 5px;
+  border: 1px solid #e0e8ef;
+  border-radius: 6px;
+  background: #f8fbfd;
+  color: #506271;
+  font-size: 11px;
+  line-height: 1.28;
+}
+
+.ranking-action-story b {
+  flex: 0 0 auto;
+  color: #243746;
+  font-size: 11px;
+}
+
 .ranking-action-card-items {
   display: flex;
   flex-wrap: wrap;

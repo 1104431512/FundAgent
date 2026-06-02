@@ -3201,6 +3201,10 @@ const requiredPatterns = [
     message: "admin manager ranking board must show customer action cards before detailed ranking lists."
   },
   {
+    pattern: /function buildPortfolioCustomerActionStory[\s\S]{0,1600}themeLogic[\s\S]{0,500}carrierLogic[\s\S]{0,500}riskBoundary[\s\S]*function renderManagerCustomerActionStory[\s\S]{0,900}ranking-action-story[\s\S]*\.ranking-action-story\s*\{/,
+    message: "customer action cards must split theme logic, fund-carrier evidence, and risk boundary into scannable story rows."
+  },
+  {
     pattern: /renderManagerRankingLensGuide[\s\S]{0,2200}ranking-lens-guide/,
     message: "admin manager ranking board must explain the selected ranking lens and its first handling target before detailed fund rows."
   },

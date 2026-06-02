@@ -12906,6 +12906,15 @@ function buildPortfolioCustomerActionLeaderboardItem(item = {}, context = {}) {
   const nextStep = shortenPortfolioCustomerText(item.nextStep || matrixItem.nextStep || alertItem.nextStep || queueItem.nextStep || context.def?.purpose || "", 72);
   const boundary = buildPortfolioCustomerActionBoundary(laneId, item, { queueItem, matrixItem, alertItem });
   const crossCheck = buildPortfolioCustomerActionCrossCheck(laneId, { item, queueItem, matrixItem, alertItem });
+  const actionStory = buildPortfolioCustomerActionStory({
+    ...item,
+    reason,
+    nextStep,
+    facts: mergeStringLists(item.facts, queueItem.facts, alertItem.facts),
+    risks: mergeStringLists(item.risks, queueItem.risk, alertItem.risks),
+    gaps: mergeStringLists(item.gaps, queueItem.gap, alertItem.gaps),
+    tags: mergeStringLists(item.tags, queueItem.listTitle, alertItem.laneTitle, matrixItem.action)
+  });
   return {
     code: item.code || "",
     name: item.name || "",
@@ -12913,6 +12922,9 @@ function buildPortfolioCustomerActionLeaderboardItem(item = {}, context = {}) {
     action: item.action || matrixItem.action || queueItem.action || "复核",
     reason,
     nextStep,
+    themeLogic: actionStory.themeLogic,
+    carrierLogic: actionStory.carrierLogic,
+    riskBoundary: actionStory.riskBoundary,
     reviewWindow: boundary.reviewWindow,
     trigger: boundary.trigger,
     invalidation: boundary.invalidation,
@@ -13075,10 +13087,12 @@ function buildPortfolioCustomerActionItem(item = {}) {
   const tags = normalizeStringArray([
     ...(item.tags || []),
     ...(item.facts || []),
+    ...(item.risks || []),
     ...(item.gaps || []),
     item.listTitle || "",
     item.matrixAction || ""
   ]).slice(0, 3);
+  const actionStory = buildPortfolioCustomerActionStory({ ...item, tags });
   return {
     code: item.code || "",
     name: item.name || "",
@@ -13086,7 +13100,32 @@ function buildPortfolioCustomerActionItem(item = {}) {
     action: item.action || item.matrixAction || "复核",
     reason: item.reason || selectPortfolioRankingFirstText(item.risks, item.gaps, item.facts, item.tags) || "等待经理复核。",
     nextStep: item.nextStep || "进入对应榜单查看处理边界。",
+    themeLogic: actionStory.themeLogic,
+    carrierLogic: actionStory.carrierLogic,
+    riskBoundary: actionStory.riskBoundary,
     tags
+  };
+}
+
+function buildPortfolioCustomerActionStory(item = {}) {
+  const texts = normalizeStringArray([
+    item.reason,
+    item.nextStep,
+    ...(item.facts || []),
+    ...(item.risks || []),
+    ...(item.gaps || []),
+    ...(item.tags || []),
+    ...(item.supportingEvidence || []),
+    ...(item.constraintEvidence || [])
+  ]).map((text) => normalizePortfolioUserFacingText(text)).filter(Boolean);
+  const pick = (pattern) => shortenPortfolioCustomerText(texts.find((text) => pattern.test(text)) || "", 64);
+  const themeLogic = pick(/题材逻辑|大涨逻辑|新闻|催化|政策|订单|产业|主力|板块|轮动|预热/);
+  const carrierLogic = pick(/代表基金|前十大|持仓|承载|龙头|指数|ETF|联接|主题配置|组合补位/);
+  const riskBoundary = pick(/风险|约束|触发|失效|回避|追涨|接盘|退潮|主力撤离|卖出|减仓|止损|止盈|回吐|防线|单仓|数据|费率|费用|缺口|补证/);
+  return {
+    themeLogic,
+    carrierLogic,
+    riskBoundary
   };
 }
 
