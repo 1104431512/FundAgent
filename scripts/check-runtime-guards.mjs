@@ -2233,6 +2233,10 @@ const requiredPatterns = [
     message: "portfolio BUY guard must define a text-only retreat/catchdown warning extractor."
   },
   {
+    pattern: /function isTextualCatchdownRiskSegment[\s\S]{0,1200}旧主力标签[\s\S]{0,500}历史热点[\s\S]{0,500}当前题材雷达/,
+    message: "text-only catchdown guard must also catch historical-hotspot or old-main labels that are not confirmed by the current theme radar."
+  },
+  {
     pattern: /function evaluatePortfolioBuyDiscipline[\s\S]{0,1700}getTextualCatchdownWarnings\(action,\s*profile\)[\s\S]{0,500}portfolio_text_catchdown_guard/,
     message: "portfolio BUY guard must block text-only retreat/catchdown warnings even when structured matchedThemes are missing."
   },

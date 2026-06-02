@@ -5900,6 +5900,10 @@ function getTextualCatchdownWarnings(...sources) {
     .flatMap((source) => collectPortfolioCatchdownTextSegments(source, seen))
     .map((text) => String(text || "").replace(/\s+/g, " ").trim())
     .filter(Boolean);
+  const unconfirmedOldTheme = segments.find(isTextualUnconfirmedThemeRiskSegment);
+  if (unconfirmedOldTheme) {
+    return [`文本证据显示旧题材未被当前题材雷达确认，不能拿历史热点、旧新闻或旧主力标签当今天的买入依据：${formatTextualUnconfirmedThemeRiskEvidence(unconfirmedOldTheme)}`];
+  }
   const risky = segments.find(isTextualCatchdownRiskSegment);
   if (!risky) return [];
   return [`文本证据显示题材退潮、主力撤离或接盘风险，不能把回调当买点：${shortenPortfolioCustomerText(risky, 96)}`];
@@ -5958,10 +5962,31 @@ function collectPortfolioCatchdownTextSegments(value, seen = new Set()) {
 function isTextualCatchdownRiskSegment(text = "") {
   const value = String(text || "");
   if (!value) return false;
-  if (/(?:暂无|没有|未见|无明显|已解除|风险解除|解除接盘|不构成).{0,16}(?:接盘|退潮|主力撤离|资金撤离|资金流出)/.test(value)) {
+  if (/(?:暂无|没有|未见|无明显|已解除|风险解除|解除接盘|不构成).{0,16}(?:接盘|退潮|主力撤离|资金撤离|资金流出)|(?:已被|已经被|当前题材雷达(?:已|已经)).{0,12}(?:确认|验证)/.test(value)) {
     return false;
   }
-  return /退潮接盘|接盘风险|题材退潮|主力资金撤离|主力撤离|资金撤离|资金流出|回调(?:不是|不作为|不能当|不能作为)买点|不能把回调当(?:成)?买点|表面回调可能继续下探|前十大持仓盘中明显走弱|底层持仓(?:盘中)?(?:明显)?走弱|底层持仓止跌|持仓实时降级/.test(value);
+  return /退潮接盘|接盘风险|题材退潮|主力资金撤离|主力撤离|资金撤离|资金流出|回调(?:不是|不作为|不能当|不能作为)买点|不能把回调当(?:成)?买点|表面回调可能继续下探|前十大持仓盘中明显走弱|底层持仓(?:盘中)?(?:明显)?走弱|底层持仓止跌|持仓实时降级/.test(value)
+    || isTextualUnconfirmedThemeRiskSegment(value);
+}
+
+function isTextualUnconfirmedThemeRiskSegment(text = "") {
+  const value = String(text || "");
+  if (!value) return false;
+  if (/(?:已被|已经被|当前题材雷达(?:已|已经)).{0,12}(?:确认|验证)|(?:未确认|旧题材|历史热点).{0,16}(?:已解除|风险解除|不构成)/.test(value)) {
+    return false;
+  }
+  return /(?:旧题材|旧主力标签|历史热点|旧新闻|旧催化).{0,48}(?:未被|未获|没有|未重新|未通过).{0,32}(?:当前题材雷达|当前雷达|当天题材雷达|今日题材雷达).{0,16}(?:确认|验证)|(?:当前题材雷达|当前雷达|当天题材雷达|今日题材雷达).{0,20}(?:未确认|没有确认|未重新确认|未获确认).{0,48}(?:旧题材|旧主力标签|历史热点|旧新闻|旧催化)|(?:旧题材线索)?未被当前题材雷达确认|(?=.*(?:当前题材雷达|当前雷达))(?=.*(?:未被|未确认|未重新确认|未获确认))(?=.*(?:旧题材|旧主力标签|历史热点|旧新闻|旧催化))/.test(value);
+}
+
+function formatTextualUnconfirmedThemeRiskEvidence(text = "") {
+  const value = String(text || "");
+  const labels = [];
+  if (/历史热点/.test(value)) labels.push("历史热点");
+  if (/旧主力标签|旧主力/.test(value)) labels.push("旧主力标签");
+  if (/旧新闻|旧催化/.test(value)) labels.push("旧新闻/旧催化");
+  if (/旧题材/.test(value)) labels.push("旧题材线索");
+  const label = [...new Set(labels)].slice(0, 3).join("、") || "旧题材线索";
+  return `${label}缺少当前题材雷达确认`;
 }
 
 function getPortfolioWatchThemeSupportGap(item = {}, evidence = null) {

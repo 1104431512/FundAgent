@@ -4233,6 +4233,45 @@ const enforcedTextOnlyCatchdownBuy = manager.enforcePortfolioBuyDiscipline([
 assert.equal(enforcedTextOnlyCatchdownBuy[0].action, "WATCH", "execution guard must convert text-only catchdown BUY actions into WATCH");
 assert.equal(enforcedTextOnlyCatchdownBuy[0].amount, 0, "text-only catchdown BUY actions must be zeroed out");
 assert(enforcedTextOnlyCatchdownBuy[0].dataBasis.includes("来源：portfolio_text_catchdown_guard"), "text-only catchdown execution blocks must preserve the textual guard data source");
+const textOnlyUnconfirmedThemeProfile = {
+  ...verifiedSeedProfile,
+  code: "000016",
+  name: "旧主力标签低位基金C",
+  matchedThemes: [],
+  riskNotes: ["历史热点和旧主力标签未被当前题材雷达确认，不能拿旧新闻当今天的买点。"],
+  actionability: {
+    ...(verifiedSeedProfile.actionability || {}),
+    action: "buy",
+    decisionBlocker: ["旧题材线索未被当前题材雷达确认，只有历史热点标签。"]
+  }
+};
+const textOnlyUnconfirmedThemeBuyGuard = manager.evaluatePortfolioBuyDiscipline(
+  { action: "BUY", code: "000016", name: "旧主力标签低位基金C", amount: 1000 },
+  textOnlyUnconfirmedThemeProfile
+);
+assert.equal(textOnlyUnconfirmedThemeBuyGuard.ok, false, "portfolio buy discipline must block text-only current-radar-unconfirmed historical-hotspot warnings");
+assert(
+  textOnlyUnconfirmedThemeBuyGuard.reason.includes("当前题材雷达确认")
+    && textOnlyUnconfirmedThemeBuyGuard.reason.includes("历史热点")
+    && textOnlyUnconfirmedThemeBuyGuard.evidence.includes("来源：portfolio_text_catchdown_guard"),
+  "text-only current-radar-unconfirmed BUY blocks must explain historical-hotspot and current-radar confirmation risk"
+);
+assert(
+  manager.buildPortfolioWatchReadinessGaps({ code: "000016", status: "ready" }, textOnlyUnconfirmedThemeProfile)
+    .some((item) => item.includes("历史热点") && item.includes("当前题材雷达确认")),
+  "watchlist readiness must downgrade old-main-label text even when structured matchedThemes are missing"
+);
+const textOnlyUnconfirmedActionability = manager.buildFundActionabilitySignals({
+  ...verifiedSeedProfile,
+  code: "000016",
+  name: "旧主力标签低位基金C",
+  riskNotes: ["旧题材线索未被当前题材雷达确认，只有历史热点和旧主力标签，不能当今天的启动依据。"]
+});
+assert.equal(textOnlyUnconfirmedActionability.action, "avoid", "actionability must not surface text-only historical-hotspot candidates as buy or staged-buy");
+assert(
+  textOnlyUnconfirmedActionability.decisionBlocker.some((item) => item.includes("系统文本接盘风险拦截") && item.includes("历史热点")),
+  "actionability blocker must carry text-only current-radar-unconfirmed evidence into UI cards and model prompts"
+);
 const textualRiskNegationProfile = {
   ...verifiedSeedProfile,
   code: "000015",
@@ -7055,6 +7094,63 @@ assert(textOnlyCatchdownFallback.includes("买入0元"), "text-only catchdown fa
 assert(textOnlyCatchdownFallback.includes("资金流出") && textOnlyCatchdownFallback.includes("回调不是买点"), "text-only catchdown fallback must show the textual catchdown evidence");
 assert(textOnlyCatchdownFallback.includes("资金回流"), "text-only catchdown fallback must wait for capital return before reopening review");
 assert(!textOnlyCatchdownFallback.includes("推荐清单："), "text-only catchdown fallback must not produce a recommendation section");
+const textOnlyUnconfirmedAnswerQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000016 旧主力标签低位基金C 可以买入1000元。理由是历史热点回调完成，旧主力标签还在，先小仓验证。",
+  workflow: "fund_qa",
+  userText: "000016 现在能买吗",
+  evidence: {
+    marketDeepDive: {
+      candidates: [{
+        code: "000016",
+        name: "旧主力标签低位基金C",
+        riskNotes: ["旧题材线索未被当前题材雷达确认，只有历史热点和旧主力标签。"],
+        actionability: { action: "buy", decisionBlocker: ["历史热点未被当前题材雷达确认，不能拿旧新闻当今天买点。"] }
+      }]
+    }
+  }
+});
+assert(
+  textOnlyUnconfirmedAnswerQuality.issues.includes("stale_theme_candidate_given_buy_execution"),
+  "quality gate must reject buy amounts for text-only old-main-label/current-radar-unconfirmed evidence"
+);
+assert(
+  textOnlyUnconfirmedAnswerQuality.issues.includes("stale_theme_candidate_given_buy_signal"),
+  "quality gate must reject buy wording for text-only historical-hotspot evidence when the current radar does not confirm it"
+);
+const textOnlyUnconfirmedFallback = manager.buildPullbackQualityFallbackAnswer({
+  userText: setupQuery,
+  issues: textOnlyUnconfirmedAnswerQuality.issues,
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      focus: "pullback_setup_discovery",
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      candidates: [{
+        code: "000016",
+        name: "旧主力标签低位基金C",
+        ok: true,
+        trendProfile: {
+          pullbackSetup: { signal: "pullback_complete", score: 76 },
+          trendLabel: "pullback_complete",
+          entryBias: "buyable_now",
+          return5dPct: 1.1,
+          return10dPct: 2.4,
+          return20dPct: 2.8,
+          return60dPct: -4.2,
+          lowPositionPct120: 30,
+          lowPositionPct250: 42,
+          drawdownFromRecentHighPct: -9.4
+        },
+        riskNotes: ["旧题材线索未被当前题材雷达确认，只有历史热点和旧主力标签。"],
+        actionability: { score: 74, decisionBlocker: ["历史热点未被当前题材雷达确认。"] }
+      }]
+    }
+  }
+});
+assert(textOnlyUnconfirmedFallback.includes("直接结论：这次先不买"), "text-only current-radar-unconfirmed fallback must stay no-buy");
+assert(textOnlyUnconfirmedFallback.includes("买入0元"), "text-only current-radar-unconfirmed fallback must force zero-yuan execution");
+assert(textOnlyUnconfirmedFallback.includes("历史热点") && textOnlyUnconfirmedFallback.includes("当前题材雷达确认"), "text-only current-radar-unconfirmed fallback must show the old-theme radar risk");
+assert(!textOnlyUnconfirmedFallback.includes("推荐清单："), "text-only current-radar-unconfirmed fallback must not produce a recommendation section");
 const textOnlyCatchdownNoBuyQuality = manager.evaluateFundAnswerQuality({
   text: "直接结论：000014 文本退潮低位基金C 先0元观察。原因是资金流出，回调不是买点，等资金回流后再复核。",
   workflow: "fund_qa",
