@@ -20463,10 +20463,11 @@ function evaluatePullbackAnswerDiscipline({ text, userText, evidence }) {
   if (!isPullbackSetupRequest(userText)) return [];
   const deepDive = evidence?.marketDeepDive || null;
   if (deepDive?.selectionDiscipline !== "prefer_pullback_complete_launch_setup_not_chase") return [];
+  const requireThemeOpportunityBacking = shouldRequireThemeOpportunityBackingForDeepDive(deepDive);
 
   const ranked = (deepDive.candidates || []).map((candidate) => ({
     candidate,
-    bucket: classifyPullbackSetupCandidateForSummary(candidate)
+    bucket: classifyPullbackSetupCandidateForSummary(candidate, { requireThemeOpportunityBacking })
   }));
   const mainCodes = new Set(ranked
     .filter((item) => item.bucket === "main_candidate")
@@ -20548,10 +20549,13 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
   const ranked = (deepDive.candidates || [])
     .map((candidate) => ({
       candidate,
-      bucket: classifyPullbackSetupCandidateForSummary(candidate),
+      bucket: classifyPullbackSetupCandidateForSummary(candidate, {
+        requireThemeOpportunityBacking: shouldRequireThemeOpportunityBackingForDeepDive(deepDive)
+      }),
       score: scoreResearchDigestForPullbackSetup(candidate)
     }))
     .sort((a, b) => b.score - a.score);
+  const requireThemeOpportunityBacking = shouldRequireThemeOpportunityBackingForDeepDive(deepDive);
   const main = ranked.filter((item) => item.bucket === "main_candidate").slice(0, 3);
   const watch = ranked.filter((item) => item.bucket !== "main_candidate").slice(0, 3);
 
@@ -20561,7 +20565,7 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
       ? `候选池里偏热样本的近20日约${formatFallbackPct(hottest.return20dPct)}、近60日约${formatFallbackPct(hottest.return60dPct)}，不符合“回调完成后低位启动”。`
       : "候选池没有同时满足回调完成、低位修复和不过热的标的。";
     const watchLines = watch.map((item, index) =>
-      `${index + 1}. ${formatPullbackFallbackWatchCandidate(item.candidate)}`
+      `${index + 1}. ${formatPullbackFallbackWatchCandidate(item.candidate, { requireThemeOpportunityBacking })}`
     );
     return [
       "直接结论：这次先不买，也不硬凑基金代码。",
@@ -20578,7 +20582,7 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
     `${index + 1}. ${formatPullbackFallbackCandidate(item.candidate)}`
   );
   const watchLines = watch.map((item, index) =>
-    `${index + 1}. ${formatPullbackFallbackWatchCandidate(item.candidate)}`
+    `${index + 1}. ${formatPullbackFallbackWatchCandidate(item.candidate, { requireThemeOpportunityBacking })}`
   );
   return [
     "直接结论：只保留符合回调启动纪律的候选，偏热或等待回撤的标的不放进主推荐。",
@@ -20624,12 +20628,12 @@ function formatPullbackFallbackShareAndFee(candidate = {}) {
   return parts.join("，");
 }
 
-function formatPullbackFallbackWatchCandidate(candidate = {}) {
+function formatPullbackFallbackWatchCandidate(candidate = {}, options = {}) {
   const trend = candidate.trendProfile || {};
   const reason = trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback"
     ? "短期偏热或仍需等待回撤"
     : "暂未形成主推荐信号";
-  const gaps = formatPullbackSetupCandidateGaps(candidate);
+  const gaps = formatPullbackSetupCandidateGaps(candidate, options);
   return `${candidate.code || "待复核"} ${candidate.name || candidate.seed?.name || ""}：${reason}，近20日${formatFallbackPct(trend.return20dPct)}，近60日${formatFallbackPct(trend.return60dPct)}；还差：${gaps}。`;
 }
 

@@ -1213,6 +1213,10 @@ const requiredPatterns = [
     message: "pullback/setup discovery must require current theme playbook, news logic, and carrier evidence before pure trend setups become main recommendations."
   },
   {
+    pattern: /(?=[\s\S]*function evaluatePullbackAnswerDiscipline[\s\S]{0,600}shouldRequireThemeOpportunityBackingForDeepDive\(deepDive\)[\s\S]{0,500}classifyPullbackSetupCandidateForSummary\(candidate,\s*\{\s*requireThemeOpportunityBacking\s*\}\))(?=[\s\S]*function buildPullbackQualityFallbackAnswer[\s\S]{0,1200}classifyPullbackSetupCandidateForSummary\(candidate,\s*\{[\s\S]{0,220}shouldRequireThemeOpportunityBackingForDeepDive\(deepDive\))/,
+    message: "answer quality and deterministic fallback must pass deepDive-level theme-playbook requirements into pullback candidate bucketing."
+  },
+  {
     pattern: /(?=[\s\S]*missing_theme_news_logic_explanation)(?=[\s\S]*function evaluateThemeNewsLogicAnswerCoverage)(?=[\s\S]*function shouldRequireThemeNewsLogicExplanation)(?=[\s\S]*题材为什么动)/,
     message: "fund answer quality must require theme/news/current-event logic in customer replies when theme radar evidence is available."
   },

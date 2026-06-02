@@ -4876,6 +4876,38 @@ assert(themeRequiredSummary.includes("题材作战=缺少当前题材雷达/新�
 assert(themeRequiredSummary.includes("题材逻辑有线索，但前十大持仓或指数名称没有证明基金真实承载该题材"), "deep-dive summary must explain representative-fund carrier failures");
 assert(themeRequiredSummary.includes("表面回调可能继续下探"), "deep-dive summary must explain intraday top-holding weakness as a catchdown risk");
 assert(themeRequiredSummary.includes("题材作战=AI/算力主力进场") && themeRequiredSummary.includes("逻辑=主力刚进场"), "deep-dive summary must carry main-capital news logic into candidate evidence");
+const deepDiveOnlyRequirementPureDigest = {
+  ...setupDigest,
+  code: "000051",
+  name: "deepDive层纯走势基金C"
+};
+const deepDiveOnlyRequirementEvidence = {
+  marketDeepDive: {
+    ok: true,
+    focus: "pullback_setup_discovery",
+    selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+    themeOpportunityRequirement: "require_current_theme_playbook",
+    themeRadar: capitalEnteringDigest.seed.matchedThemes,
+    candidates: [deepDiveOnlyRequirementPureDigest]
+  }
+};
+const deepDiveOnlyRequirementQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：分批买入1000元。\n推荐清单：000051 deepDive层纯走势基金C，回调完成、低位修复，先买一点。",
+  workflow: "fund_recommendation",
+  userText: setupQuery,
+  evidence: deepDiveOnlyRequirementEvidence
+});
+assert(
+  deepDiveOnlyRequirementQuality.issues.includes("recommends_without_qualified_pullback_candidate"),
+  "answer quality must apply deepDive-level theme playbook requirements even when candidates lack their own requirement flag"
+);
+const deepDiveOnlyRequirementFallback = manager.buildPullbackQualityFallbackAnswer({
+  userText: setupQuery,
+  evidence: deepDiveOnlyRequirementEvidence,
+  issues: deepDiveOnlyRequirementQuality.issues
+});
+assert(deepDiveOnlyRequirementFallback.includes("直接结论：这次先不买"), "deterministic fallback must not buy pure-trend candidates blocked only by deepDive-level theme requirements");
+assert(deepDiveOnlyRequirementFallback.includes("000051") && deepDiveOnlyRequirementFallback.includes("缺少当前题材雷达/新闻逻辑支撑"), "fallback watch list must explain the deepDive-level theme-playbook blocker");
 const themeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
   redeploymentAccount,
   [{
