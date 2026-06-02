@@ -3995,6 +3995,29 @@ const unsupportedThemeProfile = {
 const unsupportedThemeBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, unsupportedThemeProfile);
 assert.equal(unsupportedThemeBuyGuard.ok, false, "portfolio buy discipline must block BUY when a theme label lacks current main-capital/preheat/rotation support");
 assert(unsupportedThemeBuyGuard.reason.includes("当前主力进场") && unsupportedThemeBuyGuard.evidence.includes("来源：portfolio_theme_support_guard"), "unsupported theme buy block must explain the missing current theme support");
+const unconfirmedOldThemeBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, {
+  ...verifiedSeedProfile,
+  matchedThemes: [{
+    id: "ai_compute",
+    name: "AI/算力",
+    stage: "current_radar_unconfirmed",
+    positionSignal: "current_radar_unconfirmed",
+    actionBias: "wait_current_radar_confirmation",
+    forwardScore: 28,
+    rotationScore: 24,
+    lowPositionScore: 22,
+    capitalFollowScore: 18,
+    preheatScore: 16,
+    catalystProfile: { score: 4, tags: [], summary: "旧预热", risk: true, fresh: false, freshnessLabel: "未被当前题材雷达确认" },
+    newsLogic: "旧题材线索未被当前雷达确认：前期AI算力订单催化。"
+  }]
+});
+assert.equal(unconfirmedOldThemeBuyGuard.ok, false, "portfolio buy discipline must block BUY when a historical theme label is not confirmed by the current market radar");
+assert(
+  unconfirmedOldThemeBuyGuard.reason.includes("旧题材线索未被当前题材雷达确认")
+    && unconfirmedOldThemeBuyGuard.reason.includes("历史热点"),
+  "unconfirmed old-theme buy blocks must explain that stale theme labels cannot be used as today's buy basis"
+);
 const unsupportedThemeRankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
   account: { cash: 90000, totalAsset: 100000, positionWeightPct: 5 },
   watchlist: [{

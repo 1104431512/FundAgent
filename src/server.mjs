@@ -5797,8 +5797,20 @@ function getPortfolioActionableThemeSupportGap(candidate = {}) {
   const themeSignals = getCandidateThemeSignals(candidate);
   const catchdownWarnings = getStaleThemeCatchdownWarnings(candidate);
   if (catchdownWarnings.length) return catchdownWarnings[0];
+  const unconfirmedWarnings = getUnrefreshedMarketThemeWarnings(candidate);
+  if (unconfirmedWarnings.length) return unconfirmedWarnings[0];
   if (!themeSignals.length || hasActionableThemeSupport(candidate)) return "";
   return "缺少当前主力进场、题材预热或低位轮动支撑，不能把回调当成启动买点。";
+}
+
+function getUnrefreshedMarketThemeWarnings(candidate = {}) {
+  return getCandidateThemeSignals(candidate)
+    .filter(isUnrefreshedMarketThemeSignal)
+    .map((theme) => {
+      const name = theme.name || theme.id || "相关题材";
+      return `${name}旧题材线索未被当前题材雷达确认，不能拿历史热点、旧新闻或旧主力标签当今天的买入依据。`;
+    })
+    .slice(0, 3);
 }
 
 function getPortfolioWatchThemeSupportGap(item = {}, evidence = null) {

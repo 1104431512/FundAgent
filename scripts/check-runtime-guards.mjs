@@ -1849,6 +1849,10 @@ const requiredPatterns = [
     message: "unrefreshed theme labels must become non-actionable and carry a readable current-radar warning."
   },
   {
+    pattern: /function getPortfolioActionableThemeSupportGap[\s\S]{0,900}getUnrefreshedMarketThemeWarnings\(candidate\)[\s\S]{0,900}旧题材线索未被当前题材雷达确认[\s\S]{0,700}历史热点/,
+    message: "portfolio BUY discipline must explicitly block old theme labels that are not confirmed by the current radar."
+  },
+  {
     pattern: /function refreshPortfolioWatchlistThemesWithMarketRadar[\s\S]{0,2600}unconfirmedThemeWarning[\s\S]{0,500}item\.status === "ready"[\s\S]{0,160}\?\s*"waiting_pullback"/,
     message: "old unconfirmed theme labels must downgrade ready watchlist candidates before ranking."
   },
