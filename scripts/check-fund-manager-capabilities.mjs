@@ -3697,7 +3697,7 @@ assert.equal(
   true,
   "portfolio buy discipline should allow verified low-position ready candidates"
 );
-const unsupportedThemeBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, {
+const unsupportedThemeProfile = {
   ...verifiedSeedProfile,
   matchedThemes: [{
     id: "unsupported_preheat",
@@ -3715,9 +3715,28 @@ const unsupportedThemeBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action
     catalystProfile: { score: 0, tags: [], summary: "", risk: false },
     newsLogic: ""
   }]
-});
+};
+const unsupportedThemeBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, unsupportedThemeProfile);
 assert.equal(unsupportedThemeBuyGuard.ok, false, "portfolio buy discipline must block BUY when a theme label lacks current main-capital/preheat/rotation support");
 assert(unsupportedThemeBuyGuard.reason.includes("当前主力进场") && unsupportedThemeBuyGuard.evidence.includes("来源：portfolio_theme_support_guard"), "unsupported theme buy block must explain the missing current theme support");
+const unsupportedThemeRankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
+  account: { cash: 90000, totalAsset: 100000, positionWeightPct: 5 },
+  watchlist: [{
+    code: "000010",
+    name: "中证A500ETF联接C",
+    shareClass: "C",
+    status: "ready",
+    lastSnapshot: unsupportedThemeProfile
+  }]
+}));
+assert(
+  unsupportedThemeRankingBoard.lists.find((item) => item.id === "data_confidence")?.items.some((item) => item.code === "000010" && item.decision?.gaps.some((gap) => gap.includes("当前主力进场"))),
+  "manager ranking board must surface missing current theme support as a data/evidence gap"
+);
+assert(
+  !(unsupportedThemeRankingBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "000010"),
+  "customer action deck must not put theme-labeled candidates without current support into buy-review"
+);
 const hotBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000011" }, hotVerifiedSeedProfile);
 assert.equal(hotBuyGuard.ok, false, "portfolio buy discipline must block verified chase-risk buys");
 assert(hotBuyGuard.reason.includes("系统买入纪律拦截"), "blocked portfolio buy must explain the execution-layer guard");

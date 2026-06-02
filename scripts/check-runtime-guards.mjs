@@ -2057,8 +2057,24 @@ const requiredPatterns = [
     message: "portfolio BUY guard must explain when low-position launch or early-turn evidence is missing."
   },
   {
-    pattern: /function evaluatePortfolioBuyDiscipline[\s\S]{0,2600}getCandidateThemeSignals\(profile\)[\s\S]{0,700}!hasActionableThemeSupport\(profile\)[\s\S]{0,500}当前主力进场、题材预热或低位轮动支撑[\s\S]{0,300}portfolio_theme_support_guard/,
+    pattern: /function evaluatePortfolioBuyDiscipline[\s\S]{0,2600}getPortfolioActionableThemeSupportGap\(profile\)[\s\S]{0,500}portfolio_theme_support_guard[\s\S]{0,7000}function getPortfolioActionableThemeSupportGap[\s\S]{0,500}!themeSignals\.length \|\| hasActionableThemeSupport\(candidate\)/,
     message: "portfolio BUY guard must block theme-labeled pullbacks that lack current actionable main-capital, preheat, or rotation support."
+  },
+  {
+    pattern: /function buildPortfolioWatchReadinessGaps[\s\S]{0,2600}getPortfolioWatchThemeSupportGap\(item,\s*evidence\)[\s\S]{0,260}gaps\.push\(themeSupportGap\)/,
+    message: "watchlist readiness must downgrade theme-labeled pullbacks that lack current actionable theme support."
+  },
+  {
+    pattern: /function resolvePortfolioDecisionSynthesisEvidence[\s\S]{0,1200}themeSupportGap[\s\S]{0,1200}先补题材证据/,
+    message: "decision-synthesis ranking must not classify unsupported theme pullbacks as buy-review candidates."
+  },
+  {
+    pattern: /function resolvePortfolioDataConfidenceEvidence[\s\S]{0,1200}getPortfolioWatchThemeSupportGap\(item,\s*snapshot\)[\s\S]{0,900}当前主力进场\|题材预热\|低位轮动支撑/,
+    message: "data-confidence ranking must surface missing current theme support as a critical evidence gap."
+  },
+  {
+    pattern: /function resolvePortfolioSizingBand[\s\S]{0,500}themeSupportGap[\s\S]{0,900}仓位必须保持0元观察/,
+    message: "position-sizing ranking must force 0-yuan observation when current theme support is missing."
   },
   {
     pattern: /还差5日\/10日刚转强证据/,

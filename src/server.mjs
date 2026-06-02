@@ -5319,11 +5319,11 @@ function evaluatePortfolioBuyDiscipline(action = {}, profile = null, positions =
   }
   const trendEvidence = formatPortfolioSeedVerifiedTrendEvidence(profile);
   const themeMicroStarter = hasPortfolioThemeMicroStarterSetup(profile);
-  const themeSignals = getCandidateThemeSignals(profile);
-  if (themeSignals.length && !hasActionableThemeSupport(profile)) {
+  const themeSupportGap = getPortfolioActionableThemeSupportGap(profile);
+  if (themeSupportGap) {
     return {
       ok: false,
-      reason: "系统买入纪律拦截：缺少当前主力进场、题材预热或低位轮动支撑，不能把回调当成启动买点。",
+      reason: `系统买入纪律拦截：${themeSupportGap}`,
       evidence: [trendEvidence, formatCandidateThemeEvidence(profile), "来源：portfolio_theme_support_guard"].filter(Boolean)
     };
   }
@@ -5419,6 +5419,27 @@ function evaluatePortfolioBuyExposureDiscipline(action = {}, profile = null, pos
     };
   }
   return { ok: true, reason: "", evidence };
+}
+
+function getPortfolioActionableThemeSupportGap(candidate = {}) {
+  const themeSignals = getCandidateThemeSignals(candidate);
+  if (!themeSignals.length || hasActionableThemeSupport(candidate)) return "";
+  return "缺少当前主力进场、题材预热或低位轮动支撑，不能把回调当成启动买点。";
+}
+
+function getPortfolioWatchThemeSupportGap(item = {}, evidence = null) {
+  const profile = evidence || item.lastSnapshot || {};
+  return getPortfolioActionableThemeSupportGap({
+    ...profile,
+    code: profile.code || item.code || "",
+    name: profile.name || item.name || "",
+    type: profile.type || item.type || "",
+    matchedThemes: profile.matchedThemes || item.matchedThemes || [],
+    seed: {
+      ...(profile.seed || {}),
+      matchedThemes: profile.seed?.matchedThemes || profile.matchedThemes || item.matchedThemes || []
+    }
+  });
 }
 
 function enforcePortfolioSellDiscipline(actions = [], profiles = [], positions = []) {
@@ -6389,6 +6410,10 @@ function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
   if (hasHighChaseTheme(evidence) || hasHighChaseTheme(item)) {
     gaps.push("题材拥挤或追涨风险仍需下降。");
   }
+  const themeSupportGap = getPortfolioWatchThemeSupportGap(item, evidence);
+  if (themeSupportGap) {
+    gaps.push(themeSupportGap);
+  }
   const holdingCarrierGap = getPortfolioWatchHoldingCarrierGap(evidence);
   if (holdingCarrierGap) {
     gaps.push(holdingCarrierGap);
@@ -6577,6 +6602,7 @@ function evaluatePortfolioWatchReadiness(item = {}, profile = null) {
 function getPortfolioWatchStructuralReadinessCap(gaps = []) {
   const text = (gaps || []).join(" ");
   if (/题材退潮|主力资金撤离|主力撤离/.test(text)) return 46;
+  if (/当前主力进场|题材预热|低位轮动支撑/.test(text)) return 58;
   if (/特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛/.test(text)) return 58;
   if (/基金规模.*不能作为可直接买入|前十大集中度.*过高/.test(text)) return 58;
   if (/持仓承载|前十大持仓未命中题材龙头|承载逻辑需复核|目标主题匹配度不足/.test(text)) return 58;
@@ -6599,6 +6625,7 @@ function scorePortfolioWatchReadinessGapPenalty(gap = "") {
   if (/等待回撤|可操作性仍是等待|入场判断仍是等待/.test(text)) return 14;
   if (/暂时回避|仍是回避/.test(text)) return 28;
   if (/题材退潮|主力资金撤离|主力撤离/.test(text)) return 34;
+  if (/当前主力进场|题材预热|低位轮动支撑/.test(text)) return 24;
   if (/题材拥挤|追涨风险/.test(text)) return 16;
   if (/费用\/份额/.test(text)) return 10;
   if (/快照已过期|重新下钻|复核已过期/.test(text)) return 18;
@@ -9855,6 +9882,7 @@ function resolvePortfolioDecisionSynthesisEvidence(item = {}) {
   const chase = resolvePortfolioChaseRiskEvidence(item);
   const fee = resolvePortfolioWatchFeeSuitabilityEvidence(item);
   const outlook = resolvePortfolioWatchHoldingsOutlook(item);
+  const themeSupportGap = getPortfolioWatchThemeSupportGap(item);
   const readinessScore = Number(item.readinessScore || 0);
   const setupSignal = trend.pullbackSetup?.signal || "";
   const low120 = Number(trend.lowPositionPct120);
@@ -9866,7 +9894,8 @@ function resolvePortfolioDecisionSynthesisEvidence(item = {}) {
     Number.isFinite(low120) && low120 <= 55 ? 8 : 0,
     Number(outlook.score || 0) >= 10 ? 10 : Number(outlook.score || 0) >= 5 ? 5 : 0,
     fee.missingCritical ? -14 : fee.highDrag ? -6 : 5,
-    chase.shouldSurface ? -Math.min(38, Math.max(16, Number(chase.score || 0) * 0.45)) : 0
+    chase.shouldSurface ? -Math.min(38, Math.max(16, Number(chase.score || 0) * 0.45)) : 0,
+    themeSupportGap ? -24 : 0
   ];
   const score = Math.max(0, Math.min(100, scoreParts.reduce((sum, value) => sum + value, 0)));
   const hasPositiveEvidence = readinessScore >= 45
@@ -9874,16 +9903,18 @@ function resolvePortfolioDecisionSynthesisEvidence(item = {}) {
     || ["pullback_complete", "launch_setup"].includes(setupSignal)
     || Number(outlook.score || 0) > 0;
   const shouldSurface = hasPositiveEvidence || chase.shouldSurface || fee.shouldSurface;
-  const buyable = score >= 70 && !chase.shouldSurface && !fee.missingCritical;
-  const starter = score >= 55 && !chase.shouldSurface && !fee.missingCritical;
+  const buyable = score >= 70 && !chase.shouldSurface && !fee.missingCritical && !themeSupportGap;
+  const starter = score >= 55 && !chase.shouldSurface && !fee.missingCritical && !themeSupportGap;
   const action = chase.shouldSurface
     ? "综合回避"
+    : themeSupportGap
+      ? "先补题材证据"
     : buyable
       ? "优先买入复核"
       : starter
         ? "小仓试探复核"
         : "继续观察";
-  const level = chase.shouldSurface ? "warning" : buyable ? "ready" : starter ? "watch" : item.status || "watch";
+  const level = chase.shouldSurface || themeSupportGap ? "warning" : buyable ? "ready" : starter ? "watch" : item.status || "watch";
   const highlights = [
     readinessScore ? `准备度${round(readinessScore, 0)}` : "",
     rotation.leaderPositive && rotation.leaderLabel ? `主力节奏：${rotation.leaderLabel}` : "",
@@ -9895,12 +9926,14 @@ function resolvePortfolioDecisionSynthesisEvidence(item = {}) {
   ].filter(Boolean).slice(0, 3);
   const risks = [
     chase.shouldSurface ? "追涨风险未解除" : "",
+    themeSupportGap || "",
     fee.missingCritical ? "费用/份额证据不足" : "",
     fee.highDrag ? "持有期费用拖累偏高" : "",
     outlook.risks?.[0] || ""
   ].filter(Boolean).slice(0, 3);
   const gaps = [
     !["pullback_complete", "launch_setup"].includes(setupSignal) ? "缺回调完成或启动信号" : "",
+    themeSupportGap || "",
     rotation.missingTheme ? "缺板块轮动证据" : "",
     fee.missingCritical ? "缺费用/份额关键证据" : "",
     !outlook.hasHoldings ? "缺前十大持仓" : ""
@@ -9910,7 +9943,7 @@ function resolvePortfolioDecisionSynthesisEvidence(item = {}) {
     shouldSurface,
     action,
     level,
-    reason: buildPortfolioDecisionSynthesisReason({ buyable, starter, chase, fee, rotation }),
+    reason: buildPortfolioDecisionSynthesisReason({ buyable, starter, chase, fee, rotation, themeSupportGap }),
     facts: [
       readinessScore ? `准备度${round(readinessScore, 0)}` : "",
       rotation.themeName ? `轮动${rotation.themeName}` : "",
@@ -9924,14 +9957,17 @@ function resolvePortfolioDecisionSynthesisEvidence(item = {}) {
     gaps,
     nextStep: chase.shouldSurface
       ? "先按追涨风险榜降级观察，等回撤和拥挤度降温后再恢复买入复核。"
+      : themeSupportGap
+        ? "先补当前题材雷达、新闻催化和主力资金证据；确认前不给买入金额。"
       : buyable || starter
         ? "再和买入准备、费率适配、持仓前景三项交叉确认，通过后只允许小仓或分批。"
         : "继续补齐缺口，不把单一亮点包装成主推荐。"
   };
 }
 
-function buildPortfolioDecisionSynthesisReason({ buyable = false, starter = false, chase = {}, fee = {}, rotation = {} } = {}) {
+function buildPortfolioDecisionSynthesisReason({ buyable = false, starter = false, chase = {}, fee = {}, rotation = {}, themeSupportGap = "" } = {}) {
   if (chase.shouldSurface) return "综合看追涨风险压过买点证据，本轮不应作为主推荐。";
+  if (themeSupportGap) return "走势线索不能脱离当前题材证据；缺少主力、预热或低位轮动支撑时，不把回调包装成买点。";
   if (fee.missingCritical) return "综合证据尚可，但费用/份额证据不足，买入前必须补齐。";
   if (buyable) return "买点、轮动和费用证据相对完整，适合进入优先买入复核。";
   if (rotation.leaderPositive) return "主力进场或新闻预热已经出现，但还要等基金自身买点和费用证据确认。";
@@ -10027,9 +10063,10 @@ function buildPortfolioCashRedeploymentRankingItem(item = {}, context = {}) {
   const trend = item.lastSnapshot?.trendProfile || {};
   const return20d = finiteMetricNumber(trend.return20dPct);
   const low120 = finiteMetricNumber(trend.lowPositionPct120);
+  const themeSupportGap = getPortfolioWatchThemeSupportGap(item);
   const highChase = hasHighChaseTheme(item.lastSnapshot || item)
     || (Number.isFinite(return20d) && return20d > 12 && Number.isFinite(low120) && low120 > 80);
-  if (highChase || item.status === "blocked") return null;
+  if (highChase || item.status === "blocked" || themeSupportGap) return null;
   const ready = item.status === "ready" && readinessScore >= 80;
   const starter = item.status === "ready" || readinessScore >= 60;
   if (!starter) return null;
@@ -10085,11 +10122,12 @@ function buildPortfolioPositionSizingRankingItem(item = {}, account = {}) {
   const trend = item.lastSnapshot?.trendProfile || {};
   const chase = resolvePortfolioChaseRiskEvidence(item);
   const fee = resolvePortfolioWatchFeeSuitabilityEvidence(item);
+  const themeSupportGap = getPortfolioWatchThemeSupportGap(item);
   const cashPct = Number(account.cashPct ?? (Number(account.totalAsset || 0) > 0 ? Number(account.cash || 0) / Number(account.totalAsset || 1) * 100 : NaN));
   const positionWeight = Number(account.positionWeightPct || 0);
   const blockNewBuys = Boolean(account.riskBudget?.blockNewBuys);
   const highChase = chase.shouldSurface || hasHighChaseTheme(item.lastSnapshot || item);
-  const executable = !blockNewBuys && !highChase && !fee.missingCritical && readinessScore >= 55;
+  const executable = !blockNewBuys && !highChase && !fee.missingCritical && !themeSupportGap && readinessScore >= 55;
   const sizing = resolvePortfolioSizingBand({
     item,
     readinessScore,
@@ -10097,7 +10135,8 @@ function buildPortfolioPositionSizingRankingItem(item = {}, account = {}) {
     positionWeight,
     blockNewBuys,
     highChase,
-    feeMissing: fee.missingCritical
+    feeMissing: fee.missingCritical,
+    themeSupportGap
   });
   if (!sizing.shouldSurface) return null;
   const score = Math.max(0, Math.min(100,
@@ -10130,6 +10169,7 @@ function buildPortfolioPositionSizingRankingItem(item = {}, account = {}) {
       risks: [
         blockNewBuys ? "账户回撤预算拦截新增买入。" : "",
         highChase ? "追涨风险未解除，仓位应为0元观察。" : "",
+        themeSupportGap || "",
         fee.missingCritical ? "费用/份额关键证据未补齐，不能给买入仓位。" : ""
       ].filter(Boolean),
       gaps: [
@@ -10143,10 +10183,10 @@ function buildPortfolioPositionSizingRankingItem(item = {}, account = {}) {
   });
 }
 
-function resolvePortfolioSizingBand({ item = {}, readinessScore = 0, cashPct = null, positionWeight = 0, blockNewBuys = false, highChase = false, feeMissing = false } = {}) {
-  if (blockNewBuys || highChase || feeMissing || readinessScore < 45) {
+function resolvePortfolioSizingBand({ item = {}, readinessScore = 0, cashPct = null, positionWeight = 0, blockNewBuys = false, highChase = false, feeMissing = false, themeSupportGap = "" } = {}) {
+  if (blockNewBuys || highChase || feeMissing || themeSupportGap || readinessScore < 45) {
     return {
-      shouldSurface: Boolean(blockNewBuys || highChase || feeMissing || item.status === "ready" || readinessScore >= 45),
+      shouldSurface: Boolean(blockNewBuys || highChase || feeMissing || themeSupportGap || item.status === "ready" || readinessScore >= 45),
       lowerPct: 0,
       upperPct: 0,
       label: "0元观察",
@@ -10155,6 +10195,8 @@ function resolvePortfolioSizingBand({ item = {}, readinessScore = 0, cashPct = n
         ? "账户回撤预算不允许新增买入，本轮只给观察仓位。"
         : highChase
           ? "追涨或高位风险未解除，不能用小仓试探替代风控。"
+          : themeSupportGap
+            ? "当前题材缺少主力/预热/低位轮动支撑，仓位必须保持0元观察。"
           : feeMissing
             ? "费用/份额关键证据未补齐，买入前仓位必须为0。"
             : "准备度不足，暂时不能给试探仓。",
@@ -11652,6 +11694,7 @@ function resolvePortfolioDataConfidenceEvidence(item = {}, options = {}) {
     || ""
   ).trim().toUpperCase();
   const holdings = collectPortfolioWatchHoldingItems(item);
+  const themeSupportGap = getPortfolioWatchThemeSupportGap(item, snapshot);
   const sources = normalizeStringArray([
     ...normalizeStringArray(snapshot.sources),
     ...normalizeStringArray(item.dataBasis),
@@ -11667,10 +11710,11 @@ function resolvePortfolioDataConfidenceEvidence(item = {}, options = {}) {
     trend.ok === false || (!trend.ok && !snapshot.trendSummary) ? "缺可验证走势" : "",
     !shareClass ? "缺份额类别" : "",
     ...missingFeeLabels.map((label) => `缺${label}`),
+    themeSupportGap || "",
     !holdings.length ? "缺前十大持仓" : "",
     !sources.length ? "缺数据来源" : ""
   ].filter(Boolean);
-  const critical = gaps.some((gap) => /缺净值日期|过期|缺份额类别|申购费|销售服务费|缺可验证走势/.test(gap))
+  const critical = gaps.some((gap) => /缺净值日期|过期|缺份额类别|申购费|销售服务费|缺可验证走势|当前主力进场|题材预热|低位轮动支撑/.test(gap))
     || (item.status === "ready" && gaps.length);
   const shouldSurface = Boolean(gaps.length);
   const score = Math.max(0, Math.min(100,
@@ -11703,6 +11747,7 @@ function resolvePortfolioDataConfidenceEvidence(item = {}, options = {}) {
     risks: [
       critical ? "关键数据不完整时给买入金额，会让推荐显得不可靠。" : "",
       missingFeeLabels.length ? "费率或份额不完整会影响A/C/D/I选择和盈利模型。" : "",
+      themeSupportGap ? "缺当前题材支撑时给买入金额，容易把旧题材回调误判成启动。" : "",
       !holdings.length ? "缺前十大持仓会削弱行业前景判断。" : ""
     ].filter(Boolean),
     gaps: gaps.slice(0, 4)
