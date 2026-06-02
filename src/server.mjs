@@ -4738,9 +4738,10 @@ function ensurePortfolioRankingBoardReviewed(decision, managerRankings = {}) {
     if (!entry) return action;
     const basis = action.rankingBasis || formatPortfolioRankingBoardReviewBasis(entry.list, entry.item);
     const dataBasis = mergeStringLists(action.dataBasis, ["来源：manager_ranking_board"]);
-    if (basis !== action.rankingBasis || dataBasis.length !== action.dataBasis.length) enrichedCount += 1;
+    const upgraded = upgradePortfolioRankingBoardWatchAction(action, entry);
+    if (basis !== action.rankingBasis || dataBasis.length !== action.dataBasis.length || upgraded.action !== action.action) enrichedCount += 1;
     return {
-      ...action,
+      ...upgraded,
       rankingBasis: basis,
       dataBasis
     };
@@ -4758,6 +4759,26 @@ function ensurePortfolioRankingBoardReviewed(decision, managerRankings = {}) {
       ]
     ),
     sources: mergeStringLists(normalized.sources, ["manager_ranking_board_guard"])
+  };
+}
+
+function upgradePortfolioRankingBoardWatchAction(action = {}, entry = {}) {
+  const currentAction = String(action.action || "").toUpperCase();
+  if (currentAction !== "WATCH") return action;
+  const reviewAction = inferPortfolioRankingBoardReviewAction(entry.list, entry.item);
+  if (reviewAction !== "BUY") return action;
+  const targetWeightPct = resolvePortfolioRankingReviewTargetWeight(entry.list, entry.item, reviewAction);
+  const nextStep = entry.item?.decision?.nextStep || "";
+  return {
+    ...action,
+    action: "BUY",
+    amount: 0,
+    targetWeightPct,
+    reason: [
+      action.reason || "",
+      "系统榜单升级：该候选已进入主力/预热或买入准备的可执行小仓复核，不能继续空泛观察；下单前仍由净值、费用、仓位和题材退潮守卫二次拦截。"
+    ].filter(Boolean).join(" "),
+    riskControl: nextStep || action.riskControl || "只按榜单给小仓复核；执行前仍要经过净值、费用、仓位和题材退潮守卫。"
   };
 }
 

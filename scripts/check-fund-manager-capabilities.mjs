@@ -936,6 +936,34 @@ const themeMomentumBuyFallback = manager.buildPortfolioRankingBoardReviewActions
 }, []);
 assert.equal(themeMomentumBuyFallback[0]?.action, "BUY", "ranking fallback must turn executable main-capital/preheat micro-starters into BUY reviews");
 assert.equal(themeMomentumBuyFallback[0]?.targetWeightPct, 1.2, "ranking fallback BUY reviews must keep micro-starter sizing caps");
+const themeMomentumUpgradeDecision = manager.ensurePortfolioRankingBoardReviewed({
+  actions: [{ action: "WATCH", code: "000099", name: "低空预热种子基金C", reason: "模型仍然笼统观察。" }],
+  watchlistUpdates: [],
+  learningNotes: [],
+  sources: []
+}, {
+  lists: [{
+    id: "theme_momentum",
+    title: "主力预热机会榜",
+    items: [{
+      rank: 1,
+      code: "000099",
+      name: "低空预热种子基金C",
+      action: "主力预热微型试探",
+      reason: "低空经济有主力进场和新闻逻辑，代表基金已通过微型试探复核。",
+      decision: {
+        highlights: ["主力资金开始配合。"],
+        risks: [],
+        gaps: [],
+        nextStep: "只允许0.5%-1.2%微型试探；下一轮复核主力是否延续。"
+      },
+      status: "ready"
+    }]
+  }]
+});
+assert.equal(themeMomentumUpgradeDecision.actions[0]?.action, "BUY", "ranking guard must upgrade an existing generic WATCH when the theme-momentum board says micro-starter BUY review");
+assert.equal(themeMomentumUpgradeDecision.actions[0]?.targetWeightPct, 1.2, "ranking guard upgrades must preserve the micro-starter cap");
+assert(themeMomentumUpgradeDecision.actions[0]?.reason.includes("系统榜单升级"), "ranking guard upgrades must explain why generic watching was overridden");
 const themeMomentumWatchFallback = manager.buildPortfolioRankingBoardReviewActions({
   lists: [{
     id: "theme_momentum",
@@ -957,6 +985,32 @@ const themeMomentumWatchFallback = manager.buildPortfolioRankingBoardReviewActio
   }]
 }, []);
 assert.equal(themeMomentumWatchFallback[0]?.action, "WATCH", "ranking fallback must keep non-executable preheat candidates as WATCH");
+const themeMomentumNoUpgradeDecision = manager.ensurePortfolioRankingBoardReviewed({
+  actions: [{ action: "WATCH", code: "000098", name: "低空预热观察基金C", reason: "模型观察。"}],
+  watchlistUpdates: [],
+  learningNotes: [],
+  sources: []
+}, {
+  lists: [{
+    id: "theme_momentum",
+    title: "主力预热机会榜",
+    items: [{
+      rank: 1,
+      code: "000098",
+      name: "低空预热观察基金C",
+      action: "主力预热观察",
+      reason: "题材有线索，但基金缺前十大持仓承载证据。",
+      decision: {
+        highlights: ["题材催化仍处预热阶段。"],
+        risks: ["缺前十大持仓承载验证。"],
+        gaps: ["缺前十大持仓"],
+        nextStep: "先观察补证据，题材热但基金不合格时不得买入。"
+      },
+      status: "watch"
+    }]
+  }]
+});
+assert.equal(themeMomentumNoUpgradeDecision.actions[0]?.action, "WATCH", "ranking guard must not upgrade preheat watch candidates that still lack carrier or buy-point evidence");
 const rankingReviewedDecision = manager.ensurePortfolioRankingBoardReviewed({
   actions: [{ action: "WATCH", code: "000001", name: "低位启动基金C", reason: "模型已观察但未引用榜单" }],
   watchlistUpdates: [],
