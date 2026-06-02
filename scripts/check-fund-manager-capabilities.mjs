@@ -5735,6 +5735,37 @@ assert(vehicleRoadCloudTheme.catalystProfile?.summary.includes("政策落地") |
 assert(pcbCopperTheme?.dynamic && pcbCopperTheme.newsLogic.includes("铜缆高速连接需求增长"), "expanded news discovery must catch PCB/copper-link preheat from AI server news");
 assert(pcbCopperTheme.catalystProfile?.summary.includes("产业订单"), "PCB/copper-link preheat must explain the industry-demand catalyst behind the move");
 assert(!expandedNewsOnlyThemeRadar.some((theme) => ["news_innovative_drug_policy", "news_brain_computer_interface"].includes(theme.id) && theme.newsLogic.includes("核电审批加速")), "news-only preheat discovery must not map generic approval/order words to unrelated medical or brain-computer themes");
+const hardTechCatalystRadar = manager.buildThemeRadar({
+  conceptBoards: [],
+  industryBoards: [],
+  fastNews: [
+    { title: "宇树机器人动作应用商店上线 人形机器人量产验证加速", showTime: "10:02", mediaName: "测试快讯" },
+    { title: "空天经济商用牌照发放 可回收火箭技术突破 商业航天星座组网订单落地", showTime: "10:06", mediaName: "测试快讯" },
+    { title: "国产GPU算力芯片订单密集落地 国产大模型推理需求增长", showTime: "10:09", mediaName: "测试快讯" }
+  ],
+  fundCandidates: {
+    stockFunds: [
+      { code: "159010", name: "人形机器人具身智能主题C", type: "股票型基金", oneMonthPct: 1.2, dailyPct: 0.2, shareClass: "C", keywords: ["机器人", "具身智能", "宇树"] },
+      { code: "159011", name: "商业航天空天经济主题C", type: "股票型基金", oneMonthPct: 1.1, dailyPct: 0.2, shareClass: "C", keywords: ["商业航天", "空天经济"] },
+      { code: "159012", name: "国产GPU算力芯片主题C", type: "股票型基金", oneMonthPct: 1.3, dailyPct: 0.2, shareClass: "C", keywords: ["GPU", "AI芯片", "算力"] }
+    ]
+  }
+});
+const hardTechRobotTheme = hardTechCatalystRadar.find((theme) => theme.id === "news_humanoid_robot" || theme.name.includes("人形机器人"));
+const hardTechSpaceTheme = hardTechCatalystRadar.find((theme) => theme.id === "news_commercial_space" || theme.name.includes("商业航天"));
+const hardTechGpuTheme = hardTechCatalystRadar.find((theme) =>
+  ["ai_compute", "semiconductor", "news_domestic_semiconductor"].includes(theme.id)
+  && /GPU|算力芯片|AI芯片/.test(`${theme.newsLogic} ${(theme.themeKeywords || []).join(" ")}`)
+);
+assert(hardTechRobotTheme?.newsLogic.includes("应用商店") && hardTechRobotTheme.newsLogic.includes("量产验证"), "hard-tech preheat must connect humanoid-robot app-store and mass-production news to the theme");
+assert(/产业落地|技术突破/.test(hardTechRobotTheme?.catalystProfile?.summary || ""), "humanoid-robot catalysts must explain industrial landing or technical breakthrough, not only say the sector is hot");
+assert(hardTechSpaceTheme?.newsLogic.includes("牌照发放") && hardTechSpaceTheme.newsLogic.includes("可回收火箭"), "commercial-space preheat must preserve license and reusable-rocket catalyst logic");
+assert(/政策落地|产业落地|技术突破/.test(hardTechSpaceTheme?.catalystProfile?.summary || ""), "commercial-space catalysts must classify why the move is happening");
+assert(hardTechGpuTheme?.newsLogic.includes("国产GPU") && /产业订单|技术突破/.test(hardTechGpuTheme?.catalystProfile?.summary || ""), "GPU/AI-chip preheat must be discovered as compute or semiconductor opportunity with readable catalyst logic");
+assert(
+  manager.buildThemeLeaderboards(hardTechCatalystRadar).preheat.items.some((item) => /人形机器人|商业航天|AI\/算力|半导体/.test(item.name) && /产业落地|技术突破|政策落地/.test(item.catalyst)),
+  "preheat leaderboards must surface hard-tech news catalysts with readable reason labels before the board fully diffuses"
+);
 const staleNewsOnlyThemeRadar = manager.buildThemeRadar({
   conceptBoards: [],
   industryBoards: [],

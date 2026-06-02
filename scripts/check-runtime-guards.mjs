@@ -1161,6 +1161,10 @@ const requiredPatterns = [
     message: "Sina fast-news backup must parse rich_text headlines and expose a traceable source kind for catalyst explanations."
   },
   {
+    pattern: /(?=[\s\S]*THEME_NEWS_KEYWORD_EXPANSIONS)(?=[\s\S]*宇树)(?=[\s\S]*Optimus)(?=[\s\S]*GPU)(?=[\s\S]*空天经济)(?=[\s\S]*可回收火箭)(?=[\s\S]*function extractEmergingNewsTopicTerms[\s\S]{0,1400}应用商店)(?=[\s\S]*function buildNewsCatalystProfile[\s\S]{0,1200}产业落地)(?=[\s\S]*function buildNewsCatalystProfile[\s\S]{0,1500}技术突破)/,
+    message: "theme news discovery must recognize hard-tech preheat catalysts such as humanoid robots, GPU/AI chips, and commercial-space license or breakthrough news."
+  },
+  {
     pattern: /新闻催化：\$\{formatThemeNewsHeadline\(news\[0\]\)\}/,
     message: "theme news logic must use the source/time-aware headline formatter."
   },
