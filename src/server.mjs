@@ -3260,21 +3260,43 @@ function buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot = null) {
   const radarById = new Map(radar.map((theme) => [String(theme.id || theme.name || ""), theme]));
   return leaderItems.map((item) => {
     const theme = radarById.get(String(item.id || "")) || radar.find((candidate) => candidate.name === item.name) || {};
-    const keywords = [
-      item.name,
-      theme.name,
-      ...(Array.isArray(theme.fundKeywords) ? theme.fundKeywords : []),
-      ...(Array.isArray(theme.keywords) ? theme.keywords : [])
-    ];
+    const keywords = collectThemeOpportunitySearchKeywords(theme, {
+      extra: [item.name, item.newsLogic, item.catalyst]
+    });
     return {
       laneKey: item.laneKey,
       name: item.name || theme.name || "",
-      keywords: [...new Set(keywords.map((value) => String(value || "").trim()).filter((value) =>
-        value.length >= 2
-        && !/^(基金|代表基金|主题|板块|概念|行业)$/.test(value)
-      ))]
+      keywords
     };
   }).filter((group) => group.keywords.length);
+}
+
+function collectThemeOpportunitySearchKeywords(theme = {}, options = {}) {
+  const boards = Array.isArray(theme.evidence?.boards) ? theme.evidence.boards : [];
+  const values = [
+    theme.name,
+    ...(Array.isArray(theme.fundKeywords) ? theme.fundKeywords : []),
+    ...(Array.isArray(theme.keywords) ? theme.keywords : []),
+    ...(Array.isArray(theme.themeKeywords) ? theme.themeKeywords : []),
+    ...(Array.isArray(theme.newsKeywords) ? theme.newsKeywords : []),
+    ...(Array.isArray(theme.boardNames) ? theme.boardNames : []),
+    ...(Array.isArray(theme.leaderStocks) ? theme.leaderStocks : []),
+    ...boards.flatMap((board) => [board.name, board.leadStock]),
+    ...(Array.isArray(options.extra) ? options.extra : [])
+  ];
+  return [...new Set(values
+    .flatMap((value) => String(value || "").split(/[，,、/；;\s]+/))
+    .map((value) => value.trim())
+    .filter(isThemeOpportunitySearchKeywordUseful))].slice(0, 18);
+}
+
+function isThemeOpportunitySearchKeywordUseful(value = "") {
+  const text = String(value || "").trim();
+  if (text.length < 2 || text.length > 18) return false;
+  if (/^(基金|代表基金|主题|板块|概念|行业|方向|逻辑|催化|新闻|预热|主力|资金|低位|轮动|回调|机会|测试)$/.test(text)) return false;
+  if (/^(news|dynamic|theme|main|preheat|low|capital)[_-]/i.test(text)) return false;
+  if (/^\d+(?:\.\d+)?%?$/.test(text)) return false;
+  return true;
 }
 
 function inferPortfolioBlockedFollowThroughSearchKeywords(candidates = []) {
@@ -23654,8 +23676,19 @@ function inferFocusedFundSearchKeywords(userText) {
     { needles: ["白银", "沪银"], keywords: ["白银", "贵金属"] },
     { needles: ["半导体", "芯片"], keywords: ["半导体", "芯片"] },
     { needles: ["人工智能", "ai", "算力"], keywords: ["人工智能", "算力"] },
+    { needles: ["端侧ai", "ai手机", "aipc", "ai pc", "ai眼镜", "消费电子"], keywords: ["端侧AI", "消费电子"] },
+    { needles: ["ai应用", "短剧", "版权", "aigc"], keywords: ["AI应用", "传媒", "游戏"] },
     { needles: ["传媒", "信息传媒", "游戏"], keywords: ["传媒", "游戏"] },
     { needles: ["机器人"], keywords: ["机器人"] },
+    { needles: ["低空经济", "飞行汽车", "evtol", "无人机", "通航"], keywords: ["低空经济", "飞行汽车"] },
+    { needles: ["商业航天", "卫星互联网", "低轨", "北斗"], keywords: ["商业航天", "卫星互联网"] },
+    { needles: ["车路云", "智能驾驶", "自动驾驶", "无人驾驶", "v2x"], keywords: ["车路云", "智能驾驶"] },
+    { needles: ["pcb", "铜缆", "高速连接", "覆铜板", "800g"], keywords: ["PCB", "铜缆高速连接"] },
+    { needles: ["数据要素", "数据资产", "数据确权", "数据交易"], keywords: ["数据要素", "数字经济"] },
+    { needles: ["量子", "量子计算", "量子通信"], keywords: ["量子科技", "量子计算"] },
+    { needles: ["可控核聚变", "核聚变", "聚变", "超导"], keywords: ["可控核聚变", "核聚变"] },
+    { needles: ["脑机接口", "脑机", "bci", "神经接口"], keywords: ["脑机接口", "医疗器械"] },
+    { needles: ["固态电池", "半固态"], keywords: ["固态电池", "锂电池"] },
     { needles: ["新能源", "光伏", "锂电", "电池"], keywords: ["新能源", "光伏", "锂电池"] },
     { needles: ["医药", "医疗", "创新药"], keywords: ["医药", "医疗", "创新药"] },
     { needles: ["港股", "恒生", "香港"], keywords: ["港股", "恒生"] },
@@ -23682,7 +23715,7 @@ function inferFocusedFundSearchKeywords(userText) {
     }
   }
 
-  return [...new Set(keywords)].slice(0, 4);
+  return [...new Set(keywords)].slice(0, 8);
 }
 
 async function fetchFocusedFundCandidates(userText) {
@@ -23707,9 +23740,8 @@ async function fetchFocusedFundCandidates(userText) {
 
 function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
   const explicit = inferFocusedFundSearchKeywords(userText);
-  if (explicit.length) return explicit;
-
   const allowPrecious = isPreciousMetalQuestion(userText);
+  const text = normalizeIntentText(userText);
   const radarKeywords = (themeRadar || [])
     .filter((theme) => allowPrecious || theme.id !== "precious_metals")
     .filter((theme) => !isStaleThemeCatchdownRiskTheme(theme))
@@ -23727,15 +23759,34 @@ function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
         || (lowRotationCandidate && !unresolvedLeaderHeat)
         || (leaderCandidate && hasFreshThemeCatalystContext(theme));
     })
-    .flatMap((theme) => [theme.name, ...(theme.fundKeywords || []), ...(theme.keywords || [])])
+    .filter((theme) => !explicit.length || themeMatchesSearchText(theme, text))
+    .flatMap((theme) => collectThemeOpportunitySearchKeywords(theme))
     .filter(Boolean);
+  const scopedRadarKeywords = explicit.length
+    ? radarKeywords.filter((keyword) => {
+        const value = normalizeIntentText(keyword);
+        return value && (text.includes(value) || explicit.some((item) => normalizeIntentText(item) === value));
+      })
+    : radarKeywords;
   const configured = String(process.env.PULLBACK_SETUP_FUND_KEYWORDS || "")
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-  return [...new Set([...(configured.length ? configured : DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS), ...radarKeywords])]
+  const baseKeywords = explicit.length
+    ? explicit
+    : (configured.length ? configured : DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS);
+  return [...new Set([...baseKeywords, ...scopedRadarKeywords])]
     .filter((keyword) => allowPrecious || !isPreciousMetalKeyword(keyword))
     .slice(0, Number(process.env.PULLBACK_SETUP_KEYWORD_LIMIT || 32));
+}
+
+function themeMatchesSearchText(theme = {}, normalizedText = "") {
+  const text = String(normalizedText || "").trim();
+  if (!text) return false;
+  return collectThemeOpportunitySearchKeywords(theme).some((keyword) => {
+    const value = normalizeIntentText(keyword);
+    return value && text.includes(value);
+  });
 }
 
 async function fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar = []) {

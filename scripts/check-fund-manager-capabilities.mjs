@@ -5356,6 +5356,24 @@ assert(
 const actionableSearchKeywords = manager.inferPullbackSetupSearchKeywords("我想找回调完成准备启动的基金", [liveAiTheme, fadingAiTheme]);
 assert(actionableSearchKeywords.some((item) => /AI|算力|人工智能/.test(item)), "pullback setup search must expand actionable main-capital theme keywords");
 assert(!actionableSearchKeywords.some((item) => /CPO|光模块/.test(item)), "pullback setup search must not keep stale outflow themes as discovery keywords");
+const emergingFocusedKeywords = manager.inferPullbackSetupSearchKeywords("帮我找车路云智能驾驶回调完成、准备启动的基金", []);
+assert(
+  emergingFocusedKeywords.some((item) => /车路云|智能驾驶/.test(item)),
+  "direct emerging-theme requests must use specific preheat keywords instead of falling back to old broad sectors"
+);
+const lowAltitudeSeedSearchText = manager.buildPortfolioWatchlistSeedSearchText([], {
+  themeRadar: [lowAltitudeTheme],
+  themeLeaderboards: manager.buildThemeLeaderboards([lowAltitudeTheme])
+});
+const lowAltitudeRecallKeywords = manager.inferPullbackSetupSearchKeywords(lowAltitudeSeedSearchText, [lowAltitudeTheme]);
+assert(
+  lowAltitudeRecallKeywords.some((item) => /低空经济|飞行汽车/.test(item)),
+  "portfolio seed recall must keep dynamic main-capital/preheat theme names even when a broad static keyword also appears"
+);
+assert(
+  lowAltitudeRecallKeywords.some((item) => /万丰奥威/.test(item)),
+  "portfolio seed recall must include live board leader-stock anchors so top-ten holdings can verify theme carriers"
+);
 const selectedThemeSeeds = manager.selectPortfolioWatchlistSeedCandidates([
   { code: "000041", name: "主力低位启动基金C", oneWeekPct: 1.2, oneMonthPct: 2.4, threeMonthPct: -4, sixMonthPct: -8, shareClass: "C", matchedThemes: [liveAiTheme] },
   { code: "000042", name: "退潮回调接盘基金C", oneWeekPct: 1.1, oneMonthPct: 2.2, threeMonthPct: -5, sixMonthPct: -10, shareClass: "C", matchedThemes: [fadingAiTheme] }

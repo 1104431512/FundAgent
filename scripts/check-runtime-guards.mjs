@@ -1201,6 +1201,10 @@ const requiredPatterns = [
     message: "pullback setup discovery keywords must expand actionable themes."
   },
   {
+    pattern: /function inferPullbackSetupSearchKeywords[\s\S]{0,2400}themeMatchesSearchText\(theme,\s*text\)[\s\S]{0,700}scopedRadarKeywords[\s\S]{0,700}\.\.\.baseKeywords,\s*\.\.\.scopedRadarKeywords/,
+    message: "pullback/setup and portfolio seed recall must merge current theme-radar, board, news, and leader-stock keywords instead of being short-circuited by old broad sector terms."
+  },
+  {
     pattern: /(?=[\s\S]*function summarizePortfolioRunMarketSnapshot)(?=[\s\S]*compactThemeLeaderboardsForPublic)(?=[\s\S]*marketSnapshot:\s*summarizePortfolioRunMarketSnapshot\(run\.marketSnapshot\))/,
     message: "portfolio public run summaries must expose compact market theme leaderboards for the admin UI."
   },
@@ -2025,7 +2029,7 @@ const requiredPatterns = [
     message: "portfolio watchlist seeding must search representative funds for live theme opportunities instead of generic low-position funds only."
   },
   {
-    pattern: /function buildPortfolioThemeOpportunityKeywordGroups[\s\S]{0,900}collectPortfolioThemeOpportunityLeaderboardItems[\s\S]{0,900}fundKeywords[\s\S]{0,900}keywords/,
+    pattern: /function buildPortfolioThemeOpportunityKeywordGroups[\s\S]{0,1400}collectPortfolioThemeOpportunityLeaderboardItems[\s\S]{0,900}collectThemeOpportunitySearchKeywords[\s\S]{0,1400}function collectThemeOpportunitySearchKeywords[\s\S]{0,1200}fundKeywords[\s\S]{0,700}newsKeywords/,
     message: "portfolio theme opportunity seed recall must derive grouped theme/fund keywords from main-capital, preheat, and low-rotation leaderboards."
   },
   {
