@@ -3845,17 +3845,28 @@ function buildPortfolioMissedFollowThroughReviewQueue(db = {}) {
   const account = db.account || {};
   const watchlist = normalizePortfolioWatchlist(db.watchlist || []);
   const itemByCode = new Map(watchlist.map((item) => [item.code, item]));
-  const candidates = findPortfolioBacktestMissedFollowThroughCandidates({
-    watchlist,
-    transactions: db.transactions || [],
-    orders: db.orders || [],
-    totalAsset: account.totalAsset || 0
-  });
+  const transactions = getPortfolioDiagnosticTransactions(db);
+  const orders = getPortfolioDiagnosticOrders(db);
+  const candidates = mergePortfolioBacktestOpportunityCandidates(
+    findPortfolioBacktestMissedFollowThroughCandidates({
+      watchlist,
+      transactions,
+      orders,
+      totalAsset: account.totalAsset || 0
+    }),
+    findPortfolioBacktestMissedThemeMomentumCandidates({
+      watchlist,
+      transactions,
+      orders,
+      totalAsset: account.totalAsset || 0
+    })
+  );
   return candidates.slice(0, 6).map((candidate) => {
     const item = itemByCode.get(candidate.code) || {};
     const firstTrigger = normalizeStringArray(item.buyTriggers)[0] || "";
     const firstRisk = normalizeStringArray(item.riskNotes)[0] || "";
     const firstFee = normalizeStringArray(item.feeNotes)[0] || "";
+    const themeMomentum = candidate.opportunityKind === "theme_momentum";
     return {
       code: candidate.code,
       name: candidate.name || item.name || "",
@@ -3863,8 +3874,14 @@ function buildPortfolioMissedFollowThroughReviewQueue(db = {}) {
       readinessScore: candidate.readinessScore,
       followThroughPct: candidate.followThroughPct,
       estimatedStarterOpportunity: candidate.estimatedStarterOpportunity,
+      opportunityKind: candidate.opportunityKind || "follow_through",
+      themeMicroStarter: Boolean(candidate.themeMicroStarter),
+      themeName: candidate.themeName || "",
+      newsLogic: candidate.newsLogic || "",
       evidence: candidate.evidence || "",
-      reviewAction: "小仓试探 / 主动降级 / 明确复查时间三选一",
+      reviewAction: themeMomentum
+        ? "微型试探 / 主动降级 / 明确复查时间三选一"
+        : "小仓试探 / 主动降级 / 明确复查时间三选一",
       firstTrigger,
       firstRisk,
       firstFee,
@@ -3872,6 +3889,9 @@ function buildPortfolioMissedFollowThroughReviewQueue(db = {}) {
       reviewDate: item.reviewDate || "",
       dataBasis: mergeStringLists(item.dataBasis, [
         "来源：portfolio_missed_follow_through_review",
+        themeMomentum ? "类型：主力预热机会成本复核" : "",
+        candidate.themeEvidence || "",
+        candidate.newsLogic ? `新闻逻辑：${candidate.newsLogic}` : "",
         candidate.evidence,
         Number.isFinite(candidate.estimatedStarterOpportunity) ? `估算少赚约${candidate.estimatedStarterOpportunity}元` : ""
       ])
@@ -3890,8 +3910,9 @@ function ensurePortfolioMissedFollowThroughReviewed(decision = {}, db = {}) {
   for (const candidate of queue.slice(0, 3)) {
     if (!candidate.code) continue;
     if ([...existingKeys].some((key) => key.endsWith(`:${candidate.code}`))) continue;
-    const canProbe = candidate.status === "ready" || Number(candidate.readinessScore || 0) >= 85;
-    const targetWeightPct = canProbe ? 1.5 : 0;
+    const themeMomentum = candidate.opportunityKind === "theme_momentum";
+    const canProbe = Boolean(candidate.themeMicroStarter) || candidate.status === "ready" || Number(candidate.readinessScore || 0) >= 85;
+    const targetWeightPct = canProbe ? candidate.themeMicroStarter ? 1.2 : 1.5 : 0;
     nextActions.push({
       action: canProbe ? "BUY" : "WATCH",
       code: candidate.code,
@@ -3899,17 +3920,24 @@ function ensurePortfolioMissedFollowThroughReviewed(decision = {}, db = {}) {
       amount: canProbe && totalAsset > 0 ? round(totalAsset * targetWeightPct / 100, 2) : 0,
       targetWeightPct,
       reason: canProbe
-        ? `系统机会成本复核：${candidate.name || candidate.code} 等待后继续走强，若费用和净值复核通过，本轮应给1.5%以内小仓试探，而不是继续笼统观望。`
+        ? themeMomentum
+          ? `系统主力预热机会成本复核：${candidate.themeName || "相关题材"} 有新闻/资金逻辑，${candidate.name || candidate.code} 等待后继续走强；本轮只给1.2%以内微型试探，而不是继续笼统观望。`
+          : `系统机会成本复核：${candidate.name || candidate.code} 等待后继续走强，若费用和净值复核通过，本轮应给1.5%以内小仓试探，而不是继续笼统观望。`
         : `系统机会成本复核：${candidate.name || candidate.code} 等待后继续走强，但本轮仍需主动降级或写清复查时间；${candidate.firstTrigger || "触发条件未补齐"}。`,
-      rotationCheck: "只处理低位/回调后继续转强的候选，不因新闻热度追高。",
+      rotationCheck: themeMomentum
+        ? candidate.newsLogic || "只跟随主力刚进场或题材预热，必须能解释大涨背后的新闻/资金逻辑。"
+        : "只处理低位/回调后继续转强的候选，不因新闻热度追高。",
       positionCheck: candidate.evidence,
       chaseRisk: candidate.firstRisk || "若继续走强后涨幅过快，下一轮主动降级为等待回撤。",
       feeCheck: candidate.firstFee || "执行前仍需核验份额类别、申购费、销售服务费和赎回规则。",
       riskControl: canProbe
-        ? "仅作小仓验证；若盘中估算转弱、回调修复失败或费用证据不足，系统执行守卫会拦截或降级观察。"
+        ? themeMomentum
+          ? "仅作微型验证；若主力流入消失、新闻催化落空、题材退潮或基金转弱，下一轮撤回或降级。"
+          : "仅作小仓验证；若盘中估算转弱、回调修复失败或费用证据不足，系统执行守卫会拦截或降级观察。"
         : "不买但必须设置复查时间，避免观察池长期沉淀后继续错过。",
       dataBasis: mergeStringLists(candidate.dataBasis, [
         "来源：portfolio_missed_follow_through_guard",
+        themeMomentum ? "来源：portfolio_missed_theme_momentum_guard" : "",
         Number.isFinite(candidate.estimatedStarterOpportunity) ? `等待机会成本估算${candidate.estimatedStarterOpportunity}元` : ""
       ])
     });
@@ -3919,7 +3947,7 @@ function ensurePortfolioMissedFollowThroughReviewed(decision = {}, db = {}) {
     ...decision,
     actions: nextActions,
     learningNotes: mergeStringLists(decision.learningNotes, [
-      `系统机会成本复核：${queue.slice(0, 3).map((item) => `${item.code} ${item.name}`.trim()).join(" / ")} 等待后继续走强，本轮必须给小仓试探、主动降级或复查时间。`
+      `系统机会成本复核：${queue.slice(0, 3).map((item) => `${item.code} ${item.name}`.trim()).join(" / ")} 等待后继续走强，本轮必须给小仓/微型试探、主动降级或复查时间。`
     ])
   };
 }
@@ -11773,36 +11801,57 @@ function buildPortfolioReplacementChoiceReason({ shareAlternatives = [], exposur
 function buildPortfolioOpportunityCostRanking(db = {}, watchlist = []) {
   const account = db.account || {};
   const totalAsset = Number(account.totalAsset || 0);
-  const candidates = findPortfolioBacktestMissedFollowThroughCandidates({
-    watchlist,
-    transactions: getPortfolioDiagnosticTransactions(db),
-    orders: getPortfolioDiagnosticOrders(db),
-    totalAsset
-  });
+  const transactions = getPortfolioDiagnosticTransactions(db);
+  const orders = getPortfolioDiagnosticOrders(db);
+  const candidates = mergePortfolioBacktestOpportunityCandidates(
+    findPortfolioBacktestMissedFollowThroughCandidates({
+      watchlist,
+      transactions,
+      orders,
+      totalAsset
+    }),
+    findPortfolioBacktestMissedThemeMomentumCandidates({
+      watchlist,
+      transactions,
+      orders,
+      totalAsset
+    })
+  );
   const items = candidates.map((candidate) => buildPortfolioRankingItem({
     code: candidate.code,
     name: candidate.name,
-    source: "历史回测",
+    source: candidate.opportunityKind === "theme_momentum" ? "主力预热回测" : "历史回测",
     score: round(
       Number(candidate.readinessScore || 0)
       + Number(candidate.followThroughPct || 0) * 5
       + Math.min(30, Number(candidate.estimatedStarterOpportunity || 0) / 10),
       1
     ),
-    action: "机会成本复核",
+    action: candidate.opportunityKind === "theme_momentum" ? "主力预热机会成本复核" : "机会成本复核",
     reason: candidate.estimatedStarterOpportunity
-      ? `等待后继续走强，按2.5%试探仓估算少赚约${round(candidate.estimatedStarterOpportunity, 2)}元。`
-      : "等待后继续走强，需要复核是不是过度保守。",
+      ? candidate.opportunityKind === "theme_momentum"
+        ? `主力/预热和新闻逻辑出现后仍被当观察，按1.2%微型试探估算少赚约${round(candidate.estimatedStarterOpportunity, 2)}元。`
+        : `等待后继续走强，按2.5%试探仓估算少赚约${round(candidate.estimatedStarterOpportunity, 2)}元。`
+      : candidate.opportunityKind === "theme_momentum"
+        ? "主力/预热和新闻逻辑出现后仍被当观察，需要复核是否错过微型试探。"
+        : "等待后继续走强，需要复核是不是过度保守。",
     facts: [
+      candidate.themeEvidence || "",
+      candidate.newsLogic ? `新闻逻辑${shortenPortfolioCustomerText(candidate.newsLogic, 58)}` : "",
       candidate.evidence || "",
       Number.isFinite(Number(candidate.followThroughPct)) ? `后续走强${formatFallbackPlainPct(candidate.followThroughPct)}` : "",
       Number.isFinite(Number(candidate.readinessScore)) ? `准备度${round(Number(candidate.readinessScore), 0)}` : ""
     ].filter(Boolean),
     decision: {
-      highlights: [candidate.evidence || "等待后继续走强"],
+      highlights: [
+        candidate.opportunityKind === "theme_momentum" ? `${candidate.themeName || "相关题材"}出现主力/预热和新闻逻辑。` : "",
+        candidate.evidence || "等待后继续走强"
+      ].filter(Boolean),
       risks: ["不能追涨补票，要复核当时买点是否仍有效。"],
       gaps: normalizeStringArray(candidate.readinessGaps).slice(0, 2),
-      nextStep: "下一次今日操作必须给小仓试探、主动降级或明确复查时间。"
+      nextStep: candidate.opportunityKind === "theme_momentum"
+        ? "下一次今日操作必须给0.5%-1.2%微型试探、主动降级或明确复查时间。"
+        : "下一次今日操作必须给小仓试探、主动降级或明确复查时间。"
     },
     status: "warning"
   })).sort(compareRankingItems).slice(0, 6);
@@ -14532,6 +14581,32 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
       "买入质量"
     );
   }
+  const missedThemeMomentumCandidates = findPortfolioBacktestMissedThemeMomentumCandidates({
+    watchlist,
+    transactions,
+    orders,
+    totalAsset
+  });
+  if (
+    Number.isFinite(deployableCashPct)
+    && deployableCashPct >= 55
+    && missedThemeMomentumCandidates.length
+    && !account.riskBudget?.blockNewBuys
+  ) {
+    const first = missedThemeMomentumCandidates[0];
+    const names = missedThemeMomentumCandidates.slice(0, 3).map((item) => `${item.code} ${item.name || ""}`.trim()).join(" / ");
+    const opportunityText = Number.isFinite(first.estimatedStarterOpportunity)
+      ? `按1.2%微型试探估算少赚约${round(first.estimatedStarterOpportunity, 2)}元`
+      : "微型试探机会成本待估";
+    const logic = first.newsLogic ? `新闻逻辑：${shortenPortfolioCustomerText(first.newsLogic, 84)}；` : "";
+    add(
+      "warning",
+      "主力预热错过回测",
+      `${missedThemeMomentumCandidates.length} 只主力/预热候选被当观察`,
+      `${names} 已有${first.laneTitle || "主力预热"}、低位温和转强和后续走强证据；${logic}${opportunityText}。下一轮不能把主力进场/题材预热当成普通等待，必须给0.5%-1.2%微型试探、主动降级或明确复查时间。`,
+      "主力跟随"
+    );
+  }
   const blockedFollowThroughCandidates = findPortfolioBacktestBlockedFollowThroughCandidates({
     watchlist,
     transactions,
@@ -14982,6 +15057,98 @@ function findPortfolioBacktestMissedFollowThroughCandidates({
       || Number(b.followThroughPct || 0) - Number(a.followThroughPct || 0));
 }
 
+function findPortfolioBacktestMissedThemeMomentumCandidates({
+  watchlist = [],
+  transactions = [],
+  orders = [],
+  totalAsset = 0
+} = {}) {
+  return normalizePortfolioWatchlist(watchlist)
+    .map((item) => buildPortfolioBacktestThemeMomentumCandidate(item, { transactions, orders, totalAsset }))
+    .filter((item) => item && !item.blockingReason)
+    .filter((item) => !hasRecentPortfolioBuyForCode(item.code, { transactions, orders }, 20))
+    .sort((a, b) => Number(b.estimatedStarterOpportunity || 0) - Number(a.estimatedStarterOpportunity || 0)
+      || Number(b.followThroughPct || 0) - Number(a.followThroughPct || 0)
+      || Number(b.themeScore || 0) - Number(a.themeScore || 0));
+}
+
+function buildPortfolioBacktestThemeMomentumCandidate(item = {}, { totalAsset = 0 } = {}) {
+  const status = normalizePortfolioWatchStatus(item.status || "watch");
+  if (!["ready", "waiting_pullback", "watch"].includes(status)) return null;
+  const profile = item.lastSnapshot || item.snapshot || {};
+  const evidenceSource = {
+    ...profile,
+    name: item.name || profile.name || "",
+    matchedThemes: profile.matchedThemes || item.matchedThemes || [],
+    seed: {
+      ...(profile.seed || {}),
+      name: item.name || profile.seed?.name || profile.name || "",
+      matchedThemes: profile.seed?.matchedThemes || profile.matchedThemes || item.matchedThemes || []
+    }
+  };
+  const theme = selectPortfolioActionableThemeSignal(evidenceSource);
+  if (!theme || !hasThemeCatalystContext(theme)) return null;
+  const trend = profile.trendProfile || item.trendProfile || {};
+  const return5d = finiteMetricNumber(trend.return5dPct);
+  const return10d = finiteMetricNumber(trend.return10dPct);
+  const return20d = finiteMetricNumber(trend.return20dPct);
+  const followThroughPct = selectPortfolioFollowThroughPct({ return5d, return10d, return20d });
+  const themeMicroStarter = Boolean(hasPortfolioThemeMicroStarterSetup(evidenceSource));
+  const blockingReason = getPortfolioBacktestThemeMomentumBlockingReason(item, profile, evidenceSource, theme, { themeMicroStarter });
+  const code = String(item.code || profile.code || "").trim();
+  if (!code || !Number.isFinite(followThroughPct) || followThroughPct < 1.5) return null;
+  const starterCapital = Number.isFinite(Number(totalAsset)) && Number(totalAsset) > 0
+    ? Number(totalAsset) * 0.012
+    : null;
+  const laneTitle = formatPortfolioThemeOpportunityLaneTitle(theme);
+  const themeEvidence = formatCandidateThemeEvidence({ matchedThemes: [theme] });
+  const newsLogic = theme.newsLogic || theme.primaryCatalyst || theme.catalystProfile?.summary || "";
+  return {
+    code,
+    name: item.name || profile.name || "",
+    status,
+    opportunityKind: "theme_momentum",
+    opportunityPriority: 2,
+    readinessScore: Number(resolvePortfolioBacktestWatchReadiness(item).score || 0),
+    themeMicroStarter,
+    themeName: theme.name || theme.id || "",
+    laneTitle,
+    themeScore: scorePortfolioActionableThemeSignal(theme),
+    themeEvidence,
+    newsLogic,
+    catalyst: theme.catalystProfile?.summary || "",
+    blockingReason,
+    followThroughPct,
+    targetWeightPct: 1.2,
+    estimatedStarterOpportunity: Number.isFinite(starterCapital) ? round(starterCapital * followThroughPct / 100, 2) : null,
+    evidence: [
+      `${laneTitle}：${theme.name || theme.id || "相关题材"}`,
+      newsLogic ? `逻辑：${shortenPortfolioCustomerText(newsLogic, 72)}` : "",
+      Number.isFinite(return5d) ? `5日${formatFallbackPct(return5d)}` : "",
+      Number.isFinite(return10d) ? `10日${formatFallbackPct(return10d)}` : "",
+      Number.isFinite(return20d) ? `20日${formatFallbackPct(return20d)}` : ""
+    ].filter(Boolean).join("；")
+  };
+}
+
+function getPortfolioBacktestThemeMomentumBlockingReason(item = {}, profile = {}, evidenceSource = {}, theme = {}, { themeMicroStarter = false } = {}) {
+  const status = normalizePortfolioWatchStatus(item.status || "watch");
+  if (["blocked", "removed"].includes(status)) return "候选状态已被系统拦截";
+  if (hasHighChaseTheme(evidenceSource) || hasStaleThemeCatchdownRisk(evidenceSource) || hasThemeRetreatRisk(evidenceSource)) {
+    return "题材退潮、主力撤离或追涨拥挤风险未解除";
+  }
+  if (!hasThemeCatalystContext(theme)) return "缺少新闻/催化逻辑，不能解释题材大涨原因";
+  if (!themeMicroStarter) return "基金尚未同时满足低位、温和转强和主力预热微型试探条件";
+  if (!hasVerifiedPortfolioFeeEvidence(profile)) return "费用/份额未核验，不能归为可执行主力预热机会";
+  const readiness = resolvePortfolioBacktestWatchReadiness(item);
+  const hardGap = [
+    ...normalizeStringArray(readiness.gaps),
+    ...buildPortfolioWatchStructuralReadinessGaps(item, profile)
+  ].find(isPortfolioRedeploymentHardGap);
+  if (hardGap) return hardGap;
+  return "";
+}
+
 function findPortfolioBacktestBlockedFollowThroughCandidates({
   watchlist = [],
   transactions = [],
@@ -15018,6 +15185,30 @@ function findPortfolioBacktestDataBlockedCandidates(watchlist = []) {
     })
     .filter(Boolean)
     .sort((a, b) => Number(b.readinessScore || 0) - Number(a.readinessScore || 0));
+}
+
+function mergePortfolioBacktestOpportunityCandidates(...groups) {
+  const byCode = new Map();
+  for (const candidate of groups.flat()) {
+    if (!candidate?.code) continue;
+    const existing = byCode.get(candidate.code);
+    const candidateScore = Number(candidate.opportunityPriority || 1) * 1000
+      + Number(candidate.estimatedStarterOpportunity || 0)
+      + Number(candidate.followThroughPct || 0);
+    const existingScore = existing
+      ? Number(existing.opportunityPriority || 1) * 1000
+        + Number(existing.estimatedStarterOpportunity || 0)
+        + Number(existing.followThroughPct || 0)
+      : -Infinity;
+    if (!existing || candidateScore >= existingScore) {
+      byCode.set(candidate.code, candidate);
+    }
+  }
+  return [...byCode.values()].sort((a, b) =>
+    Number(b.opportunityPriority || 1) - Number(a.opportunityPriority || 1)
+    || Number(b.estimatedStarterOpportunity || 0) - Number(a.estimatedStarterOpportunity || 0)
+    || Number(b.followThroughPct || 0) - Number(a.followThroughPct || 0)
+  );
 }
 
 function buildPortfolioBacktestFollowThroughCandidate(item = {}, { transactions = [], orders = [], totalAsset = 0 } = {}) {
@@ -15199,6 +15390,8 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "自选池ready不能只收藏；逐只给0.5%-2.5%试探、降级理由或下一次触发复查时间。", "组合经理");
     } else if (item.label === "机会成本回测") {
       addTask(item, "等待后继续走强要被追责；下一轮必须在低位转强候选里给0.5%-2.5%试探、主动降级或明确触发复查时间。", "组合经理");
+    } else if (item.label === "主力预热错过回测") {
+      addTask(item, "主力/预热题材不能被普通等待吞掉；下一轮必须用新闻逻辑、资金流和基金低位温和转强三件套判断，给0.5%-1.2%微型试探、主动降级或具体复查时间。", "题材分析师");
     } else if (item.label === "候选质量缺口回测") {
       addTask(item, "这些上涨不能直接追买；下一轮要补实时净值、份额费率和可申购渠道，并寻找同主题可执行替代候选。", "基金研究员");
     } else if (item.label === "候选数据源阻塞回测") {
@@ -30143,6 +30336,7 @@ export {
   buildRealtimeFundValuationSeedItems,
   fetchRealtimeFundValuationSnapshot,
   findPortfolioBacktestBlockedFollowThroughCandidates,
+  findPortfolioBacktestMissedThemeMomentumCandidates,
   findDuplicatePortfolioSettlementGroups,
   findStalePortfolioActiveOrders,
   filterFocusedPullbackRankingCandidates,

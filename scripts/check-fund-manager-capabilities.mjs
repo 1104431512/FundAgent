@@ -1118,6 +1118,106 @@ assert(
   manager.buildPortfolioCapabilityActionQueue(conservativeBacktestFixture).some((item) => item.action.includes("仓位不能停在第一轮操作")),
   "capability action queue must turn frozen-position replay into a concrete position-change task"
 );
+const missedThemeMomentumFixture = {
+  account: {
+    cash: 88000,
+    receivableCash: 0,
+    pendingBuyAmount: 0,
+    totalAsset: 100000,
+    positionWeightPct: 3,
+    investedValue: 3000,
+    positions: [],
+    riskBudget: { blockNewBuys: false }
+  },
+  watchlist: [{
+    code: "000041",
+    name: "主力低位启动基金C",
+    status: "watch",
+    readinessScore: 63,
+    reason: "低空经济题材预热，基金低位温和转强，但经理仍归入观察。",
+    buyTriggers: ["主力净流入延续且5日/10日保持温和转强时微型试探"],
+    feeNotes: ["C类销售服务费0.35%/年"],
+    lastSnapshot: {
+      code: "000041",
+      name: "主力低位启动基金C",
+      shareClass: "C",
+      fees: {
+        shareClass: "C",
+        shareClassFeeModel: { type: "sales_service_fee", label: "C类：销售服务费" },
+        salesServiceFeePct: 0.35,
+        feeImpact: { oneYearCostPer10000: 35, missingFeeData: [] }
+      },
+      actionability: {
+        action: "staged_buy",
+        decisionBlocker: []
+      },
+      trendProfile: {
+        ok: true,
+        trendLabel: "uptrend",
+        entryBias: "staged_buy",
+        return5dPct: 1.2,
+        return10dPct: 2.6,
+        return20dPct: 4.8,
+        return60dPct: -2.4,
+        lowPositionPct120: 38,
+        lowPositionPct250: 42,
+        pullbackSetup: { signal: "none", signalText: "低位温和转强" }
+      },
+      matchedThemes: [{
+        id: "low_altitude",
+        name: "低空经济",
+        leaderSignal: "preheat_catalyst",
+        positionSignal: "preheat_catalyst_watch",
+        capitalFollowScore: 62,
+        preheatScore: 68,
+        rotationScore: 57,
+        lowPositionScore: 64,
+        crowdingScore: 22,
+        capitalRetreatScore: 12,
+        avgMainNetInflowPct: 1.6,
+        catalystProfile: { score: 32, summary: "示范区政策加速落地", risk: false },
+        newsLogic: "题材预热：新闻催化：低空经济示范区政策加速落地；主力线索：相关板块资金净流入"
+      }]
+    }
+  }],
+  runs: [
+    { date: "2026-05-21", type: "decision", status: "completed", summary: "继续观察低空经济，暂不买入。", actions: [{ action: "WATCH", code: "000041", reason: "等待确认" }] },
+    { date: "2026-05-22", type: "decision", status: "completed", summary: "仍然观望，没有合格买点。", actions: [{ action: "WATCH", code: "000041", reason: "继续观察" }] },
+    { date: "2026-05-25", type: "decision", status: "completed", summary: "等待机会，0元执行。", actions: [{ action: "WATCH", code: "000041", reason: "等待机会" }] }
+  ],
+  transactions: [],
+  orders: [],
+  settlements: []
+};
+const missedThemeMomentumBacktest = manager.buildPortfolioBacktestDiagnostics(missedThemeMomentumFixture);
+assert(
+  missedThemeMomentumBacktest.items.some((item) => item.label === "主力预热错过回测"),
+  "backtest diagnostics must catch main-capital/preheat setups that were treated as generic waiting"
+);
+assert(
+  missedThemeMomentumBacktest.items.find((item) => item.label === "主力预热错过回测")?.note.includes("新闻逻辑"),
+  "missed theme momentum diagnostics must preserve the news/current-event logic behind the move"
+);
+assert(
+  manager.buildPortfolioCapabilityActionQueue(missedThemeMomentumFixture).some((item) => item.action.includes("主力/预热题材不能被普通等待吞掉")),
+  "capability queue must turn missed main-capital/preheat opportunities into concrete repair work"
+);
+const missedThemeMomentumQueue = manager.buildPortfolioMissedFollowThroughReviewQueue(missedThemeMomentumFixture);
+assert.equal(missedThemeMomentumQueue[0]?.code, "000041", "missed follow-through queue must surface missed main-capital/preheat candidates");
+assert(missedThemeMomentumQueue[0]?.reviewAction.includes("微型试探"), "missed theme momentum review must require a micro-starter/downgrade/recheck decision");
+const missedThemeMomentumDecision = manager.ensurePortfolioMissedFollowThroughReviewed(
+  { actions: [], learningNotes: [] },
+  missedThemeMomentumFixture
+);
+assert.equal(missedThemeMomentumDecision.actions[0].action, "BUY", "missed theme momentum guard must inject a BUY review for executable preheat setups");
+assert.equal(missedThemeMomentumDecision.actions[0].targetWeightPct, 1.2, "missed theme momentum guard must cap injected reviews at the micro-starter size");
+assert(missedThemeMomentumDecision.actions[0].rotationCheck.includes("低空经济") || missedThemeMomentumDecision.actions[0].rotationCheck.includes("题材预热"), "missed theme momentum guard must carry the theme/news logic into the action");
+const missedThemeMomentumRanking = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb(JSON.parse(JSON.stringify(missedThemeMomentumFixture))));
+const themeOpportunityCostList = missedThemeMomentumRanking.lists.find((item) => item.id === "opportunity_cost");
+assert(
+  themeOpportunityCostList?.items.some((item) => item.code === "000041" && item.action.includes("主力预热")),
+  "opportunity-cost ranking must distinguish missed main-capital/preheat candidates from ordinary ready-candidate misses"
+);
 const blockedFollowThroughFixture = {
   account: {
     cash: 90000,

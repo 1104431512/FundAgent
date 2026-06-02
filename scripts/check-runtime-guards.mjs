@@ -1573,12 +1573,20 @@ const requiredPatterns = [
     message: "portfolio backtests must quantify opportunity cost when unbought ready candidates keep rising."
   },
   {
-    pattern: /findPortfolioBacktestMissedFollowThroughCandidates[\s\S]{0,1200}!item\.blockingReason[\s\S]{0,800}readinessScore[\s\S]{0,900}findPortfolioBacktestBlockedFollowThroughCandidates/,
+    pattern: /findPortfolioBacktestMissedFollowThroughCandidates[\s\S]{0,1600}!item\.blockingReason[\s\S]{0,900}readinessScore[\s\S]{0,5200}findPortfolioBacktestBlockedFollowThroughCandidates/,
     message: "portfolio opportunity-cost diagnostics must exclude blocked or structurally unbuyable candidates."
   },
   {
     pattern: /少赚约[\s\S]{0,900}机会成本回测[\s\S]{0,700}等待后继续走强/,
     message: "portfolio diagnostics must explain missed follow-through in user-readable opportunity-cost terms."
+  },
+  {
+    pattern: /(?=[\s\S]*主力预热错过回测)(?=[\s\S]*function findPortfolioBacktestMissedThemeMomentumCandidates)(?=[\s\S]*hasPortfolioThemeMicroStarterSetup)(?=[\s\S]*新闻逻辑)/,
+    message: "portfolio backtests must hold the manager accountable for missing executable main-capital/preheat opportunities with news logic."
+  },
+  {
+    pattern: /主力预热错过回测[\s\S]{0,900}主力\/预热题材不能被普通等待吞掉[\s\S]{0,900}0\.5%-1\.2%微型试探/,
+    message: "portfolio capability queue must turn missed main-capital/preheat opportunities into micro-starter or downgrade decisions."
   },
   {
     pattern: /候选质量缺口回测[\s\S]{0,700}不能直接算作可买机会成本[\s\S]{0,500}扩展数据源和同主题替代品/,
@@ -1795,6 +1803,10 @@ const requiredPatterns = [
   {
     pattern: /function ensurePortfolioMissedFollowThroughReviewed[\s\S]{0,2600}portfolio_missed_follow_through_guard[\s\S]{0,1200}等待后继续走强/,
     message: "portfolio decisions must inject a buy/watch review when historical waiting missed follow-through."
+  },
+  {
+    pattern: /function ensurePortfolioMissedFollowThroughReviewed[\s\S]{0,2600}1\.2%以内微型试探[\s\S]{0,1800}portfolio_missed_theme_momentum_guard/,
+    message: "portfolio decisions must inject capped micro-starter reviews for missed main-capital/preheat opportunities."
   },
   {
     pattern: /等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）[\s\S]{0,900}actions 中必须对前3只给出 BUY\/小仓试探/,
