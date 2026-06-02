@@ -3431,7 +3431,12 @@ function isLowBaseLaunchWatchSeed(candidate = {}) {
   return /低位启动前夜候选|low_base_turn_scan/.test(text);
 }
 
-function formatPortfolioWatchSeedKind(candidate = {}) {
+function formatPortfolioWatchSeedKind(candidate = {}, profile = null) {
+  if (profile && hasPortfolioThemeMicroStarterSetup(profile)) {
+    return hasThemeLowBaseMicroStarterTrendSetup(profile.trendProfile || {})
+      ? "低位主力预热候选"
+      : "主线启动验证候选";
+  }
   if (isLowBaseLaunchWatchSeed(candidate)) return "低位启动前夜候选";
   const text = `${candidate.name || ""} ${(candidate.keywords || []).join(" ")} ${candidate.setupDiscoverySource || ""}`;
   if (/近1周低位转强候选|weekly_reversal_scan/.test(text)) return "近1周低位转强候选";
@@ -3440,6 +3445,12 @@ function formatPortfolioWatchSeedKind(candidate = {}) {
 
 function formatPortfolioWatchSeedCandidateRole(status, seedKind) {
   if (status === "blocked") return "追涨风险拦截候选";
+  if (seedKind === "主线启动验证候选") {
+    return status === "ready" ? "主线启动微型验证备选" : "主线启动观察备选";
+  }
+  if (seedKind === "低位主力预热候选") {
+    return status === "ready" ? "低位主力预热微型试探备选" : "低位主力预热观察备选";
+  }
   if (status === "ready") {
     return seedKind === "低位启动前夜候选" ? "净值验证低位启动前夜备选" : "净值验证低位启动备选";
   }
@@ -3464,7 +3475,7 @@ function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = [], optio
     const verifiedTrendEvidence = formatPortfolioSeedVerifiedTrendEvidence(profile);
     const statusReason = formatPortfolioSeedStatusReason(status, profile);
     const oneYearFeeCost = toNumber(profile?.fees?.feeImpact?.oneYearCostPer10000);
-    const seedKind = formatPortfolioWatchSeedKind(candidate);
+    const seedKind = formatPortfolioWatchSeedKind(candidate, profile);
     return {
       operation: "UPSERT",
       code: candidate.code,
@@ -3490,8 +3501,12 @@ function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = [], optio
         ...(candidate.keywords || []).slice(0, 3).map((keyword) => `召回标签：${keyword}`)
       ].filter(Boolean),
       buyTriggers: [
-        "后续5日/10日继续温和转强，且近20日涨幅不超过10%。",
-        "主题不进入拥挤状态，120日低位或距高点回撤证据得到净值下钻确认。",
+        seedKind === "主线启动验证候选"
+          ? "主力资金和新闻催化继续成立，代表持仓不冲高回落，才允许0.5%-1.2%微型验证。"
+          : "后续5日/10日继续温和转强，且近20日涨幅不超过10%。",
+        seedKind === "主线启动验证候选"
+          ? "题材不进入拥挤/追涨状态，基金前十大仍能承载龙头或指数标的。"
+          : "主题不进入拥挤状态，120日低位或距高点回撤证据得到净值下钻确认。",
         "费用和份额类别适合计划持有期后，再小仓位分批。"
       ],
       riskNotes: [
@@ -3508,7 +3523,9 @@ function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = [], optio
           : ""
       ].filter(Boolean),
       positionPlan: status === "ready"
-        ? "触发后先作为卫星仓小额分批，不直接重仓。"
+        ? seedKind === "主线启动验证候选"
+          ? "只按主线启动微型验证处理，单笔0.5%-1.2%，若新闻或主力退潮立即撤回。"
+          : "触发后先作为卫星仓小额分批，不直接重仓。"
         : status === "blocked"
           ? "暂不买入；只有重新回到低位、回撤完成并消化追涨风险后才复核。"
           : seedKind === "低位启动前夜候选"
@@ -4772,7 +4789,10 @@ function inferPortfolioWatchStatusFromSeedCandidate(candidate = {}, seedScore = 
   if (hasPortfolioVerifiedSeedChaseRisk(candidate, profile)) {
     return "blocked";
   }
-  const verifiedReady = Number(seedScore) >= 60 && hasVerifiedPortfolioBuySetup(profile);
+  const verifiedReady = Number(seedScore) >= 60 && (
+    hasVerifiedPortfolioBuySetup(profile)
+    || hasPortfolioThemeMicroStarterSetup(profile)
+  );
   if (verifiedReady) {
     return "ready";
   }
@@ -4970,6 +4990,11 @@ function formatPortfolioSeedStatusReason(status, profile = null) {
     return "净值下钻暂不可用，先观察，不标记可买。";
   }
   if (status === "ready") {
+    if (profile && hasPortfolioThemeMicroStarterSetup(profile) && !hasVerifiedPortfolioBuySetup(profile)) {
+      return hasThemeLowBaseMicroStarterTrendSetup(profile.trendProfile || {})
+        ? "已用净值、新闻逻辑、主力线索和持仓承载验证低位主力预热微型试探条件。"
+        : "已用净值、新闻逻辑、主力线索和持仓承载验证主线启动微型验证条件。";
+    }
     return "已用净值下钻验证低位/回撤证据，且20日、60日涨幅未过热。";
   }
   if (status === "blocked") {
@@ -5014,8 +5039,10 @@ function formatPortfolioFeeVerificationEvidence(profile = {}) {
 
 function scorePortfolioWatchSeedPriority(seedScore, status, seedKind = "") {
   if (status === "blocked") return 5;
+  if (status === "ready" && ["主线启动验证候选", "低位主力预热候选"].includes(seedKind)) return 1;
   if (status === "ready" && (seedScore >= 72 || seedKind === "低位启动前夜候选")) return 1;
   if (status === "ready") return 2;
+  if (status === "waiting_pullback" && ["主线启动验证候选", "低位主力预热候选"].includes(seedKind)) return 2;
   if (status === "waiting_pullback" && (seedScore >= 64 || seedKind === "低位启动前夜候选")) return 3;
   if (seedScore >= 56) return 4;
   return 4;

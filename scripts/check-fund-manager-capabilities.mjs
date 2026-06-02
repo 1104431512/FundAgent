@@ -4805,6 +4805,24 @@ assert.equal(mainlineLaunchBuyGuard.ok, true, "buy discipline must allow a tiny 
 assert(mainlineLaunchBuyGuard.reason.includes("微型验证仓"), "mainline launch buy guard must label the action as a tiny validation position");
 const mainlineLaunchTradeAmount = manager.resolvePortfolioTradeAmount(redeploymentAccount, { action: "BUY", code: "000025", amount: 8000, targetWeightPct: 8 }, "BUY", null, executableMainlineLaunchDigest);
 assert.equal(mainlineLaunchTradeAmount, 1200, "mainline launch validation sizing must stay capped to the 1.2% theme micro-starter budget");
+const mainlineLaunchSeedUpdates = manager.buildPortfolioWatchlistUpdatesFromSeedCandidates([{
+  code: "000025",
+  name: "主线启动验证基金C",
+  type: "混合型基金",
+  shareClass: "C",
+  oneWeekPct: 3.2,
+  oneMonthPct: 9.4,
+  threeMonthPct: 8.8,
+  sixMonthPct: 16.8,
+  portfolioWatchlistSeedScore: 72,
+  keywords: ["AI算力", "主力进场", "新闻催化"],
+  setupDiscoverySource: "theme_opportunity_seed_scan"
+}], { profiles: [executableMainlineLaunchDigest] });
+assert.equal(mainlineLaunchSeedUpdates[0].status, "ready", "watchlist seed writing must mark executable mainline launch probes as ready for buy review instead of waiting_pullback");
+assert(mainlineLaunchSeedUpdates[0].candidateRole.includes("主线启动"), "watchlist seed role must expose mainline launch probes to the manager UI and prompt");
+assert(mainlineLaunchSeedUpdates[0].reason.includes("主线启动微型验证条件"), "mainline launch seed reason must explain the news/capital/carrier verification path");
+assert(mainlineLaunchSeedUpdates[0].buyTriggers.some((item) => item.includes("主力资金") && item.includes("新闻催化")), "mainline launch seed triggers must require news and main-capital continuation");
+assert(mainlineLaunchSeedUpdates[0].positionPlan.includes("0.5%-1.2%"), "mainline launch seed position plan must keep sizing tiny");
 const noCarrierMicroStarterDigest = {
   ...microStarterDigest,
   code: "000046",
