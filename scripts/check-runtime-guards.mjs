@@ -1797,8 +1797,8 @@ const requiredPatterns = [
     message: "user holding alerts must automatically turn stale-theme or capital-outflow holdings into sell/reduce reminders."
   },
   {
-    pattern: /function buildUserHoldingRiskEvidence[\s\S]{0,900}getCandidateThemeRetreatWarnings[\s\S]{0,500}getStaleThemeCatchdownWarnings/,
-    message: "user holding risk evidence must reuse structured theme-retreat and stale-catchdown warnings."
+    pattern: /function buildUserHoldingRiskEvidence[\s\S]{0,1100}getCandidateThemeRetreatWarnings[\s\S]{0,500}getStaleThemeCatchdownWarnings[\s\S]{0,500}getUnrefreshedMarketThemeWarnings/,
+    message: "user holding risk evidence must reuse structured theme-retreat, stale-catchdown, and current-radar-unconfirmed warnings."
   },
   {
     pattern: /function buildPortfolioBacktestThemeMomentumCandidate[\s\S]{0,900}!theme \|\| !hasFreshThemeCatalystContext\(theme\)/,

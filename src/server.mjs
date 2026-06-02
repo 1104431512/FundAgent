@@ -17425,7 +17425,7 @@ function buildUserPortfolioHoldingManagerNote(holding = {}, profile = null) {
 
 function buildUserPortfolioHoldingAlertHint(holding = {}, profile = null) {
   const evidence = buildUserHoldingRiskEvidence(holding, profile);
-  if (evidence.staleOrRetreatRisk) return "题材退潮或主力撤离，优先复核卖出/减仓。";
+  if (evidence.staleOrRetreatRisk) return "题材退潮、主力撤离或旧题材未被当前雷达确认，优先复核卖出/减仓。";
   const action = String(profile?.actionability?.action || "");
   const trend = profile?.trendProfile || {};
   if (/avoid|sell|reduce|回避|减仓|止盈|止损/.test(action)) return "需要优先复核是否减仓或卖出。";
@@ -17448,7 +17448,7 @@ function buildUserPortfolioAlerts(portfolio = {}) {
       if (riskEvidence.staleOrRetreatRisk) {
         level = "warning";
         actionText = "复核卖出/减仓";
-        reason = riskEvidence.reason || "题材退潮或主力撤离，不能把回调当作继续持有理由。";
+        reason = riskEvidence.reason || "题材退潮、主力撤离或旧题材未被当前雷达确认，不能把回调当作继续持有理由。";
       } else if (/avoid|sell|reduce|回避|减仓|止盈|止损/.test(action)) {
         level = "warning";
         actionText = "复核卖出/减仓";
@@ -17487,9 +17487,15 @@ function buildUserHoldingRiskEvidence(holding = {}, profile = null) {
   };
   const retreatWarnings = getCandidateThemeRetreatWarnings(candidate);
   const staleWarnings = getStaleThemeCatchdownWarnings(candidate);
+  const unrefreshedWarnings = getUnrefreshedMarketThemeWarnings(candidate);
+  const reason = [
+    retreatWarnings[0],
+    unrefreshedWarnings[0],
+    staleWarnings[0]
+  ].filter((item, index, list) => item && list.indexOf(item) === index).slice(0, 2).join("；");
   return {
-    staleOrRetreatRisk: retreatWarnings.length > 0 || staleWarnings.length > 0,
-    reason: retreatWarnings[0] || staleWarnings[0] || ""
+    staleOrRetreatRisk: retreatWarnings.length > 0 || staleWarnings.length > 0 || unrefreshedWarnings.length > 0,
+    reason
   };
 }
 

@@ -72,6 +72,30 @@ const normalizedUserPortfolios = manager.normalizeUserPortfolios([
             newsLogic: "前期热点降温，主力资金撤离，缺少新的订单或政策催化。"
           }]
         }
+      },
+      {
+        code: "000043",
+        name: "旧热点未确认持仓C",
+        visibleReturnPct: -4.8,
+        visibleReturnLabel: "持仓收益",
+        lastSnapshot: {
+          code: "000043",
+          name: "旧热点未确认持仓C",
+          matchedThemes: [{
+            id: "old_robotics",
+            name: "机器人旧热点",
+            stage: "current_radar_unconfirmed",
+            positionSignal: "current_radar_unconfirmed",
+            actionBias: "wait_current_radar_confirmation",
+            capitalFollowScore: 24,
+            preheatScore: 16,
+            forwardScore: 22,
+            rotationScore: 18,
+            avgMainNetInflowPct: -1.7,
+            catalystProfile: { fresh: false, risk: true, freshnessLabel: "未被当前题材雷达确认" },
+            newsLogic: "旧题材线索未被当前雷达确认：只有历史热点标签，没有今天的新闻时事、主力接力或板块预热证据。"
+          }]
+        }
       }
     ]
   }
@@ -876,6 +900,8 @@ assert(rankingBoard.alertCenter.lanes.find((lane) => lane.id === "data")?.items.
 assert(rankingBoard.alertCenter.lanes.find((lane) => lane.id === "user")?.items.some((item) => item.code === "021959"), "alert center must surface user holding alerts");
 assert(rankingBoard.alertCenter.lanes.find((lane) => lane.id === "user")?.items.some((item) => item.code === "000042" && /卖出|减仓/.test(item.action || "")), "alert center must turn user-held stale-theme catchdown positions into sell/reduce reminders");
 assert(rankingBoard.lists.find((item) => item.id === "user_holding_alerts")?.items.some((item) => item.code === "000042" && /主力|退潮|回调不是买点/.test(item.reason || "")), "user holding alert ranking must explain stale-theme or capital-outflow risk for real customer holdings");
+assert(rankingBoard.alertCenter.lanes.find((lane) => lane.id === "user")?.items.some((item) => item.code === "000043" && /卖出|减仓/.test(item.action || "")), "alert center must turn user-held current-radar-unconfirmed old themes into sell/reduce reminders");
+assert(rankingBoard.lists.find((item) => item.id === "user_holding_alerts")?.items.some((item) => item.code === "000043" && /旧题材线索未被当前题材雷达确认|历史热点/.test(item.reason || "")), "user holding alert ranking must explain unconfirmed old-theme risk for real customer holdings");
 assert(rankingBoard.priorityQueue?.length >= 3, "manager ranking board must build a cross-list priority queue");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "008327" && item.listId === "sell_risk"), "priority queue must include urgent sell-risk items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000006" && item.listId === "chase_risk"), "priority queue must include chase-risk warning items");
