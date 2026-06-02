@@ -2353,6 +2353,26 @@ const requiredPatterns = [
     message: "holding-derived theme exposure must reopen only when same-direction current radar, main-capital, or news support is present."
   },
   {
+    pattern: /function hasPortfolioCurrentThemeRadarSupport[\s\S]{0,520}isPortfolioThemeRefreshFreshEnough\(refresh\)[\s\S]{0,900}function isPortfolioThemeRefreshFreshEnough[\s\S]{0,220}evaluatePortfolioThemeRefreshFreshness/,
+    message: "current theme radar support must reject expired or unverified radar snapshots before reopening buys."
+  },
+  {
+    pattern: /function evaluatePortfolioThemeRefreshFreshness[\s\S]{0,1300}PORTFOLIO_THEME_REFRESH_MAX_AGE_DAYS[\s\S]{0,600}重新刷新主力资金\/新闻催化/,
+    message: "stale theme refresh blocks must use configurable freshness and customer-readable Chinese explanations."
+  },
+  {
+    pattern: /function hasPortfolioCurrentSupportForHoldingTheme[\s\S]{0,520}isPortfolioThemeRefreshFreshEnough\(holdingThemeRefresh,\s*\{\s*label:\s*"前十大持仓题材雷达"\s*\}\)/,
+    message: "holding-theme support must also reject stale holding-theme radar refresh snapshots."
+  },
+  {
+    pattern: /function getPortfolioActionableThemeSupportGap[\s\S]{0,1300}getStalePortfolioThemeRefreshWarnings\(candidate\)[\s\S]{0,220}staleThemeRefreshWarnings\[0\]/,
+    message: "theme support gaps must surface stale radar refresh snapshots before vague wait-state language."
+  },
+  {
+    pattern: /buildPortfolioStaleCatchdownRiskRankingItem[\s\S]{0,1800}staleThemeRefreshRisk[\s\S]{0,2200}旧雷达接盘拦截[\s\S]{0,2600}当前主力资金\/新闻催化刷新/,
+    message: "catchdown risk ranking must surface expired theme-radar support as an old-radar trap."
+  },
+  {
     pattern: /(?=[\s\S]*function getPortfolioThemeSupportRequirement[\s\S]{0,900}isBroadPortfolioExposureText)(?=[\s\S]*function isBroadPortfolioExposureText)/,
     message: "portfolio theme support guard must exempt broad/core funds from sector-radar-only blocking."
   },

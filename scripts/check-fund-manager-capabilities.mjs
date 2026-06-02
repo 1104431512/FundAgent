@@ -13,6 +13,7 @@ const adminHtmlSource = fs.readFileSync(path.join(process.cwd(), "public", "admi
 const adminStyleSource = fs.readFileSync(path.join(process.cwd(), "public", "styles.css"), "utf8");
 const manager = await import(serverPath);
 const todayIso = new Date().toISOString().slice(0, 10);
+const freshThemeRefreshAt = `${todayIso}T09:30:00.000Z`;
 
 assert.equal(manager.shouldPersistRuntimeStats(), false, "capability checks must not write synthetic failures into runtime stats");
 assert(!serverSource.includes("uniqueCodes.slice(0, 6)"), "fund enrichment must not hard-limit coverage to only six funds");
@@ -148,6 +149,7 @@ const normalizedRankingDb = manager.normalizePortfolioDb({
       lastSnapshot: {
         marketThemeRefresh: {
           source: "current_market_theme_radar",
+          refreshedAt: freshThemeRefreshAt,
           matchedThemeNames: ["新能源"],
           supportSignals: ["低位轮动支撑", "主力资金回流"],
           summary: "新能源链低位轮动，宁德时代/比亚迪等持仓承载。"
@@ -4556,6 +4558,7 @@ assert(
 const genericHoldingCurrentSupportedProfile = {
   ...genericHoldingNoRadarProfile,
   marketThemeRefresh: {
+    refreshedAt: freshThemeRefreshAt,
     matchedThemeNames: ["CPO/光模块"],
     supportLabel: "当前主力进场",
     supportSignals: ["CPO/光模块主力资金净流入", "新闻催化保持新鲜"],
@@ -4567,9 +4570,73 @@ assert.equal(
   true,
   "holding-theme support guard must reopen review when the same bottom-layer theme has current main-capital/news radar support"
 );
+const staleMarketThemeRefreshProfile = {
+  ...genericHoldingNoRadarProfile,
+  code: "000047",
+  name: "人工智能主题低位基金C",
+  unitNav: 1.234,
+  snapshotDate: todayIso,
+  marketThemeRefresh: {
+    source: "current_market_theme_radar",
+    refreshedAt: "2000-01-01T00:00:00.000Z",
+    matchedThemeNames: ["CPO/光模块"],
+    supportLabel: "当前主力进场",
+    supportSignals: ["CPO/光模块主力资金净流入", "新闻催化保持新鲜"],
+    summary: "CPO/光模块方向有主力资金净流入和新闻催化确认"
+  }
+};
+const staleMarketThemeRefreshGuard = manager.evaluatePortfolioBuyDiscipline(
+  { action: "BUY", code: "000047", name: "人工智能主题低位基金C", amount: 1000 },
+  staleMarketThemeRefreshProfile
+);
+assert.equal(staleMarketThemeRefreshGuard.ok, false, "stale market theme refresh must not reopen BUY discipline even when its old support text looks positive");
+assert(
+  staleMarketThemeRefreshGuard.reason.includes("当前题材雷达已过期")
+    && staleMarketThemeRefreshGuard.reason.includes("重新刷新主力资金/新闻催化"),
+  "stale market theme refresh BUY block must explain that old main-capital/news support needs a fresh radar refresh"
+);
+assert(
+  manager.buildPortfolioWatchReadinessGaps({ code: "000047", name: "人工智能主题低位基金C", status: "ready" }, staleMarketThemeRefreshProfile)
+    .some((item) => item.includes("当前题材雷达已过期") && item.includes("重新刷新主力资金/新闻催化")),
+  "watchlist readiness must expose stale radar snapshots instead of a vague wait state"
+);
+const staleMarketThemeRefreshActionability = manager.buildFundActionabilitySignals(staleMarketThemeRefreshProfile);
+assert(["wait", "avoid"].includes(staleMarketThemeRefreshActionability.action), "actionability must not surface stale-radar support as buy or staged-buy");
+assert(
+  staleMarketThemeRefreshActionability.decisionBlocker.some((item) => item.includes("当前题材雷达已过期")),
+  "actionability blockers must carry stale radar evidence into customer cards"
+);
+const staleMarketThemeRefreshQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000047 人工智能主题低位基金C 可以小仓买入1000元。理由是当前主力进场、基金回调完成并且低位修复。",
+  workflow: "fund_qa",
+  userText: "000047 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [staleMarketThemeRefreshProfile] } }
+});
+assert(
+  staleMarketThemeRefreshQuality.issues.includes("stale_theme_candidate_given_buy_execution")
+    && staleMarketThemeRefreshQuality.issues.includes("stale_theme_candidate_given_buy_signal"),
+  "quality gate must reject buy wording when the only theme support is an expired radar snapshot"
+);
+const staleMarketThemeRefreshRanking = manager.buildPortfolioStaleCatchdownRiskRanking([{
+  code: "000047",
+  name: "人工智能主题低位基金C",
+  status: "ready",
+  readinessScore: 90,
+  lastSnapshot: staleMarketThemeRefreshProfile
+}]);
+assert(
+  staleMarketThemeRefreshRanking.items.some((item) =>
+    item.code === "000047"
+    && item.action.includes("旧雷达")
+    && item.facts.some((fact) => fact.includes("当前题材雷达已过期"))
+    && item.decision?.gaps?.some((gap) => gap.includes("当前主力资金/新闻催化刷新"))
+  ),
+  "stale radar support must appear in the catchdown risk lane so the manager explains why it is not buying"
+);
 const genericHoldingBroadAiSupportedProfile = {
   ...genericHoldingNoRadarProfile,
   marketThemeRefresh: {
+    refreshedAt: freshThemeRefreshAt,
     matchedThemeNames: ["AI/算力"],
     supportLabel: "当前主力进场",
     supportSignals: ["AI应用主力资金净流入", "大模型新闻催化保持新鲜"],
