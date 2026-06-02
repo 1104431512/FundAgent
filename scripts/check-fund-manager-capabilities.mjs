@@ -7441,6 +7441,20 @@ assert(
   manager.normalizeUserFacingFundAnswer("把握度：高。").includes("我对这条判断把握度较高"),
   "localization pass must rewrite translated confidence labels into natural Chinese"
 );
+const unsolicitedScoreQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：先分批买入1000元。\n评分：82/100。\n理由是题材有催化，走势低位修复。",
+  workflow: "fund_recommendation",
+  userText: setupQuery,
+  evidence: { marketDeepDive: { candidates: [setupDigest] } }
+});
+assert(unsolicitedScoreQuality.issues.includes("unsolicited_score_label"), "quality gate must reject score labels when the user did not ask for scoring");
+const requestedScoreQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：先观察。\n评分：62/100。\n理由是回调修复还没完全确认，等待触发。",
+  workflow: "fund_screening",
+  userText: "这只基金帮我打分，评分是多少",
+  evidence: { marketDeepDive: { candidates: [setupDigest] } }
+});
+assert(!requestedScoreQuality.issues.includes("unsolicited_score_label"), "quality gate may allow score labels when the user explicitly asks for scoring");
 const numericDumpAnswer = [
   "直接结论：分批买入1000元。",
   "000001 低位基金C：近5日+1.1%，近10日+2.2%，近20日+3.3%，近60日-4.4%，近120日+5.5%，120日位置38.5%，250日位置42.2%，距高点-7.1%，夏普0.8，回撤-12.3%，规模42亿，费率0.4%。",
@@ -7783,6 +7797,7 @@ const localizationOnlyAnswer = await manager.enforceFundAnswerQuality({
 assert(localizationOnlyAnswer.includes("结论：分批买入"), "quality enforcement should accept deterministic localization when it fixes English labels");
 assert(localizationOnlyAnswer.includes("我对这条判断把握度较高"), "quality enforcement should rewrite stiff confidence labels before model rewrite");
 assert(!/\b(?:Verdict|Confidence|Score|staged buy)\b/i.test(localizationOnlyAnswer), "quality enforcement localization pass must remove raw English labels");
+assert(!/评分\s*[：:]\s*82/.test(localizationOnlyAnswer), "quality enforcement must remove unsolicited score labels after deterministic localization");
 const noChartGuideSanitized = manager.appendFundReportChartReadingGuide(
   "Verdict: staged buy. Confidence: high. Score: 82/100.",
   []

@@ -257,6 +257,10 @@ const requiredPatterns = [
     message: "fund answer quality gate must reject stiff confidence labels such as 信心：高。"
   },
   {
+    pattern: /(?=[\s\S]*unsolicited_score_label)(?=[\s\S]*function isExplicitScoreRequest)(?=[\s\S]*function removeUnsolicitedScoreLabels)(?=[\s\S]*除非用户明确要求评分)/,
+    message: "fund answer quality gate must reject unsolicited score labels and keep default answers action-and-reason first."
+  },
+  {
     pattern: /raw_english_section_leak/,
     message: "fund answer quality gate must reject English section headers such as Manager Decision."
   },

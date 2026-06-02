@@ -20597,7 +20597,7 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
       ? "1. 开场结论：先说现在是继续拿、分批减仓、触发卖出还是立即回避；同时给“多久复核/多久考虑卖”的自然时间范围。"
       : isComparison
       ? "1. 开场结论：首选哪只/哪几只、把握度、选择理由；不需要给每只基金都打完整单基分。"
-      : "1. 开场结论：结论、把握度、评分，并用一句话解释这个分数的含义，例如“61/100 = 可观察但还没到重仓”。",
+      : "1. 开场结论：结论、自然把握度和一句理由；除非用户明确要求评分，不要输出分数或“评分：xx”。",
     isHeldSellPlan
       ? "2. 图里这只基金：用截图事实、联网补全和推断分开说明走势位置、持仓状态、当前主要矛盾；如果看不到成本/仓位，要说明仍可先给条件计划。"
       : isComparison
@@ -20705,7 +20705,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
     "2. 题材雷达：先列 1-3 个相关题材的中文板块位置、主力节奏、新闻逻辑、拥挤度、为什么现在值得/不值得看；不要输出任何内部字段名。",
     "3. 自评估：这类需求是否适合现在做、把握度如何、适合激进/均衡/保守哪类。",
-    "4. 推荐清单：优先 3-4 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号、5日/10日早期转强、120日区间低位、趋势/自评估动作、为什么入选，以及“配图看什么”。只能使用快照、下钻或经理自选候选池中的候选代码；如果没有足够代码，就写“待复核方向”。",
+    "4. 推荐清单：优先 3-4 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号、趋势/自评估动作、为什么入选，以及“配图看什么”。5日/10日早期转强、120日区间低位、回撤、费用里只保留最能改变动作的2-3个数字，其余改成自然中文。只能使用快照、下钻或经理自选候选池中的候选代码；如果没有足够代码，就写“待复核方向”。",
     "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
     "5. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
     "6. 备选观察：如果有未到买点但值得等的候选，列 3-5 个备选，说明还差什么触发，以及对应配图看什么；偏热、追涨或回避对象单独写排除原因，不要混进备选。",
@@ -20837,7 +20837,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
 }
 
 async function enforceFundAnswerQuality({ text, workflow, userText, intent, evidence }) {
-  const localizedText = normalizeUserFacingFundAnswer(text);
+  const localizedText = removeUnsolicitedScoreLabels(normalizeUserFacingFundAnswer(text), userText);
   if (String(process.env.FUND_ANSWER_QUALITY_GATE ?? "true") === "false") {
     return localizedText;
   }
@@ -20911,6 +20911,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "若质检问题包含 insufficient_chart_linked_candidates，必须补足 12 张左右可配图候选：主买入参考和备选观察分开写，每只都写代码、买入/备选角色、图上看的走势/回撤/低位/费用证据。",
       "若质检问题包含 missing_market_data_quality_disclosure，必须在前两段用自然中文说明公开数据缺口、缺了哪些模块，并把结论降级为观察、待复核、少量试探或不重仓。",
       "若质检问题包含 numeric_dump_without_interpretation，必须删除大部分指标堆砌：每只基金最多保留3个最能改变动作的数字，其余改成走势、位置、触发条件和操作理由。",
+      "若质检问题包含 unsolicited_score_label，说明用户没有要求打分却出现“评分/得分/Score: xx”；必须删掉评分字段，改成自然把握度和操作理由。",
       "若证据没有 mainCandidateCodes，必须直接说明暂未筛到合格的回调完成/低位启动主推荐，不能硬凑基金代码。",
       "保持适合飞书卡片阅读，不要 Markdown 表格或代码块。",
       "",
@@ -21012,12 +21013,16 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
     && /\b(?:verdict|confidence|score|buy|staged\s*buy|staged|wait|avoid|hold|switch)\b\s*[：:]?/i.test(String(text || ""));
   const rawEnglishSectionLeak = workflow !== "conversation" && hasRawEnglishFundSectionLeak(text);
   const numericOverload = workflow !== "conversation" && hasNumericDumpWithoutInterpretation(body);
+  const unsolicitedScoreLabel = workflow !== "conversation"
+    && !isExplicitScoreRequest(userText)
+    && /(?:^|[\n。；;])\s*(?:评分|得分|综合评分|Score)\s*[：:]\s*\d{1,3}(?:\s*\/\s*100)?/i.test(String(text || ""));
 
   if (hasInternalFundSignalLeak(body)) issues.push("internal_signal_leak");
   if (stiffConfidenceLabel) issues.push("stiff_confidence_label");
   if (rawEnglishActionLeak) issues.push("raw_english_action_leak");
   if (rawEnglishSectionLeak) issues.push("raw_english_section_leak");
   if (numericOverload) issues.push("numeric_dump_without_interpretation");
+  if (unsolicitedScoreLabel) issues.push("unsolicited_score_label");
   issues.push(...evaluateMarketDataQualityDisclosure({ text, workflow, evidence }));
   issues.push(...evaluateStaleFundEvidenceActionDiscipline({ text, evidence }));
   issues.push(...evaluateStaleThemeCatchdownAnswerDiscipline({ text, evidence }));
@@ -21036,6 +21041,19 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   }
 
   return { ok: issues.length === 0, issues };
+}
+
+function isExplicitScoreRequest(userText = "") {
+  return /(评分|打分|多少分|几分|score|rate|rating)/i.test(String(userText || ""));
+}
+
+function removeUnsolicitedScoreLabels(text = "", userText = "") {
+  const value = String(text || "");
+  if (isExplicitScoreRequest(userText)) return value;
+  return value
+    .replace(/(^|[\n。；;.])\s*(?:评分|得分|综合评分)\s*[：:]\s*\d{1,3}(?:\s*\/\s*100)?\s*[。.]?(?=\s|$)/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function evaluateThemeNewsLogicAnswerCoverage({ text, workflow, userText, evidence }) {
