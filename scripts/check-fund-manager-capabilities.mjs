@@ -7107,6 +7107,13 @@ assert(
   ),
   "main-capital news-backed preheat themes must enter opportunity leaderboards with visible capital evidence and next-step logic"
 );
+assert(
+  [...mainForceNewsBoards.mainCapital.items, ...mainForceNewsBoards.preheat.items].some((item) =>
+    item.name.includes("人形机器人")
+    && item.evidence?.some((chip) => /新闻：.*测试快讯.*10:16/.test(chip))
+  ),
+  "theme leaderboard evidence chips must show the fresh news source and timestamp behind a main-capital/preheat move"
+);
 const mainForceNewsMomentum = manager.buildPortfolioThemeMomentumRanking([{
   code: "159013",
   name: "人形机器人执行器主题C",

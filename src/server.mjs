@@ -24044,7 +24044,16 @@ function buildThemeLeaderboardEvidenceChips(theme = {}) {
   const maxFlow = Number(theme.maxMainNetInflowPct);
   const retreat = Number(theme.capitalRetreatScore);
   const board = theme.evidence?.boards?.[0] || {};
+  const news = theme.evidence?.news?.[0] || {};
   if (theme.newsDiscovered) chips.push("新闻自动发现");
+  if (news.mediaName || news.showTime || news.title) {
+    const sourceLine = [
+      news.mediaName || "",
+      news.showTime || news.time || "",
+      news.title ? shortenPortfolioCustomerText(news.title, 24) : ""
+    ].filter(Boolean).join(" ");
+    chips.push(`新闻：${sourceLine}`);
+  }
   if (Number.isFinite(flow)) {
     chips.push(flow >= 0 ? `主力净流入${formatFallbackPlainPct(flow)}` : `主力净流出${formatFallbackPlainPct(Math.abs(flow))}`);
   } else if (Number.isFinite(maxFlow) && maxFlow > 0) {

@@ -1249,6 +1249,10 @@ const requiredPatterns = [
     message: "theme leaderboards must expose next steps, invalidation boundaries, and evidence chips instead of score-only theme items."
   },
   {
+    pattern: /function buildThemeLeaderboardEvidenceChips[\s\S]{0,600}theme\.evidence\?\.news\?\.\[0\][\s\S]{0,900}新闻：/,
+    message: "theme leaderboard evidence chips must include fresh news source/time evidence for why-move explanations."
+  },
+  {
     pattern: /function compactThemeLeaderboardItem[\s\S]{0,700}whyMove:\s*buildThemeLeaderboardWhyMove\(theme\)[\s\S]{0,900}function buildThemeLeaderboardWhyMove[\s\S]{0,900}为什么动/,
     message: "theme leaderboards must expose a customer-readable why-move line instead of only raw newsLogic or scores."
   },
