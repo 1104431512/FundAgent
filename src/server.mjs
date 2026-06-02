@@ -3007,18 +3007,7 @@ function shouldForcePortfolioDataBlockedSeedScan(account = {}, watchlist = []) {
 function shouldForcePortfolioThemeOpportunitySeedScan(marketSnapshot = null, watchlist = []) {
   const keywordGroups = buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot);
   if (!keywordGroups.length) return false;
-  const activeText = normalizeIntentText(normalizePortfolioWatchlist(watchlist)
-    .filter((item) => !["blocked", "removed"].includes(item.status))
-    .map((item) => [
-      item.name,
-      item.reason,
-      item.candidateRole,
-      item.positionPlan,
-      ...(item.setupEvidence || []),
-      ...(item.buyTriggers || []),
-      ...(item.lastSnapshot?.matchedThemes || []).flatMap((theme) => [theme.name, theme.id])
-    ].filter(Boolean).join(" "))
-    .join(" "));
+  const activeText = buildPortfolioWatchlistThemeCoverageText(watchlist);
   return keywordGroups.some((group) =>
     !group.keywords.some((keyword) => {
       const value = normalizeIntentText(keyword);
@@ -14517,7 +14506,7 @@ function findLatestPortfolioMarketSnapshot(db = {}) {
 
 function buildPortfolioWatchlistThemeCoverageText(watchlist = []) {
   return normalizeIntentText(normalizePortfolioWatchlist(watchlist)
-    .filter((item) => !["blocked", "removed"].includes(item.status))
+    .filter(isPortfolioThemeRepresentativeCoverageCandidate)
     .map((item) => [
       item.name,
       item.reason,
@@ -14528,6 +14517,36 @@ function buildPortfolioWatchlistThemeCoverageText(watchlist = []) {
       ...(item.lastSnapshot?.matchedThemes || []).flatMap((theme) => [theme.name, theme.id, ...(theme.themeKeywords || []), ...(theme.fundKeywords || []), ...(theme.keywords || [])])
     ].filter(Boolean).join(" "))
     .join(" "));
+}
+
+function isPortfolioThemeRepresentativeCoverageCandidate(item = {}) {
+  const status = normalizePortfolioWatchStatus(item.status || "watch");
+  if (["blocked", "removed"].includes(status)) return false;
+  const profile = buildPortfolioThemeCoverageProfile(item);
+  const themes = getCandidateThemeSignals(profile);
+  if (!themes.length) return false;
+  if (hasStaleThemeCatchdownRisk(profile) || hasThemeRetreatRisk(profile) || hasHighChaseTheme(profile)) return false;
+  if (themes.some(isActionableThemeSupport) && !hasVerifiedThemeCarrierEvidence(profile)) return false;
+  return true;
+}
+
+function buildPortfolioThemeCoverageProfile(item = {}) {
+  const profile = item.lastSnapshot && typeof item.lastSnapshot === "object" ? item.lastSnapshot : {};
+  return {
+    ...profile,
+    code: profile.code || item.code || "",
+    name: profile.name || item.name || "",
+    type: profile.type || item.type || "",
+    matchedThemes: profile.matchedThemes || item.matchedThemes || [],
+    seed: {
+      ...(profile.seed || {}),
+      matchedThemes: profile.seed?.matchedThemes || profile.matchedThemes || item.matchedThemes || []
+    },
+    holdings: profile.holdings || item.holdings || null,
+    topHoldings: profile.topHoldings || item.topHoldings || [],
+    holdingsOutlook: profile.holdingsOutlook || profile.actionability?.holdingsOutlook || item.holdingsOutlook || null,
+    actionability: profile.actionability || item.actionability || null
+  };
 }
 
 function isPortfolioHotChasePosition(position = {}) {

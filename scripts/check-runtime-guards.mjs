@@ -1961,6 +1961,14 @@ const requiredPatterns = [
     message: "theme representative gap detection must compare theme leaderboard keywords against active watchlist coverage."
   },
   {
+    pattern: /function buildPortfolioWatchlistThemeCoverageText[\s\S]{0,500}filter\(isPortfolioThemeRepresentativeCoverageCandidate\)/,
+    message: "theme coverage must only count usable representative candidates, not stale text matches in the watchlist."
+  },
+  {
+    pattern: /function isPortfolioThemeRepresentativeCoverageCandidate[\s\S]{0,1200}hasStaleThemeCatchdownRisk[\s\S]{0,700}hasVerifiedThemeCarrierEvidence/,
+    message: "usable theme representatives must reject stale/retreat/chase candidates and require verified carrier evidence for actionable live themes."
+  },
+  {
     pattern: /function inferPortfolioBlockedFollowThroughSearchKeywords[\s\S]{0,2200}信息传媒[\s\S]{0,900}QDII[\s\S]{0,900}新能源车[\s\S]{0,900}医药/,
     message: "blocked or data-gapped replacement scans must infer theme keywords such as media, QDII, new-energy vehicles, and healthcare."
   },

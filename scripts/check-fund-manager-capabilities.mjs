@@ -452,10 +452,60 @@ assert.equal(
     code: "000099",
     name: "低空预热种子基金C",
     status: "waiting_pullback",
-    reason: "已覆盖低空经济代表基金观察。"
+    reason: "已覆盖低空经济代表基金观察。",
+    lastSnapshot: livePreheatSeedProfile
   }]),
   false,
   "theme opportunity seed recall must stop once the active watchlist already covers that live theme"
+);
+const noCarrierThemeWatchlist = [{
+  code: "000098",
+  name: "低空经济名义基金C",
+  status: "waiting_pullback",
+  reason: "名字像低空经济，但前十大持仓没有证明承载题材。",
+  lastSnapshot: {
+    ...livePreheatSeedProfile,
+    code: "000098",
+    name: "低空经济名义基金C",
+    topHoldings: ["600519 贵州茅台 8.1%", "000858 五粮液 7.4%", "601318 中国平安 4.2%"],
+    holdings: {
+      ok: true,
+      equityDisclosureDate: "2099-03-31",
+      equityTopHoldings: ["600519 贵州茅台 8.1%", "000858 五粮液 7.4%", "601318 中国平安 4.2%"]
+    },
+    holdingsOutlook: null,
+    actionability: null
+  }
+}];
+assert.equal(
+  manager.shouldForcePortfolioThemeOpportunitySeedScan(liveThemeOpportunitySnapshot, noCarrierThemeWatchlist),
+  true,
+  "same-theme watchlist items without top-holding carrier evidence must not block live theme representative recall"
+);
+const retreatThemeWatchlist = [{
+  code: "000097",
+  name: "低空经济退潮基金C",
+  status: "waiting_pullback",
+  reason: "旧低空经济候选，表面回调但主力撤离。",
+  lastSnapshot: {
+    ...livePreheatSeedProfile,
+    code: "000097",
+    name: "低空经济退潮基金C",
+    matchedThemes: [{
+      ...livePreheatSeedProfile.matchedThemes[0],
+      retreatSignal: "capital_outflow",
+      stage: "theme_fading",
+      positionSignal: "capital_outflow_watch",
+      capitalRetreatScore: 82,
+      avgMainNetInflowPct: -3.8,
+      newsLogic: "题材退潮：主力资金撤离，旧催化已经失效。"
+    }]
+  }
+}];
+assert.equal(
+  manager.shouldForcePortfolioThemeOpportunitySeedScan(liveThemeOpportunitySnapshot, retreatThemeWatchlist),
+  true,
+  "same-theme watchlist items with capital-outflow or stale-catchdown risk must not block fresh representative recall"
 );
 const themeRepresentativeGapDb = {
   account: { cash: 82000, totalAsset: 100000, positionWeightPct: 8, positions: [] },
