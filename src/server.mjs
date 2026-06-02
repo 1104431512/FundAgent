@@ -11504,6 +11504,7 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
   if (!evidence.staleCatchdownRisk && !evidence.themeRetreatRisk && !evidence.holdingRealtimeCatchdownRisk) return null;
   const theme = evidence.theme || {};
   const trend = evidence.trend || {};
+  const staleCatalyst = theme.catalystProfile?.fresh === false;
   const retreatFacts = [
     evidence.holdingRealtimeWarning || "",
     ...(evidence.holdingRealtimeFacts || []),
@@ -11525,9 +11526,11 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
     name: item.name,
     source: "主力撤离拦截",
     score: round(score, 1),
-    action: evidence.holdingRealtimeCatchdownRisk ? "底层持仓接盘拦截" : evidence.staleCatchdownRisk ? "退潮接盘强拦截" : "主力撤离回避",
+    action: evidence.holdingRealtimeCatchdownRisk ? "底层持仓接盘拦截" : staleCatalyst ? "旧催化接盘强拦截" : evidence.staleCatchdownRisk ? "退潮接盘强拦截" : "主力撤离回避",
     reason: evidence.holdingRealtimeCatchdownRisk
       ? "前十大持仓盘中明显走弱，基金净值的回调修复可能只是跟跌前半段，不能直接当成启动买点。"
+      : staleCatalyst
+        ? "题材上涨逻辑停留在旧新闻/旧催化上，当前缺少新鲜主力进场证据，基金净值的回调修复不能直接当成启动买点。"
       : "题材资金已经退潮或主力撤离，基金净值的回调修复不能直接当成启动买点。",
     facts: retreatFacts.slice(0, 5),
     decision: {
@@ -11535,13 +11538,15 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
       risks: [
         evidence.holdingRealtimeCatchdownRisk
           ? "底层龙头没有止跌前，买基金容易接到下一段补跌。"
+          : staleCatalyst
+            ? "旧催化如果没有新资金接力，低位反弹很容易变成接盘。"
           : "容易买在旧题材反弹尾端，后续若主力不回流，回撤会明显放大。",
         evidence.themeRisk || "题材退潮或主力资金撤离，先等资金回流。",
         evidence.positionRisk || ""
       ].filter(Boolean),
       gaps: [
         "缺主力资金回流",
-        "缺新的新闻/政策/产业预热",
+        staleCatalyst ? "缺新鲜新闻/政策/产业预热" : "缺新的新闻/政策/产业预热",
         evidence.holdingRealtimeCatchdownRisk ? "缺底层持仓止跌确认" : "",
         "缺板块重新转强后的代表基金确认"
       ].filter(Boolean),

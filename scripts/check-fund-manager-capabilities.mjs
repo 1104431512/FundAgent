@@ -5345,6 +5345,22 @@ assert(
     && !staleNewsLeaderboards.mainCapital.items.some((item) => item.name === "AI/算力"),
   "old-catalyst themes must not appear in preheat or main-capital leaderboards"
 );
+const staleNewsCatchdownRanking = manager.buildPortfolioStaleCatchdownRiskRanking([{
+  code: "000044",
+  name: "人工智能旧催化基金C",
+  status: "ready",
+  readinessScore: 88,
+  lastSnapshot: staleNewsPullbackDigest
+}]);
+assert(
+  staleNewsCatchdownRanking.items.some((item) =>
+    item.code === "000044"
+    && item.action.includes("旧催化")
+    && item.reason.includes("旧新闻/旧催化")
+    && item.decision?.risks?.some((risk) => risk.includes("接盘"))
+  ),
+  "stale-catchdown ranking must explain old catalysts as a visible no-buy risk, not only as a hidden score penalty"
+);
 const retreatThemeRadar = manager.buildThemeRadar({
   conceptBoards: [
     { boardCode: "BKAI9", name: "CPO", changePct: -3.4, mainNetInflowPct: -4.2, leadStock: "新易盛", quoteTime: "10:45", coverageSources: ["主力流出榜", "跌幅榜"] },
