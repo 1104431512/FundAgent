@@ -23847,10 +23847,18 @@ function buildThemeNewsFreshnessProfile(news = []) {
     }))
     .filter((item) => Number.isFinite(item.time));
   if (!parsed.length) {
+    if ((news || []).length) {
+      return {
+        fresh: false,
+        freshnessMinutes: null,
+        freshnessLabel: "新闻未标时间，不能当实时催化",
+        latestNewsTime: ""
+      };
+    }
     return {
       fresh: true,
       freshnessMinutes: null,
-      freshnessLabel: "未标时间，按人工/系统注入催化处理",
+      freshnessLabel: "无新闻时间，按人工/系统注入催化处理",
       latestNewsTime: ""
     };
   }

@@ -5875,6 +5875,27 @@ assert(liveAiTheme.catalystProfile?.fresh !== false && liveAiTheme.catalystProfi
 const matchedAiThemes = manager.matchCandidateThemes({ code: "000024", name: "人工智能主题C", type: "股票型基金" }, [liveAiTheme]);
 assert(matchedAiThemes[0]?.catalystProfile?.summary.includes("产业订单"), "matched fund themes must preserve catalyst type so fund candidates inherit why the theme is rising");
 assert(matchedAiThemes[0]?.catalystProfile?.fresh !== false, "matched fund themes must preserve catalyst freshness so old news cannot support a buy");
+const untimedNewsThemeRadar = manager.buildThemeRadar({
+  conceptBoards: [
+    { boardCode: "BKAI_NO_TIME", name: "人工智能", changePct: 1.2, mainNetInflowPct: 2.4, leadStock: "工业富联", quoteTime: "10:32" }
+  ],
+  industryBoards: [],
+  fastNews: [{ title: "AI算力订单改善 产业链公司获机构调研", mediaName: "测试快讯" }],
+  fundCandidates: {
+    stockFunds: [{ code: "000054", name: "人工智能无时间新闻基金C", type: "股票型基金", oneMonthPct: 2.6, dailyPct: 0.4, shareClass: "C" }]
+  }
+});
+const untimedAiTheme = untimedNewsThemeRadar.find((theme) => theme.id === "ai_compute");
+assert(untimedAiTheme?.catalystProfile?.fresh === false, "theme radar must not treat untimed fast news as realtime catalyst evidence");
+assert(untimedAiTheme.newsLogic.includes("新闻未标时间"), "untimed news must be explained as a freshness gap instead of hidden behind a preheat label");
+assert(
+  !manager.buildThemeLeaderboards([untimedAiTheme]).mainCapital.items.some((item) => item.name === "AI/算力"),
+  "main-capital leaderboard must not promote sectors whose news catalyst lacks a timestamp"
+);
+assert(
+  !manager.hasActionableThemeSupport({ code: "000054", name: "人工智能无时间新闻基金C", matchedThemes: [untimedAiTheme] }),
+  "untimed news must not satisfy actionable main-capital/preheat theme support"
+);
 const rankBackedThemeRadar = manager.buildThemeRadar({
   conceptBoards: [{
     boardCode: "BKAI3",

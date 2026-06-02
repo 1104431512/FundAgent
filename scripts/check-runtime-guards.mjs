@@ -1177,6 +1177,10 @@ const requiredPatterns = [
     message: "theme catalyst logic must track headline freshness and block stale news from actionable main-capital/preheat support."
   },
   {
+    pattern: /function buildThemeNewsFreshnessProfile[\s\S]{0,900}news \|\| \[\]\)\.length[\s\S]{0,500}新闻未标时间，不能当实时催化/,
+    message: "theme catalyst freshness must reject news items that have no traceable timestamp."
+  },
+  {
     pattern: /function getStaleCatalystThemeWarnings[\s\S]{0,900}旧新闻\/旧催化[\s\S]{0,700}今天的买点/,
     message: "old catalysts must produce a customer-readable warning before they can be treated as setup evidence."
   },
