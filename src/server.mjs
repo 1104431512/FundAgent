@@ -18492,21 +18492,26 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
 
 function buildMarketDeepDiveSummary(deepDive) {
   if (!deepDive) return "未执行候选基金下钻。";
+  const requireThemeOpportunityBacking = shouldRequireThemeOpportunityBackingForDeepDive(deepDive);
   const lines = [
     `deepDive.ok=${Boolean(deepDive.ok)}`,
     deepDive.focus ? `deepDive.focus=${deepDive.focus}` : "",
     deepDive.selectionDiscipline ? `selectionDiscipline=${deepDive.selectionDiscipline}` : "",
+    requireThemeOpportunityBacking ? "themeOpportunityRequirement=require_current_theme_playbook" : "",
     Array.isArray(deepDive.backfillCodes) && deepDive.backfillCodes.length ? `backfillCodes=${deepDive.backfillCodes.join("/")}` : "",
     Array.isArray(deepDive.chartBackfillCodes) && deepDive.chartBackfillCodes.length ? `chartBackfillCodes=${deepDive.chartBackfillCodes.join("/")}` : "",
     Array.isArray(deepDive.searchKeywords) && deepDive.searchKeywords.length ? `searchKeywords=${deepDive.searchKeywords.join("/")}` : ""
   ].filter(Boolean);
+
+  lines.push(...formatMarketDeepDiveThemeOpportunityPlaybook(deepDive, { requireThemeOpportunityBacking }));
 
   if (deepDive.selectionDiscipline === "prefer_pullback_complete_launch_setup_not_chase") {
     const ranked = (deepDive.candidates || [])
       .map((candidate) => ({
         candidate,
         setupRankScore: scoreResearchDigestForPullbackSetup(candidate),
-        bucket: classifyPullbackSetupCandidateForSummary(candidate)
+        bucket: classifyPullbackSetupCandidateForSummary(candidate, { requireThemeOpportunityBacking }),
+        requireThemeOpportunityBacking
       }))
       .sort((a, b) => b.setupRankScore - a.setupRankScore);
     const mainCandidates = ranked.filter((item) => item.bucket === "main_candidate").slice(0, 5);
@@ -18527,11 +18532,103 @@ function buildMarketDeepDiveSummary(deepDive) {
   return lines.join("\n");
 }
 
-function classifyPullbackSetupCandidateForSummary(candidate = {}) {
+function shouldRequireThemeOpportunityBackingForDeepDive(deepDive = {}) {
+  return deepDive?.themeOpportunityRequirement === "require_current_theme_playbook"
+    || deepDive?.requireThemeOpportunityBacking === true;
+}
+
+function shouldRequireThemeOpportunityBackingForQuestion(userText = "", themeRadar = [], options = {}) {
+  if (!Array.isArray(themeRadar) || !themeRadar.length) return false;
+  if (isPreciousMetalQuestion(userText)) return false;
+  const normalized = normalizeIntentText(userText);
+  return Boolean(
+    options.preferPullbackSetup
+    || options.forRecommendation
+    || hasAny(normalized, ["主力", "资金", "题材", "热点", "板块", "预热", "新闻", "时事", "催化", "轮动", "低位", "启动"])
+  );
+}
+
+function formatMarketDeepDiveThemeOpportunityPlaybook(deepDive = {}, options = {}) {
+  const radar = Array.isArray(deepDive?.themeRadar) ? deepDive.themeRadar.filter(Boolean) : [];
+  if (!radar.length) {
+    return options.requireThemeOpportunityBacking
+      ? ["themeOpportunityPlaybook=当前没有可用题材雷达，主推荐必须降级为待复核。"]
+      : [];
+  }
+  const lanes = [
+    {
+      title: "主力进场",
+      filter: (theme) => !hasThemeCapitalRetreatRisk(theme)
+        && hasFreshThemeCatalystContext(theme)
+        && (
+          theme.leaderSignal === "capital_entering"
+          || theme.positionSignal === "main_capital_entering"
+          || Number(theme.capitalFollowScore) >= 58
+        ),
+      nextStep: "找代表基金，必须同时验证低位温和转强、前十大持仓或指数名称能承载题材。"
+    },
+    {
+      title: "题材预热",
+      filter: (theme) => !hasThemeCapitalRetreatRisk(theme)
+        && hasFreshThemeCatalystContext(theme)
+        && (
+          theme.leaderSignal === "preheat_catalyst"
+          || theme.positionSignal === "preheat_catalyst_watch"
+          || Number(theme.preheatScore) >= 56
+        ),
+      nextStep: "先进入备选或微型试探复核，等资金继续跟进和基金走势确认。"
+    },
+    {
+      title: "低位轮动",
+      filter: (theme) => !hasThemeCapitalRetreatRisk(theme)
+        && (
+          theme.positionSignal === "low_position_rotation"
+          || theme.stage === "low_position_rotation"
+          || (Number(theme.rotationScore) >= 50 && Number(theme.lowPositionScore) >= 45)
+        ),
+      nextStep: "只筛低位启动前夜的代表基金，不能把普通下跌误判成轮动。"
+    },
+    {
+      title: "退潮回避",
+      filter: (theme) => hasThemeCapitalRetreatRisk(theme) || isStaleThemeCatchdownRiskTheme(theme),
+      nextStep: "同题材回调先按接盘风险处理，等资金回流后再看。"
+    },
+    {
+      title: "追涨风险",
+      filter: (theme) => theme.positionSignal === "high_chase_risk" || theme.stage === "crowded" || Number(theme.crowdingScore) >= 55,
+      nextStep: "涨幅和拥挤度降温前，不把新闻热度当追买理由。"
+    }
+  ];
+  const lines = ["themeOpportunityPlaybook:"];
+  for (const lane of lanes) {
+    const items = radar.filter(lane.filter).sort((a, b) => scoreThemeRadarPriority(b) - scoreThemeRadarPriority(a)).slice(0, 2);
+    if (!items.length) continue;
+    lines.push(...items.map((theme) => `- ${lane.title}：${formatThemeOpportunityPlaybookItem(theme)}；下一步=${lane.nextStep}`));
+  }
+  if (lines.length === 1 && options.requireThemeOpportunityBacking) {
+    lines.push("- 当前没有通过主力/预热/低位轮动门槛的题材；候选基金不能只凭走势进入主推荐。");
+  }
+  return lines.length > 1 ? lines : [];
+}
+
+function formatThemeOpportunityPlaybookItem(theme = {}) {
+  const facts = [
+    theme.name || theme.id || "未知题材",
+    theme.newsLogic ? `逻辑=${shortenPortfolioCustomerText(theme.newsLogic, 90)}` : "",
+    theme.catalystProfile?.summary ? `催化=${theme.catalystProfile.summary}` : "",
+    Number.isFinite(Number(theme.avgMainNetInflowPct)) ? `主力${formatFallbackPlainPct(theme.avgMainNetInflowPct)}` : "",
+    Number.isFinite(Number(theme.crowdingScore)) ? `拥挤${round(Number(theme.crowdingScore), 0)}` : "",
+    theme.primaryCatalyst ? `线索=${shortenPortfolioCustomerText(theme.primaryCatalyst, 32)}` : ""
+  ].filter(Boolean);
+  return facts.join("，");
+}
+
+function classifyPullbackSetupCandidateForSummary(candidate = {}, options = {}) {
   if (!candidate?.ok) return "watch_or_reject";
   const trend = candidate.trendProfile || {};
   const signal = trend.pullbackSetup?.signal || "";
   if (getPortfolioWatchlistMainCandidateBlocker(candidate)) return "watch_or_reject";
+  if (getPullbackThemeOpportunityBackingGap(candidate, options)) return "watch_or_reject";
   if (hasHighChaseTheme(candidate)) return "watch_or_reject";
   if (hasThemeRetreatRisk(candidate)) return "watch_or_reject";
   if (hasStaleThemeCatchdownRisk(candidate)) return "watch_or_reject";
@@ -18588,23 +18685,28 @@ function formatPullbackSetupCandidateLine(candidate = {}, ranked = {}) {
     Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置=${trend.lowPositionPct120}%` : "",
     Number.isFinite(Number(trend.lowPositionPct250)) ? `250日位置=${trend.lowPositionPct250}%` : "",
     formatCandidateThemeEvidence(candidate),
+    formatPullbackCandidateThemeOpportunityEvidence(candidate, { requireThemeOpportunityBacking: ranked.requireThemeOpportunityBacking }),
     formatHoldingsOutlookEvidence(candidate),
     trend.trendLabelText ? `趋势=${trend.trendLabelText}` : "",
     trend.entryBiasText ? `入场=${trend.entryBiasText}` : "",
     actionability.actionText ? `动作=${actionability.actionText}` : "",
-    `缺口=${formatPullbackSetupCandidateGaps(candidate)}`
+    `缺口=${formatPullbackSetupCandidateGaps(candidate, { requireThemeOpportunityBacking: ranked.requireThemeOpportunityBacking })}`
   ].filter(Boolean);
   return `- ${fields.join(", ")}`;
 }
 
-function formatPullbackSetupCandidateGaps(candidate = {}) {
-  const gaps = buildPullbackSetupCandidateGaps(candidate);
+function formatPullbackSetupCandidateGaps(candidate = {}, options = {}) {
+  const gaps = buildPullbackSetupCandidateGaps(candidate, options);
   return gaps.length ? gaps.slice(0, 5).join("/") : "无";
 }
 
-function buildPullbackSetupCandidateGaps(candidate = {}) {
+function buildPullbackSetupCandidateGaps(candidate = {}, options = {}) {
   const trend = candidate.trendProfile || {};
   const gaps = [];
+  const themeOpportunityGap = getPullbackThemeOpportunityBackingGap(candidate, options);
+  if (themeOpportunityGap) {
+    gaps.push(themeOpportunityGap);
+  }
   const watchlistBlocker = getPortfolioWatchlistMainCandidateBlocker(candidate);
   if (watchlistBlocker) {
     gaps.push(watchlistBlocker);
@@ -18671,6 +18773,66 @@ function buildPullbackSetupCandidateGaps(candidate = {}) {
     gaps.push(...orderedHoldingRisks.slice(0, 3));
   }
   return [...new Set(gaps)];
+}
+
+function requiresPullbackThemeOpportunityBacking(candidate = {}, options = {}) {
+  return Boolean(options.requireThemeOpportunityBacking)
+    || candidate?.themeOpportunityRequirement === "require_current_theme_playbook"
+    || candidate?.seed?.themeOpportunityRequirement === "require_current_theme_playbook";
+}
+
+function hasPullbackThemeOpportunityBacking(candidate = {}) {
+  const actionableThemes = getCandidateThemeSignals(candidate).filter((theme) => {
+    if (!isActionableThemeSupport(theme)) return false;
+    const lowRotation = theme.positionSignal === "low_position_rotation"
+      || theme.stage === "low_position_rotation"
+      || (Number(theme.rotationScore) >= 50 && Number(theme.lowPositionScore) >= 45);
+    return lowRotation || hasFreshThemeCatalystContext(theme);
+  });
+  if (!actionableThemes.length) return false;
+  return hasVerifiedThemeCarrierEvidence(candidate);
+}
+
+function getPullbackThemeOpportunityBackingGap(candidate = {}, options = {}) {
+  if (!requiresPullbackThemeOpportunityBacking(candidate, options)) return "";
+  const themeSignals = getCandidateThemeSignals(candidate);
+  if (!themeSignals.length) {
+    return "缺少当前题材雷达/新闻逻辑支撑，不能只凭走势做主推荐";
+  }
+  if (!hasActionableThemeSupport(candidate)) {
+    return "缺少主力进场、题材预热或低位轮动支撑，暂不能把回调当启动";
+  }
+  if (!hasPullbackThemeOpportunityBacking(candidate)) {
+    return "题材逻辑有线索，但前十大持仓或指数名称没有证明基金真实承载该题材";
+  }
+  return "";
+}
+
+function formatPullbackCandidateThemeOpportunityEvidence(candidate = {}, options = {}) {
+  const themeSignals = getCandidateThemeSignals(candidate);
+  const gap = getPullbackThemeOpportunityBackingGap(candidate, options);
+  if (gap) return `题材作战=${gap}`;
+  const actionable = themeSignals.find((theme) => isActionableThemeSupport(theme));
+  if (!actionable) return "";
+  const lane = actionable.leaderSignal === "capital_entering" || actionable.positionSignal === "main_capital_entering"
+    ? "主力进场"
+    : actionable.leaderSignal === "preheat_catalyst" || actionable.positionSignal === "preheat_catalyst_watch"
+      ? "题材预热"
+      : "低位轮动";
+  const holdings = candidate.holdingsOutlook || candidate.actionability?.holdingsOutlook || buildHoldingsOutlookProfile(candidate);
+  const carrier = holdings?.matchedThemeHoldings?.length
+    ? `承载=${holdings.matchedThemeHoldings.map((item) => item.name || item.code).filter(Boolean).slice(0, 3).join("/")}`
+    : holdings?.evidence
+      ? `承载=${shortenPortfolioCustomerText(holdings.evidence, 48)}`
+      : "";
+  const facts = [
+    `${actionable.name || actionable.id || "相关题材"}${lane}`,
+    actionable.newsLogic ? `逻辑=${shortenPortfolioCustomerText(actionable.newsLogic, 72)}` : "",
+    actionable.catalystProfile?.summary ? `催化=${actionable.catalystProfile.summary}` : "",
+    Number.isFinite(Number(actionable.avgMainNetInflowPct)) ? `主力${formatFallbackPlainPct(actionable.avgMainNetInflowPct)}` : "",
+    carrier
+  ].filter(Boolean);
+  return facts.length ? `题材作战=${facts.join("，")}` : "";
 }
 
 function getCandidateThemeSignals(candidate = {}) {
@@ -19693,6 +19855,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "用户更关心走势和分析思路，不要把回答写成数字清单。每只基金最多保留3个关键数字，其他用“低位修复、短期偏热、等待确认、回撤未完成”等自然中文解释。",
     "如果市场快照或下钻摘要里有题材雷达，必须先用题材阶段、主力跟随、预热评分、新闻逻辑、拥挤度和操作倾向判断赔率，再筛选基金。",
     "遇到主力开始进场或题材预热的方向，必须解释题材上涨背后的新闻/政策/产业逻辑，并判断基金本身是否已经出现低位买点；逻辑成立但买点差一点时给触发条件，逻辑与资金都成立时可以给小仓试探，不要机械地只说等待。",
+    "候选下钻摘要若出现 themeOpportunityRequirement=require_current_theme_playbook，主推荐必须同时满足：低位/回调启动、当前题材有主力进场/题材预热/低位轮动支撑、新闻或产业催化说得清、前十大持仓或指数名称能承载题材；缺任一项只能放观察或排除。",
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
     "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度、盘中走势和数据新鲜度；若盘中冲高回落或尾盘转弱，只能降低买入把握度，成交和盈亏仍以确认净值为准。",
     "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
@@ -19796,6 +19959,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度、盘中走势和数据新鲜度；若盘中冲高回落或尾盘转弱，只能降低买入把握度，成交和盈亏仍以确认净值为准。",
     "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
     "如果市场快照或下钻摘要里有题材雷达，优先引用中文题材阶段、主力节奏、新闻逻辑、拥挤度和操作倾向，避免只按历史涨幅回答。",
+    "候选下钻摘要若出现 themeOpportunityRequirement=require_current_theme_playbook，回答必须解释题材为什么动、主力是否跟进、基金是否真实承载该题材；纯走势合格但缺题材/新闻/持仓承载的候选只能观察。",
     "如果提供了候选基金下钻摘要，必须使用下钻候选的走势画像、风险、费用、持仓和可操作性评估来形成买/等/回避判断。",
     "如果提供了经理自选候选池，必须把它当成已经沉淀的备选来源先复核；ready 可以进入买入参考，waiting 或启动前夜只能说明等待条件。",
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，最终回答要用自然中文说明数据缺口、降低把握度；缺少贵金属/板块/排行/新闻模块时，不得声称已完整联网或给重仓买入。",
@@ -23584,6 +23748,11 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
   const relevantThemeRadar = selectRelevantThemeRadar(userText, marketSnapshot);
   const precious = isPreciousMetalQuestion(userText);
   const preferPullbackSetup = isPullbackSetupRequest(userText);
+  const requireThemeOpportunityBacking = shouldRequireThemeOpportunityBackingForQuestion(userText, relevantThemeRadar, {
+    preferPullbackSetup,
+    forRecommendation: options.forRecommendation
+  });
+  const themeOpportunityRequirement = requireThemeOpportunityBacking ? "require_current_theme_playbook" : "";
   const focusedKeywords = inferFocusedFundSearchKeywords(userText);
   const [focusedCandidates, pullbackSetupCandidates] = await Promise.all([
     fetchFocusedFundCandidates(userText),
@@ -23609,7 +23778,11 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
     : snapshotCandidates;
   const merged = mergeCandidateFunds(focusedCandidates, pullbackSetupCandidates, scopedSnapshotCandidates)
     .filter((item) => !shouldSuppressPreciousMetalCandidate(userText, item))
-    .map((item) => ({ ...item, matchedThemes: matchCandidateThemes(item, relevantThemeRadar) }))
+    .map((item) => ({
+      ...item,
+      matchedThemes: matchCandidateThemes(item, relevantThemeRadar),
+      themeOpportunityRequirement
+    }))
     .sort((a, b) => {
       if (preferPullbackSetup) {
         return scorePullbackSetupSeedCandidate(b, relevantThemeRadar, userText) - scorePullbackSetupSeedCandidate(a, relevantThemeRadar, userText);
@@ -23678,6 +23851,8 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
         ? "precious_metals"
         : focusedCandidates.length ? "focused_theme_search" : "market_recommendation",
     themeRadar: relevantThemeRadar,
+    themeOpportunityRequirement,
+    requireThemeOpportunityBacking,
     searchKeywords: preferPullbackSetup
       ? inferPullbackSetupSearchKeywords(userText, relevantThemeRadar)
       : inferFocusedFundSearchKeywords(userText),
@@ -23852,6 +24027,12 @@ function scoreResearchDigestForPullbackSetup(digest = {}) {
   if (Number(trend.return60dPct) > 24) score -= 16;
   if (Number(trend.drawdownFromRecentHighPct) > -2 && Number(trend.return20dPct) > 6) score -= 14;
   if (!isPullbackTrendFreshEnough(digest)) score -= 30;
+  const themeOpportunityGap = getPullbackThemeOpportunityBackingGap(digest);
+  if (themeOpportunityGap) {
+    score -= 44;
+  } else if (requiresPullbackThemeOpportunityBacking(digest) && hasPullbackThemeOpportunityBacking(digest)) {
+    score += 16;
+  }
   if (Number.isFinite(seedThisYear)) {
     if (seedThisYear >= -35 && seedThisYear <= 12) score += 6;
     if (seedThisYear <= 5 && Number(trend.return20dPct) > 0 && Number(trend.return20dPct) <= 8) score += 6;
@@ -23925,10 +24106,12 @@ async function fetchFundResearchDigest(code, seed = {}) {
       thisYearPct: seed.thisYearPct ?? "",
       productKey: seed.productKey || "",
       exposureKey: seed.exposureKey || "",
+      themeOpportunityRequirement: seed.themeOpportunityRequirement || "",
       matchedThemes: (seed.matchedThemes || []).slice(0, 3),
       alternativeShareClasses: (seed.alternativeShareClasses || []).slice(0, 6),
       sameExposureAlternatives: (seed.sameExposureAlternatives || []).slice(0, 6)
     },
+    themeOpportunityRequirement: seed.themeOpportunityRequirement || "",
     nav: {
       unitNav: valuation.dwjz || seed.unitNav || "",
       estimatedNav: valuation.gsz || "",

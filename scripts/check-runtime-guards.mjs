@@ -1205,6 +1205,10 @@ const requiredPatterns = [
     message: "holdings outlook must connect emerging themes to live board leaders before treating a fund as a true theme vehicle."
   },
   {
+    pattern: /(?=[\s\S]*themeOpportunityRequirement)(?=[\s\S]*require_current_theme_playbook)(?=[\s\S]*function getPullbackThemeOpportunityBackingGap)(?=[\s\S]*缺少当前题材雷达\/新闻逻辑支撑)(?=[\s\S]*function formatPullbackCandidateThemeOpportunityEvidence)(?=[\s\S]*题材作战=)/,
+    message: "pullback/setup discovery must require current theme playbook, news logic, and carrier evidence before pure trend setups become main recommendations."
+  },
+  {
     pattern: /(?=[\s\S]*function getActionabilityHoldingsOutlookDiscipline)(?=[\s\S]*系统持仓承载降级)(?=[\s\S]*前十大持仓没有证明基金真实承载该题材)(?=[\s\S]*getPortfolioWatchStructuralReadinessCap[\s\S]*前十大持仓未命中题材龙头)/,
     message: "buy/actionability and watchlist readiness must be capped when holdings do not prove theme-carrier alignment."
   },
@@ -2677,7 +2681,7 @@ const requiredPatterns = [
     message: "pullback/setup scoring must penalize year-to-date high candidates that only look mild in short windows."
   },
   {
-    pattern: /hasPullbackYearToDateChaseRisk[\s\S]{0,700}classifyPullbackSetupCandidateForSummary|classifyPullbackSetupCandidateForSummary[\s\S]{0,700}hasPullbackYearToDateChaseRisk/,
+    pattern: /hasPullbackYearToDateChaseRisk[\s\S]{0,1200}classifyPullbackSetupCandidateForSummary|classifyPullbackSetupCandidateForSummary[\s\S]{0,1200}hasPullbackYearToDateChaseRisk/,
     message: "pullback/setup main-candidate classification must reject year-to-date high pseudo-low candidates."
   },
   {
@@ -2697,7 +2701,7 @@ const requiredPatterns = [
     message: "pullback/setup summaries must explain stale-data gaps before buying."
   },
   {
-    pattern: /今年以来=\$\{seedThisYear\}%[\s\S]{0,2600}今年以来\$\{formatFallbackPct\(seedThisYear\)\}偏高/,
+    pattern: /今年以来=\$\{seedThisYear\}%[\s\S]{0,4200}今年以来\$\{formatFallbackPct\(seedThisYear\)\}偏高/,
     message: "pullback/setup summaries must expose and explain year-to-date high-position evidence."
   },
   {

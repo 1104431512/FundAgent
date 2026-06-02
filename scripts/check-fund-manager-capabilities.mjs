@@ -4782,6 +4782,68 @@ assert(
   !noLogicThemeMomentumRanking.items.some((item) => item.code === "000043"),
   "theme momentum ranking must not promote preheat candidates that cannot explain the news or industry logic"
 );
+const pureTrendRequiredSetupDigest = {
+  ...setupDigest,
+  code: "000047",
+  name: "纯走势低位基金C",
+  seed: {
+    themeOpportunityRequirement: "require_current_theme_playbook"
+  }
+};
+const newsBackedRequiredSetupDigest = {
+  ...setupDigest,
+  code: "000048",
+  name: "主力新闻低位基金C",
+  seed: {
+    themeOpportunityRequirement: "require_current_theme_playbook",
+    matchedThemes: [{
+      ...capitalEnteringDigest.seed.matchedThemes[0],
+      leaderStocks: ["工业富联", "新易盛"],
+      themeKeywords: ["人工智能", "算力", "CPO"]
+    }]
+  },
+  holdings: {
+    ok: true,
+    equityDisclosureDate: "2099-03-31",
+    equityTopHoldings: ["601138 工业富联 7.2%", "300502 新易盛 4.1%", "300308 中际旭创 3.8%"]
+  }
+};
+const newsBackedNoCarrierSetupDigest = {
+  ...newsBackedRequiredSetupDigest,
+  code: "000049",
+  name: "名义算力低位基金C",
+  holdings: {
+    ok: true,
+    equityDisclosureDate: "2099-03-31",
+    equityTopHoldings: ["600519 贵州茅台 8.1%", "000858 五粮液 7.4%", "601318 中国平安 4.2%"]
+  }
+};
+assert(
+  manager.scoreResearchDigestForPullbackSetup(newsBackedRequiredSetupDigest) >
+    manager.scoreResearchDigestForPullbackSetup(pureTrendRequiredSetupDigest) + 40,
+  "generic pullback discovery must prefer news-backed main-capital candidates over pure NAV-curve setups"
+);
+assert(
+  manager.scoreResearchDigestForPullbackSetup(newsBackedRequiredSetupDigest) >
+    manager.scoreResearchDigestForPullbackSetup(newsBackedNoCarrierSetupDigest) + 20,
+  "generic pullback discovery must require top-ten holdings or index naming to carry the live theme"
+);
+const themeRequiredSummary = manager.buildMarketDeepDiveSummary({
+  ok: true,
+  focus: "pullback_setup_discovery",
+  selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+  themeOpportunityRequirement: "require_current_theme_playbook",
+  themeRadar: capitalEnteringDigest.seed.matchedThemes,
+  candidates: [pureTrendRequiredSetupDigest, newsBackedNoCarrierSetupDigest, newsBackedRequiredSetupDigest]
+});
+assert(themeRequiredSummary.includes("themeOpportunityRequirement=require_current_theme_playbook"), "deep-dive summary must flag when current theme playbook evidence is required");
+assert(themeRequiredSummary.includes("themeOpportunityPlaybook:"), "deep-dive summary must expose the current theme opportunity playbook");
+assert(themeRequiredSummary.includes("mainCandidateCodes=000048"), "news-backed, carrier-verified low-position setup should be the main pullback candidate");
+assert(/watchOrRejectCodes=.*000047/.test(themeRequiredSummary), "pure trend-only setup must be demoted when current theme playbook backing is required");
+assert(/watchOrRejectCodes=.*000049/.test(themeRequiredSummary), "news-backed setup without holdings/index carrier evidence must be demoted");
+assert(themeRequiredSummary.includes("题材作战=缺少当前题材雷达/新闻逻辑支撑"), "deep-dive summary must explain why pure trend-only setups are not enough");
+assert(themeRequiredSummary.includes("题材逻辑有线索，但前十大持仓或指数名称没有证明基金真实承载该题材"), "deep-dive summary must explain representative-fund carrier failures");
+assert(themeRequiredSummary.includes("题材作战=AI/算力主力进场") && themeRequiredSummary.includes("逻辑=主力刚进场"), "deep-dive summary must carry main-capital news logic into candidate evidence");
 const themeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
   redeploymentAccount,
   [{
