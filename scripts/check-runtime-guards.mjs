@@ -1093,6 +1093,10 @@ const requiredPatterns = [
     message: "market snapshots must expose theme leaderboards for main-capital entry, preheat, low rotation, retreat, and chase-risk lanes."
   },
   {
+    pattern: /(?=[\s\S]*function hasStaleThemeCatchdownRisk)(?=[\s\S]*function hasActionableThemeSupport)(?=[\s\S]*接盘风险)(?=[\s\S]*hasPortfolioVerifiedSeedChaseRisk[\s\S]{0,900}hasStaleThemeCatchdownRisk)/,
+    message: "pullback candidates must block stale theme catchdown risk and require actionable theme support before buy readiness."
+  },
+  {
     pattern: /(?=[\s\S]*function summarizePortfolioRunMarketSnapshot)(?=[\s\S]*compactThemeLeaderboardsForPublic)(?=[\s\S]*marketSnapshot:\s*summarizePortfolioRunMarketSnapshot\(run\.marketSnapshot\))/,
     message: "portfolio public run summaries must expose compact market theme leaderboards for the admin UI."
   },
@@ -2361,11 +2365,11 @@ const requiredPatterns = [
     message: "pullback/setup main candidates must require actual low-position evidence, not only a repaired trend label."
   },
   {
-    pattern: /hasPullbackLongPositionChaseRisk[\s\S]{0,700}classifyPullbackSetupCandidateForSummary|classifyPullbackSetupCandidateForSummary[\s\S]{0,700}hasPullbackLongPositionChaseRisk/,
+    pattern: /(?=[\s\S]*function classifyPullbackSetupCandidateForSummary)(?=[\s\S]*function hasPullbackLongPositionChaseRisk)(?=[\s\S]*classifyPullbackSetupCandidateForSummary[\s\S]*hasPullbackLongPositionChaseRisk\(candidate\))/,
     message: "pullback/setup main-candidate classification must reject candidates that are high in the 250-day window."
   },
   {
-    pattern: /classifyPullbackSetupCandidateForSummary[\s\S]{0,800}isEarlyTurnSetupTrend/,
+    pattern: /(?=[\s\S]*function classifyPullbackSetupCandidateForSummary)(?=[\s\S]*function isEarlyTurnSetupTrend)(?=[\s\S]*classifyPullbackSetupCandidateForSummary[\s\S]*isEarlyTurnSetupTrend\(trend\))/,
     message: "pullback/setup main candidates must require 5/10-day early-turn evidence, not only low-position repair."
   },
   {
@@ -2401,7 +2405,7 @@ const requiredPatterns = [
     message: "pullback/setup main-candidate classification must reject year-to-date high pseudo-low candidates."
   },
   {
-    pattern: /isPullbackTrendFreshEnough[\s\S]{0,700}classifyPullbackSetupCandidateForSummary|classifyPullbackSetupCandidateForSummary[\s\S]{0,700}isPullbackTrendFreshEnough/,
+    pattern: /(?=[\s\S]*function classifyPullbackSetupCandidateForSummary)(?=[\s\S]*function isPullbackTrendFreshEnough)(?=[\s\S]*classifyPullbackSetupCandidateForSummary[\s\S]*isPullbackTrendFreshEnough\(candidate\))/,
     message: "pullback/setup main-candidate classification must reject stale NAV/trend evidence."
   },
   {

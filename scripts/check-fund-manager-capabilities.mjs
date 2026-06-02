@@ -4135,6 +4135,32 @@ assert(themeLeaderboards.preheat.items.some((item) => item.name === "政策预�
 assert(themeLeaderboards.retreat.items.some((item) => item.name === "AI/算力"), "theme leaderboards must keep capital-outflow themes in the avoid lane");
 assert(adminSource.includes("renderPortfolioThemeLeaderboards") && adminSource.includes("getPortfolioLatestThemeLeaderboards"), "admin sector board must render latest market theme leaderboards instead of hiding them in raw run JSON");
 assert(adminStyleSource.includes(".theme-leaderboard-board") && adminStyleSource.includes(".theme-leaderboard-lane-sell"), "admin styles must provide compact visible lanes for theme leaderboards and retreat risks");
+const actionablePullbackDigest = {
+  ...setupDigest,
+  code: "000041",
+  name: "主力低位启动基金C",
+  seed: { matchedThemes: [liveAiTheme] },
+  matchedThemes: [liveAiTheme]
+};
+const staleCatchdownDigest = {
+  ...setupDigest,
+  code: "000042",
+  name: "退潮回调接盘基金C",
+  seed: { matchedThemes: [fadingAiTheme] },
+  matchedThemes: [fadingAiTheme]
+};
+assert(manager.hasActionableThemeSupport(actionablePullbackDigest), "pullback candidates need actionable main-capital, preheat, or low-rotation theme support");
+assert(manager.hasStaleThemeCatchdownRisk(staleCatchdownDigest), "pullback candidates must detect stale catchdown risk when main capital has left the theme");
+assert(
+  manager.scoreResearchDigestForPullbackSetup(actionablePullbackDigest) > manager.scoreResearchDigestForPullbackSetup(staleCatchdownDigest) + 60,
+  "pullback ranking must strongly prefer main-capital supported setups over stale theme catchdown candidates"
+);
+const selectedThemeSeeds = manager.selectPortfolioWatchlistSeedCandidates([
+  { code: "000041", name: "主力低位启动基金C", oneWeekPct: 1.2, oneMonthPct: 2.4, threeMonthPct: -4, sixMonthPct: -8, shareClass: "C", matchedThemes: [liveAiTheme] },
+  { code: "000042", name: "退潮回调接盘基金C", oneWeekPct: 1.1, oneMonthPct: 2.2, threeMonthPct: -5, sixMonthPct: -10, shareClass: "C", matchedThemes: [fadingAiTheme] }
+], [], [liveAiTheme, fadingAiTheme], { minScore: 20, limit: 4 });
+assert(selectedThemeSeeds.some((item) => item.code === "000041"), "watchlist seed selection must keep main-capital supported low-position candidates");
+assert(!selectedThemeSeeds.some((item) => item.code === "000042"), "watchlist seed selection must not promote stale catchdown candidates after main capital has left");
 const holdingsSupportedDigest = {
   ...setupDigest,
   code: "000031",
