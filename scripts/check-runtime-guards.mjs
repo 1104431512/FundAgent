@@ -1321,6 +1321,10 @@ const requiredPatterns = [
     message: "fund answer quality must require catalyst, fresh source/time trace, capital/board confirmation, and fund-carrier logic in customer replies when current theme playbook evidence is required."
   },
   {
+    pattern: /(?=[\s\S]*missing_theme_action_trigger)(?=[\s\S]*function evaluateThemeNewsLogicAnswerCoverage)(?=[\s\S]*hasActionBoundary)(?=[\s\S]*继续观望)(?=[\s\S]*买入触发)(?=[\s\S]*失效条件)/,
+    message: "fund answer quality must reject generic waiting on live theme opportunities unless the reply includes actionable triggers and invalidation boundaries."
+  },
+  {
     pattern: /(?=[\s\S]*function getActionabilityHoldingsOutlookDiscipline)(?=[\s\S]*系统持仓承载降级)(?=[\s\S]*前十大持仓没有证明基金真实承载该题材)(?=[\s\S]*getPortfolioWatchStructuralReadinessCap[\s\S]*前十大持仓未命中题材龙头)/,
     message: "buy/actionability and watchlist readiness must be capped when holdings do not prove theme-carrier alignment."
   },

@@ -7152,6 +7152,19 @@ const themeNoFreshnessTraceQuality = manager.evaluateFundAnswerQuality({
   }
 });
 assert(themeNoFreshnessTraceQuality.issues.includes("missing_theme_news_logic_explanation"), "quality gate must reject theme answers that omit the fresh news source or time trace");
+const themeGenericWaitQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：先观察。\n题材为什么动：测试快讯10:10显示AI算力订单改善，新闻催化新鲜；主力资金净流入，000048 前十大持仓工业富联和新易盛能承载算力方向。\n执行：继续等待机会。",
+  workflow: "fund_recommendation",
+  userText: "按最近主力预热题材推荐几个基金",
+  evidence: {
+    marketDeepDive: {
+      themeOpportunityRequirement: "require_current_theme_playbook",
+      themeRadar: capitalEnteringDigest.seed.matchedThemes,
+      candidates: [newsBackedRequiredSetupDigest]
+    }
+  }
+});
+assert(themeGenericWaitQuality.issues.includes("missing_theme_action_trigger"), "quality gate must reject generic waiting when a live theme playbook requires actionable triggers");
 const themeLogicQuality = manager.evaluateFundAnswerQuality({
   text: "直接结论：分批买入1000元。\n题材为什么动：测试快讯10:10显示AI算力订单改善，新闻催化新鲜；主力资金净流入，000048 前十大持仓工业富联和新易盛能承载算力方向。\n执行：激进1000元，均衡500元，保守先观察；若资金转流出就暂停。",
   workflow: "fund_recommendation",
@@ -7165,6 +7178,7 @@ const themeLogicQuality = manager.evaluateFundAnswerQuality({
   }
 });
 assert(!themeLogicQuality.issues.includes("missing_theme_news_logic_explanation"), "quality gate must pass answers that explain fresh news source/time, main capital, and fund carrier logic");
+assert(!themeLogicQuality.issues.includes("missing_theme_action_trigger"), "quality gate must pass theme replies that include concrete invalidation or trigger boundaries");
 const denseSingleFundLine = "000001 低位基金C：近5日+1.1%，近10日+2.2%，近20日+3.3%，近60日-4.4%，近120日+5.5%，120日位置38.5%，250日位置42.2%，距高点-7.1%，夏普0.8，回撤-12.3%，规模42亿，费率0.4%，走势低位修复，买点需要等待启动确认。";
 assert(manager.hasNumericDumpWithoutInterpretation(`直接结论：分批观察。\n${denseSingleFundLine}\n风险边界：不追涨。`), "quality gate must reject a single dense fund line that reads like a metric dump");
 const compactedDenseSingleFundLine = manager.normalizeUserFacingFundAnswer(denseSingleFundLine);
