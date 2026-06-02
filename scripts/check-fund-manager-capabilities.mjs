@@ -2310,6 +2310,7 @@ const capabilityProfileContext = manager.buildPortfolioManagerProfileContext({
 });
 assert(capabilityProfileContext.includes("组合能力诊断") && capabilityProfileContext.includes("能力修复队列"), "manager profile context must carry capability diagnostics into every portfolio model call");
 assert(capabilityProfileContext.includes("历史回测诊断"), "manager profile context must carry historical backtest diagnostics into every portfolio model call");
+assert(capabilityProfileContext.includes("主力跟随纪律") && capabilityProfileContext.includes("0.5%-1.2%微型试探"), "manager profile context must force active main-capital/preheat micro-starter discipline");
 assert(serverSource.includes("能力修复队列（必须进入 team.主席、team.风控经理、actions 或 learningNotes）"), "portfolio decision prompt must force capability repair tasks into decisions");
 assert(serverSource.includes("经理多角度榜单（系统计算，必须先看榜单再决定）"), "portfolio decision prompt must force manager ranking boards into decisions");
 assert(serverSource.includes("rankingBasis"), "portfolio actions must preserve the ranking basis behind each recommendation");
@@ -5941,6 +5942,29 @@ const themeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
 assert.equal(themeOpportunityPlan.candidates[0].opportunityAction, "theme_micro_starter", "theme opportunity plan must convert actionable main-capital/preheat setups into micro-starter candidates");
 assert.equal(themeOpportunityPlan.candidates[0].executable, true, "theme opportunity candidates should be executable only after buy discipline and fee checks pass");
 assert(themeOpportunityPlan.candidates[0].newsLogic.includes("新闻催化"), "theme opportunity plan must preserve the news/current-event logic behind the move");
+const noCapitalFlowThemeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
+  redeploymentAccount,
+  [{
+    code: "000056",
+    name: "无主力确认预热基金C",
+    status: "watch",
+    readinessScore: 74,
+    lastSnapshot: { ...noCapitalFlowMicroStarterDigest, actionability: noCapitalFlowActionability }
+  }],
+  [{ ...noCapitalFlowMicroStarterDigest, actionability: noCapitalFlowActionability }],
+  {
+    fetchedAt: "2026-05-20T06:30:00.000Z",
+    themeRadar: noCapitalFlowMicroStarterDigest.seed.matchedThemes,
+    themeLeaderboards: manager.buildThemeLeaderboards(noCapitalFlowMicroStarterDigest.seed.matchedThemes)
+  }
+);
+const noCapitalFlowThemeOpportunity = noCapitalFlowThemeOpportunityPlan.candidates.find((item) => item.code === "000056");
+assert.equal(noCapitalFlowThemeOpportunity?.opportunityAction, "theme_watch", "theme opportunity plan must not turn news-only preheat into a micro-starter when main-capital confirmation is missing");
+assert.equal(noCapitalFlowThemeOpportunity?.executable, false, "theme opportunity plan must keep news-only preheat non-executable without positive capital evidence");
+assert(
+  noCapitalFlowThemeOpportunity?.firstGap?.includes("主力资金") && noCapitalFlowThemeOpportunity?.dataBasis?.some((item) => item.includes("主力资金")),
+  "theme opportunity plan must explain the missing main-capital confirmation instead of generic waiting"
+);
 const noLogicThemeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
   redeploymentAccount,
   [{

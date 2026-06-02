@@ -86,6 +86,7 @@ const DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES = [
   "定位：教育性虚拟基金经理，不进行真实交易；先保护本金，再在证据明确时参与基金主题轮动。",
   "买入纪律：优先选择净值、持仓、风险指标和数据来源可验证的基金；避免仅凭热点重仓追涨。",
   "轮动纪律：新闻只作为催化，买入前必须同时检查板块轮动、低位修复、拥挤度和回撤空间；高位热门主题优先等待回撤或小额试探。",
+  "主力跟随纪律：当新鲜新闻/政策/订单逻辑、正向主力资金、代表基金承载和低位温和转强同时成立时，必须进入0.5%-1.2%微型试探复核；若不买，要逐条写明资金、持仓、费用或追涨硬拦截，不能只说等待机会。",
   "卖出纪律：当主题证据减弱、目标仓位下降、回撤超出风格承受范围，或复盘发现原假设失效时减仓。",
   "沟通纪律：只展示专业阶段、结论、证据和约束，不展示模型隐藏思考链。"
 ];
@@ -101,12 +102,16 @@ const REQUIRED_PORTFOLIO_MANAGER_PROFILE_LINES = [
     line: DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES[2]
   },
   {
-    pattern: /卖出纪律|主题证据减弱|原假设失效/,
+    pattern: /主力跟随纪律|0\.5%-1\.2%微型试探|不能只说等待机会/,
     line: DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES[3]
   },
   {
-    pattern: /沟通纪律|隐藏思考链|专业阶段/,
+    pattern: /卖出纪律|主题证据减弱|原假设失效/,
     line: DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES[4]
+  },
+  {
+    pattern: /沟通纪律|隐藏思考链|专业阶段/,
+    line: DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES[5]
   }
 ];
 const USER_FACING_FUND_LABELS = [
@@ -1991,7 +1996,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "你必须维护自己的自选基金池：暂时不买但值得盯的基金要写入 watchlistUpdates，已有候选要复核是否 ready、waiting_pullback、watch 或 blocked，不能只围绕已有持仓转。",
     "自选基金池是未来随时准备购入的候选账本，每只候选都必须有备选理由、买入触发条件、风险备注和费用/份额说明。",
     "新闻只能作为催化证据，不能单独触发 BUY。每次买入前必须通过“主力跟随/预热题材/轮动/低位/拥挤度”检查：优先主力刚进场、题材预热未涨开、低位轮动、回撤修复和早期确认，回避仅因新闻热度和短期涨幅追高。",
-    "如果题材雷达显示主力开始进场或题材预热，投委会必须说明新闻时事支撑、资金是否配合、代表基金是否已经出现买点；证据成立时不能只写空泛观望，至少给出观察触发或0.5%-2.5%小仓试探方案。",
+    "如果题材雷达显示主力开始进场或题材预热，投委会必须说明新闻时事支撑、资金是否配合、代表基金是否已经出现买点；新鲜催化、正向主力资金、代表基金承载和低位温和转强同时成立时，必须进入0.5%-1.2%微型试探复核，除非逐条写清资金、持仓、费用或追涨硬拦截。",
     "如果题材雷达显示主力撤离、资金流出、退潮回避，或者缺少主力进场/预热催化/低位轮动支撑，即使基金净值看起来回调完成，也只能 WATCH 或 blocked，不能把这种回调包装成启动买点。",
     "如果题材雷达显示位置判断为追高风险偏高，或拥挤度高但低位/轮动评分不支持，只能 WATCH、HOLD 或小额试探，不能重仓追涨。",
     "如果账户回撤正常、现金超过60%、且候选满足低位/回调完成/费用可核验但10日趋势只差轻微确认，必须评估0.5%-2.5%的启动试探；不能用“继续等待”替代具体触发价位、复核日期和小仓试错计划。",
@@ -4113,7 +4118,12 @@ function buildPortfolioThemeOpportunityPlan(account = {}, watchlist = [], profil
       const catalystGap = hasThemeLeaderOrPreheatSignal(theme) && !hasFreshThemeCatalystContext(theme)
         ? "缺新闻时事/产业催化解释，不能把主力热度直接当买点。"
         : "";
-      const hardGap = catalystGap || readiness.gaps.find(isPortfolioRedeploymentHardGap);
+      const capitalFlowGap = hasThemeLeaderOrPreheatSignal(theme)
+        && hasTraceableFreshThemeCatalystContext(theme)
+        && !hasPositiveThemeMainCapitalEvidence(theme)
+        ? "缺少正向主力资金或主力流入榜确认，不能把新闻预热直接写成微型试探。"
+        : "";
+      const hardGap = catalystGap || capitalFlowGap || readiness.gaps.find(isPortfolioRedeploymentHardGap);
       const feeVerified = Boolean(profile && hasVerifiedPortfolioFeeEvidence(profile));
       const buyGuard = targetWeightPct > 0
         ? evaluatePortfolioBuyDiscipline(
@@ -4174,6 +4184,7 @@ function buildPortfolioThemeOpportunityPlan(account = {}, watchlist = [], profil
           marketSnapshot?.fetchedAt ? `市场快照：${marketSnapshot.fetchedAt}` : "",
           lane?.title ? `题材榜单：${lane.title}` : "",
           themeEvidence,
+          capitalFlowGap,
           theme.newsLogic ? `题材逻辑：${theme.newsLogic}` : "",
           theme.catalystProfile?.summary ? `催化性质：${theme.catalystProfile.summary}` : "",
           profile?.sources?.[0] || ""

@@ -1185,6 +1185,10 @@ const requiredPatterns = [
     message: "main-capital/preheat micro-starter buys must require positive fund-flow or main-inflow leaderboard confirmation."
   },
   {
+    pattern: /function buildPortfolioThemeOpportunityPlan[\s\S]{0,2600}capitalFlowGap[\s\S]{0,500}hasPositiveThemeMainCapitalEvidence\(theme\)[\s\S]{0,700}缺少正向主力资金或主力流入榜确认/,
+    message: "theme opportunity plans must downgrade traceable news/preheat candidates that lack positive main-capital confirmation."
+  },
+  {
     pattern: /(?=[\s\S]*function buildNewsCatalystProfile[\s\S]{0,1600}资金抢筹)(?=[\s\S]*function hasPositiveThemeMainCapitalEvidence[\s\S]{0,900}hasNewsMainCapitalEvidence)(?=[\s\S]*function hasNewsMainCapitalEvidence[\s\S]{0,900}主力资金[\s\S]{0,900}净流入)(?=[\s\S]*新闻提示资金抢筹)/,
     message: "theme radar must treat fresh traceable main-capital news as positive capital evidence for preheat follow-through."
   },
@@ -1939,6 +1943,10 @@ const requiredPatterns = [
   {
     pattern: /function buildPortfolioManagerProfileContext[\s\S]{0,1200}历史回测诊断[\s\S]{0,1200}组合能力诊断[\s\S]{0,1200}能力修复队列/,
     message: "portfolio model context must carry capability diagnostics into every manager run."
+  },
+  {
+    pattern: /DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES[\s\S]{0,700}主力跟随纪律[\s\S]{0,420}0\.5%-1\.2%微型试探[\s\S]{0,420}不能只说等待机会[\s\S]{0,700}REQUIRED_PORTFOLIO_MANAGER_PROFILE_LINES[\s\S]{0,900}主力跟随纪律/,
+    message: "stored portfolio manager profiles must be upgraded with active main-capital/preheat follow discipline."
   },
   {
     pattern: /const capabilityDiagnostics = buildPortfolioCapabilityDiagnostics\(db\)[\s\S]{0,160}const capabilityActionQueue = buildPortfolioCapabilityActionQueue\(db\)[\s\S]{0,4200}capabilityDiagnostics,[\s\S]{0,120}capabilityActionQueue/,
