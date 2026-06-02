@@ -22179,6 +22179,18 @@ const THEME_NEWS_KEYWORD_EXPANSIONS = [
     aliases: ["算力", "CPO", "光模块", "数据中心", "液冷", "AI服务器", "大模型", "英伟达"]
   },
   {
+    needles: ["端侧ai", "ai手机", "ai pc", "aipc", "消费电子", "ai眼镜"],
+    aliases: ["端侧AI", "AI手机", "AI PC", "AIPC", "AI眼镜", "消费电子", "MR", "AR"]
+  },
+  {
+    needles: ["半导体", "芯片", "存储", "国产替代", "光刻", "先进封装"],
+    aliases: ["半导体", "芯片", "存储芯片", "国产替代", "光刻机", "先进封装", "HBM"]
+  },
+  {
+    needles: ["核电", "电力设备", "特高压", "电网", "电力改革"],
+    aliases: ["核电", "电力设备", "特高压", "电网", "电力改革", "火电", "绿电"]
+  },
+  {
     needles: ["商业航天", "卫星", "航天", "北斗"],
     aliases: ["商业航天", "卫星", "火箭", "发射", "北斗", "低轨"]
   },
@@ -22193,6 +22205,10 @@ const THEME_NEWS_KEYWORD_EXPANSIONS = [
   {
     needles: ["有色", "稀土", "铜", "铝", "小金属"],
     aliases: ["有色", "稀土", "铜", "铝", "小金属", "资源", "涨价"]
+  },
+  {
+    needles: ["军工", "航空发动机", "低轨", "卫星互联网"],
+    aliases: ["军工", "航空发动机", "低轨卫星", "卫星互联网", "商业航天", "北斗"]
   }
 ];
 
@@ -22232,6 +22248,48 @@ const THEME_NEWS_DISCOVERY_RULES = [
     name: "固态电池",
     keywords: ["固态电池", "半固态", "锂电", "电解质", "电池材料"],
     fundKeywords: ["电池", "锂电", "新能源", "新能源车", "储能"]
+  },
+  {
+    id: "ai_terminal",
+    name: "端侧AI/AI终端",
+    keywords: ["端侧AI", "AI手机", "AI PC", "AIPC", "AI眼镜", "消费电子", "大模型终端"],
+    fundKeywords: ["消费电子", "电子", "人工智能", "科技", "计算机"]
+  },
+  {
+    id: "domestic_semiconductor",
+    name: "半导体国产替代",
+    keywords: ["半导体", "芯片", "国产替代", "光刻机", "先进封装", "存储芯片", "HBM"],
+    fundKeywords: ["半导体", "芯片", "集成电路", "电子", "科创芯片"]
+  },
+  {
+    id: "power_grid_nuclear",
+    name: "核电/电力设备",
+    keywords: ["核电", "电力设备", "特高压", "电网", "电力改革", "绿电", "火电"],
+    fundKeywords: ["电力", "电力设备", "新能源", "公用事业", "高端制造"]
+  },
+  {
+    id: "defense_equipment",
+    name: "军工装备/低轨",
+    keywords: ["军工", "航空发动机", "低轨卫星", "卫星互联网", "北斗", "无人装备"],
+    fundKeywords: ["军工", "航天", "高端制造", "国防", "卫星"]
+  },
+  {
+    id: "innovative_drug_policy",
+    name: "创新药/医药政策",
+    keywords: ["创新药", "医药", "医保", "集采", "临床", "审批", "出海", "license out"],
+    fundKeywords: ["创新药", "医药", "医疗", "生物医药"]
+  },
+  {
+    id: "resource_price_up",
+    name: "资源品涨价",
+    keywords: ["稀土", "铜", "铝", "锂", "小金属", "资源", "涨价", "供需"],
+    fundKeywords: ["有色", "资源", "稀土", "金属", "周期"]
+  },
+  {
+    id: "high_dividend_reform",
+    name: "央国企/高股息改革",
+    keywords: ["央企", "国企改革", "市值管理", "分红", "高股息", "中特估", "回购"],
+    fundKeywords: ["红利", "高股息", "央企", "国企", "价值"]
   }
 ];
 

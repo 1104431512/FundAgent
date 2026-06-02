@@ -5008,6 +5008,26 @@ const dataElementsTheme = newsOnlyThemeRadar.find((theme) => theme.id === "news_
 assert(dataElementsTheme?.dynamic, "theme radar must discover preheated themes from news even before a concept-board match appears");
 assert(dataElementsTheme.newsLogic.includes("数据要素政策落地") && dataElementsTheme.catalystProfile?.summary.includes("政策落地"), "news-discovered themes must preserve the news logic and catalyst type");
 assert(manager.buildThemeLeaderboards([dataElementsTheme]).preheat.items.some((item) => item.name.includes("数据要素")), "news-discovered catalyst themes must enter the preheat leaderboard when not crowded");
+const expandedNewsOnlyThemeRadar = manager.buildThemeRadar({
+  conceptBoards: [],
+  industryBoards: [],
+  fastNews: [
+    { title: "多地推进端侧AI落地 AI手机产业链订单改善 消费电子公司获机构调研", showTime: "09:48", mediaName: "测试快讯" },
+    { title: "核电审批加速 新项目开工 电力设备招标需求增长", showTime: "09:51", mediaName: "测试快讯" }
+  ],
+  fundCandidates: {
+    stockFunds: [
+      { code: "159004", name: "消费电子AI主题C", type: "股票型基金", oneMonthPct: 1.1, dailyPct: 0.2, shareClass: "C", keywords: ["消费电子", "端侧AI"] },
+      { code: "159005", name: "核电电力设备主题C", type: "股票型基金", oneMonthPct: 0.9, dailyPct: 0.1, shareClass: "C", keywords: ["核电", "电力设备"] }
+    ]
+  }
+});
+const aiTerminalTheme = expandedNewsOnlyThemeRadar.find((theme) => theme.id === "news_ai_terminal");
+const nuclearPowerTheme = expandedNewsOnlyThemeRadar.find((theme) => theme.id === "news_power_grid_nuclear");
+assert(aiTerminalTheme?.dynamic && aiTerminalTheme.newsLogic.includes("AI手机产业链订单改善"), "expanded news discovery must catch AI terminal preheat before board confirmation");
+assert(aiTerminalTheme.catalystProfile?.summary.includes("产业订单") && manager.buildThemeLeaderboards([aiTerminalTheme]).preheat.items.length, "AI terminal news-only preheat must carry catalyst type into the preheat leaderboard");
+assert(nuclearPowerTheme?.dynamic && nuclearPowerTheme.newsLogic.includes("核电审批加速"), "expanded news discovery must catch nuclear/power-equipment preheat from fast news");
+assert(nuclearPowerTheme.catalystProfile?.summary.includes("政策落地") || nuclearPowerTheme.catalystProfile?.summary.includes("产业订单"), "nuclear/power preheat must explain the catalyst instead of only naming the theme");
 const staleNewsOnlyThemeRadar = manager.buildThemeRadar({
   conceptBoards: [],
   industryBoards: [],

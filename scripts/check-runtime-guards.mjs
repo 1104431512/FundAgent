@@ -1201,6 +1201,10 @@ const requiredPatterns = [
     message: "theme radar must discover preheated emerging themes from fast news before concept boards fully move."
   },
   {
+    pattern: /(?=[\s\S]*THEME_NEWS_DISCOVERY_RULES)(?=[\s\S]*ai_terminal)(?=[\s\S]*domestic_semiconductor)(?=[\s\S]*power_grid_nuclear)(?=[\s\S]*innovative_drug_policy)(?=[\s\S]*resource_price_up)(?=[\s\S]*high_dividend_reform)/,
+    message: "theme news discovery must cover a broad preheat universe, not only the original few emerging themes."
+  },
+  {
     pattern: /(?=[\s\S]*function getCandidateThemeHoldingAnchors)(?=[\s\S]*leaderStocks)(?=[\s\S]*matchedThemeHoldings)(?=[\s\S]*前十大持仓未命中题材龙头)(?=[\s\S]*题材龙头=)/,
     message: "holdings outlook must connect emerging themes to live board leaders before treating a fund as a true theme vehicle."
   },
