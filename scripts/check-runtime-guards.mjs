@@ -1373,7 +1373,7 @@ const requiredPatterns = [
     message: "theme matching must inspect top-ten holdings so generic fund names cannot hide stale-theme exposure."
   },
   {
-    pattern: /(?=[\s\S]*managerPerformance:\s*buildPortfolioManagerPerformanceStats\(db\))(?=[\s\S]*function buildPortfolioManagerPerformanceStats)(?=[\s\S]*操作正确率)(?=[\s\S]*盈利能力)(?=[\s\S]*kindBreakdown)(?=[\s\S]*买入复盘)(?=[\s\S]*operationLanes)(?=[\s\S]*proofPoints)/,
+    pattern: /(?=[\s\S]*managerPerformance:\s*buildPortfolioManagerPerformanceStats\(db\))(?=[\s\S]*function buildPortfolioManagerPerformanceStats)(?=[\s\S]*操作正确率)(?=[\s\S]*盈利能力)(?=[\s\S]*abilityLanes)(?=[\s\S]*防接盘能力)(?=[\s\S]*主力跟随能力)(?=[\s\S]*过度观望纠偏)(?=[\s\S]*kindBreakdown)(?=[\s\S]*买入复盘)(?=[\s\S]*operationLanes)(?=[\s\S]*proofPoints)/,
     message: "portfolio public API must expose manager performance proof statistics with correctness, profitability, and operation-kind review cards."
   },
   {
@@ -1381,7 +1381,7 @@ const requiredPatterns = [
     message: "manager performance reviews must classify stale-catchdown buys and missed main-capital/preheat waits as explicit correction verdicts."
   },
   {
-    pattern: /(?=[\s\S]*<section id="portfolioManagerScoreboard" class="portfolio-performance-board">)(?=[\s\S]*经理能力总览)(?=[\s\S]*portfolioPerformanceNarrative)(?=[\s\S]*portfolioOperationKindMatrix)(?=[\s\S]*portfolioOperationReviews)/,
+    pattern: /(?=[\s\S]*<section id="portfolioManagerScoreboard" class="portfolio-performance-board">)(?=[\s\S]*经理能力总览)(?=[\s\S]*portfolioPerformanceNarrative)(?=[\s\S]*portfolioManagerAbilityLanes)(?=[\s\S]*portfolioOperationKindMatrix)(?=[\s\S]*portfolioOperationReviews)/,
     message: "admin portfolio overview must lead with manager ability proof, operation-kind matrix, and action review verdicts before workspace entries."
   },
   {
@@ -1393,7 +1393,7 @@ const requiredPatterns = [
     message: "admin sector board must show latest theme leaderboards with visible retreat/preheat lanes."
   },
   {
-    pattern: /(?=[\s\S]*\.portfolio-performance-board\s*\{[\s\S]{0,620}border-left)(?=[\s\S]*\.portfolio-operation-kind-matrix\s*\{[\s\S]{0,260}grid-template-columns:\s*repeat\(4)(?=[\s\S]*\.portfolio-operation-review-lanes\s*\{[\s\S]{0,420}grid-template-columns:\s*repeat\(3)(?=[\s\S]*\.portfolio-operation-review\s*\{[\s\S]{0,700}border-left)/,
+    pattern: /(?=[\s\S]*\.portfolio-performance-board\s*\{[\s\S]{0,620}border-left)(?=[\s\S]*\.portfolio-ability-lanes\s*\{[\s\S]{0,260}grid-template-columns:\s*repeat\(5)(?=[\s\S]*\.portfolio-operation-kind-matrix\s*\{[\s\S]{0,260}grid-template-columns:\s*repeat\(4)(?=[\s\S]*\.portfolio-operation-review-lanes\s*\{[\s\S]{0,420}grid-template-columns:\s*repeat\(3)(?=[\s\S]*\.portfolio-operation-review\s*\{[\s\S]{0,700}border-left)/,
     message: "admin manager performance board must use bounded, verdict-colored operation matrix and review cards."
   },
   {

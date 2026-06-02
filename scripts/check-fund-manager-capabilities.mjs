@@ -1637,6 +1637,9 @@ assert(backtestCapabilityDiagnostics.items.some((item) => item.label === "重复
 const managerPerformanceStats = manager.buildPortfolioManagerPerformanceStats(backtestFixture);
 assert(managerPerformanceStats.scorecards.some((item) => item.label === "操作正确率"), "manager performance stats must expose operation correctness rate");
 assert(managerPerformanceStats.scorecards.some((item) => item.label === "盈利能力"), "manager performance stats must expose profitability");
+assert(managerPerformanceStats.abilityLanes?.some((item) => item.label === "防接盘能力"), "manager performance stats must expose anti-catchdown ability proof");
+assert(managerPerformanceStats.abilityLanes?.some((item) => item.label === "主力跟随能力" && /主力|题材|预热/.test(`${item.headline} ${item.detail}`)), "manager performance stats must expose main-capital/preheat follow ability proof");
+assert(managerPerformanceStats.abilityLanes?.some((item) => item.label === "过度观望纠偏"), "manager performance stats must expose over-waiting correction proof");
 assert(managerPerformanceStats.kindBreakdown?.some((item) => item.label === "买入复盘"), "manager performance stats must split proof by buy/sell/hold/watch operation kinds");
 assert(managerPerformanceStats.kindBreakdown?.some((item) => item.label === "等待复盘" && item.headline), "manager performance stats must expose customer-readable wait/over-wait review cells");
 assert(managerPerformanceStats.proofPoints?.some((item) => item.title.includes("已复盘") || item.title.includes("操作样本")), "manager performance stats must expose customer-readable proof points");

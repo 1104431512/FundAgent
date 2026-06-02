@@ -14425,6 +14425,16 @@ function buildPortfolioManagerPerformanceStats(db = {}, options = {}) {
     rankingActionAudit,
     operationLanes
   });
+  const abilityLanes = buildPortfolioManagerAbilityLanes({
+    actionReview,
+    profitability,
+    rankingActionAudit,
+    backtestDiagnostics,
+    distribution,
+    operationLanes,
+    recentReviews,
+    watchlist
+  });
   const level = resolvePortfolioManagerPerformanceLevel({
     actionReview,
     profitability,
@@ -14440,6 +14450,7 @@ function buildPortfolioManagerPerformanceStats(db = {}, options = {}) {
     kindBreakdown,
     scorecards,
     proofPoints,
+    abilityLanes,
     operationLanes,
     recentReviews,
     lessons
@@ -14885,6 +14896,107 @@ function buildPortfolioManagerProofPoints({
     add("muted", "动作依据待沉淀", "后续买入、卖出、观察都要绑定榜单或复盘依据。");
   }
   return points.slice(0, 3);
+}
+
+function buildPortfolioManagerAbilityLanes({
+  actionReview = {},
+  profitability = {},
+  rankingActionAudit = {},
+  backtestDiagnostics = {},
+  distribution = {},
+  operationLanes = [],
+  recentReviews = [],
+  watchlist = []
+} = {}) {
+  const backtestItems = Array.isArray(backtestDiagnostics.items) ? backtestDiagnostics.items : [];
+  const staleRiskRanking = buildPortfolioStaleCatchdownRiskRanking(watchlist);
+  const themeMomentumRanking = buildPortfolioThemeMomentumRanking(watchlist);
+  const correctionCount = operationLanes.find((lane) => lane.id === "correction")?.count || 0;
+  const pendingCount = operationLanes.find((lane) => lane.id === "pending")?.count || 0;
+  const catchdownReplayCount = countPortfolioBacktestAbilityItems(backtestItems, [/退潮接盘亏损回测/, /追高买入回测/]);
+  const staleRiskCount = staleRiskRanking.items?.length || 0;
+  const missedThemeCount = countPortfolioBacktestAbilityItems(backtestItems, [/主力预热错过回测/]);
+  const overWaitCount = countPortfolioBacktestAbilityItems(backtestItems, [/空仓等待回测/, /机会成本回测/, /买点错过回测/, /试探仓后续回测/]);
+  const sellDisciplineCount = countPortfolioBacktestAbilityItems(backtestItems, [/利润回吐放任回测/, /卖出滞后回测/]);
+  const themeOpportunityCount = themeMomentumRanking.items?.length || 0;
+  const executableThemeCount = (themeMomentumRanking.items || []).filter((item) =>
+    /买入复核|微型试探|小仓/.test(String(item.action || ""))
+    || item.status === "ready"
+  ).length;
+  const coveragePct = Number(rankingActionAudit.coveragePct);
+  const hasCoverage = Number.isFinite(coveragePct);
+  const pnlPct = Number(profitability.cumulativePnlPct || 0);
+  const drawdownPct = Number(profitability.drawdownFromPeakPct || 0);
+  const decisive = Number(actionReview.decisive || 0);
+  const correctnessText = Number.isFinite(Number(actionReview.correctnessPct))
+    ? `${round(Number(actionReview.correctnessPct), 1)}%`
+    : "样本不足";
+  const waitCount = Number(distribution.WATCH || 0) + Number(distribution.HOLD || 0);
+  const buySellCount = Number(distribution.BUY || 0) + Number(distribution.SELL || 0);
+  return [
+    {
+      id: "anti_catchdown",
+      label: "防接盘能力",
+      headline: catchdownReplayCount
+        ? `${catchdownReplayCount} 个接盘/追高问题待修复`
+        : staleRiskCount
+          ? `已识别 ${staleRiskCount} 个接盘风险`
+          : "暂无明确接盘亏损样本",
+      detail: staleRiskCount || catchdownReplayCount
+        ? "退潮、主力撤离、旧催化和追涨风险会进入风险榜，不能再包装成低位启动。"
+        : "继续要求每个回调候选先证明资金回流、新闻催化和代表持仓承载。",
+      tone: catchdownReplayCount ? "bad" : staleRiskCount ? "warn" : "ok"
+    },
+    {
+      id: "main_force_follow",
+      label: "主力跟随能力",
+      headline: missedThemeCount
+        ? `${missedThemeCount} 个主力预热错过`
+        : executableThemeCount
+          ? `${executableThemeCount} 个可微型/小仓复核`
+          : themeOpportunityCount
+            ? `${themeOpportunityCount} 个题材机会待补证据`
+            : "暂未发现可执行主线",
+      detail: "主力进场和题材预热必须同时说明新闻逻辑、资金是否跟进、基金是否真实承载题材。",
+      tone: missedThemeCount ? "warn" : executableThemeCount ? "ok" : themeOpportunityCount ? "info" : "muted"
+    },
+    {
+      id: "over_waiting",
+      label: "过度观望纠偏",
+      headline: overWaitCount
+        ? `${overWaitCount} 个观望/机会成本问题`
+        : waitCount > buySellCount && waitCount >= 3
+          ? `观察持有 ${waitCount} 次，需继续复核`
+          : "等待纪律暂可接受",
+      detail: overWaitCount
+        ? "下一轮必须给小仓试探、主动降级或明确复查时间，不能继续只说等待机会。"
+        : "等待必须绑定触发条件和复核时间，避免现金长期空转。",
+      tone: overWaitCount ? "warn" : waitCount > buySellCount && waitCount >= 3 ? "info" : "ok"
+    },
+    {
+      id: "profit_drawdown",
+      label: "盈利与回撤",
+      headline: `${formatSignedNumber(profitability.cumulativePnl || 0)}元 / ${formatFallbackPct(pnlPct)}`,
+      detail: `按实际投入口径计算，当前距峰值 ${formatFallbackPct(drawdownPct)}；${sellDisciplineCount ? `${sellDisciplineCount} 个卖出/利润保护问题待复盘。` : "继续复核止盈、止损和回吐保护。"}`,
+      tone: pnlPct > 0 && drawdownPct > -3 ? "ok" : pnlPct < 0 || sellDisciplineCount ? "warn" : "info"
+    },
+    {
+      id: "evidence_chain",
+      label: "证据链",
+      headline: hasCoverage ? `榜单依据 ${round(coveragePct, 1)}%` : `可判定 ${decisive} 个动作`,
+      detail: hasCoverage
+        ? `最近动作引用榜单 ${rankingActionAudit.citedActions || 0}/${rankingActionAudit.totalActions || 0}，操作正确率 ${correctnessText}，${pendingCount} 个还等走势验证。`
+        : `已复盘 ${actionReview.total || recentReviews.length || 0} 个动作，${correctionCount} 个需要纠偏，后续每个动作都要绑定榜单或回测依据。`,
+      tone: !hasCoverage ? "muted" : coveragePct >= 80 && !correctionCount ? "ok" : coveragePct >= 50 ? "info" : "warn"
+    }
+  ];
+}
+
+function countPortfolioBacktestAbilityItems(items = [], patterns = []) {
+  return (items || []).filter((item) => {
+    const text = `${item.label || ""} ${item.value || ""} ${item.note || ""}`;
+    return patterns.some((pattern) => pattern.test(text));
+  }).length;
 }
 
 function buildPortfolioManagerPerformanceScorecards({

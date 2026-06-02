@@ -1551,6 +1551,75 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   line-height: 1.42;
 }
 
+.portfolio-ability-lanes {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.portfolio-ability-lane {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding: 9px;
+  border: 1px solid #dfe7ef;
+  border-left: 4px solid #8aa0b3;
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.portfolio-ability-lane.ok {
+  border-left-color: #15946a;
+  background: #f5fbf8;
+}
+
+.portfolio-ability-lane.info {
+  border-left-color: #2563a7;
+  background: #f4f8fd;
+}
+
+.portfolio-ability-lane.warn {
+  border-left-color: #b7791f;
+  background: #fffaf0;
+}
+
+.portfolio-ability-lane.bad {
+  border-left-color: #c24136;
+  background: #fff7f6;
+}
+
+.portfolio-ability-lane.muted {
+  border-left-color: #94a3b8;
+  background: #f7f9fb;
+}
+
+.portfolio-ability-lane span,
+.portfolio-ability-lane strong,
+.portfolio-ability-lane small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-ability-lane span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.portfolio-ability-lane strong {
+  color: #172635;
+  font-size: 13px;
+  line-height: 1.24;
+}
+
+.portfolio-ability-lane small {
+  color: #526271;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .portfolio-operation-kind-matrix {
   min-width: 0;
   display: grid;
@@ -1864,6 +1933,10 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
 }
 
 @media (max-width: 1180px) {
+  .portfolio-ability-lanes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .portfolio-operation-kind-matrix {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -9428,7 +9501,7 @@ button.danger-button:hover {
   #portfolioManagerScoreboard {
     grid-area: ability;
     min-height: 0;
-    max-height: 382px;
+    max-height: 430px;
     overflow: hidden;
   }
 
@@ -9699,6 +9772,7 @@ button.danger-button:hover {
   .portfolio-kpi-grid,
   .portfolio-performance-metrics,
   .portfolio-performance-narrative,
+  .portfolio-ability-lanes,
   .portfolio-operation-kind-matrix,
   .portfolio-performance-body,
   .portfolio-operation-review-lanes,

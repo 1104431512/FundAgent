@@ -983,6 +983,10 @@ function renderPortfolioManagerPerformance(performance = {}, account = {}) {
       ? proofPoints.slice(0, 3).map(renderPortfolioPerformanceProofPoint).join("")
       : `<div class="portfolio-performance-note muted">等待经理历史复盘形成能力结论。</div>`;
   }
+  const abilityRoot = document.querySelector("#portfolioManagerAbilityLanes");
+  if (abilityRoot) {
+    abilityRoot.innerHTML = renderPortfolioManagerAbilityLanes(performance.abilityLanes || [], performance, account);
+  }
   const kindMatrixRoot = document.querySelector("#portfolioOperationKindMatrix");
   if (kindMatrixRoot) {
     kindMatrixRoot.innerHTML = renderPortfolioOperationKindMatrix(performance.kindBreakdown || []);
@@ -1014,6 +1018,58 @@ function renderPortfolioPerformanceMetricCard(card = {}) {
       <small>${escapeHtml(card.meta || "")}</small>
     </div>
   `;
+}
+
+function renderPortfolioManagerAbilityLanes(lanes = [], performance = {}, account = {}) {
+  const items = Array.isArray(lanes) && lanes.length
+    ? lanes
+    : buildFallbackPortfolioAbilityLanes(performance, account);
+  return items.slice(0, 5).map(renderPortfolioManagerAbilityLane).join("");
+}
+
+function renderPortfolioManagerAbilityLane(item = {}) {
+  return `
+    <article class="portfolio-ability-lane ${escapeHtml(item.tone || "info")}">
+      <span>${escapeHtml(item.label || "能力证据")}</span>
+      <strong>${escapeHtml(item.headline || "等待复盘")}</strong>
+      <small>${escapeHtml(item.detail || "后续动作需要绑定榜单、新闻逻辑和事后走势。")}</small>
+    </article>
+  `;
+}
+
+function buildFallbackPortfolioAbilityLanes(performance = {}, account = {}) {
+  const review = performance.actionReview || {};
+  const profitability = performance.profitability || {};
+  return [
+    {
+      id: "anti_catchdown",
+      label: "防接盘能力",
+      headline: "待沉淀",
+      detail: "需要退潮回避榜和历史买入复盘来证明没有接盘。",
+      tone: "muted"
+    },
+    {
+      id: "main_force_follow",
+      label: "主力跟随能力",
+      headline: "待沉淀",
+      detail: "需要主力进场榜、题材预热榜和代表基金复核来证明不是只会观望。",
+      tone: "muted"
+    },
+    {
+      id: "profit_drawdown",
+      label: "盈利与回撤",
+      headline: profitability.summary ? formatPortfolioPnl(account) : "待复盘",
+      detail: profitability.summary || "按实际投入金额统计，而不是按初始本金做分母。",
+      tone: Number(profitability.cumulativePnlPct ?? account.cumulativePnlPct ?? 0) > 0 ? "ok" : "muted"
+    },
+    {
+      id: "evidence_chain",
+      label: "证据链",
+      headline: review.total ? `${review.total} 个动作` : "样本不足",
+      detail: "后续每个买入、卖出、等待都要能回到榜单或回测证据。",
+      tone: review.total ? "info" : "muted"
+    }
+  ];
 }
 
 function buildFallbackPortfolioProofPoints(performance = {}, account = {}) {
