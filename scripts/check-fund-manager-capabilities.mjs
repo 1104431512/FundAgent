@@ -1053,6 +1053,85 @@ assert.equal(ledgerGuardedBuy[0].action, "WATCH", "ledger integrity guard must b
 assert.equal(ledgerGuardedBuy[0].amount, 0, "ledger integrity guard must zero blocked buy amounts");
 assert(ledgerGuardedBuy[0].reason.includes("系统账本完整性拦截"), "ledger integrity guard must explain the buy block in user-readable Chinese");
 assert(ledgerGuardedBuy[0].dataBasis.includes("来源：portfolio_ledger_integrity_guard"), "ledger integrity guard must leave a traceable source");
+const staleCatchdownLossBacktestFixture = {
+  account: {
+    cash: 76000,
+    totalAsset: 100000,
+    positionWeightPct: 7.6,
+    investedValue: 7600,
+    positions: [{
+      code: "000042",
+      name: "退潮回调接盘基金C",
+      currentValue: 7600,
+      costAmount: 10000,
+      unrealizedPnlPct: -24
+    }],
+    riskBudget: { blockNewBuys: false }
+  },
+  watchlist: [{
+    code: "000042",
+    name: "退潮回调接盘基金C",
+    status: "watch",
+    readinessScore: 61,
+    reason: "表面回调完成，但接盘风险榜提示题材退潮、主力撤离。",
+    lastSnapshot: {
+      trendProfile: {
+        ok: true,
+        trendLabel: "pullback_repair",
+        entryBias: "staged_buy",
+        return5dPct: 1.1,
+        return10dPct: 2.2,
+        return20dPct: -3.4,
+        pullbackSetup: { signal: "pullback_complete", signalText: "回调完成" }
+      },
+      matchedThemes: [{
+        id: "ai_compute",
+        name: "AI算力",
+        stage: "theme_fading",
+        retreatSignal: "theme_fading",
+        positionSignal: "capital_outflow_watch",
+        avgMainNetInflowPct: -2.4,
+        capitalRetreatScore: 72,
+        capitalFollowScore: 31,
+        preheatScore: 22,
+        newsLogic: "前期热点降温，主力资金撤离，缺少新的订单或政策催化。"
+      }]
+    }
+  }],
+  transactions: [
+    { date: "2026-05-12", side: "BUY", code: "000042", name: "退潮回调接盘基金C", amount: 10000, nav: 1, navDate: "2026-05-12" }
+  ],
+  orders: [],
+  settlements: [],
+  runs: [
+    {
+      date: "2026-05-12",
+      type: "decision",
+      status: "completed",
+      summary: "000042 回调完成但题材退潮、主力撤离，经理仍买入试探。",
+      actions: [{ action: "BUY", code: "000042", reason: "回调完成，小仓试探" }]
+    },
+    {
+      date: "2026-05-20",
+      type: "valuation",
+      status: "completed",
+      summary: "000042 买入后亏损24%，当前浮亏2400元。"
+    }
+  ]
+};
+const staleCatchdownLossBacktest = manager.buildPortfolioBacktestDiagnostics(staleCatchdownLossBacktestFixture);
+const staleCatchdownLossItem = staleCatchdownLossBacktest.items.find((item) => item.label === "退潮接盘亏损回测");
+assert(staleCatchdownLossItem, "backtest diagnostics must catch stale-theme catchdown buys that later lose money");
+assert(staleCatchdownLossItem.note.includes("题材退潮") && staleCatchdownLossItem.note.includes("主力撤离"), "stale catchdown loss replay must explain the retreating theme and main-capital exit");
+assert(staleCatchdownLossItem.note.includes("亏损约2400元"), "stale catchdown loss replay must translate the mistake into estimated yuan damage");
+assert(
+  manager.buildPortfolioCapabilityActionQueue(staleCatchdownLossBacktestFixture).some((item) =>
+    item.action.includes("退潮接盘不是低位启动")
+    && item.action.includes("资金回流")
+    && item.action.includes("新闻催化")
+  ),
+  "capability queue must turn stale catchdown losses into a main-capital/news-catalyst repair task"
+);
 const givebackLossBacktestFixture = {
   account: {
     cash: 30000,

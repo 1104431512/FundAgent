@@ -1589,7 +1589,7 @@ const requiredPatterns = [
     message: "portfolio backtest redeployment diagnostics must separate deployable cash from unsettled redemption receivables."
   },
   {
-    pattern: /function buildPortfolioBacktestDiagnostics[\s\S]{0,11000}waitOnlyDecisionRuns[\s\S]{0,1200}过度保守回测/,
+    pattern: /function buildPortfolioBacktestDiagnostics[\s\S]{0,15000}waitOnlyDecisionRuns[\s\S]{0,1200}过度保守回测/,
     message: "portfolio backtest diagnostics must detect repeated wait-only decisions while cash remains deployable."
   },
   {
@@ -1613,8 +1613,20 @@ const requiredPatterns = [
     message: "portfolio backtests must hold the manager accountable for missing executable main-capital/preheat opportunities with news logic."
   },
   {
+    pattern: /(?=[\s\S]*退潮接盘亏损回测)(?=[\s\S]*function findPortfolioBacktestStaleCatchdownLossBuys)(?=[\s\S]*summarizePortfolioBacktestStaleCatchdownEvidence)(?=[\s\S]*estimatePortfolioBacktestStaleCatchdownLoss)/,
+    message: "portfolio backtests must identify stale-theme catchdown buys that become real losses."
+  },
+  {
+    pattern: /退潮接盘亏损回测[\s\S]{0,1000}资金回流[\s\S]{0,800}新闻催化[\s\S]{0,800}代表持仓承载/,
+    message: "stale catchdown loss diagnostics must require capital-flow recovery, catalyst logic, and holding-carrier validation before re-entry."
+  },
+  {
     pattern: /主力预热错过回测[\s\S]{0,900}主力\/预热题材不能被普通等待吞掉[\s\S]{0,900}0\.5%-1\.2%微型试探/,
     message: "portfolio capability queue must turn missed main-capital/preheat opportunities into micro-starter or downgrade decisions."
+  },
+  {
+    pattern: /退潮接盘亏损回测[\s\S]{0,900}退潮接盘不是低位启动[\s\S]{0,900}新闻催化/,
+    message: "portfolio capability queue must turn stale catchdown losses into a concrete theme/news repair task."
   },
   {
     pattern: /候选质量缺口回测[\s\S]{0,700}不能直接算作可买机会成本[\s\S]{0,500}扩展数据源和同主题替代品/,

@@ -14525,6 +14525,27 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
     );
   }
 
+  const staleCatchdownLossBuys = findPortfolioBacktestStaleCatchdownLossBuys({
+    positions,
+    transactions,
+    orders,
+    runs,
+    watchlist
+  });
+  if (staleCatchdownLossBuys.length) {
+    const first = staleCatchdownLossBuys[0];
+    const lossText = Number.isFinite(first.estimatedLossAmount)
+      ? `后续亏损约${round(first.estimatedLossAmount, 2)}元`
+      : first.lossEvidence || "后续亏损证据已出现";
+    add(
+      first.lossPct <= -8 || Number(first.estimatedLossAmount || 0) >= 800 ? "critical" : "warning",
+      "退潮接盘亏损回测",
+      `${first.code} ${first.name || ""}`.trim(),
+      `${first.date || "未知日期"}买入前后已有${first.retreatEvidence}，${lossText}；经理必须把“回调修复”和“主力撤离后的接盘”分开，后续同类候选只有出现资金回流、新闻催化仍成立、代表持仓承载与费率核验齐备，才允许0.5%-1.2%微型试探。`,
+      "买入质量"
+    );
+  }
+
   const hotBuys = findPortfolioBacktestHotBuys({ transactions, orders, runs, watchlist });
   if (hotBuys.length) {
     const first = hotBuys[0];
@@ -14910,6 +14931,190 @@ function findPortfolioBacktestHotBuys({ transactions = [], orders = [], runs = [
     });
   }
   return hotBuys;
+}
+
+function findPortfolioBacktestStaleCatchdownLossBuys({
+  positions = [],
+  transactions = [],
+  orders = [],
+  runs = [],
+  watchlist = []
+} = {}) {
+  const buys = [
+    ...transactions
+      .filter((item) => String(item.side || "").toUpperCase() === "BUY")
+      .map((item) => ({
+        ...item,
+        source: "transaction",
+        date: normalizePortfolioEventDate(item.date || item.navDate || item.createdAt)
+      })),
+    ...orders
+      .filter((item) => String(item.side || "").toUpperCase() === "BUY")
+      .filter((item) => !["cancelled", "rejected"].includes(String(item.status || "").toLowerCase()))
+      .map((item) => ({
+        ...item,
+        source: "order",
+        date: normalizePortfolioEventDate(item.submittedAt || item.submitDate || item.acceptedDate || item.createdAt || item.updatedAt)
+      }))
+  ].filter((item) => item.code && item.date);
+  const losses = [];
+  for (const buy of buys) {
+    const code = String(buy.code || "").trim();
+    const evidenceText = collectPortfolioBacktestEvidenceForCode(code, {
+      anchorDate: buy.date || buy.navDate || buy.createdAt,
+      transactions,
+      orders,
+      runs,
+      watchlist
+    });
+    const retreatEvidence = summarizePortfolioBacktestStaleCatchdownEvidence(evidenceText);
+    if (!retreatEvidence) continue;
+    const loss = estimatePortfolioBacktestStaleCatchdownLoss(buy, {
+      positions,
+      transactions,
+      evidenceText
+    });
+    if (!loss.hasLoss) continue;
+    losses.push({
+      code,
+      name: buy.name || loss.positionName || "",
+      date: buy.date,
+      retreatEvidence,
+      lossEvidence: loss.evidence,
+      estimatedLossAmount: loss.estimatedLossAmount,
+      lossPct: loss.lossPct
+    });
+  }
+  return losses.sort((a, b) =>
+    Number(b.estimatedLossAmount || 0) - Number(a.estimatedLossAmount || 0)
+    || Math.abs(Number(b.lossPct || 0)) - Math.abs(Number(a.lossPct || 0))
+  );
+}
+
+function summarizePortfolioBacktestStaleCatchdownEvidence(text = "") {
+  const normalized = String(text || "");
+  const evidence = [];
+  if (/stale_catchdown|接盘风险/.test(normalized)) evidence.push("接盘风险");
+  if (/题材退潮|theme_fading/.test(normalized)) evidence.push("题材退潮");
+  if (/主力撤离|主力资金撤离|资金撤离|capital_outflow/.test(normalized)) evidence.push("主力撤离");
+  if (/缺少主力进场|缺少预热催化|缺少新闻\/催化|缺少新闻|催化逻辑.*缺/.test(normalized)) evidence.push("缺少主力/催化支撑");
+  const retreatScore = extractPortfolioBacktestNumber(normalized, [
+    /退潮分\s*([+-]?\d+(?:\.\d+)?)/,
+    /capitalRetreatScore["\s:]*([+-]?\d+(?:\.\d+)?)/i
+  ]);
+  const mainFlow = extractPortfolioBacktestNumber(normalized, [
+    /主力均值\s*([+-]?\d+(?:\.\d+)?)%/,
+    /avgMainNetInflowPct["\s:]*([+-]?\d+(?:\.\d+)?)/i
+  ]);
+  if (Number.isFinite(retreatScore) && retreatScore >= 45) evidence.push(`退潮分${round(retreatScore, 0)}`);
+  if (Number.isFinite(mainFlow) && mainFlow <= -0.8) evidence.push(`主力净流出${formatFallbackPlainPct(mainFlow)}`);
+  return [...new Set(evidence)].slice(0, 4).join("、");
+}
+
+function estimatePortfolioBacktestStaleCatchdownLoss(buy = {}, {
+  positions = [],
+  transactions = [],
+  evidenceText = ""
+} = {}) {
+  const code = String(buy.code || "").trim();
+  const buyDate = normalizePortfolioEventDate(buy.date || buy.navDate || buy.createdAt);
+  const buyNav = finiteMetricNumber(buy.nav ?? buy.confirmedNav ?? buy.navSnapshot?.nav ?? buy.unitNav);
+  const buyAmount = [
+    buy.actualAmount,
+    buy.amount,
+    buy.requestedAmount,
+    buy.netAmount
+  ].map(Number).find((value) => Number.isFinite(value) && value > 0);
+  const explicitLossPct = extractPortfolioBacktestLossPct(evidenceText);
+  let estimatedLossAmount = null;
+  let lossPct = Number.isFinite(explicitLossPct) ? explicitLossPct : null;
+  const position = (positions || []).find((item) => String(item?.code || "").trim() === code);
+  if (position) {
+    const currentValue = finiteMetricNumber(position.currentValue ?? position.marketValue ?? position.value);
+    const costAmount = [
+      position.costAmount,
+      position.investedCost,
+      position.costBasis,
+      position.purchaseAmount,
+      position.originalCost
+    ].map(Number).find((value) => Number.isFinite(value) && value > 0);
+    const unrealizedPct = finiteMetricNumber(position.unrealizedPnlPct ?? position.pnlPct ?? position.returnPct);
+    if (Number.isFinite(costAmount) && Number.isFinite(currentValue) && currentValue < costAmount) {
+      estimatedLossAmount = round(costAmount - currentValue, 2);
+      lossPct = Number.isFinite(unrealizedPct) ? unrealizedPct : round((currentValue - costAmount) * 100 / costAmount, 2);
+    } else if (Number.isFinite(unrealizedPct) && unrealizedPct < 0 && Number.isFinite(currentValue) && currentValue > 0) {
+      estimatedLossAmount = round(Math.abs(currentValue * unrealizedPct / 100), 2);
+      lossPct = unrealizedPct;
+    }
+  }
+  const laterSellLosses = (transactions || [])
+    .filter((item) => String(item.side || "").toUpperCase() === "SELL")
+    .filter((item) => String(item.code || "").trim() === code)
+    .filter((item) => {
+      const sellDate = normalizePortfolioEventDate(item.date || item.navDate || item.createdAt);
+      return !buyDate || !sellDate || sellDate >= buyDate;
+    })
+    .map((item) => estimatePortfolioBacktestSellLossFromNav(buy, item, buyNav))
+    .filter((item) => item?.hasLoss);
+  if (laterSellLosses.length) {
+    const totalSellLoss = laterSellLosses.reduce((sum, item) => sum + Number(item.estimatedLossAmount || 0), 0);
+    const worstPct = Math.min(...laterSellLosses.map((item) => Number(item.lossPct)).filter(Number.isFinite));
+    if (Number.isFinite(totalSellLoss) && totalSellLoss > Number(estimatedLossAmount || 0)) {
+      estimatedLossAmount = round(totalSellLoss, 2);
+    }
+    if (Number.isFinite(worstPct) && (!Number.isFinite(lossPct) || worstPct < lossPct)) {
+      lossPct = round(worstPct, 2);
+    }
+  }
+  if (!Number.isFinite(estimatedLossAmount) && Number.isFinite(buyAmount) && Number.isFinite(lossPct) && lossPct < 0) {
+    estimatedLossAmount = round(Math.abs(buyAmount * lossPct / 100), 2);
+  }
+  const hasLoss = (Number.isFinite(estimatedLossAmount) && estimatedLossAmount > 0)
+    || (Number.isFinite(lossPct) && lossPct < 0)
+    || /买入后.*(?:下跌|亏损|浮亏|转亏)|当前.*(?:亏损|浮亏|转亏)|跌(?:了)?\d+(?:\.\d+)?个点/.test(String(evidenceText || ""));
+  return {
+    hasLoss,
+    positionName: position?.name || "",
+    estimatedLossAmount: Number.isFinite(estimatedLossAmount) ? estimatedLossAmount : null,
+    lossPct: Number.isFinite(lossPct) ? lossPct : null,
+    evidence: Number.isFinite(lossPct)
+      ? `浮亏${formatFallbackPct(lossPct)}`
+      : "买入后出现下跌/亏损证据"
+  };
+}
+
+function estimatePortfolioBacktestSellLossFromNav(buy = {}, sell = {}, buyNav = null) {
+  const entryNav = Number.isFinite(buyNav) ? buyNav : finiteMetricNumber(buy.nav ?? buy.confirmedNav ?? buy.navSnapshot?.nav);
+  const sellNav = finiteMetricNumber(sell.nav ?? sell.confirmedNav ?? sell.navSnapshot?.nav ?? sell.unitNav);
+  if (!Number.isFinite(entryNav) || entryNav <= 0 || !Number.isFinite(sellNav) || sellNav >= entryNav) return null;
+  const units = [
+    sell.units,
+    sell.confirmedUnits,
+    sell.requestedUnits,
+    Number(sell.amount || 0) > 0 ? Number(sell.amount) / sellNav : null
+  ].map(Number).find((value) => Number.isFinite(value) && value > 0);
+  const lossPct = round((sellNav - entryNav) * 100 / entryNav, 2);
+  return {
+    hasLoss: true,
+    estimatedLossAmount: Number.isFinite(units) ? round((entryNav - sellNav) * units, 2) : null,
+    lossPct
+  };
+}
+
+function extractPortfolioBacktestLossPct(text = "") {
+  const normalized = String(text || "");
+  const negative = extractPortfolioBacktestNumber(normalized, [
+    /(?:当前|买入后|持有).*?(?:转亏|亏损|浮亏|收益率|回撤)[^\d+-]*(-\d+(?:\.\d+)?)%/i,
+    /unrealizedPnlPct["\s:]*(-\d+(?:\.\d+)?)/i,
+    /pnlPct["\s:]*(-\d+(?:\.\d+)?)/i
+  ]);
+  if (Number.isFinite(negative) && negative < 0) return negative;
+  const points = extractPortfolioBacktestNumber(normalized, [
+    /买入后.*?(?:下跌|亏损|浮亏|回撤)[^\d+-]*(\d+(?:\.\d+)?)\s*(?:个点|%)/,
+    /跌(?:了)?\s*(\d+(?:\.\d+)?)\s*个点/,
+    /亏(?:损|了)?\s*(\d+(?:\.\d+)?)\s*(?:个点|%)/
+  ]);
+  return Number.isFinite(points) && points > 0 ? -Math.abs(points) : null;
 }
 
 function collectPortfolioBacktestEvidenceForCode(code, { anchorDate = "", transactions = [], orders = [], runs = [], watchlist = [] } = {}) {
@@ -15457,6 +15662,8 @@ function buildPortfolioCapabilityActionQueue(db = {}) {
       addTask(item, "先处理过期queued/submitted/priced订单；无持仓可卖的旧赎回必须作废，不能让卡滞订单继续影响现金和仓位判断。", "执行风控");
     } else if (item.label === "重复应收回测") {
       addTask(item, "同一赎回订单只保留一条有效到账；重复pending应收要作废并从应收现金扣回。", "执行风控");
+    } else if (item.label === "退潮接盘亏损回测") {
+      addTask(item, "退潮接盘不是低位启动；后续同类候选必须先证明资金回流、新闻催化仍成立、代表持仓承载和费率核验齐备，再允许0.5%-1.2%微型试探。", "题材分析师");
     } else if (item.label === "追高买入回测") {
       addTask(item, "复盘买入当日是否处于高位延伸；后续同类基金必须等回调完成和5日/10日温和转强后才小仓试探。", "基金研究员");
     } else if (item.label === "卖出滞后回测") {
