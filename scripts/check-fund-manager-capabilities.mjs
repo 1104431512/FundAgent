@@ -495,6 +495,16 @@ const liveThemeOpportunitySnapshot = {
   }]
 };
 liveThemeOpportunitySnapshot.themeLeaderboards = manager.buildThemeLeaderboards(liveThemeOpportunitySnapshot.themeRadar);
+const liveThemeRefreshCandidate = manager.refreshPortfolioCandidateThemesWithMarketRadar(livePreheatSeedProfile, {
+  fetchedAt: freshThemeRefreshAt,
+  themeRadar: liveThemeOpportunitySnapshot.themeRadar
+});
+assert(
+  liveThemeRefreshCandidate.marketThemeRefresh?.supportSignals?.some((item) => item.includes("低空经济"))
+    && liveThemeRefreshCandidate.marketThemeRefresh?.newsLogic?.includes("低空经济示范区政策加速落地")
+    && liveThemeRefreshCandidate.marketThemeRefresh?.dataBasis?.some((item) => /主力|新闻|催化|代表龙头/.test(item)),
+  "candidate market-theme refresh must preserve why-move, support-signal, and data-basis evidence instead of only matched theme names"
+);
 const fullOldThemeWatchlist = Array.from({ length: 10 }, (_, index) => ({
   code: `9000${index}`,
   name: `旧观察基金${index}C`,

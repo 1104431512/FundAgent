@@ -1364,11 +1364,7 @@ function refreshPortfolioCandidateThemesWithMarketRadar(candidate = {}, marketSn
   const refreshed = {
     ...candidate,
     matchedThemes,
-    marketThemeRefresh: {
-      source: "current_market_theme_radar",
-      refreshedAt,
-      matchedThemeNames: matchedThemes.map((theme) => theme.name || theme.id).filter(Boolean).slice(0, 3)
-    }
+    marketThemeRefresh: buildPortfolioMarketThemeRefresh(matchedThemes, { refreshedAt })
   };
   if (candidate.seed && typeof candidate.seed === "object") {
     refreshed.seed = {
@@ -1377,6 +1373,47 @@ function refreshPortfolioCandidateThemesWithMarketRadar(candidate = {}, marketSn
     };
   }
   return attachHoldingThemeRefresh(refreshed);
+}
+
+function buildPortfolioMarketThemeRefresh(matchedThemes = [], options = {}) {
+  const themes = (matchedThemes || []).filter(Boolean).slice(0, 5);
+  const supportThemes = themes.filter(isActionableThemeSupport);
+  const supportSignals = supportThemes
+    .map(formatPortfolioHoldingThemeSupportSignal)
+    .filter(Boolean)
+    .slice(0, 3);
+  const newsLogic = themes
+    .map((theme) => theme.newsLogic || theme.primaryCatalyst || theme.catalystProfile?.summary || "")
+    .filter(Boolean)
+    .map((text) => shortenPortfolioCustomerText(text, 96))
+    .slice(0, 2)
+    .join("；");
+  const dataBasis = themes.flatMap((theme) => [
+    theme.catalystProfile?.latestNewsTime ? `新闻时间：${theme.catalystProfile.latestNewsTime}` : "",
+    theme.catalystProfile?.freshnessLabel ? `催化时效：${theme.catalystProfile.freshnessLabel}` : "",
+    Number.isFinite(Number(theme.avgMainNetInflowPct)) ? `主力均值：${formatFallbackPlainPct(theme.avgMainNetInflowPct)}` : "",
+    Number.isFinite(Number(theme.mainInflowRankScore)) && Number(theme.mainInflowRankScore) > 0 ? `主力流入榜证据：${round(Number(theme.mainInflowRankScore), 0)}分` : "",
+    normalizeStringArray(theme.leaderStocks).length ? `代表龙头：${normalizeStringArray(theme.leaderStocks).slice(0, 3).join("/")}` : ""
+  ]).filter(Boolean).slice(0, 6);
+  return {
+    source: "current_market_theme_radar",
+    refreshedAt: options.refreshedAt || new Date().toISOString(),
+    matchedThemeNames: themes.map((theme) => theme.name || theme.id).filter(Boolean).slice(0, 3),
+    supportLabel: supportSignals[0] || "",
+    supportSignals,
+    summary: formatPortfolioMarketThemeRefreshSummary(themes, supportSignals),
+    newsLogic,
+    dataBasis
+  };
+}
+
+function formatPortfolioMarketThemeRefreshSummary(themes = [], supportSignals = []) {
+  const names = (themes || []).map((theme) => theme.name || theme.id).filter(Boolean).slice(0, 3);
+  if (!names.length) return "";
+  if (supportSignals.length) {
+    return `${names.join("/")}已有当前题材雷达支撑：${supportSignals.slice(0, 2).join("；")}`;
+  }
+  return `${names.join("/")}已被当前题材雷达匹配，但主力进场、题材预热或低位轮动支撑仍需复核`;
 }
 
 function markUnrefreshedMarketThemeSignal(theme = {}) {

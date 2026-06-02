@@ -2017,6 +2017,10 @@ const requiredPatterns = [
     message: "current market radar refresh must downgrade old theme labels that are not confirmed today."
   },
   {
+    pattern: /function refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,1800}buildPortfolioMarketThemeRefresh\(matchedThemes[\s\S]{0,2600}function buildPortfolioMarketThemeRefresh[\s\S]{0,900}supportSignals[\s\S]{0,900}newsLogic[\s\S]{0,900}dataBasis/,
+    message: "candidate market-theme refresh must preserve why-move, support-signal, and data-basis evidence, not just matched theme names."
+  },
+  {
     pattern: /function markUnrefreshedMarketThemeSignal[\s\S]{0,1200}current_radar_unconfirmed[\s\S]{0,900}未被当前题材雷达确认/,
     message: "unrefreshed theme labels must become non-actionable and carry a readable current-radar warning."
   },
