@@ -301,8 +301,16 @@ const requiredPatterns = [
     message: "fund actionability must downgrade text-only catchdown risks before UI cards or model prompts can surface them as buyable."
   },
   {
+    pattern: /function getActionabilityThemeRetreatDiscipline[\s\S]{0,1000}getUnrefreshedMarketThemeWarnings\(digest\)[\s\S]{0,500}系统当前题材雷达未确认/,
+    message: "fund actionability must downgrade historical theme labels that are not confirmed by the current theme radar."
+  },
+  {
     pattern: /function hasActionabilityMicroStarterSupport[\s\S]{0,500}getTextualCatchdownWarnings\(digest\)\.length/,
     message: "theme micro-starter logic must not override text-only catchdown warnings."
+  },
+  {
+    pattern: /function hasActionabilityMicroStarterSupport[\s\S]{0,650}getUnrefreshedMarketThemeWarnings\(digest\)\.length/,
+    message: "theme micro-starter logic must not override current-radar-unconfirmed old theme warnings."
   },
   {
     pattern: /function classifyPullbackSetupCandidateForSummary[\s\S]{0,900}getTextualCatchdownWarnings\(candidate\)\.length/,
@@ -1141,7 +1149,11 @@ const requiredPatterns = [
     message: "theme catalyst logic must track headline freshness and block stale news from actionable main-capital/preheat support."
   },
   {
-    pattern: /(?=[\s\S]*function getStaleCatalystThemeWarnings[\s\S]{0,900}旧新闻\/旧催化[\s\S]{0,700}今天的买点)(?=[\s\S]*function getActionabilityThemeRetreatDiscipline[\s\S]{0,900}getStaleCatalystThemeWarnings\(digest\)[\s\S]{0,500}系统旧催化降级)/,
+    pattern: /function getStaleCatalystThemeWarnings[\s\S]{0,900}旧新闻\/旧催化[\s\S]{0,700}今天的买点/,
+    message: "old catalysts must produce a customer-readable warning before they can be treated as setup evidence."
+  },
+  {
+    pattern: /function getActionabilityThemeRetreatDiscipline[\s\S]{0,1600}getStaleCatalystThemeWarnings\(digest\)[\s\S]{0,500}系统旧催化降级/,
     message: "old catalysts must downgrade actionability even when they are not yet classified as hard catchdown risk."
   },
   {

@@ -4044,7 +4044,7 @@ const unsupportedThemeProfile = {
 const unsupportedThemeBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, unsupportedThemeProfile);
 assert.equal(unsupportedThemeBuyGuard.ok, false, "portfolio buy discipline must block BUY when a theme label lacks current main-capital/preheat/rotation support");
 assert(unsupportedThemeBuyGuard.reason.includes("当前主力进场") && unsupportedThemeBuyGuard.evidence.includes("来源：portfolio_theme_support_guard"), "unsupported theme buy block must explain the missing current theme support");
-const unconfirmedOldThemeBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, {
+const unconfirmedOldThemeProfile = {
   ...verifiedSeedProfile,
   matchedThemes: [{
     id: "ai_compute",
@@ -4060,12 +4060,19 @@ const unconfirmedOldThemeBuyGuard = manager.evaluatePortfolioBuyDiscipline({ act
     catalystProfile: { score: 4, tags: [], summary: "旧预热", risk: true, fresh: false, freshnessLabel: "未被当前题材雷达确认" },
     newsLogic: "旧题材线索未被当前雷达确认：前期AI算力订单催化。"
   }]
-});
+};
+const unconfirmedOldThemeBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, unconfirmedOldThemeProfile);
 assert.equal(unconfirmedOldThemeBuyGuard.ok, false, "portfolio buy discipline must block BUY when a historical theme label is not confirmed by the current market radar");
 assert(
   unconfirmedOldThemeBuyGuard.reason.includes("旧题材线索未被当前题材雷达确认")
     && unconfirmedOldThemeBuyGuard.reason.includes("历史热点"),
   "unconfirmed old-theme buy blocks must explain that stale theme labels cannot be used as today's buy basis"
+);
+const unconfirmedOldThemeActionability = manager.buildFundActionabilitySignals(unconfirmedOldThemeProfile);
+assert.equal(unconfirmedOldThemeActionability.action, "avoid", "actionability must not surface current-radar-unconfirmed old themes as buy or staged-buy");
+assert(
+  unconfirmedOldThemeActionability.decisionBlocker.some((item) => item.includes("系统当前题材雷达未确认") && item.includes("历史热点")),
+  "actionability blocker must carry current-radar-unconfirmed old-theme evidence into UI cards and model prompts"
 );
 const textOnlyCatchdownProfile = {
   ...verifiedSeedProfile,

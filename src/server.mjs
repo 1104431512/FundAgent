@@ -27831,6 +27831,7 @@ function hasActionabilityMicroStarterSupport(digest = {}, trend = {}) {
   if (!digest || !trend || typeof trend !== "object") return false;
   if (hasThemeRetreatRisk(digest) || hasStaleThemeCatchdownRisk(digest)) return false;
   if (getTextualCatchdownWarnings(digest).length) return false;
+  if (getUnrefreshedMarketThemeWarnings(digest).length) return false;
   if (trend.entryBias === "avoid_now" || trend.trendLabel === "breakdown" || trend.trendLabel === "extended_uptrend") return false;
   if (!hasVerifiedThemeCarrierEvidence(digest)) return false;
   const lowBaseProbe = hasThemeLowBaseMicroStarterTrendSetup(trend);
@@ -28025,6 +28026,14 @@ function getActionabilityThemeRetreatDiscipline(digest = {}, { isMoneyMarket = f
       scoreCap: 44,
       scorePenalty: 18,
       blocker: `系统文本接盘风险拦截：${textualCatchdownWarnings[0]}。`
+    };
+  }
+  const unrefreshedWarnings = getUnrefreshedMarketThemeWarnings(digest);
+  if (unrefreshedWarnings.length) {
+    return {
+      scoreCap: 44,
+      scorePenalty: 18,
+      blocker: `系统当前题材雷达未确认：${unrefreshedWarnings[0]}。`
     };
   }
   const staleCatalystWarnings = getStaleCatalystThemeWarnings(digest);
