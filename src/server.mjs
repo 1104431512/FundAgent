@@ -11358,19 +11358,21 @@ function buildPortfolioStaleCatchdownRiskRanking(watchlist = []) {
   return buildPortfolioRankingList({
     id: "stale_catchdown_risk",
     title: "接盘风险榜",
-    subtitle: "专门拦截主力撤离后的回调修复，防止经理把退潮题材包装成低位启动。",
+    subtitle: "专门拦截主力撤离或底层持仓盘中走弱后的表面回调，防止经理把退潮题材包装成低位启动。",
     emptyText: "暂无主力撤离后的接盘风险候选。",
-    nextAction: "下一步只观察资金是否回流、题材是否重新预热；没有主力回流前不得给买入金额。",
+    nextAction: "下一步只观察资金是否回流、题材是否重新预热、底层持仓是否止跌；没有主力回流或龙头止跌前不得给买入金额。",
     items
   });
 }
 
 function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
   const evidence = resolvePortfolioChaseRiskEvidence(item);
-  if (!evidence.staleCatchdownRisk && !evidence.themeRetreatRisk) return null;
+  if (!evidence.staleCatchdownRisk && !evidence.themeRetreatRisk && !evidence.holdingRealtimeCatchdownRisk) return null;
   const theme = evidence.theme || {};
   const trend = evidence.trend || {};
   const retreatFacts = [
+    evidence.holdingRealtimeWarning || "",
+    ...(evidence.holdingRealtimeFacts || []),
     ...(evidence.staleThemeWarnings || []),
     ...(evidence.themeRetreatWarnings || []),
     theme.newsLogic ? `逻辑${shortenPortfolioCustomerText(theme.newsLogic, 72)}` : "",
@@ -11381,6 +11383,7 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
     Number(evidence.score || 0)
     + (evidence.staleCatchdownRisk ? 24 : 0)
     + (evidence.themeRetreatRisk ? 18 : 0)
+    + (evidence.holdingRealtimeCatchdownRisk ? 28 : 0)
     + Math.min(18, Number(theme.capitalRetreatScore || 0) / 4)
   ));
   return buildPortfolioRankingItem({
@@ -11388,22 +11391,29 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
     name: item.name,
     source: "主力撤离拦截",
     score: round(score, 1),
-    action: evidence.staleCatchdownRisk ? "退潮接盘强拦截" : "主力撤离回避",
-    reason: "题材资金已经退潮或主力撤离，基金净值的回调修复不能直接当成启动买点。",
+    action: evidence.holdingRealtimeCatchdownRisk ? "底层持仓接盘拦截" : evidence.staleCatchdownRisk ? "退潮接盘强拦截" : "主力撤离回避",
+    reason: evidence.holdingRealtimeCatchdownRisk
+      ? "前十大持仓盘中明显走弱，基金净值的回调修复可能只是跟跌前半段，不能直接当成启动买点。"
+      : "题材资金已经退潮或主力撤离，基金净值的回调修复不能直接当成启动买点。",
     facts: retreatFacts.slice(0, 5),
     decision: {
       highlights: retreatFacts.slice(0, 3),
       risks: [
-        "容易买在旧题材反弹尾端，后续若主力不回流，回撤会明显放大。",
+        evidence.holdingRealtimeCatchdownRisk
+          ? "底层龙头没有止跌前，买基金容易接到下一段补跌。"
+          : "容易买在旧题材反弹尾端，后续若主力不回流，回撤会明显放大。",
         evidence.themeRisk || "题材退潮或主力资金撤离，先等资金回流。",
         evidence.positionRisk || ""
       ].filter(Boolean),
       gaps: [
         "缺主力资金回流",
         "缺新的新闻/政策/产业预热",
+        evidence.holdingRealtimeCatchdownRisk ? "缺底层持仓止跌确认" : "",
         "缺板块重新转强后的代表基金确认"
-      ],
-      nextStep: "只保留观察或降级，等主力回流、题材重新预热且基金低位温和转强后，再回到主力预热或买入准备榜。"
+      ].filter(Boolean),
+      nextStep: evidence.holdingRealtimeCatchdownRisk
+        ? "先回避，不给买入金额；等前十大持仓止跌、主力回流和基金低位温和转强同时出现后，再回到买入准备榜。"
+        : "只保留观察或降级，等主力回流、题材重新预热且基金低位温和转强后，再回到主力预热或买入准备榜。"
     },
     status: "warning"
   });
@@ -11463,7 +11473,10 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
   const staleThemeWarnings = getStaleThemeCatchdownWarnings({ matchedThemes: themes });
   const themeRetreatRisk = themeRetreatWarnings.length > 0;
   const staleCatchdownRisk = staleThemeWarnings.length > 0;
+  const holdingRealtimeProfile = buildPortfolioHoldingRealtimeEvidenceProfile(item, profile);
+  const holdingRealtimeCatchdownRisk = Boolean(holdingRealtimeProfile.warning);
   const hotEvidence = [
+    holdingRealtimeProfile.warning || "",
     staleThemeWarnings[0] || "",
     themeRetreatWarnings[0] || "",
     Number.isFinite(r20) && r20 > 12 ? `近20日涨幅偏热${formatFallbackPlainPct(r20)}` : "",
@@ -11483,6 +11496,7 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
     theme.stage === "crowded" ? 18 : 0,
     themeRetreatRisk ? 34 : 0,
     staleCatchdownRisk ? 40 : 0,
+    holdingRealtimeCatchdownRisk ? 36 : 0,
     Number.isFinite(crowding) && crowding >= 55 ? 14 : Number.isFinite(crowding) && crowding >= 40 ? 8 : 0,
     /追涨|偏热|高位|拥挤|等待回撤/.test(text) ? 10 : 0
   ].reduce((sum, value) => sum + value, 0);
@@ -11491,12 +11505,17 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
     theme,
     themeRetreatRisk,
     staleCatchdownRisk,
+    holdingRealtimeCatchdownRisk,
+    holdingRealtimeWarning: holdingRealtimeProfile.warning,
+    holdingRealtimeFacts: holdingRealtimeProfile.facts,
     themeRetreatWarnings,
     staleThemeWarnings,
     score,
     shouldSurface: score >= 20,
     hotEvidence,
-    themeRisk: staleCatchdownRisk
+    themeRisk: holdingRealtimeCatchdownRisk
+      ? "前十大持仓盘中走弱，先等底层持仓止跌。"
+      : staleCatchdownRisk
       ? "题材缺少主力进场或预热催化，回调先按接盘风险处理。"
       : themeRetreatRisk
       ? "题材退潮或主力资金撤离，先等资金回流。"
@@ -11504,7 +11523,7 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
     positionRisk: Number.isFinite(low120) && low120 > 80 ? "基金处在区间高位，不是低位启动。" : "",
     needsPullback: Number.isFinite(r20) && r20 > 12,
     needsLowPosition: Number.isFinite(low120) && low120 > 65 || Number.isFinite(low250) && low250 > 80,
-    needsCooling: staleCatchdownRisk || themeRetreatRisk || Number.isFinite(crowding) && crowding >= 40 || theme.positionSignal === "high_chase_risk" || theme.stage === "crowded"
+    needsCooling: holdingRealtimeCatchdownRisk || staleCatchdownRisk || themeRetreatRisk || Number.isFinite(crowding) && crowding >= 40 || theme.positionSignal === "high_chase_risk" || theme.stage === "crowded"
   };
 }
 
@@ -11513,9 +11532,43 @@ function buildPortfolioChaseRiskFacts(evidence = {}) {
   const theme = evidence.theme || {};
   return [
     ...evidence.hotEvidence.slice(0, 3),
+    ...(evidence.holdingRealtimeFacts || []).slice(0, 2),
     theme.name ? `题材${theme.name}` : "",
     Number.isFinite(Number(trend.drawdownFromRecentHighPct)) ? `距高点${formatFallbackPlainPct(trend.drawdownFromRecentHighPct)}` : ""
   ].filter(Boolean);
+}
+
+function buildPortfolioHoldingRealtimeEvidenceProfile(item = {}, profile = {}) {
+  const candidate = {
+    ...item,
+    ...(profile || {}),
+    holdingRealtimePulse: profile?.holdingRealtimePulse || item.holdingRealtimePulse,
+    holdings: profile?.holdings || item.holdings,
+    actionability: profile?.actionability || item.actionability,
+    holdingsOutlook: profile?.holdingsOutlook || item.holdingsOutlook
+  };
+  const warning = getHoldingRealtimeCatchdownWarning(candidate);
+  const pulse = getCandidateHoldingRealtimePulse(candidate);
+  if (!warning || !pulse?.ok) return { warning: "", facts: [] };
+  const weighted = finiteMetricNumber(pulse.weightedChangePct);
+  const covered = finiteMetricNumber(pulse.coveredHoldingPct);
+  const negative = Array.isArray(pulse.topNegative)
+    ? pulse.topNegative
+      .map((entry) => {
+        const name = entry?.name || entry?.code || "";
+        const change = finiteMetricNumber(entry?.changePct);
+        return name ? `${name}${Number.isFinite(change) ? formatFallbackPlainPct(change) : ""}` : "";
+      })
+      .filter(Boolean)
+      .slice(0, 3)
+    : [];
+  const facts = [
+    Number.isFinite(weighted) ? `前十大持仓加权${formatFallbackPlainPct(weighted)}` : "",
+    Number.isFinite(covered) ? `覆盖持仓${round(covered, 1)}%` : "",
+    negative.length ? `走弱龙头${negative.join("/")}` : "",
+    ...normalizeStringArray(pulse.risks).slice(0, 2)
+  ].filter(Boolean);
+  return { warning, facts };
 }
 
 function buildPortfolioDrawdownDefenseRanking(watchlist = [], positions = []) {

@@ -3021,8 +3021,12 @@ const requiredPatterns = [
     message: "portfolio decisions must deterministically review main-capital/preheat theme opportunities instead of allowing generic waiting."
   },
   {
-    pattern: /(?=[\s\S]*function buildPortfolioStaleCatchdownRiskRanking)(?=[\s\S]*接盘风险榜)(?=[\s\S]*stale_catchdown_risk)(?=[\s\S]*主力撤离后的回调修复)(?=[\s\S]*buildPortfolioRankingBoard[\s\S]*buildPortfolioStaleCatchdownRiskRanking)/,
+    pattern: /function buildPortfolioRankingBoard[\s\S]{0,240000}buildPortfolioStaleCatchdownRiskRanking\(watchlist\)[\s\S]{0,240000}function buildPortfolioStaleCatchdownRiskRanking[\s\S]{0,2000}stale_catchdown_risk[\s\S]{0,2000}接盘风险榜[\s\S]{0,2000}表面回调/,
     message: "manager ranking boards must include a stale-catchdown risk lane that blocks retreating themes from masquerading as pullback setups."
+  },
+  {
+    pattern: /function buildPortfolioStaleCatchdownRiskRankingItem[\s\S]{0,7000}holdingRealtimeCatchdownRisk[\s\S]{0,3200}底层持仓接盘拦截[\s\S]{0,3200}缺底层持仓止跌确认[\s\S]{0,16000}function resolvePortfolioChaseRiskEvidence[\s\S]{0,7000}buildPortfolioHoldingRealtimeEvidenceProfile[\s\S]{0,7000}function buildPortfolioHoldingRealtimeEvidenceProfile/,
+    message: "stale-catchdown risk lane must surface intraday weak top-holding pulse as a customer-readable no-buy blocker."
   },
   {
     pattern: /function buildPortfolioDecisionSynthesisRanking[\s\S]{0,2200}买点[\s\S]{0,2200}费率[\s\S]{0,2200}持仓前景/,

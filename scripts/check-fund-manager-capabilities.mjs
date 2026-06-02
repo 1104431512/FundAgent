@@ -4858,6 +4858,43 @@ assert(
   holdingRealtimeWeakActionability.decisionBlocker.some((item) => item.includes("持仓实时降级") || item.includes("底层持仓止跌")),
   "holding realtime weakness must become a customer-readable actionability blocker"
 );
+const holdingRealtimeCatchdownRanking = manager.buildPortfolioStaleCatchdownRiskRanking([{
+  code: "000050",
+  name: "持仓走弱低位基金C",
+  status: "ready",
+  readinessScore: 88,
+  lastSnapshot: holdingRealtimeWeakSetupDigest
+}]);
+assert(
+  holdingRealtimeCatchdownRanking.items.some((item) =>
+    item.code === "000050"
+    && item.action.includes("持仓")
+    && item.facts.some((fact) => fact.includes("表面回调可能继续下探") || fact.includes("工业富联"))
+  ),
+  "stale-catchdown risk ranking must expose intraday weakening top holdings as a no-buy catchdown risk"
+);
+const holdingRealtimeCatchdownBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
+  account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
+  watchlist: [{
+    code: "000050",
+    name: "持仓走弱低位基金C",
+    status: "ready",
+    readinessScore: 88,
+    lastSnapshot: holdingRealtimeWeakSetupDigest
+  }]
+}));
+assert(
+  holdingRealtimeCatchdownBoard.lists.find((item) => item.id === "stale_catchdown_risk")?.items.some((item) => item.code === "000050"),
+  "manager ranking board must put weak top-holding pullbacks into the stale-catchdown risk lane"
+);
+assert(
+  !(holdingRealtimeCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "000050"),
+  "customer action deck must not place weak top-holding pullbacks in buy-review"
+);
+assert(
+  (holdingRealtimeCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000050"),
+  "customer action deck must present weak top-holding pullbacks as avoid items"
+);
 const themeRequiredSummary = manager.buildMarketDeepDiveSummary({
   ok: true,
   focus: "pullback_setup_discovery",
