@@ -19419,6 +19419,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "若质检问题包含 watch_candidate_promoted_to_recommendation、recommendation_not_from_pullback_main_candidates 或 recommends_without_qualified_pullback_candidate，必须按证据里的 mainCandidateCodes 重写主推荐；watchOrRejectCodes 只能写进观察/排除原因。",
       "若质检问题包含 watch_candidate_given_buy_execution 或 watch_candidate_given_buy_signal，观察/排除候选不能获得买入金额，也不能写“可以买、小仓位试探、少买一点、建仓”等买入暗示；只能写0元观察或等待条件。",
       "若质检问题包含 stale_data_candidate_given_buy_execution 或 stale_data_candidate_given_buy_signal，说明该基金净值/走势证据已过期；必须把对应代码改为0元等待、重新下钻复核，不能给买入、分批、建仓或小仓位试探。",
+      "若质检问题包含 stale_theme_candidate_given_buy_execution 或 stale_theme_candidate_given_buy_signal，说明该基金题材退潮、主力撤离或存在接盘风险；必须把对应代码改为0元观察、等待资金回流，不能给买入、分批、建仓或小仓位试探。",
       "若质检问题包含 missing_pullback_timing_evidence，主推荐每条必须写出5日/10日早期转强、120日区间低位或距高点回撤等数字证据；若包含 missing_pullback_three_tier_execution，必须给激进/均衡/保守三档金额。",
       "若质检问题包含 missing_pullback_share_class_fee，主推荐每条必须写份额类别和费用模型，例如 C类无前端申购费但有销售服务费，或 A类有申购费但长期持有持续费率较低。",
       "若质检问题包含 insufficient_chart_linked_candidates，必须补足 12 张左右可配图候选：主买入参考和备选观察分开写，每只都写代码、买入/备选角色、图上看的走势/回撤/低位/费用证据。",
@@ -19523,6 +19524,7 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   if (numericOverload) issues.push("numeric_dump_without_interpretation");
   issues.push(...evaluateMarketDataQualityDisclosure({ text, workflow, evidence }));
   issues.push(...evaluateStaleFundEvidenceActionDiscipline({ text, evidence }));
+  issues.push(...evaluateStaleThemeCatchdownAnswerDiscipline({ text, evidence }));
   issues.push(...evaluatePullbackAnswerDiscipline({ text, userText, evidence }));
   issues.push(...evaluateFundAnswerChartCoverage({ text, workflow, userText, evidence }));
   if (actionSeeking && !hasAction) issues.push("missing_direct_action");
@@ -19577,6 +19579,27 @@ function collectStaleFundEvidenceCandidates(evidence = {}) {
   return collectFundEvidenceCandidates(evidence).filter(hasStaleFundEvidence);
 }
 
+function evaluateStaleThemeCatchdownAnswerDiscipline({ text, evidence }) {
+  const body = String(text || "");
+  if (!body.trim()) return [];
+  const staleThemeCodes = collectStaleThemeCatchdownEvidenceCandidates(evidence)
+    .map((candidate) => candidate.code || candidate.seed?.code || "")
+    .filter((code, index, list) => /^\d{6}$/.test(code) && list.indexOf(code) === index);
+  if (!staleThemeCodes.length) return [];
+  const issues = [];
+  if (staleThemeCodes.some((code) => hasPositiveBuyExecutionForFundCode(body, code))) {
+    issues.push("stale_theme_candidate_given_buy_execution");
+  }
+  if (staleThemeCodes.some((code) => hasPositiveBuyIntentForFundCode(body, code))) {
+    issues.push("stale_theme_candidate_given_buy_signal");
+  }
+  return issues;
+}
+
+function collectStaleThemeCatchdownEvidenceCandidates(evidence = {}) {
+  return collectFundEvidenceCandidates(evidence).filter(hasStaleThemeCatchdownEvidence);
+}
+
 function collectFundEvidenceCandidates(evidence = {}) {
   const groups = [
     evidence?.marketDeepDive?.candidates,
@@ -19609,6 +19632,24 @@ function hasStaleFundEvidence(candidate = {}) {
     return true;
   }
   return evaluatePullbackTrendFreshness(candidate).ok === false;
+}
+
+function hasStaleThemeCatchdownEvidence(candidate = {}) {
+  if (hasStaleThemeCatchdownRisk(candidate) || hasThemeRetreatRisk(candidate)) return true;
+  const actionability = candidate.actionability || {};
+  const text = [
+    candidate.reason,
+    candidate.trendSummary,
+    candidate.themeEvidence,
+    candidate.rotationCheck,
+    candidate.riskNotes,
+    candidate.setupEvidence,
+    candidate.readinessGaps,
+    actionability.decisionBlocker,
+    actionability.blocker,
+    actionability.decisiveEvidence
+  ].flat().filter(Boolean).join(" ");
+  return /题材退潮|主力资金撤离|主力撤离|资金撤离|接盘风险|回调不能当买点|回调不作为买点/.test(text);
 }
 
 function evaluateMarketDataQualityDisclosure({ text, workflow, evidence }) {
@@ -29152,7 +29193,7 @@ function buildFundAnswerQualityIssueDiagnostic(last = {}) {
   if (!issues.length) return null;
   const categories = summarizeFundAnswerQualityIssueCategories(issues);
   if (!categories.length) return null;
-  const severe = issues.some((issue) => /watch_candidate|recommendation_not_from|recommends_without|stale_data|missing_no_qualified|missing_pullback_main_candidate_code/.test(issue));
+  const severe = issues.some((issue) => /watch_candidate|recommendation_not_from|recommends_without|stale_data|stale_theme|missing_no_qualified|missing_pullback_main_candidate_code/.test(issue));
   return {
     severity: severe ? "critical" : "warning",
     label: "最近质检问题",
@@ -29177,6 +29218,7 @@ function summarizeFundAnswerQualityIssueCategories(issues = []) {
   add(/watch_candidate_promoted_to_recommendation|recommendation_not_from_pullback_main_candidates|recommends_without_qualified_pullback_candidate|missing_no_qualified_pullback_message|missing_pullback_main_candidate_code/, "回调/低位启动请求存在硬凑或错推风险：没有合格主候选时必须明确先不买");
   add(/watch_candidate_given_buy_execution|watch_candidate_given_buy_signal/, "观察池候选被写成可买：备选只能给等待条件和0元观察");
   add(/stale_data_candidate_given_buy_execution|stale_data_candidate_given_buy_signal/, "过期净值/走势仍给买入：必须重新下钻复核后再谈金额");
+  add(/stale_theme_candidate_given_buy_execution|stale_theme_candidate_given_buy_signal/, "题材退潮/主力撤离仍给买入：必须改成0元观察，等资金回流再复核");
   add(/missing_pullback_timing_evidence/, "主推荐缺少回调、低位、5日/10日转强或近20/60日不过热证据");
   add(/missing_pullback_share_class_fee/, "主推荐缺少A/C份额和费用依据，无法支撑执行金额");
   add(/missing_pullback_three_tier_execution/, "缺少激进/均衡/保守三档执行方案");

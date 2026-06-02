@@ -5096,6 +5096,30 @@ assert(
   !staleWaitAnswerQuality.issues.some((issue) => issue.startsWith("stale_data_candidate")),
   "quality gate should allow stale candidates when the answer explicitly says 0 yuan and recheck first"
 );
+const staleThemeBuyAnswerQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000023 题材退潮修复基金C 可以分批买入1000元。理由是回调完成，低位修复，适合小仓试探。",
+  workflow: "fund_qa",
+  userText: "000023 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [{ ...fadingVerifiedDigest, actionability: fadingVerifiedActionability }] } }
+});
+assert(
+  staleThemeBuyAnswerQuality.issues.includes("stale_theme_candidate_given_buy_execution"),
+  "quality gate must reject buy amounts for stale-theme catchdown candidates"
+);
+assert(
+  staleThemeBuyAnswerQuality.issues.includes("stale_theme_candidate_given_buy_signal"),
+  "quality gate must reject buy-intent wording for stale-theme catchdown candidates"
+);
+const staleThemeWaitAnswerQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000023 题材退潮修复基金C 先0元观察。原因是题材退潮、主力撤离，回调不能当买点，等资金回流后再复核。",
+  workflow: "fund_qa",
+  userText: "000023 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [{ ...fadingVerifiedDigest, actionability: fadingVerifiedActionability }] } }
+});
+assert(
+  !staleThemeWaitAnswerQuality.issues.some((issue) => issue.startsWith("stale_theme_candidate")),
+  "quality gate should allow stale-theme candidates when the answer says 0 yuan observation and waits for capital return"
+);
 const earlyTurnTrend = manager.computeTrendProfile(buildEarlyTurnNavPoints());
 assert.equal(earlyTurnTrend.ok, true, "early-turn synthetic series should produce a trend profile");
 assert(
