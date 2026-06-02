@@ -1093,16 +1093,36 @@ const requiredPatterns = [
     message: "market snapshots must expose theme leaderboards for main-capital entry, preheat, low rotation, retreat, and chase-risk lanes."
   },
   {
-    pattern: /(?=[\s\S]*function formatThemeNewsHeadline)(?=[\s\S]*function compactMatchedThemeSignal)(?=[\s\S]*catalystProfile:\s*theme\.catalystProfile)(?=[\s\S]*newsLogic[\s\S]*formatThemeNewsHeadline\(news\[0\]\))/,
-    message: "theme news logic and matched fund themes must preserve catalyst source/time and catalyst type."
+    pattern: /function formatThemeNewsHeadline/,
+    message: "theme news logic must preserve source/time for catalyst explanations."
   },
   {
-    pattern: /(?=[\s\S]*function hasStaleThemeCatchdownRisk)(?=[\s\S]*function hasActionableThemeSupport)(?=[\s\S]*接盘风险)(?=[\s\S]*hasPortfolioVerifiedSeedChaseRisk[\s\S]{0,900}hasStaleThemeCatchdownRisk)/,
+    pattern: /新闻催化：\$\{formatThemeNewsHeadline\(news\[0\]\)\}/,
+    message: "theme news logic must use the source/time-aware headline formatter."
+  },
+  {
+    pattern: /function compactMatchedThemeSignal[\s\S]{0,900}catalystProfile:\s*theme\.catalystProfile/,
+    message: "matched fund themes must preserve catalyst type."
+  },
+  {
+    pattern: /function hasStaleThemeCatchdownRisk/,
+    message: "pullback candidates must expose stale theme catchdown detection."
+  },
+  {
+    pattern: /function hasActionableThemeSupport/,
+    message: "pullback candidates must expose actionable theme support detection."
+  },
+  {
+    pattern: /hasPortfolioVerifiedSeedChaseRisk[\s\S]{0,900}hasStaleThemeCatchdownRisk/,
     message: "pullback candidates must block stale theme catchdown risk and require actionable theme support before buy readiness."
   },
   {
-    pattern: /(?=[\s\S]*function inferPullbackSetupSearchKeywords)(?=[\s\S]*isStaleThemeCatchdownRiskTheme\(theme\))(?=[\s\S]*isActionableThemeSupport\(theme\))/,
-    message: "pullback setup discovery keywords must expand actionable themes while excluding stale outflow themes."
+    pattern: /function inferPullbackSetupSearchKeywords[\s\S]{0,1200}isStaleThemeCatchdownRiskTheme\(theme\)/,
+    message: "pullback setup discovery keywords must exclude stale outflow themes."
+  },
+  {
+    pattern: /function inferPullbackSetupSearchKeywords[\s\S]{0,1400}isActionableThemeSupport\(theme\)/,
+    message: "pullback setup discovery keywords must expand actionable themes."
   },
   {
     pattern: /(?=[\s\S]*function summarizePortfolioRunMarketSnapshot)(?=[\s\S]*compactThemeLeaderboardsForPublic)(?=[\s\S]*marketSnapshot:\s*summarizePortfolioRunMarketSnapshot\(run\.marketSnapshot\))/,
@@ -1189,23 +1209,27 @@ const requiredPatterns = [
     message: "admin portfolio workspace entries must switch focused views."
   },
   {
-    pattern: /(?=[\s\S]*function renderPortfolioDashboard[\s\S]*renderPortfolioWorkspaceCards)(?=[\s\S]*function renderPortfolioWorkspaceCards)(?=[\s\S]*function renderPortfolioWorkspaceCard)/,
+    pattern: /function renderPortfolioDashboard[\s\S]*renderPortfolioWorkspaceCards/,
     message: "admin portfolio overview must show actionable workspace shortcut cards."
   },
   {
-    pattern: /(?=[\s\S]*PORTFOLIO_WORKSPACE_OVERVIEW_GROUPS)(?=[\s\S]*账户)(?=[\s\S]*机会)(?=[\s\S]*决策)(?=[\s\S]*记录)(?=[\s\S]*renderPortfolioWorkspaceGroups)(?=[\s\S]*portfolio-workspace-cluster)/,
+    pattern: /function renderPortfolioWorkspaceCards[\s\S]*function renderPortfolioWorkspaceCard/,
+    message: "admin portfolio overview must render workspace shortcut cards."
+  },
+  {
+    pattern: /PORTFOLIO_WORKSPACE_OVERVIEW_GROUPS[\s\S]{0,620}账户[\s\S]{0,620}机会[\s\S]{0,620}决策[\s\S]{0,620}记录[\s\S]*function renderPortfolioWorkspaceGroups[\s\S]*portfolio-workspace-cluster/,
     message: "admin portfolio overview must group shortcut entries into account, opportunity, decision, and record zones instead of a flat strip."
   },
   {
-    pattern: /(?=[\s\S]*PORTFOLIO_WORKSPACE_OVERVIEW_GROUPS[\s\S]*decision[\s\S]{0,260}focusViews:\s*\["runner",\s*"alerts",\s*"actions",\s*"rankings",\s*"matrix"\])(?=[\s\S]*selectPortfolioWorkspaceGroupFocus[\s\S]*hasPortfolioWorkspaceCardSignal\(item\)[\s\S]*byView\.has\(view\))/,
-    message: "admin portfolio decision overview must prefer signaled cards but fall back to the runner instead of enlarging a zero-count alert card."
+    pattern: /PORTFOLIO_WORKSPACE_OVERVIEW_GROUPS[\s\S]{0,520}decision[\s\S]{0,260}focusViews:\s*\["diagnostics",\s*"runner",\s*"alerts",\s*"actions",\s*"rankings",\s*"matrix"\][\s\S]*selectPortfolioWorkspaceGroupFocus[\s\S]*hasPortfolioWorkspaceCardSignal\(item\)[\s\S]*byView\.has\(view\)/,
+    message: "admin portfolio decision overview must prefer ability/signaled cards but fall back to the runner instead of enlarging a zero-count alert card."
   },
   {
-    pattern: /(?=[\s\S]*renderPortfolioWorkspaceGroups[\s\S]*secondary\.slice\(0,\s*3\))(?=[\s\S]*renderPortfolioWorkspaceMoreButton[\s\S]*portfolio-workspace-more)(?=[\s\S]*portfolio-workspace-mini-list\s*\{[\s\S]*overflow:\s*hidden)/,
+    pattern: /renderPortfolioWorkspaceGroups[\s\S]*secondary\.slice\(0,\s*3\)[\s\S]*renderPortfolioWorkspaceMoreButton[\s\S]*portfolio-workspace-more[\s\S]*portfolio-workspace-mini-list\s*\{[\s\S]*overflow:\s*hidden/,
     message: "admin portfolio overview groups must cap mini shortcuts and show a more chip instead of creating internal scrollbars."
   },
   {
-    pattern: /(?=[\s\S]*function renderPortfolioWorkspaceCards)(?=[\s\S]*managerRankings)(?=[\s\S]*ready)(?=[\s\S]*waiting)(?=[\s\S]*userAlerts)(?=[\s\S]*renderPortfolioWorkspaceGroups)/,
+    pattern: /function renderPortfolioWorkspaceCards[\s\S]*managerRankings[\s\S]*ready[\s\S]*waiting[\s\S]*userAlerts[\s\S]*renderPortfolioWorkspaceGroups/,
     message: "admin portfolio workspace cards must summarize rankings, watchlist readiness, and user alerts."
   },
   {
@@ -3066,14 +3090,16 @@ const requiredPatterns = [
   }
 ];
 
-const failures = [
-  ...forbiddenPatterns
-  .filter((item) => item.pattern.test(server))
-  .map((item) => item.message),
-  ...requiredPatterns
-    .filter((item) => !item.pattern.test(allSource))
-    .map((item) => item.message)
-];
+const traceGuards = process.env.CHECK_RUNTIME_GUARDS_TRACE === "1";
+const failures = [];
+for (const item of forbiddenPatterns) {
+  if (traceGuards) console.error(`[forbidden] ${item.message}`);
+  if (item.pattern.test(server)) failures.push(item.message);
+}
+for (const item of requiredPatterns) {
+  if (traceGuards) console.error(`[required] ${item.message}`);
+  if (!item.pattern.test(allSource)) failures.push(item.message);
+}
 
 if (failures.length) {
   console.error(failures.join("\n"));

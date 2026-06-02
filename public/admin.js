@@ -102,7 +102,7 @@ const MANAGER_RANKING_GROUPS = [
 const PORTFOLIO_WORKSPACE_OVERVIEW_GROUPS = [
   { id: "account", title: "账户", hint: "持仓与客户", focusViews: ["positions", "users"] },
   { id: "opportunity", title: "机会", hint: "低位、轮动与自选", focusViews: ["opportunities", "sectors", "watchlist"] },
-  { id: "decision", title: "决策", hint: "行动、预警、榜单与风控", focusViews: ["runner", "alerts", "actions", "rankings", "matrix"] },
+  { id: "decision", title: "决策", hint: "能力、行动、预警与风控", focusViews: ["diagnostics", "runner", "alerts", "actions", "rankings", "matrix"] },
   { id: "records", title: "记录", hint: "时间线与订单", focusViews: ["timeline", "orders"] }
 ];
 const PORTFOLIO_VIEW_GROUPS = {
@@ -1271,7 +1271,9 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
   const topPosition = [...positions].sort((a, b) => Number(b.weightPct || 0) - Number(a.weightPct || 0))[0] || null;
   const topWatch = ready[0] || waiting[0] || watchlist[0] || null;
   const actionDeskItems = collectPortfolioActionDeskItems(latestRun, activeOrders);
+  const abilityProofCard = buildPortfolioAbilityProofWorkspaceCard(portfolio.managerPerformance || {}, diagnosticCount);
   const cards = [
+    abilityProofCard,
     {
       view: "runner",
       group: "decision",
@@ -1397,6 +1399,26 @@ function renderPortfolioWorkspaceCards(portfolio = {}, context = {}) {
     }
   ];
   root.innerHTML = renderPortfolioWorkspaceGroups(cards);
+}
+
+function buildPortfolioAbilityProofWorkspaceCard(performance = {}, diagnosticCount = 0) {
+  const review = performance.actionReview || {};
+  const profitability = performance.profitability || {};
+  const correctness = isPresentFiniteNumber(review.correctnessPct)
+    ? `${formatNumber(review.correctnessPct, 1)}%`
+    : "样本不足";
+  const pnl = isPresentFiniteNumber(profitability.cumulativePnl)
+    ? `${formatSigned(profitability.cumulativePnl)}元`
+    : "待证明";
+  const correction = Number(review.mistakes || 0) + Number(review.needsReview || 0);
+  return {
+    view: "diagnostics",
+    group: "decision",
+    label: "能力证明",
+    value: correctness,
+    detail: `盈利 ${pnl} · 纠偏 ${correction} 项`,
+    meta: performance.summary || (diagnosticCount ? `${diagnosticCount} 项能力/回测需要复核` : "用复盘证明经理是否靠谱")
+  };
 }
 
 function renderPortfolioWorkspaceGroups(cards = []) {

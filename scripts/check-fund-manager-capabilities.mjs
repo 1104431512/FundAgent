@@ -1514,6 +1514,7 @@ assert(adminHtmlSource.includes("data-portfolio-view=\"matrix\""), "admin portfo
 assert(adminSource.includes("setPortfolioView"), "admin portfolio UI must switch between virtual account workspace views");
 assert(adminHtmlSource.includes("portfolioManagerScoreboard") && adminHtmlSource.includes("经理能力总览"), "admin portfolio overview must lead with manager ability proof instead of entry cards");
 assert(adminSource.includes("renderPortfolioManagerPerformance") && adminSource.includes("操作正确率") && adminSource.includes("盈利能力"), "admin portfolio overview must render correctness and profitability statistics");
+assert(adminSource.includes("buildPortfolioAbilityProofWorkspaceCard") && adminSource.includes("能力证明"), "admin overview workspace must expose a first-screen manager ability proof shortcut");
 assert(adminSource.includes("renderPortfolioOperationReviewLanes") && adminSource.includes("做对的动作") && adminSource.includes("portfolioOperationReviews"), "admin portfolio overview must show recent action review verdict lanes");
 assert(adminStyleSource.includes("portfolio-performance-board") && adminStyleSource.includes("portfolio-operation-review"), "admin manager performance proof board must be styled as a bounded first-screen panel");
 assert(adminHtmlSource.includes("portfolioWorkspaceCards"), "admin portfolio overview must expose workspace shortcut cards");
@@ -1623,7 +1624,7 @@ assert(/@media \(min-width:\s*861px\)[\s\S]*portfolio-workspace-group\.active\s*
 assert(/portfolio-workspace-switcher[\s\S]{0,240}position:\s*sticky/.test(adminStyleSource), "admin portfolio workspace switcher must remain reachable while long workspace views scroll");
 assert(adminStyleSource.includes("portfolio-workspace-view.active"), "admin portfolio workspace views must show one focused entry at a time");
 assert(adminSource.includes("PORTFOLIO_WORKSPACE_OVERVIEW_GROUPS") && adminSource.includes("renderPortfolioWorkspaceGroups"), "admin portfolio overview shortcuts must be grouped by account, opportunity, decision, and records");
-assert(/decision[\s\S]{0,220}focusViews:\s*\["runner",\s*"alerts",\s*"actions",\s*"rankings",\s*"matrix"\]/.test(adminSource), "admin portfolio decision overview must fall back to the runner instead of a zero-count alert card");
+assert(/decision[\s\S]{0,240}focusViews:\s*\["diagnostics",\s*"runner",\s*"alerts",\s*"actions",\s*"rankings",\s*"matrix"\]/.test(adminSource), "admin portfolio decision overview must lead with ability proof and then fall back to the runner instead of a zero-count alert card");
 assert(/selectPortfolioWorkspaceGroupFocus[\s\S]{0,900}hasPortfolioWorkspaceCardSignal\(item\)[\s\S]{0,900}byView\.has\(view\)/.test(adminSource), "admin portfolio overview focus selection must prefer cards with real signals before the default entry");
 assert(adminStyleSource.includes("portfolio-workspace-cluster") && adminStyleSource.includes("portfolio-workspace-mini-list"), "admin portfolio overview must style grouped shortcut zones instead of a flat card strip");
 assert(adminSource.includes("renderPortfolioWorkspaceMoreButton") && adminSource.includes("secondary.slice(0, 3)"), "admin portfolio overview groups must cap secondary shortcuts and expose a compact more chip");
