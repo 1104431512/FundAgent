@@ -6406,6 +6406,33 @@ assert(vehicleRoadCloudTheme.catalystProfile?.summary.includes("政策落地") |
 assert(pcbCopperTheme?.dynamic && pcbCopperTheme.newsLogic.includes("铜缆高速连接需求增长"), "expanded news discovery must catch PCB/copper-link preheat from AI server news");
 assert(pcbCopperTheme.catalystProfile?.summary.includes("产业订单"), "PCB/copper-link preheat must explain the industry-demand catalyst behind the move");
 assert(!expandedNewsOnlyThemeRadar.some((theme) => ["news_innovative_drug_policy", "news_brain_computer_interface"].includes(theme.id) && theme.newsLogic.includes("核电审批加速")), "news-only preheat discovery must not map generic approval/order words to unrelated medical or brain-computer themes");
+const emptyEvidenceThemeRadar = manager.buildThemeRadar({
+  conceptBoards: [],
+  industryBoards: [],
+  fastNews: [],
+  fundCandidates: {}
+});
+assert.equal(emptyEvidenceThemeRadar.length, 0, "theme radar must not fill the board with broad static themes when no market/news/fund evidence exists");
+const limitUpPreheatRadar = manager.buildThemeRadar({
+  conceptBoards: [],
+  industryBoards: [],
+  fastNews: [
+    { title: "培育钻石涨停潮延续 行业库存见底 订单超预期", showTime: "10:12", mediaName: "测试快讯" }
+  ],
+  fundCandidates: {
+    stockFunds: [
+      { code: "159888", name: "新材料培育钻石主题C", type: "股票型基金", oneMonthPct: 1.1, dailyPct: 0.2, shareClass: "C", keywords: ["培育钻石", "新材料"] }
+    ]
+  }
+});
+const diamondPreheatTheme = limitUpPreheatRadar.find((theme) => theme.name.includes("培育钻石"));
+assert(diamondPreheatTheme?.dynamic, "theme radar must auto-discover limit-up-wave preheat topics instead of ignoring them as generic tape noise");
+assert(
+  diamondPreheatTheme.newsLogic.includes("库存见底") && diamondPreheatTheme.newsLogic.includes("订单超预期"),
+  "limit-up-wave preheat themes must preserve the concrete industry logic behind the move"
+);
+assert(diamondPreheatTheme.catalystProfile?.summary.includes("产业订单"), "inventory-bottom/order-beat headlines must be classified as an industry-demand catalyst");
+assert(manager.buildThemeLeaderboards(limitUpPreheatRadar).preheat.items.some((item) => item.name.includes("培育钻石")), "news-discovered limit-up-wave themes must enter the preheat leaderboard for representative-fund follow-up");
 const hardTechCatalystRadar = manager.buildThemeRadar({
   conceptBoards: [],
   industryBoards: [],

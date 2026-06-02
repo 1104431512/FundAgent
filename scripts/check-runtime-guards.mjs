@@ -1321,6 +1321,14 @@ const requiredPatterns = [
     message: "theme radar must auto-extract fresh news-only preheat topics instead of relying only on preset theme rules."
   },
   {
+    pattern: /(?=[\s\S]*function buildThemeRadar)(?=[\s\S]*evidenceCoverageCount)(?=[\s\S]*Number\(theme\.evidenceCoverageCount \|\| 0\) > 0)/,
+    message: "theme radar must not surface broad static themes when no board, news, fund, commodity, or overseas evidence exists."
+  },
+  {
+    pattern: /(?=[\s\S]*function extractEmergingNewsTopicTerms[\s\S]{0,1800}涨停潮)(?=[\s\S]*function buildNewsCatalystProfile[\s\S]{0,1600}库存见底)(?=[\s\S]*function buildNewsCatalystProfile[\s\S]{0,1600}订单超预期)/,
+    message: "theme radar must discover market-style preheat headlines such as limit-up waves, inventory bottoms, and order beats."
+  },
+  {
     pattern: /(?=[\s\S]*THEME_NEWS_DISCOVERY_RULES)(?=[\s\S]*ai_terminal)(?=[\s\S]*domestic_semiconductor)(?=[\s\S]*power_grid_nuclear)(?=[\s\S]*innovative_drug_policy)(?=[\s\S]*resource_price_up)(?=[\s\S]*high_dividend_reform)(?=[\s\S]*brain_computer_interface)(?=[\s\S]*vehicle_road_cloud)(?=[\s\S]*pcb_copper_link)(?=[\s\S]*quantum_technology)/,
     message: "theme news discovery must cover a broad preheat universe, not only the original few emerging themes."
   },

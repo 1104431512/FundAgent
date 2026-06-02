@@ -22811,6 +22811,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
             quoteTime: item.quoteTime || ""
           }))
       : [];
+    const evidenceCoverageCount = boards.length + news.length + funds.length + metals.length + overseasMarkets.length;
 
     const newsCatalystProfile = buildNewsCatalystProfile(news, { ...rule, keywords: newsKeywords });
     const boardFlowValues = boards.map((item) => Number(item.mainNetInflowPct)).filter(Number.isFinite);
@@ -22962,6 +22963,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       boardDeclineCount,
       boardPositiveFlowCount,
       boardRisingCount,
+      evidenceCoverageCount,
       mainInflowRankScore: round(mainInflowRankScore, 1),
       mainOutflowRankScore: round(mainOutflowRankScore, 1),
       maxBoardDropPct: round(maxBoardDropPct, 2),
@@ -22974,13 +22976,16 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       evidence: { news, boards, metals, globalMarkets: overseasMarkets, funds }
     };
   }).filter((theme) =>
-    theme.forwardScore >= 8
-    || theme.catalystScore >= 12
-    || theme.marketConfirmationScore >= 12
-    || theme.vehicleScore >= 10
-    || theme.capitalRetreatScore >= 50
-    || theme.capitalFollowScore >= 38
-    || theme.preheatScore >= 42
+    Number(theme.evidenceCoverageCount || 0) > 0
+    && (
+      theme.forwardScore >= 8
+      || theme.catalystScore >= 12
+      || theme.marketConfirmationScore >= 12
+      || theme.vehicleScore >= 10
+      || theme.capitalRetreatScore >= 50
+      || theme.capitalFollowScore >= 38
+      || theme.preheatScore >= 42
+    )
   );
 
   return themes.sort((a, b) => scoreThemeRadarPriority(b) - scoreThemeRadarPriority(a)).slice(0, 12);
@@ -23674,9 +23679,10 @@ function extractEmergingNewsTopicTerms(item = {}) {
     }
   }
   const patterns = [
+    /([\u4e00-\u9fffA-Za-z0-9]{2,14})(?:板块|概念|产业链|行业|方向|主题)?(?:涨停潮|涨停|掀涨停|连板|走高|走强|拉升|活跃|领涨|大涨|异动|升温|爆发|回暖|反弹|延续强势)/g,
     /([\u4e00-\u9fffA-Za-z0-9]{2,14})(?:板块|概念|产业链|行业|方向|主题)(?:走强|拉升|活跃|领涨|大涨|异动|升温|爆发|回暖|反弹)/g,
-    /(?:政策|试点|方案|规划|订单|涨价|出货|中标|招标|审批|突破|落地|加速|推进|扩产|装机|并网|机构调研|量产|商业化|牌照|发放|获批|受理|应用商店|技术突破|首发|发布|适配|验证|国产大模型|算力芯片)[^，。；、]{0,10}?([\u4e00-\u9fffA-Za-z0-9]{2,14})(?:产业|板块|行业|方向|主题|链)/g,
-    /([\u4e00-\u9fffA-Za-z0-9]{2,14})(?:政策|试点|方案|规划|订单|涨价|出货|中标|招标|审批|突破|落地|加速|推进|扩产|装机|并网|机构调研|量产|商业化|牌照|发放|获批|受理|应用商店|技术突破|首发|发布|适配|验证|国产大模型|算力芯片)/g
+    /(?:政策|试点|方案|规划|订单|涨价|出货|中标|招标|审批|突破|落地|加速|推进|扩产|装机|并网|机构调研|量产|商业化|牌照|发放|获批|受理|应用商店|技术突破|首发|发布|适配|验证|国产大模型|算力芯片|库存见底|需求恢复|订单超预期)[^，。；、]{0,10}?([\u4e00-\u9fffA-Za-z0-9]{2,14})(?:产业|板块|行业|方向|主题|链)/g,
+    /([\u4e00-\u9fffA-Za-z0-9]{2,14})(?:政策|试点|方案|规划|订单|涨价|出货|中标|招标|审批|突破|落地|加速|推进|扩产|装机|并网|机构调研|量产|商业化|牌照|发放|获批|受理|应用商店|技术突破|首发|发布|适配|验证|国产大模型|算力芯片|库存见底|需求恢复|订单超预期)/g
   ];
   for (const pattern of patterns) {
     for (const match of title.matchAll(pattern)) {
@@ -23690,7 +23696,7 @@ function extractEmergingNewsTopicTerms(item = {}) {
 function normalizeEmergingNewsTopicTerm(value = "") {
   const term = String(value || "")
     .replace(/^(?:多地|今日|早盘|午后|尾盘|国内|海外|相关|多个|首批|新一轮|本轮)/, "")
-    .replace(/(?:板块|概念|产业链|行业|方向|主题|示范区|试点|政策|方案|规划|订单|价格|涨价|走强|拉升|活跃|领涨|大涨|异动|升温|爆发|回暖|反弹|量产|商业化|牌照|发放|获批|受理|应用商店|技术突破|首发|发布|适配|验证)+$/g, "")
+    .replace(/(?:板块|概念|产业链|行业|方向|主题|示范区|试点|政策|方案|规划|订单|价格|涨价|涨停潮|涨停|掀涨停|连板|走高|走强|拉升|活跃|领涨|大涨|异动|升温|爆发|回暖|反弹|量产|商业化|牌照|发放|获批|受理|应用商店|技术突破|首发|发布|适配|验证|库存见底|需求恢复|订单超预期)+$/g, "")
     .trim();
   if (term.length < 2 || term.length > 12) return "";
   if (EMERGING_NEWS_TOPIC_STOPWORDS.has(term)) return "";
@@ -23852,7 +23858,7 @@ function buildNewsCatalystProfile(news = [], rule = {}) {
   };
   add(/政策|规划|方案|通知|会议|试点|示范区|补贴|发改委|工信部|国务院|地方|落地|推进|加速|牌照|获批|受理/i, "政策落地", 18);
   add(/量产|商业化|应用商店|首单|试产|交付|场景落地|产业落地|IPO|上市辅导|申报|验收/i, "产业落地", 17);
-  add(/订单|需求|供给|产能|库存|招标|中标|交付|出货|产业链|调研|扩产|签约|集采/i, "产业订单", 16);
+  add(/订单|订单超预期|需求|需求恢复|供给|产能|库存|库存见底|去库|补库|招标|中标|交付|出货|排产|产业链|调研|扩产|签约|集采/i, "产业订单", 16);
   add(/突破|首发|发布|迭代|验证|适配|升级|开源|技术|国产大模型|国产算力|AI芯片|GPU/i, "技术突破", 14);
   add(/涨价|提价|价格|库存下降|供需|稀缺|短缺|限产/i, "价格上行", 14);
   add(/业绩|利润|营收|预增|盈利|改善|超预期/i, "业绩改善", 12);
