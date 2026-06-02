@@ -1673,6 +1673,14 @@ const requiredPatterns = [
     message: "portfolio capability queue must turn stale catchdown losses into a concrete theme/news repair task."
   },
   {
+    pattern: /function buildUserPortfolioAlerts[\s\S]{0,1400}buildUserHoldingRiskEvidence[\s\S]{0,700}复核卖出\/减仓/,
+    message: "user holding alerts must automatically turn stale-theme or capital-outflow holdings into sell/reduce reminders."
+  },
+  {
+    pattern: /function buildUserHoldingRiskEvidence[\s\S]{0,900}getCandidateThemeRetreatWarnings[\s\S]{0,500}getStaleThemeCatchdownWarnings/,
+    message: "user holding risk evidence must reuse structured theme-retreat and stale-catchdown warnings."
+  },
+  {
     pattern: /function buildPortfolioBacktestThemeMomentumCandidate[\s\S]{0,900}!theme \|\| !hasFreshThemeCatalystContext\(theme\)/,
     message: "missed theme momentum backtests must not count stale catalysts as missed executable opportunities."
   },

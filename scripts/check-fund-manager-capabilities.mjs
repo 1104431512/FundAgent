@@ -44,12 +44,37 @@ const normalizedUserPortfolios = manager.normalizeUserPortfolios([
     userId: "admin",
     displayName: "admin",
     holdings: [
-      { code: "021959", name: "南方黄金股指数C", visibleReturnPct: -3.07, visibleReturnLabel: "当日涨幅" }
+      { code: "021959", name: "南方黄金股指数C", visibleReturnPct: -3.07, visibleReturnLabel: "当日涨幅" },
+      {
+        code: "000042",
+        name: "退潮回调接盘基金C",
+        visibleReturnPct: -6.2,
+        visibleReturnLabel: "持仓收益",
+        lastSnapshot: {
+          code: "000042",
+          name: "退潮回调接盘基金C",
+          matchedThemes: [{
+            id: "old_ai",
+            name: "AI/算力",
+            retreatSignal: "capital_outflow",
+            stage: "theme_fading",
+            positionSignal: "capital_outflow_watch",
+            capitalRetreatScore: 82,
+            capitalFollowScore: 22,
+            preheatScore: 18,
+            forwardScore: 25,
+            rotationScore: 20,
+            avgMainNetInflowPct: -3.6,
+            newsLogic: "前期热点降温，主力资金撤离，缺少新的订单或政策催化。"
+          }]
+        }
+      }
     ]
   }
 ]);
-assert.equal(normalizedUserPortfolios[0].holdings[0].code, "021959", "user portfolios must keep screenshot holding codes");
-assert.equal(normalizedUserPortfolios[0].holdings[0].visibleReturnLabel, "当日涨幅", "user portfolios must keep the meaning of visible screenshot returns");
+const screenshotHolding = normalizedUserPortfolios[0].holdings.find((item) => item.code === "021959");
+assert.equal(screenshotHolding?.code, "021959", "user portfolios must keep screenshot holding codes");
+assert.equal(screenshotHolding?.visibleReturnLabel, "当日涨幅", "user portfolios must keep the meaning of visible screenshot returns");
 const normalizedRankingDb = manager.normalizePortfolioDb({
   account: {
     initialCapital: 100000,
@@ -320,10 +345,11 @@ const priorityRealtimeSeeds = manager.buildPortfolioMarketSnapshotPrioritySeeds(
   { code: "010802", name: "长江量化消费精选股票C" }
 ]);
 assert.deepEqual(
-  priorityRealtimeSeeds.slice(0, 3).map((item) => item.code),
-  ["008327", "010802", "021959"],
-  "portfolio market snapshots must prioritize current holdings, watchlist, and user holdings for realtime valuation"
+  priorityRealtimeSeeds.slice(0, 2).map((item) => item.code),
+  ["008327", "010802"],
+  "portfolio market snapshots must prioritize current holdings and explicit priority seeds before user holdings"
 );
+assert(priorityRealtimeSeeds.some((item) => item.code === "021959") && priorityRealtimeSeeds.some((item) => item.code === "000042"), "portfolio market snapshots must include user holdings for realtime valuation");
 const realtimeSeedItems = manager.buildRealtimeFundValuationSeedItems({
   stockFunds: [{ code: "000001", name: "普通市场候选" }]
 }, {
@@ -644,6 +670,8 @@ assert(rankingBoard.alertCenter.lanes.find((lane) => lane.id === "buy")?.items.s
 assert(rankingBoard.alertCenter.lanes.find((lane) => lane.id === "sell")?.items.some((item) => item.code === "008327" || item.code === "000006"), "alert center must surface sell and risk-control items");
 assert(rankingBoard.alertCenter.lanes.find((lane) => lane.id === "data")?.items.some((item) => item.code === "000010"), "alert center must surface data and fee blockers");
 assert(rankingBoard.alertCenter.lanes.find((lane) => lane.id === "user")?.items.some((item) => item.code === "021959"), "alert center must surface user holding alerts");
+assert(rankingBoard.alertCenter.lanes.find((lane) => lane.id === "user")?.items.some((item) => item.code === "000042" && /卖出|减仓/.test(item.action || "")), "alert center must turn user-held stale-theme catchdown positions into sell/reduce reminders");
+assert(rankingBoard.lists.find((item) => item.id === "user_holding_alerts")?.items.some((item) => item.code === "000042" && /主力|退潮|回调不是买点/.test(item.reason || "")), "user holding alert ranking must explain stale-theme or capital-outflow risk for real customer holdings");
 assert(rankingBoard.priorityQueue?.length >= 3, "manager ranking board must build a cross-list priority queue");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "008327" && item.listId === "sell_risk"), "priority queue must include urgent sell-risk items");
 assert(rankingBoard.priorityQueue.some((item) => item.code === "000006" && item.listId === "chase_risk"), "priority queue must include chase-risk warning items");

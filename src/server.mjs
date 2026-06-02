@@ -16462,6 +16462,8 @@ function buildUserPortfolioHoldingManagerNote(holding = {}, profile = null) {
 }
 
 function buildUserPortfolioHoldingAlertHint(holding = {}, profile = null) {
+  const evidence = buildUserHoldingRiskEvidence(holding, profile);
+  if (evidence.staleOrRetreatRisk) return "题材退潮或主力撤离，优先复核卖出/减仓。";
   const action = String(profile?.actionability?.action || "");
   const trend = profile?.trendProfile || {};
   if (/avoid|sell|reduce|回避|减仓|止盈|止损/.test(action)) return "需要优先复核是否减仓或卖出。";
@@ -16477,10 +16479,15 @@ function buildUserPortfolioAlerts(portfolio = {}) {
       const actionability = holding.lastSnapshot?.actionability || {};
       const trend = holding.lastSnapshot?.trendProfile || {};
       const action = String(actionability.action || "");
+      const riskEvidence = buildUserHoldingRiskEvidence(holding, holding.lastSnapshot);
       let level = "info";
       let actionText = "继续观察";
       let reason = holding.alertHint || "已纳入持仓关注。";
-      if (/avoid|sell|reduce|回避|减仓|止盈|止损/.test(action)) {
+      if (riskEvidence.staleOrRetreatRisk) {
+        level = "warning";
+        actionText = "复核卖出/减仓";
+        reason = riskEvidence.reason || "题材退潮或主力撤离，不能把回调当作继续持有理由。";
+      } else if (/avoid|sell|reduce|回避|减仓|止盈|止损/.test(action)) {
         level = "warning";
         actionText = "复核卖出/减仓";
         reason = "下钻倾向偏防守，需要优先确认是否卖出或降低仓位。";
@@ -16503,6 +16510,25 @@ function buildUserPortfolioAlerts(portfolio = {}) {
       };
     })
     .slice(0, 50);
+}
+
+function buildUserHoldingRiskEvidence(holding = {}, profile = null) {
+  const candidate = {
+    ...(profile && typeof profile === "object" ? profile : {}),
+    code: profile?.code || holding.code || "",
+    name: profile?.name || holding.name || "",
+    matchedThemes: profile?.matchedThemes || holding.matchedThemes || [],
+    seed: {
+      ...(profile?.seed || {}),
+      matchedThemes: profile?.seed?.matchedThemes || profile?.matchedThemes || holding.matchedThemes || []
+    }
+  };
+  const retreatWarnings = getCandidateThemeRetreatWarnings(candidate);
+  const staleWarnings = getStaleThemeCatchdownWarnings(candidate);
+  return {
+    staleOrRetreatRisk: retreatWarnings.length > 0 || staleWarnings.length > 0,
+    reason: retreatWarnings[0] || staleWarnings[0] || ""
+  };
 }
 
 function summarizeUserPortfolios(dbOrList = {}) {
