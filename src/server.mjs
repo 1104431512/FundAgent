@@ -4548,6 +4548,7 @@ function hasPortfolioThemeMicroStarterSetup(profile = {}) {
   const trend = profile?.trendProfile || {};
   if (!trend.ok || hasVerifiedPortfolioBuySetup(profile) || hasPortfolioStarterBuySetup(profile)) return false;
   if (!hasActionabilityMicroStarterSupport(profile, trend)) return false;
+  if (!hasVerifiedThemeCarrierEvidence(profile)) return false;
   if (!isPullbackTrendFreshEnough(profile)) return false;
   if (hasHighChaseTheme(profile) || hasThemeRetreatRisk(profile) || hasStaleThemeCatchdownRisk(profile)) return false;
   if (profile?.actionability?.action === "avoid") return false;
@@ -18351,6 +18352,49 @@ function hasActionableThemeSupport(candidate = {}) {
   return getCandidateThemeSignals(candidate).some(isActionableThemeSupport);
 }
 
+function hasVerifiedThemeCarrierEvidence(candidate = {}) {
+  const actionableThemes = getCandidateThemeSignals(candidate).filter(isActionableThemeSupport);
+  if (!actionableThemes.length) return false;
+  const holdingsOutlook = candidate.holdingsOutlook || candidate.actionability?.holdingsOutlook || buildHoldingsOutlookProfile(candidate);
+  const risks = normalizeStringArray(holdingsOutlook?.risks).join(" ");
+  const positiveText = [
+    holdingsOutlook?.label,
+    holdingsOutlook?.evidence,
+    ...normalizeStringArray(holdingsOutlook?.positives)
+  ].filter(Boolean).join(" ");
+  const matchedThemeHoldings = Array.isArray(holdingsOutlook?.matchedThemeHoldings)
+    ? holdingsOutlook.matchedThemeHoldings
+    : [];
+  if (matchedThemeHoldings.length) return true;
+  if (
+    /持仓匹配目标主题|前十大持仓命中|题材龙头|持仓方向与低位轮动线索一致/.test(positiveText)
+    && !/前十大持仓未命中题材龙头|前十大持仓与目标主题匹配度不足/.test(risks)
+  ) {
+    return true;
+  }
+  return isExplicitThemeIndexVehicle(candidate, actionableThemes);
+}
+
+function isExplicitThemeIndexVehicle(candidate = {}, themeSignals = []) {
+  const rawText = [
+    candidate.name,
+    candidate.type,
+    candidate.company,
+    candidate.seed?.name,
+    candidate.seed?.type,
+    ...(Array.isArray(candidate.keywords) ? candidate.keywords : []),
+    ...(Array.isArray(candidate.seed?.keywords) ? candidate.seed.keywords : [])
+  ].filter(Boolean).join(" ");
+  if (!/ETF|指数|联接|LOF/i.test(rawText)) return false;
+  const text = normalizeIntentText(rawText);
+  return (themeSignals || []).some((theme) =>
+    [theme.name, theme.id, ...(theme.themeKeywords || [])].some((keyword) => {
+      const value = normalizeIntentText(keyword);
+      return value.length >= 2 && text.includes(value);
+    })
+  );
+}
+
 function isActionableThemeSupport(theme = {}) {
   if (isStaleThemeCatchdownRiskTheme(theme)) return false;
   if (theme.positionSignal === "high_chase_risk" || theme.stage === "crowded" || Number(theme.crowdingScore) >= 55) return false;
@@ -24109,7 +24153,9 @@ function collectCandidateHoldings(candidate = {}, kind = "equity") {
     ? holdings.bondTopHoldings || candidate.bondTopHoldings || []
     : [
       ...(holdings.equityTopHoldings || []),
+      ...(candidate.topHoldings || []),
       ...(candidate.topStocks || []),
+      ...(candidate.seed?.topHoldings || []),
       ...(candidate.seed?.topStocks || [])
     ];
   return normalizeHoldingItems(source);
@@ -25815,6 +25861,7 @@ function hasActionabilityMicroStarterSupport(digest = {}, trend = {}) {
     && (!Number.isFinite(r20) || (r20 >= -5 && r20 <= 8));
   const lowEnough = (Number.isFinite(low120) && low120 <= 60) || (Number.isFinite(low250) && low250 <= 65);
   if (!gentleTurn || !lowEnough) return false;
+  if (!hasVerifiedThemeCarrierEvidence(digest)) return false;
   return getCandidateThemeSignals(digest).some((theme) =>
     !hasThemeCapitalRetreatRisk(theme)
     && Number(theme.crowdingScore) < 45
@@ -31135,6 +31182,7 @@ export {
   hasPortfolioStarterBuySetup,
   hasPortfolioThemeMicroStarterSetup,
   hasStaleThemeCatchdownRisk,
+  hasVerifiedThemeCarrierEvidence,
   ensurePortfolioHeldPositionsReviewed,
   ensurePortfolioMissedFollowThroughReviewed,
   ensurePortfolioRankingBoardReviewed,

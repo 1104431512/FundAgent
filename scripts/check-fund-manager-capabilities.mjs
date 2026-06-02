@@ -371,6 +371,9 @@ const livePreheatSeedProfile = {
     lowPositionScore: 63,
     crowdingScore: 21,
     avgMainNetInflowPct: 1.4,
+    leaderStocks: ["万丰奥威", "中信海直"],
+    fundKeywords: ["低空经济", "通航", "eVTOL", "万丰奥威"],
+    themeKeywords: ["低空经济", "飞行汽车"],
     catalystProfile: { score: 30, summary: "低空经济示范区政策加速落地", risk: false, fresh: true },
     newsLogic: "题材预热：新闻催化：低空经济示范区政策加速落地；主力线索：相关板块资金净流入"
   }],
@@ -1411,6 +1414,11 @@ const missedThemeMomentumFixture = {
         lowPositionPct250: 42,
         pullbackSetup: { signal: "none", signalText: "低位温和转强" }
       },
+      holdings: {
+        ok: true,
+        equityDisclosureDate: "2099-03-31",
+        equityTopHoldings: ["000099 万丰奥威 6.1%", "000100 中信海直 4.2%", "000101 宗申动力 3.9%"]
+      },
       matchedThemes: [{
         id: "low_altitude",
         name: "低空经济",
@@ -1423,6 +1431,9 @@ const missedThemeMomentumFixture = {
         crowdingScore: 22,
         capitalRetreatScore: 12,
         avgMainNetInflowPct: 1.6,
+        leaderStocks: ["万丰奥威", "中信海直"],
+        themeKeywords: ["低空经济", "飞行汽车"],
+        fundKeywords: ["低空经济", "通航", "eVTOL", "万丰奥威"],
         catalystProfile: { score: 32, summary: "示范区政策加速落地", risk: false },
         newsLogic: "题材预热：新闻催化：低空经济示范区政策加速落地；主力线索：相关板块资金净流入"
       }]
@@ -4521,12 +4532,32 @@ assert.equal(microStarterActionability.action, "staged_buy", "main-capital/prehe
 assert(microStarterActionability.allocationBand.includes("0.5%-2.5%"), "micro-starter actionability must cap sizing to a tiny starter band");
 assert(microStarterActionability.decisionBlocker.some((item) => item.includes("小仓试探")), "micro-starter actionability must explain that the normal buy point is not fully confirmed");
 const executableMicroStarterDigest = { ...microStarterDigest, actionability: microStarterActionability };
+assert.equal(manager.hasVerifiedThemeCarrierEvidence(executableMicroStarterDigest), true, "theme micro-starters must verify that top holdings or the vehicle itself carries the live theme");
 assert.equal(manager.hasPortfolioThemeMicroStarterSetup(executableMicroStarterDigest), true, "portfolio discipline must recognize main-capital/preheat low-position micro-starters");
 const microStarterBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000024", targetWeightPct: 3 }, executableMicroStarterDigest, [], redeploymentAccount);
 assert.equal(microStarterBuyGuard.ok, true, "buy discipline must allow a theme-supported micro starter instead of forcing endless wait_pullback");
 assert(microStarterBuyGuard.reason.includes("微型试探仓"), "theme micro-starter buy guard must label the action as a tiny probe");
 const microStarterTradeAmount = manager.resolvePortfolioTradeAmount(redeploymentAccount, { action: "BUY", code: "000024", amount: 8000, targetWeightPct: 8 }, "BUY", null, executableMicroStarterDigest);
 assert.equal(microStarterTradeAmount, 1200, "theme micro-starter sizing must cap a single order to the tiny 1.2% probe budget");
+const noCarrierMicroStarterDigest = {
+  ...microStarterDigest,
+  code: "000046",
+  name: "AI名义低位基金C",
+  holdings: {
+    ok: true,
+    equityDisclosureDate: "2099-03-31",
+    equityTopHoldings: ["600519 贵州茅台 8.1%", "000858 五粮液 7.4%", "601318 中国平安 4.2%"]
+  }
+};
+const noCarrierMicroStarterActionability = manager.buildFundActionabilitySignals(noCarrierMicroStarterDigest);
+assert.equal(manager.hasVerifiedThemeCarrierEvidence(noCarrierMicroStarterDigest), false, "name-matched theme funds must not pass carrier verification when top holdings do not carry the live theme");
+assert(["wait", "avoid"].includes(noCarrierMicroStarterActionability.action), "micro-starter actionability must not buy a live theme fund whose top holdings do not carry the theme");
+assert(noCarrierMicroStarterActionability.decisionBlocker.some((item) => item.includes("持仓承载")), "carrier-mismatched theme funds must explain the holding-carrier downgrade");
+assert.equal(
+  manager.hasPortfolioThemeMicroStarterSetup({ ...noCarrierMicroStarterDigest, actionability: noCarrierMicroStarterActionability }),
+  false,
+  "portfolio discipline must block theme micro-starters whose representative-fund carrier evidence fails"
+);
 const capitalEnteringRotationRanking = manager.buildPortfolioRotationOpportunityRanking([{
   code: "000024",
   name: "主力预热低位基金C",

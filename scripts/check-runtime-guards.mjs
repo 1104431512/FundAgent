@@ -1889,6 +1889,22 @@ const requiredPatterns = [
     message: "portfolio decisions must inject capped micro-starter reviews for missed main-capital/preheat opportunities."
   },
   {
+    pattern: /function hasVerifiedThemeCarrierEvidence[\s\S]{0,1800}matchedThemeHoldings[\s\S]{0,900}isExplicitThemeIndexVehicle/,
+    message: "portfolio theme micro-starters must verify that the representative fund actually carries the live theme through holdings or a specific index/ETF vehicle."
+  },
+  {
+    pattern: /function hasPortfolioThemeMicroStarterSetup[\s\S]{0,900}hasVerifiedThemeCarrierEvidence/,
+    message: "portfolio theme micro-starter setup must block buy-like actions when representative-fund carrier evidence fails."
+  },
+  {
+    pattern: /function hasActionabilityMicroStarterSupport[\s\S]{0,900}hasVerifiedThemeCarrierEvidence/,
+    message: "fund actionability micro-starter support must require verified theme-carrier evidence, not only a theme label."
+  },
+  {
+    pattern: /function collectCandidateHoldings[\s\S]{0,700}candidate\.topHoldings[\s\S]{0,500}candidate\.seed\?\.topHoldings/,
+    message: "fund holding-carrier checks must read topHoldings arrays from seed previews and fund snapshots, not only nested holdings.equityTopHoldings."
+  },
+  {
     pattern: /等待后继续走强的候选复核队列（必须逐只处理，不能只写观察池）[\s\S]{0,900}actions 中必须对前3只给出 BUY\/小仓试探/,
     message: "portfolio prompts must force the model to handle missed follow-through candidates explicitly."
   },
