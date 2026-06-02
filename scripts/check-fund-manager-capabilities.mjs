@@ -5361,6 +5361,20 @@ assert(
   ),
   "stale-catchdown ranking must explain old catalysts as a visible no-buy risk, not only as a hidden score penalty"
 );
+const staleNewsFallback = manager.buildPullbackQualityFallbackAnswer({
+  userText: setupQuery,
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      focus: "pullback_setup_discovery",
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      candidates: [staleNewsPullbackDigest]
+    }
+  },
+  issues: ["stale_theme_candidate_given_buy_execution", "stale_theme_candidate_given_buy_signal"]
+});
+assert(staleNewsFallback.includes("直接结论：这次先不买"), "deterministic fallback must fire when stale-theme catchdown issues are detected");
+assert(staleNewsFallback.includes("买入0元") && staleNewsFallback.includes("旧催化"), "stale-theme fallback must force zero-yuan execution and explain old-catalyst catchdown risk");
 const retreatThemeRadar = manager.buildThemeRadar({
   conceptBoards: [
     { boardCode: "BKAI9", name: "CPO", changePct: -3.4, mainNetInflowPct: -4.2, leadStock: "新易盛", quoteTime: "10:45", coverageSources: ["主力流出榜", "跌幅榜"] },

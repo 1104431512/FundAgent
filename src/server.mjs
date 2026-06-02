@@ -20868,7 +20868,9 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
     "recommends_without_qualified_pullback_candidate",
     "missing_pullback_timing_evidence",
     "missing_pullback_share_class_fee",
-    "missing_pullback_three_tier_execution"
+    "missing_pullback_three_tier_execution",
+    "stale_theme_candidate_given_buy_execution",
+    "stale_theme_candidate_given_buy_signal"
   ]);
   if (!(issues || []).some((issue) => severeIssues.has(issue))) return "";
   const deepDive = evidence?.marketDeepDive || null;
