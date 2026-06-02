@@ -5586,17 +5586,46 @@ function enforcePortfolioBuyDiscipline(actions = [], profiles = [], positions = 
     if (action.action !== "BUY") return action;
     const guard = evaluatePortfolioBuyDiscipline(action, profileByCode.get(action.code), positions, account);
     if (guard.ok) return action;
+    const rankingBoardSourced = isPortfolioRankingBoardSourcedAction(action);
+    const rankingBlockReason = rankingBoardSourced
+      ? "系统榜单二次校验：榜单只负责把机会抬出来，执行层按净值、题材退潮/接盘风险、底层持仓、费用和仓位重新拦截为0元观察。"
+      : "";
     return {
       ...action,
       action: "WATCH",
       amount: 0,
       targetWeightPct: 0,
-      reason: [action.reason, guard.reason].filter(Boolean).join(" "),
-      dataBasis: mergeStringLists(action.dataBasis, guard.evidence, ["来源：portfolio_buy_discipline_guard"]),
+      reason: [action.reason, guard.reason, rankingBlockReason].filter(Boolean).join(" "),
+      dataBasis: mergeStringLists(
+        action.dataBasis,
+        guard.evidence,
+        ["来源：portfolio_buy_discipline_guard"],
+        rankingBoardSourced ? ["来源：ranking_board_buy_execution_guard"] : []
+      ),
       chaseRisk: [action.chaseRisk, guard.reason].filter(Boolean).join("；"),
-      riskControl: action.riskControl || "本轮不提交虚拟申购，下一次盘前复核低位/回调/拥挤度证据。"
+      riskControl: formatPortfolioBlockedBuyRiskControl(action, rankingBoardSourced)
     };
   });
+}
+
+function isPortfolioRankingBoardSourcedAction(action = {}) {
+  const text = [
+    action.rankingBasis,
+    action.source,
+    action.reason,
+    action.riskControl,
+    ...(Array.isArray(action.dataBasis) ? action.dataBasis : [])
+  ].filter(Boolean).join(" ");
+  return /manager_ranking_board|系统榜单升级|经理榜单|榜单/.test(text);
+}
+
+function formatPortfolioBlockedBuyRiskControl(action = {}, rankingBoardSourced = false) {
+  const fallback = "本轮不提交虚拟申购，下一次盘前复核低位/回调/拥挤度证据。";
+  if (!rankingBoardSourced) {
+    const current = String(action.riskControl || "");
+    return current && !/(买入|申购|建仓|试探|加仓)/.test(current) ? current : fallback;
+  }
+  return "榜单机会本轮只保留为0元观察；等主力资金回流、新闻催化保持新鲜、代表持仓止跌并完成净值/费用复核后，再允许重新进入小仓复核。";
 }
 
 function evaluatePortfolioBuyDiscipline(action = {}, profile = null, positions = [], account = null) {

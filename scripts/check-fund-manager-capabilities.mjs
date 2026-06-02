@@ -5259,6 +5259,69 @@ assert(
   ),
   "cash redeployment must not turn stale-theme catchdown ready items into executable starter buys"
 );
+const rankingUpgradeCatchdownDecision = manager.ensurePortfolioRankingBoardReviewed({
+  actions: [{
+    action: "WATCH",
+    code: "000051",
+    name: "边际退潮回调基金C",
+    reason: "模型笼统观察，没有处理榜单机会。"
+  }],
+  watchlistUpdates: [],
+  learningNotes: [],
+  sources: []
+}, {
+  lists: [{
+    id: "theme_momentum",
+    title: "主力预热机会榜",
+    items: [{
+      rank: 1,
+      code: "000051",
+      name: "边际退潮回调基金C",
+      action: "主力预热微型试探",
+      reason: "历史看似有主力进场和新闻逻辑，代表基金已通过微型试探复核。",
+      decision: {
+        highlights: ["主力资金开始配合。"],
+        risks: [],
+        gaps: [],
+        nextStep: "只允许0.5%-1.2%微型试探；下一轮复核主力是否延续。"
+      },
+      status: "ready"
+    }]
+  }]
+});
+assert.equal(
+  rankingUpgradeCatchdownDecision.actions[0]?.action,
+  "BUY",
+  "ranking board guard may lift an apparently executable theme-momentum item into a capped BUY review"
+);
+const enforcedRankingUpgradeCatchdown = manager.enforcePortfolioBuyDiscipline(
+  rankingUpgradeCatchdownDecision.actions,
+  [staleCatchdownOnlyDigest],
+  [],
+  redeploymentAccount
+);
+assert.equal(
+  enforcedRankingUpgradeCatchdown[0]?.action,
+  "WATCH",
+  "execution buy discipline must downgrade ranking-upgraded BUY reviews when current theme evidence shows stale catchdown risk"
+);
+assert.equal(enforcedRankingUpgradeCatchdown[0]?.targetWeightPct, 0, "blocked ranking-upgraded BUY reviews must be reset to 0 target weight");
+assert(
+  enforcedRankingUpgradeCatchdown[0]?.reason.includes("系统榜单二次校验")
+    && enforcedRankingUpgradeCatchdown[0]?.reason.includes("接盘风险"),
+  "blocked ranking-upgraded BUY reviews must explain that the ranking lane was overruled by catchdown risk"
+);
+assert(
+  enforcedRankingUpgradeCatchdown[0]?.riskControl.includes("0元观察")
+    && enforcedRankingUpgradeCatchdown[0]?.riskControl.includes("主力资金回流"),
+  "blocked ranking-upgraded BUY reviews must replace buy-ish risk controls with a no-buy recheck plan"
+);
+assert(
+  enforcedRankingUpgradeCatchdown[0]?.dataBasis.includes("来源：manager_ranking_board")
+    && enforcedRankingUpgradeCatchdown[0]?.dataBasis.includes("来源：ranking_board_buy_execution_guard")
+    && enforcedRankingUpgradeCatchdown[0]?.dataBasis.includes("来源：portfolio_buy_discipline_guard"),
+  "blocked ranking-upgraded BUY reviews must keep both ranking and execution-guard audit trails"
+);
 const holdingRealtimeWeakExecutableDigest = {
   ...executableMicroStarterDigest,
   code: "000050",
