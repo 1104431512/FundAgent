@@ -22829,7 +22829,8 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
             quoteTime: item.quoteTime || ""
           }))
       : [];
-    const evidenceCoverageCount = boards.length + news.length + funds.length + metals.length + overseasMarkets.length;
+    const marketEvidenceCoverageCount = boards.length + news.length + metals.length + overseasMarkets.length;
+    const evidenceCoverageCount = marketEvidenceCoverageCount + funds.length;
 
     const newsCatalystProfile = buildNewsCatalystProfile(news, { ...rule, keywords: newsKeywords });
     const boardFlowValues = boards.map((item) => Number(item.mainNetInflowPct)).filter(Number.isFinite);
@@ -22981,6 +22982,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       boardDeclineCount,
       boardPositiveFlowCount,
       boardRisingCount,
+      marketEvidenceCoverageCount,
       evidenceCoverageCount,
       mainInflowRankScore: round(mainInflowRankScore, 1),
       mainOutflowRankScore: round(mainOutflowRankScore, 1),
@@ -22994,7 +22996,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       evidence: { news, boards, metals, globalMarkets: overseasMarkets, funds }
     };
   }).filter((theme) =>
-    Number(theme.evidenceCoverageCount || 0) > 0
+    Number(theme.marketEvidenceCoverageCount || 0) > 0
     && (
       theme.forwardScore >= 8
       || theme.catalystScore >= 12

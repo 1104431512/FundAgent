@@ -6426,6 +6426,21 @@ const emptyEvidenceThemeRadar = manager.buildThemeRadar({
   fundCandidates: {}
 });
 assert.equal(emptyEvidenceThemeRadar.length, 0, "theme radar must not fill the board with broad static themes when no market/news/fund evidence exists");
+const fundOnlyThemeRadar = manager.buildThemeRadar({
+  conceptBoards: [],
+  industryBoards: [],
+  fastNews: [],
+  fundCandidates: {
+    stockFunds: [
+      { code: "000111", name: "AI算力主题基金C", type: "股票型基金", oneMonthPct: 1.2, dailyPct: 0.1, shareClass: "C", keywords: ["AI", "算力"] }
+    ]
+  }
+});
+assert.equal(
+  fundOnlyThemeRadar.length,
+  0,
+  "fund vehicle names alone must not create current theme-radar opportunities without news, board, capital, commodity, or overseas evidence"
+);
 const limitUpPreheatRadar = manager.buildThemeRadar({
   conceptBoards: [],
   industryBoards: [],

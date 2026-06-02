@@ -1325,8 +1325,8 @@ const requiredPatterns = [
     message: "theme radar must auto-extract fresh news-only preheat topics instead of relying only on preset theme rules."
   },
   {
-    pattern: /(?=[\s\S]*function buildThemeRadar)(?=[\s\S]*evidenceCoverageCount)(?=[\s\S]*Number\(theme\.evidenceCoverageCount \|\| 0\) > 0)/,
-    message: "theme radar must not surface broad static themes when no board, news, fund, commodity, or overseas evidence exists."
+    pattern: /(?=[\s\S]*function buildThemeRadar)(?=[\s\S]*marketEvidenceCoverageCount)(?=[\s\S]*Number\(theme\.marketEvidenceCoverageCount \|\| 0\) > 0)/,
+    message: "theme radar must not surface broad static themes from fund vehicle names alone when no board, news, commodity, or overseas evidence exists."
   },
   {
     pattern: /(?=[\s\S]*function extractEmergingNewsTopicTerms[\s\S]{0,1800}涨停潮)(?=[\s\S]*function buildNewsCatalystProfile[\s\S]{0,1600}库存见底)(?=[\s\S]*function buildNewsCatalystProfile[\s\S]{0,1600}订单超预期)/,
