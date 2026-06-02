@@ -6828,6 +6828,16 @@ assert(decisionCardText.includes("<font color='red'>"), "Feishu card summaries m
 assert(decisionCardText.includes("**关键证据**"), "Feishu cards must split key evidence away from the full text body");
 assert(decisionCardText.includes("**风险/待确认**"), "Feishu cards must split risk and confirmation needs away from the full text body");
 assert(decisionCardText.includes("**详细分析**"), "Feishu cards must keep the original analysis below the highlighted summary");
+const themeLogicFeishuCard = manager.buildFeishuCard([
+  "直接结论：可以小仓试探，但只做验证仓。",
+  "题材为什么动：AI服务器订单改善带来新闻催化，板块开始有预热线索。",
+  "主力资金：相关板块进入主力流入榜，说明不是单纯讲故事。",
+  "代表基金：000048 前十大持仓工业富联和新易盛能承载算力方向。",
+  "接盘风险：若主力转流出或题材退潮，立刻降为0元观察。"
+].join("\n"), "answer");
+const themeLogicCardText = JSON.stringify(themeLogicFeishuCard);
+assert(themeLogicCardText.includes("题材为什么动") && themeLogicCardText.includes("主力资金") && themeLogicCardText.includes("代表基金"), "Feishu card summaries must lift theme catalyst, capital-flow, and representative-fund carrier logic into key evidence");
+assert(themeLogicCardText.includes("接盘风险"), "Feishu card summaries must lift stale-catchdown and capital-retreat warnings into risk highlights");
 const portfolioFeishuCard = manager.buildFeishuCard([
   "虚拟基金经理日报 2026-05-25",
   "今日手法：高位科技减仓复核 + 低位医药小额试探，不做重仓追涨。",

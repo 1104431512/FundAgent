@@ -753,6 +753,10 @@ const requiredPatterns = [
     message: "Feishu cards must expose key evidence and risk sections as scannable blocks."
   },
   {
+    pattern: /function selectFeishuHighlightLines(?=[\s\S]{0,1200}题材为什么动)(?=[\s\S]{0,1200}主力资金)(?=[\s\S]{0,1200}代表基金)(?=[\s\S]{0,1200}接盘风险)/,
+    message: "Feishu card summaries must prioritize theme catalyst, capital-flow, representative-fund carrier logic, and catchdown warnings."
+  },
+  {
     pattern: /function formatPortfolioCustomerNextStepLines[\s\S]{0,1600}确认前不追加[\s\S]{0,900}不急着追进同一热门方向/,
     message: "portfolio reports must explain next-step operating logic instead of only dumping metrics."
   },
