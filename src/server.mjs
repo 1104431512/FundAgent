@@ -14363,6 +14363,9 @@ function classifyPortfolioManagerOperation({
 } = {}) {
   const text = String(evidenceText || "");
   const diagnosticsText = portfolioBacktestText(backtestDiagnostics);
+  const hasDefectForCode = (label) => diagnosticsText.includes(label) && (!code || diagnosticsText.includes(code));
+  const hasCatchdownLossDefect = hasDefectForCode("退潮接盘亏损回测");
+  const hasMissedThemeMomentumDefect = hasDefectForCode("主力预热错过回测");
   const hasHotEvidence = /(extended_uptrend|wait_pullback|追涨|偏热|过热|高位延伸|拥挤|等待回撤)/.test(text);
   const hasLowSetupEvidence = /(低位|回调完成|启动前|修复|转强|轮动|小仓|试探)/.test(text);
   const hasRiskEvidence = /(回吐|止盈|止损|减仓|降风险|集中|同题材|风险预算|高位|拥挤|破位)/.test(text);
@@ -14371,6 +14374,16 @@ function classifyPortfolioManagerOperation({
   const readinessScore = finiteMetricNumber(watched?.readinessScore);
   const reviewGap = !rankingCited && ["BUY", "SELL"].includes(kind);
   if (kind === "BUY") {
+    if (hasCatchdownLossDefect) {
+      return {
+        status: "mistake",
+        tone: "bad",
+        label: "接盘失误",
+        reason: "历史回测证明这次买入把题材退潮或主力撤离后的表面回调当成启动，已经出现真实亏损。",
+        evidence: selectPortfolioOperationEvidence(diagnosticsText, ["退潮接盘", "题材退潮", "主力撤离", "亏损"]),
+        nextStep: "同类候选只有资金回流、新闻催化仍成立、代表持仓承载和费用核验齐备后，才允许0.5%-1.2%微型试探。"
+      };
+    }
     if (hasHotEvidence && !hasLowSetupEvidence) {
       return {
         status: "mistake",
@@ -14450,7 +14463,17 @@ function classifyPortfolioManagerOperation({
       nextStep: "对比卖出后走势，判断是保护利润还是错过行情。"
     };
   }
-  const conservativeWarning = /(过度保守回测|仓位冻结回测|买点错过回测|机会成本回测|空仓等待回测)/.test(diagnosticsText);
+  if ((syntheticWait || kind === "WATCH" || kind === "HOLD") && hasMissedThemeMomentumDefect) {
+    return {
+      status: "mistake",
+      tone: "warn",
+      label: "主线错过",
+      reason: "历史回测显示主力进场或题材预热候选被普通等待吞掉，且已有新闻逻辑和后续走强证据。",
+      evidence: selectPortfolioOperationEvidence(diagnosticsText, ["主力预热", "新闻逻辑", "微型试探", "少赚"]),
+      nextStep: "下一轮必须给0.5%-1.2%微型试探、主动降级或明确复查时间，不能继续只写观察。"
+    };
+  }
+  const conservativeWarning = /(过度保守回测|仓位冻结回测|买点错过回测|机会成本回测|主力预热错过回测|空仓等待回测)/.test(diagnosticsText);
   if ((syntheticWait || kind === "WATCH" || kind === "HOLD") && conservativeWarning) {
     return {
       status: "mistake",

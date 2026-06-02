@@ -1269,6 +1269,10 @@ const requiredPatterns = [
     message: "portfolio public API must expose manager performance proof statistics with correctness, profitability, and operation-kind review cards."
   },
   {
+    pattern: /(?=[\s\S]*function classifyPortfolioManagerOperation)(?=[\s\S]*退潮接盘亏损回测)(?=[\s\S]*接盘失误)(?=[\s\S]*主力预热错过回测)(?=[\s\S]*主线错过)(?=[\s\S]*0\.5%-1\.2%微型试探)/,
+    message: "manager performance reviews must classify stale-catchdown buys and missed main-capital/preheat waits as explicit correction verdicts."
+  },
+  {
     pattern: /(?=[\s\S]*<section id="portfolioManagerScoreboard" class="portfolio-performance-board">)(?=[\s\S]*经理能力总览)(?=[\s\S]*portfolioPerformanceNarrative)(?=[\s\S]*portfolioOperationKindMatrix)(?=[\s\S]*portfolioOperationReviews)/,
     message: "admin portfolio overview must lead with manager ability proof, operation-kind matrix, and action review verdicts before workspace entries."
   },

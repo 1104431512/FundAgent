@@ -1625,6 +1625,15 @@ assert(
   ),
   "capability queue must turn stale catchdown losses into a main-capital/news-catalyst repair task"
 );
+const staleCatchdownLossPerformance = manager.buildPortfolioManagerPerformanceStats(staleCatchdownLossBacktestFixture);
+assert(
+  staleCatchdownLossPerformance.recentReviews.some((item) =>
+    item.code === "000042"
+    && item.verdict === "接盘失误"
+    && item.reason.includes("题材退潮")
+  ),
+  "manager performance stats must classify stale-theme catchdown loss buys as catchdown mistakes, not generic review gaps"
+);
 const givebackLossBacktestFixture = {
   account: {
     cash: 30000,
@@ -1838,6 +1847,15 @@ const missedThemeMomentumDecision = manager.ensurePortfolioMissedFollowThroughRe
 assert.equal(missedThemeMomentumDecision.actions[0].action, "BUY", "missed theme momentum guard must inject a BUY review for executable preheat setups");
 assert.equal(missedThemeMomentumDecision.actions[0].targetWeightPct, 1.2, "missed theme momentum guard must cap injected reviews at the micro-starter size");
 assert(missedThemeMomentumDecision.actions[0].rotationCheck.includes("低空经济") || missedThemeMomentumDecision.actions[0].rotationCheck.includes("题材预热"), "missed theme momentum guard must carry the theme/news logic into the action");
+const missedThemeMomentumPerformance = manager.buildPortfolioManagerPerformanceStats(missedThemeMomentumFixture);
+assert(
+  missedThemeMomentumPerformance.recentReviews.some((item) =>
+    item.code === "000041"
+    && item.verdict === "主线错过"
+    && item.reason.includes("新闻逻辑")
+  ),
+  "manager performance stats must classify generic waiting that misses executable main-capital/preheat setups as missed mainline opportunities"
+);
 const missedThemeMomentumRanking = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb(JSON.parse(JSON.stringify(missedThemeMomentumFixture))));
 const themeOpportunityCostList = missedThemeMomentumRanking.lists.find((item) => item.id === "opportunity_cost");
 assert(
