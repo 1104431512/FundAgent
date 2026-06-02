@@ -4379,6 +4379,30 @@ assert(
   noRadarThemeActionability.decisionBlocker.some((item) => item.includes("系统当前题材支撑拦截") && item.includes("当前题材雷达")),
   "actionability blockers must carry no-radar theme-name evidence into cards and prompts"
 );
+const noRadarThemeBuyAnswerQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000017 人工智能主题低位基金C 可以小仓买入1000元。理由是人工智能回调完成、到了低位，适合启动前先买一点。",
+  workflow: "fund_qa",
+  userText: "000017 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [noRadarThemeNamedProfile] } }
+});
+assert(
+  noRadarThemeBuyAnswerQuality.issues.includes("stale_theme_candidate_given_buy_execution"),
+  "quality gate must reject buy amounts for theme-named candidates that lack current radar support"
+);
+assert(
+  noRadarThemeBuyAnswerQuality.issues.includes("stale_theme_candidate_given_buy_signal"),
+  "quality gate must reject buy-intent wording for theme-named candidates that lack current radar support"
+);
+const noRadarThemeWaitAnswerQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000017 人工智能主题低位基金C 先0元观察。原因是基金名称显示人工智能方向，但当前题材雷达没有确认当前主力进场、题材预热或低位轮动支撑，等新闻和资金重新确认后再复核。",
+  workflow: "fund_qa",
+  userText: "000017 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [noRadarThemeNamedProfile] } }
+});
+assert(
+  !noRadarThemeWaitAnswerQuality.issues.some((issue) => issue.startsWith("stale_theme_candidate")),
+  "quality gate should allow no-radar theme-name candidates only when the answer keeps them at zero-yuan observation"
+);
 const broadNoRadarProfile = {
   ...verifiedSeedProfile,
   matchedThemes: [],

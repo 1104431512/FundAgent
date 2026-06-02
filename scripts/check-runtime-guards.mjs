@@ -1289,6 +1289,14 @@ const requiredPatterns = [
     message: "pullback candidates must expose actionable theme support detection."
   },
   {
+    pattern: /function hasStaleThemeCatchdownEvidence[\s\S]{0,500}getPortfolioActionableThemeSupportGap\(candidate\)/,
+    message: "answer quality must reject buy wording for theme-named candidates lacking current radar support."
+  },
+  {
+    pattern: /function getPullbackFallbackCatchdownWarnings[\s\S]{0,500}getPortfolioActionableThemeSupportGap\(candidate\)/,
+    message: "pullback deterministic fallback must explain missing current radar support for theme-named candidates."
+  },
+  {
     pattern: /hasPortfolioVerifiedSeedChaseRisk[\s\S]{0,900}hasStaleThemeCatchdownRisk/,
     message: "pullback candidates must block stale theme catchdown risk and require actionable theme support before buy readiness."
   },

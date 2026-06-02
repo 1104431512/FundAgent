@@ -21452,6 +21452,7 @@ function hasStaleThemeCatchdownEvidence(candidate = {}) {
     || hasThemeRetreatRisk(candidate)
     || hasHoldingRealtimeCatchdownRisk(candidate)
     || getUnrefreshedMarketThemeWarnings(candidate).length
+    || getPortfolioActionableThemeSupportGap(candidate)
   ) return true;
   if (getTextualCatchdownWarnings(candidate).length) return true;
   const actionability = candidate.actionability || {};
@@ -21737,6 +21738,7 @@ function getPullbackFallbackCatchdownWarnings(candidate = {}) {
   return [
     ...getTextualCatchdownWarnings(candidate),
     ...getUnrefreshedMarketThemeWarnings(candidate),
+    getPortfolioActionableThemeSupportGap(candidate),
     ...getStaleThemeCatchdownWarnings(candidate),
     ...getStaleCatalystThemeWarnings(candidate),
     ...getCandidateThemeRetreatWarnings(candidate)
