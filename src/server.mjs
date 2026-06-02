@@ -22688,18 +22688,20 @@ function buildThemeLeaderboards(themeRadar = []) {
 }
 
 async function fetchMarketFastNews() {
-  const [eastmoney, sina] = await Promise.all([
+  const [eastmoney, sina, cls] = await Promise.all([
     fetchEastmoneyFastNews().catch((error) => ({ ok: false, label: "东方财富7x24快讯", error: error.message, items: [] })),
-    fetchSinaFastNews().catch((error) => ({ ok: false, label: "新浪财经7x24快讯", error: error.message, items: [] }))
+    fetchSinaFastNews().catch((error) => ({ ok: false, label: "新浪财经7x24快讯", error: error.message, items: [] })),
+    fetchClsTelegraphNews().catch((error) => ({ ok: false, label: "财联社电报", error: error.message, items: [] }))
   ]);
-  const items = mergeFastNewsItems(eastmoney.items || [], sina.items || [])
+  const sources = [eastmoney, sina, cls];
+  const items = mergeFastNewsItems(eastmoney.items || [], sina.items || [], cls.items || [])
     .slice(0, Number(process.env.MARKET_FAST_NEWS_LIMIT || 30));
-  const errors = [eastmoney, sina]
+  const errors = sources
     .filter((source) => source && source.ok === false && source.error)
     .map((source) => `${source.label || "快讯源"}：${source.error}`);
   return {
-    ok: items.length > 0 && [eastmoney, sina].some((source) => source?.ok !== false),
-    label: "实时财经新闻（东方财富+新浪）",
+    ok: items.length > 0 && sources.some((source) => source?.ok !== false),
+    label: "实时财经新闻（东方财富+新浪+财联社）",
     items,
     sourceKinds: [...new Set(items.map((item) => item.sourceKind).filter(Boolean))],
     error: errors.join("；")
@@ -22738,6 +22740,66 @@ function mergeFastNewsItems(...groups) {
     seen.add(title);
     return true;
   });
+}
+
+async function fetchClsTelegraphNews() {
+  const limit = Number(process.env.MARKET_FAST_NEWS_LIMIT || 30);
+  const text = await fetchText("https://m.cls.cn/telegraph", "https://www.cls.cn/telegraph");
+  const items = parseClsTelegraphHtml(text).slice(0, limit);
+  updateStats({ counters: { clsTelegraphNewsFetches: 1 } });
+  return {
+    ok: items.length > 0,
+    label: "财联社电报",
+    items,
+    sourceKinds: ["cls_telegraph_news"],
+    error: items.length ? "" : "财联社电报返回为空"
+  };
+}
+
+function parseClsTelegraphHtml(text = "") {
+  const source = String(text || "");
+  const items = [];
+  const addItem = (title, showTime = "", url = "") => {
+    const cleaned = decodeHtmlEntitiesBasic(String(title || ""))
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!cleaned || cleaned.length < 6 || /^财联社(?:电报|快讯)?$/.test(cleaned)) return;
+    if (items.some((item) => normalizeIntentText(item.title) === normalizeIntentText(cleaned))) return;
+    items.push({
+      title: cleaned.slice(0, 180),
+      showTime: String(showTime || "").trim(),
+      mediaName: "财联社",
+      url: String(url || "").trim(),
+      sourceKind: "cls_telegraph_news"
+    });
+  };
+
+  for (const match of source.matchAll(/"(?:title|brief|content)"\s*:\s*"([^"]{6,240})"[\s\S]{0,220}?"(?:ctime_text|show_time|time|created_at)"\s*:\s*"([^"]*)"/g)) {
+    addItem(match[1], match[2]);
+  }
+  const plain = decodeHtmlEntitiesBasic(source)
+    .replace(/<script[\s\S]*?<\/script>/gi, "\n")
+    .replace(/<style[\s\S]*?<\/style>/gi, "\n")
+    .replace(/<[^>]+>/g, "\n")
+    .replace(/\r/g, "\n");
+  for (const match of plain.matchAll(/(?:^|\n)\s*(\d{1,2}:\d{2})(?:\s*[【〖]([^】〗]{4,120})[】〗])?\s*([^\n]{8,220})/g)) {
+    const headline = [match[2], match[3]].filter(Boolean).join(" ");
+    addItem(headline, match[1]);
+  }
+  return items.slice(0, Number(process.env.MARKET_FAST_NEWS_LIMIT || 30));
+}
+
+function decodeHtmlEntitiesBasic(value = "") {
+  return String(value || "")
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\"/g, "\"")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
 }
 
 function compactThemeLeaderboardItem(theme = {}, reason = "", score = 0) {
@@ -33006,6 +33068,7 @@ export {
   isStaleFundValuation,
   mergeCandidateFunds,
   normalizeUserFacingFundAnswer,
+  parseClsTelegraphHtml,
   parseFundPingzhongLatestNav,
   parseHaoetfQdiiValuationRows,
   parseSinaFastNewsJsonp,

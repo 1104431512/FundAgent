@@ -1117,6 +1117,30 @@ const sinaNewsThemeRadar = manager.buildThemeRadar({
 });
 const sinaLowAltitudeTheme = sinaNewsThemeRadar.find((theme) => theme.name.includes("低空"));
 assert(sinaLowAltitudeTheme?.newsLogic.includes("新浪财经") && sinaLowAltitudeTheme.newsLogic.includes("10:18"), "theme radar must use Sina backup news with source/time in catalyst logic");
+const clsFastNews = manager.parseClsTelegraphHtml(`
+<section>
+  <article><time>10:12</time>【商业航天商用牌照发放 可回收火箭技术突破】财联社电报，商业航天星座组网订单落地。</article>
+</section>
+<script>{"title":"国产GPU算力芯片订单密集落地 国产大模型推理需求增长","ctime_text":"10:16"}</script>
+`);
+assert(clsFastNews.some((item) => item.sourceKind === "cls_telegraph_news"), "CLS telegraph parser must expose a traceable source kind");
+assert(clsFastNews.some((item) => item.title.includes("商业航天") && item.showTime === "10:12"), "CLS telegraph parser must recover HTML telegraph time and headline");
+assert(clsFastNews.some((item) => item.title.includes("国产GPU") && item.showTime === "10:16"), "CLS telegraph parser must recover embedded JSON telegraph headlines");
+const clsNewsThemeRadar = manager.buildThemeRadar({
+  conceptBoards: [],
+  industryBoards: [],
+  fastNews: clsFastNews,
+  fundCandidates: {
+    stockFunds: [
+      { code: "159011", name: "商业航天空天经济主题C", type: "股票型基金", oneMonthPct: 1.1, dailyPct: 0.2, shareClass: "C", keywords: ["商业航天", "空天经济"] },
+      { code: "159012", name: "国产GPU算力芯片主题C", type: "股票型基金", oneMonthPct: 1.3, dailyPct: 0.2, shareClass: "C", keywords: ["GPU", "AI芯片", "算力"] }
+    ]
+  }
+});
+assert(
+  clsNewsThemeRadar.some((theme) => theme.newsLogic.includes("财联社") && /商业航天|国产GPU/.test(theme.newsLogic)),
+  "theme radar must use CLS telegraph backup news with source/time in catalyst explanations"
+);
 const haoetfRows = manager.parseHaoetfQdiiValuationRows(`
 <p>数据更新时间：2026-05-27 05:02:20</p>
 <table><tbody>

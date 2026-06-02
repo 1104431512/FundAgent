@@ -1153,12 +1153,16 @@ const requiredPatterns = [
     message: "market snapshots must use the aggregated fast-news feed instead of depending on a single news source."
   },
   {
-    pattern: /async function fetchMarketFastNews[\s\S]{0,1400}fetchEastmoneyFastNews[\s\S]{0,900}fetchSinaFastNews[\s\S]{0,900}mergeFastNewsItems/,
-    message: "theme news support must merge Eastmoney and Sina fast-news sources so one source failure does not make the manager look offline."
+    pattern: /async function fetchMarketFastNews[\s\S]{0,1700}fetchEastmoneyFastNews[\s\S]{0,900}fetchSinaFastNews[\s\S]{0,900}fetchClsTelegraphNews[\s\S]{0,900}mergeFastNewsItems/,
+    message: "theme news support must merge Eastmoney, Sina, and CLS fast-news sources so one source failure does not make the manager look offline."
   },
   {
     pattern: /function parseSinaFastNewsJsonp[\s\S]{0,1400}rich_text[\s\S]{0,900}sina_finance_7x24_news/,
     message: "Sina fast-news backup must parse rich_text headlines and expose a traceable source kind for catalyst explanations."
+  },
+  {
+    pattern: /function parseClsTelegraphHtml[\s\S]{0,2400}cls_telegraph_news[\s\S]{0,900}decodeHtmlEntitiesBasic/,
+    message: "CLS telegraph backup must parse HTML or embedded JSON headlines into traceable fast-news evidence."
   },
   {
     pattern: /(?=[\s\S]*THEME_NEWS_KEYWORD_EXPANSIONS)(?=[\s\S]*宇树)(?=[\s\S]*Optimus)(?=[\s\S]*GPU)(?=[\s\S]*空天经济)(?=[\s\S]*可回收火箭)(?=[\s\S]*function extractEmergingNewsTopicTerms[\s\S]{0,1400}应用商店)(?=[\s\S]*function buildNewsCatalystProfile[\s\S]{0,1200}产业落地)(?=[\s\S]*function buildNewsCatalystProfile[\s\S]{0,1500}技术突破)/,
