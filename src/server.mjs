@@ -1310,7 +1310,28 @@ function refreshPortfolioCandidateThemesWithMarketRadar(candidate = {}, marketSn
       : [];
   if (!themeRadar.length || !candidate || typeof candidate !== "object") return candidate;
   const matchedThemes = matchCandidateThemes(candidate, themeRadar);
-  if (!matchedThemes.length) return candidate;
+  if (!matchedThemes.length) {
+    const previousThemes = getCandidateThemeSignals(candidate);
+    if (!previousThemes.length) return candidate;
+    const downgradedThemes = previousThemes.map(markUnrefreshedMarketThemeSignal);
+    const refreshed = {
+      ...candidate,
+      matchedThemes: downgradedThemes,
+      marketThemeRefresh: {
+        source: "current_market_theme_radar",
+        refreshedAt: marketSnapshot?.fetchedAt || new Date().toISOString(),
+        noCurrentThemeMatch: true,
+        matchedThemeNames: []
+      }
+    };
+    if (candidate.seed && typeof candidate.seed === "object") {
+      refreshed.seed = {
+        ...candidate.seed,
+        matchedThemes: downgradedThemes
+      };
+    }
+    return refreshed;
+  }
   const refreshed = {
     ...candidate,
     matchedThemes,
@@ -1327,6 +1348,31 @@ function refreshPortfolioCandidateThemesWithMarketRadar(candidate = {}, marketSn
     };
   }
   return refreshed;
+}
+
+function markUnrefreshedMarketThemeSignal(theme = {}) {
+  if (hasThemeCapitalRetreatRisk(theme) || isStaleThemeCatchdownRiskTheme(theme)) return theme;
+  return {
+    ...theme,
+    stage: "current_radar_unconfirmed",
+    positionSignal: "current_radar_unconfirmed",
+    actionBias: "wait_current_radar_confirmation",
+    leaderSignal: "",
+    forwardScore: Math.min(Number.isFinite(Number(theme.forwardScore)) ? Number(theme.forwardScore) : 30, 30),
+    rotationScore: Math.min(Number.isFinite(Number(theme.rotationScore)) ? Number(theme.rotationScore) : 30, 30),
+    lowPositionScore: Math.min(Number.isFinite(Number(theme.lowPositionScore)) ? Number(theme.lowPositionScore) : 30, 30),
+    capitalFollowScore: Math.min(Number.isFinite(Number(theme.capitalFollowScore)) ? Number(theme.capitalFollowScore) : 25, 25),
+    preheatScore: Math.min(Number.isFinite(Number(theme.preheatScore)) ? Number(theme.preheatScore) : 25, 25),
+    catalystProfile: {
+      ...(theme.catalystProfile && typeof theme.catalystProfile === "object" ? theme.catalystProfile : {}),
+      risk: true,
+      fresh: false,
+      freshnessLabel: "未被当前题材雷达确认"
+    },
+    newsLogic: theme.newsLogic
+      ? `旧题材线索未被当前雷达确认：${shortenPortfolioCustomerText(theme.newsLogic, 80)}`
+      : "旧题材线索未被当前雷达确认，不能作为买点依据"
+  };
 }
 
 function refreshPortfolioWatchlistThemesWithMarketRadar(db = {}, options = {}) {
@@ -1364,14 +1410,19 @@ function refreshPortfolioWatchlistThemesWithMarketRadar(db = {}, options = {}) {
       ...getCandidateThemeRetreatWarnings(current),
       ...getStaleThemeCatchdownWarnings(current)
     ];
+    const unconfirmedThemeWarning = current.marketThemeRefresh?.noCurrentThemeMatch
+      ? "旧题材线索未被当前题材雷达确认，不能作为买入依据。"
+      : "";
     const riskNotes = retreatWarnings.length
       ? mergeStringLists(retreatWarnings, item.riskNotes, ["当前题材雷达已刷新，旧题材标签不得作为买入依据。"]).slice(0, 8)
-      : mergeStringLists(item.riskNotes, ["当前题材雷达已刷新。"]).slice(0, 8);
+      : mergeStringLists(item.riskNotes, [unconfirmedThemeWarning || "当前题材雷达已刷新。"]).slice(0, 8);
     const setupEvidence = mergeStringLists(item.setupEvidence, [
       `当前题材雷达：${(current.matchedThemes || []).map((theme) => theme.name || theme.id).filter(Boolean).slice(0, 2).join("、")}`
     ]).slice(0, 8);
     const status = retreatWarnings.length && ["ready", "waiting_pullback", "watch"].includes(item.status)
       ? "blocked"
+      : unconfirmedThemeWarning && item.status === "ready"
+        ? "waiting_pullback"
       : item.status;
     refreshed.push(item.code);
     return {
@@ -1380,6 +1431,8 @@ function refreshPortfolioWatchlistThemesWithMarketRadar(db = {}, options = {}) {
       priority: retreatWarnings.length && status === "blocked" ? 5 : retreatWarnings.length ? Math.max(Number(item.priority || 3), 4) : item.priority,
       reason: retreatWarnings.length
         ? [item.reason, `系统当前题材雷达复核：${retreatWarnings[0]}`].filter(Boolean).join(" ").slice(0, 1200)
+        : unconfirmedThemeWarning
+          ? [item.reason, `系统当前题材雷达复核：${unconfirmedThemeWarning}`].filter(Boolean).join(" ").slice(0, 1200)
         : item.reason,
       riskNotes,
       setupEvidence,

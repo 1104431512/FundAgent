@@ -1781,6 +1781,18 @@ const requiredPatterns = [
     message: "current market retreat radar must block buy-candidate watchlist statuses instead of leaving them as vague wait states."
   },
   {
+    pattern: /function refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,900}noCurrentThemeMatch:\s*true[\s\S]{0,900}markUnrefreshedMarketThemeSignal/,
+    message: "current market radar refresh must downgrade old theme labels that are not confirmed today."
+  },
+  {
+    pattern: /function markUnrefreshedMarketThemeSignal[\s\S]{0,1200}current_radar_unconfirmed[\s\S]{0,900}未被当前题材雷达确认/,
+    message: "unrefreshed theme labels must become non-actionable and carry a readable current-radar warning."
+  },
+  {
+    pattern: /function refreshPortfolioWatchlistThemesWithMarketRadar[\s\S]{0,2600}unconfirmedThemeWarning[\s\S]{0,500}item\.status === "ready"[\s\S]{0,160}\?\s*"waiting_pullback"/,
+    message: "old unconfirmed theme labels must downgrade ready watchlist candidates before ranking."
+  },
+  {
     pattern: /function buildPortfolioStaleCatchdownRiskRanking[\s\S]{0,260}\["ready",\s*"waiting_pullback",\s*"watch",\s*"blocked"\]\.includes\(item\.status\)/,
     message: "stale-catchdown risk ranking must still show blocked candidates so current-radar retreats remain visible."
   },

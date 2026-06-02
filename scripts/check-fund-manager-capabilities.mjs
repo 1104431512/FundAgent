@@ -5021,6 +5021,47 @@ assert(
   (refreshedRetreatDecisionBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000045"),
   "customer action deck must present current-radar retreat candidates as avoid instead of buy-review"
 );
+const oldPreheatNoCurrentMatchDb = manager.normalizePortfolioDb({
+  account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
+  watchlist: [{
+    code: "000046",
+    name: "人工智能旧预热主题C",
+    status: "ready",
+    readinessScore: 90,
+    reason: "历史快照显示AI/算力主力进场，但今天雷达没有再次确认。",
+    lastSnapshot: {
+      ...setupDigest,
+      code: "000046",
+      name: "人工智能旧预热主题C",
+      matchedThemes: [liveAiTheme],
+      seed: { matchedThemes: [liveAiTheme] }
+    }
+  }]
+});
+const unconfirmedOldThemeDecisionBoard = manager.buildPortfolioDecisionRankingBoard(oldPreheatNoCurrentMatchDb, [], {
+  marketSnapshot: {
+    fetchedAt: "2026-05-20T10:55:00.000Z",
+    themeRadar: [{
+      id: "bank_neutral",
+      name: "银行",
+      stage: "range_or_mixed",
+      positionSignal: "acceptable_position",
+      actionBias: "watch",
+      forwardScore: 24,
+      rotationScore: 22,
+      lowPositionScore: 20,
+      crowdingScore: 12,
+      capitalFollowScore: 18,
+      preheatScore: 10,
+      fundKeywords: ["银行", "红利"],
+      keywords: ["银行"]
+    }]
+  }
+});
+assert(
+  !unconfirmedOldThemeDecisionBoard.lists.find((item) => item.id === "theme_momentum")?.items.some((item) => item.code === "000046"),
+  "decision ranking board must not keep old main-capital/preheat labels when the current radar does not confirm that theme"
+);
 const holdingsSupportedDigest = {
   ...setupDigest,
   code: "000031",
