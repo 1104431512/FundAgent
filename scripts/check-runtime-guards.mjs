@@ -2233,6 +2233,10 @@ const requiredPatterns = [
     message: "portfolio theme coverage anchors must prefer specific catalyst terms so broad sector watchlist items do not block fresh preheat recalls."
   },
   {
+    pattern: /function collectThemeCatalystSearchKeywords[\s\S]{0,1400}collectMatchedThemeNewsAliases[\s\S]{0,500}preciseOnly:\s*true[\s\S]{0,900}function collectMatchedThemeNewsAliases[\s\S]{0,1000}matchedAliases/,
+    message: "theme opportunity recall must prefer specific catalyst aliases such as CPO or liquid cooling instead of expanding every broad AI-compute alias."
+  },
+  {
     pattern: /function filterPortfolioDefaultThemeOpportunityItems[\s\S]{0,900}isPreciousPortfolioThemeOpportunityItem[\s\S]{0,900}function isPreciousPortfolioThemeOpportunityItem[\s\S]{0,500}黄金\|贵金属/,
     message: "portfolio default theme recall must suppress precious-metal seeds when non-precious mainline themes are available, without disabling gold-only opportunities."
   },

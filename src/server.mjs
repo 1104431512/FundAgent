@@ -3377,7 +3377,7 @@ function collectThemeOpportunitySearchKeywords(theme = {}, options = {}) {
     ...(Array.isArray(options.extra) ? options.extra : [])
   ];
   return [...new Set(values
-    .flatMap((value) => String(value || "").split(/[，,、/；;\s]+/))
+    .flatMap((value) => String(value || "").split(/[，,、/；;+\s]+/))
     .map((value) => value.trim())
     .filter(isThemeOpportunitySearchKeywordUseful))].slice(0, 18);
 }
@@ -3400,13 +3400,30 @@ function collectThemeCatalystSearchKeywords(theme = {}, options = {}) {
     for (const group of THEME_NEWS_KEYWORD_EXPANSIONS) {
       const needles = (group.needles || []).map(normalizeIntentText).filter(Boolean);
       if (needles.some((needle) => needle && normalized.includes(needle))) {
-        for (const alias of group.aliases || []) extracted.add(alias);
+        for (const alias of collectMatchedThemeNewsAliases(group, normalized)) extracted.add(alias);
       }
     }
   }
-  return [...new Set(expandThemeNewsKeywords([...extracted], { name: theme.name || "" }))]
+  return [...new Set(expandThemeNewsKeywords([...extracted], { name: theme.name || "", preciseOnly: true }))]
     .filter(isThemeOpportunitySearchKeywordUseful)
     .slice(0, 10);
+}
+
+function collectMatchedThemeNewsAliases(group = {}, normalizedText = "") {
+  const aliases = (group.aliases || []).filter(Boolean);
+  const matchedAliases = aliases.filter((alias) => {
+    const value = normalizeIntentText(alias);
+    return value && normalizedText.includes(value);
+  });
+  if (matchedAliases.length) return matchedAliases.slice(0, 5);
+  const matchedNeedles = (group.needles || []).filter((needle) => {
+    const value = normalizeIntentText(needle);
+    return value && normalizedText.includes(value);
+  });
+  const needleAliases = matchedNeedles
+    .map((needle) => aliases.find((alias) => normalizeIntentText(alias).includes(normalizeIntentText(needle))))
+    .filter(Boolean);
+  return (needleAliases.length ? needleAliases : aliases.slice(0, 1)).slice(0, 5);
 }
 
 function collectThemeOpportunityAnchorKeywords(theme = {}, options = {}) {
@@ -3422,7 +3439,7 @@ function collectThemeOpportunityAnchorKeywords(theme = {}, options = {}) {
     ...(Array.isArray(options.extra) ? options.extra : [])
   ];
   const anchors = [...new Set(values
-    .flatMap((value) => String(value || "").split(/[，,、/；;\s]+/))
+    .flatMap((value) => String(value || "").split(/[，,、/；;+\s]+/))
     .map((value) => value.trim())
     .filter(isThemeOpportunityAnchorKeywordUseful))];
   const specificAnchors = anchors.filter((anchor) => !isBroadThemeOpportunityCoverageAnchor(anchor));
@@ -23857,6 +23874,12 @@ function expandThemeNewsKeywords(keywords = [], context = {}) {
   ].map((item) => String(item || "").trim()).filter(Boolean);
   const normalized = base.map(normalizeIntentText).filter(Boolean);
   const expanded = new Set(base);
+  if (context.preciseOnly) {
+    return [...expanded]
+      .map((item) => String(item || "").trim())
+      .filter((item) => item.length >= 2)
+      .slice(0, 24);
+  }
   for (const group of THEME_NEWS_KEYWORD_EXPANSIONS) {
     const needles = (group.needles || []).map(normalizeIntentText).filter(Boolean);
     if (normalized.some((keyword) => needles.some((needle) => keyword.includes(needle) || needle.includes(keyword)))) {
@@ -24058,8 +24081,9 @@ function extractEmergingNewsTopicTerms(item = {}) {
     const needles = (group.needles || []).map(normalizeIntentText).filter(Boolean);
     const normalizedTitle = normalizeIntentText(title);
     if (needles.some((needle) => normalizedTitle.includes(needle))) {
-      const alias = (group.aliases || []).find(Boolean);
-      if (alias) terms.add(alias);
+      for (const alias of collectMatchedThemeNewsAliases(group, normalizedTitle).slice(0, 2)) {
+        terms.add(alias);
+      }
     }
   }
   const patterns = [

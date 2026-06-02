@@ -591,6 +591,39 @@ assert.equal(
 const liveThemeKeywordGroup = manager.buildPortfolioThemeOpportunityKeywordGroups(liveThemeOpportunitySnapshot)[0];
 assert(liveThemeKeywordGroup?.anchors?.some((item) => /低空经济|万丰奥威/.test(item)), "theme representative coverage must keep specific theme or leader-stock anchors");
 assert(!liveThemeKeywordGroup?.anchors?.some((item) => /军工|高端制造/.test(item)), "theme representative coverage anchors must not be satisfied by broad sector labels alone");
+const aiInfraCatalystSnapshot = {
+  themeRadar: [{
+    id: "ai_compute",
+    name: "人工智能",
+    leaderSignal: "preheat_catalyst",
+    positionSignal: "preheat_catalyst_watch",
+    capitalFollowScore: 62,
+    preheatScore: 74,
+    rotationScore: 48,
+    lowPositionScore: 52,
+    crowdingScore: 18,
+    avgMainNetInflowPct: 1.1,
+    fundKeywords: ["人工智能"],
+    keywords: ["AI"],
+    catalystProfile: { score: 35, summary: "CPO光模块和液冷订单", risk: false, fresh: true },
+    newsLogic: "题材预热：CPO+光模块获主力净流入，液冷服务器订单加速。",
+    primaryCatalyst: "CPO+光模块获主力净流入，液冷服务器订单加速",
+    evidence: {
+      news: [{ title: "CPO+光模块获主力净流入，液冷服务器订单加速", mediaName: "测试快讯", showTime: "10:32" }]
+    }
+  }]
+};
+aiInfraCatalystSnapshot.themeLeaderboards = manager.buildThemeLeaderboards(aiInfraCatalystSnapshot.themeRadar);
+const aiInfraKeywordGroup = manager.buildPortfolioThemeOpportunityKeywordGroups(aiInfraCatalystSnapshot)[0];
+assert(
+  aiInfraKeywordGroup?.keywords?.some((item) => /CPO|光模块|液冷/.test(item))
+    && aiInfraKeywordGroup?.anchors?.some((item) => /CPO|光模块|液冷/.test(item)),
+  "theme opportunity recall must keep specific AI-infrastructure catalyst terms for representative-fund search and coverage anchors"
+);
+assert(
+  !aiInfraKeywordGroup?.keywords?.some((item) => /GPU|英伟达|国产大模型/.test(item)),
+  "specific CPO/liquid-cooling catalysts must not expand into the whole generic AI-compute alias pack"
+);
 const directThemeCarrierSnapshot = {
   themeRadar: [{
     ...liveThemeOpportunitySnapshot.themeRadar[0],
