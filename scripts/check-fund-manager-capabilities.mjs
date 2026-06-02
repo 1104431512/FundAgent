@@ -428,8 +428,8 @@ const livePreheatSeedProfile = {
     leaderStocks: ["万丰奥威", "中信海直"],
     fundKeywords: ["低空经济", "通航", "eVTOL", "万丰奥威"],
     themeKeywords: ["低空经济", "飞行汽车"],
-    catalystProfile: { score: 30, summary: "低空经济示范区政策加速落地", risk: false, fresh: true },
-    newsLogic: "题材预热：新闻催化：低空经济示范区政策加速落地；主力线索：相关板块资金净流入"
+    catalystProfile: { score: 30, summary: "低空经济示范区政策加速落地", risk: false, fresh: true, freshnessLabel: "当日催化", latestNewsTime: "10:18" },
+    newsLogic: "题材预热：新闻催化：低空经济示范区政策加速落地（10:18 测试快讯）；主力线索：相关板块资金净流入"
   }],
   topHoldings: [
     "000099 万丰奥威 6.1%",
@@ -1971,8 +1971,8 @@ const missedThemeMomentumFixture = {
         leaderStocks: ["万丰奥威", "中信海直"],
         themeKeywords: ["低空经济", "飞行汽车"],
         fundKeywords: ["低空经济", "通航", "eVTOL", "万丰奥威"],
-        catalystProfile: { score: 32, summary: "示范区政策加速落地", risk: false },
-        newsLogic: "题材预热：新闻催化：低空经济示范区政策加速落地；主力线索：相关板块资金净流入"
+        catalystProfile: { score: 32, summary: "示范区政策加速落地", risk: false, fresh: true, freshnessLabel: "当日催化", latestNewsTime: "10:18" },
+        newsLogic: "题材预热：新闻催化：低空经济示范区政策加速落地（10:18 测试快讯）；主力线索：相关板块资金净流入"
       }]
     }
   }],
@@ -5202,8 +5202,8 @@ const capitalEnteringDigest = {
       preheatScore: 58,
       avgMainNetInflowPct: 2.6,
       maxMainNetInflowPct: 4.4,
-      catalystProfile: { score: 34, tags: ["产业订单", "资金关注"], summary: "产业订单、资金关注", risk: false },
-      newsLogic: "主力刚进场：新闻催化：AI算力订单改善；板块验证：人工智能+1.4%，龙头工业富联；主力线索：相关板块资金均值净流入+2.6%"
+      catalystProfile: { score: 34, tags: ["产业订单", "资金关注"], summary: "产业订单、资金关注", risk: false, fresh: true, freshnessLabel: "当日催化", latestNewsTime: "10:10" },
+      newsLogic: "主力刚进场：新闻催化：AI算力订单改善（10:10 测试快讯）；板块验证：人工智能+1.4%，龙头工业富联；主力线索：相关板块资金均值净流入+2.6%"
     }]
   }
 };
@@ -5307,6 +5307,25 @@ assert(microStarterActionability.decisionBlocker.some((item) => item.includes("�
 const executableMicroStarterDigest = { ...microStarterDigest, actionability: microStarterActionability };
 assert.equal(manager.hasVerifiedThemeCarrierEvidence(executableMicroStarterDigest), true, "theme micro-starters must verify that top holdings or the vehicle itself carries the live theme");
 assert.equal(manager.hasPortfolioThemeMicroStarterSetup(executableMicroStarterDigest), true, "portfolio discipline must recognize main-capital/preheat low-position micro-starters");
+const noTraceMicroStarterDigest = {
+  ...microStarterDigest,
+  code: "000055",
+  name: "无来源新闻预热基金C",
+  seed: {
+    matchedThemes: [{
+      ...capitalEnteringDigest.seed.matchedThemes[0],
+      catalystProfile: { score: 34, tags: ["产业订单", "资金关注"], summary: "产业订单、资金关注", risk: false, fresh: true },
+      newsLogic: "主力刚进场：新闻催化：AI算力订单改善；板块验证：人工智能温和走强；主力线索：相关板块资金净流入"
+    }]
+  }
+};
+const noTraceMicroStarterActionability = manager.buildFundActionabilitySignals(noTraceMicroStarterDigest);
+assert(["wait", "avoid"].includes(noTraceMicroStarterActionability.action), "micro-starter actionability must not buy when theme news has no source or timestamp trace");
+assert.equal(
+  manager.hasPortfolioThemeMicroStarterSetup({ ...noTraceMicroStarterDigest, actionability: noTraceMicroStarterActionability }),
+  false,
+  "portfolio discipline must reject main-capital/preheat micro-starters whose news logic is not traceable"
+);
 const microStarterBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000024", targetWeightPct: 3 }, executableMicroStarterDigest, [], redeploymentAccount);
 assert.equal(microStarterBuyGuard.ok, true, "buy discipline must allow a theme-supported micro starter instead of forcing endless wait_pullback");
 assert(microStarterBuyGuard.reason.includes("微型试探仓"), "theme micro-starter buy guard must label the action as a tiny probe");

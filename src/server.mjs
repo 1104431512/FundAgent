@@ -19730,6 +19730,21 @@ function hasFreshThemeCatalystContext(theme = {}) {
   return hasThemeCatalystContext(theme) && !theme.catalystProfile?.risk && theme.catalystProfile?.fresh !== false;
 }
 
+function hasTraceableFreshThemeCatalystContext(theme = {}) {
+  if (!hasFreshThemeCatalystContext(theme)) return false;
+  const traceText = [
+    theme.newsLogic,
+    theme.primaryCatalyst,
+    theme.catalystProfile?.summary,
+    theme.catalystProfile?.freshnessLabel,
+    theme.catalystProfile?.latestNewsTime
+  ].filter(Boolean).join(" ");
+  return Boolean(
+    String(theme.catalystProfile?.latestNewsTime || "").trim()
+    || /(?:\d{1,2}:\d{2}|今日|今天|当天|盘中|早盘|午后|近两天|财联社|东方财富|新浪|新华社|央视|证券时报|上海证券报|中证报|证券日报|中国基金报|第一财经|每经|公告|交易所|快讯|新闻源|来源)/.test(traceText)
+  );
+}
+
 function hasThemeLeaderOrPreheatSignal(theme = {}) {
   return theme.leaderSignal === "capital_entering"
     || theme.leaderSignal === "preheat_catalyst"
@@ -28027,7 +28042,7 @@ function isThemeLowBaseMicroStarterSupport(theme = {}) {
   return !hasThemeCapitalRetreatRisk(theme)
     && !isStaleThemeCatchdownRiskTheme(theme)
     && Number(theme.crowdingScore) < 45
-    && hasFreshThemeCatalystContext(theme)
+    && hasTraceableFreshThemeCatalystContext(theme)
     && (
       ["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)
       || ["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)
@@ -28038,7 +28053,7 @@ function isThemeLowBaseMicroStarterSupport(theme = {}) {
 
 function isThemeLaunchProbeSupport(theme = {}) {
   if (!isThemeLowBaseMicroStarterSupport(theme)) return false;
-  if (!hasFreshThemeCatalystContext(theme)) return false;
+  if (!hasTraceableFreshThemeCatalystContext(theme)) return false;
   const crowding = finiteMetricNumber(theme.crowdingScore);
   if (Number.isFinite(crowding) && crowding >= 42) return false;
   const avgFlow = finiteMetricNumber(theme.avgMainNetInflowPct);

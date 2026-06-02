@@ -1173,6 +1173,10 @@ const requiredPatterns = [
     message: "main-capital/preheat opportunities must require fresh news or industry catalyst logic before entering actionable recall."
   },
   {
+    pattern: /(?=[\s\S]*function hasTraceableFreshThemeCatalystContext)(?=[\s\S]*latestNewsTime)(?=[\s\S]*快讯\|新闻源\|来源)(?=[\s\S]*function isThemeLowBaseMicroStarterSupport[\s\S]{0,500}hasTraceableFreshThemeCatalystContext\(theme\))/,
+    message: "main-capital/preheat micro-starter buys must require traceable catalyst source or timestamp, not just generic newsLogic text."
+  },
+  {
     pattern: /(?=[\s\S]*function buildThemeNewsFreshnessProfile)(?=[\s\S]*function parseThemeNewsTimeMs)(?=[\s\S]*MARKET_THEME_NEWS_FRESH_HOURS)(?=[\s\S]*function hasFreshThemeCatalystContext[\s\S]{0,260}catalystProfile\?\.fresh !== false)/,
     message: "theme catalyst logic must track headline freshness and block stale news from actionable main-capital/preheat support."
   },
@@ -2097,8 +2101,8 @@ const requiredPatterns = [
     message: "fund actionability micro-starter support must reject stale-theme catchdown risk and require verified theme-carrier evidence."
   },
   {
-    pattern: /function isThemeLowBaseMicroStarterSupport[\s\S]{0,500}hasFreshThemeCatalystContext\(theme\)[\s\S]{0,700}function isThemeLaunchProbeSupport[\s\S]{0,300}hasFreshThemeCatalystContext\(theme\)/,
-    message: "theme micro-starter recognition must require fresh catalyst support for both low-base and launch-probe setups."
+    pattern: /function isThemeLowBaseMicroStarterSupport[\s\S]{0,500}hasTraceableFreshThemeCatalystContext\(theme\)[\s\S]{0,700}function isThemeLaunchProbeSupport[\s\S]{0,300}hasTraceableFreshThemeCatalystContext\(theme\)/,
+    message: "theme micro-starter recognition must require traceable fresh catalyst support for both low-base and launch-probe setups."
   },
   {
     pattern: /function collectCandidateHoldings[\s\S]{0,700}candidate\.topHoldings[\s\S]{0,500}candidate\.seed\?\.topHoldings/,
