@@ -4818,6 +4818,25 @@ const newsBackedNoCarrierSetupDigest = {
     equityTopHoldings: ["600519 贵州茅台 8.1%", "000858 五粮液 7.4%", "601318 中国平安 4.2%"]
   }
 };
+const holdingRealtimeWeakSetupDigest = {
+  ...newsBackedRequiredSetupDigest,
+  code: "000050",
+  name: "持仓走弱低位基金C",
+  holdingRealtimePulse: {
+    ok: true,
+    label: "底层持仓盘中明显走弱",
+    weightedChangePct: -1.68,
+    coveredHoldingPct: 18.3,
+    quoteCount: 3,
+    positiveCount: 0,
+    negativeCount: 3,
+    topNegative: [
+      { code: "601138", name: "工业富联", changePct: -2.1 },
+      { code: "300502", name: "新易盛", changePct: -1.9 }
+    ],
+    risks: ["底层持仓盘中走弱，买入需要等止跌确认。"]
+  }
+};
 assert(
   manager.scoreResearchDigestForPullbackSetup(newsBackedRequiredSetupDigest) >
     manager.scoreResearchDigestForPullbackSetup(pureTrendRequiredSetupDigest) + 40,
@@ -4828,21 +4847,34 @@ assert(
     manager.scoreResearchDigestForPullbackSetup(newsBackedNoCarrierSetupDigest) + 20,
   "generic pullback discovery must require top-ten holdings or index naming to carry the live theme"
 );
+assert(
+  manager.scoreResearchDigestForPullbackSetup(newsBackedRequiredSetupDigest) >
+    manager.scoreResearchDigestForPullbackSetup(holdingRealtimeWeakSetupDigest) + 25,
+  "generic pullback discovery must downgrade otherwise-qualified setups when top holdings are weakening intraday"
+);
+const holdingRealtimeWeakActionability = manager.buildFundActionabilitySignals(holdingRealtimeWeakSetupDigest);
+assert(["wait", "avoid"].includes(holdingRealtimeWeakActionability.action), "actionability must not allow staged-buy when top holdings are weakening intraday");
+assert(
+  holdingRealtimeWeakActionability.decisionBlocker.some((item) => item.includes("持仓实时降级") || item.includes("底层持仓止跌")),
+  "holding realtime weakness must become a customer-readable actionability blocker"
+);
 const themeRequiredSummary = manager.buildMarketDeepDiveSummary({
   ok: true,
   focus: "pullback_setup_discovery",
   selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
   themeOpportunityRequirement: "require_current_theme_playbook",
   themeRadar: capitalEnteringDigest.seed.matchedThemes,
-  candidates: [pureTrendRequiredSetupDigest, newsBackedNoCarrierSetupDigest, newsBackedRequiredSetupDigest]
+  candidates: [pureTrendRequiredSetupDigest, newsBackedNoCarrierSetupDigest, holdingRealtimeWeakSetupDigest, newsBackedRequiredSetupDigest]
 });
 assert(themeRequiredSummary.includes("themeOpportunityRequirement=require_current_theme_playbook"), "deep-dive summary must flag when current theme playbook evidence is required");
 assert(themeRequiredSummary.includes("themeOpportunityPlaybook:"), "deep-dive summary must expose the current theme opportunity playbook");
 assert(themeRequiredSummary.includes("mainCandidateCodes=000048"), "news-backed, carrier-verified low-position setup should be the main pullback candidate");
 assert(/watchOrRejectCodes=.*000047/.test(themeRequiredSummary), "pure trend-only setup must be demoted when current theme playbook backing is required");
 assert(/watchOrRejectCodes=.*000049/.test(themeRequiredSummary), "news-backed setup without holdings/index carrier evidence must be demoted");
+assert(/watchOrRejectCodes=.*000050/.test(themeRequiredSummary), "otherwise-qualified setup with weakening top holdings must be demoted");
 assert(themeRequiredSummary.includes("题材作战=缺少当前题材雷达/新闻逻辑支撑"), "deep-dive summary must explain why pure trend-only setups are not enough");
 assert(themeRequiredSummary.includes("题材逻辑有线索，但前十大持仓或指数名称没有证明基金真实承载该题材"), "deep-dive summary must explain representative-fund carrier failures");
+assert(themeRequiredSummary.includes("表面回调可能继续下探"), "deep-dive summary must explain intraday top-holding weakness as a catchdown risk");
 assert(themeRequiredSummary.includes("题材作战=AI/算力主力进场") && themeRequiredSummary.includes("逻辑=主力刚进场"), "deep-dive summary must carry main-capital news logic into candidate evidence");
 const themeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
   redeploymentAccount,

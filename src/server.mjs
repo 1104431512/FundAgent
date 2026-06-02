@@ -18629,6 +18629,7 @@ function classifyPullbackSetupCandidateForSummary(candidate = {}, options = {}) 
   const signal = trend.pullbackSetup?.signal || "";
   if (getPortfolioWatchlistMainCandidateBlocker(candidate)) return "watch_or_reject";
   if (getPullbackThemeOpportunityBackingGap(candidate, options)) return "watch_or_reject";
+  if (hasHoldingRealtimeCatchdownRisk(candidate)) return "watch_or_reject";
   if (hasHighChaseTheme(candidate)) return "watch_or_reject";
   if (hasThemeRetreatRisk(candidate)) return "watch_or_reject";
   if (hasStaleThemeCatchdownRisk(candidate)) return "watch_or_reject";
@@ -18745,6 +18746,10 @@ function buildPullbackSetupCandidateGaps(candidate = {}, options = {}) {
     const longPosition = finiteMetricNumber(trend.lowPositionPct250);
     gaps.push(Number.isFinite(longPosition) ? `250日位置${formatFallbackPlainPct(longPosition)}偏高` : "250日长周期位置偏高");
   }
+  const holdingRealtimeWarning = getHoldingRealtimeCatchdownWarning(candidate);
+  if (holdingRealtimeWarning) {
+    gaps.push(holdingRealtimeWarning);
+  }
   gaps.push(...evaluatePullbackTrendFreshness(candidate).issues);
   if (trend.trendLabel === "extended_uptrend" || trend.entryBias === "wait_pullback") {
     gaps.push("仍是等待回撤而非低位启动");
@@ -18833,6 +18838,42 @@ function formatPullbackCandidateThemeOpportunityEvidence(candidate = {}, options
     carrier
   ].filter(Boolean);
   return facts.length ? `题材作战=${facts.join("，")}` : "";
+}
+
+function getCandidateHoldingRealtimePulse(candidate = {}) {
+  return candidate?.holdingRealtimePulse
+    || candidate?.holdings?.realtimePulse
+    || candidate?.actionability?.holdingsOutlook?.realtimePulse
+    || candidate?.holdingsOutlook?.realtimePulse
+    || null;
+}
+
+function hasHoldingRealtimeCatchdownRisk(candidate = {}) {
+  const pulse = getCandidateHoldingRealtimePulse(candidate);
+  if (!pulse?.ok) return false;
+  const weighted = finiteMetricNumber(pulse.weightedChangePct);
+  const covered = finiteMetricNumber(pulse.coveredHoldingPct);
+  const positiveCount = Number(pulse.positiveCount || 0);
+  const negativeCount = Number(pulse.negativeCount || 0);
+  const coverageReliable = !Number.isFinite(covered) || covered >= 15;
+  if (coverageReliable && Number.isFinite(weighted) && weighted <= -1.2) return true;
+  if (coverageReliable && Number.isFinite(weighted) && weighted <= -0.8 && negativeCount >= positiveCount + 2) return true;
+  return false;
+}
+
+function getHoldingRealtimeCatchdownWarning(candidate = {}) {
+  if (!hasHoldingRealtimeCatchdownRisk(candidate)) return "";
+  const pulse = getCandidateHoldingRealtimePulse(candidate);
+  const weighted = finiteMetricNumber(pulse?.weightedChangePct);
+  const label = pulse?.label || "前十大持仓盘中走弱";
+  const negative = Array.isArray(pulse?.topNegative)
+    ? pulse.topNegative.map((item) => item.name || item.code).filter(Boolean).slice(0, 2).join("/")
+    : "";
+  return [
+    `${label}${Number.isFinite(weighted) ? formatFallbackPct(weighted) : ""}`,
+    negative ? `走弱持仓=${negative}` : "",
+    "表面回调可能继续下探，先等底层持仓止跌再复核"
+  ].filter(Boolean).join("，");
 }
 
 function getCandidateThemeSignals(candidate = {}) {
@@ -24133,6 +24174,7 @@ function scoreResearchDigestForPullbackSetup(digest = {}) {
   } else if (requiresPullbackThemeOpportunityBacking(digest) && hasPullbackThemeOpportunityBacking(digest)) {
     score += 16;
   }
+  if (hasHoldingRealtimeCatchdownRisk(digest)) score -= 34;
   if (Number.isFinite(seedThisYear)) {
     if (seedThisYear >= -35 && seedThisYear <= 12) score += 6;
     if (seedThisYear <= 5 && Number(trend.return20dPct) > 0 && Number(trend.return20dPct) <= 8) score += 6;
@@ -24831,6 +24873,8 @@ function buildHoldingsOutlookProfile(candidate = {}) {
   const realtimePulse = candidate.holdingRealtimePulse || candidate.holdings?.realtimePulse || null;
   if (realtimePulse?.ok) {
     const pulseChange = finiteMetricNumber(realtimePulse.weightedChangePct);
+    const pulseNegativeCount = Number(realtimePulse.negativeCount || 0);
+    const pulsePositiveCount = Number(realtimePulse.positiveCount || 0);
     if (Number.isFinite(pulseChange)) {
       if (pulseChange >= 0.3 && pulseChange < 1.2) {
         score += 3;
@@ -24838,6 +24882,9 @@ function buildHoldingsOutlookProfile(candidate = {}) {
       } else if (pulseChange >= 1.2) {
         score += 1;
         risks.push("前十大持仓盘中冲高，避免追涨");
+      } else if (pulseChange <= -1.2 || (pulseChange <= -0.8 && pulseNegativeCount >= pulsePositiveCount + 2)) {
+        score -= 12;
+        risks.push("前十大持仓盘中明显走弱，表面回调可能继续下探");
       } else if (pulseChange <= -0.8) {
         score -= 5;
         risks.push("前十大持仓盘中走弱，需等止跌确认");
@@ -26736,6 +26783,13 @@ function getActionabilityHoldingsOutlookDiscipline(holdingsOutlook = {}, { isMon
     return { scoreCap: null, scorePenalty: 0, blocker: "" };
   }
   const riskText = normalizeStringArray(holdingsOutlook.risks).join(" ");
+  if (/前十大持仓盘中明显走弱|表面回调可能继续下探|底层持仓盘中明显走弱/.test(riskText)) {
+    return {
+      scoreCap: 54,
+      scorePenalty: 12,
+      blocker: "系统持仓实时降级：前十大持仓盘中明显走弱，表面回调可能继续下探，先等底层持仓止跌再复核。"
+    };
+  }
   if (/前十大持仓未命中题材龙头|前十大持仓与目标主题匹配度不足/.test(riskText)) {
     return {
       scoreCap: 58,

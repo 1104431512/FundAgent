@@ -1221,6 +1221,10 @@ const requiredPatterns = [
     message: "buy/actionability and watchlist readiness must be capped when holdings do not prove theme-carrier alignment."
   },
   {
+    pattern: /(?=[\s\S]*function hasHoldingRealtimeCatchdownRisk)(?=[\s\S]*function getHoldingRealtimeCatchdownWarning)(?=[\s\S]*表面回调可能继续下探)(?=[\s\S]*function getActionabilityHoldingsOutlookDiscipline[\s\S]{0,700}系统持仓实时降级)(?=[\s\S]*scoreResearchDigestForPullbackSetup[\s\S]{0,2600}hasHoldingRealtimeCatchdownRisk\(digest\))/,
+    message: "pullback/setup discovery must downgrade otherwise-qualified candidates when top holdings are weakening intraday."
+  },
+  {
     pattern: /(?=[\s\S]*function matchCandidateThemes)(?=[\s\S]*buildCandidateThemeMatchText)(?=[\s\S]*candidateHoldingsMatchThemeAnchors)(?=[\s\S]*top_holding_theme_anchor)/,
     message: "theme matching must inspect top-ten holdings so generic fund names cannot hide stale-theme exposure."
   },
