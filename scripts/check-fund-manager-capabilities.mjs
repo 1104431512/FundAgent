@@ -538,7 +538,7 @@ assert(
 );
 const fundedRobotNewsRadar = manager.buildThemeRadar({
   fastNews: [{
-    title: "人形机器人执行器产业链获主力资金净流入，机构称订单加速落地",
+    title: "人形机器人执行器产业链获主力净流入，机构称订单加速落地",
     mediaName: "财联社",
     showTime: "10:18"
   }],

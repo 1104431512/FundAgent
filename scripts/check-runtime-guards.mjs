@@ -1197,6 +1197,10 @@ const requiredPatterns = [
     message: "theme radar must convert explicit main-capital news into a bounded capital-follow boost."
   },
   {
+    pattern: /function hasNewsMainCapitalEvidence[\s\S]{0,900}主力资金\|主力\|资金[\s\S]{0,900}function hasThemeLeaderOrPreheatSignal/,
+    message: "main-capital evidence must recognize short news phrasing such as 主力净流入, not only 主力资金净流入."
+  },
+  {
     pattern: /scoreNewsMainCapitalConfirmation\(newsCatalystProfile,\s*news\);[\s\S]{0,4500}\+ newsMainCapitalScore/,
     message: "theme radar scoring must feed news main-capital confirmation into theme scores."
   },
