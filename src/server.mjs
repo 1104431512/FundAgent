@@ -1287,7 +1287,12 @@ function buildPortfolioDecisionRankingBoard(db = {}, watchlistSeedCandidates = [
   const profiles = Array.isArray(options) ? options : options.profiles || [];
   const marketSnapshot = Array.isArray(options) ? null : options.marketSnapshot || null;
   const watchlistProfiles = Array.isArray(options) ? [] : options.watchlistProfiles || [];
+  const heldProfiles = Array.isArray(options) ? [] : options.heldProfiles || [];
   const virtualDb = normalizePortfolioDb(JSON.parse(JSON.stringify(db || {})));
+  refreshPortfolioHeldPositionsThemesWithMarketRadar(virtualDb, {
+    marketSnapshot,
+    profiles: heldProfiles
+  });
   refreshPortfolioWatchlistThemesWithMarketRadar(virtualDb, {
     marketSnapshot,
     profiles: watchlistProfiles
@@ -1443,6 +1448,51 @@ function refreshPortfolioWatchlistThemesWithMarketRadar(db = {}, options = {}) {
   return refreshed;
 }
 
+function refreshPortfolioHeldPositionsThemesWithMarketRadar(db = {}, options = {}) {
+  const themeRadar = Array.isArray(options.marketSnapshot?.themeRadar)
+    ? options.marketSnapshot.themeRadar
+    : Array.isArray(options.themeRadar)
+      ? options.themeRadar
+      : [];
+  if (!themeRadar.length || !db?.account || typeof db.account !== "object") return [];
+  db.account.positions = Array.isArray(db.account.positions) ? db.account.positions : [];
+  const profileByCode = new Map((options.profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
+  const refreshed = [];
+  db.account.positions = db.account.positions.map((position) => {
+    if (!position?.code || Number(position.currentValue || 0) <= 0) return position;
+    const profile = profileByCode.get(position.code) || null;
+    const source = {
+      ...(position.fundSnapshot || {}),
+      ...(profile || {}),
+      code: position.code,
+      name: position.name || profile?.name || position.fundSnapshot?.name || "",
+      type: position.fundSnapshot?.type || profile?.type || "组合持仓"
+    };
+    const current = refreshPortfolioCandidateThemesWithMarketRadar(source, themeRadar);
+    if (current === source && !profile) return position;
+    const snapshot = profile ? buildPortfolioFundSnapshot(current, position) : {
+      ...(position.fundSnapshot || {}),
+      matchedThemes: current.matchedThemes || [],
+      marketThemeRefresh: current.marketThemeRefresh
+    };
+    const themeWarnings = [
+      ...getCandidateThemeRetreatWarnings(current),
+      ...getStaleThemeCatchdownWarnings(current)
+    ];
+    const nextPosition = {
+      ...position,
+      name: position.name || current.name || "",
+      fundSnapshot: snapshot,
+      dataBasis: mergeStringLists(position.dataBasis, ["来源：current_market_theme_radar"]).slice(0, 8),
+      themeRiskNotes: mergeStringLists(position.themeRiskNotes, themeWarnings).slice(0, 5)
+    };
+    nextPosition.riskBudget = buildPortfolioPositionRiskBudget(nextPosition, snapshot);
+    refreshed.push(position.code);
+    return nextPosition;
+  });
+  return refreshed;
+}
+
 async function executePortfolioDecision(db, run, config) {
   const profileContext = buildPortfolioManagerProfileContext(config, db);
   markPortfolioRunProgress(db, run, "正在处理上一轮订单和确认状态。");
@@ -1492,6 +1542,7 @@ async function executePortfolioDecision(db, run, config) {
     : [];
   const managerRankings = buildPortfolioDecisionRankingBoard(db, watchlistSeedCandidates, {
     profiles: seedProfiles,
+    heldProfiles,
     watchlistProfiles,
     marketSnapshot
   });
@@ -1920,6 +1971,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
   const themeOpportunityPlan = buildPortfolioThemeOpportunityPlan(account, watchlist, mergePortfolioProfiles(watchlistProfiles, seedProfiles), marketSnapshot);
   const decisionManagerRankings = managerRankings || buildPortfolioDecisionRankingBoard({ account, watchlist, userPortfolios: [] }, watchlistSeedCandidates, {
     profiles: seedProfiles,
+    heldProfiles,
     watchlistProfiles,
     marketSnapshot
   });
@@ -4202,6 +4254,7 @@ function buildPortfolioHeldPositionReviewQueue(positions = [], profiles = []) {
 function buildPortfolioHeldPositionRiskReview(position = {}, profile = null) {
   const trend = profile?.trendProfile || position.fundSnapshot?.trendProfile || {};
   const actionability = profile?.actionability || position.fundSnapshot?.actionability || {};
+  const themeSource = profile || position.fundSnapshot || {};
   const review = [];
   if (!profile || !trend.ok) {
     review.push("缺少当前净值/走势复核，不能默认放任持仓。");
@@ -4227,6 +4280,15 @@ function buildPortfolioHeldPositionRiskReview(position = {}, profile = null) {
   if (Number.isFinite(peakUnrealized) && peakUnrealized > 2 && Number.isFinite(unrealized) && unrealized < 0) {
     review.push(`曾浮盈${formatFallbackPct(peakUnrealized)}但当前转亏${formatFallbackPct(unrealized)}，需减仓复核。`);
   }
+  const themeRetreatWarnings = [
+    ...getCandidateThemeRetreatWarnings(themeSource),
+    ...getStaleThemeCatchdownWarnings(themeSource)
+  ];
+  if (themeRetreatWarnings.length) {
+    review.push(`当前题材风险：${themeRetreatWarnings[0]}。持仓先减仓复核，不能等跌完再解释为回调。`);
+  } else if (themeSource.marketThemeRefresh?.noCurrentThemeMatch) {
+    review.push("旧题材线索未被当前题材雷达确认，持仓需要收紧复核，不能继续按旧逻辑加仓。");
+  }
   if (actionability.action === "avoid") review.push("可操作性已转为回避，不能继续无条件持有。");
   if (actionability.action === "wait") review.push("可操作性偏等待，暂不加仓并设置复查。");
   if (!review.length) review.push("持仓走势未触发减仓警报，继续按纪律持有。");
@@ -4235,6 +4297,7 @@ function buildPortfolioHeldPositionRiskReview(position = {}, profile = null) {
 
 function inferPortfolioHeldPositionReduceTrigger(riskReview = []) {
   const text = (riskReview || []).join("；");
+  if (/题材退潮|主力资金撤离|主力撤离|接盘风险/.test(text)) return "若主力资金没有重新回流，先分批降低该题材持仓，避免把退潮误判成回调。";
   if (/破位|止损|回避/.test(text)) return "若下一次复核仍破位或可操作性回避，优先减仓。";
   if (/转弱|回撤扩大/.test(text)) return "若20日/60日继续转弱或距高点回撤扩大，减仓观察。";
   if (/偏热|等待回撤|止盈/.test(text)) return "若短期继续冲高后量能转弱，分批止盈或降仓。";
@@ -4394,6 +4457,7 @@ function shouldReduceHeldPositionFromReview(riskReview = [], profile = null, pos
   const return20d = finiteMetricNumber(trend.return20dPct);
   const return60d = finiteMetricNumber(trend.return60dPct);
   return /破位|转弱|回撤扩大|回避/.test(text)
+    || /题材退潮|主力资金撤离|主力撤离|接盘风险/.test(text)
     || actionability.action === "avoid"
     || /回吐保护|当前转亏/.test(text)
     || (actionability.action === "wait" && /缺少当前净值\/走势复核|浮盈已回吐|当前转亏/.test(text))
@@ -5208,6 +5272,11 @@ function buildPortfolioPositionRiskBudget(position = {}, profile = null) {
   const profitGivebackLimitPct = Math.abs(finiteNumberOr(process.env.PORTFOLIO_PROFIT_GIVEBACK_PCT, 4));
   const trend = profile?.trendProfile || position.fundSnapshot?.trendProfile || {};
   const trendDrawdown = finiteMetricNumber(trend.drawdownFromRecentHighPct);
+  const themeSource = profile || position.fundSnapshot || {};
+  const themeRetreatWarnings = [
+    ...getCandidateThemeRetreatWarnings(themeSource),
+    ...getStaleThemeCatchdownWarnings(themeSource)
+  ];
   const triggers = [];
 
   if (Number.isFinite(unrealizedPnlPct) && unrealizedPnlPct <= -stopLossPct) {
@@ -5233,6 +5302,7 @@ function buildPortfolioPositionRiskBudget(position = {}, profile = null) {
   if (Number.isFinite(trendDrawdown) && trendDrawdown <= -12 && ["breakdown", "weakening"].includes(trend.trendLabel)) {
     triggers.push(`走势${formatTrendLabel(trend.trendLabel)}且距高点${formatFallbackPct(trendDrawdown)}`);
   }
+  triggers.push(...themeRetreatWarnings.slice(0, 2));
 
   const level = triggers.some((item) => /止损|破位/.test(item)) ? "severe" : triggers.length ? "warning" : "normal";
   return {
@@ -5741,6 +5811,7 @@ function hasPortfolioHeldActionReduceEvidence(action = {}, position = {}) {
   const highPosition = /(?:120日位置|250日位置)\s*(?:=|为|约)?\s*(?:9\d(?:\.\d+)?|100(?:\.0+)?)%/.test(actionText);
   const hotLanguage = /高位强势|高追风险|偏热|等待回撤|等回撤|追涨风险|不符合新增买入|利润回吐|浮盈回吐|降至|减仓|降仓|卖出/.test(actionText);
   const giveback = finiteMetricNumber(position.profitGivebackPct);
+  if (/题材退潮|主力资金撤离|主力撤离|资金撤离|接盘风险/.test(actionText)) return true;
   return (hotLanguage && highPosition)
     || (hotLanguage && Number.isFinite(return20d) && return20d > 12)
     || (hotLanguage && Number.isFinite(return60d) && return60d > 24)
@@ -5772,6 +5843,11 @@ function collectPortfolioSellDisciplineSignals(action = {}, profile = {}, positi
     action.riskControl
   ].filter(Boolean).join(" ");
   const signals = [];
+  const themeSignals = [
+    ...getCandidateThemeRetreatWarnings(profile),
+    ...getStaleThemeCatchdownWarnings(profile)
+  ];
+  signals.push(...themeSignals.slice(0, 2));
   if (trend.trendLabel === "breakdown") signals.push("趋势破位，需要止损或降低风险敞口");
   if (trend.trendLabel === "weakening") signals.push("趋势转弱，需要减仓观察");
   if (actionability.action === "avoid" || trend.entryBias === "avoid_now") signals.push("可操作性已转为回避");
@@ -5792,6 +5868,9 @@ function collectPortfolioSellDisciplineSignals(action = {}, profile = {}, positi
   if (/账户回撤|组合回撤|最大回撤预算/.test(actionText)) signals.push("账户级最大回撤预算触发，需要降低组合风险");
   if (/同题材暴露|底层重叠|组合集中度|穿透暴露/.test(actionText)) {
     signals.push("组合同题材或底层持仓重叠偏高，需要分批降低集中风险");
+  }
+  if (/题材退潮|主力资金撤离|主力撤离|资金撤离|接盘风险/.test(actionText)) {
+    signals.push("模型持仓理由已识别题材退潮或主力撤离，需要分批降低题材风险");
   }
   if (Number.isFinite(unrealized) && unrealized <= -stopLossPct) signals.push(`持仓浮亏${formatFallbackPct(unrealized)}，触及单仓止损线`);
   if (/浮盈回吐|利润回吐|回吐保护|浮盈已回吐|当前转亏/.test(actionText) && effectiveProfitGiveback >= givebackPct) {
@@ -7780,6 +7859,7 @@ function buildPortfolioFundSnapshot(profile, position = null) {
     trendProfile,
     actionability,
     matchedThemes: Array.isArray(profile.matchedThemes) ? profile.matchedThemes : [],
+    marketThemeRefresh: profile.marketThemeRefresh || null,
     holdingsOutlook: profile.holdingsOutlook || profile.actionability?.holdingsOutlook || null,
     fees: profile.fees ? {
       shareClass: profile.fees.shareClass || profile.shareClass || "",
@@ -17086,6 +17166,8 @@ function summarizePortfolioPosition(position) {
     pendingSellAmount: position.pendingSellAmount || 0,
     fundSnapshot: position.fundSnapshot || null,
     dataSource: position.dataSource || "",
+    dataBasis: Array.isArray(position.dataBasis) ? position.dataBasis : [],
+    themeRiskNotes: Array.isArray(position.themeRiskNotes) ? position.themeRiskNotes : [],
     unrealizedPnl: round(Number(position.unrealizedPnl || 0), 2),
     unrealizedPnlPct: round(Number(position.unrealizedPnlPct || 0), 2),
     peakUnrealizedPnlPct: position.peakUnrealizedPnlPct === null || position.peakUnrealizedPnlPct === undefined
@@ -22341,7 +22423,11 @@ function matchCandidateThemes(candidate, themes = []) {
   const text = buildCandidateThemeMatchText(candidate);
   return (themes || [])
     .map((theme) => {
-      const directMatch = textMatchesKeywords(text, theme.fundKeywords || theme.keywords || []);
+      const directMatch = textMatchesKeywords(text, [
+        ...(theme.fundKeywords || []),
+        ...(theme.keywords || []),
+        ...(theme.themeKeywords || [])
+      ]);
       const anchorMatch = candidateHoldingsMatchThemeAnchors(candidate, theme);
       if (!directMatch && !anchorMatch) return null;
       return {
@@ -31499,6 +31585,7 @@ export {
   buildPortfolioDecisionCard,
   buildPortfolioDecisionReadinessQueue,
   buildPortfolioDecisionRankingBoard,
+  refreshPortfolioHeldPositionsThemesWithMarketRadar,
   buildPortfolioActiveOrderStatusLines,
   buildPortfolioRedeploymentPlan,
   buildPortfolioRecentDecisionStatusLines,

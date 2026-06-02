@@ -5089,6 +5089,93 @@ assert(
   (refreshedRetreatDecisionBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000045"),
   "customer action deck must present current-radar retreat candidates as avoid instead of buy-review"
 );
+const oldPreheatHeldRetreatDb = manager.normalizePortfolioDb({
+  account: {
+    cash: 85000,
+    totalAsset: 100000,
+    positionWeightPct: 6,
+    positions: [{
+      code: "000047",
+      name: "CPO光模块持仓C",
+      currentValue: 6000,
+      costAmount: 5800,
+      weightPct: 6,
+      unrealizedPnlPct: 3.4,
+      lastNav: 1.118,
+      lastNavDate: todayIso,
+      fundSnapshot: {
+        ...setupDigest,
+        code: "000047",
+        name: "CPO光模块持仓C",
+        unitNav: 1.118,
+        snapshotDate: todayIso,
+        matchedThemes: [liveAiTheme],
+        seed: { matchedThemes: [liveAiTheme] }
+      }
+    }]
+  },
+  watchlist: []
+});
+const oldPreheatHeldProfile = {
+  ...setupDigest,
+  code: "000047",
+  name: "CPO光模块持仓C",
+  unitNav: 1.118,
+  snapshotDate: todayIso,
+  matchedThemes: [liveAiTheme],
+  seed: { matchedThemes: [liveAiTheme] }
+};
+const refreshedHeldCodes = manager.refreshPortfolioHeldPositionsThemesWithMarketRadar(oldPreheatHeldRetreatDb, {
+  profiles: [oldPreheatHeldProfile],
+  marketSnapshot: {
+    fetchedAt: "2026-05-20T11:05:00.000Z",
+    themeRadar: [fadingAiTheme]
+  }
+});
+assert(refreshedHeldCodes.includes("000047"), "held-position theme refresh must update existing holdings before manager ranking");
+assert(
+  oldPreheatHeldRetreatDb.account.positions[0].fundSnapshot.matchedThemes.some((theme) => theme.leaderSignal === "capital_outflow"),
+  "held-position snapshots must replace old main-capital labels with current retreat radar evidence"
+);
+assert(
+  oldPreheatHeldRetreatDb.account.positions[0].riskBudget.triggers.some((item) => item.includes("主力资金撤离") || item.includes("接盘风险")),
+  "held-position risk budget must treat current theme retreat as a staged reduction trigger"
+);
+const heldRetreatDecisionBoard = manager.buildPortfolioDecisionRankingBoard(oldPreheatHeldRetreatDb, [], {
+  heldProfiles: [oldPreheatHeldProfile],
+  marketSnapshot: {
+    fetchedAt: "2026-05-20T11:08:00.000Z",
+    themeRadar: [fadingAiTheme]
+  }
+});
+assert(
+  heldRetreatDecisionBoard.lists.find((item) => item.id === "sell_risk")?.items.some((item) => item.code === "000047" && /主力资金撤离|接盘风险/.test(item.reason)),
+  "decision ranking board must surface held positions whose old theme now shows main-capital retreat in the sell-risk lane"
+);
+assert(
+  heldRetreatDecisionBoard.lists.find((item) => item.id === "drawdown_defense")?.items.some((item) => item.code === "000047"),
+  "decision ranking board must put theme-retreat holdings into drawdown defense before the position fully breaks down"
+);
+const heldRetreatReviewQueue = manager.buildPortfolioHeldPositionReviewQueue(oldPreheatHeldRetreatDb.account.positions, [
+  oldPreheatHeldRetreatDb.account.positions[0].fundSnapshot
+]);
+assert(
+  heldRetreatReviewQueue[0].riskReview.some((item) => item.includes("当前题材风险") && item.includes("主力资金撤离")),
+  "held-position review queue must explain retreating current theme risk instead of only reporting NAV trend"
+);
+const overriddenRetreatHold = manager.enforcePortfolioHeldPositionRiskOverrides([
+  {
+    action: "HOLD",
+    code: "000047",
+    name: "CPO光模块持仓C",
+    amount: 0,
+    reason: "模型认为回调完成，继续观察。",
+    riskControl: "等待下次复核。"
+  }
+], [oldPreheatHeldRetreatDb.account.positions[0].fundSnapshot], oldPreheatHeldRetreatDb.account.positions);
+assert.equal(overriddenRetreatHold[0].action, "SELL", "held-position risk override must convert under-reactive HOLD into staged SELL when current theme radar shows retreat");
+assert(overriddenRetreatHold[0].dataBasis.includes("来源：portfolio_held_position_risk_override"), "theme-retreat held-position override must leave a traceable source");
+assert(overriddenRetreatHold[0].dataBasis.some((item) => item.includes("系统卖出纪律确认") && item.includes("主力资金撤离")), "theme-retreat held-position override must pass sell discipline with retreat evidence");
 const oldPreheatNoCurrentMatchDb = manager.normalizePortfolioDb({
   account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
   watchlist: [{

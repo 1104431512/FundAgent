@@ -2241,6 +2241,26 @@ const requiredPatterns = [
     message: "held-position risk override must explain when it replaces a model HOLD/WATCH with risk reduction."
   },
   {
+    pattern: /function buildPortfolioDecisionRankingBoard[\s\S]{0,900}heldProfiles[\s\S]{0,700}refreshPortfolioHeldPositionsThemesWithMarketRadar/,
+    message: "decision ranking board must refresh held-position theme labels with the current market radar before building risk lanes."
+  },
+  {
+    pattern: /function refreshPortfolioHeldPositionsThemesWithMarketRadar[\s\S]{0,2400}current_market_theme_radar[\s\S]{0,900}buildPortfolioPositionRiskBudget/,
+    message: "held-position theme refresh must update snapshots, trace current-radar evidence, and recompute position risk budgets."
+  },
+  {
+    pattern: /function buildPortfolioHeldPositionRiskReview[\s\S]{0,2200}getCandidateThemeRetreatWarnings[\s\S]{0,900}当前题材风险/,
+    message: "held-position reviews must surface current theme retreat/main-capital outflow risk instead of only NAV-trend risk."
+  },
+  {
+    pattern: /function matchCandidateThemes[\s\S]{0,500}theme\.fundKeywords[\s\S]{0,240}theme\.keywords[\s\S]{0,240}theme\.themeKeywords/,
+    message: "candidate-theme matching must use full theme keywords so CPO/optical-module holdings inherit current main-capital retreat signals."
+  },
+  {
+    pattern: /function collectPortfolioSellDisciplineSignals[\s\S]{0,5200}getCandidateThemeRetreatWarnings[\s\S]{0,5200}主力撤离[\s\S]{0,700}降低题材风险/,
+    message: "sell discipline must accept current theme retreat or main-capital outflow as valid staged reduction evidence."
+  },
+  {
     pattern: /function collectPortfolioSellDisciplineSignals[\s\S]{0,4000}effectiveProfitGiveback[\s\S]{0,4000}actionability\.action === "wait"[\s\S]{0,300}缺少当前净值/,
     message: "sell discipline must accept stale wait-position giveback evidence before reducing a holding."
   },
