@@ -6699,6 +6699,52 @@ assert(
   !manager.hasActionableThemeSupport({ code: "000055", name: "AI无来源基金C", matchedThemes: [untraceableMainTheme] }),
   "untraceable main-capital/preheat catalyst must not satisfy actionable theme support"
 );
+const traceableMainTheme = {
+  ...untraceableMainTheme,
+  id: "ai_traceable_catalyst",
+  name: "AI有来源主力",
+  catalystProfile: { ...untraceableMainTheme.catalystProfile, freshnessLabel: "当日催化", latestNewsTime: "10:26" },
+  newsLogic: "主力刚进场：新闻催化：AI算力订单改善（10:26 测试快讯）；主力线索：相关板块资金净流入",
+  primaryCatalyst: "AI算力订单改善（10:26 测试快讯）"
+};
+const sourceBlindSeed = {
+  code: "000057",
+  name: "AI无来源主题C",
+  type: "股票型基金",
+  oneWeekPct: 1.8,
+  oneMonthPct: 2.4,
+  threeMonthPct: -6.8,
+  sixMonthPct: -12.2,
+  thisYearPct: -10.4,
+  dailyPct: 0.5
+};
+assert(
+  manager.scorePullbackSetupSeedCandidate(sourceBlindSeed, [traceableMainTheme], setupQuery) >
+    manager.scorePullbackSetupSeedCandidate(sourceBlindSeed, [untraceableMainTheme], setupQuery) + 30,
+  "pullback setup seed scoring must not give main-force boosts to themes without traceable catalyst sources"
+);
+const sourceBlindUniqueTheme = {
+  ...untraceableMainTheme,
+  id: "source_blind_hotspot",
+  name: "无源热点",
+  keywords: ["无源热点"],
+  fundKeywords: ["无源热点"],
+  themeKeywords: ["无源热点"]
+};
+const traceableUniqueTheme = {
+  ...sourceBlindUniqueTheme,
+  catalystProfile: { ...sourceBlindUniqueTheme.catalystProfile, freshnessLabel: "当日催化", latestNewsTime: "10:28" },
+  newsLogic: "主力刚进场：新闻催化：无源热点订单改善（10:28 测试快讯）；主力线索：相关板块资金净流入",
+  primaryCatalyst: "无源热点订单改善（10:28 测试快讯）"
+};
+assert(
+  !manager.inferPullbackSetupSearchKeywords(setupQuery, [sourceBlindUniqueTheme]).includes("无源热点"),
+  "pullback setup recall must not expand search keywords from untraceable main-force/preheat themes"
+);
+assert(
+  manager.inferPullbackSetupSearchKeywords(setupQuery, [traceableUniqueTheme]).includes("无源热点"),
+  "pullback setup recall may expand search keywords only after the main-force/preheat catalyst is traceable"
+);
 const rankBackedThemeRadar = manager.buildThemeRadar({
   conceptBoards: [{
     boardCode: "BKAI3",

@@ -1181,6 +1181,10 @@ const requiredPatterns = [
     message: "main-capital/preheat micro-starter buys must require traceable catalyst source or timestamp, not just generic newsLogic text."
   },
   {
+    pattern: /function scoreThemeMainForceOpportunity[\s\S]{0,700}traceableCatalyst[\s\S]{0,700}leaderBonus[\s\S]{0,500}&& traceableCatalyst/,
+    message: "main-force theme scoring must only grant leader/preheat bonus when the catalyst source is traceable."
+  },
+  {
     pattern: /(?=[\s\S]*function hasPositiveThemeMainCapitalEvidence)(?=[\s\S]*avgMainNetInflowPct)(?=[\s\S]*maxMainNetInflowPct)(?=[\s\S]*mainInflowRankScore)(?=[\s\S]*function isThemeLowBaseMicroStarterSupport[\s\S]{0,650}hasPositiveThemeMainCapitalEvidence\(theme\))/,
     message: "main-capital/preheat micro-starter buys must require positive fund-flow or main-inflow leaderboard confirmation."
   },
@@ -1339,6 +1343,10 @@ const requiredPatterns = [
   {
     pattern: /function inferPullbackSetupSearchKeywords[\s\S]{0,1400}isActionableThemeSupport\(theme\)/,
     message: "pullback setup discovery keywords must expand actionable themes."
+  },
+  {
+    pattern: /const unresolvedLeaderHeat = hasThemeLeaderOrPreheatSignal\(theme\) && !hasTraceableFreshThemeCatalystContext\(theme\);[\s\S]{0,220}leaderCandidate && hasTraceableFreshThemeCatalystContext\(theme\)/,
+    message: "pullback setup discovery keywords must not expand main-capital/preheat themes whose catalyst source is not traceable."
   },
   {
     pattern: /function inferPullbackSetupSearchKeywords[\s\S]{0,2400}themeMatchesSearchText\(theme,\s*text\)[\s\S]{0,700}scopedRadarKeywords[\s\S]{0,700}\.\.\.baseKeywords,\s*\.\.\.scopedRadarKeywords/,
@@ -1921,8 +1929,12 @@ const requiredPatterns = [
     message: "user holding risk evidence must reuse structured theme-retreat, stale-catchdown, and current-radar-unconfirmed warnings."
   },
   {
-    pattern: /(?=[\s\S]*function buildPortfolioBacktestThemeMomentumCandidate[\s\S]{0,1000}!theme \|\| !hasFreshThemeCatalystContext\(theme\) \|\| !hasPositiveThemeMainCapitalEvidence\(theme\))(?=[\s\S]*function getPortfolioBacktestThemeMomentumBlockingReason[\s\S]{0,900}缺少正向主力资金或主力流入榜确认)/,
-    message: "missed theme momentum backtests must not count stale or capital-unconfirmed catalysts as missed executable opportunities."
+    pattern: /function buildPortfolioBacktestThemeMomentumCandidate[\s\S]{0,1800}!theme \|\| !hasTraceableFreshThemeCatalystContext\(theme\) \|\| !hasPositiveThemeMainCapitalEvidence\(theme\)/,
+    message: "missed theme momentum backtests must not count stale, untraceable, or capital-unconfirmed catalysts as missed executable opportunities."
+  },
+  {
+    pattern: /function getPortfolioBacktestThemeMomentumBlockingReason[\s\S]{0,500}!hasTraceableFreshThemeCatalystContext\(theme\)[\s\S]{0,180}缺少可追溯的新鲜新闻\/催化来源/,
+    message: "missed theme momentum blocking reasons must explain untraceable catalyst sources in customer-readable Chinese."
   },
   {
     pattern: /候选质量缺口回测[\s\S]{0,700}不能直接算作可买机会成本[\s\S]{0,500}扩展数据源和同主题替代品/,
@@ -3029,8 +3041,16 @@ const requiredPatterns = [
     message: "pullback/setup scoring must prefer current-radar theme labels over stale candidate labels."
   },
   {
+    pattern: /if \(\["capital_entering", "preheat_catalyst"\]\.includes\(theme\.leaderSignal\) && hasTraceableFreshThemeCatalystContext\(theme\)\) score \+= 10;[\s\S]{0,260}score -= 24;/,
+    message: "pullback/setup seed scoring must penalize main-capital/preheat heat when catalyst source is not traceable."
+  },
+  {
     pattern: /function scoreDeepDiveCandidate[\s\S]{0,500}refreshPortfolioCandidateThemesWithMarketRadar\(item,\s*themeRadar\)[\s\S]{0,300}matchedThemes/,
     message: "deep-dive scoring must prefer current-radar theme labels over stale candidate labels."
+  },
+  {
+    pattern: /if \(\["capital_entering", "preheat_catalyst"\]\.includes\(theme\.leaderSignal\) && hasTraceableFreshThemeCatalystContext\(theme\)\) score \+= 8;[\s\S]{0,220}score -= 20;/,
+    message: "deep-dive scoring must also reject untraceable main-capital/preheat heat before model analysis."
   },
   {
     pattern: /function fetchMarketDeepDive[\s\S]{0,1800}\.filter\(\(item\)\s*=>\s*!shouldSuppressPreciousMetalCandidate\(userText,\s*item\)\)/,

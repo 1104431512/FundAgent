@@ -3404,11 +3404,11 @@ function isPortfolioThemeOpportunitySeedTheme(theme = {}) {
   if (!theme || typeof theme !== "object") return false;
   if (hasThemeCapitalRetreatRisk(theme) || isStaleThemeCatchdownRiskTheme(theme)) return false;
   if (theme.positionSignal === "high_chase_risk" || theme.stage === "crowded" || Number(theme.crowdingScore) >= 55) return false;
-  const mainOrPreheat = hasFreshThemeCatalystContext(theme) && hasThemeLeaderOrPreheatSignal(theme);
+  const mainOrPreheat = hasTraceableFreshThemeCatalystContext(theme) && hasThemeLeaderOrPreheatSignal(theme);
   const lowRotation = theme.positionSignal === "low_position_rotation"
     || theme.stage === "low_position_rotation"
     || (Number(theme.rotationScore) >= 50 && Number(theme.lowPositionScore) >= 45);
-  return Boolean(mainOrPreheat || (lowRotation && (hasFreshThemeCatalystContext(theme) || Number(theme.capitalFollowScore) >= 45)));
+  return Boolean(mainOrPreheat || (lowRotation && (hasTraceableFreshThemeCatalystContext(theme) || Number(theme.capitalFollowScore) >= 45)));
 }
 
 function getPortfolioThemeCoverageAnchors(group = {}) {
@@ -4453,7 +4453,7 @@ function scorePortfolioActionableThemeSignal(theme = {}) {
     + Number(theme.lowPositionScore || 0) * 0.35
     + Number(theme.catalystProfile?.score || 0) * 0.8
     + scoreThemeMainForceOpportunity(theme) * 0.65
-    + (hasFreshThemeCatalystContext(theme) ? 12 : hasThemeLeaderOrPreheatSignal(theme) ? -20 : 0)
+    + (hasTraceableFreshThemeCatalystContext(theme) ? 12 : hasThemeLeaderOrPreheatSignal(theme) ? -20 : 0)
     - Number(theme.crowdingScore || 0) * 0.4;
 }
 
@@ -4496,7 +4496,7 @@ function scorePortfolioThemeOpportunityCandidate({ item = {}, profile = null, th
     + (lane ? 10 : 0)
     + (executable ? 18 : 0)
     + (hasPortfolioThemeMicroStarterSetup(profile) ? 8 : 0)
-    + (hasFreshThemeCatalystContext(theme) ? 8 : hasThemeLeaderOrPreheatSignal(theme) ? -16 : 0)
+    + (hasTraceableFreshThemeCatalystContext(theme) ? 8 : hasThemeLeaderOrPreheatSignal(theme) ? -16 : 0)
     + (Number.isFinite(low120) && low120 <= 60 ? 7 : 0)
     - (Number.isFinite(r20) && r20 > 8 ? 8 : 0)
     - (hardGap ? 18 : 0)
@@ -5392,7 +5392,7 @@ function formatPortfolioSeedStatusReason(status, profile = null) {
 
 function formatPortfolioThemeSeedWaitingReason(profile = {}) {
   const theme = selectPortfolioActionableThemeSignal(profile);
-  if (!theme || !hasFreshThemeCatalystContext(theme)) return "";
+  if (!theme || !hasTraceableFreshThemeCatalystContext(theme)) return "";
   const gaps = buildPullbackSetupCandidateGaps(profile, { requireThemeOpportunityBacking: true });
   const firstGap = gaps.find((item) =>
     /前十大|承载|持仓|回调完成|启动前夜|5日\/10日|低位|过热|追涨|费用|份额|净值|数据/.test(item)
@@ -11691,7 +11691,7 @@ function buildPortfolioThemeMomentumRankingItem(item = {}) {
     readinessScore * 0.28
     + scorePortfolioActionableThemeSignal(theme) * 0.5
     + (verifiedBuy ? 18 : starterBuy ? 14 : themeMicroStarter ? 12 : 0)
-    + (hasFreshThemeCatalystContext(theme) ? 8 : hasThemeLeaderOrPreheatSignal(theme) ? -16 : 0)
+    + (hasTraceableFreshThemeCatalystContext(theme) ? 8 : hasThemeLeaderOrPreheatSignal(theme) ? -16 : 0)
     + (outlook.hasHoldings ? Math.max(0, Number(outlook.score || 0)) * 0.45 : -6)
     - (chase.shouldSurface ? 24 : 0)
     - (fee.missingCritical ? 14 : 0)
@@ -17149,7 +17149,7 @@ function buildPortfolioBacktestThemeMomentumCandidate(item = {}, { totalAsset = 
     }
   };
   const theme = selectPortfolioActionableThemeSignal(evidenceSource);
-  if (!theme || !hasFreshThemeCatalystContext(theme) || !hasPositiveThemeMainCapitalEvidence(theme)) return null;
+  if (!theme || !hasTraceableFreshThemeCatalystContext(theme) || !hasPositiveThemeMainCapitalEvidence(theme)) return null;
   const trend = profile.trendProfile || item.trendProfile || {};
   const return5d = finiteMetricNumber(trend.return5dPct);
   const return10d = finiteMetricNumber(trend.return10dPct);
@@ -17199,7 +17199,7 @@ function getPortfolioBacktestThemeMomentumBlockingReason(item = {}, profile = {}
   if (hasHighChaseTheme(evidenceSource) || hasStaleThemeCatchdownRisk(evidenceSource) || hasThemeRetreatRisk(evidenceSource)) {
     return "题材退潮、主力撤离或追涨拥挤风险未解除";
   }
-  if (!hasFreshThemeCatalystContext(theme)) return "缺少新鲜新闻/催化逻辑，不能解释题材大涨原因";
+  if (!hasTraceableFreshThemeCatalystContext(theme)) return "缺少可追溯的新鲜新闻/催化来源，不能解释题材大涨原因";
   if (!hasPositiveThemeMainCapitalEvidence(theme)) return "缺少正向主力资金或主力流入榜确认，不能算错过主力预热机会";
   if (!themeMicroStarter) return "基金尚未同时满足低位回调或主线启动验证条件";
   if (!hasVerifiedPortfolioFeeEvidence(profile)) return "费用/份额未核验，不能归为可执行主力预热机会";
@@ -19896,7 +19896,7 @@ function formatMarketDeepDiveThemeOpportunityPlaybook(deepDive = {}, options = {
     {
       title: "主力进场",
       filter: (theme) => !hasThemeCapitalRetreatRisk(theme)
-        && hasFreshThemeCatalystContext(theme)
+        && hasTraceableFreshThemeCatalystContext(theme)
         && (
           theme.leaderSignal === "capital_entering"
           || theme.positionSignal === "main_capital_entering"
@@ -19907,7 +19907,7 @@ function formatMarketDeepDiveThemeOpportunityPlaybook(deepDive = {}, options = {
     {
       title: "题材预热",
       filter: (theme) => !hasThemeCapitalRetreatRisk(theme)
-        && hasFreshThemeCatalystContext(theme)
+        && hasTraceableFreshThemeCatalystContext(theme)
         && (
           theme.leaderSignal === "preheat_catalyst"
           || theme.positionSignal === "preheat_catalyst_watch"
@@ -20137,7 +20137,7 @@ function hasPullbackThemeOpportunityBacking(candidate = {}) {
     const lowRotation = theme.positionSignal === "low_position_rotation"
       || theme.stage === "low_position_rotation"
       || (Number(theme.rotationScore) >= 50 && Number(theme.lowPositionScore) >= 45);
-    return lowRotation || hasFreshThemeCatalystContext(theme);
+    return lowRotation || hasTraceableFreshThemeCatalystContext(theme);
   });
   if (!actionableThemes.length) return false;
   return hasVerifiedThemeCarrierEvidence(candidate);
@@ -20655,7 +20655,6 @@ function isActionableThemeSupport(theme = {}) {
   const preheat = finiteMetricNumber(theme.preheatScore);
   const rotation = finiteMetricNumber(theme.rotationScore);
   const lowPosition = finiteMetricNumber(theme.lowPositionScore);
-  const catalystContext = hasFreshThemeCatalystContext(theme);
   const traceableCatalystContext = hasTraceableFreshThemeCatalystContext(theme);
   const mainCapitalSignal = theme.leaderSignal === "capital_entering"
     || theme.positionSignal === "main_capital_entering"
@@ -20740,10 +20739,11 @@ function scoreThemeMainForceOpportunity(theme = {}) {
   const rotation = Number(theme.rotationScore || 0);
   const crowding = Number(theme.crowdingScore || 0);
   const catalyst = scoreThemeCatalystQuality(theme);
-  const catalystBonus = hasFreshThemeCatalystContext(theme) ? 16 : hasThemeLeaderOrPreheatSignal(theme) ? -18 : 0;
-  const leaderBonus = theme.leaderSignal === "capital_entering" || theme.positionSignal === "main_capital_entering"
+  const traceableCatalyst = hasTraceableFreshThemeCatalystContext(theme);
+  const catalystBonus = traceableCatalyst ? 16 : hasThemeLeaderOrPreheatSignal(theme) ? -18 : 0;
+  const leaderBonus = (theme.leaderSignal === "capital_entering" || theme.positionSignal === "main_capital_entering") && traceableCatalyst
     ? 14
-    : theme.leaderSignal === "preheat_catalyst" || theme.positionSignal === "preheat_catalyst_watch"
+    : (theme.leaderSignal === "preheat_catalyst" || theme.positionSignal === "preheat_catalyst_watch") && traceableCatalyst
       ? 10
       : 0;
   return Math.max(-40, Math.min(80,
@@ -25658,10 +25658,10 @@ function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
         || Number(theme.preheatScore || 0) >= 45
         || ["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)
         || ["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal);
-      const unresolvedLeaderHeat = hasThemeLeaderOrPreheatSignal(theme) && !hasFreshThemeCatalystContext(theme);
+      const unresolvedLeaderHeat = hasThemeLeaderOrPreheatSignal(theme) && !hasTraceableFreshThemeCatalystContext(theme);
       return isActionableThemeSupport(theme)
         || (lowRotationCandidate && !unresolvedLeaderHeat)
-        || (leaderCandidate && hasFreshThemeCatalystContext(theme));
+        || (leaderCandidate && hasTraceableFreshThemeCatalystContext(theme));
     })
     .filter((theme) => !explicit.length || themeMatchesSearchText(theme, text))
     .flatMap((theme) => collectThemeOpportunitySearchKeywords(theme))
@@ -26071,9 +26071,9 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
     score += Math.min(10, Number(theme.preheatScore || 0) / 7);
     score += Math.max(-14, Math.min(18, mainForceScore / 4));
     score += scoreThemeCatalystQuality(theme);
-    if (["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)) score += 10;
-    if (["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)) score += 8;
-    if (hasThemeLeaderOrPreheatSignal(theme) && !hasFreshThemeCatalystContext(theme)) score -= 18;
+    if (["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal) && hasTraceableFreshThemeCatalystContext(theme)) score += 10;
+    if (["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal) && hasTraceableFreshThemeCatalystContext(theme)) score += 8;
+    if (hasThemeLeaderOrPreheatSignal(theme) && !hasTraceableFreshThemeCatalystContext(theme)) score -= 24;
     if (theme.positionSignal === "high_chase_risk") score -= 16;
     if (theme.stage === "crowded") score -= 10;
     if (hasThemeCapitalRetreatRisk(theme)) score -= 24;
@@ -26124,8 +26124,8 @@ function scoreDeepDiveCandidate(item, themeRadar = []) {
     score += Math.min(8, Number(theme.preheatScore || 0) / 8);
     score += Math.max(-10, Math.min(14, mainForceScore / 5));
     score += scoreThemeCatalystQuality(theme);
-    if (["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)) score += 8;
-    if (hasThemeLeaderOrPreheatSignal(theme) && !hasFreshThemeCatalystContext(theme)) score -= 14;
+    if (["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal) && hasTraceableFreshThemeCatalystContext(theme)) score += 8;
+    if (hasThemeLeaderOrPreheatSignal(theme) && !hasTraceableFreshThemeCatalystContext(theme)) score -= 20;
     if (theme.stage === "crowded") score -= 4;
     if (theme.positionSignal === "high_chase_risk") score -= 6;
     if (hasThemeCapitalRetreatRisk(theme)) score -= 18;
