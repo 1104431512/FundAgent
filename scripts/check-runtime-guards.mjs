@@ -1085,6 +1085,14 @@ const requiredPatterns = [
     message: "main-capital/preheat opportunities must require fresh news or industry catalyst logic before entering actionable recall."
   },
   {
+    pattern: /(?=[\s\S]*function buildThemeNewsFreshnessProfile)(?=[\s\S]*function parseThemeNewsTimeMs)(?=[\s\S]*MARKET_THEME_NEWS_FRESH_HOURS)(?=[\s\S]*function hasFreshThemeCatalystContext[\s\S]{0,260}catalystProfile\?\.fresh !== false)/,
+    message: "theme catalyst logic must track headline freshness and block stale news from actionable main-capital/preheat support."
+  },
+  {
+    pattern: /buildThemeLeaderboards[\s\S]{0,1200}main_capital[\s\S]{0,700}hasFreshThemeCatalystContext\(theme\)[\s\S]{0,1800}preheat[\s\S]{0,700}hasFreshThemeCatalystContext\(theme\)/,
+    message: "main-capital and preheat leaderboards must both require fresh catalyst context."
+  },
+  {
     pattern: /(?=[\s\S]*function buildNewsCatalystProfile)(?=[\s\S]*function scoreThemeCatalystQuality)(?=[\s\S]*政策落地)(?=[\s\S]*产业订单)(?=[\s\S]*外盘映射)(?=[\s\S]*风险提醒)(?=[\s\S]*催化性质)/,
     message: "theme news evidence must classify the catalyst type so the manager can explain why a sector is moving."
   },

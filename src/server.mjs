@@ -17069,6 +17069,7 @@ function compactThemeRadarForModel(theme = {}) {
     主力跟随: finiteMetricNumber(theme.capitalFollowScore),
     预热评分: finiteMetricNumber(theme.preheatScore),
     催化性质: theme.catalystProfile?.summary || "",
+    催化新鲜度: theme.catalystProfile?.freshnessLabel || "",
     拥挤度: finiteMetricNumber(theme.crowdingScore),
     轮动评分: finiteMetricNumber(theme.rotationScore),
     低位评分: finiteMetricNumber(theme.lowPositionScore),
@@ -18226,7 +18227,10 @@ function getCandidateThemeSignals(candidate = {}) {
             score: Number(theme.catalystProfile.score),
             tags: normalizeStringArray(theme.catalystProfile.tags).slice(0, 6),
             summary: String(theme.catalystProfile.summary || "").trim(),
-            risk: Boolean(theme.catalystProfile.risk)
+            risk: Boolean(theme.catalystProfile.risk),
+            fresh: theme.catalystProfile.fresh !== false,
+            freshnessLabel: String(theme.catalystProfile.freshnessLabel || "").trim(),
+            latestNewsTime: String(theme.catalystProfile.latestNewsTime || "").trim()
           }
         : null,
       dynamic: Boolean(theme?.dynamic),
@@ -18294,7 +18298,7 @@ function hasThemeCatalystContext(theme = {}) {
 }
 
 function hasFreshThemeCatalystContext(theme = {}) {
-  return hasThemeCatalystContext(theme) && !theme.catalystProfile?.risk;
+  return hasThemeCatalystContext(theme) && !theme.catalystProfile?.risk && theme.catalystProfile?.fresh !== false;
 }
 
 function hasThemeLeaderOrPreheatSignal(theme = {}) {
@@ -21077,7 +21081,8 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + maxOutflow * 6
       + Math.abs(maxBoardDropPct) * 8
     );
-    const catalystScore = clampScore(news.length * 6 + newsCatalystProfile.score + metals.filter((item) => Number.isFinite(item.changePct)).length * 4 + overseasMarkets.filter((item) => Number.isFinite(item.changePct)).length * 3);
+    const freshNewsCount = newsCatalystProfile.fresh === false ? 0 : news.length;
+    const catalystScore = clampScore(freshNewsCount * 6 + newsCatalystProfile.score + metals.filter((item) => Number.isFinite(item.changePct)).length * 4 + overseasMarkets.filter((item) => Number.isFinite(item.changePct)).length * 3);
     const boardScore = clampScore(
       boards.reduce((sum, item) => sum + Math.max(0, Number(item.changePct || 0)) * 4 + Math.max(0, Number(item.mainNetInflowPct || 0)) / 8, 0)
       - capitalRetreatScore * 0.35
@@ -21239,7 +21244,7 @@ function buildThemeLeaderboards(themeRadar = []) {
       id: "main_capital",
       title: "主力进场榜",
       subtitle: "资金开始配合、但拥挤度还没失控的方向。",
-      filter: (theme) => notRetreat(theme) && notCrowded(theme) && (
+      filter: (theme) => notRetreat(theme) && notCrowded(theme) && hasFreshThemeCatalystContext(theme) && (
         theme.leaderSignal === "capital_entering"
         || theme.positionSignal === "main_capital_entering"
         || Number(theme.capitalFollowScore) >= 58
@@ -21299,6 +21304,7 @@ function compactThemeLeaderboardItem(theme = {}, reason = "", score = 0) {
     leader: formatUserFacingFundLabel(theme.leaderSignal || theme.positionSignal || ""),
     action: formatUserFacingFundLabel(theme.actionBias || ""),
     catalyst: theme.catalystProfile?.summary || "",
+    catalystFreshness: theme.catalystProfile?.freshnessLabel || "",
     newsLogic: theme.newsLogic || theme.primaryCatalyst || "",
     primaryCatalyst: theme.primaryCatalyst || "",
     nextStep: buildThemeLeaderboardNextStep(theme),
@@ -21353,6 +21359,7 @@ function buildThemeLeaderboardEvidenceChips(theme = {}) {
     chips.push(`最强板块净流入${formatFallbackPlainPct(maxFlow)}`);
   }
   if (theme.catalystProfile?.summary) chips.push(`催化：${theme.catalystProfile.summary}`);
+  if (theme.catalystProfile?.freshnessLabel && theme.catalystProfile.fresh !== undefined) chips.push(theme.catalystProfile.freshnessLabel);
   if (board.name) chips.push(`板块：${board.name}${formatSignedNumber(board.changePct)}%`);
   if (theme.primaryCatalyst && !theme.catalystProfile?.summary) chips.push(shortenPortfolioCustomerText(theme.primaryCatalyst, 28));
   if (Number.isFinite(retreat) && retreat >= 45) chips.push("退潮风险高");
@@ -21467,13 +21474,14 @@ function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], 
       const change = Number(board.changePct || 0);
       const flow = Number(board.mainNetInflowPct || 0);
       const retreatPenalty = Math.max(0, -change) * 8 + Math.max(0, -flow) * 10;
+      const freshNewsCount = newsCatalystProfile.fresh === false ? 0 : newsCount;
       return {
         board,
         keywords,
         newsKeywords,
         discoveryScore: Math.max(0, change) * 6
           + Math.max(0, flow) * 5
-          + newsCount * 12
+          + freshNewsCount * 12
           + Number(newsCatalystProfile.score || 0) * 0.8
           + Math.min(4, fundCount) * 5
           - retreatPenalty
@@ -21515,7 +21523,8 @@ function buildNewsDiscoveredThemeRadarRules({ fastNews = [], allFunds = [], stat
       const matchedNews = (fastNews || []).filter((item) => textMatchesKeywords(`${item.title || ""} ${item.mediaName || ""}`, newsKeywords));
       const catalystProfile = buildNewsCatalystProfile(matchedNews.slice(0, 5), { ...rule, keywords: newsKeywords });
       const fundCount = (allFunds || []).filter((fund) => textMatchesKeywords(`${fund.name || ""} ${fund.type || ""} ${(fund.keywords || []).join(" ")}`, rule.fundKeywords || rule.keywords)).length;
-      const discoveryScore = matchedNews.length * 12
+      const freshNewsCount = catalystProfile.fresh === false ? 0 : matchedNews.length;
+      const discoveryScore = freshNewsCount * 12
         + Number(catalystProfile.score || 0) * 0.9
         + Math.min(4, fundCount) * 4;
       return {
@@ -21526,7 +21535,7 @@ function buildNewsDiscoveredThemeRadarRules({ fastNews = [], allFunds = [], stat
         discoveryScore
       };
     })
-    .filter((item) => item.matchedNews.length && item.discoveryScore >= 18 && Number(item.catalystProfile.score || 0) >= 10)
+    .filter((item) => item.matchedNews.length && item.catalystProfile.fresh !== false && item.discoveryScore >= 18 && Number(item.catalystProfile.score || 0) >= 10)
     .sort((a, b) => b.discoveryScore - a.discoveryScore)
     .slice(0, 6)
     .map(({ rule, newsKeywords }) => {
@@ -21646,6 +21655,7 @@ function inferThemePositionSignal({ crowdingScore, rotationScore, lowPositionSco
 
 function buildNewsCatalystProfile(news = [], rule = {}) {
   const text = (news || []).map((item) => `${item.title || ""} ${item.mediaName || ""}`).join(" ");
+  const freshness = buildThemeNewsFreshnessProfile(news);
   const tags = [];
   const add = (pattern, label, weight) => {
     if (pattern.test(text) && !tags.some((item) => item.label === label)) {
@@ -21659,14 +21669,74 @@ function buildNewsCatalystProfile(news = [], rule = {}) {
   add(/美股|海外|英伟达|苹果|特斯拉|微软|OpenAI|美联储|美元|美债|COMEX|日经|纳斯达克/i, "外盘映射", 10);
   add(/资金|主力|北向|南向|ETF|机构|增持|回购|净流入/i, "资金关注", 8);
   const hasRisk = /风险|利空|减持|跳水|大跌|杀跌|回落|回调|高位震荡|净流出|撤离|监管|调查/i.test(text);
-  const score = clampScore(tags.reduce((sum, item) => sum + item.weight, 0) - (hasRisk ? 14 : 0));
+  const stalePenalty = freshness.fresh === false ? 22 : 0;
+  const score = clampScore(tags.reduce((sum, item) => sum + item.weight, 0) - (hasRisk ? 14 : 0) - stalePenalty);
   return {
     score,
     tags: tags.map((item) => item.label),
     summary: tags.map((item) => item.label).slice(0, 3).join("、") || (hasRisk ? "风险提醒" : ""),
     risk: hasRisk,
-    themeMatched: textMatchesKeywords(text, rule.keywords || [])
+    themeMatched: textMatchesKeywords(text, rule.keywords || []),
+    fresh: freshness.fresh,
+    freshnessMinutes: freshness.freshnessMinutes,
+    freshnessLabel: freshness.freshnessLabel,
+    latestNewsTime: freshness.latestNewsTime
   };
+}
+
+function buildThemeNewsFreshnessProfile(news = []) {
+  const parsed = (news || [])
+    .map((item) => ({
+      time: parseThemeNewsTimeMs(item.showTime || item.time || item.publishTime || item.createdAt || item.updatedAt),
+      raw: item.showTime || item.time || item.publishTime || item.createdAt || item.updatedAt || ""
+    }))
+    .filter((item) => Number.isFinite(item.time));
+  if (!parsed.length) {
+    return {
+      fresh: true,
+      freshnessMinutes: null,
+      freshnessLabel: "未标时间，按人工/系统注入催化处理",
+      latestNewsTime: ""
+    };
+  }
+  const latest = parsed.sort((a, b) => b.time - a.time)[0];
+  const freshnessMinutes = Math.max(0, Math.round((Date.now() - latest.time) / 60000));
+  const fresh = freshnessMinutes <= getThemeNewsFreshnessLimitMinutes();
+  return {
+    fresh,
+    freshnessMinutes,
+    freshnessLabel: formatThemeNewsFreshnessLabel(freshnessMinutes),
+    latestNewsTime: String(latest.raw || "").trim()
+  };
+}
+
+function parseThemeNewsTimeMs(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(text)) {
+    return parseChinaDateTimeMs(`${getZonedDateTime(getEffectiveConfig().portfolioTimezone).date} ${text}`);
+  }
+  const monthDay = text.match(/^(\d{1,2})[-/](\d{1,2})\s+(\d{1,2}:\d{2}(?::\d{2})?)/);
+  if (monthDay) {
+    const year = getZonedDateTime(getEffectiveConfig().portfolioTimezone).date.slice(0, 4);
+    const month = monthDay[1].padStart(2, "0");
+    const day = monthDay[2].padStart(2, "0");
+    return parseChinaDateTimeMs(`${year}-${month}-${day} ${monthDay[3]}`);
+  }
+  return parseChinaDateTimeMs(text);
+}
+
+function getThemeNewsFreshnessLimitMinutes() {
+  const hours = Number(process.env.MARKET_THEME_NEWS_FRESH_HOURS || 36);
+  return Math.max(3, Number.isFinite(hours) ? hours : 36) * 60;
+}
+
+function formatThemeNewsFreshnessLabel(minutes) {
+  if (!Number.isFinite(minutes)) return "未标时间";
+  if (minutes <= 180) return "3小时内新催化";
+  if (minutes <= 720) return "当日催化";
+  if (minutes <= 2160) return "近两日催化";
+  return `约${Math.ceil(minutes / 1440)}天前旧催化`;
 }
 
 function buildThemeCatalystLogic({ rule = {}, news = [], boards = [], metals = [], overseasMarkets = [], leaderSignal = "", avgMainNetInflowPct = null, maxMainNetInflowPct = null, minMainNetInflowPct = null, newsCatalystProfile = null } = {}) {
@@ -21680,6 +21750,7 @@ function buildThemeCatalystLogic({ rule = {}, news = [], boards = [], metals = [
   const minFlow = Number(minMainNetInflowPct);
   if (topNews) facts.push(`新闻催化：${formatThemeNewsHeadline(news[0])}`);
   if (newsCatalystProfile?.summary) facts.push(`催化性质：${newsCatalystProfile.summary}`);
+  if (newsCatalystProfile?.fresh === false && newsCatalystProfile?.freshnessLabel) facts.push(`催化新鲜度：${newsCatalystProfile.freshnessLabel}`);
   if (topBoard.name) {
     const lead = topBoard.leadStock ? `，龙头${topBoard.leadStock}` : "";
     facts.push(`板块验证：${topBoard.name}${formatSignedNumber(topBoard.changePct)}%${lead}`);
@@ -21776,7 +21847,10 @@ function compactMatchedThemeSignal(theme = {}) {
           score: Number(theme.catalystProfile.score),
           tags: normalizeStringArray(theme.catalystProfile.tags).slice(0, 6),
           summary: String(theme.catalystProfile.summary || "").trim(),
-          risk: Boolean(theme.catalystProfile.risk)
+          risk: Boolean(theme.catalystProfile.risk),
+          fresh: theme.catalystProfile.fresh !== false,
+          freshnessLabel: String(theme.catalystProfile.freshnessLabel || "").trim(),
+          latestNewsTime: String(theme.catalystProfile.latestNewsTime || "").trim()
         }
       : null,
     primaryCatalyst: theme.primaryCatalyst || "",

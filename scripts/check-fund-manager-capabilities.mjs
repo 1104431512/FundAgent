@@ -4434,8 +4434,31 @@ assert(liveAiTheme.capitalFollowScore >= 55, "theme radar must expose a strong m
 assert(liveAiTheme.newsLogic.includes("新闻催化") && liveAiTheme.newsLogic.includes("主力线索"), "theme radar must explain why the theme is moving with news and capital evidence");
 assert(liveAiTheme.newsLogic.includes("测试快讯") && liveAiTheme.newsLogic.includes("10:10"), "theme radar news logic must preserve news source and time for customer-facing catalyst explanations");
 assert(liveAiTheme.catalystProfile?.summary.includes("产业订单"), "theme radar must classify why a theme is moving instead of treating every headline as equal noise");
+assert(liveAiTheme.catalystProfile?.fresh !== false && liveAiTheme.catalystProfile?.freshnessLabel, "theme radar must mark live fast-news catalysts as fresh evidence");
 const matchedAiThemes = manager.matchCandidateThemes({ code: "000024", name: "人工智能主题C", type: "股票型基金" }, [liveAiTheme]);
 assert(matchedAiThemes[0]?.catalystProfile?.summary.includes("产业订单"), "matched fund themes must preserve catalyst type so fund candidates inherit why the theme is rising");
+assert(matchedAiThemes[0]?.catalystProfile?.fresh !== false, "matched fund themes must preserve catalyst freshness so old news cannot support a buy");
+const staleNewsThemeRadar = manager.buildThemeRadar({
+  conceptBoards: [
+    { boardCode: "BKAIOLD", name: "人工智能", changePct: 1.2, mainNetInflowPct: 2.4, leadStock: "工业富联", quoteTime: "10:30" }
+  ],
+  industryBoards: [],
+  fastNews: [{ title: "AI算力订单改善 产业链公司获机构调研", showTime: "2026-05-20 09:42", mediaName: "测试快讯" }],
+  fundCandidates: {
+    stockFunds: [{ code: "000044", name: "人工智能旧催化基金C", type: "股票型基金", oneMonthPct: 2.8, dailyPct: 0.5, shareClass: "C" }]
+  }
+});
+const staleNewsAiTheme = staleNewsThemeRadar.find((theme) => theme.id === "ai_compute");
+assert(staleNewsAiTheme?.catalystProfile?.fresh === false, "theme radar must tag explicitly old headlines as stale catalysts");
+assert(staleNewsAiTheme.newsLogic.includes("旧催化"), "theme radar must tell the manager when a catalyst is old rather than silently treating it as fresh news");
+assert(
+  !manager.buildThemeLeaderboards([staleNewsAiTheme]).mainCapital.items.some((item) => item.name === "AI/算力"),
+  "main-capital leaderboard must not promote sectors whose only catalyst is stale news"
+);
+assert(
+  !manager.hasActionableThemeSupport({ code: "000044", name: "人工智能旧催化基金C", matchedThemes: [staleNewsAiTheme] }),
+  "stale news must not satisfy actionable main-capital/preheat theme support"
+);
 const retreatThemeRadar = manager.buildThemeRadar({
   conceptBoards: [
     { boardCode: "BKAI9", name: "CPO", changePct: -3.4, mainNetInflowPct: -4.2, leadStock: "新易盛", quoteTime: "10:45", coverageSources: ["主力流出榜", "跌幅榜"] },
@@ -4496,6 +4519,18 @@ const dataElementsTheme = newsOnlyThemeRadar.find((theme) => theme.id === "news_
 assert(dataElementsTheme?.dynamic, "theme radar must discover preheated themes from news even before a concept-board match appears");
 assert(dataElementsTheme.newsLogic.includes("数据要素政策落地") && dataElementsTheme.catalystProfile?.summary.includes("政策落地"), "news-discovered themes must preserve the news logic and catalyst type");
 assert(manager.buildThemeLeaderboards([dataElementsTheme]).preheat.items.some((item) => item.name.includes("数据要素")), "news-discovered catalyst themes must enter the preheat leaderboard when not crowded");
+const staleNewsOnlyThemeRadar = manager.buildThemeRadar({
+  conceptBoards: [],
+  industryBoards: [],
+  fastNews: [{ title: "数据要素政策落地 数据资产订单增加 产业链公司获机构调研", showTime: "2026-05-20 09:42", mediaName: "测试快讯" }],
+  fundCandidates: {
+    indexFunds: [{ code: "159003", name: "数字经济旧催化ETF联接C", type: "指数型基金", oneMonthPct: 1.2, dailyPct: 0.2, shareClass: "C" }]
+  }
+});
+assert(
+  !staleNewsOnlyThemeRadar.some((theme) => theme.id === "news_data_elements"),
+  "news-only preheat discovery must not create actionable themes from stale headlines"
+);
 const themeLeaderboards = manager.buildThemeLeaderboards([
   liveAiTheme,
   fadingAiTheme,
