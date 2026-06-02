@@ -4303,6 +4303,7 @@ function ensurePortfolioThemeOpportunityReviewed(decision = {}, account = {}, wa
     }
     const canBuy = Boolean(candidate.executable);
     const action = canBuy ? "BUY" : "WATCH";
+    const themeLogicBrief = formatPortfolioThemeOpportunityCustomerLogic(candidate);
     nextActions.push({
       action,
       code: candidate.code,
@@ -4310,8 +4311,8 @@ function ensurePortfolioThemeOpportunityReviewed(decision = {}, account = {}, wa
       amount: canBuy ? candidate.suggestedAmount : 0,
       targetWeightPct: canBuy ? candidate.suggestedTargetWeightPct : 0,
       reason: canBuy
-        ? `系统主力/预热机会纪律：${candidate.themeName} 有${candidate.laneTitle}线索，${candidate.name || candidate.code} 同时通过买点和费用复核，本轮只做小仓验证。`
-        : `系统主力/预热机会纪律：${candidate.themeName} 有线索，但${candidate.name || candidate.code} 暂不买；${candidate.firstGap}`,
+        ? `系统主力/预热机会纪律：${candidate.themeName} 进入${candidate.laneTitle}；${themeLogicBrief}；${candidate.name || candidate.code} 同时通过买点和费用复核，本轮只做小仓验证。`
+        : `系统主力/预热机会纪律：${candidate.themeName} 有线索；${themeLogicBrief}；但${candidate.name || candidate.code} 暂不买，${candidate.firstGap}`,
       rankingBasis: `${candidate.laneTitle || "主力/预热题材"}机会处理器，${canBuy ? "采纳小仓复核" : "不采纳买入"}`,
       rotationCheck: candidate.newsLogic || candidate.themeEvidence || "题材有主力/预热线索，但仍需基金自身买点确认。",
       positionCheck: candidate.trendEvidence || "等待净值和低位证据复核。",
@@ -4334,6 +4335,22 @@ function ensurePortfolioThemeOpportunityReviewed(decision = {}, account = {}, wa
     ]),
     sources: mergeStringLists(normalized.sources, ["portfolio_theme_opportunity_guard"])
   };
+}
+
+function formatPortfolioThemeOpportunityCustomerLogic(candidate = {}) {
+  const whyMove = candidate.newsLogic
+    ? `为什么动：${shortenPortfolioCustomerText(candidate.newsLogic, 82)}`
+    : candidate.catalyst
+      ? `为什么动：${shortenPortfolioCustomerText(candidate.catalyst, 58)}`
+      : "";
+  const themeProof = candidate.themeEvidence
+    ? `资金/题材：${shortenPortfolioCustomerText(candidate.themeEvidence, 82)}`
+    : "";
+  const fundProof = candidate.trendEvidence
+    ? `代表基金：${shortenPortfolioCustomerText(candidate.trendEvidence, 78)}`
+    : "";
+  const parts = [whyMove, themeProof, fundProof].filter(Boolean);
+  return parts.length ? parts.join("；") : "题材逻辑、主力资金和代表基金承载仍需同步复核";
 }
 
 function collectPortfolioThemeOpportunityLeaderboardItems(marketSnapshot = null) {

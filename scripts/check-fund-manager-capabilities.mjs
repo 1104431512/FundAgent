@@ -6563,6 +6563,11 @@ const themeOpportunityDecision = manager.ensurePortfolioThemeOpportunityReviewed
 assert.equal(themeOpportunityDecision.actions[0].action, "BUY", "theme opportunity guard must inject a BUY review when micro-starter evidence is executable");
 assert.equal(themeOpportunityDecision.actions[0].targetWeightPct, 1, "theme opportunity guard must keep micro-starter target weight tiny");
 assert(themeOpportunityDecision.actions[0].dataBasis.includes("来源：portfolio_theme_opportunity_guard"), "theme opportunity guard must leave a traceable source");
+assert(
+  /为什么动|新闻催化|主力线索/.test(themeOpportunityDecision.actions[0].reason)
+    && /代表基金|净值验证|资金\/题材/.test(themeOpportunityDecision.actions[0].reason),
+  "theme opportunity guard action reason must explain why the theme moved, capital/theme evidence, and representative-fund validation"
+);
 const liveThemeRadar = manager.buildThemeRadar({
   conceptBoards: [
     { boardCode: "BKAI1", name: "人工智能", changePct: 1.4, mainNetInflowPct: 2.6, leadStock: "工业富联", quoteTime: "10:30" },

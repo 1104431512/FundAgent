@@ -3425,6 +3425,10 @@ const requiredPatterns = [
     message: "portfolio decisions must deterministically review main-capital/preheat theme opportunities instead of allowing generic waiting."
   },
   {
+    pattern: /(?=[\s\S]*function ensurePortfolioThemeOpportunityReviewed)(?=[\s\S]*formatPortfolioThemeOpportunityCustomerLogic)(?=[\s\S]*为什么动)(?=[\s\S]*资金\/题材)(?=[\s\S]*代表基金)/,
+    message: "portfolio theme opportunity guard must inject customer-readable why-move, capital/theme, and representative-fund logic into actions."
+  },
+  {
     pattern: /function buildPortfolioRankingBoard[\s\S]{0,240000}buildPortfolioStaleCatchdownRiskRanking\(watchlist\)[\s\S]{0,240000}function buildPortfolioStaleCatchdownRiskRanking[\s\S]{0,2000}stale_catchdown_risk[\s\S]{0,2000}接盘风险榜[\s\S]{0,2000}表面回调/,
     message: "manager ranking boards must include a stale-catchdown risk lane that blocks retreating themes from masquerading as pullback setups."
   },
