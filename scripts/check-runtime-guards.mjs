@@ -625,7 +625,7 @@ const requiredPatterns = [
     message: "fund QA prompts must send compact market snapshots instead of full raw snapshots."
   },
   {
-    pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,6600}JSON\.stringify\(compactMarketSnapshotForModel\(marketSnapshot\), null, 2\)/,
+    pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,7600}JSON\.stringify\(compactMarketSnapshotForModel\(marketSnapshot\), null, 2\)/,
     message: "portfolio decisions must use compact market snapshots to avoid model context-window failures."
   },
   {
@@ -1309,6 +1309,10 @@ const requiredPatterns = [
     message: "admin portfolio sector board must split theme allocation, sector rotation, holdings outlook, and fund quality into separate lenses."
   },
   {
+    pattern: /(?=[\s\S]*PORTFOLIO_RISK_LANES[\s\S]{0,900}stale_catchdown_risk[\s\S]{0,900}chase_risk)(?=[\s\S]*接盘风险)/,
+    message: "admin portfolio risk board must expose stale-catchdown risk separately from ordinary chase risk."
+  },
+  {
     pattern: /(?=[\s\S]*\.sector-terminal\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.sector-lane-grid\s*\{[\s\S]*repeat\(4,\s*minmax\(0,\s*1fr\)\))(?=[\s\S]*\.sector-item-list\s*\{[\s\S]*overflow:\s*auto)/,
     message: "admin portfolio sector leaderboard must be a bounded four-lane terminal board."
   },
@@ -1693,8 +1697,8 @@ const requiredPatterns = [
     message: "portfolio decision prompts must make the customer decision summary, action leaderboard, and action deck the first layer for client-facing buy, wait, avoid, sell, and data guidance."
   },
   {
-    pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,1900}cash_redeployment[\s\S]{0,500}position_sizing[\s\S]{0,500}quality_score[\s\S]{0,500}manager_stability[\s\S]{0,500}portfolio_fit[\s\S]{0,900}theme_momentum[\s\S]{0,900}drawdown_defense[\s\S]{0,900}data_confidence[\s\S]{0,900}replacement_choice/,
-    message: "portfolio decision prompts must force the model to review the cash-redeployment, position-sizing, fund-quality, manager-stability, portfolio-fit, main-capital/preheat, drawdown-defense, data-confidence, and replacement-choice ranking lanes."
+    pattern: /经理多角度榜单（系统计算，必须先看榜单再决定）[\s\S]{0,1900}cash_redeployment[\s\S]{0,500}position_sizing[\s\S]{0,500}quality_score[\s\S]{0,500}manager_stability[\s\S]{0,500}portfolio_fit[\s\S]{0,900}theme_momentum[\s\S]{0,900}stale_catchdown_risk[\s\S]{0,900}drawdown_defense[\s\S]{0,900}data_confidence[\s\S]{0,900}replacement_choice/,
+    message: "portfolio decision prompts must force the model to review the cash-redeployment, position-sizing, fund-quality, manager-stability, portfolio-fit, main-capital/preheat, stale-catchdown, drawdown-defense, data-confidence, and replacement-choice ranking lanes."
   },
   {
     pattern: /buildPortfolioWatchlistStatusLines[\s\S]{0,1200}buildPortfolioWatchRankingCitationMap[\s\S]{0,1600}formatPortfolioWatchDetailLine/,
@@ -2737,8 +2741,8 @@ const requiredPatterns = [
     message: "ranking-board guards must add traceable fallback review actions when top ranked items are omitted."
   },
   {
-    pattern: /decision_synthesis[\s\S]*buy_preparation[\s\S]*launch_setup[\s\S]*cash_redeployment[\s\S]*position_sizing[\s\S]*quality_score[\s\S]*manager_stability[\s\S]*portfolio_fit[\s\S]*theme_allocation[\s\S]*theme_momentum[\s\S]*rotation_opportunity[\s\S]*chase_risk[\s\S]*drawdown_defense[\s\S]*data_confidence[\s\S]*holdings_outlook[\s\S]*fee_suitability[\s\S]*replacement_choice[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
-    message: "manager ranking boards must cover decision synthesis, buy preparation, low-position launch, cash redeployment, position sizing, fund quality, manager stability, portfolio fit, theme allocation, main-capital/preheat momentum, sector rotation, chase risk, drawdown defense, data confidence, holdings outlook, fee suitability, replacement choice, opportunity cost, sell risk, and user holding alerts."
+    pattern: /decision_synthesis[\s\S]*buy_preparation[\s\S]*launch_setup[\s\S]*cash_redeployment[\s\S]*position_sizing[\s\S]*quality_score[\s\S]*manager_stability[\s\S]*portfolio_fit[\s\S]*theme_allocation[\s\S]*theme_momentum[\s\S]*rotation_opportunity[\s\S]*stale_catchdown_risk[\s\S]*chase_risk[\s\S]*drawdown_defense[\s\S]*data_confidence[\s\S]*holdings_outlook[\s\S]*fee_suitability[\s\S]*replacement_choice[\s\S]*opportunity_cost[\s\S]*sell_risk[\s\S]*user_holding_alerts/,
+    message: "manager ranking boards must cover decision synthesis, buy preparation, low-position launch, cash redeployment, position sizing, fund quality, manager stability, portfolio fit, theme allocation, main-capital/preheat momentum, sector rotation, stale-catchdown risk, chase risk, drawdown defense, data confidence, holdings outlook, fee suitability, replacement choice, opportunity cost, sell risk, and user holding alerts."
   },
   {
     pattern: /function buildPortfolioCashRedeploymentRanking[\s\S]{0,2600}现金再部署榜[\s\S]{0,2600}0\.5%-2\.5%/,
@@ -2771,6 +2775,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*function buildPortfolioThemeOpportunityPlan)(?=[\s\S]*portfolio_theme_opportunity_plan)(?=[\s\S]*theme_micro_starter)(?=[\s\S]*function ensurePortfolioThemeOpportunityReviewed)(?=[\s\S]*portfolio_theme_opportunity_guard)/,
     message: "portfolio decisions must deterministically review main-capital/preheat theme opportunities instead of allowing generic waiting."
+  },
+  {
+    pattern: /(?=[\s\S]*function buildPortfolioStaleCatchdownRiskRanking)(?=[\s\S]*接盘风险榜)(?=[\s\S]*stale_catchdown_risk)(?=[\s\S]*主力撤离后的回调修复)(?=[\s\S]*buildPortfolioRankingBoard[\s\S]*buildPortfolioStaleCatchdownRiskRanking)/,
+    message: "manager ranking boards must include a stale-catchdown risk lane that blocks retreating themes from masquerading as pullback setups."
   },
   {
     pattern: /function buildPortfolioDecisionSynthesisRanking[\s\S]{0,2200}买点[\s\S]{0,2200}费率[\s\S]{0,2200}持仓前景/,

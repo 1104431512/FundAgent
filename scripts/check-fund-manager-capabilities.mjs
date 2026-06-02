@@ -1743,6 +1743,7 @@ assert(adminSource.includes("manager_stability"), "admin UI must render the mana
 assert(adminSource.includes("portfolio_fit"), "admin UI must render the portfolio-fit ranking lane");
 assert(adminSource.includes("rotation_opportunity"), "admin UI must render the sector-rotation ranking lane");
 assert(adminSource.includes("theme_momentum") && adminSource.includes("主力预热"), "admin UI must render the main-capital/preheat opportunity ranking lane");
+assert(adminSource.includes("stale_catchdown_risk") && adminSource.includes("接盘风险"), "admin UI must render the stale-catchdown risk ranking lane");
 assert(adminSource.includes("chase_risk"), "admin UI must render the chase-risk ranking lane");
 assert(adminSource.includes("drawdown_defense"), "admin UI must render the drawdown-defense ranking lane");
 assert(adminSource.includes("data_confidence"), "admin UI must render the data-confidence ranking lane");
@@ -4390,6 +4391,29 @@ const selectedThemeSeeds = manager.selectPortfolioWatchlistSeedCandidates([
 ], [], [liveAiTheme, fadingAiTheme], { minScore: 20, limit: 4 });
 assert(selectedThemeSeeds.some((item) => item.code === "000041"), "watchlist seed selection must keep main-capital supported low-position candidates");
 assert(!selectedThemeSeeds.some((item) => item.code === "000042"), "watchlist seed selection must not promote stale catchdown candidates after main capital has left");
+const staleCatchdownRanking = manager.buildPortfolioStaleCatchdownRiskRanking([{
+  code: "000042",
+  name: "退潮回调接盘基金C",
+  status: "ready",
+  readinessScore: 86,
+  lastSnapshot: staleCatchdownDigest
+}]);
+assert(staleCatchdownRanking.items.some((item) => item.code === "000042" && item.action.includes("接盘")), "stale catchdown risk ranking must expose retreating-theme pullbacks as a separate no-buy risk");
+assert(staleCatchdownRanking.items[0]?.decision?.gaps.some((item) => item.includes("主力资金回流")), "stale catchdown risk ranking must require capital-flow recovery before any buy review");
+const staleCatchdownBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
+  account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
+  watchlist: [{
+    code: "000042",
+    name: "退潮回调接盘基金C",
+    status: "ready",
+    readinessScore: 86,
+    lastSnapshot: staleCatchdownDigest
+  }]
+}));
+assert(staleCatchdownBoard.lists.find((item) => item.id === "stale_catchdown_risk")?.items.some((item) => item.code === "000042"), "manager ranking board must include a dedicated stale-catchdown risk lane");
+assert(staleCatchdownBoard.priorityQueue.some((item) => item.code === "000042" && item.listId === "stale_catchdown_risk"), "priority queue must put stale-catchdown risk ahead of ordinary watch review");
+assert(!(staleCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "000042"), "customer action deck must not place stale catchdown candidates in buy-review");
+assert((staleCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000042"), "customer action deck must present stale catchdown candidates as no-buy/avoid items");
 const holdingsSupportedDigest = {
   ...setupDigest,
   code: "000031",

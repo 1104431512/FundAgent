@@ -33,6 +33,7 @@ const RUN_DETAIL_PANEL_ORDER = ["brief", "actions", "committee", "execution", "r
 const PORTFOLIO_RISK_LANES = [
   { id: "drawdown_defense", title: "回撤防线", tone: "defense", empty: "暂无需要单独拉响的回撤防线。" },
   { id: "sell_risk", title: "卖出风险", tone: "sell", empty: "暂无明确卖出风险。" },
+  { id: "stale_catchdown_risk", title: "接盘风险", tone: "danger", empty: "暂无主力撤离后的接盘风险。" },
   { id: "chase_risk", title: "追涨风险", tone: "chase", empty: "暂无偏热追涨提醒。" },
   { id: "user_holding_alerts", title: "用户持仓提醒", tone: "user", empty: "暂无客户持仓提醒。" }
 ];
@@ -90,8 +91,8 @@ const MANAGER_RANKING_GROUPS = [
   {
     id: "risk",
     title: "风控",
-    hint: "追涨与回撤",
-    listIds: ["chase_risk", "drawdown_defense", "portfolio_fit", "user_holding_alerts"]
+    hint: "接盘、追涨与回撤",
+    listIds: ["stale_catchdown_risk", "chase_risk", "drawdown_defense", "portfolio_fit", "user_holding_alerts"]
   },
   {
     id: "evidence",
@@ -2654,6 +2655,7 @@ function getManagerRankingLensPurpose(list = {}, group = null) {
   if (id === "position_sizing") return "把候选转成 0 元观察、小仓试探或分批加仓的仓位方案。";
   if (id === "theme_momentum") return "把主力进场、题材预热和新闻逻辑连接到代表基金动作。";
   if (id === "theme_allocation" || id === "rotation_opportunity") return "先判断板块和轮动，再选代表基金。";
+  if (id === "stale_catchdown_risk") return "单独拦截主力撤离后的表面回调，避免把旧题材反弹当低位启动。";
   if (id === "chase_risk" || id === "drawdown_defense" || id === "sell_risk") return "先处理追涨、回撤和止盈风险，再讨论新增买入。";
   if (id === "data_confidence") return "净值、费率、份额、前十大持仓和来源缺失时，先补证据。";
   if (id === "fee_suitability" || id === "replacement_choice") return "比较 A/C/D/I 份额和同类替代，避免费用侵蚀收益。";
@@ -3232,6 +3234,7 @@ function getManagerRankingListClass(id = "") {
   if (id === "theme_allocation") return "theme";
   if (id === "theme_momentum") return "theme";
   if (id === "rotation_opportunity") return "rotation";
+  if (id === "stale_catchdown_risk") return "danger";
   if (id === "chase_risk") return "chase";
   if (id === "drawdown_defense") return "defense";
   if (id === "data_confidence") return "data";
