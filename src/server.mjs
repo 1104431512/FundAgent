@@ -5730,6 +5730,14 @@ function evaluatePortfolioBuyDiscipline(action = {}, profile = null, positions =
   }
   const trendEvidence = formatPortfolioSeedVerifiedTrendEvidence(profile);
   const themeMicroStarter = hasPortfolioThemeMicroStarterSetup(profile);
+  const textualCatchdownWarnings = getTextualCatchdownWarnings(action, profile);
+  if (textualCatchdownWarnings.length) {
+    return {
+      ok: false,
+      reason: `系统买入纪律拦截：${textualCatchdownWarnings[0]}`,
+      evidence: [trendEvidence, textualCatchdownWarnings[0], "来源：portfolio_text_catchdown_guard"].filter(Boolean)
+    };
+  }
   const themeSupportGap = getPortfolioActionableThemeSupportGap(profile);
   if (themeSupportGap) {
     return {
@@ -5850,6 +5858,8 @@ function evaluatePortfolioBuyExposureDiscipline(action = {}, profile = null, pos
 
 function getPortfolioActionableThemeSupportGap(candidate = {}) {
   const themeSignals = getCandidateThemeSignals(candidate);
+  const textualCatchdownWarnings = getTextualCatchdownWarnings(candidate);
+  if (textualCatchdownWarnings.length) return textualCatchdownWarnings[0];
   const catchdownWarnings = getStaleThemeCatchdownWarnings(candidate);
   if (catchdownWarnings.length) return catchdownWarnings[0];
   const unconfirmedWarnings = getUnrefreshedMarketThemeWarnings(candidate);
@@ -5882,6 +5892,76 @@ function getStaleCatalystThemeWarnings(candidate = {}) {
       return `${name}只有旧新闻/旧催化${freshness}，没有新的新闻时事或主力接力确认，不能把低位回调当今天的买点。`;
     })
     .slice(0, 3);
+}
+
+function getTextualCatchdownWarnings(...sources) {
+  const seen = new Set();
+  const segments = sources
+    .flatMap((source) => collectPortfolioCatchdownTextSegments(source, seen))
+    .map((text) => String(text || "").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const risky = segments.find(isTextualCatchdownRiskSegment);
+  if (!risky) return [];
+  return [`文本证据显示题材退潮、主力撤离或接盘风险，不能把回调当买点：${shortenPortfolioCustomerText(risky, 96)}`];
+}
+
+function collectPortfolioCatchdownTextSegments(value, seen = new Set()) {
+  if (value === null || value === undefined) return [];
+  if (typeof value === "string") return [value];
+  if (typeof value !== "object") return [];
+  if (seen.has(value)) return [];
+  seen.add(value);
+  const keys = [
+    "reason",
+    "riskControl",
+    "chaseRisk",
+    "positionCheck",
+    "rotationCheck",
+    "trendSummary",
+    "newsLogic",
+    "primaryCatalyst",
+    "source",
+    "statusText",
+    "reviewDate"
+  ];
+  const arrayKeys = [
+    "riskNotes",
+    "readinessGaps",
+    "setupEvidence",
+    "buyTriggers",
+    "dataBasis",
+    "learningNotes",
+    "decisiveEvidence",
+    "decisionBlocker",
+    "risks",
+    "gaps"
+  ];
+  const nestedKeys = ["actionability", "holdingsOutlook", "marketThemeRefresh", "trendProfile", "seed"];
+  const segments = [];
+  for (const key of keys) {
+    if (typeof value[key] === "string") segments.push(value[key]);
+  }
+  for (const key of arrayKeys) {
+    if (Array.isArray(value[key])) segments.push(...value[key].filter((item) => typeof item === "string"));
+  }
+  if (value.decision && typeof value.decision === "object") {
+    segments.push(...collectPortfolioCatchdownTextSegments(value.decision, seen));
+  }
+  for (const key of nestedKeys) {
+    if (value[key] && typeof value[key] === "object") {
+      segments.push(...collectPortfolioCatchdownTextSegments(value[key], seen));
+    }
+  }
+  return segments;
+}
+
+function isTextualCatchdownRiskSegment(text = "") {
+  const value = String(text || "");
+  if (!value) return false;
+  if (/(?:暂无|没有|未见|无明显|已解除|风险解除|解除接盘|不构成).{0,16}(?:接盘|退潮|主力撤离|资金撤离|资金流出)/.test(value)) {
+    return false;
+  }
+  return /退潮接盘|接盘风险|题材退潮|主力资金撤离|主力撤离|资金撤离|资金流出|回调(?:不是|不作为|不能当|不能作为)买点|不能把回调当(?:成)?买点|表面回调可能继续下探|底层持仓(?:盘中)?走弱/.test(value);
 }
 
 function getPortfolioWatchThemeSupportGap(item = {}, evidence = null) {

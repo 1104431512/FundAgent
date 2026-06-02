@@ -4067,6 +4067,51 @@ assert(
     && unconfirmedOldThemeBuyGuard.reason.includes("历史热点"),
   "unconfirmed old-theme buy blocks must explain that stale theme labels cannot be used as today's buy basis"
 );
+const textOnlyCatchdownProfile = {
+  ...verifiedSeedProfile,
+  code: "000014",
+  name: "文本退潮低位基金C",
+  matchedThemes: [],
+  riskNotes: ["题材退潮，主力资金撤离，回调不是买点。"],
+  actionability: {
+    ...(verifiedSeedProfile.actionability || {}),
+    action: "buy",
+    decisionBlocker: ["题材退潮，主力资金撤离，回调不是买点。"]
+  }
+};
+const textOnlyCatchdownBuyGuard = manager.evaluatePortfolioBuyDiscipline(
+  { action: "BUY", code: "000014", name: "文本退潮低位基金C", amount: 1000 },
+  textOnlyCatchdownProfile
+);
+assert.equal(textOnlyCatchdownBuyGuard.ok, false, "portfolio buy discipline must block text-only retreat/catchdown warnings even without structured theme signals");
+assert(
+  textOnlyCatchdownBuyGuard.reason.includes("文本证据显示题材退潮")
+    && textOnlyCatchdownBuyGuard.evidence.includes("来源：portfolio_text_catchdown_guard"),
+  "text-only catchdown BUY blocks must explain the textual retreat evidence and leave a traceable guard source"
+);
+assert(
+  manager.buildPortfolioWatchReadinessGaps({ code: "000014", status: "ready" }, textOnlyCatchdownProfile)
+    .some((item) => item.includes("文本证据显示题材退潮")),
+  "watchlist readiness must downgrade candidates whose textual evidence says the theme is fading even when matchedThemes are missing"
+);
+const enforcedTextOnlyCatchdownBuy = manager.enforcePortfolioBuyDiscipline([
+  { action: "BUY", code: "000014", name: "文本退潮低位基金C", amount: 1000, reason: "模型仍想买入。" }
+], [textOnlyCatchdownProfile]);
+assert.equal(enforcedTextOnlyCatchdownBuy[0].action, "WATCH", "execution guard must convert text-only catchdown BUY actions into WATCH");
+assert.equal(enforcedTextOnlyCatchdownBuy[0].amount, 0, "text-only catchdown BUY actions must be zeroed out");
+assert(enforcedTextOnlyCatchdownBuy[0].dataBasis.includes("来源：portfolio_text_catchdown_guard"), "text-only catchdown execution blocks must preserve the textual guard data source");
+const textualRiskNegationProfile = {
+  ...verifiedSeedProfile,
+  code: "000015",
+  name: "否定风险低位基金C",
+  matchedThemes: [],
+  riskNotes: ["暂无接盘风险，没有资金流出，继续按低位回调复核。"]
+};
+assert.equal(
+  manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000015" }, textualRiskNegationProfile).ok,
+  true,
+  "textual catchdown guard must not block explicit negations such as no catchdown risk or no capital outflow"
+);
 const unsupportedThemeRankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
   account: { cash: 90000, totalAsset: 100000, positionWeightPct: 5 },
   watchlist: [{

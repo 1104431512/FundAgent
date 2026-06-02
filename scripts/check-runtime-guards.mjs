@@ -2153,6 +2153,18 @@ const requiredPatterns = [
     message: "portfolio BUY guard must block theme-labeled pullbacks that lack current actionable main-capital, preheat, or rotation support."
   },
   {
+    pattern: /function getTextualCatchdownWarnings[\s\S]{0,900}文本证据显示题材退潮/,
+    message: "portfolio BUY guard must define a text-only retreat/catchdown warning extractor."
+  },
+  {
+    pattern: /function evaluatePortfolioBuyDiscipline[\s\S]{0,1700}getTextualCatchdownWarnings\(action,\s*profile\)[\s\S]{0,500}portfolio_text_catchdown_guard/,
+    message: "portfolio BUY guard must block text-only retreat/catchdown warnings even when structured matchedThemes are missing."
+  },
+  {
+    pattern: /function getPortfolioActionableThemeSupportGap[\s\S]{0,500}getTextualCatchdownWarnings\(candidate\)/,
+    message: "theme support gaps must reuse text-only retreat/catchdown warnings for watchlist readiness."
+  },
+  {
     pattern: /(?=[\s\S]*function evaluatePortfolioBuyDiscipline)(?=[\s\S]*getHoldingRealtimeCatchdownWarning\(profile\))(?=[\s\S]*portfolio_holding_realtime_guard)(?=[\s\S]*function hasPortfolioThemeMicroStarterSetup[\s\S]{0,1200}hasHoldingRealtimeCatchdownRisk\(profile\))/,
     message: "portfolio BUY guard and micro-starter recognition must block intraday weak top-holding pulse as catchdown risk."
   },
