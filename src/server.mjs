@@ -19428,6 +19428,7 @@ function buildPullbackSetupCandidateGaps(candidate = {}, options = {}) {
     gaps.push(...getStaleThemeCatchdownWarnings(candidate));
   }
   gaps.push(...getTextualCatchdownWarnings(candidate));
+  gaps.push(...getUnrefreshedMarketThemeWarnings(candidate));
   if (getCandidateThemeSignals(candidate).length && !hasActionableThemeSupport(candidate)) {
     gaps.push("缺少主力进场、题材预热或低位轮动支撑，暂不能把回调当启动");
   }
@@ -25361,6 +25362,7 @@ function scoreResearchDigestForPullbackSetup(digest = {}) {
   if (hasThemeRetreatRisk(digest)) score -= 42;
   if (hasStaleThemeCatchdownRisk(digest)) score -= 60;
   if (getTextualCatchdownWarnings(digest).length) score -= 60;
+  if (getUnrefreshedMarketThemeWarnings(digest).length) score -= 54;
   if (getCandidateThemeSignals(digest).length && !hasActionableThemeSupport(digest)) score -= 24;
   score += scorePullbackThemeRotation(digest);
   score += scoreHoldingsOutlookForCandidate(digest);

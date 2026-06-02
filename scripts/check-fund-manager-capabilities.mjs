@@ -4771,6 +4771,35 @@ assert(
     manager.scoreResearchDigestForPullbackSetup(stalePullbackDigest),
   "deep-dive scoring must downgrade stale NAV/trend evidence before treating a setup as actionable"
 );
+const unconfirmedOldRadarTheme = {
+  id: "ai_compute",
+  name: "AI/算力",
+  stage: "current_radar_unconfirmed",
+  positionSignal: "current_radar_unconfirmed",
+  actionBias: "wait_current_radar_confirmation",
+  forwardScore: 28,
+  rotationScore: 24,
+  lowPositionScore: 22,
+  capitalFollowScore: 18,
+  preheatScore: 16,
+  catalystProfile: { score: 4, tags: [], summary: "旧预热", risk: true, fresh: false, freshnessLabel: "未被当前题材雷达确认" },
+  newsLogic: "旧题材线索未被当前雷达确认：前期AI算力订单催化。"
+};
+const unconfirmedOldRadarPullbackDigest = {
+  ...setupDigest,
+  code: "000016",
+  name: "旧雷达回调基金C",
+  matchedThemes: [unconfirmedOldRadarTheme],
+  seed: {
+    ...(setupDigest.seed || {}),
+    matchedThemes: [unconfirmedOldRadarTheme]
+  }
+};
+assert(
+  manager.scoreResearchDigestForPullbackSetup(setupDigest) >
+    manager.scoreResearchDigestForPullbackSetup(unconfirmedOldRadarPullbackDigest) + 45,
+  "deep-dive scoring must heavily downgrade pullback-looking candidates whose old theme is not confirmed by the current radar"
+);
 const highPositionSummary = manager.buildMarketDeepDiveSummary({
   ok: true,
   focus: "pullback_setup_discovery",
@@ -8083,6 +8112,21 @@ assert(deterministicNoMainFallback.includes("还差：回调完成/启动前夜�
 assert(deterministicNoMainFallback.includes("近60日+36.64%偏热"), "no-main fallback must surface concrete overheat evidence for rejected candidates");
 assert(!deterministicNoMainFallback.includes("推荐清单："), "no-main fallback must not create a recommendation section");
 assert(!/000003.{0,40}(?:买入|分批|配置)\d+/s.test(deterministicNoMainFallback), "no-main fallback must not assign buy amounts to rejected candidates");
+const unconfirmedOldRadarFallback = manager.buildPullbackQualityFallbackAnswer({
+  userText: setupQuery,
+  issues: ["watch_candidate_given_buy_execution"],
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      candidates: [unconfirmedOldRadarPullbackDigest]
+    }
+  }
+});
+assert(unconfirmedOldRadarFallback.includes("直接结论：这次先不买"), "current-radar-unconfirmed fallback must stay no-buy");
+assert(unconfirmedOldRadarFallback.includes("旧题材线索未被当前题材雷达确认"), "fallback watch gaps must explain current-radar-unconfirmed old themes in plain Chinese");
+assert(unconfirmedOldRadarFallback.includes("历史热点"), "fallback watch gaps must warn that historical theme labels cannot be used as today's buy basis");
+assert(!unconfirmedOldRadarFallback.includes("推荐清单："), "current-radar-unconfirmed fallback must not create a recommendation section");
 const enforcedNoMainFallback = await manager.enforceFundAnswerQuality({
   text: [
     "推荐清单：",

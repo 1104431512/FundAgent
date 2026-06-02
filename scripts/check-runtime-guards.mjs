@@ -317,6 +317,14 @@ const requiredPatterns = [
     message: "pullback/setup candidate bucketing must demote text-only catchdown risks before deterministic fallback can recommend them."
   },
   {
+    pattern: /function buildPullbackSetupCandidateGaps[\s\S]{0,2600}getUnrefreshedMarketThemeWarnings\(candidate\)/,
+    message: "pullback/setup watch gaps must explain old theme labels that are not confirmed by the current radar."
+  },
+  {
+    pattern: /function scoreResearchDigestForPullbackSetup[\s\S]{0,3600}getUnrefreshedMarketThemeWarnings\(digest\)\.length[\s\S]{0,80}score\s*-=\s*54/,
+    message: "pullback/setup scoring must heavily downgrade old theme labels that are not confirmed by the current radar."
+  },
+  {
     pattern: /function buildPullbackFallbackRecheckCondition[\s\S]{0,600}新鲜新闻\/政策\/订单\/产业预热[\s\S]{0,300}代表持仓\/前十大承载/,
     message: "catchdown fallback must explain the live catalyst, capital-return, and holdings-carrier evidence required to reopen review."
   },
