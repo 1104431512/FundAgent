@@ -1637,6 +1637,10 @@ const requiredPatterns = [
     message: "portfolio capability queue must turn stale catchdown losses into a concrete theme/news repair task."
   },
   {
+    pattern: /function buildPortfolioBacktestThemeMomentumCandidate[\s\S]{0,900}!theme \|\| !hasFreshThemeCatalystContext\(theme\)/,
+    message: "missed theme momentum backtests must not count stale catalysts as missed executable opportunities."
+  },
+  {
     pattern: /候选质量缺口回测[\s\S]{0,700}不能直接算作可买机会成本[\s\S]{0,500}扩展数据源和同主题替代品/,
     message: "portfolio diagnostics must attribute blocked follow-through to candidate-quality or data-source gaps rather than chase pressure."
   },

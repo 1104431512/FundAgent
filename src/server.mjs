@@ -15375,7 +15375,7 @@ function buildPortfolioBacktestThemeMomentumCandidate(item = {}, { totalAsset = 
     }
   };
   const theme = selectPortfolioActionableThemeSignal(evidenceSource);
-  if (!theme || !hasThemeCatalystContext(theme)) return null;
+  if (!theme || !hasFreshThemeCatalystContext(theme)) return null;
   const trend = profile.trendProfile || item.trendProfile || {};
   const return5d = finiteMetricNumber(trend.return5dPct);
   const return10d = finiteMetricNumber(trend.return10dPct);
@@ -15425,7 +15425,7 @@ function getPortfolioBacktestThemeMomentumBlockingReason(item = {}, profile = {}
   if (hasHighChaseTheme(evidenceSource) || hasStaleThemeCatchdownRisk(evidenceSource) || hasThemeRetreatRisk(evidenceSource)) {
     return "题材退潮、主力撤离或追涨拥挤风险未解除";
   }
-  if (!hasThemeCatalystContext(theme)) return "缺少新闻/催化逻辑，不能解释题材大涨原因";
+  if (!hasFreshThemeCatalystContext(theme)) return "缺少新鲜新闻/催化逻辑，不能解释题材大涨原因";
   if (!themeMicroStarter) return "基金尚未同时满足低位、温和转强和主力预热微型试探条件";
   if (!hasVerifiedPortfolioFeeEvidence(profile)) return "费用/份额未核验，不能归为可执行主力预热机会";
   const readiness = resolvePortfolioBacktestWatchReadiness(item);

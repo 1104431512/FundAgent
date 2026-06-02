@@ -1343,6 +1343,74 @@ assert(
   themeOpportunityCostList?.items.some((item) => item.code === "000041" && item.action.includes("主力预热")),
   "opportunity-cost ranking must distinguish missed main-capital/preheat candidates from ordinary ready-candidate misses"
 );
+const staleThemeMomentumFixture = {
+  account: {
+    cash: 88000,
+    receivableCash: 0,
+    pendingBuyAmount: 0,
+    totalAsset: 100000,
+    positionWeightPct: 3,
+    investedValue: 3000,
+    positions: [],
+    riskBudget: { blockNewBuys: false }
+  },
+  watchlist: [{
+    code: "000045",
+    name: "旧催化预热基金C",
+    status: "watch",
+    readinessScore: 63,
+    reason: "旧新闻看似预热，但催化已过期。",
+    lastSnapshot: {
+      code: "000045",
+      name: "旧催化预热基金C",
+      shareClass: "C",
+      fees: {
+        shareClass: "C",
+        shareClassFeeModel: { type: "sales_service_fee", label: "C类：销售服务费" },
+        salesServiceFeePct: 0.35,
+        feeImpact: { oneYearCostPer10000: 35, missingFeeData: [] }
+      },
+      trendProfile: {
+        ok: true,
+        trendLabel: "uptrend",
+        entryBias: "staged_buy",
+        return5dPct: 1.5,
+        return10dPct: 2.7,
+        return20dPct: 4.2,
+        return60dPct: -1.8,
+        lowPositionPct120: 39,
+        lowPositionPct250: 43
+      },
+      matchedThemes: [{
+        id: "old_policy_preheat",
+        name: "旧政策预热",
+        leaderSignal: "preheat_catalyst",
+        positionSignal: "preheat_catalyst_watch",
+        capitalFollowScore: 63,
+        preheatScore: 70,
+        rotationScore: 55,
+        lowPositionScore: 63,
+        crowdingScore: 18,
+        capitalRetreatScore: 10,
+        avgMainNetInflowPct: 1.2,
+        catalystProfile: { score: 30, summary: "政策落地", risk: false, fresh: false, freshnessLabel: "约13天前旧催化" },
+        newsLogic: "题材预热：新闻催化：旧政策消息；催化新鲜度：约13天前旧催化"
+      }]
+    }
+  }],
+  runs: [
+    { date: "2026-05-21", type: "decision", status: "completed", summary: "继续观察旧政策预热，暂不买入。", actions: [{ action: "WATCH", code: "000045", reason: "等待确认" }] },
+    { date: "2026-05-22", type: "decision", status: "completed", summary: "仍然观望，没有合格买点。", actions: [{ action: "WATCH", code: "000045", reason: "继续观察" }] },
+    { date: "2026-05-25", type: "decision", status: "completed", summary: "等待机会，0元执行。", actions: [{ action: "WATCH", code: "000045", reason: "等待机会" }] }
+  ],
+  transactions: [],
+  orders: [],
+  settlements: []
+};
+assert(
+  !manager.buildPortfolioBacktestDiagnostics(staleThemeMomentumFixture).items.some((item) => item.label === "主力预热错过回测"),
+  "stale catalysts must not be counted as missed main-capital/preheat opportunities in historical replay"
+);
 const blockedFollowThroughFixture = {
   account: {
     cash: 90000,
