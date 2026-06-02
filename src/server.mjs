@@ -5961,7 +5961,7 @@ function isTextualCatchdownRiskSegment(text = "") {
   if (/(?:暂无|没有|未见|无明显|已解除|风险解除|解除接盘|不构成).{0,16}(?:接盘|退潮|主力撤离|资金撤离|资金流出)/.test(value)) {
     return false;
   }
-  return /退潮接盘|接盘风险|题材退潮|主力资金撤离|主力撤离|资金撤离|资金流出|回调(?:不是|不作为|不能当|不能作为)买点|不能把回调当(?:成)?买点|表面回调可能继续下探|底层持仓(?:盘中)?走弱/.test(value);
+  return /退潮接盘|接盘风险|题材退潮|主力资金撤离|主力撤离|资金撤离|资金流出|回调(?:不是|不作为|不能当|不能作为)买点|不能把回调当(?:成)?买点|表面回调可能继续下探|前十大持仓盘中明显走弱|底层持仓(?:盘中)?(?:明显)?走弱|底层持仓止跌|持仓实时降级/.test(value);
 }
 
 function getPortfolioWatchThemeSupportGap(item = {}, evidence = null) {
@@ -21100,6 +21100,7 @@ function hasStaleThemeCatchdownEvidence(candidate = {}) {
     || hasThemeRetreatRisk(candidate)
     || hasHoldingRealtimeCatchdownRisk(candidate)
   ) return true;
+  if (getTextualCatchdownWarnings(candidate).length) return true;
   const actionability = candidate.actionability || {};
   const holdingRealtimePulse = getCandidateHoldingRealtimePulse(candidate);
   const holdingRealtimeWarning = getHoldingRealtimeCatchdownWarning(candidate);
@@ -21118,7 +21119,7 @@ function hasStaleThemeCatchdownEvidence(candidate = {}) {
     actionability.blocker,
     actionability.decisiveEvidence
   ].flat().filter(Boolean).join(" ");
-  return /题材退潮|主力资金撤离|主力撤离|资金撤离|接盘风险|回调不能当买点|回调不作为买点|前十大持仓盘中明显走弱|底层持仓盘中明显走弱|表面回调可能继续下探|底层持仓止跌|持仓实时降级/.test(text);
+  return isTextualCatchdownRiskSegment(text);
 }
 
 function evaluateMarketDataQualityDisclosure({ text, workflow, evidence }) {

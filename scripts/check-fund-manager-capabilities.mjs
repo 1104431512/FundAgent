@@ -6792,6 +6792,65 @@ assert(
   !staleThemeHardNoBuyQuality.issues.some((issue) => issue.startsWith("stale_theme_candidate")),
   "quality gate must allow explicit no-validation/no-starter wording for stale-theme catchdown candidates"
 );
+const textOnlyCatchdownAnswerQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000014 文本退潮低位基金C 可以买入1000元。理由是走势回调完成、位置比较低，先小仓验证。",
+  workflow: "fund_qa",
+  userText: "000014 现在能买吗",
+  evidence: {
+    marketDeepDive: {
+      candidates: [{
+        code: "000014",
+        name: "文本退潮低位基金C",
+        riskNotes: ["资金流出，回调不是买点。"],
+        actionability: { action: "buy", decisionBlocker: ["资金流出，回调不是买点。"] }
+      }]
+    }
+  }
+});
+assert(
+  textOnlyCatchdownAnswerQuality.issues.includes("stale_theme_candidate_given_buy_execution"),
+  "quality gate must reject buy amounts for text-only catchdown evidence even when structured themes are missing"
+);
+assert(
+  textOnlyCatchdownAnswerQuality.issues.includes("stale_theme_candidate_given_buy_signal"),
+  "quality gate must reject buy wording for text-only catchdown evidence even when structured themes are missing"
+);
+const textOnlyCatchdownNoBuyQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000014 文本退潮低位基金C 先0元观察。原因是资金流出，回调不是买点，等资金回流后再复核。",
+  workflow: "fund_qa",
+  userText: "000014 现在能买吗",
+  evidence: {
+    marketDeepDive: {
+      candidates: [{
+        code: "000014",
+        name: "文本退潮低位基金C",
+        riskNotes: ["资金流出，回调不是买点。"]
+      }]
+    }
+  }
+});
+assert(
+  !textOnlyCatchdownNoBuyQuality.issues.some((issue) => issue.startsWith("stale_theme_candidate")),
+  "quality gate must allow text-only catchdown candidates when the answer clearly says 0 yuan observation"
+);
+const textOnlyCatchdownNegatedQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000015 否定风险低位基金C 可以小仓买入1000元。理由是暂无接盘风险，没有资金流出，回调完成后温和转强。",
+  workflow: "fund_qa",
+  userText: "000015 现在能买吗",
+  evidence: {
+    marketDeepDive: {
+      candidates: [{
+        code: "000015",
+        name: "否定风险低位基金C",
+        riskNotes: ["暂无接盘风险，没有资金流出，继续按低位回调复核。"]
+      }]
+    }
+  }
+});
+assert(
+  !textOnlyCatchdownNegatedQuality.issues.some((issue) => issue.startsWith("stale_theme_candidate")),
+  "quality gate must not treat explicit no-catchdown/no-outflow wording as stale-theme evidence"
+);
 const holdingRealtimeWeakBuyAnswerQuality = manager.evaluateFundAnswerQuality({
   text: "直接结论：000050 持仓走弱低位基金C 可以分批买入1000元。理由是回调完成，低位修复，适合小仓试探。",
   workflow: "fund_qa",

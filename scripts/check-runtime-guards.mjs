@@ -289,8 +289,12 @@ const requiredPatterns = [
     message: "fund-specific buy-language detection must inspect same-line clauses after the fund code, not only the code-containing clause."
   },
   {
-    pattern: /(?=[\s\S]*function hasStaleThemeCatchdownEvidence[\s\S]{0,900}hasStaleThemeCatchdownRisk)(?=[\s\S]*function hasStaleThemeCatchdownEvidence[\s\S]{0,900}hasHoldingRealtimeCatchdownRisk)(?=[\s\S]*function hasStaleThemeCatchdownEvidence[\s\S]{0,1800}接盘风险)(?=[\s\S]*function hasStaleThemeCatchdownEvidence[\s\S]{0,1800}表面回调可能继续下探)/,
-    message: "stale-theme answer quality must reuse structured catchdown risk, weak-holdings pulse, and Chinese blocker text."
+    pattern: /function hasStaleThemeCatchdownEvidence[\s\S]{0,700}hasStaleThemeCatchdownRisk[\s\S]{0,260}hasThemeRetreatRisk[\s\S]{0,260}hasHoldingRealtimeCatchdownRisk[\s\S]{0,260}getTextualCatchdownWarnings\(candidate\)/,
+    message: "stale-theme answer quality must reuse structured catchdown risk, weak-holdings pulse, and text-only catchdown warnings."
+  },
+  {
+    pattern: /function hasStaleThemeCatchdownEvidence[\s\S]{0,500}getTextualCatchdownWarnings\(candidate\)/,
+    message: "stale-theme answer quality must reuse text-only retreat/catchdown warnings."
   },
   {
     pattern: /function hasStaleFundEvidence[\s\S]{0,900}系统数据时效降级[\s\S]{0,500}evaluatePullbackTrendFreshness/,
