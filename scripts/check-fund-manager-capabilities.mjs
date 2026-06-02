@@ -506,6 +506,25 @@ assert(
   /人形机器人|执行器|机器人/.test(robotCatalystSearchText),
   "theme opportunity seed search must extract specific catalyst terms from fresh news logic instead of only using broad sector labels"
 );
+const robotCatalystKeywordGroup = manager.buildPortfolioThemeOpportunityKeywordGroups(robotCatalystSnapshot)[0];
+assert(
+  robotCatalystKeywordGroup?.anchors?.some((item) => /人形机器人|执行器|机器人/.test(item)),
+  "theme representative coverage anchors must prioritize specific catalyst terms for preheated topics"
+);
+assert(
+  !robotCatalystKeywordGroup?.anchors?.some((item) => /智能制造|高端制造/.test(item)),
+  "broad sector labels must not satisfy coverage when a more specific catalyst-backed theme is available"
+);
+assert.equal(
+  manager.shouldForcePortfolioThemeOpportunitySeedScan(robotCatalystSnapshot, [{
+    code: "000088",
+    name: "智能制造普通观察基金C",
+    status: "waiting_pullback",
+    reason: "宽泛智能制造普通观察，不是人形机器人执行器代表基金。"
+  }]),
+  true,
+  "broad watchlist coverage must not block recall for a specific fresh preheat catalyst"
+);
 const liveThemeKeywordGroup = manager.buildPortfolioThemeOpportunityKeywordGroups(liveThemeOpportunitySnapshot)[0];
 assert(liveThemeKeywordGroup?.anchors?.some((item) => /低空经济|万丰奥威/.test(item)), "theme representative coverage must keep specific theme or leader-stock anchors");
 assert(!liveThemeKeywordGroup?.anchors?.some((item) => /军工|高端制造/.test(item)), "theme representative coverage anchors must not be satisfied by broad sector labels alone");

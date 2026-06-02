@@ -3405,18 +3405,22 @@ function collectThemeCatalystSearchKeywords(theme = {}, options = {}) {
 
 function collectThemeOpportunityAnchorKeywords(theme = {}, options = {}) {
   const boards = Array.isArray(theme.evidence?.boards) ? theme.evidence.boards : [];
+  const catalystKeywords = collectThemeCatalystSearchKeywords(theme, options);
   const values = [
-    theme.name,
+    ...catalystKeywords,
     ...(Array.isArray(theme.boardNames) ? theme.boardNames : []),
     ...(Array.isArray(theme.leaderStocks) ? theme.leaderStocks : []),
     ...boards.flatMap((board) => [board.name, board.leadStock]),
     ...(Array.isArray(theme.newsKeywords) ? theme.newsKeywords : []),
+    theme.name,
     ...(Array.isArray(options.extra) ? options.extra : [])
   ];
-  return [...new Set(values
+  const anchors = [...new Set(values
     .flatMap((value) => String(value || "").split(/[，,、/；;\s]+/))
     .map((value) => value.trim())
-    .filter(isThemeOpportunityAnchorKeywordUseful))].slice(0, 10);
+    .filter(isThemeOpportunityAnchorKeywordUseful))];
+  const specificAnchors = anchors.filter((anchor) => !isBroadThemeOpportunityCoverageAnchor(anchor));
+  return (specificAnchors.length ? specificAnchors : anchors).slice(0, 10);
 }
 
 function isThemeOpportunitySearchKeywordUseful(value = "") {
@@ -3435,6 +3439,28 @@ function isThemeOpportunityAnchorKeywordUseful(value = "") {
   if (GENERIC_THEME_NEWS_MATCH_TERMS?.has?.(normalized)) return false;
   if (/^(科技|电子|通信|汽车|新能源|高端制造|军工|医药|医疗|资源|材料|设备|行业|概念)$/.test(text)) return false;
   return true;
+}
+
+function isBroadThemeOpportunityCoverageAnchor(value = "") {
+  const text = normalizeIntentText(value);
+  if (!text) return true;
+  return [
+    "科技",
+    "电子",
+    "通信",
+    "汽车",
+    "新能源",
+    "高端制造",
+    "智能制造",
+    "军工",
+    "医药",
+    "医疗",
+    "资源",
+    "材料",
+    "设备",
+    "人工智能",
+    "数字经济"
+  ].some((item) => text === normalizeIntentText(item));
 }
 
 function inferPortfolioBlockedFollowThroughSearchKeywords(candidates = []) {

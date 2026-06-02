@@ -2053,6 +2053,10 @@ const requiredPatterns = [
     message: "portfolio theme opportunity recall must extract specific catalyst terms from fresh news logic so preheated topics become representative-fund searches quickly."
   },
   {
+    pattern: /function collectThemeOpportunityAnchorKeywords[\s\S]{0,700}collectThemeCatalystSearchKeywords\(theme,\s*options\)[\s\S]{0,900}specificAnchors[\s\S]{0,500}isBroadThemeOpportunityCoverageAnchor[\s\S]{0,1200}智能制造/,
+    message: "portfolio theme coverage anchors must prefer specific catalyst terms so broad sector watchlist items do not block fresh preheat recalls."
+  },
+  {
     pattern: /function filterPortfolioDefaultThemeOpportunityItems[\s\S]{0,900}isPreciousPortfolioThemeOpportunityItem[\s\S]{0,900}function isPreciousPortfolioThemeOpportunityItem[\s\S]{0,500}黄金\|贵金属/,
     message: "portfolio default theme recall must suppress precious-metal seeds when non-precious mainline themes are available, without disabling gold-only opportunities."
   },
