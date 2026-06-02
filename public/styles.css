@@ -1620,6 +1620,106 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   line-height: 1.35;
 }
 
+.portfolio-ability-proof-list {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.portfolio-ability-proof-item {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 6px 7px;
+  border: 1px solid #dbe4ec;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.portfolio-ability-proof-item.warn {
+  border-color: #efc88e;
+  background: #fffaf0;
+}
+
+.portfolio-ability-proof-item.ok {
+  border-color: #b8ddca;
+  background: #f5fbf8;
+}
+
+.portfolio-ability-proof-item.info {
+  border-color: #c8d9ef;
+  background: #f4f8fd;
+}
+
+.portfolio-ability-proof-item > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.portfolio-ability-proof-item b,
+.portfolio-ability-proof-item em,
+.portfolio-ability-proof-item p,
+.portfolio-ability-proof-item footer,
+.portfolio-ability-proof-next {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-ability-proof-item b {
+  color: #172635;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.portfolio-ability-proof-item em {
+  flex: 0 0 auto;
+  max-width: 86px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  color: #475569;
+  background: #edf2f7;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portfolio-ability-proof-item p {
+  margin: 0;
+  color: #334155;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.portfolio-ability-proof-item footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.portfolio-ability-proof-item footer small,
+.portfolio-ability-proof-next {
+  width: auto;
+  padding: 2px 5px;
+  border-radius: 999px;
+  color: #526271;
+  background: #eef3f7;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.portfolio-ability-proof-next {
+  border-radius: 6px;
+  white-space: normal;
+}
+
 .portfolio-operation-kind-matrix {
   min-width: 0;
   display: grid;

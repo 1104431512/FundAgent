@@ -1028,12 +1028,30 @@ function renderPortfolioManagerAbilityLanes(lanes = [], performance = {}, accoun
 }
 
 function renderPortfolioManagerAbilityLane(item = {}) {
+  const proofItems = Array.isArray(item.proofItems) ? item.proofItems.slice(0, 3) : [];
   return `
     <article class="portfolio-ability-lane ${escapeHtml(item.tone || "info")}">
       <span>${escapeHtml(item.label || "能力证据")}</span>
       <strong>${escapeHtml(item.headline || "等待复盘")}</strong>
       <small>${escapeHtml(item.detail || "后续动作需要绑定榜单、新闻逻辑和事后走势。")}</small>
+      ${proofItems.length ? `<div class="portfolio-ability-proof-list">${proofItems.map(renderPortfolioAbilityProofItem).join("")}</div>` : ""}
     </article>
+  `;
+}
+
+function renderPortfolioAbilityProofItem(item = {}) {
+  const evidence = Array.isArray(item.evidence) ? item.evidence.slice(0, 3) : [];
+  const detail = item.detail || item.nextStep || "等待经理复核。";
+  return `
+    <div class="portfolio-ability-proof-item ${escapeHtml(item.tone || "info")}">
+      <div>
+        <b>${escapeHtml(item.title || "能力证据")}</b>
+        <em>${escapeHtml(item.tag || "复核")}</em>
+      </div>
+      <p>${escapeHtml(detail)}</p>
+      ${evidence.length ? `<footer>${evidence.map((fact) => `<small>${escapeHtml(fact)}</small>`).join("")}</footer>` : ""}
+      ${item.nextStep && item.nextStep !== detail ? `<small class="portfolio-ability-proof-next">${escapeHtml(item.nextStep)}</small>` : ""}
+    </div>
   `;
 }
 

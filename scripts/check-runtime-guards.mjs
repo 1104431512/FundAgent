@@ -1417,6 +1417,10 @@ const requiredPatterns = [
     message: "portfolio public API must expose manager performance proof statistics with correctness, profitability, and operation-kind review cards."
   },
   {
+    pattern: /(?=[\s\S]*function buildPortfolioManagerAbilityLanes)(?=[\s\S]*findLatestPortfolioThemeLeaderboardsFromRuns)(?=[\s\S]*collectPortfolioAbilityRankingProofItems)(?=[\s\S]*collectPortfolioAbilityThemeLeaderboardProofItems)(?=[\s\S]*proofItems)(?=[\s\S]*防接盘能力)(?=[\s\S]*主力跟随能力)/,
+    message: "manager ability lanes must expose concrete proof items from catchdown risk rankings and latest theme leaderboards, not only generic ability slogans."
+  },
+  {
     pattern: /(?=[\s\S]*function classifyPortfolioManagerOperation)(?=[\s\S]*退潮接盘亏损回测)(?=[\s\S]*接盘失误)(?=[\s\S]*主力预热错过回测)(?=[\s\S]*主线错过)(?=[\s\S]*0\.5%-1\.2%微型试探)/,
     message: "manager performance reviews must classify stale-catchdown buys and missed main-capital/preheat waits as explicit correction verdicts."
   },
@@ -1431,6 +1435,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*function renderPortfolioThemeLeaderboards)(?=[\s\S]*function renderPortfolioThemeLeaderboardLane)(?=[\s\S]*function getPortfolioLatestThemeLeaderboards)(?=[\s\S]*\.theme-leaderboard-board)(?=[\s\S]*\.theme-leaderboard-lane-sell)/,
     message: "admin sector board must show latest theme leaderboards with visible retreat/preheat lanes."
+  },
+  {
+    pattern: /(?=[\s\S]*function renderPortfolioManagerAbilityLane)(?=[\s\S]*renderPortfolioAbilityProofItem)(?=[\s\S]*portfolio-ability-proof-list)(?=[\s\S]*\.portfolio-ability-proof-list)(?=[\s\S]*\.portfolio-ability-proof-item)/,
+    message: "admin manager ability lanes must render compact concrete proof items for catchdown blocks and main-force opportunities."
   },
   {
     pattern: /function renderPortfolioThemeLeaderboardItem[\s\S]{0,800}whyMove[\s\S]{0,900}theme-leaderboard-why[\s\S]{0,700}theme-leaderboard-evidence/,

@@ -1868,6 +1868,15 @@ const staleCatchdownLossItem = staleCatchdownLossBacktest.items.find((item) => i
 assert(staleCatchdownLossItem, "backtest diagnostics must catch stale-theme catchdown buys that later lose money");
 assert(staleCatchdownLossItem.note.includes("题材退潮") && staleCatchdownLossItem.note.includes("主力撤离"), "stale catchdown loss replay must explain the retreating theme and main-capital exit");
 assert(staleCatchdownLossItem.note.includes("亏损约2400元"), "stale catchdown loss replay must translate the mistake into estimated yuan damage");
+const staleCatchdownProofPerformance = manager.buildPortfolioManagerPerformanceStats(staleCatchdownLossBacktestFixture);
+const antiCatchdownAbilityLane = staleCatchdownProofPerformance.abilityLanes?.find((item) => item.label === "防接盘能力");
+assert(
+  antiCatchdownAbilityLane?.proofItems?.some((item) =>
+    item.title.includes("000042")
+    && /接盘|主力|资金|回避|拦截/.test(`${item.tag} ${item.detail} ${item.nextStep}`)
+  ),
+  "anti-catchdown ability lane must show concrete blocked funds and capital-retreat evidence, not only a generic slogan"
+);
 const unconfirmedOldThemeLossBacktestFixture = {
   account: {
     cash: 90000,
@@ -2645,10 +2654,12 @@ assert(adminHtmlSource.includes("data-portfolio-view=\"matrix\""), "admin portfo
 assert(adminSource.includes("setPortfolioView"), "admin portfolio UI must switch between virtual account workspace views");
 assert(adminHtmlSource.includes("portfolioManagerScoreboard") && adminHtmlSource.includes("经理能力总览"), "admin portfolio overview must lead with manager ability proof instead of entry cards");
 assert(adminSource.includes("renderPortfolioManagerPerformance") && adminSource.includes("操作正确率") && adminSource.includes("盈利能力"), "admin portfolio overview must render correctness and profitability statistics");
+assert(adminSource.includes("renderPortfolioAbilityProofItem") && adminSource.includes("portfolio-ability-proof-list"), "admin manager ability lanes must render concrete proof items for catchdown blocks and main-force theme opportunities");
 assert(adminHtmlSource.includes("portfolioOperationKindMatrix") && adminSource.includes("renderPortfolioOperationKindMatrix"), "admin portfolio overview must render a buy/sell/hold/watch operation proof matrix");
 assert(adminSource.includes("buildPortfolioAbilityProofWorkspaceCard") && adminSource.includes("能力证明"), "admin overview workspace must expose a first-screen manager ability proof shortcut");
 assert(adminSource.includes("renderPortfolioOperationReviewLanes") && adminSource.includes("做对的动作") && adminSource.includes("portfolioOperationReviews"), "admin portfolio overview must show recent action review verdict lanes");
 assert(adminStyleSource.includes("portfolio-performance-board") && adminStyleSource.includes("portfolio-operation-kind-matrix") && adminStyleSource.includes("portfolio-operation-review"), "admin manager performance proof board must be styled as a bounded first-screen panel");
+assert(adminStyleSource.includes(".portfolio-ability-proof-list") && adminStyleSource.includes(".portfolio-ability-proof-item"), "admin manager ability proof items must be styled as compact evidence strips");
 assert(adminHtmlSource.includes("portfolioWorkspaceCards"), "admin portfolio overview must expose workspace shortcut cards");
 assert(adminSource.includes("renderPortfolioWorkspaceCards"), "admin portfolio overview must summarize each workspace with actionable shortcut cards");
 assert(adminHtmlSource.includes("portfolioRankingRadar"), "admin portfolio overview must expose a compact ranking radar");
@@ -7132,6 +7143,49 @@ assert(
     && !(item.decision?.risks || []).some((risk) => risk.includes("缺少正向主力资金"))
   ),
   "news-backed main-capital flow should remove the capital-flow gap for otherwise qualified low-position representative funds"
+);
+const mainForceProofPerformance = manager.buildPortfolioManagerPerformanceStats({
+  account: { cash: 80000, totalAsset: 100000, positionWeightPct: 0, positions: [] },
+  watchlist: [{
+    code: "159013",
+    name: "人形机器人执行器主题C",
+    status: "ready",
+    readinessScore: 86,
+    lastSnapshot: {
+      ...setupDigest,
+      code: "159013",
+      name: "人形机器人执行器主题C",
+      matchedThemes: [mainForceNewsTheme],
+      seed: { matchedThemes: [mainForceNewsTheme] },
+      trendProfile: { ...setupDigest.trendProfile, ok: true },
+      fees: {
+        shareClass: "C",
+        shareClassFeeModel: { type: "sales_service_fee", label: "C类：偏持续销售服务费模型" },
+        feeImpact: { missingFeeData: [], oneYearCostPer10000: 40, feeDragLevel: "low" }
+      },
+      holdingsOutlook: {
+        hasHoldings: true,
+        score: 12,
+        topHoldings: [{ code: "002050", name: "三花智控", pct: 8.2 }],
+        matchedThemeHoldings: [{ code: "002050", name: "三花智控" }],
+        risks: []
+      }
+    }
+  }],
+  runs: [{
+    date: "2026-05-25",
+    type: "market",
+    status: "completed",
+    marketSnapshot: { themeLeaderboards: mainForceNewsBoards }
+  }]
+});
+const mainForceAbilityLane = mainForceProofPerformance.abilityLanes?.find((item) => item.label === "主力跟随能力");
+assert(
+  mainForceAbilityLane?.proofItems?.some((item) =>
+    /人形机器人|159013/.test(item.title)
+    && /为什么动|资金|主力|催化|代表基金|微型试探/.test(`${item.tag} ${item.detail} ${item.nextStep} ${(item.evidence || []).join(" ")}`)
+  ),
+  "main-force ability lane must show concrete theme/fund proof with why-move, capital, catalyst, and representative-fund next steps"
 );
 const staleNewsOnlyThemeRadar = manager.buildThemeRadar({
   conceptBoards: [],
