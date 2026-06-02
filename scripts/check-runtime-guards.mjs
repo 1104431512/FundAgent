@@ -1097,6 +1097,10 @@ const requiredPatterns = [
     message: "pullback candidates must block stale theme catchdown risk and require actionable theme support before buy readiness."
   },
   {
+    pattern: /(?=[\s\S]*function inferPullbackSetupSearchKeywords)(?=[\s\S]*isStaleThemeCatchdownRiskTheme\(theme\))(?=[\s\S]*isActionableThemeSupport\(theme\))/,
+    message: "pullback setup discovery keywords must expand actionable themes while excluding stale outflow themes."
+  },
+  {
     pattern: /(?=[\s\S]*function summarizePortfolioRunMarketSnapshot)(?=[\s\S]*compactThemeLeaderboardsForPublic)(?=[\s\S]*marketSnapshot:\s*summarizePortfolioRunMarketSnapshot\(run\.marketSnapshot\))/,
     message: "portfolio public run summaries must expose compact market theme leaderboards for the admin UI."
   },
@@ -2325,7 +2329,7 @@ const requiredPatterns = [
     message: "precious-metal theme matching must not treat broad 有色 funds as gold by default."
   },
   {
-    pattern: /function inferPullbackSetupSearchKeywords[\s\S]{0,1200}\.filter\(\(keyword\)\s*=>\s*allowPrecious\s*\|\|\s*!isPreciousMetalKeyword\(keyword\)\)/,
+    pattern: /(?=[\s\S]*function inferPullbackSetupSearchKeywords)(?=[\s\S]*\.filter\(\(keyword\)\s*=>\s*allowPrecious\s*\|\|\s*!isPreciousMetalKeyword\(keyword\)\))/,
     message: "generic pullback/setup discovery must suppress precious-metal search keywords unless explicitly requested."
   },
   {

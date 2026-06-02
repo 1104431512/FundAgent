@@ -21079,8 +21079,12 @@ function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
   const allowPrecious = isPreciousMetalQuestion(userText);
   const radarKeywords = (themeRadar || [])
     .filter((theme) => allowPrecious || theme.id !== "precious_metals")
+    .filter((theme) => !isStaleThemeCatchdownRiskTheme(theme))
+    .filter((theme) => theme.positionSignal !== "high_chase_risk" && theme.stage !== "crowded" && Number(theme.crowdingScore || 0) < 55)
     .filter((theme) =>
-      Number(theme.lowPositionScore || 0) >= 35
+      isActionableThemeSupport(theme)
+      || theme.dynamic
+      || Number(theme.lowPositionScore || 0) >= 35
       || Number(theme.capitalFollowScore || 0) >= 45
       || Number(theme.preheatScore || 0) >= 45
       || ["low_position_rotation", "acceptable_position", "main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)

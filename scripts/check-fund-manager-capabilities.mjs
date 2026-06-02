@@ -4155,6 +4155,9 @@ assert(
   manager.scoreResearchDigestForPullbackSetup(actionablePullbackDigest) > manager.scoreResearchDigestForPullbackSetup(staleCatchdownDigest) + 60,
   "pullback ranking must strongly prefer main-capital supported setups over stale theme catchdown candidates"
 );
+const actionableSearchKeywords = manager.inferPullbackSetupSearchKeywords("我想找回调完成准备启动的基金", [liveAiTheme, fadingAiTheme]);
+assert(actionableSearchKeywords.some((item) => /AI|算力|人工智能/.test(item)), "pullback setup search must expand actionable main-capital theme keywords");
+assert(!actionableSearchKeywords.some((item) => /CPO|光模块/.test(item)), "pullback setup search must not keep stale outflow themes as discovery keywords");
 const selectedThemeSeeds = manager.selectPortfolioWatchlistSeedCandidates([
   { code: "000041", name: "主力低位启动基金C", oneWeekPct: 1.2, oneMonthPct: 2.4, threeMonthPct: -4, sixMonthPct: -8, shareClass: "C", matchedThemes: [liveAiTheme] },
   { code: "000042", name: "退潮回调接盘基金C", oneWeekPct: 1.1, oneMonthPct: 2.2, threeMonthPct: -5, sixMonthPct: -10, shareClass: "C", matchedThemes: [fadingAiTheme] }
