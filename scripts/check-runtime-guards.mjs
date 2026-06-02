@@ -2833,6 +2833,10 @@ const requiredPatterns = [
     message: "manager ranking boards must translate multi-angle rankings into customer-facing buy/watch/avoid digest buckets."
   },
   {
+    pattern: /(?=[\s\S]*function hasPortfolioCustomerExecutableBuyIntent)(?=[\s\S]*function isPortfolioCustomerBuyAction[\s\S]{0,900}不得买入)(?=[\s\S]*function shouldIncludePortfolioAlertItem[\s\S]{0,900}只能观察)/,
+    message: "customer action cards must not classify generic review/watch-only theme candidates as buy-review items."
+  },
+  {
     pattern: /(?=[\s\S]*function buildPortfolioCustomerDecisionSummaryStatusLines[\s\S]{0,700}客户决策摘要)(?=[\s\S]*function buildPortfolioStatusAnswer[\s\S]{0,6200}buildPortfolioCustomerDecisionSummaryStatusLines)/,
     message: "portfolio status replies must show a customer decision summary before detailed action-card lines."
   },

@@ -374,6 +374,52 @@ assert(rankingBoard.customerActionLeaderboard?.lanes?.length === 5, "customer ac
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "sell")?.items.some((item) => item.code === "008327" && item.rank === 1), "customer action leaderboard must rank urgent sell/de-risk positions in the sell lane");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.items.every((item) => item.rank && item.reason && item.nextStep && item.reviewWindow && item.trigger && item.invalidation), "customer action leaderboard buy lane items must be ranked with reasons, next steps, review windows, triggers, and invalidation boundaries");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.items.every((item) => item.crossCheckSummary && item.supportingEvidence?.length && Array.isArray(item.constraintEvidence)), "customer action leaderboard buy lane items must expose cross-ranking supporting evidence and unresolved constraints");
+const preheatWatchOnlyBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
+  account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
+  watchlist: [{
+    code: "000088",
+    name: "主力预热观察基金C",
+    status: "watch",
+    readinessScore: 58,
+    lastSnapshot: {
+      code: "000088",
+      name: "主力预热观察基金C",
+      trendProfile: {
+        ok: true,
+        trendLabel: "uptrend",
+        entryBias: "staged_buy",
+        return5dPct: 0.8,
+        return10dPct: 1.5,
+        return20dPct: 3.2,
+        lowPositionPct120: 44,
+        lowPositionPct250: 52,
+        pullbackSetup: { signal: "none", signalText: "低位温和转强" }
+      },
+      matchedThemes: [{
+        id: "policy_preheat_watch",
+        name: "政策预热观察",
+        leaderSignal: "preheat_catalyst",
+        positionSignal: "preheat_catalyst_watch",
+        capitalFollowScore: 58,
+        preheatScore: 62,
+        rotationScore: 50,
+        lowPositionScore: 56,
+        crowdingScore: 20,
+        avgMainNetInflowPct: 1.1,
+        catalystProfile: { score: 20, summary: "政策落地", risk: false },
+        newsLogic: "题材预热：新闻催化：政策试点加速落地；主力线索：资金净流入"
+      }]
+    }
+  }]
+}));
+assert(
+  !(preheatWatchOnlyBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "000088"),
+  "customer action deck must not put theme-preheat watch-only candidates into the buy-review card"
+);
+assert(
+  (preheatWatchOnlyBoard.customerActionDeck.cards.find((card) => card.id === "wait")?.items || []).some((item) => item.code === "000088"),
+  "customer action deck must move theme-preheat candidates with missing execution evidence into the trigger-wait card"
+);
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "avoid")?.items.some((item) => avoidActionCodes.includes(item.code)), "customer action leaderboard must rank avoid candidates separately from buy candidates");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "data")?.items.some((item) => dataActionCodes.includes(item.code)), "customer action leaderboard must rank data blockers as their own evidence lane");
 assert(rankingBoard.consensusRadar?.lanes?.length === 4, "manager ranking board must build a four-lane consensus radar from decision matrix rows");

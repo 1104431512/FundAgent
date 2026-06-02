@@ -12565,10 +12565,14 @@ function isPortfolioCustomerBuyAction(item = {}) {
     ...(item.risks || []),
     ...(item.gaps || [])
   ].filter(Boolean).join(" ");
-  if (/卖出|减仓|止盈|止损|回吐|追涨|高位|拥挤|回避|数据阻塞|持仓数据阻塞|阻塞|过期|不能提交买入|不能把/.test(text)) {
+  if (/卖出|减仓|止盈|止损|回吐|追涨|高位|拥挤|回避|数据阻塞|持仓数据阻塞|阻塞|过期|不能提交买入|不得买入|不给买入|不买|不能把/.test(text)) {
     return false;
   }
-  return /买入|试探|启动|再部署|复核|可买|小仓/.test(text);
+  return hasPortfolioCustomerExecutableBuyIntent(text);
+}
+
+function hasPortfolioCustomerExecutableBuyIntent(text = "") {
+  return /买入|申购|加仓|试探|启动仓|再部署|可买|小仓|微型/.test(String(text || ""));
 }
 
 function isPortfolioCustomerAvoidAction(item = {}) {
@@ -12677,8 +12681,9 @@ function shouldIncludePortfolioAlertItem(laneId = "", listId = "", item = {}) {
     item.decision?.nextStep
   ].filter(Boolean).join(" ");
   if (laneId === "buy") {
-    if (/回避|卖出|减仓|止损|止盈|追涨|阻塞|补证/.test(text)) return false;
-    return /买入|试探|启动|再部署|复核|可买|小仓/.test(text) || ["cash_redeployment", "buy_preparation", "position_sizing", "launch_setup"].includes(listId);
+    if (/回避|卖出|减仓|止损|止盈|追涨|阻塞|补证|不得买入|不给买入|不买|只能观察/.test(text)) return false;
+    return hasPortfolioCustomerExecutableBuyIntent(text)
+      || (["cash_redeployment", "buy_preparation", "position_sizing", "launch_setup"].includes(listId) && /买入|试探|启动仓|再部署|可买|小仓|微型/.test(text));
   }
   if (laneId === "sell") {
     return /卖出|减仓|止损|止盈|回吐|追涨|回撤|风险|防线|机会成本|回避/.test(text) || ["sell_risk", "drawdown_defense", "chase_risk", "opportunity_cost"].includes(listId);
