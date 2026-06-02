@@ -20094,6 +20094,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "若质检问题包含 watch_candidate_given_buy_execution 或 watch_candidate_given_buy_signal，观察/排除候选不能获得买入金额，也不能写“可以买、小仓位试探、少买一点、建仓”等买入暗示；只能写0元观察或等待条件。",
       "若质检问题包含 stale_data_candidate_given_buy_execution 或 stale_data_candidate_given_buy_signal，说明该基金净值/走势证据已过期；必须把对应代码改为0元等待、重新下钻复核，不能给买入、分批、建仓或小仓位试探。",
       "若质检问题包含 stale_theme_candidate_given_buy_execution 或 stale_theme_candidate_given_buy_signal，说明该基金题材退潮、主力撤离或存在接盘风险；必须把对应代码改为0元观察、等待资金回流，不能给买入、分批、建仓或小仓位试探。",
+      "若质检问题包含 missing_theme_news_logic_explanation，必须补上题材为什么动：写清新闻/政策/订单/产业催化、主力资金是否跟进、代表基金是否承载题材；不能只写低位修复或等待机会。",
       "若质检问题包含 missing_pullback_timing_evidence，主推荐每条必须写出5日/10日早期转强、120日区间低位或距高点回撤等数字证据；若包含 missing_pullback_three_tier_execution，必须给激进/均衡/保守三档金额。",
       "若质检问题包含 missing_pullback_share_class_fee，主推荐每条必须写份额类别和费用模型，例如 C类无前端申购费但有销售服务费，或 A类有申购费但长期持有持续费率较低。",
       "若质检问题包含 insufficient_chart_linked_candidates，必须补足 12 张左右可配图候选：主买入参考和备选观察分开写，每只都写代码、买入/备选角色、图上看的走势/回撤/低位/费用证据。",
@@ -20199,6 +20200,7 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   issues.push(...evaluateMarketDataQualityDisclosure({ text, workflow, evidence }));
   issues.push(...evaluateStaleFundEvidenceActionDiscipline({ text, evidence }));
   issues.push(...evaluateStaleThemeCatchdownAnswerDiscipline({ text, evidence }));
+  issues.push(...evaluateThemeNewsLogicAnswerCoverage({ text, workflow, userText, evidence }));
   issues.push(...evaluatePullbackAnswerDiscipline({ text, userText, evidence }));
   issues.push(...evaluateFundAnswerChartCoverage({ text, workflow, userText, evidence }));
   if (actionSeeking && !hasAction) issues.push("missing_direct_action");
@@ -20213,6 +20215,46 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   }
 
   return { ok: issues.length === 0, issues };
+}
+
+function evaluateThemeNewsLogicAnswerCoverage({ text, workflow, userText, evidence }) {
+  if (!shouldRequireThemeNewsLogicExplanation({ workflow, userText, evidence })) return [];
+  const body = String(text || "");
+  const hasThemeLogic = /(?:题材|板块|行业|赛道|方向).{0,36}(?:新闻|快讯|催化|政策|订单|产业|主力|资金|逻辑|为什么|大涨|上涨|轮动)|(?:新闻|快讯|催化|政策|订单|产业).{0,36}(?:催化|逻辑|落地|改善|加速|支撑|驱动|主力|资金|订单|政策)|主力.{0,24}(?:进场|流入|跟进|撤离|流出)|资金.{0,24}(?:净流入|流入|净流出|流出|回流)/.test(body);
+  const hasDecisionTranslation = /(买入|分批|观察|等待|回避|排除|备选|小仓|试探|不买|少买|暂停|触发)/.test(body);
+  return hasThemeLogic && hasDecisionTranslation ? [] : ["missing_theme_news_logic_explanation"];
+}
+
+function shouldRequireThemeNewsLogicExplanation({ workflow, userText, evidence }) {
+  if (workflow === "conversation") return false;
+  const normalized = normalizeIntentText(userText);
+  const explicitThemeAsk = hasAny(normalized, ["主力", "资金", "题材", "热点", "板块", "预热", "新闻", "时事", "催化", "轮动", "逻辑", "大涨", "上涨原因"]);
+  const deepDive = evidence?.marketDeepDive || {};
+  if (deepDive.themeOpportunityRequirement === "require_current_theme_playbook" || deepDive.requireThemeOpportunityBacking === true) {
+    return true;
+  }
+  if (Array.isArray(deepDive.themeRadar) && deepDive.themeRadar.some(isThemeNewsLogicRelevantForAnswer)) {
+    return true;
+  }
+  const snapshotRadar = evidence?.marketSnapshot?.themeRadar || evidence?.marketSnapshot?.themes?.themeRadar || [];
+  if (Array.isArray(snapshotRadar) && snapshotRadar.some(isThemeNewsLogicRelevantForAnswer)) {
+    return true;
+  }
+  return explicitThemeAsk && ["fund_recommendation", "fund_qa", "fund_screening", "fund_comparison"].includes(String(workflow || ""));
+}
+
+function isThemeNewsLogicRelevantForAnswer(theme = {}) {
+  if (!theme || typeof theme !== "object") return false;
+  return Boolean(
+    String(theme.newsLogic || theme.primaryCatalyst || "").trim()
+    || String(theme.catalystProfile?.summary || "").trim()
+    || theme.leaderSignal === "capital_entering"
+    || theme.leaderSignal === "preheat_catalyst"
+    || theme.positionSignal === "main_capital_entering"
+    || theme.positionSignal === "preheat_catalyst_watch"
+    || Number(theme.capitalFollowScore) >= 58
+    || Number(theme.preheatScore) >= 56
+  );
 }
 
 function evaluateFundAnswerChartCoverage({ text, workflow, userText, evidence }) {
