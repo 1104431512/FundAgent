@@ -17365,13 +17365,13 @@ function scoreNegativeChartContext(context) {
   const text = String(context || "");
   let score = 0;
   if (/(只观察|回避|剔除|排除|不推荐|不作为主推荐|不是主推|暂不|少买|不买)/.test(text)) score += 12;
-  if (/(追涨|偏热|过热|不符合|风险偏高)/.test(text)) score += 8;
+  if (/(追涨|偏热|过热|不符合|风险偏高|接盘|退潮|主力撤离|资金撤离)/.test(text)) score += 8;
   if (/(等待|等回撤)/.test(text)) score += 3;
   return score;
 }
 
 function hasHardRejectedChartContext(context) {
-  return /(只观察|回避|剔除|排除|不推荐|不作为主推荐|不是主推|追涨|偏热|过热|不符合|风险偏高|暂不|少买|不买)/.test(String(context || ""));
+  return /(只观察|回避|剔除|排除|不推荐|不作为主推荐|不是主推|追涨|偏热|过热|不符合|风险偏高|接盘|退潮|主力撤离|资金撤离|暂不|少买|不买)/.test(String(context || ""));
 }
 
 function hasMainRecommendationChartContext(context) {

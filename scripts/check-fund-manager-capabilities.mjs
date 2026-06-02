@@ -5388,7 +5388,8 @@ const selectedChartProfiles = manager.selectFundReportProfilesForAnswer([
   { code: "000001", name: "低位修复基金A", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.01 }] } },
   { code: "000002", name: "启动前夜基金C", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.02 }] } },
   { code: "000003", name: "追涨观察基金A", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.03 }] } },
-  { code: "000004", name: "备选回踩基金C", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.015 }] } }
+  { code: "000004", name: "备选回踩基金C", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.015 }] } },
+  { code: "000005", name: "接盘风险基金C", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 0.99 }] } }
 ], [
   "推荐清单：",
   "1. 000001 低位修复基金A：回调完成，可分批。",
@@ -5396,7 +5397,8 @@ const selectedChartProfiles = manager.selectFundReportProfilesForAnswer([
   "备选观察：",
   "000004 备选回踩基金C：等待回调，回踩确认后可关注，满足触发再评估。",
   "观察名单：",
-  "000003 追涨观察基金A：短期偏热，只观察，不作为主推荐。"
+  "000003 追涨观察基金A：短期偏热，只观察，不作为主推荐。",
+  "000005 接盘风险基金C：题材退潮、主力撤离，只观察，不作为主推荐。"
 ].join("\n"));
 const selectedChartCodes = selectedChartProfiles.map((profile) => profile.code);
 assert.deepEqual(
