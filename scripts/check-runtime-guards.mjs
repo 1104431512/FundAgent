@@ -1701,6 +1701,10 @@ const requiredPatterns = [
     message: "held-position sell discipline must inspect precise top-holding subtheme retreat instead of relying on broad sector support."
   },
   {
+    pattern: /(?=[\s\S]*refreshPortfolioCandidateThemesWithMarketRadar)(?=[\s\S]*function getDirectPortfolioHoldingThemeRetreatWarnings)(?=[\s\S]*function getPortfolioActionableThemeSupportGap[\s\S]{0,700}getDirectPortfolioHoldingThemeRetreatWarnings)(?=[\s\S]*function getActionabilityThemeRetreatDiscipline[\s\S]{0,900}getDirectPortfolioHoldingThemeRetreatWarnings)(?=[\s\S]*function buildPortfolioWatchReadinessGaps[\s\S]{0,900}getDirectPortfolioHoldingThemeRetreatWarnings)/,
+    message: "candidate buy/readiness/actionability guards must prioritize directly refreshed top-holding subtheme retreat before broad theme support can reopen buys."
+  },
+  {
     pattern: /held_position_review_fallback/,
     message: "held-position fallback actions must be traceable and not look like model-written trades."
   },
@@ -2329,7 +2333,7 @@ const requiredPatterns = [
     message: "portfolio BUY guard must block theme-labeled pullbacks that lack current actionable main-capital, preheat, or rotation support."
   },
   {
-    pattern: /function getPortfolioActionableThemeSupportGap[\s\S]{0,900}hasPortfolioCurrentThemeRadarSupport\(candidate\)[\s\S]{0,500}getPortfolioThemeSupportRequirement\(candidate\)[\s\S]{0,500}基金名称\/标签显示为/,
+    pattern: /(?=[\s\S]*function getPortfolioActionableThemeSupportGap[\s\S]{0,1800}hasPortfolioCurrentThemeRadarSupport\(candidate\))(?=[\s\S]*function getPortfolioActionableThemeSupportGap[\s\S]{0,2200}getPortfolioThemeSupportRequirement\(candidate\))(?=[\s\S]*function getPortfolioActionableThemeSupportGap[\s\S]{0,2400}基金名称\/标签显示为)/,
     message: "portfolio theme support gaps must block theme-named funds when current radar support is absent."
   },
   {

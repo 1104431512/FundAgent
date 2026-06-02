@@ -4590,6 +4590,118 @@ assert(
     && genericHoldingBroadAiGuard.reason.includes("当前题材雷达"),
   "broad AI support blocks must explain the unsupported precise bottom-layer holding theme"
 );
+const broadAiLiveButCpoRetreatTheme = {
+  id: "ai_general_candidate_live",
+  name: "AI/算力",
+  stage: "capital_entering",
+  leaderSignal: "capital_entering",
+  positionSignal: "main_capital_entering",
+  capitalFollowScore: 72,
+  preheatScore: 60,
+  forwardScore: 62,
+  rotationScore: 48,
+  lowPositionScore: 45,
+  crowdingScore: 24,
+  capitalRetreatScore: 6,
+  avgMainNetInflowPct: 1.9,
+  themeKeywords: ["AI", "人工智能", "算力"],
+  fundKeywords: ["人工智能", "算力"],
+  keywords: ["AI", "人工智能", "算力"],
+  leaderStocks: ["工业富联", "浪潮信息"],
+  catalystProfile: { score: 30, summary: "AI应用订单改善", risk: false, fresh: true, freshnessLabel: "当日催化", latestNewsTime: "10:16" },
+  newsLogic: "AI/算力大类仍有新闻催化和主力资金净流入，但没有确认CPO/光模块同方向资金回流。"
+};
+const cpoCandidateRetreatTheme = {
+  id: "cpo_candidate_retreat",
+  name: "CPO/光模块",
+  stage: "theme_fading",
+  retreatSignal: "capital_outflow",
+  leaderSignal: "capital_outflow",
+  positionSignal: "capital_outflow_watch",
+  actionBias: "avoid",
+  forwardScore: 20,
+  rotationScore: 18,
+  lowPositionScore: 22,
+  crowdingScore: 48,
+  capitalFollowScore: 16,
+  preheatScore: 12,
+  capitalRetreatScore: 90,
+  avgMainNetInflowPct: -4.4,
+  minMainNetInflowPct: -7.6,
+  boardOutflowCount: 3,
+  boardDeclineCount: 3,
+  themeKeywords: ["CPO", "光模块", "光通信"],
+  fundKeywords: ["CPO", "光模块", "光通信"],
+  keywords: ["CPO", "光模块", "光通信"],
+  leaderStocks: ["新易盛", "中际旭创", "天孚通信"],
+  catalystProfile: { score: -10, summary: "旧订单催化退潮", risk: true, fresh: false, freshnessLabel: "旧催化退潮" },
+  newsLogic: "CPO/光模块主力资金净流出，龙头转弱，旧订单催化缺少新资金接力。"
+};
+const broadAiCpoTrapProfile = manager.refreshPortfolioCandidateThemesWithMarketRadar({
+  ...genericHoldingNoRadarProfile,
+  code: "000019",
+  name: "成长精选混合C",
+  unitNav: 1.234,
+  snapshotDate: todayIso,
+  matchedThemes: [broadAiLiveButCpoRetreatTheme],
+  seed: {
+    ...(genericHoldingNoRadarProfile.seed || {}),
+    matchedThemes: [broadAiLiveButCpoRetreatTheme]
+  }
+}, {
+  fetchedAt: "2026-05-20T11:26:00.000Z",
+  themeRadar: [broadAiLiveButCpoRetreatTheme, cpoCandidateRetreatTheme]
+});
+assert(
+  broadAiCpoTrapProfile.holdingThemeRefresh?.retreatWarnings?.some((item) => item.includes("CPO/光模块") && item.includes("泛题材热度不能覆盖底层退潮")),
+  "candidate theme refresh must attach precise CPO retreat risk even when broad AI still has live support"
+);
+const broadAiCpoTrapBuyGuard = manager.evaluatePortfolioBuyDiscipline(
+  { action: "BUY", code: "000019", name: "成长精选混合C", amount: 1000 },
+  broadAiCpoTrapProfile
+);
+assert.equal(broadAiCpoTrapBuyGuard.ok, false, "candidate BUY discipline must block broad-AI-looking funds when top holdings show retreating CPO exposure");
+assert(
+  broadAiCpoTrapBuyGuard.reason.includes("泛题材热度不能覆盖底层退潮")
+    && broadAiCpoTrapBuyGuard.evidence.includes("来源：portfolio_theme_support_guard"),
+  "candidate BUY block must explain the precise look-through subtheme retreat"
+);
+assert(
+  manager.buildPortfolioWatchReadinessGaps({ code: "000019", name: "成长精选混合C", status: "ready" }, broadAiCpoTrapProfile)
+    .some((item) => item.includes("泛题材热度不能覆盖底层退潮")),
+  "watchlist readiness must show the precise subtheme retreat instead of a vague wait state"
+);
+const broadAiCpoTrapActionability = manager.buildFundActionabilitySignals(broadAiCpoTrapProfile);
+assert.equal(broadAiCpoTrapActionability.action, "avoid", "actionability must not surface broad-AI-looking CPO retreat candidates as buy or staged-buy");
+assert(
+  broadAiCpoTrapActionability.decisionBlocker.some((item) => item.includes("泛题材热度不能覆盖底层退潮")),
+  "actionability blockers must carry precise top-holding subtheme retreat into UI cards and prompts"
+);
+const broadAiCpoTrapQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000019 成长精选混合C 可以小仓买入1000元。理由是AI/算力仍有主力资金，基金回调完成、低位修复。",
+  workflow: "fund_qa",
+  userText: "000019 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [broadAiCpoTrapProfile] } }
+});
+assert(
+  broadAiCpoTrapQuality.issues.includes("stale_theme_candidate_given_buy_execution")
+    && broadAiCpoTrapQuality.issues.includes("stale_theme_candidate_given_buy_signal"),
+  "quality gate must reject buy wording when broad-theme support masks precise top-holding subtheme retreat"
+);
+const broadAiCpoTrapRanking = manager.buildPortfolioStaleCatchdownRiskRanking([{
+  code: "000019",
+  name: "成长精选混合C",
+  status: "ready",
+  readinessScore: 92,
+  lastSnapshot: broadAiCpoTrapProfile
+}]);
+assert(
+  broadAiCpoTrapRanking.items.some((item) =>
+    item.code === "000019"
+    && item.facts.some((fact) => fact.includes("泛题材热度不能覆盖底层退潮"))
+  ),
+  "catchdown risk ranking must surface broad-theme/precise-subtheme divergence as no-buy risk"
+);
 const broadNoRadarProfile = {
   ...verifiedSeedProfile,
   matchedThemes: [],

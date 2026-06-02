@@ -5924,6 +5924,8 @@ function getPortfolioActionableThemeSupportGap(candidate = {}) {
   const themeSignals = getCandidateThemeSignals(candidate);
   const textualCatchdownWarnings = getTextualCatchdownWarnings(candidate);
   if (textualCatchdownWarnings.length) return textualCatchdownWarnings[0];
+  const directHoldingThemeRetreatWarning = getDirectPortfolioHoldingThemeRetreatWarnings(candidate)[0];
+  if (directHoldingThemeRetreatWarning) return directHoldingThemeRetreatWarning;
   const catchdownWarnings = getStaleThemeCatchdownWarnings(candidate);
   if (catchdownWarnings.length) return catchdownWarnings[0];
   const unconfirmedWarnings = getUnrefreshedMarketThemeWarnings(candidate);
@@ -7011,6 +7013,8 @@ function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
   const trend = evidence?.trendProfile || {};
   const gaps = [];
   const themeRetreatWarnings = [
+    ...getDirectPortfolioHoldingThemeRetreatWarnings(evidence),
+    ...getDirectPortfolioHoldingThemeRetreatWarnings(item),
     ...getCandidateThemeRetreatWarnings(evidence),
     ...getCandidateThemeRetreatWarnings(item),
     ...getStaleThemeCatchdownWarnings(evidence),
@@ -20070,9 +20074,8 @@ function formatPortfolioHoldingThemeSupportSignal(theme = {}) {
 }
 
 function getPortfolioHoldingThemeRetreatWarnings(candidate = {}) {
-  const direct = normalizeStringArray(candidate?.holdingThemeRefresh?.retreatWarnings);
-  const seedDirect = normalizeStringArray(candidate?.seed?.holdingThemeRefresh?.retreatWarnings);
-  const warnings = mergeStringLists(direct, seedDirect);
+  if (!candidate || typeof candidate !== "object") return [];
+  const warnings = getDirectPortfolioHoldingThemeRetreatWarnings(candidate);
   if (warnings.length) return warnings.slice(0, 3);
   const exposure = getDominantPortfolioHoldingThemeExposure(candidate);
   if (!exposure?.label) return [];
@@ -20082,6 +20085,14 @@ function getPortfolioHoldingThemeRetreatWarnings(candidate = {}) {
     .map((theme) => formatPortfolioHoldingThemeRetreatWarning(exposure, theme))
     .filter(Boolean)
     .slice(0, 3);
+}
+
+function getDirectPortfolioHoldingThemeRetreatWarnings(candidate = {}) {
+  if (!candidate || typeof candidate !== "object") return [];
+  return mergeStringLists(
+    normalizeStringArray(candidate?.holdingThemeRefresh?.retreatWarnings),
+    normalizeStringArray(candidate?.seed?.holdingThemeRefresh?.retreatWarnings)
+  ).slice(0, 3);
 }
 
 function hasPortfolioCurrentSupportForHoldingTheme(candidate = {}, holdingThemeLabel = "") {
@@ -28850,20 +28861,28 @@ function getActionabilityThemeRetreatDiscipline(digest = {}, { isMoneyMarket = f
   if (isMoneyMarket || !digest || typeof digest !== "object") {
     return { scoreCap: null, scorePenalty: 0, blocker: "" };
   }
-  const catchdownWarnings = getStaleThemeCatchdownWarnings(digest);
-  if (catchdownWarnings.length) {
-    return {
-      scoreCap: 44,
-      scorePenalty: 18,
-      blocker: `系统接盘风险拦截：${catchdownWarnings[0]}。`
-    };
-  }
   const textualCatchdownWarnings = getTextualCatchdownWarnings(digest);
   if (textualCatchdownWarnings.length) {
     return {
       scoreCap: 44,
       scorePenalty: 18,
       blocker: `系统文本接盘风险拦截：${textualCatchdownWarnings[0]}。`
+    };
+  }
+  const holdingThemeRetreatWarning = getDirectPortfolioHoldingThemeRetreatWarnings(digest)[0];
+  if (holdingThemeRetreatWarning) {
+    return {
+      scoreCap: 44,
+      scorePenalty: 18,
+      blocker: `系统当前题材支撑拦截：${holdingThemeRetreatWarning}`
+    };
+  }
+  const catchdownWarnings = getStaleThemeCatchdownWarnings(digest);
+  if (catchdownWarnings.length) {
+    return {
+      scoreCap: 44,
+      scorePenalty: 18,
+      blocker: `系统接盘风险拦截：${catchdownWarnings[0]}。`
     };
   }
   const unrefreshedWarnings = getUnrefreshedMarketThemeWarnings(digest);
@@ -34090,6 +34109,7 @@ export {
   buildPortfolioMarketSnapshotPrioritySeeds,
   buildPortfolioThemeOpportunitySeedCandidates,
   buildPortfolioThemeOpportunityKeywordGroups,
+  refreshPortfolioCandidateThemesWithMarketRadar,
   buildPortfolioCapabilityDiagnostics,
   buildPortfolioCapabilityActionQueue,
   buildPortfolioAccountStatusLines,
