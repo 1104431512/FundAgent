@@ -7512,6 +7512,14 @@ assert(
   "cash redeployment ranking must not use stale-theme pullbacks to solve high-cash pressure"
 );
 assert(
+  !staleCatchdownBoard.lists.find((item) => item.id === "portfolio_fit")?.items.some((item) => item.code === "000042"),
+  "portfolio-fit ranking must not show stale-theme catchdown candidates as diversification or first-position opportunities"
+);
+assert(
+  !staleCatchdownBoard.lists.find((item) => item.id === "theme_allocation")?.items.some((item) => item.code === "000042"),
+  "theme-allocation ranking must not keep stale-theme catchdown candidates inside a positive allocation lane"
+);
+assert(
   !staleCatchdownBoard.lists.find((item) => item.id === "theme_momentum")?.items.some((item) => item.code === "000042"),
   "main-force/preheat opportunity ranking must exclude stale-theme catchdown candidates instead of showing them as weak opportunities"
 );

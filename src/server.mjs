@@ -11395,6 +11395,8 @@ function buildPortfolioFitContext(db = {}) {
 }
 
 function buildPortfolioFitRankingItem(item = {}, context = {}) {
+  const riskGate = resolvePortfolioPositiveWatchRankingGate(item);
+  if (!riskGate.ok) return null;
   const tags = collectPortfolioWatchFitThemeTags(item);
   const holdings = collectPortfolioWatchHoldingItems(item);
   const relatedClusters = findPortfolioFitRelatedThemeClusters(tags, context.themeClusters || []);
@@ -11498,6 +11500,7 @@ function buildPortfolioThemeAllocationGroups(watchlist = []) {
   const groups = new Map();
   for (const item of watchlist || []) {
     if (!item?.code || !["ready", "waiting_pullback", "watch"].includes(item.status)) continue;
+    if (!resolvePortfolioPositiveWatchRankingGate(item).ok) continue;
     const themes = collectPortfolioThemeAllocationTags(item);
     for (const theme of themes.slice(0, 3)) {
       const key = normalizePortfolioFitThemeLabel(theme);
