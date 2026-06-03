@@ -7537,6 +7537,47 @@ const compactPlaybookSnapshot = manager.compactMarketSnapshotForModel({
 });
 assert(compactPlaybookSnapshot["题材作战图"]?.通道?.some((lane) => lane.名称 === "主力进场快跟" && lane.项目.some((item) => item.主力证据 && item.代表基金检索词.length)), "compact market snapshot must carry the main-force playbook into model context with capital proof and carrier keywords");
 const lowAltitudePlaybook = manager.buildThemeMainForcePlaybook([lowAltitudeTheme], manager.buildThemeLeaderboards([lowAltitudeTheme]));
+const playbookOpportunityOnlyDigest = manager.refreshPortfolioCandidateThemesWithMarketRadar({
+  ...setupDigest,
+  code: "000059",
+  name: "宽泛低位启动基金C",
+  unitNav: 1.118,
+  trendProfile: { ...setupDigest.trendProfile, ok: true },
+  matchedThemes: [],
+  seed: { themeOpportunityRequirement: "require_current_theme_playbook" },
+  holdings: {
+    ok: true,
+    equityDisclosureDate: "2099-03-31",
+    equityTopHoldings: [
+      "002085 万丰奥威 6.8%",
+      "000099 中信海直 4.5%",
+      "600038 中直股份 3.6%"
+    ]
+  }
+}, {
+  fetchedAt: freshThemeRefreshAt,
+  themeRadar: [],
+  themeMainForcePlaybook: lowAltitudePlaybook
+});
+assert(
+  manager.hasActionableThemeSupport(playbookOpportunityOnlyDigest),
+  "main-force playbook opportunity lanes must become actionable theme support when candidate holdings prove carrier fit"
+);
+assert.equal(
+  manager.getPortfolioActionableThemeSupportGap(playbookOpportunityOnlyDigest),
+  "",
+  "playbook opportunity support must prevent qualified main-force carriers from being downgraded to vague waiting"
+);
+assert.equal(
+  manager.classifyPullbackSetupCandidateForSummary(playbookOpportunityOnlyDigest, { requireThemeOpportunityBacking: true }),
+  "main_candidate",
+  "pullback setup classification must promote playbook-backed, holdings-verified opportunity carriers"
+);
+assert(
+  manager.scoreResearchDigestForPullbackSetup(playbookOpportunityOnlyDigest) >
+    manager.scoreResearchDigestForPullbackSetup(pureTrendRequiredSetupDigest) + 35,
+  "pullback scoring must prefer playbook-backed main-force opportunities over pure NAV-curve setups"
+);
 const playbookKeywordGroups = manager.buildPortfolioThemeOpportunityKeywordGroups({
   themeRadar: [lowAltitudeTheme],
   themeLeaderboards: manager.buildThemeLeaderboards([lowAltitudeTheme]),

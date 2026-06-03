@@ -1320,8 +1320,12 @@ function refreshPortfolioCandidateThemesWithMarketRadar(candidate = {}, marketSn
       : [];
   if (!candidate || typeof candidate !== "object") return candidate;
   const playbook = getMarketThemeMainForcePlaybook(marketSnapshot, themeRadar);
-  const attachPlaybookRisk = (value = {}) => attachThemeMainForcePlaybookRisk(value, marketSnapshot, { playbook });
-  if (!themeRadar.length) return attachPlaybookRisk(candidate);
+  const attachPlaybookContext = (value = {}) => attachThemeMainForcePlaybookRisk(
+    attachThemeMainForcePlaybookOpportunity(value, marketSnapshot, { playbook }),
+    marketSnapshot,
+    { playbook }
+  );
+  if (!themeRadar.length) return attachPlaybookContext(candidate);
   const refreshedAt = marketSnapshot?.fetchedAt || new Date().toISOString();
   const attachHoldingThemeRefresh = (value = {}) => {
     const holdingThemeRefresh = buildPortfolioHoldingThemeRefresh(value, themeRadar, { refreshedAt });
@@ -1343,7 +1347,7 @@ function refreshPortfolioCandidateThemesWithMarketRadar(candidate = {}, marketSn
     const previousThemes = getCandidateThemeSignals(candidate);
     if (!previousThemes.length) {
       const refreshed = attachHoldingThemeRefresh(candidate);
-      return attachPlaybookRisk(refreshed === candidate ? candidate : refreshed);
+      return attachPlaybookContext(refreshed === candidate ? candidate : refreshed);
     }
     const downgradedThemes = previousThemes.map(markUnrefreshedMarketThemeSignal);
     const refreshed = {
@@ -1362,7 +1366,7 @@ function refreshPortfolioCandidateThemesWithMarketRadar(candidate = {}, marketSn
         matchedThemes: downgradedThemes
       };
     }
-    return attachPlaybookRisk(attachHoldingThemeRefresh(refreshed));
+    return attachPlaybookContext(attachHoldingThemeRefresh(refreshed));
   }
   const refreshed = {
     ...candidate,
@@ -1375,7 +1379,7 @@ function refreshPortfolioCandidateThemesWithMarketRadar(candidate = {}, marketSn
       matchedThemes
     };
   }
-  return attachPlaybookRisk(attachHoldingThemeRefresh(refreshed));
+  return attachPlaybookContext(attachHoldingThemeRefresh(refreshed));
 }
 
 function buildPortfolioMarketThemeRefresh(matchedThemes = [], options = {}) {
@@ -24676,6 +24680,245 @@ function collectThemeMainForcePlaybookRiskItems(playbook = null) {
       laneTitle: lane.title || item.laneTitle || "",
       laneAction: lane.action || item.action || ""
     })));
+}
+
+function collectThemeMainForcePlaybookOpportunityLaneItems(playbook = null) {
+  return (playbook?.lanes || [])
+    .filter((lane) => ["follow_main_capital", "preheat_watch", "low_rotation"].includes(lane.id))
+    .flatMap((lane) => (lane.items || []).map((item) => ({
+      ...item,
+      laneId: lane.id,
+      laneTitle: lane.title || item.laneTitle || "",
+      laneAction: lane.action || item.action || ""
+    })));
+}
+
+function attachThemeMainForcePlaybookOpportunity(candidate = {}, marketSnapshot = null, options = {}) {
+  if (!candidate || typeof candidate !== "object") return candidate;
+  const playbook = options.playbook || getMarketThemeMainForcePlaybook(marketSnapshot);
+  const matches = matchCandidateThemeMainForceOpportunityItems(candidate, playbook);
+  if (!matches.length) return candidate;
+  const matchedThemes = mergeCandidateMatchedThemes(
+    candidate.matchedThemes,
+    candidate.seed?.matchedThemes,
+    matches.map((match) => buildMatchedThemeSignalFromPlaybookOpportunityMatch(match, marketSnapshot))
+  );
+  const supportSignals = matches.map(formatThemeMainForcePlaybookOpportunitySupportSignal).filter(Boolean).slice(0, 3);
+  const dataBasis = matches.flatMap((match) => {
+    const item = match.item || {};
+    return [
+      `作战图机会：${item.name || item.id || "相关题材"} ${item.laneTitle || match.laneTitle || ""}`.trim(),
+      item.capitalProof || "",
+      item.catalyst ? `催化：${item.catalyst}` : "",
+      normalizeStringArray(match.matchedTerms).length ? `命中承载锚点：${normalizeStringArray(match.matchedTerms).slice(0, 4).join("/")}` : ""
+    ];
+  }).filter(Boolean).slice(0, 6);
+  const newsLogic = matches
+    .map((match) => match.item?.whyMove || match.item?.newsLogic || match.item?.catalyst || "")
+    .filter(Boolean)
+    .map((text) => shortenPortfolioCustomerText(text, 96))
+    .slice(0, 2)
+    .join("；");
+  const marketThemeRefresh = {
+    ...(candidate.marketThemeRefresh && typeof candidate.marketThemeRefresh === "object" ? candidate.marketThemeRefresh : {}),
+    source: candidate.marketThemeRefresh?.source || "theme_main_force_playbook_opportunity",
+    refreshedAt: candidate.marketThemeRefresh?.refreshedAt || marketSnapshot?.fetchedAt || new Date().toISOString(),
+    noCurrentThemeMatch: false,
+    matchedThemeNames: matchedThemes.map((theme) => theme.name || theme.id).filter(Boolean).slice(0, 3),
+    supportLabel: supportSignals[0] || candidate.marketThemeRefresh?.supportLabel || "",
+    supportSignals: mergeStringLists(candidate.marketThemeRefresh?.supportSignals, supportSignals).slice(0, 3),
+    newsLogic: [candidate.marketThemeRefresh?.newsLogic, newsLogic].filter(Boolean).join("；"),
+    dataBasis: mergeStringLists(candidate.marketThemeRefresh?.dataBasis, dataBasis).slice(0, 8),
+    playbookOpportunityMatches: matches.map(compactThemeMainForcePlaybookOpportunityMatch).filter(Boolean).slice(0, 3)
+  };
+  const next = {
+    ...candidate,
+    matchedThemes,
+    playbookOpportunityMatches: marketThemeRefresh.playbookOpportunityMatches,
+    marketThemeRefresh
+  };
+  if (candidate.seed && typeof candidate.seed === "object") {
+    next.seed = {
+      ...candidate.seed,
+      matchedThemes,
+      playbookOpportunityMatches: marketThemeRefresh.playbookOpportunityMatches,
+      marketThemeRefresh: {
+        ...(candidate.seed.marketThemeRefresh && typeof candidate.seed.marketThemeRefresh === "object" ? candidate.seed.marketThemeRefresh : {}),
+        source: candidate.seed.marketThemeRefresh?.source || marketThemeRefresh.source,
+        refreshedAt: candidate.seed.marketThemeRefresh?.refreshedAt || marketThemeRefresh.refreshedAt,
+        noCurrentThemeMatch: false,
+        matchedThemeNames: marketThemeRefresh.matchedThemeNames,
+        supportLabel: marketThemeRefresh.supportLabel,
+        supportSignals: marketThemeRefresh.supportSignals,
+        newsLogic: marketThemeRefresh.newsLogic,
+        dataBasis: marketThemeRefresh.dataBasis,
+        playbookOpportunityMatches: marketThemeRefresh.playbookOpportunityMatches
+      }
+    };
+  }
+  return next;
+}
+
+function matchCandidateThemeMainForceOpportunityItems(candidate = {}, playbook = null) {
+  if (!candidate || typeof candidate !== "object") return [];
+  const opportunityItems = collectThemeMainForcePlaybookOpportunityLaneItems(playbook);
+  if (!opportunityItems.length) return [];
+  const candidateText = buildCandidateThemeMatchText(candidate);
+  const normalizedCandidateText = normalizeIntentText(candidateText);
+  const candidateTerms = collectCandidatePlaybookRiskTerms(candidate, candidateText);
+  const holdings = collectCandidateHoldings(candidate, "equity");
+  const matches = [];
+  const seen = new Set();
+
+  for (const item of opportunityItems) {
+    const anchors = collectThemeMainForcePlaybookRiskAnchors(item);
+    const terms = collectThemeMainForcePlaybookRiskTerms(item);
+    const holdingMatches = holdings
+      .filter((holding) => holdingMatchesThemeAnchors(holding, anchors))
+      .map((holding) => holding.name || holding.code || holding.text)
+      .filter(Boolean)
+      .slice(0, 4);
+    const directMatches = terms
+      .filter((term) => {
+        const value = normalizeIntentText(term);
+        return value.length >= 2 && normalizedCandidateText.includes(value);
+      })
+      .slice(0, 4);
+    const relatedMatches = terms
+      .filter((term) => candidateTerms.some((candidateTerm) => areThemeTermsRelated(candidateTerm, term)))
+      .slice(0, 4);
+    const matchedTerms = mergeStringLists(holdingMatches, directMatches, relatedMatches).slice(0, 5);
+    if (!matchedTerms.length) continue;
+    const key = `${item.laneId}|${item.id || item.name}|${matchedTerms.join("/")}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    matches.push({
+      item,
+      laneId: item.laneId,
+      laneTitle: item.laneTitle,
+      holdingMatches,
+      directMatches,
+      relatedMatches,
+      matchedTerms
+    });
+  }
+  return matches.slice(0, 4);
+}
+
+function buildMatchedThemeSignalFromPlaybookOpportunityMatch(match = {}, marketSnapshot = null) {
+  const item = match.item || {};
+  const laneId = match.laneId || item.laneId || "";
+  const laneMap = {
+    follow_main_capital: {
+      stage: "capital_entering",
+      positionSignal: "main_capital_entering",
+      leaderSignal: "capital_entering",
+      actionBias: "follow_main_small",
+      capitalFollowScore: 72,
+      preheatScore: 58,
+      rotationScore: 50,
+      lowPositionScore: 54
+    },
+    preheat_watch: {
+      stage: "preheat_catalyst",
+      positionSignal: "preheat_catalyst_watch",
+      leaderSignal: "preheat_catalyst",
+      actionBias: "preheat_watch",
+      capitalFollowScore: 56,
+      preheatScore: 72,
+      rotationScore: 50,
+      lowPositionScore: 54
+    },
+    low_rotation: {
+      stage: "low_position_rotation",
+      positionSignal: "low_position_rotation",
+      leaderSignal: "",
+      actionBias: "low_rotation_probe",
+      capitalFollowScore: 52,
+      preheatScore: 50,
+      rotationScore: 68,
+      lowPositionScore: 68
+    }
+  };
+  const spec = laneMap[laneId] || laneMap.preheat_watch;
+  const latestNewsTime = extractThemeMainForcePlaybookNewsTime(item) || marketSnapshot?.fetchedAt || "";
+  const catalystSummary = item.catalyst || item.catalystFreshness || shortenPortfolioCustomerText(item.whyMove || item.newsLogic || "主力题材作战图当前线索", 48);
+  return compactMatchedThemeSignal({
+    id: item.id || `playbook_${normalizeIntentText(item.name || laneId).replace(/\s+/g, "_")}`,
+    name: item.name || item.id || "作战图机会",
+    stage: spec.stage,
+    positionSignal: spec.positionSignal,
+    actionBias: spec.actionBias,
+    leaderSignal: spec.leaderSignal,
+    forwardScore: 62,
+    crowdingScore: 18,
+    rotationScore: spec.rotationScore,
+    lowPositionScore: spec.lowPositionScore,
+    capitalRetreatScore: 0,
+    capitalFollowScore: spec.capitalFollowScore,
+    preheatScore: spec.preheatScore,
+    mainInflowRankScore: 18,
+    avgMainNetInflowPct: /净流出|撤离/.test(item.capitalProof || "") ? 0 : 1.2,
+    catalystProfile: {
+      score: 34,
+      tags: ["主力作战图", item.laneTitle || match.laneTitle || ""].filter(Boolean),
+      summary: catalystSummary,
+      risk: false,
+      fresh: true,
+      freshnessLabel: item.catalystFreshness || "作战图当前线索",
+      latestNewsTime
+    },
+    primaryCatalyst: item.catalyst || item.whyMove || item.newsLogic || "",
+    newsLogic: [
+      "主力作战图机会",
+      item.laneTitle || match.laneTitle || "",
+      item.whyMove || item.newsLogic || item.catalyst || "",
+      item.capitalProof || ""
+    ].filter(Boolean).join("："),
+    boardNames: normalizeStringArray(item.carrierSearchKeywords).slice(0, 4),
+    leaderStocks: normalizeStringArray(item.carrierAnchors).slice(0, 4),
+    themeKeywords: normalizeStringArray(item.carrierSearchKeywords).slice(0, 8)
+  });
+}
+
+function formatThemeMainForcePlaybookOpportunitySupportSignal(match = {}) {
+  const item = match.item || {};
+  const name = item.name || item.id || "相关题材";
+  const laneTitle = item.laneTitle || match.laneTitle || "主力作战图机会";
+  const anchors = normalizeStringArray(match.matchedTerms).slice(0, 3).join("/");
+  return [
+    `${name}${laneTitle}`,
+    item.capitalProof || "",
+    anchors ? `承载锚点=${anchors}` : ""
+  ].filter(Boolean).join("，");
+}
+
+function compactThemeMainForcePlaybookOpportunityMatch(match = {}) {
+  const item = match.item || {};
+  if (!item.name && !item.id) return null;
+  return {
+    laneId: match.laneId || "",
+    laneTitle: item.laneTitle || match.laneTitle || "",
+    name: item.name || item.id || "",
+    capitalProof: item.capitalProof || "",
+    matchedTerms: normalizeStringArray(match.matchedTerms).slice(0, 5),
+    nextStep: item.nextStep || "",
+    invalidation: item.invalidation || ""
+  };
+}
+
+function extractThemeMainForcePlaybookNewsTime(item = {}) {
+  const text = [
+    item.catalystFreshness,
+    item.whyMove,
+    item.newsLogic,
+    item.primaryCatalyst,
+    normalizeStringArray(item.evidence).join(" ")
+  ].filter(Boolean).join(" ");
+  const explicit = text.match(/新闻时间[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2}(?:[ T][0-9:.-]+Z?)?|[0-9]{1,2}:[0-9]{2})/);
+  if (explicit) return explicit[1];
+  const intraday = text.match(/([0-9]{1,2}:[0-9]{2})/);
+  return intraday ? intraday[1] : "";
 }
 
 function attachThemeMainForcePlaybookRisk(candidate = {}, marketSnapshot = null, options = {}) {

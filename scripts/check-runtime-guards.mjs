@@ -3237,6 +3237,14 @@ const requiredPatterns = [
     message: "candidate theme refresh must attach main-force playbook risk lanes even when normal theme radar matching is absent."
   },
   {
+    pattern: /function refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,900}attachThemeMainForcePlaybookOpportunity/,
+    message: "candidate theme refresh must attach main-force playbook opportunity lanes so qualified carriers do not become endless waiting."
+  },
+  {
+    pattern: /function buildMatchedThemeSignalFromPlaybookOpportunityMatch[\s\S]{0,1800}main_capital_entering[\s\S]{0,1600}preheat_catalyst_watch[\s\S]{0,2200}latestNewsTime/,
+    message: "playbook opportunity matches must synthesize actionable theme support with news/current-event freshness."
+  },
+  {
     pattern: /function getPortfolioActionableThemeSupportGap[\s\S]{0,700}getThemeMainForcePlaybookRiskWarnings/,
     message: "theme support gaps must surface main-force playbook catchdown/chase risks before buy wording."
   },
