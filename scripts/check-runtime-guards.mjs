@@ -1409,6 +1409,26 @@ const requiredPatterns = [
     message: "theme radar must not surface broad static themes from fund vehicle names alone when no board, news, commodity, or overseas evidence exists."
   },
   {
+    pattern: /function buildThemeMainForcePlaybook[\s\S]{0,7200}主力题材作战图[\s\S]{0,5200}carrierSearchKeywords[\s\S]{0,1200}carrierAnchors[\s\S]{0,3200}function collectThemeMainForcePlaybookOpportunityItems/,
+    message: "theme radar must be converted into a main-force playbook with representative-fund search keywords and holding anchors."
+  },
+  {
+    pattern: /function compactThemeMainForcePlaybookForModel[\s\S]{0,1800}代表基金检索词[\s\S]{0,500}持仓承载锚点/,
+    message: "market snapshots and compact model context must carry the main-force theme playbook, not only raw theme lists."
+  },
+  {
+    pattern: /const themeMainForcePlaybook = buildThemeMainForcePlaybook\(themeRadar,\s*themeLeaderboards\)[\s\S]{0,1800}themeMainForcePlaybook/,
+    message: "fresh market snapshots must store the main-force theme playbook next to theme leaderboards."
+  },
+  {
+    pattern: /function buildPortfolioThemeOpportunityKeywordGroups[\s\S]{0,1800}carrierSearchKeywords[\s\S]{0,1200}carrierAnchors/,
+    message: "representative-fund recall must use main-force playbook keywords and carrier anchors before searching funds."
+  },
+  {
+    pattern: /function buildPortfolioThemeOpportunitySeedCandidates[\s\S]{0,3600}承载锚点/,
+    message: "theme representative seed candidates must preserve carrier anchors as traceable evidence."
+  },
+  {
     pattern: /(?=[\s\S]*function extractEmergingNewsTopicTerms[\s\S]{0,1800}涨停潮)(?=[\s\S]*function buildNewsCatalystProfile[\s\S]{0,1600}库存见底)(?=[\s\S]*function buildNewsCatalystProfile[\s\S]{0,1600}订单超预期)/,
     message: "theme radar must discover market-style preheat headlines such as limit-up waves, inventory bottoms, and order beats."
   },

@@ -7416,6 +7416,37 @@ const mainCapitalThemeCard = themeLeaderboards.mainCapital.items.find((item) => 
 assert(mainCapitalThemeCard?.nextStep?.includes("代表基金") && mainCapitalThemeCard?.invalidation?.includes("失效条件"), "theme leaderboards must tell the manager what to do next and when the theme thesis fails");
 assert(mainCapitalThemeCard?.evidence?.some((item) => /主力|催化|板块/.test(item)), "theme leaderboard cards must expose concise evidence chips instead of only a score");
 assert(mainCapitalThemeCard?.whyMove?.includes("为什么动") && /新闻催化|主力线索/.test(mainCapitalThemeCard.whyMove), "theme leaderboard cards must expose a customer-readable why-move line");
+const mainForcePlaybook = manager.buildThemeMainForcePlaybook([liveAiTheme, fadingAiTheme, lowAltitudeTheme, dataElementsTheme], themeLeaderboards);
+const playbookFollowLane = mainForcePlaybook.lanes.find((lane) => lane.id === "follow_main_capital");
+const playbookPreheatLane = mainForcePlaybook.lanes.find((lane) => lane.id === "preheat_watch");
+const playbookAvoidLane = mainForcePlaybook.lanes.find((lane) => lane.id === "avoid_catchdown");
+assert(playbookFollowLane?.items.some((item) => item.name === "AI/算力" && item.whyMove.includes("为什么动") && item.carrierRule.includes("前十大持仓")), "main-force playbook must turn main-capital leaderboards into executable carrier-fund review cards");
+assert(playbookPreheatLane?.items.some((item) => /政策预热测试|数据要素/.test(item.name) && item.nextStep.includes("代表基金")), "main-force playbook must tell the manager to recall representative funds for preheated themes");
+assert(playbookAvoidLane?.items.some((item) => item.name === "AI/算力" && /净流出|回避|资金/.test(`${item.capitalProof} ${item.nextStep}`)), "main-force playbook must keep retreat themes in a no-buy battle lane");
+const compactPlaybookSnapshot = manager.compactMarketSnapshotForModel({
+  fetchedAt: freshThemeRefreshAt,
+  marketIndicators: {},
+  themes: {},
+  themeRadar: [liveAiTheme, fadingAiTheme, lowAltitudeTheme, dataElementsTheme],
+  themeLeaderboards,
+  themeMainForcePlaybook: mainForcePlaybook,
+  fastNews: [],
+  fundCandidates: {}
+});
+assert(compactPlaybookSnapshot["题材作战图"]?.通道?.some((lane) => lane.名称 === "主力进场快跟" && lane.项目.some((item) => item.主力证据 && item.代表基金检索词.length)), "compact market snapshot must carry the main-force playbook into model context with capital proof and carrier keywords");
+const lowAltitudePlaybook = manager.buildThemeMainForcePlaybook([lowAltitudeTheme], manager.buildThemeLeaderboards([lowAltitudeTheme]));
+const playbookKeywordGroups = manager.buildPortfolioThemeOpportunityKeywordGroups({
+  themeRadar: [lowAltitudeTheme],
+  themeLeaderboards: manager.buildThemeLeaderboards([lowAltitudeTheme]),
+  themeMainForcePlaybook: lowAltitudePlaybook
+});
+assert(
+  playbookKeywordGroups.some((group) =>
+    group.keywords.some((item) => /低空经济|飞行汽车/.test(item))
+    && group.anchors.some((item) => /万丰奥威|低空经济|飞行汽车/.test(item))
+  ),
+  "portfolio representative-fund recall must derive search keywords and holding anchors from the main-force playbook"
+);
 assert(adminSource.includes("renderPortfolioThemeLeaderboards") && adminSource.includes("getPortfolioLatestThemeLeaderboards"), "admin sector board must render latest market theme leaderboards instead of hiding them in raw run JSON");
 assert(adminStyleSource.includes(".theme-leaderboard-board") && adminStyleSource.includes(".theme-leaderboard-lane-sell"), "admin styles must provide compact visible lanes for theme leaderboards and retreat risks");
 assert(adminSource.includes("theme-leaderboard-decision") && adminSource.includes("theme-leaderboard-evidence") && adminSource.includes("theme-leaderboard-why"), "admin theme leaderboards must render why-move, next-step, and evidence blocks for each theme");

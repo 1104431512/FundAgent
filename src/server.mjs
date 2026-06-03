@@ -3324,14 +3324,14 @@ function buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot = null) {
   return leaderItems.map((item) => {
     const theme = radarById.get(String(item.id || "")) || radar.find((candidate) => candidate.name === item.name) || {};
     const keywords = collectThemeOpportunitySearchKeywords(theme, {
-      extra: [item.name, item.whyMove, item.newsLogic, item.catalyst]
+      extra: [item.name, item.whyMove, item.newsLogic, item.catalyst, ...(item.carrierSearchKeywords || [])]
     });
     return {
       laneKey: item.laneKey,
       name: item.name || theme.name || "",
       keywords,
       anchors: collectThemeOpportunityAnchorKeywords(theme, {
-        extra: [item.name]
+        extra: [item.name, ...(item.carrierAnchors || [])]
       })
     };
   }).filter((group) => group.keywords.length);
@@ -3358,8 +3358,11 @@ function buildPortfolioThemeOpportunitySeedCandidates(marketSnapshot = null) {
     if (!lane || !isPortfolioThemeOpportunitySeedTheme(theme)) continue;
     const funds = Array.isArray(theme.evidence?.funds) ? theme.evidence.funds : [];
     const keywords = collectThemeOpportunitySearchKeywords(theme, {
-      extra: [theme.name, lane.whyMove, theme.newsLogic, theme.primaryCatalyst, lane.title]
+      extra: [theme.name, lane.whyMove, theme.newsLogic, theme.primaryCatalyst, lane.title, ...(lane.carrierSearchKeywords || [])]
     }).slice(0, 10);
+    const carrierAnchors = collectThemeOpportunityAnchorKeywords(theme, {
+      extra: [theme.name, ...(lane.carrierAnchors || [])]
+    }).slice(0, 8);
     const compactTheme = compactMatchedThemeSignal(theme);
     for (const fund of funds.slice(0, 5)) {
       const code = String(fund.code || "").match(/^\d{6}$/)?.[0] || "";
@@ -3370,7 +3373,7 @@ function buildPortfolioThemeOpportunitySeedCandidates(marketSnapshot = null) {
         name: fund.name || "",
         shareClass: fund.shareClass || inferFundShareClass(fund.name || ""),
         type: fund.type || "",
-        keywords: [...new Set([...(fund.keywords || []), ...keywords, "题材榜单代表基金"].filter(Boolean))],
+        keywords: [...new Set([...(fund.keywords || []), ...keywords, ...carrierAnchors, "题材榜单代表基金"].filter(Boolean))],
         matchedThemes: [compactTheme],
         themeOpportunityRequirement: "require_current_theme_playbook",
         candidateRole: `${lane.title || "主力/预热题材"}代表基金`,
@@ -3378,10 +3381,13 @@ function buildPortfolioThemeOpportunitySeedCandidates(marketSnapshot = null) {
         themeEvidence: formatCandidateThemeEvidence({ matchedThemes: [compactTheme] }),
         dataBasis: [
           `题材榜单：${lane.title || "主力/预热题材"}`,
+          lane.playbookAction ? `作战动作：${lane.playbookAction}` : "",
           lane.whyMove ? `为什么动：${lane.whyMove}` : "",
+          lane.capitalProof ? `主力证据：${lane.capitalProof}` : "",
           theme.newsLogic ? `题材逻辑：${theme.newsLogic}` : "",
           theme.catalystProfile?.summary ? `催化性质：${theme.catalystProfile.summary}` : "",
-          theme.primaryCatalyst ? `新闻线索：${theme.primaryCatalyst}` : ""
+          theme.primaryCatalyst ? `新闻线索：${theme.primaryCatalyst}` : "",
+          carrierAnchors.length ? `承载锚点：${carrierAnchors.join("/")}` : ""
         ].filter(Boolean),
         source: fund.source || "market_theme_leaderboard"
       });
@@ -4424,24 +4430,40 @@ function formatPortfolioThemeOpportunityCustomerLogic(candidate = {}) {
 
 function collectPortfolioThemeOpportunityLeaderboardItems(marketSnapshot = null) {
   const leaderboards = marketSnapshot?.themeLeaderboards || buildThemeLeaderboards(marketSnapshot?.themeRadar || []);
+  const playbookItems = collectThemeMainForcePlaybookOpportunityItems(marketSnapshot);
+  const playbookByKey = new Map();
+  for (const item of playbookItems) {
+    for (const key of [item.id, item.name].map((value) => normalizeIntentText(value)).filter(Boolean)) {
+      if (!playbookByKey.has(key)) playbookByKey.set(key, item);
+    }
+  }
   const lanes = [
     ["mainCapital", "主力进场榜"],
     ["preheat", "题材预热榜"],
     ["lowRotation", "低位轮动榜"]
   ];
   return lanes.flatMap(([key, fallbackTitle]) =>
-    (leaderboards?.[key]?.items || []).slice(0, 3).map((item) => ({
-      laneKey: key,
-      title: leaderboards?.[key]?.title || fallbackTitle,
-      id: item.id || "",
-      name: item.name || "",
-      score: Number(item.score || 0),
-      reason: item.reason || "",
-      catalyst: item.catalyst || "",
-      sourceType: item.sourceType || "",
-      newsLogic: item.newsLogic || "",
-      whyMove: item.whyMove || ""
-    }))
+    (leaderboards?.[key]?.items || []).slice(0, 3).map((item) => {
+      const playbook = [item.id, item.name]
+        .map((value) => playbookByKey.get(normalizeIntentText(value)))
+        .find(Boolean) || {};
+      return {
+        laneKey: key,
+        title: playbook.title || leaderboards?.[key]?.title || fallbackTitle,
+        id: item.id || playbook.id || "",
+        name: item.name || playbook.name || "",
+        score: Number(item.score || playbook.score || 0),
+        reason: playbook.reason || item.reason || "",
+        catalyst: playbook.catalyst || item.catalyst || "",
+        sourceType: playbook.sourceType || item.sourceType || "",
+        newsLogic: playbook.newsLogic || item.newsLogic || "",
+        whyMove: playbook.whyMove || item.whyMove || "",
+        capitalProof: playbook.capitalProof || "",
+        carrierSearchKeywords: normalizeStringArray(playbook.carrierSearchKeywords),
+        carrierAnchors: normalizeStringArray(playbook.carrierAnchors),
+        playbookAction: playbook.playbookAction || ""
+      };
+    })
   );
 }
 
@@ -18941,6 +18963,7 @@ function summarizeMarketSnapshot(snapshot) {
     themeRadar: (snapshot.themeRadar || []).slice(0, 8),
     fastNews: (snapshot.fastNews || []).slice(0, 8),
     themeLeaderboards: snapshot.themeLeaderboards || buildThemeLeaderboards(snapshot.themeRadar || []),
+    themeMainForcePlaybook: snapshot.themeMainForcePlaybook || null,
     fundCandidates: {
       stockFunds: (snapshot.fundCandidates?.stockFunds || []).slice(0, 8),
       hybridFunds: (snapshot.fundCandidates?.hybridFunds || []).slice(0, 8),
@@ -18972,6 +18995,7 @@ function compactMarketSnapshotForModel(snapshot = null) {
     },
     themeRadar: (summary.themeRadar || []).slice(0, 6).map(compactThemeRadarForModel),
     题材榜单: compactThemeLeaderboardsForModel(summary.themeLeaderboards || buildThemeLeaderboards(summary.themeRadar || [])),
+    ...(summary.themeMainForcePlaybook ? { 题材作战图: compactThemeMainForcePlaybookForModel(summary.themeMainForcePlaybook) } : {}),
     fastNews: (summary.fastNews || []).slice(0, 6).map(compactFastNewsForModel),
     fundCandidates: {
       stockFunds: compactMarketFundCandidates(summary.fundCandidates?.stockFunds || [], 6),
@@ -19007,6 +19031,32 @@ function compactThemeLeaderboardsForModel(leaderboards = {}) {
       }))
     }];
   }));
+}
+
+function compactThemeMainForcePlaybookForModel(playbook = {}) {
+  if (!playbook || typeof playbook !== "object") return null;
+  return {
+    标题: playbook.title || "主力题材作战图",
+    摘要: playbook.summary || "",
+    纪律: normalizeStringArray(playbook.discipline).slice(0, 2),
+    通道: (playbook.lanes || [])
+      .filter((lane) => Array.isArray(lane.items) && lane.items.length)
+      .slice(0, 4)
+      .map((lane) => ({
+      名称: lane.title || "",
+      动作: lane.action || "",
+      项目: (lane.items || []).slice(0, 2).map((item) => ({
+        题材: item.name || "",
+        为什么动: item.whyMove || item.newsLogic || "",
+        主力证据: item.capitalProof || "",
+        催化: item.catalyst || "",
+        代表基金检索词: normalizeStringArray(item.carrierSearchKeywords).slice(0, 4),
+        持仓承载锚点: normalizeStringArray(item.carrierAnchors).slice(0, 3),
+        下一步: item.nextStep || "",
+        失效条件: item.invalidation || ""
+      }))
+    }))
+  };
 }
 
 function compactMarketDataQuality(quality = null) {
@@ -19850,6 +19900,27 @@ function formatThemeLeaderboardEvidenceLines(leaderboards = {}) {
   });
 }
 
+function formatThemeMainForcePlaybookEvidenceLines(playbook = {}) {
+  if (!playbook || typeof playbook !== "object") return [];
+  return (playbook.lanes || []).flatMap((lane) => {
+    const items = (lane.items || []).slice(0, 2);
+    if (!items.length) return [];
+    const text = items.map((item) => {
+      const parts = [
+        item.name || "未知题材",
+        item.whyMove ? `为什么动${shortenPortfolioCustomerText(item.whyMove.replace(/^为什么动[:：]\s*/, ""), 58)}` : "",
+        item.capitalProof || "",
+        item.catalyst ? `催化${item.catalyst}` : "",
+        normalizeStringArray(item.carrierSearchKeywords).length ? `代表基金词${normalizeStringArray(item.carrierSearchKeywords).slice(0, 4).join("/")}` : "",
+        item.nextStep ? `下一步${shortenPortfolioCustomerText(item.nextStep, 48)}` : "",
+        item.invalidation ? `失效${shortenPortfolioCustomerText(item.invalidation, 42)}` : ""
+      ].filter(Boolean);
+      return parts.join("，");
+    }).join(" / ");
+    return [`- ${lane.title || "题材作战"}：${text}`];
+  });
+}
+
 function buildMarketEvidenceSummary(userText, marketSnapshot) {
   if (!marketSnapshot) {
     return "未抓取市场快照：只能按通用基金知识回答，不能声称已看到近期行情。";
@@ -19922,6 +19993,14 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
     lines.push("题材榜单：");
     lines.push(...themeLeaderboardLines);
     lines.push("质量要求：主力进场榜和题材预热榜只代表方向开始有线索，仍需基金买点、持仓承载和费用复核；退潮回避榜和追涨风险榜不能包装成买点。");
+  }
+  const themePlaybookLines = formatThemeMainForcePlaybookEvidenceLines(
+    marketSnapshot.themeMainForcePlaybook || buildThemeMainForcePlaybook(marketSnapshot.themeRadar || [], marketSnapshot.themeLeaderboards || null)
+  );
+  if (themePlaybookLines.length) {
+    lines.push("主力题材作战图：");
+    lines.push(...themePlaybookLines);
+    lines.push("质量要求：经理必须先按作战图决定快跟、预热、低位轮动、退潮回避或追涨回避，再把代表基金作为工具复核；不能从基金涨跌倒推题材。");
   }
 
   if (isPreciousMetalQuestion(userText)) {
@@ -23544,6 +23623,7 @@ async function fetchMarketSnapshot(options = {}) {
     fundCandidates
   });
   const themeLeaderboards = buildThemeLeaderboards(themeRadar);
+  const themeMainForcePlaybook = buildThemeMainForcePlaybook(themeRadar, themeLeaderboards);
   const dataQuality = buildMarketDataQuality(snapshotParts, {
     fundCandidates,
     fetchedAt,
@@ -23579,6 +23659,7 @@ async function fetchMarketSnapshot(options = {}) {
     },
     themeRadar,
     themeLeaderboards,
+    themeMainForcePlaybook,
     fastNews: fastNews.items || [],
     fundCandidates,
     errors: snapshotParts
@@ -23595,7 +23676,9 @@ async function fetchMarketSnapshot(options = {}) {
       process.env.YANGJIBAO_PLUGIN_TOKEN ? "http://browser-plug-api.yangjibao.com/search_fund?keyword={code}" : "",
       "https://push2.eastmoney.com/api/qt/ulist.np/get?secids=1.000001,1.000300,0.399001,0.399006",
       "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx",
-      "https://np-listapi.eastmoney.com/comm/web/getFastNews"
+      "https://np-listapi.eastmoney.com/comm/web/getFastNews",
+      "https://zhibo.sina.com.cn/api/zhibo/feed",
+      "https://m.cls.cn/telegraph"
     ].filter(Boolean)
   };
 }
@@ -24258,6 +24341,194 @@ function buildThemeLeaderboards(themeRadar = []) {
   };
 }
 
+function buildThemeMainForcePlaybook(themeRadar = [], leaderboards = null) {
+  const radar = Array.isArray(themeRadar) ? themeRadar.filter(Boolean) : [];
+  const boards = leaderboards || buildThemeLeaderboards(radar);
+  const radarByKey = buildThemeRadarLookup(radar);
+  const laneSpecs = [
+    {
+      id: "follow_main_capital",
+      sourceKey: "mainCapital",
+      title: "主力进场快跟",
+      subtitle: "资金刚开始配合、新闻逻辑说得清，优先召回代表基金。",
+      action: "立即找代表基金，小仓复核",
+      tone: "buy"
+    },
+    {
+      id: "preheat_watch",
+      sourceKey: "preheat",
+      title: "预热题材雷达",
+      subtitle: "政策、订单、产业或外盘催化先出现，等资金和基金买点确认。",
+      action: "先入观察，资金确认后微型试探",
+      tone: "watch"
+    },
+    {
+      id: "low_rotation",
+      sourceKey: "lowRotation",
+      title: "低位轮动备选",
+      subtitle: "位置不高、轮动改善，适合找启动前夜的承载基金。",
+      action: "找低位启动前夜",
+      tone: "rotation"
+    },
+    {
+      id: "avoid_catchdown",
+      sourceKey: "retreat",
+      title: "退潮接盘回避",
+      subtitle: "主力撤离或旧催化退潮，回调不能当买点。",
+      action: "先回避，等资金回流",
+      tone: "sell"
+    },
+    {
+      id: "avoid_chase",
+      sourceKey: "chaseRisk",
+      title: "追涨风险回避",
+      subtitle: "已经涨开或拥挤，先等降温和健康回踩。",
+      action: "不追，等回踩",
+      tone: "chase"
+    }
+  ];
+  const lanes = laneSpecs.map((spec) => {
+    const items = (boards?.[spec.sourceKey]?.items || [])
+      .map((item) => buildThemeMainForcePlaybookItem(item, findThemeRadarByLeaderboardItem(item, radarByKey), spec))
+      .filter(Boolean)
+      .slice(0, 4);
+    return {
+      id: spec.id,
+      sourceKey: spec.sourceKey,
+      title: spec.title,
+      subtitle: spec.subtitle,
+      action: spec.action,
+      tone: spec.tone,
+      items
+    };
+  });
+  const opportunityCount = lanes
+    .filter((lane) => ["follow_main_capital", "preheat_watch", "low_rotation"].includes(lane.id))
+    .reduce((sum, lane) => sum + lane.items.length, 0);
+  const riskCount = lanes
+    .filter((lane) => ["avoid_catchdown", "avoid_chase"].includes(lane.id))
+    .reduce((sum, lane) => sum + lane.items.length, 0);
+  return {
+    title: "主力题材作战图",
+    summary: formatThemeMainForcePlaybookSummary({ opportunityCount, riskCount }),
+    opportunityCount,
+    riskCount,
+    lanes,
+    discipline: [
+      "先看主力进场、预热催化和新闻时效，再找承载基金。",
+      "代表基金必须用前十大持仓、指数名称或底层龙头证明承载题材。",
+      "退潮和追涨方向即使回调，也先按0元观察处理。"
+    ],
+    source: "theme_main_force_playbook"
+  };
+}
+
+function buildThemeRadarLookup(themeRadar = []) {
+  const map = new Map();
+  for (const theme of themeRadar || []) {
+    for (const key of [theme?.id, theme?.name, ...(theme?.themeKeywords || []), ...(theme?.fundKeywords || [])]) {
+      const normalized = normalizeIntentText(key);
+      if (normalized && !map.has(normalized)) map.set(normalized, theme);
+    }
+  }
+  return map;
+}
+
+function findThemeRadarByLeaderboardItem(item = {}, radarByKey = new Map()) {
+  const keys = [item.id, item.name]
+    .map((value) => normalizeIntentText(value))
+    .filter(Boolean);
+  for (const key of keys) {
+    if (radarByKey.has(key)) return radarByKey.get(key);
+  }
+  for (const key of keys) {
+    for (const [themeKey, theme] of radarByKey.entries()) {
+      if (themeKey.includes(key) || key.includes(themeKey)) return theme;
+    }
+  }
+  return null;
+}
+
+function buildThemeMainForcePlaybookItem(item = {}, theme = null, spec = {}) {
+  const sourceTheme = theme || {};
+  const name = item.name || sourceTheme.name || sourceTheme.id || "";
+  if (!name) return null;
+  const whyMove = item.whyMove || buildThemeLeaderboardWhyMove(sourceTheme) || item.newsLogic || item.reason || "";
+  const catalyst = item.catalyst || sourceTheme.catalystProfile?.summary || "";
+  const newsLogic = item.newsLogic || sourceTheme.newsLogic || item.primaryCatalyst || sourceTheme.primaryCatalyst || "";
+  const capitalProof = formatThemeMainForceCapitalProof(sourceTheme);
+  const carrierSearchKeywords = collectThemeOpportunitySearchKeywords(sourceTheme, {
+    extra: [name, whyMove, newsLogic, catalyst, item.primaryCatalyst]
+  }).slice(0, 12);
+  const carrierAnchors = collectThemeOpportunityAnchorKeywords(sourceTheme, {
+    extra: [name, item.primaryCatalyst]
+  }).slice(0, 8);
+  return {
+    id: item.id || sourceTheme.id || "",
+    name,
+    laneKey: spec.sourceKey || "",
+    laneTitle: spec.title || "",
+    action: spec.action || item.action || "",
+    score: finiteMetricNumber(item.score),
+    whyMove: normalizePortfolioUserFacingText(whyMove),
+    newsLogic: normalizePortfolioUserFacingText(newsLogic),
+    catalyst,
+    catalystFreshness: item.catalystFreshness || sourceTheme.catalystProfile?.freshnessLabel || "",
+    capitalProof,
+    carrierRule: "代表基金必须核验前十大持仓、指数名称或底层龙头是否承载该题材。",
+    carrierSearchKeywords,
+    carrierAnchors,
+    nextStep: item.nextStep || buildThemeLeaderboardNextStep(sourceTheme),
+    invalidation: item.invalidation || buildThemeLeaderboardInvalidation(sourceTheme),
+    evidence: mergeStringLists(item.evidence, [
+      capitalProof,
+      catalyst ? `催化：${catalyst}` : "",
+      sourceTheme.catalystProfile?.latestNewsTime ? `新闻时间：${sourceTheme.catalystProfile.latestNewsTime}` : ""
+    ]).slice(0, 5),
+    sourceType: item.sourceType || (sourceTheme.newsDiscovered ? "新闻自动发现" : sourceTheme.dynamic ? "动态题材雷达" : "题材雷达")
+  };
+}
+
+function formatThemeMainForceCapitalProof(theme = {}) {
+  const avgFlow = finiteMetricNumber(theme.avgMainNetInflowPct);
+  const maxFlow = finiteMetricNumber(theme.maxMainNetInflowPct);
+  const minFlow = finiteMetricNumber(theme.minMainNetInflowPct);
+  if (Number.isFinite(avgFlow)) {
+    return avgFlow >= 0
+      ? `主力资金均值净流入${formatFallbackPlainPct(avgFlow)}`
+      : `主力资金均值净流出${formatFallbackPlainPct(Math.abs(avgFlow))}`;
+  }
+  if (Number.isFinite(maxFlow) && maxFlow > 0) return `最强相关板块净流入${formatFallbackPlainPct(maxFlow)}`;
+  if (Number.isFinite(minFlow) && minFlow < 0) return `最弱相关板块净流出${formatFallbackPlainPct(Math.abs(minFlow))}`;
+  if (hasStrongMainInflowRankSignal(theme.mainInflowRankScore)) return "进入主力流入榜";
+  if (hasNewsMainCapitalEvidence(theme)) return "新闻提示资金抢筹";
+  return "主力资金仍需复核";
+}
+
+function formatThemeMainForcePlaybookSummary({ opportunityCount = 0, riskCount = 0 } = {}) {
+  if (opportunityCount && riskCount) {
+    return `本轮先跟随${opportunityCount}条主力/预热/低位轮动线索，同时回避${riskCount}条退潮或追涨风险。`;
+  }
+  if (opportunityCount) return `本轮发现${opportunityCount}条可继续找代表基金的主力/预热/低位轮动线索。`;
+  if (riskCount) return `本轮机会不足，先处理${riskCount}条退潮或追涨风险，避免把回调当买点。`;
+  return "本轮暂未形成可执行题材线索，具体基金只能待复核。";
+}
+
+function collectThemeMainForcePlaybookOpportunityItems(marketSnapshot = null) {
+  const playbook = marketSnapshot?.themeMainForcePlaybook
+    || buildThemeMainForcePlaybook(marketSnapshot?.themeRadar || [], marketSnapshot?.themeLeaderboards || null);
+  return (playbook?.lanes || [])
+    .filter((lane) => ["follow_main_capital", "preheat_watch", "low_rotation"].includes(lane.id))
+    .flatMap((lane) => (lane.items || []).map((item) => ({
+      ...item,
+      laneKey: item.laneKey || lane.sourceKey,
+      title: lane.title,
+      reason: item.whyMove || item.newsLogic || "",
+      whyMove: item.whyMove || item.newsLogic || "",
+      playbookAction: lane.action
+    })));
+}
+
 async function fetchMarketFastNews() {
   const [eastmoney, sina, cls] = await Promise.all([
     fetchEastmoneyFastNews().catch((error) => ({ ok: false, label: "东方财富7x24快讯", error: error.message, items: [] })),
@@ -24422,7 +24693,7 @@ function buildThemeLeaderboardNextStep(theme = {}) {
     if (hasPositiveThemeMainCapitalEvidence(theme)) {
       return "预热已有资金确认，立即找代表基金；只有低位温和转强、持仓承载和费率过关时才做0.5%-1.2%微型试探。";
     }
-    return "先加观察池，等新闻催化兑现、主力流入延续、基金走势转强后再进入试探。";
+    return "先召回代表基金加入观察池，等新闻催化兑现、主力流入延续、基金走势转强后再进入试探。";
   }
   if (theme.positionSignal === "low_position_rotation" || theme.stage === "low_position_rotation") {
     return "从代表基金里筛低位启动前夜，补齐前十大持仓和费用后再小仓。";
@@ -34871,6 +35142,7 @@ export {
   buildMarketDataQuality,
   buildThemeRadar,
   buildThemeLeaderboards,
+  buildThemeMainForcePlaybook,
   buildPullbackQualityFallbackAnswer,
   buildFundWorkflowWatchlistSummary,
   classifyMessageIntent,
