@@ -1318,7 +1318,10 @@ function refreshPortfolioCandidateThemesWithMarketRadar(candidate = {}, marketSn
     : Array.isArray(marketSnapshot)
       ? marketSnapshot
       : [];
-  if (!themeRadar.length || !candidate || typeof candidate !== "object") return candidate;
+  if (!candidate || typeof candidate !== "object") return candidate;
+  const playbook = getMarketThemeMainForcePlaybook(marketSnapshot, themeRadar);
+  const attachPlaybookRisk = (value = {}) => attachThemeMainForcePlaybookRisk(value, marketSnapshot, { playbook });
+  if (!themeRadar.length) return attachPlaybookRisk(candidate);
   const refreshedAt = marketSnapshot?.fetchedAt || new Date().toISOString();
   const attachHoldingThemeRefresh = (value = {}) => {
     const holdingThemeRefresh = buildPortfolioHoldingThemeRefresh(value, themeRadar, { refreshedAt });
@@ -1340,7 +1343,7 @@ function refreshPortfolioCandidateThemesWithMarketRadar(candidate = {}, marketSn
     const previousThemes = getCandidateThemeSignals(candidate);
     if (!previousThemes.length) {
       const refreshed = attachHoldingThemeRefresh(candidate);
-      return refreshed === candidate ? candidate : refreshed;
+      return attachPlaybookRisk(refreshed === candidate ? candidate : refreshed);
     }
     const downgradedThemes = previousThemes.map(markUnrefreshedMarketThemeSignal);
     const refreshed = {
@@ -1359,7 +1362,7 @@ function refreshPortfolioCandidateThemesWithMarketRadar(candidate = {}, marketSn
         matchedThemes: downgradedThemes
       };
     }
-    return attachHoldingThemeRefresh(refreshed);
+    return attachPlaybookRisk(attachHoldingThemeRefresh(refreshed));
   }
   const refreshed = {
     ...candidate,
@@ -1372,7 +1375,7 @@ function refreshPortfolioCandidateThemesWithMarketRadar(candidate = {}, marketSn
       matchedThemes
     };
   }
-  return attachHoldingThemeRefresh(refreshed);
+  return attachPlaybookRisk(attachHoldingThemeRefresh(refreshed));
 }
 
 function buildPortfolioMarketThemeRefresh(matchedThemes = [], options = {}) {
@@ -5261,6 +5264,7 @@ function hasPortfolioStarterBuySetup(profile = {}) {
 function hasPortfolioThemeMicroStarterSetup(profile = {}) {
   const trend = profile?.trendProfile || {};
   if (!trend.ok || hasVerifiedPortfolioBuySetup(profile) || hasPortfolioStarterBuySetup(profile)) return false;
+  if (getPortfolioActionableThemeSupportGap(profile)) return false;
   if (!hasActionabilityMicroStarterSupport(profile, trend)) return false;
   if (!hasVerifiedThemeCarrierEvidence(profile)) return false;
   if (!isPullbackTrendFreshEnough(profile)) return false;
@@ -6067,6 +6071,8 @@ function getPortfolioActionableThemeSupportGap(candidate = {}) {
   if (textualCatchdownWarnings.length) return textualCatchdownWarnings[0];
   const directHoldingThemeRetreatWarning = getDirectPortfolioHoldingThemeRetreatWarnings(candidate)[0];
   if (directHoldingThemeRetreatWarning) return directHoldingThemeRetreatWarning;
+  const playbookRiskWarnings = getThemeMainForcePlaybookRiskWarnings(candidate);
+  if (playbookRiskWarnings.length) return playbookRiskWarnings[0];
   const catchdownWarnings = getStaleThemeCatchdownWarnings(candidate);
   if (catchdownWarnings.length) return catchdownWarnings[0];
   const unconfirmedWarnings = getUnrefreshedMarketThemeWarnings(candidate);
@@ -22569,6 +22575,7 @@ function hasStaleThemeCatchdownEvidence(candidate = {}) {
     hasStaleThemeCatchdownRisk(candidate)
     || hasThemeRetreatRisk(candidate)
     || hasHoldingRealtimeCatchdownRisk(candidate)
+    || getThemeMainForcePlaybookRiskWarnings(candidate).length
     || getUnrefreshedMarketThemeWarnings(candidate).length
     || getPortfolioActionableThemeSupportGap(candidate)
   ) return true;
@@ -24649,6 +24656,238 @@ function collectThemeMainForcePlaybookOpportunityItems(marketSnapshot = null) {
     })));
 }
 
+function getMarketThemeMainForcePlaybook(marketSnapshot = null, themeRadar = []) {
+  if (marketSnapshot?.themeMainForcePlaybook) return marketSnapshot.themeMainForcePlaybook;
+  const radar = Array.isArray(themeRadar)
+    ? themeRadar
+    : Array.isArray(marketSnapshot?.themeRadar)
+      ? marketSnapshot.themeRadar
+      : [];
+  if (!radar.length && !marketSnapshot?.themeLeaderboards) return null;
+  return buildThemeMainForcePlaybook(radar, marketSnapshot?.themeLeaderboards || null);
+}
+
+function collectThemeMainForcePlaybookRiskItems(playbook = null) {
+  return (playbook?.lanes || [])
+    .filter((lane) => ["avoid_catchdown", "avoid_chase"].includes(lane.id))
+    .flatMap((lane) => (lane.items || []).map((item) => ({
+      ...item,
+      laneId: lane.id,
+      laneTitle: lane.title || item.laneTitle || "",
+      laneAction: lane.action || item.action || ""
+    })));
+}
+
+function attachThemeMainForcePlaybookRisk(candidate = {}, marketSnapshot = null, options = {}) {
+  if (!candidate || typeof candidate !== "object") return candidate;
+  const playbook = options.playbook || getMarketThemeMainForcePlaybook(marketSnapshot);
+  const matches = matchCandidateThemeMainForceRiskItems(candidate, playbook);
+  const warnings = mergeStringLists(
+    getThemeMainForcePlaybookRiskWarnings(candidate),
+    matches.map(formatThemeMainForcePlaybookRiskWarning)
+  ).slice(0, 3);
+  if (!warnings.length) return candidate;
+  const compactMatches = matches.map(compactThemeMainForcePlaybookRiskMatch).filter(Boolean).slice(0, 3);
+  const marketThemeRefresh = {
+    ...(candidate.marketThemeRefresh && typeof candidate.marketThemeRefresh === "object" ? candidate.marketThemeRefresh : {}),
+    source: candidate.marketThemeRefresh?.source || "theme_main_force_playbook_risk",
+    refreshedAt: candidate.marketThemeRefresh?.refreshedAt || marketSnapshot?.fetchedAt || new Date().toISOString(),
+    playbookRiskWarnings: warnings,
+    playbookRiskMatches: compactMatches
+  };
+  const next = {
+    ...candidate,
+    playbookRiskWarnings: warnings,
+    playbookRiskMatches: compactMatches,
+    marketThemeRefresh
+  };
+  if (candidate.seed && typeof candidate.seed === "object") {
+    next.seed = {
+      ...candidate.seed,
+      playbookRiskWarnings: warnings,
+      playbookRiskMatches: compactMatches,
+      marketThemeRefresh: {
+        ...(candidate.seed.marketThemeRefresh && typeof candidate.seed.marketThemeRefresh === "object" ? candidate.seed.marketThemeRefresh : {}),
+        playbookRiskWarnings: warnings,
+        playbookRiskMatches: compactMatches
+      }
+    };
+  }
+  return next;
+}
+
+function matchCandidateThemeMainForceRiskItems(candidate = {}, playbook = null) {
+  if (!candidate || typeof candidate !== "object") return [];
+  const riskItems = collectThemeMainForcePlaybookRiskItems(playbook);
+  if (!riskItems.length) return [];
+  const candidateText = buildCandidateThemeMatchText(candidate);
+  const normalizedCandidateText = normalizeIntentText(candidateText);
+  const candidateTerms = collectCandidatePlaybookRiskTerms(candidate, candidateText);
+  const holdings = collectCandidateHoldings(candidate, "equity");
+  const matches = [];
+  const seen = new Set();
+
+  for (const item of riskItems) {
+    const anchors = collectThemeMainForcePlaybookRiskAnchors(item);
+    const terms = collectThemeMainForcePlaybookRiskTerms(item);
+    const holdingMatches = holdings
+      .filter((holding) => holdingMatchesThemeAnchors(holding, anchors))
+      .map((holding) => holding.name || holding.code || holding.text)
+      .filter(Boolean)
+      .slice(0, 4);
+    const directMatches = terms
+      .filter((term) => {
+        const value = normalizeIntentText(term);
+        return value.length >= 2 && normalizedCandidateText.includes(value);
+      })
+      .slice(0, 4);
+    const relatedMatches = terms
+      .filter((term) => candidateTerms.some((candidateTerm) => areThemeTermsRelated(candidateTerm, term)))
+      .slice(0, 4);
+    const matchedTerms = mergeStringLists(holdingMatches, directMatches, relatedMatches).slice(0, 5);
+    if (!matchedTerms.length) continue;
+    const key = `${item.laneId}|${item.id || item.name}|${matchedTerms.join("/")}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    matches.push({
+      item,
+      laneId: item.laneId,
+      laneTitle: item.laneTitle,
+      holdingMatches,
+      directMatches,
+      relatedMatches,
+      matchedTerms
+    });
+  }
+  return matches.slice(0, 4);
+}
+
+function collectThemeMainForcePlaybookRiskAnchors(item = {}) {
+  return mergeStringLists(
+    normalizeStringArray(item.carrierAnchors),
+    normalizeStringArray(item.carrierSearchKeywords),
+    item.name,
+    item.id
+  )
+    .flatMap((value) => String(value || "").split(/[，,、/；;+\s]+/))
+    .map((value) => value.trim())
+    .filter(isThemeMainForcePlaybookRiskTermUseful)
+    .slice(0, 24);
+}
+
+function collectThemeMainForcePlaybookRiskTerms(item = {}) {
+  return mergeStringLists(
+    item.name,
+    item.id,
+    normalizeStringArray(item.carrierSearchKeywords),
+    normalizeStringArray(item.carrierAnchors)
+  )
+    .flatMap((value) => String(value || "").split(/[，,、/；;+\s]+/))
+    .map((value) => value.trim())
+    .filter(isThemeMainForcePlaybookRiskTermUseful)
+    .slice(0, 24);
+}
+
+function collectCandidatePlaybookRiskTerms(candidate = {}, candidateText = "") {
+  const holdings = collectCandidateHoldings(candidate, "equity");
+  const rawTerms = mergeStringLists(
+    candidate.name,
+    candidate.type,
+    candidate.category,
+    candidate.focusTheme,
+    candidate.themeName,
+    candidate.sector,
+    candidate.industry,
+    candidate.seed?.name,
+    candidate.seed?.type,
+    candidate.seed?.category,
+    candidate.seed?.focusTheme,
+    candidate.seed?.themeName,
+    candidate.seed?.sector,
+    candidate.seed?.industry,
+    normalizeStringArray(candidate.keywords),
+    normalizeStringArray(candidate.themeKeywords),
+    normalizeStringArray(candidate.fundKeywords),
+    normalizeStringArray(candidate.seed?.keywords),
+    normalizeStringArray(candidate.seed?.themeKeywords),
+    normalizeStringArray(candidate.seed?.fundKeywords),
+    getPortfolioThemeSupportRequirement(candidate),
+    inferHoldingThemeTags(candidateText),
+    holdings.flatMap((holding) => [
+      holding.name,
+      holding.code,
+      inferHoldingThemeTags(`${holding.code || ""} ${holding.name || ""} ${holding.text || ""}`)
+    ])
+  );
+  return rawTerms
+    .flatMap((value) => String(value || "").split(/[，,、/；;+\s]+/))
+    .map((value) => value.trim())
+    .filter(isCandidateThemeMainForceRiskTermUseful)
+    .slice(0, 36);
+}
+
+function isThemeMainForcePlaybookRiskTermUseful(value = "") {
+  const text = String(value || "").trim();
+  if (text.length < 2 || text.length > 24) return false;
+  if (/^(基金|代表基金|主题|板块|概念|行业|方向|逻辑|催化|新闻|预热|主力|资金|低位|轮动|回调|风险|回避|机会|测试|当前|相关题材)$/.test(text)) return false;
+  if (/^(news|dynamic|theme|main|preheat|low|capital)[_-]/i.test(text)) return false;
+  if (/^\d+(?:\.\d+)?%?$/.test(text)) return false;
+  return true;
+}
+
+function isCandidateThemeMainForceRiskTermUseful(value = "") {
+  if (!isThemeMainForcePlaybookRiskTermUseful(value)) return false;
+  const text = String(value || "").trim();
+  if (/^(科技|成长|创新|优选|精选|策略|量化|股票|混合|指数|联接|ETF|QDII)$/i.test(text)) return false;
+  if (/科技/.test(text) && !/(人工智能|\bAI\b|算力|CPO|光模块|通信|云计算|信创|数字经济|大数据|软件|互联网|网络安全|半导体|芯片)/i.test(text)) return false;
+  return isSpecificThemeTerm(text)
+    || inferHoldingThemeTags(text).length > 0
+    || Boolean(getPortfolioSectorThemeLabel(text));
+}
+
+function getThemeMainForcePlaybookRiskWarnings(candidate = {}) {
+  if (!candidate || typeof candidate !== "object") return [];
+  return mergeStringLists(
+    normalizeStringArray(candidate.playbookRiskWarnings),
+    normalizeStringArray(candidate.seed?.playbookRiskWarnings),
+    normalizeStringArray(candidate.marketThemeRefresh?.playbookRiskWarnings),
+    normalizeStringArray(candidate.seed?.marketThemeRefresh?.playbookRiskWarnings)
+  ).slice(0, 3);
+}
+
+function formatThemeMainForcePlaybookRiskWarning(match = {}) {
+  const item = match.item || {};
+  const name = item.name || item.id || "相关题材";
+  const laneTitle = item.laneTitle || match.laneTitle || (match.laneId === "avoid_chase" ? "追涨风险回避" : "退潮接盘回避");
+  const proof = item.capitalProof || normalizeStringArray(item.evidence)[0] || "";
+  const logic = item.whyMove || item.newsLogic || item.catalyst || "";
+  const matched = normalizeStringArray(match.matchedTerms).slice(0, 4).join("/");
+  const boundary = match.laneId === "avoid_chase"
+    ? "不能把上涨热度当今天的买点，等降温和健康回踩后再复核。"
+    : "回调先按接盘风险处理，等主力资金回流和新鲜催化重新出现后再复核。";
+  return [
+    `作战图风险：${name}已进入${laneTitle}`,
+    proof ? `主力证据=${shortenPortfolioCustomerText(proof, 56)}` : "",
+    matched ? `命中承载锚点=${matched}` : "",
+    logic ? `逻辑=${shortenPortfolioCustomerText(logic, 72)}` : "",
+    boundary
+  ].filter(Boolean).join("；");
+}
+
+function compactThemeMainForcePlaybookRiskMatch(match = {}) {
+  const item = match.item || {};
+  if (!item.name && !item.id) return null;
+  return {
+    laneId: match.laneId || "",
+    laneTitle: item.laneTitle || match.laneTitle || "",
+    name: item.name || item.id || "",
+    capitalProof: item.capitalProof || "",
+    matchedTerms: normalizeStringArray(match.matchedTerms).slice(0, 5),
+    nextStep: item.nextStep || "",
+    invalidation: item.invalidation || ""
+  };
+}
+
 async function fetchMarketFastNews() {
   const [eastmoney, sina, cls] = await Promise.all([
     fetchEastmoneyFastNews().catch((error) => ({ ok: false, label: "东方财富7x24快讯", error: error.message, items: [] })),
@@ -26624,6 +26863,7 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
   if (/低位启动前夜候选/.test(text)) score += 16;
   if (/theme_leaderboard_carrier_seed|题材榜单代表基金/.test(seedContextText)) score += 14;
   if (item.themeOpportunityRequirement === "require_current_theme_playbook") score += 8;
+  if (getThemeMainForcePlaybookRiskWarnings(item).length) score -= 80;
 
   if (Number.isFinite(oneWeek)) {
     if (oneWeek >= 0.3 && oneWeek <= 5) score += 18;
@@ -26705,6 +26945,7 @@ function shouldSuppressPreciousMetalCandidate(userText = "", candidate = {}) {
 function scoreDeepDiveCandidate(item, themeRadar = []) {
   const text = `${item.name || ""} ${item.type || ""}`;
   let score = 0;
+  if (getThemeMainForcePlaybookRiskWarnings(item).length) score -= 60;
   if (/ETF|联接|指数/.test(text)) score += 6;
   if (/C$|C类/.test(text)) score += 2;
   if (/A$|A类/.test(text)) score += 1;
@@ -26895,6 +27136,10 @@ function normalizeCandidateFundName(name) {
 async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
   if (!marketSnapshot) return null;
   const relevantThemeRadar = selectRelevantThemeRadar(userText, marketSnapshot);
+  const scopedMarketSnapshot = {
+    ...marketSnapshot,
+    themeRadar: relevantThemeRadar
+  };
   const precious = isPreciousMetalQuestion(userText);
   const preferPullbackSetup = isPullbackSetupRequest(userText);
   const requireThemeOpportunityBacking = shouldRequireThemeOpportunityBackingForQuestion(userText, relevantThemeRadar, {
@@ -26927,11 +27172,10 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
     : snapshotCandidates;
   const merged = mergeCandidateFunds(focusedCandidates, pullbackSetupCandidates, scopedSnapshotCandidates)
     .filter((item) => !shouldSuppressPreciousMetalCandidate(userText, item))
-    .map((item) => ({
+    .map((item) => refreshPortfolioCandidateThemesWithMarketRadar({
       ...item,
-      matchedThemes: matchCandidateThemes(item, relevantThemeRadar),
       themeOpportunityRequirement
-    }))
+    }, scopedMarketSnapshot))
     .sort((a, b) => {
       if (preferPullbackSetup) {
         return scorePullbackSetupSeedCandidate(b, relevantThemeRadar, userText) - scorePullbackSetupSeedCandidate(a, relevantThemeRadar, userText);
@@ -26952,7 +27196,8 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
   }
 
   let selectedForDive = selected;
-  const candidates = await fetchMarketResearchDigests(selected);
+  const candidates = (await fetchMarketResearchDigests(selected))
+    .map((digest) => refreshPortfolioCandidateThemesWithMarketRadar(digest, scopedMarketSnapshot));
   const backfillLimit = Math.max(0, Number(process.env.PULLBACK_SETUP_BACKFILL_DIVE_LIMIT || 8));
   const backfillRounds = Math.max(1, Number(process.env.PULLBACK_SETUP_BACKFILL_ROUNDS || 3));
   let backfillSelected = [];
@@ -26964,7 +27209,8 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
     if (!nextBackfill.length) break;
     backfillSelected = [...backfillSelected, ...nextBackfill];
     selectedForDive = [...selectedForDive, ...nextBackfill];
-    candidates.push(...await fetchMarketResearchDigests(nextBackfill));
+    candidates.push(...(await fetchMarketResearchDigests(nextBackfill))
+      .map((digest) => refreshPortfolioCandidateThemesWithMarketRadar(digest, scopedMarketSnapshot)));
   }
   const chartBackfillTarget = getFundReportChartBackfillTarget({ userText, options, preferPullbackSetup, precious });
   const chartBackfillLimit = Math.max(0, Number(process.env.FUND_REPORT_CHART_BACKFILL_DIVE_LIMIT || DEFAULT_FUND_REPORT_CHART_BACKFILL_DIVE_LIMIT));
@@ -26981,7 +27227,8 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
     if (!nextChartBackfill.length) break;
     chartBackfillSelected = [...chartBackfillSelected, ...nextChartBackfill];
     selectedForDive = [...selectedForDive, ...nextChartBackfill];
-    candidates.push(...await fetchMarketResearchDigests(nextChartBackfill));
+    candidates.push(...(await fetchMarketResearchDigests(nextChartBackfill))
+      .map((digest) => refreshPortfolioCandidateThemesWithMarketRadar(digest, scopedMarketSnapshot)));
   }
   const orderedCandidates = preferPullbackSetup
     ? [...candidates].sort((a, b) => scoreResearchDigestForPullbackSetup(b) - scoreResearchDigestForPullbackSetup(a))
@@ -27182,6 +27429,8 @@ function scoreResearchDigestForPullbackSetup(digest = {}) {
   } else if (requiresPullbackThemeOpportunityBacking(digest) && hasPullbackThemeOpportunityBacking(digest)) {
     score += 16;
   }
+  const playbookRiskWarnings = getThemeMainForcePlaybookRiskWarnings(digest);
+  if (playbookRiskWarnings.length) score -= 70;
   const actionableThemeSupportGap = getPortfolioActionableThemeSupportGap(digest);
   if (hasHoldingRealtimeCatchdownRisk(digest)) score -= 34;
   if (Number.isFinite(seedThisYear)) {
@@ -29764,6 +30013,7 @@ function buildFundActionabilitySignals(digest) {
 function hasActionabilityMicroStarterSupport(digest = {}, trend = {}) {
   if (!digest || !trend || typeof trend !== "object") return false;
   if (hasThemeRetreatRisk(digest) || hasStaleThemeCatchdownRisk(digest)) return false;
+  if (getThemeMainForcePlaybookRiskWarnings(digest).length) return false;
   if (getTextualCatchdownWarnings(digest).length) return false;
   if (getUnrefreshedMarketThemeWarnings(digest).length) return false;
   if (trend.entryBias === "avoid_now" || trend.trendLabel === "breakdown" || trend.trendLabel === "extended_uptrend") return false;
@@ -35304,17 +35554,20 @@ export {
   getFundReportChartLimit,
   getFundReportChartMinCount,
   getPortfolioTrendImageLimit,
+  getThemeMainForcePlaybookRiskWarnings,
   getFundAnalysisSkillIds,
   getFundQaSkillIds,
   getFundRecommendationSkillIds,
   getDeploymentFreshness,
   getPortfolioDecisionSkillIds,
   getPortfolioDiagnosticOrders,
+  getPortfolioActionableThemeSupportGap,
   getPortfolioPremarketSkillIds,
   getPortfolioReviewSkillIds,
   getPortfolioWeeklySkillIds,
   getRuntimeRelease,
   guardPortfolioWatchlistReadyUpdate,
+  classifyPullbackSetupCandidateForSummary,
   cancelPortfolioActiveOrder,
   cancelDuplicatePortfolioActiveOrders,
   cancelStalePortfolioActiveOrders,
@@ -35335,6 +35588,7 @@ export {
   ensurePortfolioStarterBuyFollowUpReviewed,
   mergeFundWorkflowWatchlistIntoDeepDive,
   mergeChinaRealtimeIndexQuotes,
+  matchCandidateThemeMainForceRiskItems,
   matchCandidateThemes,
   inferPortfolioBlockedFollowThroughSearchKeywords,
   inferPortfolioThemeOpportunitySearchKeywords,

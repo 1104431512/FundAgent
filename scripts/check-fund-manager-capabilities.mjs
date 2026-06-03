@@ -7461,6 +7461,70 @@ const playbookAvoidLane = mainForcePlaybook.lanes.find((lane) => lane.id === "av
 assert(playbookFollowLane?.items.some((item) => item.name === "AI/算力" && item.whyMove.includes("为什么动") && item.carrierRule.includes("前十大持仓")), "main-force playbook must turn main-capital leaderboards into executable carrier-fund review cards");
 assert(playbookPreheatLane?.items.some((item) => /政策预热测试|数据要素/.test(item.name) && item.nextStep.includes("代表基金")), "main-force playbook must tell the manager to recall representative funds for preheated themes");
 assert(playbookAvoidLane?.items.some((item) => item.name === "AI/算力" && /净流出|回避|资金/.test(`${item.capitalProof} ${item.nextStep}`)), "main-force playbook must keep retreat themes in a no-buy battle lane");
+const playbookRiskOnlyDigest = manager.refreshPortfolioCandidateThemesWithMarketRadar({
+  ...newsBackedRequiredSetupDigest,
+  code: "000058",
+  name: "宽泛低位修复基金C",
+  unitNav: 1.234,
+  trendProfile: { ...newsBackedRequiredSetupDigest.trendProfile, ok: true },
+  matchedThemes: [],
+  seed: { themeOpportunityRequirement: "require_current_theme_playbook" },
+  holdings: {
+    ok: true,
+    equityDisclosureDate: "2099-03-31",
+    equityTopHoldings: [
+      "300502 新易盛 6.2%",
+      "300308 中际旭创 5.1%",
+      "002384 东山精密 3.4%"
+    ]
+  }
+}, {
+  fetchedAt: freshThemeRefreshAt,
+  themeRadar: [],
+  themeMainForcePlaybook: mainForcePlaybook
+});
+assert(
+  manager.getThemeMainForcePlaybookRiskWarnings(playbookRiskOnlyDigest).some((item) => item.includes("作战图风险") && item.includes("接盘")),
+  "main-force playbook risk lanes must attach no-buy warnings even when the candidate has no old matchedThemes"
+);
+assert(
+  manager.getPortfolioActionableThemeSupportGap(playbookRiskOnlyDigest).includes("作战图风险"),
+  "theme support gap must use playbook risk warnings before treating a pure NAV pullback as buyable"
+);
+assert.equal(
+  manager.classifyPullbackSetupCandidateForSummary(playbookRiskOnlyDigest, { requireThemeOpportunityBacking: true }),
+  "watch_or_reject",
+  "pullback setup classification must reject candidates whose top holdings hit playbook catchdown risk lanes"
+);
+assert(
+  manager.scoreResearchDigestForPullbackSetup(newsBackedRequiredSetupDigest) >
+    manager.scoreResearchDigestForPullbackSetup(playbookRiskOnlyDigest) + 45,
+  "pullback scoring must demote playbook catchdown-risk carriers far below fresh main-capital setups"
+);
+const playbookRiskActionability = manager.buildFundActionabilitySignals(playbookRiskOnlyDigest);
+assert(["wait", "avoid"].includes(playbookRiskActionability.action), "actionability must not allow staged-buy for playbook catchdown-risk carriers");
+assert(
+  playbookRiskActionability.decisionBlocker.some((item) => item.includes("作战图风险")),
+  "actionability blocker must explain playbook catchdown risk in customer-readable Chinese"
+);
+const playbookRiskBuyGuard = manager.evaluatePortfolioBuyDiscipline(
+  { action: "BUY", code: "000058", name: "宽泛低位修复基金C", targetWeightPct: 1 },
+  playbookRiskOnlyDigest,
+  []
+);
+assert.equal(playbookRiskBuyGuard.ok, false, "portfolio buy discipline must block candidates matched only by playbook risk lanes");
+assert(playbookRiskBuyGuard.reason.includes("作战图风险"), "playbook-risk BUY blocks must mention the main-force playbook risk");
+const playbookRiskReadiness = manager.evaluatePortfolioWatchReadiness({
+  code: "000058",
+  name: "宽泛低位修复基金C",
+  status: "ready",
+  readinessScore: 88,
+  lastSnapshot: playbookRiskOnlyDigest
+}, playbookRiskOnlyDigest);
+assert(
+  playbookRiskReadiness.score <= 46 && playbookRiskReadiness.gaps.some((item) => item.includes("作战图风险")),
+  "watchlist readiness must cap playbook catchdown-risk carriers and show the playbook risk as a first-screen gap"
+);
 const compactPlaybookSnapshot = manager.compactMarketSnapshotForModel({
   fetchedAt: freshThemeRefreshAt,
   marketIndicators: {},

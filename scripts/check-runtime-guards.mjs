@@ -2097,7 +2097,7 @@ const requiredPatterns = [
     message: "current market radar refresh must downgrade old theme labels that are not confirmed today."
   },
   {
-    pattern: /function refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,1800}buildPortfolioMarketThemeRefresh\(matchedThemes[\s\S]{0,2600}function buildPortfolioMarketThemeRefresh[\s\S]{0,900}supportSignals[\s\S]{0,900}newsLogic[\s\S]{0,900}dataBasis/,
+    pattern: /function refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,2600}buildPortfolioMarketThemeRefresh\(matchedThemes[\s\S]{0,2600}function buildPortfolioMarketThemeRefresh[\s\S]{0,900}supportSignals[\s\S]{0,900}newsLogic[\s\S]{0,900}dataBasis/,
     message: "candidate market-theme refresh must preserve why-move, support-signal, and data-basis evidence, not just matched theme names."
   },
   {
@@ -3113,7 +3113,7 @@ const requiredPatterns = [
     message: "deep-dive scoring must also reject untraceable main-capital/preheat heat before model analysis."
   },
   {
-    pattern: /function fetchMarketDeepDive[\s\S]{0,1800}\.filter\(\(item\)\s*=>\s*!shouldSuppressPreciousMetalCandidate\(userText,\s*item\)\)/,
+    pattern: /function fetchMarketDeepDive[\s\S]{0,2600}\.filter\(\(item\)\s*=>\s*!shouldSuppressPreciousMetalCandidate\(userText,\s*item\)\)/,
     message: "generic recommendation deep dives must not let gold candidates crowd out other sectors."
   },
   {
@@ -3231,6 +3231,22 @@ const requiredPatterns = [
   {
     pattern: /scoreResearchDigestForPullbackSetup[\s\S]{0,2200}getPortfolioActionableThemeSupportGap\(digest\)[\s\S]{0,900}score -= 54/,
     message: "pullback/setup deep-dive ranking must demote unsupported holding-derived theme exposure before recommendation ordering."
+  },
+  {
+    pattern: /function refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,900}attachThemeMainForcePlaybookRisk/,
+    message: "candidate theme refresh must attach main-force playbook risk lanes even when normal theme radar matching is absent."
+  },
+  {
+    pattern: /function getPortfolioActionableThemeSupportGap[\s\S]{0,700}getThemeMainForcePlaybookRiskWarnings/,
+    message: "theme support gaps must surface main-force playbook catchdown/chase risks before buy wording."
+  },
+  {
+    pattern: /function fetchMarketDeepDive[\s\S]{0,5200}fetchMarketResearchDigests\(selected\)[\s\S]{0,260}refreshPortfolioCandidateThemesWithMarketRadar\(digest,\s*scopedMarketSnapshot\)/,
+    message: "market deep-dive research digests must be refreshed against the main-force playbook after top-ten holdings are fetched."
+  },
+  {
+    pattern: /scoreResearchDigestForPullbackSetup[\s\S]{0,2200}getThemeMainForcePlaybookRiskWarnings\(digest\)[\s\S]{0,140}score -= 70/,
+    message: "pullback/setup scoring must heavily demote candidates whose names or holdings hit playbook catchdown/chase risk lanes."
   },
   {
     pattern: /buildFundActionabilitySignals[\s\S]{0,1400}buildHoldingsOutlookProfile/,
