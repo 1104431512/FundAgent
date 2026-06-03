@@ -1607,6 +1607,10 @@ assert(
   "generic result fallback must actually rank the higher-Sharpe candidate first when the user asks for high-Sharpe priority"
 );
 assert(
+  /1\.\s*首选\s+000082/.test(genericFallbackResultLine) && /[；\n]\s*2\.\s*备选\s+\d{6}/.test(genericFallbackResultLine),
+  "generic result fallback must label the first buyable ranked fund as the first choice and later funds as backups"
+);
+assert(
   !/结果榜：.*(?:夏普\s*\d|回撤-?\d|近20日|近60日)/.test(genericFallbackResultLine),
   "generic result fallback result board must explain in plain language instead of dumping metrics"
 );
@@ -1673,6 +1677,10 @@ assert(
 assert(
   /000091[^；\n]+先0元复核/.test(highSharpeBlockedResultLine),
   "deterministic high-Sharpe fallback must label stale-theme blockers as zero-yuan review even when their Sharpe is high"
+);
+assert(
+  /只观察\s+000091/.test(highSharpeBlockedResultLine),
+  "deterministic high-Sharpe fallback must mark stale-theme high-Sharpe funds as observation-only, not backups to buy"
 );
 const genericEnforcedLeaderboard = await manager.enforceFundAnswerQuality({
   text: genericMissingResultDraft,
@@ -8728,6 +8736,51 @@ assert(
 assert(
   missingRadarPlaybookKeywords.some((item) => /万丰奥威|中信海直/.test(item)),
   "pullback candidate recall must use playbook carrier anchors to find representative funds when themeRadar is missing"
+);
+const missingRadarPlaybookContext = manager.buildPullbackSetupPlaybookKeywordContextMap("我想找回调完成准备启动的基金", {
+  fetchedAt: freshThemeRefreshAt,
+  themeRadar: [],
+  themeLeaderboards: manager.buildThemeLeaderboards([]),
+  themeMainForcePlaybook: lowAltitudePlaybook
+});
+const plainPlaybookKeywordSeed = {
+  code: "000060",
+  name: "低空经济代表基金C",
+  oneWeekPct: 1.2,
+  oneMonthPct: 2.6,
+  threeMonthPct: -6,
+  sixMonthPct: -12,
+  shareClass: "C",
+  keywords: ["回调启动候选"],
+  setupDiscoverySource: "keyword_search"
+};
+const enrichedPlaybookKeywordSeed = manager.enrichPullbackSetupKeywordCandidateWithPlaybookContext(
+  plainPlaybookKeywordSeed,
+  "万丰奥威",
+  missingRadarPlaybookContext
+);
+assert.equal(
+  enrichedPlaybookKeywordSeed.themeOpportunityRequirement,
+  "require_current_theme_playbook",
+  "playbook keyword search seeds must keep the current-theme requirement for downstream buy discipline"
+);
+assert(
+  /theme_main_force_playbook_keyword_search/.test(enrichedPlaybookKeywordSeed.setupDiscoverySource || "")
+    && enrichedPlaybookKeywordSeed.matchedThemes?.some((theme) => /低空经济|飞行汽车/.test(`${theme.name || ""} ${(theme.themeKeywords || []).join(" ")}`)),
+  "playbook keyword search seeds must carry matched theme context instead of remaining plain NAV-curve candidates"
+);
+assert(
+  manager.scorePullbackSetupSeedCandidate(enrichedPlaybookKeywordSeed, {
+    fetchedAt: freshThemeRefreshAt,
+    themeRadar: [],
+    themeMainForcePlaybook: lowAltitudePlaybook
+  }, "我想找回调完成准备启动的基金") >
+    manager.scorePullbackSetupSeedCandidate(plainPlaybookKeywordSeed, {
+      fetchedAt: freshThemeRefreshAt,
+      themeRadar: [],
+      themeMainForcePlaybook: lowAltitudePlaybook
+    }, "我想找回调完成准备启动的基金") + 12,
+  "pullback seed scoring must prefer keyword candidates recovered from a current main-force playbook"
 );
 assert(adminSource.includes("renderPortfolioThemeLeaderboards") && adminSource.includes("getPortfolioLatestThemeLeaderboards"), "admin sector board must render latest market theme leaderboards instead of hiding them in raw run JSON");
 assert(adminStyleSource.includes(".theme-leaderboard-board") && adminStyleSource.includes(".theme-leaderboard-lane-sell"), "admin styles must provide compact visible lanes for theme leaderboards and retreat risks");

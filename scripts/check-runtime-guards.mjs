@@ -753,6 +753,10 @@ const requiredPatterns = [
     message: "high-Sharpe or low-drawdown ranking must not put stale-theme no-buy blockers ahead of buyable current-theme candidates."
   },
   {
+    pattern: /function formatFundAnswerLeaderboardCandidate[\s\S]{0,420}buildFundAnswerLeaderboardRole(?=[\s\S]{0,520}首选)(?=[\s\S]{0,520}备选)(?=[\s\S]{0,520}只观察)/,
+    message: "fund result leaderboards must label ranked funds as first choice, backup, or observation-only instead of dumping plain metrics."
+  },
+  {
     pattern: /function hasFundAnswerResultFirstRankingSummary[\s\S]{0,800}直接结论[\s\S]{0,500}结果榜/,
     message: "fund answer quality must recognize direct-conclusion plus result-board openings."
   },
@@ -1633,12 +1637,20 @@ const requiredPatterns = [
     message: "pullback/setup discovery must use theme playbook opportunity keywords and carrier anchors when recalling candidates."
   },
   {
-    pattern: /function inferPullbackSetupPlaybookSearchKeywords[\s\S]{0,420}buildPortfolioThemeOpportunityKeywordGroups[\s\S]{0,820}group\.anchors/,
+    pattern: /function inferPullbackSetupPlaybookSearchKeywords[\s\S]{0,420}buildPullbackSetupPlaybookKeywordGroups[\s\S]{0,1500}group\.anchors/,
     message: "pullback/setup playbook keyword recovery must include carrier anchors, not only broad theme names."
   },
   {
     pattern: /async function fetchPullbackSetupCandidates[\s\S]{0,520}inferPullbackSetupCandidateSearchKeywords\(userText,\s*themeRadar,\s*marketSnapshot\)/,
     message: "pullback/setup candidate fetching must call the combined radar and playbook keyword entrypoint."
+  },
+  {
+    pattern: /(?=[\s\S]*async function fetchPullbackSetupCandidates[\s\S]{0,1400}buildPullbackSetupPlaybookKeywordContextMap[\s\S]{0,1400}enrichPullbackSetupKeywordCandidateWithPlaybookContext)(?=[\s\S]*function enrichPullbackSetupKeywordCandidateWithPlaybookContext[\s\S]{0,900}theme_main_force_playbook_keyword_search)/,
+    message: "pullback/setup keyword candidates recovered from the main-force playbook must keep current theme context for downstream scoring."
+  },
+  {
+    pattern: /function enrichPullbackSetupKeywordCandidateWithPlaybookContext[\s\S]{0,1300}themeOpportunityRequirement:\s*"require_current_theme_playbook"[\s\S]{0,900}matchedThemes[\s\S]{0,900}作战图关键词/,
+    message: "playbook keyword candidate enrichment must preserve matched themes, current-theme requirement, and customer-readable evidence."
   },
   {
     pattern: /searchKeywords:\s*preferPullbackSetup[\s\S]{0,180}inferPullbackSetupCandidateSearchKeywords\(userText,\s*relevantThemeRadar,\s*scopedMarketSnapshot\)/,
@@ -3349,7 +3361,7 @@ const requiredPatterns = [
     message: "generic pullback/setup discovery must suppress precious-metal search keywords unless explicitly requested."
   },
   {
-    pattern: /function fetchPullbackSetupCandidates[\s\S]{0,1600}\.filter\(\(item\)\s*=>\s*!shouldSuppressPreciousMetalCandidate\(userText,\s*item\)\)/,
+    pattern: /function fetchPullbackSetupCandidates[\s\S]{0,2600}\.filter\(\(item\)\s*=>\s*!shouldSuppressPreciousMetalCandidate\(userText,\s*item\)\)/,
     message: "generic pullback/setup discovery must not seed gold candidates unless the user asks for gold."
   },
   {

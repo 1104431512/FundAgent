@@ -3355,12 +3355,21 @@ function buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot = null) {
       extra: [item.name, item.whyMove, item.newsLogic, item.catalyst, ...(item.carrierSearchKeywords || [])]
     });
     return {
+      id: item.id || theme.id || "",
       laneKey: item.laneKey,
+      title: item.title || formatPortfolioThemeOpportunityLaneTitle(theme),
       name: item.name || theme.name || "",
       keywords,
       anchors: collectThemeOpportunityAnchorKeywords(theme, {
         extra: [item.name, ...(item.carrierAnchors || [])]
-      })
+      }),
+      whyMove: item.whyMove || item.newsLogic || theme.newsLogic || theme.primaryCatalyst || "",
+      newsLogic: item.newsLogic || theme.newsLogic || "",
+      catalyst: item.catalyst || theme.catalystProfile?.summary || theme.primaryCatalyst || "",
+      catalystFreshness: item.catalystFreshness || theme.catalystProfile?.freshnessLabel || "",
+      latestNewsTime: theme.catalystProfile?.latestNewsTime || "",
+      capitalProof: item.capitalProof || formatThemeMainForceCapitalProof(theme),
+      playbookAction: item.playbookAction || ""
     };
   }).filter((group) => group.keywords.length);
 }
@@ -23772,7 +23781,7 @@ function buildFundResultLeaderboardFallback({ text = "", workflow = "", userText
     ? "直接结论：按你的口径排完后，前三名也只进复核榜，暂不直接买。"
     : "直接结论：按你的口径直接排前三；第一名才有小仓验证资格，其余先做备选复核。";
   const resultLine = `结果榜：${ranked.map((item, index) =>
-    `${index + 1}. ${formatFundAnswerLeaderboardCandidate(item.candidate, { sortPolicy, userText })}`
+    `${index + 1}. ${formatFundAnswerLeaderboardCandidate(item.candidate, { sortPolicy, userText, rankIndex: index })}`
   ).join("；")}`;
   const executionLine = blockedCount === ranked.length
     ? "执行：1万元资金先买入0元；只把前三名加入复核，等买点和题材证据齐了再谈金额。"
@@ -23801,11 +23810,18 @@ function getFundAnswerFallbackBaseScore(candidate = {}) {
     ?? riskFallback;
 }
 
-function formatFundAnswerLeaderboardCandidate(candidate = {}, { sortPolicy = "", userText = "" } = {}) {
+function formatFundAnswerLeaderboardCandidate(candidate = {}, { sortPolicy = "", userText = "", rankIndex = 0 } = {}) {
   const label = getFundAnswerCandidateLabel(candidate);
   const blocked = isFundAnswerLeaderboardNoBuyCandidate(candidate);
   const reason = buildFundAnswerLeaderboardReason(candidate, { sortPolicy, userText, blocked });
-  return `${label}：${reason}${blocked ? "，先0元复核" : "，可小仓验证"}`;
+  const role = buildFundAnswerLeaderboardRole(candidate, { blocked, rankIndex });
+  return `${role} ${label}：${reason}${blocked ? "，先0元复核" : "，可小仓验证"}`;
+}
+
+function buildFundAnswerLeaderboardRole(candidate = {}, { blocked = false, rankIndex = 0 } = {}) {
+  if (blocked) return "只观察";
+  if (rankIndex === 0) return "首选";
+  return "备选";
 }
 
 function getFundAnswerCandidateLabel(candidate = {}) {
@@ -28213,18 +28229,91 @@ function inferPullbackSetupCandidateSearchKeywords(userText, themeRadar = [], ma
 }
 
 function inferPullbackSetupPlaybookSearchKeywords(userText = "", marketSnapshot = null) {
-  const focused = inferFocusedFundSearchKeywords(userText);
-  const normalizedUserText = normalizeIntentText(userText);
-  const groups = buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot)
-    .filter((group) => !focused.length || group.keywords.some((keyword) => {
-      const value = normalizeIntentText(keyword);
-      return value && (normalizedUserText.includes(value) || focused.some((item) => areThemeTermsRelated(item, keyword)));
-    }));
+  const groups = buildPullbackSetupPlaybookKeywordGroups(userText, marketSnapshot);
   return [...new Set(groups.flatMap((group) => [
     group.name,
     ...normalizeStringArray(group.keywords),
     ...normalizeStringArray(group.anchors)
   ]).filter(Boolean))].slice(0, 18);
+}
+
+function buildPullbackSetupPlaybookKeywordGroups(userText = "", marketSnapshot = null) {
+  const focused = inferFocusedFundSearchKeywords(userText);
+  const normalizedUserText = normalizeIntentText(userText);
+  return buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot)
+    .filter((group) => !focused.length || group.keywords.some((keyword) => {
+      const value = normalizeIntentText(keyword);
+      return value && (normalizedUserText.includes(value) || focused.some((item) => areThemeTermsRelated(item, keyword)));
+    }));
+}
+
+function buildPullbackSetupPlaybookKeywordContextMap(userText = "", marketSnapshot = null) {
+  const map = new Map();
+  for (const group of buildPullbackSetupPlaybookKeywordGroups(userText, marketSnapshot)) {
+    for (const value of [group.name, ...normalizeStringArray(group.keywords), ...normalizeStringArray(group.anchors)]) {
+      const key = normalizeIntentText(value);
+      if (key && !map.has(key)) map.set(key, group);
+    }
+  }
+  return map;
+}
+
+function enrichPullbackSetupKeywordCandidateWithPlaybookContext(item = {}, keyword = "", contextMap = new Map()) {
+  const group = contextMap.get(normalizeIntentText(keyword));
+  if (!group) return item;
+  const theme = buildMatchedThemeSignalFromPullbackPlaybookKeywordGroup(group);
+  const source = `theme_main_force_playbook_keyword_search:${group.laneKey || "theme"}`;
+  return {
+    ...item,
+    keywords: mergeStringLists(item.keywords, group.keywords, group.anchors, "题材榜单代表基金"),
+    matchedThemes: mergeCandidateMatchedThemes(item.matchedThemes, [theme]),
+    themeOpportunityRequirement: "require_current_theme_playbook",
+    candidateRole: item.candidateRole || `${group.name || "作战图机会"}代表基金候选`,
+    setupDiscoverySource: mergeStringLists(item.setupDiscoverySource, source).join("/"),
+    themeEvidence: item.themeEvidence || formatCandidateThemeEvidence({ matchedThemes: [theme] }),
+    dataBasis: mergeStringLists(item.dataBasis, [
+      `作战图关键词：${keyword}`,
+      group.name ? `题材线索：${group.name}` : "",
+      group.title ? `作战通道：${group.title}` : "",
+      group.whyMove ? `为什么动：${group.whyMove}` : "",
+      group.capitalProof ? `主力证据：${group.capitalProof}` : "",
+      normalizeStringArray(group.anchors).length ? `承载锚点：${normalizeStringArray(group.anchors).slice(0, 5).join("/")}` : ""
+    ]).slice(0, 8)
+  };
+}
+
+function buildMatchedThemeSignalFromPullbackPlaybookKeywordGroup(group = {}) {
+  const laneKey = group.laneKey || "";
+  const mainCapital = laneKey === "mainCapital" || laneKey === "follow_main_capital";
+  const preheat = laneKey === "preheat" || laneKey === "preheat_watch";
+  const lowRotation = laneKey === "lowRotation" || laneKey === "low_rotation";
+  const logic = group.newsLogic || group.whyMove || group.catalyst || `${group.name || "当前题材"}作战图机会`;
+  return {
+    id: group.id || group.name || "theme_playbook_opportunity",
+    name: group.name || group.id || "作战图机会",
+    stage: mainCapital ? "capital_entering" : preheat ? "preheat_catalyst" : lowRotation ? "low_position_rotation" : "confirmation",
+    positionSignal: mainCapital ? "main_capital_entering" : preheat ? "preheat_catalyst_watch" : lowRotation ? "low_position_rotation" : "acceptable_position",
+    leaderSignal: mainCapital ? "capital_entering" : preheat ? "preheat_catalyst" : "",
+    actionBias: mainCapital ? "follow_main_small" : preheat ? "preheat_watch" : "rotation_starter",
+    forwardScore: 62,
+    crowdingScore: 24,
+    rotationScore: lowRotation ? 66 : 54,
+    lowPositionScore: lowRotation ? 68 : 55,
+    capitalFollowScore: mainCapital ? 72 : preheat ? 62 : 56,
+    preheatScore: preheat ? 70 : 58,
+    avgMainNetInflowPct: mainCapital ? 1.2 : 0.4,
+    catalystProfile: {
+      fresh: true,
+      score: group.catalyst ? 24 : 18,
+      summary: group.catalyst || group.whyMove || logic,
+      freshnessLabel: group.catalystFreshness || "当前作战图机会",
+      latestNewsTime: group.latestNewsTime || "今日"
+    },
+    newsLogic: logic,
+    boardNames: normalizeStringArray(group.keywords).slice(0, 4),
+    leaderStocks: normalizeStringArray(group.anchors).slice(0, 4),
+    themeKeywords: normalizeStringArray(group.keywords).slice(0, 8)
+  };
 }
 
 function themeMatchesSearchText(theme = {}, normalizedText = "") {
@@ -28238,6 +28327,7 @@ function themeMatchesSearchText(theme = {}, normalizedText = "") {
 
 async function fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar = []) {
   const focusedKeywords = inferFocusedFundSearchKeywords(userText);
+  const playbookContextByKeyword = buildPullbackSetupPlaybookKeywordContextMap(userText, marketSnapshot);
   const keywordGroups = await Promise.all(inferPullbackSetupCandidateSearchKeywords(userText, themeRadar, marketSnapshot).map((keyword) =>
     fetchFundSearchCandidates(keyword).catch((error) => ({ ok: false, keyword, error: error.message, items: [] }))
   ));
@@ -28248,6 +28338,7 @@ async function fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar
       keywords: [...new Set([...(item.keywords || []), group.keyword, "回调启动候选"].filter(Boolean))],
       setupDiscoverySource: "keyword_search"
     }))
+      .map((item) => enrichPullbackSetupKeywordCandidateWithPlaybookContext(item, group.keyword, playbookContextByKeyword))
   );
   const snapshotItems = [
     ...(marketSnapshot?.fundCandidates?.stockFunds || []),
@@ -37248,6 +37339,8 @@ export {
   buildThemeRadar,
   buildThemeLeaderboards,
   buildThemeMainForcePlaybook,
+  buildPullbackSetupPlaybookKeywordContextMap,
+  enrichPullbackSetupKeywordCandidateWithPlaybookContext,
   buildPullbackQualityFallbackAnswer,
   buildFundWorkflowWatchlistSummary,
   classifyMessageIntent,
