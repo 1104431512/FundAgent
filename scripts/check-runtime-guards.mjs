@@ -1453,7 +1453,7 @@ const requiredPatterns = [
     message: "answer quality and deterministic fallback must pass deepDive-level theme-playbook requirements into pullback candidate bucketing."
   },
   {
-    pattern: /(?=[\s\S]*missing_theme_news_logic_explanation)(?=[\s\S]*function evaluateThemeNewsLogicAnswerCoverage)(?=[\s\S]*hasCatalystLogic)(?=[\s\S]*hasCatalystFreshnessTrace)(?=[\s\S]*hasCapitalOrBoardConfirmation)(?=[\s\S]*hasFundCarrierLogic)(?=[\s\S]*function shouldRequireStrictThemePlaybookExplanation)(?=[\s\S]*题材为什么动)/,
+    pattern: /(?=[\s\S]*missing_theme_news_logic_explanation)(?=[\s\S]*function evaluateThemeNewsLogicAnswerCoverage)(?=[\s\S]*hasCatalystLogic)(?=[\s\S]*hasCatalystFreshnessTrace)(?=[\s\S]*hasCapitalOrBoardConfirmation)(?=[\s\S]*hasFundCarrierLogic)(?=[\s\S]*function shouldRequireStrictThemePlaybookExplanation)(?=[\s\S]*hasActionableThemeMainForcePlaybookEvidence)(?=[\s\S]*题材为什么动)/,
     message: "fund answer quality must require catalyst, fresh source/time trace, capital/board confirmation, and fund-carrier logic in customer replies when current theme playbook evidence is required."
   },
   {

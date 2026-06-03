@@ -22421,7 +22421,8 @@ function evaluateThemeNewsLogicAnswerCoverage({ text, workflow, userText, eviden
 function shouldRequireStrictThemePlaybookExplanation(evidence = {}) {
   const deepDive = evidence?.marketDeepDive || {};
   return deepDive.themeOpportunityRequirement === "require_current_theme_playbook"
-    || deepDive.requireThemeOpportunityBacking === true;
+    || deepDive.requireThemeOpportunityBacking === true
+    || hasActionableThemeMainForcePlaybookEvidence(evidence?.marketSnapshot?.themeMainForcePlaybook);
 }
 
 function shouldRequireThemeNewsLogicExplanation({ workflow, userText, evidence }) {
@@ -22439,7 +22440,21 @@ function shouldRequireThemeNewsLogicExplanation({ workflow, userText, evidence }
   if (Array.isArray(snapshotRadar) && snapshotRadar.some(isThemeNewsLogicRelevantForAnswer)) {
     return true;
   }
+  if (hasActionableThemeMainForcePlaybookEvidence(evidence?.marketSnapshot?.themeMainForcePlaybook)) {
+    return true;
+  }
   return explicitThemeAsk && ["fund_recommendation", "fund_qa", "fund_screening", "fund_comparison"].includes(String(workflow || ""));
+}
+
+function hasActionableThemeMainForcePlaybookEvidence(playbook = null) {
+  if (!playbook || typeof playbook !== "object") return false;
+  const opportunityLaneIds = new Set(["follow_main_capital", "preheat_watch", "low_rotation"]);
+  return (Array.isArray(playbook.lanes) ? playbook.lanes : []).some((lane) =>
+    opportunityLaneIds.has(lane.id)
+    && (Array.isArray(lane.items) ? lane.items : []).some((item) =>
+      String(item?.whyMove || item?.newsLogic || item?.capitalProof || item?.nextStep || "").trim()
+    )
+  );
 }
 
 function isThemeNewsLogicRelevantForAnswer(theme = {}) {

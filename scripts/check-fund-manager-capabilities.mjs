@@ -8717,6 +8717,50 @@ const themeGenericWaitQuality = manager.evaluateFundAnswerQuality({
   }
 });
 assert(themeGenericWaitQuality.issues.includes("missing_theme_action_trigger"), "quality gate must reject generic waiting when a live theme playbook requires actionable triggers");
+const playbookOnlyEvidence = {
+  marketSnapshot: {
+    themeMainForcePlaybook: {
+      title: "主力题材作战图",
+      opportunityCount: 1,
+      lanes: [{
+        id: "follow_main_capital",
+        title: "主力进场快跟",
+        action: "立即找代表基金，小仓复核",
+        tone: "buy",
+        items: [{
+          name: "AI算力",
+          whyMove: "为什么动：测试快讯10:10显示AI算力订单改善，主力资金同步净流入。",
+          capitalProof: "主力资金净流入",
+          catalyst: "测试快讯10:10 订单改善",
+          carrierAnchors: ["工业富联", "新易盛"],
+          nextStep: "代表基金低位温和转强时只允许0.5%-1.2%微型试探。",
+          invalidation: "失效条件：主力转流出或订单催化落空。"
+        }]
+      }]
+    }
+  }
+};
+const playbookOnlyMissingLogicQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：先观察。\n执行：继续等待机会。",
+  workflow: "fund_recommendation",
+  userText: "按最近主力预热题材推荐几个基金",
+  evidence: playbookOnlyEvidence
+});
+assert(playbookOnlyMissingLogicQuality.issues.includes("missing_theme_news_logic_explanation"), "quality gate must require theme-news explanations when only marketSnapshot.themeMainForcePlaybook is present");
+const playbookOnlyGenericWaitQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：先观察。\n题材为什么动：测试快讯10:10显示AI算力订单改善，新闻催化新鲜；主力资金净流入，代表基金前十大持仓工业富联和新易盛能承载算力方向。\n执行：继续等待机会。",
+  workflow: "fund_recommendation",
+  userText: "按最近主力预热题材推荐几个基金",
+  evidence: playbookOnlyEvidence
+});
+assert(playbookOnlyGenericWaitQuality.issues.includes("missing_theme_action_trigger"), "quality gate must reject generic waiting when the main-force playbook exists without marketDeepDive");
+const playbookOnlyGoodQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：先0元观察，只等低位温和转强后做0.5%-1.2%微型试探。\n题材为什么动：测试快讯10:10显示AI算力订单改善，新闻催化新鲜；主力资金净流入，代表基金前十大持仓工业富联和新易盛能承载算力方向。\n执行：触发是代表基金低位温和转强；失效条件是主力转流出或订单催化落空。",
+  workflow: "fund_recommendation",
+  userText: "按最近主力预热题材推荐几个基金",
+  evidence: playbookOnlyEvidence
+});
+assert(!playbookOnlyGoodQuality.issues.includes("missing_theme_news_logic_explanation") && !playbookOnlyGoodQuality.issues.includes("missing_theme_action_trigger"), "quality gate must pass playbook-only answers with why-move, capital, carrier, trigger, and invalidation");
 const themeLogicQuality = manager.evaluateFundAnswerQuality({
   text: "直接结论：分批买入1000元。\n题材为什么动：测试快讯10:10显示AI算力订单改善，新闻催化新鲜；主力资金净流入，000048 前十大持仓工业富联和新易盛能承载算力方向。\n执行：激进1000元，均衡500元，保守先观察；若资金转流出就暂停。",
   workflow: "fund_recommendation",
