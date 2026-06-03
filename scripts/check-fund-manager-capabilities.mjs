@@ -1246,6 +1246,36 @@ assert(
   !sortedPolicyQuality.issues.includes("missing_result_first_ranking_summary"),
   "fund answer quality must allow recommendation answers that start with direct conclusion, sort policy, and ranked result"
 );
+const requestedSharpeMismatchQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：可以分批买入。\n排序口径：买点成立度优先，再看费用。\n结果榜：1. 000001 低位启动基金C：买点更近；2. 000005 现金再部署基金C：先做备选。",
+  workflow: "fund_recommendation",
+  userText: "推荐几个基金，按高夏普优先",
+  evidence: { marketDeepDive: { candidates: [{ code: "000001" }, { code: "000005" }] } }
+});
+assert(
+  requestedSharpeMismatchQuality.issues.includes("missing_requested_result_sort_policy"),
+  "fund answer quality must reject answers that ignore a user-specified high-Sharpe priority"
+);
+const requestedSharpeMatchedQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：可以分批买入。\n排序口径：高夏普/低回撤优先，再看买点和费用。\n结果榜：1. 000001 低位启动基金C：风险收益更稳；2. 000005 现金再部署基金C：买点接近但排第二。",
+  workflow: "fund_recommendation",
+  userText: "推荐几个基金，按高夏普优先",
+  evidence: { marketDeepDive: { candidates: [{ code: "000001" }, { code: "000005" }] } }
+});
+assert(
+  !requestedSharpeMatchedQuality.issues.includes("missing_requested_result_sort_policy"),
+  "fund answer quality must allow answers whose sort policy follows the user-specified high-Sharpe priority"
+);
+const metricHeavyResultBoardQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：可以分批买入。\n排序口径：高夏普/低回撤优先，再看买点。\n结果榜：1. 000001 低位基金C：近5日+1.1%，近20日+3.3%，夏普0.9，回撤-11.3%；2. 000002 备选基金A：近5日+1.4%，近20日+3.6%，夏普0.8，回撤-12.1%。\n推荐清单：000001 第一优先，000002 第二优先。",
+  workflow: "fund_recommendation",
+  userText: "推荐几个基金，按高夏普优先",
+  evidence: { marketDeepDive: { candidates: [{ code: "000001" }, { code: "000002" }] } }
+});
+assert(
+  metricHeavyResultBoardQuality.issues.includes("result_ranking_metric_dump"),
+  "fund answer quality must reject result leaderboards that dump metrics instead of human-readable reasons"
+);
 const missingResultFirstQuality = manager.evaluateFundAnswerQuality({
   text: "直接结论：可以分批买入1000元。\n排序口径：高夏普/低回撤优先，再看买点和费用。\n下面详细解释：000001 低位启动基金C适合放第一档；000005 现金再部署基金C适合做第二档。",
   workflow: "fund_recommendation",
@@ -5301,6 +5331,30 @@ assert(
   broadAiCpoTrapQuality.issues.includes("stale_theme_candidate_given_buy_execution")
     && broadAiCpoTrapQuality.issues.includes("stale_theme_candidate_given_buy_signal"),
   "quality gate must reject buy wording when broad-theme support masks precise top-holding subtheme retreat"
+);
+const broadAiCpoTrapPreferredQuality = manager.evaluateFundAnswerQuality({
+  text: [
+    "直接结论：可以把000019列入第一优先复核。",
+    "排序口径：高夏普/低回撤优先，再看AI主线。",
+    "结果榜：1. 000019 成长精选混合C：首选，走势低位修复；2. 待复核方向。"
+  ].join("\n"),
+  workflow: "fund_qa",
+  userText: "000019 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [broadAiCpoTrapProfile] } }
+});
+assert(
+  broadAiCpoTrapPreferredQuality.issues.includes("stale_theme_candidate_given_buy_signal"),
+  "quality gate must treat first-priority or preferred ranking language as a buy signal for stale-theme catchdown candidates"
+);
+const broadAiCpoTrapNotPreferredQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000019 先0元观察，不是首选也不作为主推；原因是底层CPO/光模块退潮，等资金回流后再复核。",
+  workflow: "fund_qa",
+  userText: "000019 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [broadAiCpoTrapProfile] } }
+});
+assert(
+  !broadAiCpoTrapNotPreferredQuality.issues.includes("stale_theme_candidate_given_buy_signal"),
+  "quality gate must not treat explicit not-preferred/no-buy wording as a stale-theme buy signal"
 );
 const broadAiCpoTrapRanking = manager.buildPortfolioStaleCatchdownRiskRanking([{
   code: "000019",

@@ -273,7 +273,7 @@ const requiredPatterns = [
     message: "fund answer quality gate must require Chinese data-gap disclosure and conviction downgrade."
   },
   {
-    pattern: /function evaluateFundAnswerQuality[\s\S]{0,3400}evaluateStaleFundEvidenceActionDiscipline/,
+    pattern: /function evaluateFundAnswerQuality[\s\S]{0,5200}evaluateStaleFundEvidenceActionDiscipline/,
     message: "fund answer quality gate must reject buy language based on stale NAV/trend evidence."
   },
   {
@@ -281,7 +281,7 @@ const requiredPatterns = [
     message: "stale evidence quality gate must distinguish stale-data buy execution and buy-signal leaks."
   },
   {
-    pattern: /function evaluateFundAnswerQuality[\s\S]{0,3400}evaluateStaleThemeCatchdownAnswerDiscipline/,
+    pattern: /function evaluateFundAnswerQuality[\s\S]{0,5200}evaluateStaleThemeCatchdownAnswerDiscipline/,
     message: "fund answer quality gate must run stale-theme catchdown buy-language discipline."
   },
   {
@@ -291,6 +291,10 @@ const requiredPatterns = [
   {
     pattern: /function hasPositiveBuyIntentText[\s\S]{0,700}验证仓[\s\S]{0,700}小仓验证[\s\S]{0,700}少量参与[\s\S]{0,900}function hasNegativeBuyIntentText[\s\S]{0,900}不能[\s\S]{0,500}验证/,
     message: "buy-language detection must catch soft starter wording such as validation positions while preserving explicit no-buy wording."
+  },
+  {
+    pattern: /function hasPositiveBuyIntentText[\s\S]{0,1200}首选[\s\S]{0,600}第一优先[\s\S]{0,900}主推荐[\s\S]{0,1200}function hasNegativeBuyIntentText[\s\S]{0,900}不是首选[\s\S]{0,900}不作为主推/,
+    message: "fund answer quality must treat first-priority/preferred ranking wording as buy intent unless explicitly negated."
   },
   {
     pattern: /function hasPositiveBuyExecutionForFundCode[\s\S]{0,900}contextAfterCode[\s\S]{0,900}rawContext\.includes\(fundCode\)[\s\S]{0,1600}function hasPositiveBuyIntentForFundCode[\s\S]{0,900}contextAfterCode/,
@@ -709,11 +713,11 @@ const requiredPatterns = [
     message: "portfolio decision prompts must reduce numeric dumps and prioritize customer-readable trend logic."
   },
   {
-    pattern: /function evaluateFundAnswerQuality[\s\S]{0,2400}missing_result_sort_policy/,
+    pattern: /function evaluateFundAnswerQuality[\s\S]{0,3600}missing_result_sort_policy/,
     message: "fund answer quality must reject multi-candidate recommendations that omit a customer-readable sort policy."
   },
   {
-    pattern: /function evaluateFundAnswerQuality[\s\S]{0,3000}missing_result_first_ranking_summary[\s\S]{0,900}opening_metric_dump_before_result/,
+    pattern: /function evaluateFundAnswerQuality[\s\S]{0,4300}missing_result_first_ranking_summary[\s\S]{0,1200}opening_metric_dump_before_result/,
     message: "fund answer quality must force result-first ranked summaries and reject metric-heavy openings."
   },
   {
@@ -721,8 +725,16 @@ const requiredPatterns = [
     message: "fund answer quality must require and recognize customer-readable result ranking policies."
   },
   {
+    pattern: /function getRequestedFundAnswerSortPriorities[\s\S]{0,900}高夏普[\s\S]{0,900}低回撤[\s\S]{0,1200}function hasFundAnswerRequestedSortPolicy[\s\S]{0,700}getFundAnswerSortPolicyText/,
+    message: "fund answer quality must require the sort policy to follow user-specified priorities such as high-Sharpe or low-drawdown first."
+  },
+  {
     pattern: /function hasFundAnswerResultFirstRankingSummary[\s\S]{0,800}直接结论[\s\S]{0,500}结果榜/,
     message: "fund answer quality must recognize direct-conclusion plus result-board openings."
+  },
+  {
+    pattern: /function hasMetricHeavyResultRankingSummary[\s\S]{0,900}结果榜[\s\S]{0,900}countUserFacingNonCodeMetricNumbers[\s\S]{0,900}reasonWords/,
+    message: "fund answer quality must reject metric-heavy result leaderboards before they reach the customer."
   },
   {
     pattern: /推荐清单必须先写排序口径[\s\S]{0,900}高夏普[\s\S]{0,520}低回撤/,
@@ -731,6 +743,10 @@ const requiredPatterns = [
   {
     pattern: /多候选回答的前三行必须固定为[\s\S]{0,160}直接结论[\s\S]{0,160}排序口径[\s\S]{0,160}结果榜/,
     message: "fund recommendation prompts must force result-first leaderboard openings for multi-candidate answers."
+  },
+  {
+    pattern: /结果榜只能写人话理由[\s\S]{0,220}不能把近5日[\s\S]{0,220}夏普[\s\S]{0,220}回撤/,
+    message: "fund recommendation prompts must keep result leaderboards reason-first instead of metric-first."
   },
   {
     pattern: /推荐清单：按排序口径/,
