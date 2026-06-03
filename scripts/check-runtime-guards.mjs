@@ -725,8 +725,12 @@ const requiredPatterns = [
     message: "fund answer quality must require and recognize customer-readable result ranking policies."
   },
   {
-    pattern: /function getRequestedFundAnswerSortPriorities[\s\S]{0,900}高夏普[\s\S]{0,900}低回撤[\s\S]{0,1200}function hasFundAnswerRequestedSortPolicy[\s\S]{0,700}getFundAnswerSortPolicyText/,
+    pattern: /(?=[\s\S]*function getRequestedFundAnswerSortPriorities[\s\S]{0,1200}高夏普[\s\S]{0,1200}低回撤)(?=[\s\S]*function hasFundAnswerRequestedSortPolicy[\s\S]{0,700}getFundAnswerSortPolicyText)/,
     message: "fund answer quality must require the sort policy to follow user-specified priorities such as high-Sharpe or low-drawdown first."
+  },
+  {
+    pattern: /(?=[\s\S]*function sortFundAnswerRankedCandidatesByRequestedPriority)(?=[\s\S]*function getFundAnswerPriorityScore[\s\S]{0,1200}risk_adjusted_quality[\s\S]{0,700}sharpe)(?=[\s\S]*function buildPullbackQualityFallbackAnswer[\s\S]{0,1800}sortFundAnswerRankedCandidatesByRequestedPriority)/,
+    message: "deterministic fund fallbacks must actually reorder candidates by requested priorities such as high-Sharpe, not only state the policy."
   },
   {
     pattern: /function hasFundAnswerResultFirstRankingSummary[\s\S]{0,800}直接结论[\s\S]{0,500}结果榜/,

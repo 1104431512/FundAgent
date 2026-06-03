@@ -22982,6 +22982,20 @@ function getRequestedFundAnswerSortPriorities(userText = "") {
   return priorities;
 }
 
+function formatFundAnswerSortPolicy(userText = "", fallback = "买点成立度优先，其次看题材/主力支撑、风险收益质量和份额费用。") {
+  const priorities = getRequestedFundAnswerSortPriorities(userText);
+  if (!priorities.length) return fallback;
+  const labels = priorities.map((priority) => ({
+    risk_adjusted_quality: "高夏普/低回撤优先",
+    drawdown_control: "低回撤和回撤控制优先",
+    low_volatility: "低波动优先",
+    fee_cost: "费用和份额成本优先",
+    theme_capital: "主力资金和新闻逻辑优先",
+    entry_timing: "回调完成和低位启动优先"
+  }[priority.id])).filter(Boolean);
+  return `${labels.join("，")}，再看买点、题材承载和费用。`;
+}
+
 function getFundAnswerSortPolicyText(text = "") {
   const lines = String(text || "")
     .split(/\r?\n+/)
@@ -22998,6 +23012,63 @@ function hasFundAnswerRequestedSortPolicy(text = "", requestedSortPriorities = [
   if (!requestedSortPriorities.length) return true;
   const policyText = getFundAnswerSortPolicyText(text);
   return requestedSortPriorities.every((priority) => priority.pattern.test(policyText));
+}
+
+function sortFundAnswerRankedCandidatesByRequestedPriority(items = [], userText = "") {
+  const priorities = getRequestedFundAnswerSortPriorities(userText);
+  return [...(items || [])].sort((a, b) =>
+    compareFundAnswerRankedCandidatesByRequestedPriority(a, b, priorities)
+    || Number(b.score || 0) - Number(a.score || 0)
+    || String(a.candidate?.code || "").localeCompare(String(b.candidate?.code || ""))
+  );
+}
+
+function compareFundAnswerRankedCandidatesByRequestedPriority(a = {}, b = {}, priorities = []) {
+  for (const priority of priorities || []) {
+    const diff = getFundAnswerPriorityScore(b.candidate || {}, priority.id) - getFundAnswerPriorityScore(a.candidate || {}, priority.id);
+    if (Math.abs(diff) >= 0.01) return diff;
+  }
+  return 0;
+}
+
+function getFundAnswerPriorityScore(candidate = {}, priorityId = "") {
+  const risk = selectPortfolioQualityRiskPeriod(candidate.lastSnapshot || candidate);
+  const sharpe = finiteMetricNumber(risk?.sharpe);
+  const maxDrawdown = finiteMetricNumber(risk?.maxDrawdownPct);
+  const volatility = finiteMetricNumber(risk?.annualizedVolatilityPct);
+  const annualizedReturn = finiteMetricNumber(risk?.annualizedReturnPct);
+  if (priorityId === "risk_adjusted_quality") {
+    return (Number.isFinite(sharpe) ? sharpe * 45 : -20)
+      + (Number.isFinite(maxDrawdown) ? 40 + Math.max(-50, maxDrawdown) : -12)
+      + (Number.isFinite(annualizedReturn) ? annualizedReturn * 0.45 : 0);
+  }
+  if (priorityId === "drawdown_control") {
+    return (Number.isFinite(maxDrawdown) ? 60 + Math.max(-60, maxDrawdown) : -20)
+      + (Number.isFinite(sharpe) ? sharpe * 12 : 0);
+  }
+  if (priorityId === "low_volatility") {
+    return (Number.isFinite(volatility) ? 70 - volatility : 0)
+      + (Number.isFinite(maxDrawdown) ? Math.max(-60, maxDrawdown) * 0.4 : 0)
+      + (Number.isFinite(sharpe) ? sharpe * 8 : 0);
+  }
+  if (priorityId === "fee_cost") {
+    const feeCost = finiteMetricNumber(
+      candidate.fees?.feeImpact?.oneYearCostPer10000
+      ?? candidate.feeImpact?.oneYearCostPer10000
+      ?? candidate.seed?.feeImpact?.oneYearCostPer10000
+    );
+    return Number.isFinite(feeCost) ? 120 - feeCost : 0;
+  }
+  if (priorityId === "theme_capital") {
+    return Math.max(0, ...getCandidateThemeSignals(candidate).map((theme) => Number(theme.capitalFollowScore || 0)
+      + Number(theme.preheatScore || 0) * 0.8
+      + Number(theme.rotationScore || 0) * 0.5
+      + Number(theme.lowPositionScore || 0) * 0.35));
+  }
+  if (priorityId === "entry_timing") {
+    return scoreResearchDigestForPullbackSetup(candidate);
+  }
+  return 0;
 }
 
 function shouldRequireFundAnswerResultFirstRankingSummary({ text = "", workflow = "", userText = "", evidence = null } = {}) {
@@ -23419,11 +23490,17 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
         requireThemeOpportunityBacking: shouldRequireThemeOpportunityBackingForDeepDive(deepDive)
       }),
       score: scoreResearchDigestForPullbackSetup(candidate)
-    }))
-    .sort((a, b) => b.score - a.score);
+    }));
   const requireThemeOpportunityBacking = shouldRequireThemeOpportunityBackingForDeepDive(deepDive);
-  const main = ranked.filter((item) => item.bucket === "main_candidate").slice(0, 3);
-  const watch = ranked.filter((item) => item.bucket !== "main_candidate").slice(0, 3);
+  const main = sortFundAnswerRankedCandidatesByRequestedPriority(
+    ranked.filter((item) => item.bucket === "main_candidate"),
+    userText
+  ).slice(0, 3);
+  const watch = sortFundAnswerRankedCandidatesByRequestedPriority(
+    ranked.filter((item) => item.bucket !== "main_candidate"),
+    userText
+  ).slice(0, 3);
+  const sortPolicy = formatFundAnswerSortPolicy(userText, "买点成立度优先，其次看题材/主力支撑、风险收益质量和份额费用。");
   const catchdownIssue = hasPullbackFallbackCatchdownIssue(issues);
   const catchdownWarnings = collectPullbackFallbackCatchdownWarnings(ranked.map((item) => item.candidate));
   const catchdownLine = catchdownIssue && catchdownWarnings.length
@@ -23452,6 +23529,9 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
     ].filter(Boolean).join("\n");
   }
 
+  const resultLines = main.map((item, index) =>
+    `${index + 1}. ${formatPullbackFallbackResultCandidate(item.candidate, { sortPolicy })}`
+  );
   const recommendationLines = main.map((item, index) =>
     `${index + 1}. ${formatPullbackFallbackCandidate(item.candidate)}`
   );
@@ -23460,8 +23540,8 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
   );
   return [
     "直接结论：只保留符合回调启动纪律的候选，偏热或等待回撤的标的不放进主推荐。",
-    "排序口径：买点成立度优先，其次看题材/主力支撑、风险收益质量和份额费用。",
-    `结果榜：${recommendationLines.map((line, index) => `${index + 1}. ${line.replace(/^\d+\.\s*/, "")}`).join("；")}`,
+    `排序口径：${sortPolicy}`,
+    `结果榜：${resultLines.join("；")}`,
     "我对这条筛选把握度中等偏高，依据是下钻信号已经把主候选和观察池分开。",
     "",
     "推荐清单：",
@@ -23562,6 +23642,23 @@ function buildPullbackFallbackRecheckCondition({ catchdownMode = false } = {}) {
   return "复查条件：等候选出现回调幅度适中、处在120日区间偏低位置、5日/10日刚转强且近60日不过热，再进入分批买入评估。";
 }
 
+function formatPullbackFallbackResultCandidate(candidate = {}, { sortPolicy = "" } = {}) {
+  const label = `${candidate.code || "待复核"} ${candidate.name || candidate.seed?.name || ""}`.trim();
+  const risk = selectPortfolioQualityRiskPeriod(candidate.lastSnapshot || candidate);
+  const riskQualityReason = Number.isFinite(finiteMetricNumber(risk?.sharpe))
+    || Number.isFinite(finiteMetricNumber(risk?.maxDrawdownPct));
+  if (/高夏普|低回撤|风险收益|质量/.test(sortPolicy) && riskQualityReason) {
+    return `${label}：风险收益更稳，且回调启动条件合格`;
+  }
+  if (/费用|份额/.test(sortPolicy)) {
+    return `${label}：份额和费用更适合本次小仓验证`;
+  }
+  if (/主力|新闻|题材/.test(sortPolicy)) {
+    return `${label}：题材承载更清楚，买点未追高`;
+  }
+  return `${label}：回调启动证据更完整，先小仓验证`;
+}
+
 function formatPullbackFallbackCandidate(candidate = {}) {
   const trend = candidate.trendProfile || {};
   const actionability = candidate.actionability || {};
@@ -23572,10 +23669,6 @@ function formatPullbackFallbackCandidate(candidate = {}) {
     `近5日${formatFallbackPct(trend.return5dPct)}`,
     `近10日${formatFallbackPct(trend.return10dPct)}`,
     `120日位置${formatFallbackPlainPct(trend.lowPositionPct120)}`,
-    `250日位置${formatFallbackPlainPct(trend.lowPositionPct250)}`,
-    `近20日${formatFallbackPct(trend.return20dPct)}`,
-    `近60日${formatFallbackPct(trend.return60dPct)}`,
-    `距高点${formatFallbackPct(trend.drawdownFromRecentHighPct)}`,
     actionability.allocationBand ? `仓位上限${actionability.allocationBand}` : "小仓位分批"
   ].filter(Boolean);
   return `${parts.join("；")}。`;

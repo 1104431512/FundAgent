@@ -10744,6 +10744,48 @@ assert(deterministicMainFallback.includes("近10日+2.8%"), "deterministic fallb
 assert(deterministicMainFallback.includes("120日位置38.5%"), "deterministic fallback must show low-position evidence");
 assert(deterministicMainFallback.includes("C类"), "deterministic fallback must show share class evidence");
 assert(deterministicMainFallback.includes("激进2000元以内") && deterministicMainFallback.includes("均衡1000元以内") && deterministicMainFallback.includes("保守先0元观察"), "deterministic fallback must keep three-tier execution");
+const highSharpePriorityFallback = manager.buildPullbackQualityFallbackAnswer({
+  userText: "我想找回调完成低位启动的基金，按高夏普优先",
+  issues: promotedWatchQuality.issues,
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      candidates: [
+        {
+          ...setupDigest,
+          code: "000071",
+          name: "买点更强低夏普基金C",
+          risk: { oneYear: { ok: true, sharpe: 0.25, maxDrawdownPct: -31, annualizedReturnPct: 4, annualizedVolatilityPct: 28 } }
+        },
+        {
+          ...setupDigestSecond,
+          code: "000072",
+          name: "高夏普低回撤基金C",
+          risk: { oneYear: { ok: true, sharpe: 1.45, maxDrawdownPct: -9.6, annualizedReturnPct: 13.8, annualizedVolatilityPct: 12 } }
+        }
+      ]
+    }
+  }
+});
+const highSharpeResultLine = highSharpePriorityFallback.split("\n").find((line) => line.startsWith("结果榜：")) || "";
+assert(
+  highSharpePriorityFallback.includes("排序口径：高夏普/低回撤优先"),
+  "deterministic fallback must restate the user's requested high-Sharpe priority"
+);
+assert(
+  highSharpeResultLine.indexOf("000072") >= 0 && highSharpeResultLine.indexOf("000072") < highSharpeResultLine.indexOf("000071"),
+  "deterministic fallback must actually rank high-Sharpe/low-drawdown candidates before higher setup-score but lower-quality candidates"
+);
+assert(
+  !/结果榜：.*(?:近5日|近10日|近20日|近60日|夏普\s*\d|回撤-?\d)/.test(highSharpeResultLine),
+  "deterministic fallback result leaderboard must explain priority in plain language instead of dumping metrics"
+);
+const highSharpeRecommendationBlock = highSharpePriorityFallback.split("推荐清单：")[1]?.split("1万元执行")[0] || "";
+assert(
+  !highSharpeRecommendationBlock.includes("近20日") && !highSharpeRecommendationBlock.includes("近60日") && !highSharpeRecommendationBlock.includes("250日位置"),
+  "deterministic fallback recommendation details must keep only the decisive 5d/10d/120d numbers instead of a full metric dump"
+);
 
 const deterministicNoMainFallback = manager.buildPullbackQualityFallbackAnswer({
   userText: setupQuery,
