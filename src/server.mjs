@@ -24677,7 +24677,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
     )
   );
 
-  return themes.sort((a, b) => scoreThemeRadarPriority(b) - scoreThemeRadarPriority(a)).slice(0, 12);
+  return selectThemeRadarThemes(themes, Number(process.env.MARKET_THEME_RADAR_LIMIT || 12));
 }
 
 function scoreThemeRadarPriority(theme = {}) {
@@ -24686,6 +24686,67 @@ function scoreThemeRadarPriority(theme = {}) {
     + Number(theme.capitalFollowScore || 0) * 0.2
     + Number(theme.preheatScore || 0) * 0.16
     + Number(theme.crowdingScore || 0) * 0.12;
+}
+
+function selectThemeRadarThemes(themes = [], limit = 12) {
+  const max = Math.max(1, Number(limit || 12));
+  const sorted = [...(themes || [])].filter(Boolean).sort((a, b) => scoreThemeRadarPriority(b) - scoreThemeRadarPriority(a));
+  const selected = [];
+  const seen = new Set();
+  const addLane = (filter, laneLimit) => {
+    let added = 0;
+    for (const theme of sorted.filter(filter)) {
+      const key = normalizeIntentText(theme.id || theme.name || "");
+      if (!key || seen.has(key)) continue;
+      selected.push(theme);
+      seen.add(key);
+      added += 1;
+      if (selected.length >= max || added >= laneLimit) break;
+    }
+  };
+  addLane(isThemeRadarMainCapitalOpportunity, 4);
+  addLane(isThemeRadarPreheatOpportunity, 4);
+  addLane(isThemeRadarLowRotationOpportunity, 3);
+  addLane(isThemeRadarRiskLane, 3);
+  addLane(() => true, max);
+  return selected.slice(0, max);
+}
+
+function isThemeRadarMainCapitalOpportunity(theme = {}) {
+  return !isThemeRadarRiskLane(theme)
+    && hasTraceableFreshThemeCatalystContext(theme)
+    && hasPositiveThemeMainCapitalEvidence(theme)
+    && (
+      theme.leaderSignal === "capital_entering"
+      || theme.positionSignal === "main_capital_entering"
+      || Number(theme.capitalFollowScore || 0) >= 58
+    );
+}
+
+function isThemeRadarPreheatOpportunity(theme = {}) {
+  return !isThemeRadarRiskLane(theme)
+    && !hasConflictingThemeCapitalOutflow(theme)
+    && hasTraceableFreshThemeCatalystContext(theme)
+    && (
+      theme.leaderSignal === "preheat_catalyst"
+      || theme.positionSignal === "preheat_catalyst_watch"
+      || Number(theme.preheatScore || 0) >= 52
+    );
+}
+
+function isThemeRadarLowRotationOpportunity(theme = {}) {
+  return !isThemeRadarRiskLane(theme) && hasUsableThemeLowRotationSupport(theme, {
+    minRotation: 45,
+    minLowPosition: 45
+  });
+}
+
+function isThemeRadarRiskLane(theme = {}) {
+  return hasThemeCapitalRetreatRisk(theme)
+    || isStaleThemeCatchdownRiskTheme(theme)
+    || theme.positionSignal === "high_chase_risk"
+    || theme.stage === "crowded"
+    || Number(theme.crowdingScore || 0) >= 55;
 }
 
 function buildThemeLeaderboards(themeRadar = []) {
@@ -25925,6 +25986,10 @@ function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], 
         board,
         keywords,
         newsKeywords,
+        freshNewsCount,
+        catalystScore: Number(newsCatalystProfile.score || 0),
+        change,
+        flow,
         discoveryScore: Math.max(0, change) * 6
           + Math.max(0, flow) * 5
           + freshNewsCount * 12
@@ -25939,10 +26004,10 @@ function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], 
       const hasPositiveTape = flow > 1.5 || change > 1.8 || (item.discoveryScore >= 18 && change >= -0.3 && flow >= 0);
       return (item.discoveryScore >= 10 && hasPositiveTape) || flow > 1.5 || change > 1.8;
     })
-    .sort((a, b) => b.discoveryScore - a.discoveryScore)
-    .slice(0, 10);
+    .sort((a, b) => b.discoveryScore - a.discoveryScore);
+  const selectedBoards = selectDynamicThemeRadarBoardEntries(boards, 10);
   const seen = new Set();
-  const boardRules = boards
+  const boardRules = selectedBoards
     .map(({ board, keywords, newsKeywords }) => {
       const name = String(board.name || "").trim();
       const normalized = normalizeIntentText(name);
@@ -25960,6 +26025,29 @@ function buildDynamicThemeRadarRules({ conceptBoards = [], industryBoards = [], 
     .filter(Boolean);
   const newsRules = buildNewsDiscoveredThemeRadarRules({ fastNews, allFunds, staticNames, seen });
   return [...boardRules, ...newsRules].slice(0, 12);
+}
+
+function selectDynamicThemeRadarBoardEntries(entries = [], limit = 10) {
+  const max = Math.max(1, Number(limit || 10));
+  const sorted = [...(entries || [])].sort((a, b) => Number(b.discoveryScore || 0) - Number(a.discoveryScore || 0));
+  const selected = [];
+  const seen = new Set();
+  const addLane = (filter, laneLimit) => {
+    let added = 0;
+    for (const item of sorted.filter(filter)) {
+      const key = normalizeIntentText(item.board?.boardCode || item.board?.name || item.keywords?.[0] || "");
+      if (!key || seen.has(key)) continue;
+      selected.push(item);
+      seen.add(key);
+      added += 1;
+      if (selected.length >= max || added >= laneLimit) break;
+    }
+  };
+  addLane((item) => Number(item.freshNewsCount || 0) > 0 && Number(item.catalystScore || 0) >= 10 && Number(item.change || 0) < 5.5, 4);
+  addLane((item) => Number(item.flow || 0) > 1.5 && Number(item.change || 0) < 6.5, 4);
+  addLane((item) => Number(item.discoveryScore || 0) >= 18 && Number(item.change || 0) >= -0.3 && Number(item.change || 0) <= 2.8 && Number(item.flow || 0) >= 0, 3);
+  addLane(() => true, max);
+  return selected.slice(0, max);
 }
 
 function buildNewsDiscoveredThemeRadarRules({ fastNews = [], allFunds = [], staticNames = new Set(), seen = new Set() } = {}) {

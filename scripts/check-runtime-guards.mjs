@@ -1409,6 +1409,14 @@ const requiredPatterns = [
     message: "theme radar must generate dynamic emerging themes from live concept and industry boards, not only a static dictionary."
   },
   {
+    pattern: /(?=[\s\S]*function buildDynamicThemeRadarRules[\s\S]{0,2600}selectedBoards = selectDynamicThemeRadarBoardEntries\(boards,\s*10\))(?=[\s\S]*function selectDynamicThemeRadarBoardEntries[\s\S]{0,1200}freshNewsCount[\s\S]{0,260}catalystScore[\s\S]{0,900}addLane\(\(\) => true,\s*max\))/,
+    message: "dynamic theme radar must reserve slots for fresh catalyst-backed preheat boards instead of letting hotter chasing boards crowd them out."
+  },
+  {
+    pattern: /function selectThemeRadarThemes[\s\S]{0,900}addLane\(isThemeRadarMainCapitalOpportunity,\s*4\)[\s\S]{0,260}addLane\(isThemeRadarPreheatOpportunity,\s*4\)[\s\S]{0,260}addLane\(isThemeRadarLowRotationOpportunity,\s*3\)[\s\S]{0,260}addLane\(isThemeRadarRiskLane,\s*3\)/,
+    message: "final theme radar selection must preserve main-capital, preheat, low-rotation, and risk lanes instead of using one blunt score slice."
+  },
+  {
     pattern: /(?=[\s\S]*THEME_NEWS_KEYWORD_EXPANSIONS)(?=[\s\S]*function expandThemeNewsKeywords)(?=[\s\S]*newsKeywords)(?=[\s\S]*buildNewsCatalystProfile\(matchedNews)/,
     message: "dynamic theme radar must expand news/current-event keywords so emerging sectors can explain why they are moving."
   },

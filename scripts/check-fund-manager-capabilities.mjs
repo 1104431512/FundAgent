@@ -599,6 +599,34 @@ assert(
   ),
   "main-capital leaderboard must surface news-funded preheat themes with a readable why-move explanation"
 );
+const crowdedDynamicBoards = Array.from({ length: 14 }, (_, index) => ({
+  boardCode: `BKRISK${index}`,
+  name: `追涨热榜${index}`,
+  changePct: 8 + index * 0.1,
+  mainNetInflowPct: 2.4,
+  leadStock: `高位龙头${index}`,
+  quoteTime: "10:40"
+}));
+const crowdedWithFreshPreheatRadar = manager.buildThemeRadar({
+  conceptBoards: [
+    ...crowdedDynamicBoards,
+    { boardCode: "BKBCI", name: "脑机接口", changePct: 0.6, mainNetInflowPct: 0.3, leadStock: "创新医疗", quoteTime: "10:40" }
+  ],
+  industryBoards: [],
+  fastNews: [{ title: "脑机接口产业政策落地 创新医疗设备订单启动", showTime: "10:18", mediaName: "财联社" }],
+  fundCandidates: {
+    stockFunds: [{ code: "000188", name: "脑机接口创新主题C", type: "股票型基金", oneMonthPct: 1.2, dailyPct: 0.2 }]
+  }
+});
+const bciPreheatTheme = crowdedWithFreshPreheatRadar.find((theme) => /脑机接口/.test(`${theme.name || ""} ${(theme.keywords || []).join(" ")}`));
+assert(
+  bciPreheatTheme?.catalystProfile?.fresh !== false && /脑机接口/.test(bciPreheatTheme.newsLogic || bciPreheatTheme.primaryCatalyst || ""),
+  "theme radar must keep fresh moderate preheat themes even when many hotter chasing boards would otherwise crowd the top slice"
+);
+assert(
+  manager.buildThemeLeaderboards(crowdedWithFreshPreheatRadar).preheat.items.some((item) => /脑机接口/.test(item.name || item.whyMove || "")),
+  "fresh moderate preheat themes must reach the preheat leaderboard for representative-fund recall"
+);
 const robotCatalystKeywordGroup = manager.buildPortfolioThemeOpportunityKeywordGroups(robotCatalystSnapshot)[0];
 assert(
   robotCatalystKeywordGroup?.anchors?.some((item) => /人形机器人|执行器|机器人/.test(item)),
