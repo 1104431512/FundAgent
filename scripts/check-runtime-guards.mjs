@@ -3097,11 +3097,11 @@ const requiredPatterns = [
     message: "generic pullback/setup scoring must strongly suppress gold candidates unless explicitly requested."
   },
   {
-    pattern: /function selectPortfolioWatchlistSeedCandidates[\s\S]{0,900}refreshPortfolioCandidateThemesWithMarketRadar\(candidate,\s*themeRadar\)[\s\S]{0,500}portfolioWatchlistSeedScore/,
+    pattern: /function selectPortfolioWatchlistSeedCandidates[\s\S]{0,900}marketContext[\s\S]{0,900}refreshPortfolioCandidateThemesWithMarketRadar\(candidate,\s*marketContext\)[\s\S]{0,700}scorePullbackSetupSeedCandidate\(enriched,\s*marketContext/,
     message: "watchlist seed selection must refresh candidate theme labels with the current market radar before scoring."
   },
   {
-    pattern: /function scorePullbackSetupSeedCandidate[\s\S]{0,3400}refreshPortfolioCandidateThemesWithMarketRadar\(item,\s*themeRadar\)[\s\S]{0,400}matchedThemes/,
+    pattern: /function scorePullbackSetupSeedCandidate[\s\S]{0,700}marketContext[\s\S]{0,3600}refreshPortfolioCandidateThemesWithMarketRadar\(item,\s*marketContext\)[\s\S]{0,500}matchedThemes/,
     message: "pullback/setup scoring must prefer current-radar theme labels over stale candidate labels."
   },
   {
@@ -3109,8 +3109,12 @@ const requiredPatterns = [
     message: "pullback/setup seed scoring must penalize main-capital/preheat heat when catalyst source is not traceable."
   },
   {
-    pattern: /function scoreDeepDiveCandidate[\s\S]{0,500}refreshPortfolioCandidateThemesWithMarketRadar\(item,\s*themeRadar\)[\s\S]{0,300}matchedThemes/,
+    pattern: /function scoreDeepDiveCandidate[\s\S]{0,700}marketContext[\s\S]{0,700}refreshPortfolioCandidateThemesWithMarketRadar\(item,\s*marketContext\)[\s\S]{0,500}matchedThemes/,
     message: "deep-dive scoring must prefer current-radar theme labels over stale candidate labels."
+  },
+  {
+    pattern: /(?=[\s\S]*function hasPortfolioPlaybookOpportunitySeedContext)(?=[\s\S]*collectPortfolioManagerPlaybookOpportunityMatches\(candidate\))(?=[\s\S]*function formatPortfolioWatchSeedKind[\s\S]{0,520}hasPortfolioPlaybookOpportunitySeedContext\(candidate\)[\s\S]{0,120}主力预热代表基金候选)(?=[\s\S]*function buildPortfolioWatchlistUpdatesFromSeedCandidates[\s\S]{0,1800}formatPortfolioSeedPlaybookOpportunityEvidence\(candidate\))/,
+    message: "watchlist seed updates must preserve main-force playbook opportunity context for search-returned representative fund candidates."
   },
   {
     pattern: /if \(\["capital_entering", "preheat_catalyst"\]\.includes\(theme\.leaderSignal\) && hasTraceableFreshThemeCatalystContext\(theme\)\) score \+= 8;[\s\S]{0,220}score -= 20;/,

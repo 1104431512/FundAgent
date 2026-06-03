@@ -3254,6 +3254,7 @@ async function fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist =
   const themeCarrierSeedCandidates = buildPortfolioThemeOpportunitySeedCandidates(marketSnapshot);
   const candidates = await fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar);
   return selectPortfolioWatchlistSeedCandidates(mergeCandidateFunds(themeCarrierSeedCandidates, candidates), activeWatchlist, themeRadar, {
+    marketSnapshot,
     limit: forceRedeploymentScan || forceBlockedReplacementScan || forceDataBlockedScan || forceThemeOpportunityScan
       ? finiteNumberOr(process.env.PORTFOLIO_REDEPLOYMENT_SEED_LIMIT, 8)
       : Math.min(deficit, finiteNumberOr(process.env.PORTFOLIO_WATCHLIST_SEED_LIMIT, 6))
@@ -3591,16 +3592,22 @@ function selectPortfolioWatchlistSeedCandidates(candidates = [], watchlist = [],
   const minScore = finiteNumberOr(options.minScore ?? process.env.PORTFOLIO_WATCHLIST_SEED_MIN_SCORE, 52);
   const limit = Math.max(0, finiteNumberOr(options.limit ?? process.env.PORTFOLIO_WATCHLIST_SEED_LIMIT, 6));
   if (!limit) return [];
+  const marketContext = options.marketSnapshot || themeRadar;
+  const currentThemeRadar = Array.isArray(marketContext?.themeRadar)
+    ? marketContext.themeRadar
+    : Array.isArray(themeRadar)
+      ? themeRadar
+      : [];
 
   const scored = (candidates || [])
     .filter((candidate) => candidate?.code && !activeCodes.has(candidate.code))
     .map((candidate) => {
-      const currentThemeCandidate = refreshPortfolioCandidateThemesWithMarketRadar(candidate, themeRadar);
-      const matchedThemes = currentThemeCandidate.matchedThemes?.length ? currentThemeCandidate.matchedThemes : matchCandidateThemes(candidate, themeRadar);
+      const currentThemeCandidate = refreshPortfolioCandidateThemesWithMarketRadar(candidate, marketContext);
+      const matchedThemes = currentThemeCandidate.matchedThemes?.length ? currentThemeCandidate.matchedThemes : matchCandidateThemes(candidate, currentThemeRadar);
       const enriched = { ...candidate, ...currentThemeCandidate, matchedThemes };
       return {
         ...enriched,
-        portfolioWatchlistSeedScore: round(scorePullbackSetupSeedCandidate(enriched, themeRadar, "回调完成 低位 准备启动 基金"), 1)
+        portfolioWatchlistSeedScore: round(scorePullbackSetupSeedCandidate(enriched, marketContext, "回调完成 低位 准备启动 基金"), 1)
       };
     })
     .filter((candidate) =>
@@ -3660,10 +3667,42 @@ function formatPortfolioWatchSeedKind(candidate = {}, profile = null) {
       : "主线启动验证候选";
   }
   if (isLowBaseLaunchWatchSeed(candidate)) return "低位启动前夜候选";
+  if (hasPortfolioPlaybookOpportunitySeedContext(candidate)) return "主力预热代表基金候选";
   const text = `${candidate.name || ""} ${(candidate.keywords || []).join(" ")} ${candidate.setupDiscoverySource || ""}`;
   if (/theme_leaderboard_carrier_seed|题材榜单代表基金/.test(text)) return "主力预热代表基金候选";
   if (/近1周低位转强候选|weekly_reversal_scan/.test(text)) return "近1周低位转强候选";
   return "低位回调召回候选";
+}
+
+function hasPortfolioPlaybookOpportunitySeedContext(candidate = {}) {
+  const text = [
+    candidate.name,
+    candidate.type,
+    candidate.candidateRole,
+    candidate.setupDiscoverySource,
+    candidate.source,
+    candidate.marketThemeRefresh?.source,
+    candidate.seed?.marketThemeRefresh?.source,
+    ...(candidate.keywords || []),
+    ...(candidate.setupEvidence || []),
+    ...(candidate.dataBasis || []),
+    ...(candidate.seed?.dataBasis || [])
+  ].filter(Boolean).join(" ");
+  return /theme_leaderboard_carrier_seed|题材榜单代表基金|theme_main_force_playbook_opportunity|作战图机会|主力作战图/.test(text)
+    || collectPortfolioManagerPlaybookOpportunityMatches(candidate).length > 0;
+}
+
+function formatPortfolioSeedPlaybookOpportunityEvidence(candidate = {}) {
+  const match = collectPortfolioManagerPlaybookOpportunityMatches(candidate)[0];
+  if (!match) return "";
+  const matchedTerms = normalizeStringArray(match.matchedTerms).slice(0, 3).join("/");
+  return [
+    "作战图机会",
+    match.name || "",
+    match.laneTitle || "",
+    match.capitalProof || "",
+    matchedTerms ? `承载锚点：${matchedTerms}` : ""
+  ].filter(Boolean).join("，");
 }
 
 function formatPortfolioWatchSeedCandidateRole(status, seedKind) {
@@ -3702,6 +3741,7 @@ function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = [], optio
     const statusReason = formatPortfolioSeedStatusReason(status, profile);
     const oneYearFeeCost = toNumber(profile?.fees?.feeImpact?.oneYearCostPer10000);
     const seedKind = formatPortfolioWatchSeedKind(candidate, profile);
+    const playbookEvidence = formatPortfolioSeedPlaybookOpportunityEvidence(candidate);
     return {
       operation: "UPSERT",
       code: candidate.code,
@@ -3715,12 +3755,14 @@ function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = [], optio
         `系统低位回调召回评分 ${round(seedScore, 1)}。`,
         `召回定位：${seedKind}。`,
         statusReason,
+        playbookEvidence,
         returnEvidence || "短期收益结构待复核。",
         verifiedTrendEvidence,
         themeEvidence || "题材轮动信号待复核。"
       ].filter(Boolean).join(" "),
       setupEvidence: [
         `召回定位：${seedKind}`,
+        playbookEvidence,
         verifiedTrendEvidence,
         returnEvidence,
         themeEvidence,
@@ -3760,6 +3802,8 @@ function buildPortfolioWatchlistUpdatesFromSeedCandidates(candidates = [], optio
       reviewDate: "下一次盘前观察或每日决策复核",
       dataBasis: [
         candidate.setupDiscoverySource ? `召回来源：${candidate.setupDiscoverySource}` : "",
+        playbookEvidence,
+        ...(Array.isArray(candidate.dataBasis) ? candidate.dataBasis.slice(0, 4) : []),
         candidate.source || "",
         profile?.sources?.[0] ? `净值下钻来源：${profile.sources[0]}` : "",
         returnEvidence
@@ -27255,6 +27299,12 @@ function isMissingCandidateValue(value) {
 
 function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
   if (shouldSuppressPreciousMetalCandidate(userText, item)) return -1000;
+  const marketContext = themeRadar;
+  const currentThemeRadar = Array.isArray(marketContext?.themeRadar)
+    ? marketContext.themeRadar
+    : Array.isArray(themeRadar)
+      ? themeRadar
+      : [];
   const text = `${item.name || ""} ${item.type || ""} ${(item.keywords || []).join(" ")}`;
   const seedContextText = [
     text,
@@ -27282,7 +27332,8 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
   if (/低位启动前夜候选/.test(text)) score += 16;
   if (/theme_leaderboard_carrier_seed|题材榜单代表基金/.test(seedContextText)) score += 14;
   if (item.themeOpportunityRequirement === "require_current_theme_playbook") score += 8;
-  if (getThemeMainForcePlaybookRiskWarnings(item).length) score -= 80;
+  const initialPlaybookRiskWarnings = getThemeMainForcePlaybookRiskWarnings(item);
+  if (initialPlaybookRiskWarnings.length) score -= 80;
 
   if (Number.isFinite(oneWeek)) {
     if (oneWeek >= 0.3 && oneWeek <= 5) score += 18;
@@ -27313,8 +27364,10 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
   }
   if (Number.isFinite(daily) && daily > 5) score -= 10;
 
-  const currentThemeItem = refreshPortfolioCandidateThemesWithMarketRadar(item, themeRadar);
-  const matchedThemes = currentThemeItem.matchedThemes?.length ? currentThemeItem.matchedThemes : matchCandidateThemes(item, themeRadar);
+  const currentThemeItem = refreshPortfolioCandidateThemesWithMarketRadar(item, marketContext);
+  if (hasPortfolioPlaybookOpportunitySeedContext(currentThemeItem)) score += 16;
+  if (!initialPlaybookRiskWarnings.length && getThemeMainForcePlaybookRiskWarnings(currentThemeItem).length) score -= 80;
+  const matchedThemes = currentThemeItem.matchedThemes?.length ? currentThemeItem.matchedThemes : matchCandidateThemes(item, currentThemeRadar);
   for (const theme of matchedThemes.slice(0, 2)) {
     const mainForceScore = scoreThemeMainForceOpportunity(theme);
     score += Math.min(14, Number(theme.lowPositionScore || 0) / 6);
@@ -27362,14 +27415,23 @@ function shouldSuppressPreciousMetalCandidate(userText = "", candidate = {}) {
 }
 
 function scoreDeepDiveCandidate(item, themeRadar = []) {
+  const marketContext = themeRadar;
+  const currentThemeRadar = Array.isArray(marketContext?.themeRadar)
+    ? marketContext.themeRadar
+    : Array.isArray(themeRadar)
+      ? themeRadar
+      : [];
   const text = `${item.name || ""} ${item.type || ""}`;
   let score = 0;
-  if (getThemeMainForcePlaybookRiskWarnings(item).length) score -= 60;
+  const initialPlaybookRiskWarnings = getThemeMainForcePlaybookRiskWarnings(item);
+  if (initialPlaybookRiskWarnings.length) score -= 60;
   if (/ETF|联接|指数/.test(text)) score += 6;
   if (/C$|C类/.test(text)) score += 2;
   if (/A$|A类/.test(text)) score += 1;
-  const currentThemeItem = refreshPortfolioCandidateThemesWithMarketRadar(item, themeRadar);
-  const matchedThemes = currentThemeItem.matchedThemes?.length ? currentThemeItem.matchedThemes : matchCandidateThemes(item, themeRadar);
+  const currentThemeItem = refreshPortfolioCandidateThemesWithMarketRadar(item, marketContext);
+  if (!initialPlaybookRiskWarnings.length && getThemeMainForcePlaybookRiskWarnings(currentThemeItem).length) score -= 60;
+  if (hasPortfolioPlaybookOpportunitySeedContext(currentThemeItem)) score += 10;
+  const matchedThemes = currentThemeItem.matchedThemes?.length ? currentThemeItem.matchedThemes : matchCandidateThemes(item, currentThemeRadar);
   for (const theme of matchedThemes.slice(0, 2)) {
     const mainForceScore = scoreThemeMainForceOpportunity(theme);
     score += 8 + Math.min(16, Number(theme.forwardScore || 0) / 5);

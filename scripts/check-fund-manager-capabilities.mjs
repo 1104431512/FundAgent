@@ -711,6 +711,58 @@ assert(
   directThemeSeedUpdates[0]?.buyTriggers?.[0]?.includes("新闻催化"),
   "watchlist updates from direct theme seeds must keep news catalyst validation as the first trigger"
 );
+const directThemeCarrierPlaybook = manager.buildThemeMainForcePlaybook(directThemeCarrierSnapshot.themeRadar, directThemeCarrierSnapshot.themeLeaderboards);
+const playbookContextSearchSeed = {
+  code: "000101",
+  name: "低空经济代表搜索基金C",
+  type: "股票型基金",
+  shareClass: "C",
+  dailyPct: 0.4,
+  oneWeekPct: 1.2,
+  oneMonthPct: 3.2,
+  threeMonthPct: -2.4,
+  sixMonthPct: -5.6,
+  oneYearPct: -8.8,
+  keywords: ["低空经济", "万丰奥威"]
+};
+const selectedPlaybookContextSeeds = manager.selectPortfolioWatchlistSeedCandidates(
+  [playbookContextSearchSeed],
+  fullOldThemeWatchlist,
+  directThemeCarrierSnapshot.themeRadar,
+  {
+    minScore: 0,
+    limit: 1,
+    marketSnapshot: {
+      ...directThemeCarrierSnapshot,
+      fetchedAt: freshThemeRefreshAt,
+      themeMainForcePlaybook: directThemeCarrierPlaybook
+    }
+  }
+);
+assert(
+  selectedPlaybookContextSeeds[0]?.playbookOpportunityMatches?.some((item) => /低空经济/.test(item.name) && item.matchedTerms?.some((term) => /万丰奥威|低空经济/.test(term))),
+  "search-returned theme seeds must retain main-force playbook opportunity matches when they hit carrier anchors"
+);
+assert(
+  manager.scorePullbackSetupSeedCandidate(playbookContextSearchSeed, {
+    ...directThemeCarrierSnapshot,
+    fetchedAt: freshThemeRefreshAt,
+    themeMainForcePlaybook: directThemeCarrierPlaybook
+  }, setupQuery) >
+    manager.scorePullbackSetupSeedCandidate({ ...playbookContextSearchSeed, code: "000102", name: "普通回调搜索基金C", keywords: [] }, directThemeCarrierSnapshot.themeRadar, setupQuery) + 12,
+  "playbook-matched search seeds must score above generic same-return pullback search results"
+);
+const playbookContextSeedUpdate = manager.buildPortfolioWatchlistUpdatesFromSeedCandidates(selectedPlaybookContextSeeds)[0];
+assert(
+  playbookContextSeedUpdate?.candidateRole?.includes("主力预热代表基金")
+    && playbookContextSeedUpdate.reason.includes("作战图机会")
+    && /低空经济|万丰奥威/.test(playbookContextSeedUpdate.reason),
+  "watchlist updates from playbook-matched search seeds must label them as main-force representative candidates with carrier proof"
+);
+assert(
+  playbookContextSeedUpdate?.dataBasis?.some((item) => item.includes("作战图机会")),
+  "playbook-matched search seed data basis must keep the playbook source instead of looking like a generic pullback scan"
+);
 const noCarrierDirectThemeProfile = {
   ...livePreheatSeedProfile,
   code: "000099",
