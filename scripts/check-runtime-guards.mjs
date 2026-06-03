@@ -1421,6 +1421,10 @@ const requiredPatterns = [
     message: "theme radar must be converted into a main-force playbook with representative-fund search keywords and holding anchors."
   },
   {
+    pattern: /function formatThemeMainForceCapitalProof[\s\S]{0,700}avgFlow > 0\.2[\s\S]{0,700}avgFlow < -0\.2[\s\S]{0,700}主力资金均值接近平衡/,
+    message: "main-force playbook capital proof must not describe near-zero average flow as positive net inflow."
+  },
+  {
     pattern: /function compactThemeMainForcePlaybookForModel[\s\S]{0,1800}代表基金检索词[\s\S]{0,500}持仓承载锚点/,
     message: "market snapshots and compact model context must carry the main-force theme playbook, not only raw theme lists."
   },

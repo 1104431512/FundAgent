@@ -618,6 +618,21 @@ assert.equal(
   true,
   "broad watchlist coverage must not block recall for a specific fresh preheat catalyst"
 );
+const balancedFlowPreheatTheme = {
+  ...robotCatalystSnapshot.themeRadar[0],
+  id: "balanced_flow_preheat",
+  avgMainNetInflowPct: 0.1,
+  maxMainNetInflowPct: null,
+  minMainNetInflowPct: null,
+  mainInflowRankScore: 0
+};
+const balancedFlowPlaybook = manager.buildThemeMainForcePlaybook([balancedFlowPreheatTheme], manager.buildThemeLeaderboards([balancedFlowPreheatTheme]));
+const balancedFlowPlaybookItem = balancedFlowPlaybook.lanes.flatMap((lane) => lane.items || []).find((item) => item.id === "balanced_flow_preheat");
+assert(
+  balancedFlowPlaybookItem?.capitalProof?.includes("接近平衡")
+    && !balancedFlowPlaybookItem?.capitalProof?.includes("净流入0.1"),
+  "main-force playbook must not present near-zero main-capital flow as positive net inflow"
+);
 const liveThemeKeywordGroup = manager.buildPortfolioThemeOpportunityKeywordGroups(liveThemeOpportunitySnapshot)[0];
 assert(liveThemeKeywordGroup?.anchors?.some((item) => /低空经济|万丰奥威/.test(item)), "theme representative coverage must keep specific theme or leader-stock anchors");
 assert(!liveThemeKeywordGroup?.anchors?.some((item) => /军工|高端制造/.test(item)), "theme representative coverage anchors must not be satisfied by broad sector labels alone");

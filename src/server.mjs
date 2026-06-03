@@ -24892,9 +24892,13 @@ function formatThemeMainForceCapitalProof(theme = {}) {
   const maxFlow = finiteMetricNumber(theme.maxMainNetInflowPct);
   const minFlow = finiteMetricNumber(theme.minMainNetInflowPct);
   if (Number.isFinite(avgFlow)) {
-    return avgFlow >= 0
-      ? `主力资金均值净流入${formatFallbackPlainPct(avgFlow)}`
-      : `主力资金均值净流出${formatFallbackPlainPct(Math.abs(avgFlow))}`;
+    if (avgFlow > 0.2) {
+      return `主力资金均值净流入${formatFallbackPlainPct(avgFlow)}`;
+    }
+    if (avgFlow < -0.2) {
+      return `主力资金均值净流出${formatFallbackPlainPct(Math.abs(avgFlow))}`;
+    }
+    return "主力资金均值接近平衡，仍需确认是否真正流入";
   }
   if (Number.isFinite(maxFlow) && maxFlow > 0) return `最强相关板块净流入${formatFallbackPlainPct(maxFlow)}`;
   if (Number.isFinite(minFlow) && minFlow < 0) return `最弱相关板块净流出${formatFallbackPlainPct(Math.abs(minFlow))}`;
