@@ -1205,6 +1205,10 @@ const requiredPatterns = [
     message: "fresh news main-capital claims must not override confirmed board outflow or retreating capital evidence."
   },
   {
+    pattern: /function hasUsableThemeLowRotationSupport[\s\S]{0,220}hasConflictingThemeCapitalOutflow\(theme\)\) return false[\s\S]{0,900}minRotation[\s\S]{0,500}lowPosition >= minLowPosition/,
+    message: "low-position rotation support must reject themes whose related boards show confirmed main-capital outflow."
+  },
+  {
     pattern: /function scoreNewsMainCapitalConfirmation[\s\S]{0,1500}资金抢筹[\s\S]{0,900}主力资金[\s\S]{0,900}return Math\.min\(44,\s*score\)/,
     message: "theme radar must convert explicit main-capital news into a bounded capital-follow boost."
   },
@@ -1255,6 +1259,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*function buildThemeLeaderboards)(?=[\s\S]*hasRetreatOrCatchdownRisk)(?=[\s\S]*isStaleThemeCatchdownRiskTheme)(?=[\s\S]*主力进场榜)(?=[\s\S]*题材预热榜)(?=[\s\S]*低位轮动榜)(?=[\s\S]*退潮回避榜)(?=[\s\S]*接盘风险)(?=[\s\S]*追涨风险榜)(?=[\s\S]*题材榜单)/,
     message: "market snapshots must expose theme leaderboards and route stale catchdown themes into retreat/avoid instead of low-rotation opportunity lanes."
+  },
+  {
+    pattern: /buildThemeLeaderboards[\s\S]{0,2400}preheat[\s\S]{0,800}!hasConflictingThemeCapitalOutflow\(theme\)[\s\S]{0,900}low_rotation[\s\S]{0,800}hasUsableThemeLowRotationSupport\(theme/,
+    message: "preheat and low-rotation leaderboards must not surface themes that conflict with main-capital outflow evidence."
   },
   {
     pattern: /(?=[\s\S]*function buildPortfolioRankingCustomerActionDeck[\s\S]*hasCatchdownAvoid)(?=[\s\S]*接盘风险优先)(?=[\s\S]*新鲜新闻\/政策催化[\s\S]{0,180}主力资金回流[\s\S]{0,180}代表持仓止跌)/,
@@ -1379,6 +1387,10 @@ const requiredPatterns = [
   {
     pattern: /const unresolvedLeaderHeat = hasThemeLeaderOrPreheatSignal\(theme\) && !hasTraceableFreshThemeCatalystContext\(theme\);[\s\S]{0,220}leaderCandidate && hasTraceableFreshThemeCatalystContext\(theme\)/,
     message: "pullback setup discovery keywords must not expand main-capital/preheat themes whose catalyst source is not traceable."
+  },
+  {
+    pattern: /function inferPullbackSetupSearchKeywords[\s\S]{0,1700}const capitalFlowConflict = hasConflictingThemeCapitalOutflow\(theme\);[\s\S]{0,280}lowRotationCandidate && !unresolvedLeaderHeat && !capitalFlowConflict[\s\S]{0,180}leaderCandidate && hasTraceableFreshThemeCatalystContext\(theme\) && !capitalFlowConflict/,
+    message: "pullback setup discovery keywords must not expand low-rotation or preheat themes when board outflow conflicts with the setup."
   },
   {
     pattern: /function inferPullbackSetupSearchKeywords[\s\S]{0,2400}themeMatchesSearchText\(theme,\s*text\)[\s\S]{0,700}scopedRadarKeywords[\s\S]{0,700}\.\.\.baseKeywords,\s*\.\.\.scopedRadarKeywords/,
@@ -3251,6 +3263,10 @@ const requiredPatterns = [
   {
     pattern: /scorePullbackThemeRotation/,
     message: "pullback/setup deep-dive ranking must incorporate sector rotation, low-position, and crowding evidence."
+  },
+  {
+    pattern: /function scorePullbackThemeRotation[\s\S]{0,900}const capitalFlowConflict = hasConflictingThemeCapitalOutflow\(theme\);[\s\S]{0,350}if \(capitalFlowConflict\) score -= 24[\s\S]{0,700}!capitalFlowConflict && theme\.positionSignal === "low_position_rotation"[\s\S]{0,1100}!capitalFlowConflict && Number\.isFinite\(rotation\)/,
+    message: "pullback/setup deep-dive ranking must penalize board outflow conflicts and suppress low-position rotation bonuses under conflict."
   },
   {
     pattern: /scoreResearchDigestForPullbackSetup[\s\S]{0,3200}scoreHoldingsOutlookForCandidate/,

@@ -6666,6 +6666,54 @@ assert(
   !staleCatchdownThemeLeaderboards.lowRotation.items.some((item) => item.name === "旧算力回调"),
   "theme leaderboards must not show stale catchdown themes as low-position rotation opportunities"
 );
+const conflictingLowRotationTheme = {
+  id: "conflicting_low_rotation",
+  name: "资金冲突低位轮动",
+  stage: "low_position_rotation",
+  positionSignal: "low_position_rotation",
+  avgMainNetInflowPct: null,
+  minMainNetInflowPct: -3.6,
+  boardOutflowCount: 2,
+  boardDeclineCount: 0,
+  capitalRetreatScore: 20,
+  capitalFollowScore: 42,
+  preheatScore: 20,
+  forwardScore: 58,
+  rotationScore: 72,
+  lowPositionScore: 78,
+  crowdingScore: 18,
+  fundKeywords: ["废旧轮动测试词"],
+  themeKeywords: ["废旧轮动测试词"],
+  newsLogic: "位置低、轮动分改善，但相关板块主力资金仍在流出。"
+};
+const conflictingLowRotationDigest = {
+  ...newsBackedRequiredSetupDigest,
+  code: "000052",
+  name: "资金冲突低位基金C",
+  matchedThemes: [conflictingLowRotationTheme],
+  seed: {
+    ...(newsBackedRequiredSetupDigest.seed || {}),
+    matchedThemes: [conflictingLowRotationTheme]
+  }
+};
+assert.equal(
+  manager.hasActionableThemeSupport(conflictingLowRotationDigest),
+  false,
+  "actionable theme support must not treat low-position rotation as usable when related boards show clear capital outflow"
+);
+assert(
+  !manager.buildThemeLeaderboards([conflictingLowRotationTheme]).lowRotation.items.some((item) => item.name === "资金冲突低位轮动"),
+  "low-rotation leaderboard must not surface low-position themes whose main-capital evidence conflicts with board outflow"
+);
+assert(
+  !manager.inferPullbackSetupSearchKeywords("我想找回调完成低位启动基金", [conflictingLowRotationTheme]).some((item) => item.includes("废旧轮动测试词")),
+  "pullback setup keyword expansion must not search representative funds for low-rotation themes with conflicting capital outflow"
+);
+const conflictingLowRotationActionability = manager.buildFundActionabilitySignals(conflictingLowRotationDigest);
+assert(
+  ["wait", "avoid"].includes(conflictingLowRotationActionability.action),
+  "fund actionability must keep low-position pullbacks in wait/avoid when low-rotation support conflicts with main-capital outflow"
+);
 const staleCatchdownReadiness = manager.evaluatePortfolioWatchReadiness({
   code: "000051",
   name: "边际退潮回调基金C",

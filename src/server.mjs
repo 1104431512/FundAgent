@@ -3418,10 +3418,9 @@ function isPortfolioThemeOpportunitySeedTheme(theme = {}) {
   if (!theme || typeof theme !== "object") return false;
   if (hasThemeCapitalRetreatRisk(theme) || isStaleThemeCatchdownRiskTheme(theme)) return false;
   if (theme.positionSignal === "high_chase_risk" || theme.stage === "crowded" || Number(theme.crowdingScore) >= 55) return false;
-  const mainOrPreheat = hasTraceableFreshThemeCatalystContext(theme) && hasThemeLeaderOrPreheatSignal(theme);
-  const lowRotation = theme.positionSignal === "low_position_rotation"
-    || theme.stage === "low_position_rotation"
-    || (Number(theme.rotationScore) >= 50 && Number(theme.lowPositionScore) >= 45);
+  const capitalFlowConflict = hasConflictingThemeCapitalOutflow(theme);
+  const mainOrPreheat = !capitalFlowConflict && hasTraceableFreshThemeCatalystContext(theme) && hasThemeLeaderOrPreheatSignal(theme);
+  const lowRotation = hasUsableThemeLowRotationSupport(theme);
   return Boolean(mainOrPreheat || (lowRotation && (hasTraceableFreshThemeCatalystContext(theme) || Number(theme.capitalFollowScore) >= 45)));
 }
 
@@ -20797,9 +20796,7 @@ function requiresPullbackThemeOpportunityBacking(candidate = {}, options = {}) {
 function hasPullbackThemeOpportunityBacking(candidate = {}) {
   const actionableThemes = getCandidateThemeSignals(candidate).filter((theme) => {
     if (!isActionableThemeSupport(theme)) return false;
-    const lowRotation = theme.positionSignal === "low_position_rotation"
-      || theme.stage === "low_position_rotation"
-      || (Number(theme.rotationScore) >= 50 && Number(theme.lowPositionScore) >= 45);
+    const lowRotation = hasUsableThemeLowRotationSupport(theme);
     return lowRotation || hasTraceableFreshThemeCatalystContext(theme);
   });
   if (!actionableThemes.length) return false;
@@ -21313,7 +21310,8 @@ function isActionableThemeSupport(theme = {}) {
   if (isStaleThemeCatchdownRiskTheme(theme)) return false;
   if (theme.positionSignal === "high_chase_risk" || theme.stage === "crowded" || Number(theme.crowdingScore) >= 55) return false;
   const avgFlow = finiteMetricNumber(theme.avgMainNetInflowPct);
-  const flowNotWeak = !Number.isFinite(avgFlow) || avgFlow >= -0.3;
+  const capitalFlowConflict = hasConflictingThemeCapitalOutflow(theme);
+  const flowNotWeak = !capitalFlowConflict && (!Number.isFinite(avgFlow) || avgFlow >= -0.3);
   const capitalFollow = finiteMetricNumber(theme.capitalFollowScore);
   const preheat = finiteMetricNumber(theme.preheatScore);
   const rotation = finiteMetricNumber(theme.rotationScore);
@@ -21326,11 +21324,22 @@ function isActionableThemeSupport(theme = {}) {
   const preheatCatalyst = theme.leaderSignal === "preheat_catalyst"
     || theme.positionSignal === "preheat_catalyst_watch"
     || (Number.isFinite(preheat) && preheat >= 56 && scoreThemeCatalystQuality(theme) >= 0);
-  const lowRotation = theme.positionSignal === "low_position_rotation"
-    || theme.stage === "low_position_rotation"
-    || (Number.isFinite(rotation) && rotation >= 50 && Number.isFinite(lowPosition) && lowPosition >= 45 && flowNotWeak);
+  const lowRotation = hasUsableThemeLowRotationSupport(theme, { rotation, lowPosition });
   const unresolvedLeaderHeat = hasThemeLeaderOrPreheatSignal(theme) && !traceableCatalystContext;
-  return Boolean(mainCapital || (preheatCatalyst && traceableCatalystContext) || (lowRotation && !unresolvedLeaderHeat));
+  return Boolean(mainCapital || (preheatCatalyst && traceableCatalystContext && !capitalFlowConflict) || (lowRotation && !unresolvedLeaderHeat));
+}
+
+function hasUsableThemeLowRotationSupport(theme = {}, metrics = {}) {
+  if (hasConflictingThemeCapitalOutflow(theme)) return false;
+  const rotation = finiteMetricNumber(metrics.rotation ?? theme.rotationScore);
+  const lowPosition = finiteMetricNumber(metrics.lowPosition ?? theme.lowPositionScore);
+  const configuredMinRotation = finiteMetricNumber(metrics.minRotation);
+  const configuredMinLowPosition = finiteMetricNumber(metrics.minLowPosition);
+  const minRotation = Number.isFinite(configuredMinRotation) ? configuredMinRotation : 50;
+  const minLowPosition = Number.isFinite(configuredMinLowPosition) ? configuredMinLowPosition : 45;
+  return theme.positionSignal === "low_position_rotation"
+    || theme.stage === "low_position_rotation"
+    || (Number.isFinite(rotation) && rotation >= minRotation && Number.isFinite(lowPosition) && lowPosition >= minLowPosition);
 }
 
 function hasThemeCatalystContext(theme = {}) {
@@ -21599,23 +21608,25 @@ function scorePullbackThemeRotation(candidate = {}) {
     const lowPosition = Number(theme.lowPositionScore);
     const capitalFollow = Number(theme.capitalFollowScore);
     const preheat = Number(theme.preheatScore);
+    const capitalFlowConflict = hasConflictingThemeCapitalOutflow(theme);
     if (theme.positionSignal === "high_chase_risk") score -= 28;
     if (theme.stage === "crowded") score -= 20;
     if (hasThemeCapitalRetreatRisk(theme)) score -= 34;
     if (isStaleThemeCatchdownRiskTheme(theme)) score -= 42;
+    if (capitalFlowConflict) score -= 24;
     if (Number.isFinite(crowding)) {
       if (crowding >= 55) score -= 18;
       else if (crowding >= 40) score -= 8;
     }
-    if (theme.positionSignal === "low_position_rotation") score += 18;
-    if (theme.positionSignal === "acceptable_position") score += 10;
+    if (!capitalFlowConflict && theme.positionSignal === "low_position_rotation") score += 18;
+    if (!capitalFlowConflict && theme.positionSignal === "acceptable_position") score += 10;
     if (theme.positionSignal === "main_capital_entering" || theme.leaderSignal === "capital_entering") score += 16;
     if (theme.positionSignal === "preheat_catalyst_watch" || theme.leaderSignal === "preheat_catalyst") score += 12;
-    if (theme.stage === "low_position_rotation") score += 10;
+    if (!capitalFlowConflict && theme.stage === "low_position_rotation") score += 10;
     if (theme.stage === "capital_entering") score += 12;
     if (theme.stage === "preheat_catalyst") score += 8;
     catalystAdjustment += scoreThemeCatalystQuality(theme);
-    if (Number.isFinite(rotation) && Number.isFinite(lowPosition)) {
+    if (!capitalFlowConflict && Number.isFinite(rotation) && Number.isFinite(lowPosition)) {
       if (rotation >= 45 && lowPosition >= 45) score += 14;
       else if (rotation >= 35 && lowPosition >= 35) score += 8;
     }
@@ -24709,7 +24720,7 @@ function buildThemeLeaderboards(themeRadar = []) {
       id: "preheat",
       title: "题材预热榜",
       subtitle: "有政策、产业或外盘催化，但还没有明显涨开的方向。",
-      filter: (theme) => notRetreat(theme) && notCrowded(theme) && hasTraceableFreshThemeCatalystContext(theme) && (
+      filter: (theme) => notRetreat(theme) && notCrowded(theme) && !hasConflictingThemeCapitalOutflow(theme) && hasTraceableFreshThemeCatalystContext(theme) && (
         theme.leaderSignal === "preheat_catalyst"
         || theme.positionSignal === "preheat_catalyst_watch"
         || Number(theme.preheatScore) >= 52
@@ -24721,11 +24732,10 @@ function buildThemeLeaderboards(themeRadar = []) {
       id: "low_rotation",
       title: "低位轮动榜",
       subtitle: "位置较低、轮动评分改善，适合进入小仓试探复核的方向。",
-      filter: (theme) => notRetreat(theme) && notCrowded(theme) && (
-        theme.positionSignal === "low_position_rotation"
-        || theme.stage === "low_position_rotation"
-        || (Number(theme.rotationScore) >= 45 && Number(theme.lowPositionScore) >= 45)
-      ),
+      filter: (theme) => notRetreat(theme) && notCrowded(theme) && hasUsableThemeLowRotationSupport(theme, {
+        minRotation: 45,
+        minLowPosition: 45
+      }),
       score: (theme) => Number(theme.rotationScore || 0) + Number(theme.lowPositionScore || 0) * 0.75 + Number(theme.capitalFollowScore || 0) * 0.18,
       reason: () => "低位和轮动证据同时改善"
     }),
@@ -27022,9 +27032,10 @@ function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
         || ["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)
         || ["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal);
       const unresolvedLeaderHeat = hasThemeLeaderOrPreheatSignal(theme) && !hasTraceableFreshThemeCatalystContext(theme);
+      const capitalFlowConflict = hasConflictingThemeCapitalOutflow(theme);
       return isActionableThemeSupport(theme)
-        || (lowRotationCandidate && !unresolvedLeaderHeat)
-        || (leaderCandidate && hasTraceableFreshThemeCatalystContext(theme));
+        || (lowRotationCandidate && !unresolvedLeaderHeat && !capitalFlowConflict)
+        || (leaderCandidate && hasTraceableFreshThemeCatalystContext(theme) && !capitalFlowConflict);
     })
     .filter((theme) => !explicit.length || themeMatchesSearchText(theme, text))
     .flatMap((theme) => collectThemeOpportunitySearchKeywords(theme))
