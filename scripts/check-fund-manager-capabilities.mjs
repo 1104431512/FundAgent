@@ -8427,6 +8427,68 @@ assert(
     && (highQualityStaleCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000044"),
   "customer action deck must route high-quality stale-theme candidates to avoid, not buy-review"
 );
+const staleCatchdownOpportunityCostFixture = {
+  account: {
+    cash: 90000,
+    receivableCash: 0,
+    pendingBuyAmount: 0,
+    totalAsset: 100000,
+    positionWeightPct: 0,
+    investedValue: 0,
+    positions: [],
+    riskBudget: { blockNewBuys: false }
+  },
+  watchlist: [{
+    code: "000046",
+    name: "退潮后反弹接盘基金C",
+    status: "ready",
+    readinessScore: 93,
+    reason: "表面回调完成且后续上涨，但题材退潮和主力撤离没有解除。",
+    buyTriggers: ["回调完成后5日/10日转强"],
+    lastSnapshot: {
+      ...staleCatchdownDigest,
+      code: "000046",
+      name: "退潮后反弹接盘基金C",
+      trendProfile: {
+        ...(staleCatchdownDigest.trendProfile || {}),
+        ok: true,
+        trendLabel: "uptrend",
+        entryBias: "buyable_now",
+        return5dPct: 3.4,
+        return10dPct: 4.8,
+        return20dPct: 5.6,
+        return60dPct: 8.2,
+        pullbackSetup: { signal: "pullback_complete", score: 78, signalText: "回调完成" }
+      }
+    }
+  }],
+  runs: [
+    { date: "2026-05-21", type: "decision", status: "completed", summary: "继续观察退潮后反弹，不买。", actions: [{ action: "WATCH", code: "000046", reason: "等待确认" }] },
+    { date: "2026-05-22", type: "decision", status: "completed", summary: "仍然观望。", actions: [{ action: "WATCH", code: "000046", reason: "等待机会" }] },
+    { date: "2026-05-25", type: "decision", status: "completed", summary: "0元观察。", actions: [{ action: "WATCH", code: "000046", reason: "接盘风险未解除" }] }
+  ],
+  transactions: [],
+  orders: [],
+  settlements: []
+};
+const staleCatchdownOpportunityBacktest = manager.buildPortfolioBacktestDiagnostics(staleCatchdownOpportunityCostFixture);
+assert(
+  !staleCatchdownOpportunityBacktest.items.some((item) => item.label === "买点错过回测" || item.label === "机会成本回测"),
+  "stale-theme catchdown rebounds must not be treated as missed buy points or executable opportunity cost"
+);
+assert(
+  staleCatchdownOpportunityBacktest.items.some((item) => item.label === "候选质量缺口回测" && /接盘风险|主力撤离|退潮/.test(item.note || "")),
+  "stale-theme rebounds that keep rising must be attributed to catchdown-risk blockage rather than chase pressure"
+);
+assert(
+  !manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb(JSON.parse(JSON.stringify(staleCatchdownOpportunityCostFixture)))).lists.find((item) => item.id === "opportunity_cost")?.items.some((item) => item.code === "000046"),
+  "opportunity-cost ranking must not surface stale-theme catchdown rebounds as missed buy opportunities"
+);
+assert.equal(
+  manager.buildPortfolioMissedFollowThroughReviewQueue(staleCatchdownOpportunityCostFixture).length,
+  0,
+  "missed follow-through guard must not inject BUY reviews for stale-theme catchdown rebounds"
+);
 const staleCatchdownReadinessQueue = manager.buildPortfolioDecisionReadinessQueue(staleCatchdownBoardDb.watchlist);
 assert(
   staleCatchdownReadinessQueue[0]?.positiveRankingGate?.includes("接盘/追涨风险未解除")

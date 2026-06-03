@@ -17214,6 +17214,7 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
 
   const readyOpportunityCandidates = watchlist
     .filter((item) => item.status === "ready" || Number(item.readinessScore || 0) >= 75)
+    .filter((item) => !isPortfolioBacktestOpportunityCostRiskBlocked(item))
     .filter((item) => item.code && !hasRecentPortfolioBuyForCode(item.code, { transactions, orders }));
   if (
     Number.isFinite(deployableCashPct)
@@ -18130,6 +18131,8 @@ function getPortfolioBacktestFollowThroughBlockingReason(item = {}, readiness = 
   if (["blocked", "removed"].includes(status)) {
     return "候选状态已被系统拦截";
   }
+  const riskBlockReason = getPortfolioBacktestOpportunityCostRiskBlockReason(item);
+  if (riskBlockReason) return riskBlockReason;
   const gap = normalizeStringArray(readiness.gaps).find(isPortfolioBacktestHardFollowThroughGap);
   if (gap) return gap;
   const text = [
@@ -18143,6 +18146,28 @@ function getPortfolioBacktestFollowThroughBlockingReason(item = {}, readiness = 
   ].filter(Boolean).join(" ");
   const match = text.match(/(?:缺少可验证净值|净值.*缺|基金规模[^。；;]{0,40}(?:偏小|清盘|流动性|不能)|特殊\/平台份额|普通渠道可买|可申购渠道|起购门槛|费用\/份额|份额类别缺失|A\/C\/D\/I缺失|未核验|无法核验)[^。；;]{0,60}/);
   return match ? match[0] : "";
+}
+
+function isPortfolioBacktestOpportunityCostRiskBlocked(item = {}) {
+  return Boolean(getPortfolioBacktestOpportunityCostRiskBlockReason(item));
+}
+
+function getPortfolioBacktestOpportunityCostRiskBlockReason(item = {}) {
+  const riskGate = resolvePortfolioPositiveWatchRankingGate(item);
+  if (riskGate.ok) return "";
+  const evidence = riskGate.evidence || {};
+  const hardOpportunityRisk = Boolean(
+    evidence.holdingRealtimeCatchdownRisk
+    || evidence.staleThemeRefreshRisk
+    || evidence.staleCatchdownRisk
+    || evidence.staleCatalystRisk
+    || evidence.themeRetreatRisk
+    || evidence.unsupportedHoldingThemeRisk
+  );
+  if (!hardOpportunityRisk && !riskGate.chaseOnly) return "";
+  return hardOpportunityRisk
+    ? `接盘风险未解除：${riskGate.reason || "旧题材、主力撤离或底层持仓走弱风险未解除"}`
+    : `追涨风险未解除：${riskGate.reason || "当前位置偏热或追涨风险未解除"}`;
 }
 
 function isPortfolioBacktestHardFollowThroughGap(gap = "") {

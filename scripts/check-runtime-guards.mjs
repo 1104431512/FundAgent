@@ -2041,8 +2041,12 @@ const requiredPatterns = [
     message: "portfolio backtest diagnostics must detect repeated wait-only decisions while cash remains deployable."
   },
   {
-    pattern: /readyOpportunityCandidates[\s\S]{0,1500}买点错过回测[\s\S]{0,400}接近买点未执行/,
+    pattern: /readyOpportunityCandidates[\s\S]{0,900}!isPortfolioBacktestOpportunityCostRiskBlocked\(item\)[\s\S]{0,1500}买点错过回测[\s\S]{0,400}接近买点未执行/,
     message: "portfolio backtests must detect ready watchlist candidates that stay unexecuted under high cash."
+  },
+  {
+    pattern: /function getPortfolioBacktestFollowThroughBlockingReason[\s\S]{0,700}getPortfolioBacktestOpportunityCostRiskBlockReason\(item\)[\s\S]{0,1200}function getPortfolioBacktestOpportunityCostRiskBlockReason[\s\S]{0,900}接盘风险未解除[\s\S]{0,900}追涨风险未解除/,
+    message: "portfolio opportunity-cost backtests must block stale-theme catchdown or chase-risk rebounds from being counted as missed buy points."
   },
   {
     pattern: /function buildPortfolioBacktestFollowThroughCandidate[\s\S]{0,2600}starterCapital[\s\S]{0,900}estimatedStarterOpportunity/,
