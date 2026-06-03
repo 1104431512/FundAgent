@@ -1421,8 +1421,8 @@ const requiredPatterns = [
     message: "theme radar must be converted into a main-force playbook with representative-fund search keywords and holding anchors."
   },
   {
-    pattern: /function formatThemeMainForceCapitalProof[\s\S]{0,700}avgFlow > 0\.2[\s\S]{0,700}avgFlow < -0\.2[\s\S]{0,700}主力资金均值接近平衡/,
-    message: "main-force playbook capital proof must not describe near-zero average flow as positive net inflow."
+    pattern: /function formatThemeMainForceCapitalProof[\s\S]{0,700}avgFlow > 0\.2[\s\S]{0,700}主力资金均值接近平衡[\s\S]{0,900}maxFlow >= 1\.5[\s\S]{0,900}最强相关板块小幅流入[\s\S]{0,300}尚未达到主力确认/,
+    message: "main-force playbook capital proof must not describe near-zero or weak max flow as confirmed positive net inflow."
   },
   {
     pattern: /function compactThemeMainForcePlaybookForModel[\s\S]{0,1800}代表基金检索词[\s\S]{0,500}持仓承载锚点/,

@@ -24900,8 +24900,14 @@ function formatThemeMainForceCapitalProof(theme = {}) {
     }
     return "主力资金均值接近平衡，仍需确认是否真正流入";
   }
-  if (Number.isFinite(maxFlow) && maxFlow > 0) return `最强相关板块净流入${formatFallbackPlainPct(maxFlow)}`;
-  if (Number.isFinite(minFlow) && minFlow < 0) return `最弱相关板块净流出${formatFallbackPlainPct(Math.abs(minFlow))}`;
+  if (Number.isFinite(maxFlow) && maxFlow >= 1.5 && (!Number.isFinite(minFlow) || minFlow > -2)) {
+    return `最强相关板块净流入${formatFallbackPlainPct(maxFlow)}`;
+  }
+  if (Number.isFinite(maxFlow) && maxFlow > 0.2) {
+    return `最强相关板块小幅流入${formatFallbackPlainPct(maxFlow)}，尚未达到主力确认`;
+  }
+  if (Number.isFinite(minFlow) && minFlow <= -0.5) return `最弱相关板块净流出${formatFallbackPlainPct(Math.abs(minFlow))}`;
+  if (Number.isFinite(minFlow) && minFlow < -0.2) return `最弱相关板块小幅流出${formatFallbackPlainPct(Math.abs(minFlow))}，继续观察`;
   if (hasStrongMainInflowRankSignal(theme.mainInflowRankScore)) return "进入主力流入榜";
   if (hasNewsMainCapitalEvidence(theme)) return "新闻提示资金抢筹";
   return "主力资金仍需复核";

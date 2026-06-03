@@ -633,6 +633,34 @@ assert(
     && !balancedFlowPlaybookItem?.capitalProof?.includes("净流入0.1"),
   "main-force playbook must not present near-zero main-capital flow as positive net inflow"
 );
+const weakMaxFlowPreheatTheme = {
+  ...balancedFlowPreheatTheme,
+  id: "weak_max_flow_preheat",
+  avgMainNetInflowPct: null,
+  maxMainNetInflowPct: 0.4,
+  minMainNetInflowPct: null
+};
+const weakMaxFlowPlaybook = manager.buildThemeMainForcePlaybook([weakMaxFlowPreheatTheme], manager.buildThemeLeaderboards([weakMaxFlowPreheatTheme]));
+const weakMaxFlowPlaybookItem = weakMaxFlowPlaybook.lanes.flatMap((lane) => lane.items || []).find((item) => item.id === "weak_max_flow_preheat");
+assert(
+  weakMaxFlowPlaybookItem?.capitalProof?.includes("小幅流入")
+    && weakMaxFlowPlaybookItem?.capitalProof?.includes("尚未达到主力确认")
+    && !weakMaxFlowPlaybookItem?.capitalProof?.includes("净流入0.4"),
+  "main-force playbook must not present weak max-flow evidence as confirmed main-capital inflow"
+);
+const strongMaxFlowPreheatTheme = {
+  ...balancedFlowPreheatTheme,
+  id: "strong_max_flow_preheat",
+  avgMainNetInflowPct: null,
+  maxMainNetInflowPct: 1.8,
+  minMainNetInflowPct: -0.2
+};
+const strongMaxFlowPlaybook = manager.buildThemeMainForcePlaybook([strongMaxFlowPreheatTheme], manager.buildThemeLeaderboards([strongMaxFlowPreheatTheme]));
+const strongMaxFlowPlaybookItem = strongMaxFlowPlaybook.lanes.flatMap((lane) => lane.items || []).find((item) => item.id === "strong_max_flow_preheat");
+assert(
+  strongMaxFlowPlaybookItem?.capitalProof?.includes("最强相关板块净流入1.8%"),
+  "main-force playbook should still show confirmed capital proof when max-flow evidence is strong enough"
+);
 const liveThemeKeywordGroup = manager.buildPortfolioThemeOpportunityKeywordGroups(liveThemeOpportunitySnapshot)[0];
 assert(liveThemeKeywordGroup?.anchors?.some((item) => /低空经济|万丰奥威/.test(item)), "theme representative coverage must keep specific theme or leader-stock anchors");
 assert(!liveThemeKeywordGroup?.anchors?.some((item) => /军工|高端制造/.test(item)), "theme representative coverage anchors must not be satisfied by broad sector labels alone");
