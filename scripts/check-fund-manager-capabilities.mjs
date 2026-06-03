@@ -1597,6 +1597,10 @@ assert(
   genericLeaderboardFallback.includes("直接结论：") && genericLeaderboardFallback.includes("排序口径：") && genericLeaderboardFallback.includes("结果榜："),
   "generic result fallback must generate the first-screen direct conclusion, sort policy, and result board"
 );
+assert(
+  genericLeaderboardFallback.includes("按你的口径直接排前三"),
+  "generic result fallback must sound like a direct ranked decision instead of telling the user to read a metric report"
+);
 const genericFallbackResultLine = genericLeaderboardFallback.split(/\r?\n/).find((line) => line.startsWith("结果榜：")) || "";
 assert(
   genericFallbackResultLine.indexOf("000082") >= 0 && genericFallbackResultLine.indexOf("000082") < genericFallbackResultLine.indexOf("000081"),
@@ -4459,11 +4463,50 @@ const workflowWatchlistInput = [
     reason: "旧的低位启动候选。",
     lastSnapshot: { snapshotDate: "2000-01-01", navDate: "2000-01-01", trendProfile: { ok: true, pullbackSetup: { signal: "pullback_complete" } } }
   },
+  {
+    code: "000007",
+    name: "旧题材低位观察基金C",
+    status: "waiting_pullback",
+    priority: 2,
+    updatedAt: "2026-05-20T00:00:00.000Z",
+    candidateRole: "旧题材低位观察",
+    reason: "低位轮动标签仍在，但还没有当前题材雷达刷新。",
+    setupEvidence: ["低位轮动"],
+    buyTriggers: ["等待题材重新确认"],
+    riskNotes: ["低位轮动标签缺少当前题材雷达刷新，不能只凭旧标签和净值回调做买入准备。"],
+    lastSnapshot: {
+      snapshotDate: "2026-05-19",
+      navDate: "2026-05-19",
+      trendProfile: {
+        ok: true,
+        pullbackSetup: { signal: "pullback_complete", score: 76 },
+        trendLabel: "pullback_complete",
+        entryBias: "buyable_now",
+        return5dPct: 1.1,
+        return10dPct: 2.2,
+        return20dPct: 3.4,
+        return60dPct: -5.2,
+        lowPositionPct120: 28,
+        lowPositionPct250: 42,
+        drawdownFromRecentHighPct: -8.4
+      },
+      matchedThemes: [{
+        id: "old_rotation_theme",
+        name: "旧低位轮动",
+        stage: "low_position_rotation",
+        positionSignal: "low_position_rotation",
+        rotationScore: 68,
+        lowPositionScore: 70,
+        crowdingScore: 18
+      }]
+    }
+  },
   { code: "000003", name: "追涨拦截基金A", status: "blocked", reason: "短期偏热" }
 ];
 const workflowWatchlistCandidates = manager.selectFundWorkflowWatchlistCandidates(workflowWatchlistInput, setupQuery, { limit: 4, now: "2026-05-20T00:00:00.000Z" });
 assert.deepEqual(workflowWatchlistCandidates.map((item) => item.code), ["000001", "000002"], "fund workflows must reuse ready and launch-eve watchlist candidates while excluding blocked items");
 assert(!workflowWatchlistCandidates.some((item) => item.code === "000004"), "fund workflows must not reuse stale ready watchlist snapshots as recommendation evidence");
+assert(!workflowWatchlistCandidates.some((item) => item.code === "000007"), "fund workflows must not reuse stale-theme watchlist candidates whose low-rotation evidence lacks current radar refresh");
 const staleWorkflowRefreshCandidates = manager.selectFundWorkflowStaleWatchlistRefreshCandidates(workflowWatchlistInput, setupQuery, { limit: 2, now: "2026-05-20T00:00:00.000Z" });
 assert.deepEqual(staleWorkflowRefreshCandidates.map((item) => item.code), ["000004"], "fund workflows should refresh stale setup watchlist candidates before excluding them");
 const workflowWatchlistSummary = manager.buildFundWorkflowWatchlistSummary(workflowWatchlistCandidates);

@@ -1097,6 +1097,18 @@ const requiredPatterns = [
     message: "fund workflow watchlist reuse must apply the same snapshot freshness guard as portfolio decisions."
   },
   {
+    pattern: /function selectFundWorkflowWatchlistCandidates[\s\S]{0,520}hasFundWorkflowWatchlistThemeBlocker/,
+    message: "fund workflow watchlist reuse must exclude stale-theme or no-current-radar candidates before they enter recommendation context."
+  },
+  {
+    pattern: /function hasFundWorkflowWatchlistThemeBlocker[\s\S]{0,1200}hasPortfolioCustomerThemeEvidenceBlocker/,
+    message: "fund workflow watchlist theme blocker must reuse the shared stale-theme evidence blocker."
+  },
+  {
+    pattern: /function selectFundWorkflowStaleWatchlistRefreshCandidates[\s\S]{0,420}hasFundWorkflowWatchlistThemeBlocker/,
+    message: "fund workflow stale-refresh queue must not keep recycling candidates already blocked by stale theme evidence."
+  },
+  {
     pattern: /selectFundWorkflowStaleWatchlistRefreshCandidates/,
     message: "fund recommendation and QA workflows should attempt to refresh stale self-selected candidates before excluding them."
   },

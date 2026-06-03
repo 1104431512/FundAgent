@@ -7087,6 +7087,7 @@ function selectFundWorkflowWatchlistCandidates(watchlist = [], userText = "", op
   const wantsPullbackSetup = isPullbackSetupRequest(userText);
   return normalizePortfolioWatchlist(watchlist)
     .filter((item) => ["ready", "waiting_pullback", "watch"].includes(item.status))
+    .filter((item) => !hasFundWorkflowWatchlistThemeBlocker(item))
     .filter((item) => isFundWorkflowWatchlistFreshEnough(item, options))
     .map((item) => {
       const readiness = evaluatePortfolioWatchReadiness(item);
@@ -7117,6 +7118,7 @@ function selectFundWorkflowStaleWatchlistRefreshCandidates(watchlist = [], userT
   const wantsPullbackSetup = isPullbackSetupRequest(userText);
   return normalizePortfolioWatchlist(watchlist)
     .filter((item) => ["ready", "waiting_pullback"].includes(item.status))
+    .filter((item) => !hasFundWorkflowWatchlistThemeBlocker(item))
     .filter((item) => !isFundWorkflowWatchlistFreshEnough(item, options))
     .filter((item) => !wantsPullbackSetup || isLowBaseLaunchWatchSeed(item) || /回调完成|启动前夜|低位|刚转强/.test([
       item.reason,
@@ -7128,6 +7130,27 @@ function selectFundWorkflowStaleWatchlistRefreshCandidates(watchlist = [], userT
     .sort((a, b) => Number(a.priority || 3) - Number(b.priority || 3)
       || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
     .slice(0, limit);
+}
+
+function hasFundWorkflowWatchlistThemeBlocker(item = {}) {
+  const readinessGaps = normalizeStringArray(item.readinessGaps).length
+    ? normalizeStringArray(item.readinessGaps)
+    : evaluatePortfolioWatchReadiness(item, item.lastSnapshot).gaps;
+  const text = [
+    item.reason,
+    item.candidateRole,
+    item.positionPlan,
+    ...(item.setupEvidence || []),
+    ...(item.buyTriggers || []),
+    ...(item.riskNotes || []),
+    ...readinessGaps,
+    item.lastSnapshot?.reason,
+    item.lastSnapshot?.themeEvidence,
+    item.lastSnapshot?.rotationCheck,
+    item.lastSnapshot?.actionability?.decisionBlocker,
+    item.lastSnapshot?.actionability?.blocker
+  ].flat().filter(Boolean).join(" ");
+  return hasPortfolioCustomerThemeEvidenceBlocker({ reason: text });
 }
 
 function isFundWorkflowWatchlistFreshEnough(item = {}, options = {}) {
@@ -23715,8 +23738,8 @@ function buildFundResultLeaderboardFallback({ text = "", workflow = "", userText
   const sortPolicy = formatFundAnswerSortPolicy(userText, "风险收益质量优先，其次看买点、题材支撑和费用。");
   const blockedCount = ranked.filter((item) => isFundAnswerLeaderboardNoBuyCandidate(item.candidate)).length;
   const directLine = blockedCount === ranked.length
-    ? "直接结论：这次只给优先复核榜，暂不直接买。"
-    : "直接结论：先看结果榜，第一名才有小仓验证资格，其余只做备选复核。";
+    ? "直接结论：按你的口径排完后，前三名也只进复核榜，暂不直接买。"
+    : "直接结论：按你的口径直接排前三；第一名才有小仓验证资格，其余先做备选复核。";
   const resultLine = `结果榜：${ranked.map((item, index) =>
     `${index + 1}. ${formatFundAnswerLeaderboardCandidate(item.candidate, { sortPolicy, userText })}`
   ).join("；")}`;
@@ -24003,7 +24026,7 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
     `${index + 1}. ${formatPullbackFallbackWatchCandidate(item.candidate, { requireThemeOpportunityBacking })}`
   );
   return [
-    "直接结论：只保留符合回调启动纪律的候选，偏热或等待回撤的标的不放进主推荐。",
+    "直接结论：按你的口径只排可进主推荐的候选，偏热或等待回撤的标的不进主榜。",
     `排序口径：${sortPolicy}`,
     `结果榜：${resultLines.join("；")}`,
     "我对这条筛选把握度中等偏高，依据是下钻信号已经把主候选和观察池分开。",
