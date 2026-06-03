@@ -3761,6 +3761,10 @@ const requiredPatterns = [
     message: "manager ranking boards must include a replacement-choice lane that compares same-fund share classes and same-exposure alternatives before buying."
   },
   {
+    pattern: /function buildPortfolioRankingCustomerDigest[\s\S]{0,1800}const buyReview = \[[\s\S]{0,900}\.\.\.themeMomentumItems\.filter[\s\S]{0,900}\]\s*[\r\n]+\s*\.filter/,
+    message: "customer buy-review digest must not treat replacement-choice or low-fee alternatives as buy signals."
+  },
+  {
     pattern: /(?=[\s\S]*const priorityQueue = buildPortfolioRankingPriorityQueue\(lists\))(?=[\s\S]*function buildPortfolioRankingPriorityQueue)/,
     message: "manager ranking boards must build a cross-list priority queue before rendering or model calls."
   },

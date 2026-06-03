@@ -1368,6 +1368,50 @@ assert(feeRankingItem?.facts.some((item) => item.includes("C类") || item.includ
 assert(/A\/C|持有期|份额类别|关键费率|渠道/.test(feeRankingItem?.decision?.nextStep || ""), "fee-suitability ranking items must force share-class and holding-period comparison");
 assert(replacementRankingItem?.facts.some((item) => item.includes("同基金") || item.includes("同类替代")), "replacement-choice ranking items must expose same-fund or same-exposure alternatives");
 assert(/不混买A\/C|代表|替代/.test(replacementRankingItem?.decision?.nextStep || ""), "replacement-choice ranking items must force one final product/share-class choice before buying");
+assert(
+  !(rankingBoard.customerDigest?.buyReview || []).some((item) => item.code === "000004"),
+  "replacement-choice items must not enter customer buy-review digest merely because a lower-fee alternative exists"
+);
+const replacementOnlyBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
+  account: { cash: 90000, totalAsset: 100000, positionWeightPct: 0 },
+  watchlist: [{
+    code: "990004",
+    name: "替代优选壳基金C",
+    shareClass: "C",
+    status: "watch",
+    priority: 2,
+    reason: "只有同基金份额和同指数低费替代证据，尚未形成买点。",
+    alternativeShareClasses: [
+      { code: "990104", name: "替代优选壳基金A", shareClass: "A", feeImpact: { oneYearCostPer10000: 12 }, feeNotes: ["A类每万元1年约12元。"] }
+    ],
+    sameExposureAlternatives: [
+      { code: "990204", name: "同指数低费替代C", shareClass: "C", feeImpact: { oneYearCostPer10000: 18 }, feeNotes: ["同指数低费替代每万元1年约18元。"] }
+    ],
+    lastSnapshot: {
+      fees: {
+        shareClass: "C",
+        shareClassFeeModel: { type: "sales_service_fee", label: "C类：偏销售服务费模型", selectionRule: "短中期可观察，长期需比较A类。" },
+        feeImpact: { oneYearCostPer10000: 40, missingFeeData: [] }
+      }
+    }
+  }]
+}));
+assert(
+  replacementOnlyBoard.lists.find((item) => item.id === "replacement_choice")?.items.some((item) => item.code === "990004"),
+  "replacement-choice-only candidates must remain visible in the replacement-choice lane"
+);
+assert(
+  !(replacementOnlyBoard.customerDigest?.buyReview || []).some((item) => item.code === "990004"),
+  "replacement-choice-only candidates must not enter customer buy-review digest"
+);
+assert(
+  !(replacementOnlyBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "990004"),
+  "customer buy action card must not show replacement-choice-only items as buy candidates"
+);
+assert(
+  !(replacementOnlyBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.items || []).some((item) => item.code === "990004"),
+  "customer buy action leaderboard must not rank replacement-choice-only items as buy candidates"
+);
 assert(sellRankingItem?.decision?.risks?.some((item) => item.includes("回吐")), "sell ranking items must expose risk reasons instead of only a score");
 const rankingActionAudit = manager.buildPortfolioRankingActionAudit({
   runs: [

@@ -13722,8 +13722,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
     ...managerStabilityItems.filter((item) => /稳定主理/.test(item.action || "")),
     ...portfolioFitItems.filter((item) => /组合补位|首仓适配/.test(item.action || "")),
     ...themeAllocationItems.filter((item) => /主题配置复核/.test(item.action || "")),
-    ...themeMomentumItems.filter((item) => /买入复核|微型试探|小仓/.test(item.action || "")),
-    ...replacementItems.filter((item) => /低费|优选/.test(item.action || ""))
+    ...themeMomentumItems.filter((item) => /买入复核|微型试探|小仓/.test(item.action || ""))
   ]
     .filter((item) => item?.code && !riskAvoidCodes.has(item.code))
     .slice(0, 3);
