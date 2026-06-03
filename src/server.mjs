@@ -14892,6 +14892,7 @@ function buildPortfolioManagerPerformanceStats(db = {}, options = {}) {
   const distribution = countPortfolioOperationReviewDistribution(recentReviews);
   const operationLanes = buildPortfolioManagerOperationReviewLanes(recentReviews);
   const kindBreakdown = buildPortfolioOperationKindBreakdown(recentReviews);
+  const playbookExecutionReview = buildPortfolioManagerPlaybookExecutionReview({ watchlist, runs });
   const lessons = buildPortfolioManagerPerformanceLessons({
     actionReview,
     backtestDiagnostics,
@@ -14919,7 +14920,8 @@ function buildPortfolioManagerPerformanceStats(db = {}, options = {}) {
     operationLanes,
     recentReviews,
     watchlist,
-    runs
+    runs,
+    playbookExecutionReview
   });
   const level = resolvePortfolioManagerPerformanceLevel({
     actionReview,
@@ -14939,7 +14941,8 @@ function buildPortfolioManagerPerformanceStats(db = {}, options = {}) {
     abilityLanes,
     operationLanes,
     recentReviews,
-    lessons
+    lessons,
+    playbookExecutionReview
   };
 }
 
@@ -15393,7 +15396,8 @@ function buildPortfolioManagerAbilityLanes({
   operationLanes = [],
   recentReviews = [],
   watchlist = [],
-  runs = []
+  runs = [],
+  playbookExecutionReview = null
 } = {}) {
   const backtestItems = Array.isArray(backtestDiagnostics.items) ? backtestDiagnostics.items : [];
   const staleRiskRanking = buildPortfolioStaleCatchdownRiskRanking(watchlist);
@@ -15419,8 +15423,11 @@ function buildPortfolioManagerAbilityLanes({
     tone: "ok",
     tag: "代表基金"
   });
-  const mainForceProofItems = mergePortfolioAbilityProofItems(playbookFollowProofItems, themeLeaderboardProofItems, themeMomentumProofItems).slice(0, 4);
-  const antiCatchdownMergedProofItems = mergePortfolioAbilityProofItems(antiCatchdownProofItems, playbookRiskProofItems).slice(0, 4);
+  const playbookReview = playbookExecutionReview || buildPortfolioManagerPlaybookExecutionReview({ watchlist, runs });
+  const antiCatchdownExecutionProofItems = normalizePortfolioManagerPlaybookExecutionProofItems(playbookReview.riskProofItems, "warn").slice(0, 3);
+  const opportunityExecutionProofItems = normalizePortfolioManagerPlaybookExecutionProofItems(playbookReview.opportunityProofItems, "ok").slice(0, 3);
+  const mainForceProofItems = mergePortfolioAbilityProofItems(opportunityExecutionProofItems, playbookFollowProofItems, themeLeaderboardProofItems, themeMomentumProofItems).slice(0, 4);
+  const antiCatchdownMergedProofItems = mergePortfolioAbilityProofItems(antiCatchdownExecutionProofItems, antiCatchdownProofItems, playbookRiskProofItems).slice(0, 4);
   const correctionCount = operationLanes.find((lane) => lane.id === "correction")?.count || 0;
   const pendingCount = operationLanes.find((lane) => lane.id === "pending")?.count || 0;
   const catchdownReplayCount = countPortfolioBacktestAbilityItems(backtestItems, [/退潮接盘亏损回测/, /追高买入回测/]);
@@ -15448,21 +15455,29 @@ function buildPortfolioManagerAbilityLanes({
   const lowRotationThemeCount = latestThemeLeaderboards?.lowRotation?.items?.length || 0;
   const playbookOpportunityCount = Number(latestThemeMainForcePlaybook?.opportunityCount || 0);
   const playbookRiskCount = Number(latestThemeMainForcePlaybook?.riskCount || 0);
+  const playbookRiskLeakCount = Number(playbookReview.riskLeakCount || 0);
+  const playbookRiskBlockedCount = Number(playbookReview.riskBlockedCount || 0);
+  const playbookOpportunityReadyCount = Number(playbookReview.opportunityReadyCount || 0);
+  const playbookOpportunityStuckCount = Number(playbookReview.opportunityStuckCount || 0);
   return [
     {
       id: "anti_catchdown",
       label: "防接盘能力",
-      headline: catchdownReplayCount
+      headline: playbookRiskLeakCount
+        ? `${playbookRiskLeakCount} 个作战图风险仍可能漏出`
+        : playbookRiskBlockedCount
+          ? `已压住 ${playbookRiskBlockedCount} 个作战图风险候选`
+        : catchdownReplayCount
         ? `${catchdownReplayCount} 个接盘/追高问题待修复`
         : playbookRiskCount
           ? `作战图标记 ${playbookRiskCount} 个接盘/追涨风险`
         : staleRiskCount
           ? `已识别 ${staleRiskCount} 个接盘风险`
           : "暂无明确接盘亏损样本",
-      detail: staleRiskCount || catchdownReplayCount || playbookRiskCount
-        ? "退潮、主力撤离、旧催化和追涨风险会进入风险榜与作战图，不能再包装成低位启动。"
+      detail: staleRiskCount || catchdownReplayCount || playbookRiskCount || playbookRiskBlockedCount || playbookRiskLeakCount
+        ? "退潮、主力撤离、旧催化和追涨风险会进入风险榜与作战图；风险候选若仍处可买，必须立刻降级。"
         : "继续要求每个回调候选先证明资金回流、新闻催化和代表持仓承载。",
-      tone: catchdownReplayCount ? "bad" : staleRiskCount || playbookRiskCount ? "warn" : "ok",
+      tone: playbookRiskLeakCount || catchdownReplayCount ? "bad" : staleRiskCount || playbookRiskCount || playbookRiskBlockedCount ? "warn" : "ok",
       proofItems: antiCatchdownMergedProofItems
     },
     {
@@ -15470,6 +15485,10 @@ function buildPortfolioManagerAbilityLanes({
       label: "主力跟随能力",
       headline: missedThemeCount
         ? `${missedThemeCount} 个主力预热错过`
+        : playbookOpportunityReadyCount
+          ? `${playbookOpportunityReadyCount} 个作战图机会进入复核`
+        : playbookOpportunityStuckCount
+          ? `${playbookOpportunityStuckCount} 个作战图机会仍卡在观察`
         : executableThemeCount
           ? `${executableThemeCount} 个可微型/小仓复核`
           : playbookOpportunityCount
@@ -15482,7 +15501,7 @@ function buildPortfolioManagerAbilityLanes({
       detail: mainForceProofItems.length
         ? "先解释题材为什么动，再验证主力资金、代表基金持仓承载和低位买点，合格才允许微型试探。"
         : "主力进场和题材预热必须同时说明新闻逻辑、资金是否跟进、基金是否真实承载题材。",
-      tone: missedThemeCount ? "warn" : executableThemeCount || playbookOpportunityCount || mainCapitalThemeCount || preheatThemeCount ? "ok" : themeOpportunityCount || lowRotationThemeCount ? "info" : "muted",
+      tone: missedThemeCount || playbookOpportunityStuckCount ? "warn" : playbookOpportunityReadyCount || executableThemeCount || playbookOpportunityCount || mainCapitalThemeCount || preheatThemeCount ? "ok" : themeOpportunityCount || lowRotationThemeCount ? "info" : "muted",
       proofItems: mainForceProofItems
     },
     {
@@ -15490,13 +15509,15 @@ function buildPortfolioManagerAbilityLanes({
       label: "过度观望纠偏",
       headline: overWaitCount
         ? `${overWaitCount} 个观望/机会成本问题`
+        : playbookOpportunityStuckCount
+          ? `${playbookOpportunityStuckCount} 个作战图机会还没推进`
         : waitCount > buySellCount && waitCount >= 3
           ? `观察持有 ${waitCount} 次，需继续复核`
           : "等待纪律暂可接受",
       detail: overWaitCount
         ? "下一轮必须给小仓试探、主动降级或明确复查时间，不能继续只说等待机会。"
         : "等待必须绑定触发条件和复核时间，避免现金长期空转。",
-      tone: overWaitCount ? "warn" : waitCount > buySellCount && waitCount >= 3 ? "info" : "ok"
+      tone: overWaitCount || playbookOpportunityStuckCount ? "warn" : waitCount > buySellCount && waitCount >= 3 ? "info" : "ok"
     },
     {
       id: "profit_drawdown",
@@ -15515,6 +15536,161 @@ function buildPortfolioManagerAbilityLanes({
       tone: !hasCoverage ? "muted" : coveragePct >= 80 && !correctionCount ? "ok" : coveragePct >= 50 ? "info" : "warn"
     }
   ];
+}
+
+function buildPortfolioManagerPlaybookExecutionReview({ watchlist = [], runs = [] } = {}) {
+  const normalizedWatchlist = normalizePortfolioWatchlist(watchlist || []);
+  const latestPlaybook = findLatestPortfolioThemeMainForcePlaybookFromRuns(runs);
+  const riskItems = normalizedWatchlist
+    .map((item) => buildPortfolioManagerPlaybookRiskReviewItem(item))
+    .filter(Boolean);
+  const opportunityItems = normalizedWatchlist
+    .map((item) => buildPortfolioManagerPlaybookOpportunityReviewItem(item))
+    .filter(Boolean);
+  const riskLeaks = riskItems.filter((item) => item.leaked);
+  const riskBlocked = riskItems.filter((item) => !item.leaked);
+  const opportunityReady = opportunityItems.filter((item) => item.ready);
+  const opportunityStuck = opportunityItems.filter((item) => !item.ready && !item.blocked);
+  return {
+    riskLaneCount: Number(latestPlaybook?.riskCount || 0),
+    opportunityLaneCount: Number(latestPlaybook?.opportunityCount || 0),
+    riskTaggedCount: riskItems.length,
+    riskBlockedCount: riskBlocked.length,
+    riskLeakCount: riskLeaks.length,
+    opportunityTaggedCount: opportunityItems.length,
+    opportunityReadyCount: opportunityReady.length,
+    opportunityStuckCount: opportunityStuck.length,
+    riskProofItems: [...riskLeaks, ...riskBlocked].slice(0, 4).map(formatPortfolioManagerPlaybookRiskProofItem),
+    opportunityProofItems: [...opportunityReady, ...opportunityStuck].slice(0, 4).map(formatPortfolioManagerPlaybookOpportunityProofItem),
+    summary: [
+      riskItems.length ? `作战图风险候选 ${riskItems.length} 个，已压住 ${riskBlocked.length} 个${riskLeaks.length ? `，疑似漏出 ${riskLeaks.length} 个` : ""}` : "",
+      opportunityItems.length ? `作战图机会候选 ${opportunityItems.length} 个，进入复核 ${opportunityReady.length} 个${opportunityStuck.length ? `，仍卡观察 ${opportunityStuck.length} 个` : ""}` : ""
+    ].filter(Boolean).join("；") || "暂无可复盘的作战图候选执行样本。"
+  };
+}
+
+function buildPortfolioManagerPlaybookRiskReviewItem(item = {}) {
+  const profile = getPortfolioManagerPlaybookEvidenceProfile(item);
+  const warnings = getThemeMainForcePlaybookRiskWarnings(profile);
+  const text = portfolioBacktestText({ item, profile });
+  if (!warnings.length && !/作战图风险|退潮接盘|追涨风险回避/.test(text)) return null;
+  const readiness = evaluatePortfolioWatchReadiness(item, profile);
+  const status = normalizePortfolioWatchStatus(item.status || "watch");
+  const leaked = status === "ready" || Number(readiness.score || 0) >= 66;
+  return {
+    code: item.code || profile.code || "",
+    name: item.name || profile.name || "",
+    status,
+    leaked,
+    readiness,
+    warning: warnings[0] || selectPortfolioOperationEvidence(text, ["作战图风险", "退潮接盘", "追涨风险"]),
+    nextStep: leaked
+      ? "立刻从可买/ready降级为0元观察，等资金回流和新鲜催化重新确认。"
+      : "保持0元观察，继续监控资金回流和持仓止跌。"
+  };
+}
+
+function buildPortfolioManagerPlaybookOpportunityReviewItem(item = {}) {
+  const profile = getPortfolioManagerPlaybookEvidenceProfile(item);
+  const matches = collectPortfolioManagerPlaybookOpportunityMatches(profile);
+  const text = portfolioBacktestText({ item, profile });
+  if (!matches.length && !/作战图机会|主力作战图机会|playbookOpportunityMatches/.test(text)) return null;
+  const readiness = evaluatePortfolioWatchReadiness(item, profile);
+  const status = normalizePortfolioWatchStatus(item.status || "watch");
+  const ready = status === "ready"
+    || hasVerifiedPortfolioBuySetup(profile)
+    || hasPortfolioStarterBuySetup(profile)
+    || hasPortfolioThemeMicroStarterSetup(profile);
+  const blocked = status === "blocked" || Number(readiness.score || 0) <= 35;
+  const match = matches[0] || {};
+  return {
+    code: item.code || profile.code || "",
+    name: item.name || profile.name || "",
+    status,
+    ready,
+    blocked,
+    readiness,
+    laneTitle: match.laneTitle || "",
+    themeName: match.name || "",
+    matchedTerms: normalizeStringArray(match.matchedTerms).slice(0, 4),
+    nextStep: ready
+      ? "进入小仓/微型试探复核，继续检查费率、持仓承载和5日/10日温和转强。"
+      : blocked
+        ? "机会证据已失效或缺口过硬，明确降级而不是空泛等待。"
+        : "给出复查时间和触发条件，避免主力机会长期停在观察。"
+  };
+}
+
+function getPortfolioManagerPlaybookEvidenceProfile(item = {}) {
+  return item.lastSnapshot && typeof item.lastSnapshot === "object"
+    ? { ...item.lastSnapshot, code: item.lastSnapshot.code || item.code, name: item.lastSnapshot.name || item.name }
+    : item;
+}
+
+function collectPortfolioManagerPlaybookOpportunityMatches(profile = {}) {
+  const raw = [
+    ...(Array.isArray(profile.playbookOpportunityMatches) ? profile.playbookOpportunityMatches : []),
+    ...(Array.isArray(profile.seed?.playbookOpportunityMatches) ? profile.seed.playbookOpportunityMatches : []),
+    ...(Array.isArray(profile.marketThemeRefresh?.playbookOpportunityMatches) ? profile.marketThemeRefresh.playbookOpportunityMatches : []),
+    ...(Array.isArray(profile.seed?.marketThemeRefresh?.playbookOpportunityMatches) ? profile.seed.marketThemeRefresh.playbookOpportunityMatches : [])
+  ];
+  const seen = new Set();
+  return raw
+    .filter((item) => item && typeof item === "object")
+    .filter((item) => {
+      const key = normalizeIntentText(`${item.laneId || ""}|${item.name || ""}|${normalizeStringArray(item.matchedTerms).join("/")}`);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 4);
+}
+
+function formatPortfolioManagerPlaybookRiskProofItem(item = {}) {
+  return {
+    title: normalizePortfolioUserFacingText([item.code, item.name].filter(Boolean).join(" ") || "作战图风险候选").slice(0, 42),
+    tag: item.leaked ? "作战图风险 · 疑似漏出" : "作战图风险 · 已压住",
+    detail: normalizePortfolioUserFacingText(item.warning || "命中退潮接盘或追涨回避泳道。").slice(0, 108),
+    evidence: normalizePortfolioUserFacingArray([
+      item.readiness?.label ? `准备度：${item.readiness.label}` : "",
+      Number.isFinite(Number(item.readiness?.score)) ? `分数：${round(Number(item.readiness.score), 0)}` : "",
+      `状态：${formatPortfolioWatchStatus(item.status)}`
+    ], 3),
+    nextStep: item.nextStep || "",
+    tone: item.leaked ? "bad" : "warn"
+  };
+}
+
+function formatPortfolioManagerPlaybookOpportunityProofItem(item = {}) {
+  return {
+    title: normalizePortfolioUserFacingText([item.code, item.name].filter(Boolean).join(" ") || item.themeName || "作战图机会候选").slice(0, 42),
+    tag: item.ready ? "作战图机会 · 已推进" : item.blocked ? "作战图机会 · 已降级" : "作战图机会 · 待推进",
+    detail: normalizePortfolioUserFacingText([
+      item.themeName || "",
+      item.laneTitle || "",
+      item.matchedTerms?.length ? `承载锚点 ${item.matchedTerms.join("/")}` : ""
+    ].filter(Boolean).join("，") || "命中主力进场、题材预热或低位轮动泳道。").slice(0, 108),
+    evidence: normalizePortfolioUserFacingArray([
+      item.readiness?.label ? `准备度：${item.readiness.label}` : "",
+      Number.isFinite(Number(item.readiness?.score)) ? `分数：${round(Number(item.readiness.score), 0)}` : "",
+      `状态：${formatPortfolioWatchStatus(item.status)}`
+    ], 3),
+    nextStep: item.nextStep || "",
+    tone: item.ready ? "ok" : item.blocked ? "muted" : "warn"
+  };
+}
+
+function normalizePortfolioManagerPlaybookExecutionProofItems(items = [], fallbackTone = "info") {
+  return (Array.isArray(items) ? items : [])
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      title: item.title || "作战图执行证据",
+      tag: item.tag || "作战图复盘",
+      detail: item.detail || "",
+      evidence: normalizePortfolioUserFacingArray(item.evidence || [], 3),
+      nextStep: item.nextStep || "",
+      tone: item.tone || fallbackTone
+    }));
 }
 
 function findLatestPortfolioThemeLeaderboardsFromRuns(runs = []) {

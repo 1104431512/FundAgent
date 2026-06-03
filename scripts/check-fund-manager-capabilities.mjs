@@ -1828,6 +1828,7 @@ assert(managerPerformanceStats.scorecards.some((item) => item.label === "盈利�
 assert(managerPerformanceStats.abilityLanes?.some((item) => item.label === "防接盘能力"), "manager performance stats must expose anti-catchdown ability proof");
 assert(managerPerformanceStats.abilityLanes?.some((item) => item.label === "主力跟随能力" && /主力|题材|预热/.test(`${item.headline} ${item.detail}`)), "manager performance stats must expose main-capital/preheat follow ability proof");
 assert(managerPerformanceStats.abilityLanes?.some((item) => item.label === "过度观望纠偏"), "manager performance stats must expose over-waiting correction proof");
+assert(managerPerformanceStats.playbookExecutionReview, "manager performance stats must expose playbook execution review counts");
 assert(managerPerformanceStats.kindBreakdown?.some((item) => item.label === "买入复盘"), "manager performance stats must split proof by buy/sell/hold/watch operation kinds");
 assert(managerPerformanceStats.kindBreakdown?.some((item) => item.label === "等待复盘" && item.headline), "manager performance stats must expose customer-readable wait/over-wait review cells");
 assert(managerPerformanceStats.proofPoints?.some((item) => item.title.includes("已复盘") || item.title.includes("操作样本")), "manager performance stats must expose customer-readable proof points");
@@ -1943,6 +1944,92 @@ assert(
     && /接盘|主力|资金|回避|拦截/.test(`${item.tag} ${item.detail} ${item.nextStep}`)
   ),
   "anti-catchdown ability lane must show concrete blocked funds and capital-retreat evidence, not only a generic slogan"
+);
+const playbookExecutionFixture = {
+  account: { cash: 90000, totalAsset: 100000, positions: [] },
+  watchlist: [
+    {
+      code: "000058",
+      name: "宽泛低位修复基金C",
+      status: "blocked",
+      readinessScore: 22,
+      lastSnapshot: {
+        code: "000058",
+        name: "宽泛低位修复基金C",
+        playbookRiskWarnings: ["作战图风险：AI/算力已进入退潮接盘回避；主力证据=主力资金净流出；回调先按接盘风险处理。"],
+        trendProfile: { ok: true, pullbackSetup: { signal: "pullback_complete" }, entryBias: "buyable_now" }
+      }
+    },
+    {
+      code: "000059",
+      name: "低空经济低位启动基金C",
+      status: "ready",
+      readinessScore: 82,
+      lastSnapshot: {
+        code: "000059",
+        name: "低空经济低位启动基金C",
+        playbookOpportunityMatches: [{
+          laneId: "preheat_watch",
+          laneTitle: "预热题材雷达",
+          name: "低空经济",
+          matchedTerms: ["万丰奥威", "中信海直"]
+        }],
+        unitNav: 1.118,
+        trendProfile: {
+          ok: true,
+          pullbackSetup: { signal: "pullback_complete", score: 76 },
+          trendLabel: "pullback_complete",
+          entryBias: "buyable_now",
+          return5dPct: 1.2,
+          return10dPct: 2.4,
+          return20dPct: 4.2,
+          return60dPct: 6.4,
+          lowPositionPct120: 36,
+          lowPositionPct250: 44,
+          drawdownFromRecentHighPct: -7.2
+        },
+        matchedThemes: [{
+          id: "low_altitude",
+          name: "低空经济",
+          stage: "preheat_catalyst",
+          positionSignal: "preheat_catalyst_watch",
+          leaderSignal: "preheat_catalyst",
+          capitalFollowScore: 60,
+          preheatScore: 72,
+          rotationScore: 54,
+          lowPositionScore: 60,
+          crowdingScore: 18,
+          avgMainNetInflowPct: 1.2,
+          catalystProfile: { score: 34, summary: "政策落地", risk: false, fresh: true, freshnessLabel: "当日催化", latestNewsTime: "10:18" },
+          newsLogic: "题材预热：新闻催化：低空经济示范区政策加速落地（10:18 测试快讯）；主力线索：相关板块资金净流入",
+          leaderStocks: ["万丰奥威", "中信海直"],
+          themeKeywords: ["低空经济", "飞行汽车"]
+        }],
+        holdings: {
+          ok: true,
+          equityDisclosureDate: "2099-03-31",
+          equityTopHoldings: ["002085 万丰奥威 6.8%", "000099 中信海直 4.5%"]
+        },
+        fees: {
+          shareClass: "C",
+          shareClassFeeModel: { type: "sales_service_fee", label: "C类：偏销售服务费模型" },
+          feeImpact: { missingFeeData: [], oneYearCostPer10000: 40 }
+        }
+      }
+    }
+  ],
+  runs: []
+};
+const playbookExecutionPerformance = manager.buildPortfolioManagerPerformanceStats(playbookExecutionFixture);
+assert.equal(playbookExecutionPerformance.playbookExecutionReview.riskBlockedCount, 1, "manager playbook execution review must count playbook risk candidates that were blocked");
+assert.equal(playbookExecutionPerformance.playbookExecutionReview.opportunityReadyCount, 1, "manager playbook execution review must count playbook-backed opportunities that advanced to review");
+assert(
+  playbookExecutionPerformance.abilityLanes?.find((item) => item.label === "防接盘能力")?.headline.includes("已压住 1 个作战图风险候选"),
+  "anti-catchdown ability lane must show whether playbook risk candidates were actually contained"
+);
+assert(
+  playbookExecutionPerformance.abilityLanes?.find((item) => item.label === "主力跟随能力")?.headline.includes("1 个作战图机会进入复核"),
+  "main-force ability lane must show whether playbook opportunities advanced beyond vague observation"
 );
 const unconfirmedOldThemeLossBacktestFixture = {
   account: {

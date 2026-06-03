@@ -1485,6 +1485,10 @@ const requiredPatterns = [
     message: "manager ability lanes must expose concrete proof items from catchdown risk rankings, latest theme leaderboards, and the main-force playbook, not only generic ability slogans."
   },
   {
+    pattern: /(?=[\s\S]*function buildPortfolioManagerPlaybookExecutionReview)(?=[\s\S]*playbookExecutionReview)(?=[\s\S]*riskBlockedCount)(?=[\s\S]*riskLeakCount)(?=[\s\S]*opportunityReadyCount)(?=[\s\S]*opportunityStuckCount)(?=[\s\S]*已压住 \$\{playbookRiskBlockedCount\} 个作战图风险候选)(?=[\s\S]*作战图机会进入复核)(?=[\s\S]*作战图机会仍卡在观察)/,
+    message: "manager ability proof must show whether main-force playbook risk candidates were actually blocked and opportunity candidates advanced beyond vague observation."
+  },
+  {
     pattern: /(?=[\s\S]*function classifyPortfolioManagerOperation)(?=[\s\S]*退潮接盘亏损回测)(?=[\s\S]*接盘失误)(?=[\s\S]*主力预热错过回测)(?=[\s\S]*主线错过)(?=[\s\S]*0\.5%-1\.2%微型试探)/,
     message: "manager performance reviews must classify stale-catchdown buys and missed main-capital/preheat waits as explicit correction verdicts."
   },
