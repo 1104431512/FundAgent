@@ -20292,7 +20292,11 @@ function extractAnswerRecommendationSection(text) {
     "观察池",
     "为什么不选",
     "回避",
-    "风险",
+    "风险边界",
+    "风险提示",
+    "主要风险",
+    "\n风险：",
+    "\n风险:",
     "缺失数据"
   ];
   const ends = endMarkers
@@ -23242,13 +23246,23 @@ function hasFundAnswerRequestedSortPolicy(text = "", requestedSortPriorities = [
 function sortFundAnswerRankedCandidatesByRequestedPriority(items = [], userText = "") {
   const priorities = getRequestedFundAnswerSortPriorities(userText);
   return [...(items || [])].sort((a, b) =>
-    compareFundAnswerRankedCandidatesByRequestedPriority(a, b, priorities)
+    compareFundAnswerRankedCandidatesByCustomerEligibility(a, b)
+    || compareFundAnswerRankedCandidatesByRequestedPriority(a, b, priorities)
     || Number(b.score || 0) - Number(a.score || 0)
     || String(a.candidate?.code || "").localeCompare(String(b.candidate?.code || ""))
   );
 }
 
+function compareFundAnswerRankedCandidatesByCustomerEligibility(a = {}, b = {}) {
+  const aBlocked = isFundAnswerLeaderboardNoBuyCandidate(a.candidate || {});
+  const bBlocked = isFundAnswerLeaderboardNoBuyCandidate(b.candidate || {});
+  if (aBlocked === bBlocked) return 0;
+  return aBlocked ? 1 : -1;
+}
+
 function compareFundAnswerRankedCandidatesByRequestedPriority(a = {}, b = {}, priorities = []) {
+  const eligibilityDiff = compareFundAnswerRankedCandidatesByCustomerEligibility(a, b);
+  if (eligibilityDiff) return eligibilityDiff;
   for (const priority of priorities || []) {
     const diff = getFundAnswerPriorityScore(b.candidate || {}, priority.id) - getFundAnswerPriorityScore(a.candidate || {}, priority.id);
     if (Math.abs(diff) >= 0.01) return diff;

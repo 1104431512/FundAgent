@@ -1620,6 +1620,60 @@ assert(
   genericLeaderboardFallbackQuality.ok,
   `generic result fallback must pass answer quality checks, got ${genericLeaderboardFallbackQuality.issues.join(",")}`
 );
+const highSharpeBlockedPriorityEvidence = {
+  marketDeepDive: {
+    candidates: [
+      {
+        code: "000091",
+        name: "高夏普旧题材接盘基金C",
+        risk: { oneYear: { ok: true, sharpe: 1.86, maxDrawdownPct: -7.2, annualizedReturnPct: 15.1, annualizedVolatilityPct: 9 } },
+        decisionBlocker: "系统接盘风险拦截：题材退潮、主力撤离，不能把回调当买点。"
+      },
+      {
+        code: "000092",
+        name: "中等夏普当前题材基金C",
+        risk: { oneYear: { ok: true, sharpe: 0.92, maxDrawdownPct: -13.4, annualizedReturnPct: 10.2, annualizedVolatilityPct: 14 } },
+        matchedThemes: [{
+          id: "current_preheat",
+          name: "当前预热题材",
+          leaderSignal: "preheat_catalyst",
+          positionSignal: "preheat_catalyst_watch",
+          capitalFollowScore: 62,
+          preheatScore: 68,
+          avgMainNetInflowPct: 1.2,
+          catalystProfile: { fresh: true, score: 24, summary: "当天政策催化仍在发酵" },
+          newsLogic: "当天政策催化仍在发酵，资金有温和回流。"
+        }]
+      }
+    ]
+  }
+};
+const highSharpeBlockedWrongOrderQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：可以分批买入。\n排序口径：高夏普/低回撤优先，再看买点和费用。\n结果榜：1. 000091 高夏普旧题材接盘基金C：风险收益更稳；2. 000092 中等夏普当前题材基金C：题材支撑更清楚。",
+  workflow: "fund_recommendation",
+  userText: "按高夏普优先直接排结果",
+  evidence: highSharpeBlockedPriorityEvidence
+});
+assert(
+  highSharpeBlockedWrongOrderQuality.issues.includes("requested_result_sort_order_mismatch"),
+  "fund answer quality must not let a high-Sharpe stale-theme blocker rank ahead of a lower-Sharpe but buyable current-theme candidate"
+);
+const highSharpeBlockedFallback = manager.buildFundResultLeaderboardFallback({
+  text: "直接结论：可以买。\n排序口径：高夏普/低回撤优先，再看买点。\n下面详细解释：000091 夏普最高；000092 题材当前。",
+  workflow: "fund_recommendation",
+  userText: "按高夏普优先直接排结果",
+  evidence: highSharpeBlockedPriorityEvidence,
+  issues: highSharpeBlockedWrongOrderQuality.issues
+});
+const highSharpeBlockedResultLine = highSharpeBlockedFallback.split(/\r?\n/).find((line) => line.startsWith("结果榜：")) || "";
+assert(
+  highSharpeBlockedResultLine.indexOf("000092") >= 0 && highSharpeBlockedResultLine.indexOf("000092") < highSharpeBlockedResultLine.indexOf("000091"),
+  "deterministic high-Sharpe fallback must put buyable current-theme candidates before stale-theme blockers"
+);
+assert(
+  /000091[^；\n]+先0元复核/.test(highSharpeBlockedResultLine),
+  "deterministic high-Sharpe fallback must label stale-theme blockers as zero-yuan review even when their Sharpe is high"
+);
 const genericEnforcedLeaderboard = await manager.enforceFundAnswerQuality({
   text: genericMissingResultDraft,
   workflow: "fund_recommendation",

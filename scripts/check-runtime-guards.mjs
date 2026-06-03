@@ -741,6 +741,10 @@ const requiredPatterns = [
     message: "deterministic fund fallbacks must actually reorder candidates by requested priorities such as high-Sharpe, not only state the policy."
   },
   {
+    pattern: /function sortFundAnswerRankedCandidatesByRequestedPriority[\s\S]{0,420}compareFundAnswerRankedCandidatesByCustomerEligibility[\s\S]{0,700}function compareFundAnswerRankedCandidatesByCustomerEligibility[\s\S]{0,360}isFundAnswerLeaderboardNoBuyCandidate/,
+    message: "high-Sharpe or low-drawdown ranking must not put stale-theme no-buy blockers ahead of buyable current-theme candidates."
+  },
+  {
     pattern: /function hasFundAnswerResultFirstRankingSummary[\s\S]{0,800}直接结论[\s\S]{0,500}结果榜/,
     message: "fund answer quality must recognize direct-conclusion plus result-board openings."
   },
@@ -775,6 +779,10 @@ const requiredPatterns = [
   {
     pattern: /function extractAnswerRecommendationSection[\s\S]{0,500}结果榜[\s\S]{0,220}推荐清单/,
     message: "fund recommendation quality must treat first-screen result leaderboards as recommendation sections."
+  },
+  {
+    pattern: /function extractAnswerRecommendationSection[\s\S]{0,900}风险边界[\s\S]{0,160}风险提示[\s\S]{0,160}主要风险/,
+    message: "fund recommendation extraction must not truncate result boards at plain-language phrases such as risk-adjusted returns."
   },
   {
     pattern: /function evaluateFundAnswerQuality[\s\S]{0,5200}verbose_result_answer_detail/,
