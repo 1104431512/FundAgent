@@ -5100,6 +5100,17 @@ assert(
     && catchdownRejectedAnswerWatchlistUpdates[0].candidateRole.includes("排除候选"),
   "catchdown answer-derived watchlist entries must preserve the explicit no-buy risk reason"
 );
+assert(
+  catchdownRejectedAnswerWatchlistUpdates[0].candidateRole.includes("接盘风险排除候选")
+    && catchdownRejectedAnswerWatchlistUpdates[0].positionPlan.includes("0元观察")
+    && catchdownRejectedAnswerWatchlistUpdates[0].positionPlan.includes("不是低位启动"),
+  "catchdown answer-derived watchlist entries must be labeled as zero-yuan catchdown exclusions instead of generic blocked candidates"
+);
+assert(
+  catchdownRejectedAnswerWatchlistUpdates[0].buyTriggers.some((item) => item.includes("主力资金回流") && item.includes("代表持仓止跌"))
+    && catchdownRejectedAnswerWatchlistUpdates[0].riskNotes.some((item) => item.includes("不能试探买入")),
+  "catchdown answer-derived watchlist entries must preserve the reopening conditions and no-test-buy risk note"
+);
 const dailyRecheckUpdates = manager.buildPortfolioWatchlistRecheckUpdates([
   { code: "000010", name: "中证A500ETF联接C", status: "waiting_pullback", priority: 3, reason: "等低位启动确认", buyTriggers: ["温和转强"] },
   { code: "000011", name: "热门强势主题基金A", status: "ready", priority: 1, reason: "原本接近可买" },

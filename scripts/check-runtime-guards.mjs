@@ -1077,6 +1077,22 @@ const requiredPatterns = [
     message: "answer-derived watchlist updates must block structured catchdown/theme-support risks even when the model answer sounds positive."
   },
   {
+    pattern: /function isAnswerWatchlistCatchdownRisk[\s\S]{0,900}hasStaleThemeCatchdownRisk/,
+    message: "answer-derived watchlist updates must detect stale-catchdown exclusions separately from generic blocked candidates."
+  },
+  {
+    pattern: /function buildPortfolioWatchlistUpdatesFromAnswerProfiles[\s\S]{0,3200}接盘风险排除候选/,
+    message: "answer-derived watchlist updates must label stale-catchdown exclusions as catchdown-risk excluded candidates."
+  },
+  {
+    pattern: /function buildAnswerWatchBuyTriggers[\s\S]{0,500}主力资金回流[\s\S]{0,160}代表持仓止跌/,
+    message: "answer-derived watchlist stale-catchdown triggers must require capital return and representative holdings stabilization."
+  },
+  {
+    pattern: /function formatAnswerWatchPositionPlan[\s\S]{0,500}0元观察[\s\S]{0,160}不是低位启动/,
+    message: "answer-derived watchlist stale-catchdown position plans must stay at zero-yuan observation."
+  },
+  {
     pattern: /function getAnswerWatchlistHardRiskWarnings[\s\S]{0,1000}getPortfolioActionableThemeSupportGap\(profile\)[\s\S]{0,500}function isAnswerWatchlistHardRiskText/,
     message: "answer-derived watchlist hard-risk detection must include missing current theme support, retreat, stale radar, and catchdown warnings."
   },
