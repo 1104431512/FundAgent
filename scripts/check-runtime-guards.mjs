@@ -705,7 +705,7 @@ const requiredPatterns = [
     message: "model prompts must use a compact market snapshot that preserves key evidence without raw payload bloat."
   },
   {
-    pattern: /function recommendFundsWithModel[\s\S]{0,1800}marketSnapshotForModel = compactMarketSnapshotForModel\(marketSnapshot\)[\s\S]{0,3400}JSON\.stringify\(marketSnapshotForModel \|\| \{\}, null, 2\)/,
+    pattern: /function recommendFundsWithModel[\s\S]{0,1800}marketSnapshotForModel = compactMarketSnapshotForModel\(marketSnapshot\)[\s\S]{0,4600}JSON\.stringify\(marketSnapshotForModel \|\| \{\}, null, 2\)/,
     message: "fund recommendation prompts must send compact market snapshots instead of full raw snapshots."
   },
   {
@@ -781,6 +781,10 @@ const requiredPatterns = [
     message: "fund recommendation prompts must keep ranked answers concise instead of turning them into long metric reports."
   },
   {
+    pattern: /短榜单模式[\s\S]{0,160}只写直接结论、排序口径、结果榜、为什么这样排、执行、边界[\s\S]{0,220}不要再追加推荐清单/,
+    message: "fund recommendation prompts must make requested-priority answers use the short result leaderboard mode."
+  },
+  {
     pattern: /全文控制在 12-16 行内/,
     message: "fund recommendation prompts must set a short line budget for customer-facing ranked answers."
   },
@@ -803,6 +807,10 @@ const requiredPatterns = [
   {
     pattern: /function shouldRequireConciseFundResultAnswer[\s\S]{0,700}function hasVerboseFundResultAnswer[\s\S]{0,1300}metricDetailLines/,
     message: "fund answer quality must detect long metric-heavy ranked answers after the result board."
+  },
+  {
+    pattern: /function isFundAnswerPriorityLeaderboardRequest[\s\S]{0,620}高夏普[\s\S]{0,220}低回撤[\s\S]{0,220}主力题材[\s\S]{0,120}优先[\s\S]*function hasVerboseFundResultAnswer[\s\S]{0,1100}!priorityAsk && lines\.length <= 10[\s\S]{0,520}lineLimit = priorityAsk \? 8[\s\S]{0,900}repeatedRecommendationSection/,
+    message: "priority ranking requests such as high-Sharpe first must stay in short leaderboard mode instead of expanding into a repeated recommendation report."
   },
   {
     pattern: /function buildConciseFundResultAnswerFallback[\s\S]{0,1200}最多3条为什么这样排|function buildConciseFundResultAnswerFallback[\s\S]{0,1800}为什么这样排/,

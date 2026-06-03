@@ -11461,6 +11461,10 @@ assert(
   "deterministic fallback must actually rank high-Sharpe/low-drawdown candidates before higher setup-score but lower-quality candidates"
 );
 assert(
+  !highSharpePriorityFallback.includes("推荐清单：") && highSharpePriorityFallback.split(/\r?\n/).filter(Boolean).length <= 6,
+  "high-Sharpe priority fallback must stay as a short result leaderboard instead of expanding into a long recommendation report"
+);
+assert(
   !/结果榜：.*(?:近5日|近10日|近20日|近60日|夏普\s*\d|回撤-?\d)/.test(highSharpeResultLine),
   "deterministic fallback result leaderboard must explain priority in plain language instead of dumping metrics"
 );
@@ -11507,6 +11511,27 @@ const highSharpeWrongOrderQuality = manager.evaluateFundAnswerQuality({
 assert(
   highSharpeWrongOrderQuality.issues.includes("requested_result_sort_order_mismatch"),
   "pullback answer quality must reject result boards whose actual order ignores the requested high-Sharpe priority"
+);
+const verboseHighSharpeLeaderboardAnswer = [
+  "直接结论：可以小仓验证第一名。",
+  "排序口径：高夏普/低回撤优先，再看买点和费用。",
+  "结果榜：1. 000072 高夏普低回撤基金C：风险收益更稳；2. 000071 买点更强低夏普基金C：买点更近。",
+  "为什么这样排：先看夏普和回撤，再看是否低位启动。",
+  "推荐清单：",
+  "1. 000072 高夏普低回撤基金C：近5日+1.2%，近10日+2.3%，近20日+3.5%，夏普1.45，回撤-9.6%，规模20亿。",
+  "2. 000071 买点更强低夏普基金C：近5日+1.6%，近10日+2.9%，近20日+4.1%，夏普0.25，回撤-31%，规模18亿。",
+  "1万元执行：激进2000元以内，均衡1000元以内，保守先0元观察。",
+  "决策边界：如果题材退潮就暂停。"
+].join("\n");
+const verboseHighSharpeQuality = manager.evaluateFundAnswerQuality({
+  text: verboseHighSharpeLeaderboardAnswer,
+  workflow: "fund_recommendation",
+  userText: "推荐几个基金，按高夏普优先",
+  evidence: highSharpeWrongOrderEvidence
+});
+assert(
+  verboseHighSharpeQuality.issues.includes("verbose_result_answer_detail"),
+  "quality gate must reject high-Sharpe priority answers that repeat the result board as a verbose recommendation report"
 );
 const highSharpeEnforcedOrder = await manager.enforceFundAnswerQuality({
   text: highSharpeWrongOrderAnswer,
