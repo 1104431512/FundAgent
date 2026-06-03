@@ -3669,8 +3669,16 @@ const requiredPatterns = [
     message: "manager ranking boards must include a fund-quality lane that checks Sharpe, drawdown, annualized return, scale, and fee evidence."
   },
   {
+    pattern: /function resolvePortfolioQualityScoreEvidence[\s\S]{0,900}resolvePortfolioPositiveWatchRankingGate[\s\S]{0,1800}质量不抵消接盘风险[\s\S]{0,900}高夏普\/低回撤不等于可以买旧题材反弹/,
+    message: "fund-quality rankings must not let high-Sharpe or low-drawdown evidence override stale-theme catchdown risk."
+  },
+  {
     pattern: /function buildPortfolioManagerStabilityRanking[\s\S]{0,2600}经理稳定榜[\s\S]{0,2600}基金经理任期[\s\S]{0,2600}产品历史/,
     message: "manager ranking boards must include a manager-stability lane that checks manager tenure, tenure return, product history, and scale evidence."
+  },
+  {
+    pattern: /function resolvePortfolioManagerStabilityEvidence[\s\S]{0,900}resolvePortfolioPositiveWatchRankingGate[\s\S]{0,1800}稳定性不抵消接盘风险[\s\S]{0,900}稳定经理不代表旧题材回调可以买/,
+    message: "manager-stability rankings must not let long-tenure manager evidence override stale-theme catchdown risk."
   },
   {
     pattern: /function buildPortfolioFitRanking[\s\S]{0,2600}组合适配榜[\s\S]{0,2600}同题材[\s\S]{0,2600}底层/,

@@ -8329,6 +8329,60 @@ assert(
   !staleCatchdownBoard.lists.find((item) => item.id === "rotation_opportunity")?.items.some((item) => item.code === "000042"),
   "rotation opportunity ranking must not keep retreating themes inside a positive opportunity lane"
 );
+const highQualityStaleCatchdownBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
+  account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
+  watchlist: [{
+    code: "000044",
+    name: "高夏普退潮接盘基金C",
+    status: "ready",
+    readinessScore: 91,
+    candidateRole: "高夏普低回撤候选",
+    reason: "风险收益质量较好，但底层题材已经退潮。",
+    lastSnapshot: {
+      ...staleCatchdownDigest,
+      code: "000044",
+      name: "高夏普退潮接盘基金C",
+      risk: {
+        oneYear: {
+          ok: true,
+          totalReturnPct: 18,
+          annualizedReturnPct: 18,
+          annualizedVolatilityPct: 12,
+          maxDrawdownPct: -8,
+          sharpe: 1.42
+        }
+      },
+      fundScaleYi: 18,
+      managers: [{
+        name: "稳健经理",
+        tenureYears: 5.4,
+        currentFundProfitPct: 46
+      }],
+      establishDate: "2018-01-01"
+    }
+  }]
+}));
+const staleQualityRankingItem = highQualityStaleCatchdownBoard.lists.find((item) => item.id === "quality_score")?.items.find((item) => item.code === "000044");
+const staleManagerRankingItem = highQualityStaleCatchdownBoard.lists.find((item) => item.id === "manager_stability")?.items.find((item) => item.code === "000044");
+assert(
+  staleQualityRankingItem?.action.includes("不抵消接盘风险")
+    && staleQualityRankingItem.status === "warning"
+    && staleQualityRankingItem.score < 50
+    && staleQualityRankingItem.decision?.risks?.some((item) => /高夏普|正向买入门禁|接盘/.test(item)),
+  "fund-quality ranking must not let high-Sharpe/low-drawdown evidence override stale-theme catchdown risk"
+);
+assert(
+  staleManagerRankingItem?.action.includes("不抵消接盘风险")
+    && staleManagerRankingItem.status === "warning"
+    && staleManagerRankingItem.score < 50
+    && staleManagerRankingItem.decision?.risks?.some((item) => /稳定经理|正向买入门禁|接盘/.test(item)),
+  "manager-stability ranking must not let long-tenure manager evidence override stale-theme catchdown risk"
+);
+assert(
+  !(highQualityStaleCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "000044")
+    && (highQualityStaleCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000044"),
+  "customer action deck must route high-quality stale-theme candidates to avoid, not buy-review"
+);
 const staleCatchdownReadinessQueue = manager.buildPortfolioDecisionReadinessQueue(staleCatchdownBoardDb.watchlist);
 assert(
   staleCatchdownReadinessQueue[0]?.positiveRankingGate?.includes("接盘/追涨风险未解除")

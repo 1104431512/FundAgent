@@ -11310,6 +11310,7 @@ function resolvePortfolioQualityScoreEvidence(item = {}) {
   const hasRisk = Boolean(risk?.ok || Number.isFinite(risk?.sharpe) || Number.isFinite(risk?.maxDrawdownPct) || Number.isFinite(risk?.annualizedReturnPct));
   const hasQualityEvidence = hasRisk || Number.isFinite(scaleYi) || Number.isFinite(concentration) || fee.shouldSurface;
   if (!hasQualityEvidence) return { shouldSurface: false };
+  const riskGate = resolvePortfolioPositiveWatchRankingGate(item);
   const sharpe = finiteMetricNumber(risk?.sharpe);
   const maxDrawdown = finiteMetricNumber(risk?.maxDrawdownPct);
   const annualizedReturn = finiteMetricNumber(risk?.annualizedReturnPct);
@@ -11325,6 +11326,39 @@ function resolvePortfolioQualityScoreEvidence(item = {}) {
   const severeDrawdown = Number.isFinite(maxDrawdown) && maxDrawdown <= -30;
   const tinyFund = Number.isFinite(scaleYi) && scaleYi < 0.5;
   const missingRisk = !hasRisk;
+  const facts = [
+    Number.isFinite(sharpe) ? `夏普${round(sharpe, 2)}` : "",
+    Number.isFinite(maxDrawdown) ? `回撤${formatFallbackPlainPct(maxDrawdown)}` : "",
+    Number.isFinite(annualizedReturn) ? `年化${formatFallbackPlainPct(annualizedReturn)}` : "",
+    Number.isFinite(scaleYi) ? `规模${round(scaleYi, 2)}亿` : "",
+    Number.isFinite(concentration) ? `前十大${formatFallbackPlainPct(concentration)}` : ""
+  ].filter(Boolean);
+  if (!riskGate.ok) {
+    return {
+      shouldSurface: true,
+      score: Math.min(bounded, 49),
+      action: riskGate.hardCatchdown ? "质量不抵消接盘风险" : "质量不抵消追涨风险",
+      status: "warning",
+      reason: riskGate.hardCatchdown
+        ? "风险收益质量只能证明基金底子，不代表旧题材回调可以买；主力撤离或旧催化未刷新时先按接盘风险处理。"
+        : "风险收益质量只能证明基金底子，不能覆盖当前位置偏热或追涨风险。",
+      facts: mergeStringLists(facts, riskGate.facts || []).slice(0, 6),
+      highlights: [
+        Number.isFinite(sharpe) && sharpe >= 0.8 ? "历史风险调整收益较好，但只能作为以后复核条件。" : "",
+        Number.isFinite(maxDrawdown) && maxDrawdown >= -18 ? "历史回撤相对可控，但不能替代当前题材确认。" : ""
+      ].filter(Boolean),
+      risks: [
+        riskGate.reason,
+        riskGate.hardCatchdown ? "高夏普/低回撤不等于可以买旧题材反弹。" : "高夏普/低回撤不等于可以追高。"
+      ].filter(Boolean),
+      gaps: [
+        riskGate.hardCatchdown ? "缺主力资金回流" : "缺追涨降温证据",
+        riskGate.hardCatchdown ? "缺新鲜新闻/政策/产业催化" : "缺健康回撤或重新确认",
+        riskGate.hardCatchdown ? "缺代表持仓止跌和题材重新确认" : ""
+      ].filter(Boolean),
+      nextStep: riskGate.nextStep || "先降级为观察，风险门禁解除前不得作为主推荐。"
+    };
+  }
   const action = severeDrawdown || tinyFund
     ? "质量风险复核"
     : bounded >= 74
@@ -11339,13 +11373,7 @@ function resolvePortfolioQualityScoreEvidence(item = {}) {
     action,
     status,
     reason: buildPortfolioQualityScoreReason({ bounded, severeDrawdown, tinyFund, missingRisk }),
-    facts: [
-      Number.isFinite(sharpe) ? `夏普${round(sharpe, 2)}` : "",
-      Number.isFinite(maxDrawdown) ? `回撤${formatFallbackPlainPct(maxDrawdown)}` : "",
-      Number.isFinite(annualizedReturn) ? `年化${formatFallbackPlainPct(annualizedReturn)}` : "",
-      Number.isFinite(scaleYi) ? `规模${round(scaleYi, 2)}亿` : "",
-      Number.isFinite(concentration) ? `前十大${formatFallbackPlainPct(concentration)}` : ""
-    ].filter(Boolean),
+    facts,
     highlights: [
       Number.isFinite(sharpe) && sharpe >= 0.8 ? "风险调整收益较好，适合进入质量复核。" : "",
       Number.isFinite(maxDrawdown) && maxDrawdown >= -18 ? "历史回撤相对可控。" : "",
@@ -11447,6 +11475,7 @@ function resolvePortfolioManagerStabilityEvidence(item = {}) {
   const hasManager = managers.length > 0;
   const hasEvidence = hasManager || Number.isFinite(leadTenureYears) || Number.isFinite(fundAgeYears) || Number.isFinite(scaleYi);
   if (!hasEvidence) return { shouldSurface: false };
+  const riskGate = resolvePortfolioPositiveWatchRankingGate(item);
 
   let score = 50;
   if (Number.isFinite(leadTenureYears)) {
@@ -11465,6 +11494,39 @@ function resolvePortfolioManagerStabilityEvidence(item = {}) {
   const youngFund = Number.isFinite(fundAgeYears) && fundAgeYears < 1;
   const tinyFund = Number.isFinite(scaleYi) && scaleYi < 0.5;
   const riskFlag = shortTenure || youngFund || tinyFund;
+  const managerName = lead.name || lead.manager || lead.fundManager || "";
+  const facts = [
+    managerName ? `经理${managerName}` : "",
+    Number.isFinite(leadTenureYears) ? `任期${round(leadTenureYears, 1)}年` : "",
+    Number.isFinite(leadReturnPct) ? `任期收益${formatFallbackPlainPct(leadReturnPct)}` : "",
+    Number.isFinite(fundAgeYears) ? `产品${round(fundAgeYears, 1)}年` : "",
+    Number.isFinite(scaleYi) ? `规模${round(scaleYi, 2)}亿` : ""
+  ].filter(Boolean);
+  if (!riskGate.ok) {
+    return {
+      shouldSurface: true,
+      score: Math.min(bounded, 49),
+      action: riskGate.hardCatchdown ? "稳定性不抵消接盘风险" : "稳定性不抵消追涨风险",
+      status: "warning",
+      reason: riskGate.hardCatchdown
+        ? "基金经理稳定只能证明产品可信度，不能把主力撤离或旧题材反弹改造成买点。"
+        : "基金经理稳定只能证明产品可信度，不能覆盖当前位置偏热或追涨风险。",
+      facts: mergeStringLists(facts, riskGate.facts || []).slice(0, 6),
+      highlights: [
+        Number.isFinite(leadTenureYears) && leadTenureYears >= 3 ? "经理任期较长，但只能作为以后复核条件。" : "",
+        Number.isFinite(fundAgeYears) && fundAgeYears >= 3 ? "产品历史不短，但当前题材风险优先级更高。" : ""
+      ].filter(Boolean),
+      risks: [
+        riskGate.reason,
+        riskGate.hardCatchdown ? "稳定经理不代表旧题材回调可以买。" : "稳定经理不代表可以追高。"
+      ].filter(Boolean),
+      gaps: [
+        riskGate.hardCatchdown ? "缺当前题材雷达重新确认" : "缺追涨降温证据",
+        riskGate.hardCatchdown ? "缺主力资金回流和新鲜催化" : "缺健康回撤或重新确认"
+      ].filter(Boolean),
+      nextStep: riskGate.nextStep || "先降级为观察，风险门禁解除前不得作为主推荐。"
+    };
+  }
   const action = riskFlag
     ? "经理稳定风险"
     : bounded >= 74
@@ -11473,20 +11535,13 @@ function resolvePortfolioManagerStabilityEvidence(item = {}) {
         ? "经理稳定观察"
         : "经理资料补证据";
   const status = riskFlag ? "warning" : bounded >= 74 ? "ready" : "watch";
-  const managerName = lead.name || lead.manager || lead.fundManager || "";
   return {
     shouldSurface: true,
     score: bounded,
     action,
     status,
     reason: buildPortfolioManagerStabilityReason({ bounded, shortTenure, youngFund, tinyFund, missingTenure, managerName }),
-    facts: [
-      managerName ? `经理${managerName}` : "",
-      Number.isFinite(leadTenureYears) ? `任期${round(leadTenureYears, 1)}年` : "",
-      Number.isFinite(leadReturnPct) ? `任期收益${formatFallbackPlainPct(leadReturnPct)}` : "",
-      Number.isFinite(fundAgeYears) ? `产品${round(fundAgeYears, 1)}年` : "",
-      Number.isFinite(scaleYi) ? `规模${round(scaleYi, 2)}亿` : ""
-    ].filter(Boolean),
+    facts,
     highlights: [
       Number.isFinite(leadTenureYears) && leadTenureYears >= 3 ? "基金经理任期较长，历史业绩更有参考价值。" : "",
       Number.isFinite(leadReturnPct) && leadReturnPct > 0 ? "任期内收益为正，可进入稳定性复核。" : "",
