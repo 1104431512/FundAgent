@@ -1206,6 +1206,50 @@ assert(
   (preheatWatchOnlyBoard.customerActionDeck.cards.find((card) => card.id === "wait")?.items || []).some((item) => item.code === "000088"),
   "customer action deck must move theme-preheat candidates with missing execution evidence into the trigger-wait card"
 );
+const noRadarRotationBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
+  account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
+  watchlist: [{
+    code: "000089",
+    name: "纯走势低位轮动基金C",
+    status: "ready",
+    readinessScore: 88,
+    reason: "低位轮动，回调完成，准备启动。",
+    setupEvidence: ["低位轮动"],
+    buyTriggers: ["5日/10日温和转强"],
+    lastSnapshot: {
+      code: "000089",
+      name: "纯走势低位轮动基金C",
+      trendProfile: {
+        ok: true,
+        trendLabel: "pullback_complete",
+        entryBias: "buyable_now",
+        return5dPct: 1.2,
+        return10dPct: 2.1,
+        return20dPct: 3.2,
+        return60dPct: -4.8,
+        lowPositionPct120: 32,
+        lowPositionPct250: 48,
+        pullbackSetup: { signal: "pullback_complete", signalText: "回调完成" }
+      }
+    }
+  }]
+}));
+const noRadarRotationItem = noRadarRotationBoard.lists.find((item) => item.id === "rotation_opportunity")?.items.find((item) => item.code === "000089");
+assert(
+  noRadarRotationItem?.action === "先补题材证据"
+    && noRadarRotationItem.status === "watch"
+    && noRadarRotationItem.decision?.nextStep.includes("不给买入金额"),
+  "rotation opportunity ranking must downgrade pure low-position trends without current theme radar into evidence-first watch items"
+);
+assert(
+  !(noRadarRotationBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "000089"),
+  "customer action deck must not place no-radar low-rotation candidates in buy review"
+);
+assert(
+  noRadarRotationBoard.decisionMatrix.items.find((item) => item.code === "000089")?.verdict?.tone === "data"
+    && noRadarRotationBoard.decisionMatrix.items.find((item) => item.code === "000089")?.verdict?.blockers?.some((item) => item.includes("板块/题材")),
+  "decision matrix must treat missing current theme radar as a blocker, not as sector support for buy review"
+);
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "avoid")?.items.some((item) => avoidActionCodes.includes(item.code)), "customer action leaderboard must rank avoid candidates separately from buy candidates");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "data")?.items.some((item) => dataActionCodes.includes(item.code)), "customer action leaderboard must rank data blockers as their own evidence lane");
 assert(rankingBoard.consensusRadar?.lanes?.length === 4, "manager ranking board must build a four-lane consensus radar from decision matrix rows");

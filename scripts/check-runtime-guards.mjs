@@ -2369,7 +2369,7 @@ const requiredPatterns = [
     message: "portfolio rotation opportunity ranking must drop retreat/catchdown themes instead of showing them as positive rotation opportunities."
   },
   {
-    pattern: /function buildPortfolioDecisionSynthesisRankingItem[\s\S]{0,220}if \(evidence\.hardCatchdown\) return null[\s\S]{0,900}hardCatchdown = Boolean\([\s\S]{0,360}staleCatchdownRisk[\s\S]{0,360}unsupportedHoldingThemeRisk/,
+    pattern: /function buildPortfolioDecisionSynthesisRankingItem[\s\S]{0,260}if \(evidence\.hardCatchdown\) return null[\s\S]{0,2600}const hardCatchdown = Boolean\([\s\S]{0,900}unsupportedHoldingThemeRisk/,
     message: "portfolio decision synthesis ranking must not surface hard catchdown risks inside the positive buy-class synthesis lane."
   },
   {
@@ -2707,6 +2707,22 @@ const requiredPatterns = [
   {
     pattern: /function buildPortfolioDecisionSynthesisRankingItem[\s\S]{0,220}if \(evidence\.hardCatchdown\) return null[\s\S]{0,1400}function resolvePortfolioDecisionSynthesisEvidence[\s\S]{0,700}hardCatchdown[\s\S]{0,600}themeSupportGap/,
     message: "decision-synthesis ranking must not classify unsupported theme pullbacks as buy-review candidates."
+  },
+  {
+    pattern: /function buildPortfolioRotationOpportunityRankingItem[\s\S]{0,900}evidence\.missingTheme \? "先补题材证据"[\s\S]{0,1400}不给买入金额[\s\S]{0,500}status: evidence\.missingTheme/,
+    message: "rotation-opportunity ranking must keep pure low-position trends without current theme radar out of buy-review."
+  },
+  {
+    pattern: /function finalizePortfolioRankingDecisionMatrixRow[\s\S]{0,1600}const hasSectorBlock =[\s\S]{0,700}hasDataBlock \|\| hasSectorBlock[\s\S]{0,260}\? "先补证据"/,
+    message: "decision matrix must treat missing current theme radar as a blocker before assigning buy-review actions."
+  },
+  {
+    pattern: /function buildPortfolioRankingDecisionMatrixVerdict[\s\S]{0,700}hasSectorBlock[\s\S]{0,900}板块\/题材/,
+    message: "decision matrix verdict must expose missing current theme radar as a sector/theme blocker."
+  },
+  {
+    pattern: /function shouldIncludePortfolioAlertItem[\s\S]{0,900}laneId === "buy"[\s\S]{0,500}缺题材雷达/,
+    message: "customer buy alerts must exclude candidates whose only rotation evidence lacks current theme radar."
   },
   {
     pattern: /function resolvePortfolioDataConfidenceEvidence[\s\S]{0,1200}getPortfolioWatchThemeSupportGap\(item,\s*snapshot\)[\s\S]{0,900}当前主力进场\|题材预热\|低位轮动支撑/,

@@ -10902,7 +10902,10 @@ function resolvePortfolioDecisionSynthesisEvidence(item = {}) {
   const chase = resolvePortfolioChaseRiskEvidence(item);
   const fee = resolvePortfolioWatchFeeSuitabilityEvidence(item);
   const outlook = resolvePortfolioWatchHoldingsOutlook(item);
-  const themeSupportGap = getPortfolioWatchThemeSupportGap(item);
+  const rotationThemeGap = rotation.missingTheme && rotation.shouldSurface
+    ? "缺少当前题材雷达，不能把纯走势低位修复当成板块轮动买点。"
+    : "";
+  const themeSupportGap = getPortfolioWatchThemeSupportGap(item) || rotationThemeGap;
   const hardCatchdown = Boolean(
     chase.holdingRealtimeCatchdownRisk
     || chase.staleThemeRefreshRisk
@@ -12164,7 +12167,7 @@ function buildPortfolioRotationOpportunityRankingItem(item = {}) {
     name: item.name,
     source: "板块轮动",
     score: round(evidence.score, 1),
-    action: evidence.highChase ? "轮动降温观察" : evidence.leaderPositive ? "主力预热复核" : evidence.strong ? "轮动启动复核" : "低位轮动观察",
+    action: evidence.missingTheme ? "先补题材证据" : evidence.highChase ? "轮动降温观察" : evidence.leaderPositive ? "主力预热复核" : evidence.strong ? "轮动启动复核" : "低位轮动观察",
     reason: buildPortfolioRotationOpportunityReason(evidence),
     facts: buildPortfolioRotationOpportunityFacts(evidence),
     decision: {
@@ -12187,7 +12190,9 @@ function buildPortfolioRotationOpportunityRankingItem(item = {}) {
         evidence.needsEarlyTurn ? "缺5日/10日温和转强" : "",
         evidence.needsLowPosition ? "缺120日或250日低位证据" : ""
       ].filter(Boolean),
-      nextStep: evidence.highChase
+      nextStep: evidence.missingTheme
+        ? "先补当前题材雷达、新闻/资金和代表基金承载；确认前只观察，不给买入金额。"
+        : evidence.highChase
         ? evidence.themeRetreatRisk
           ? "降级为回避，等主力资金回流、板块重新转强后再回到轮动榜。"
           : "降级为观察，等拥挤度下降或回撤后再进入买入准备。"
@@ -12195,7 +12200,7 @@ function buildPortfolioRotationOpportunityRankingItem(item = {}) {
           ? "把主力预热题材加入买入准备复核；只有基金自身也出现低位或早期转强，才允许0.5%-2.5%试探。"
           : "和买入准备榜、费率适配榜交叉复核；若低位和早期转强同时成立，只能先小仓试探。"
     },
-    status: evidence.highChase ? "watch" : evidence.strong || evidence.leaderPositive ? "ready" : item.status || "watch"
+    status: evidence.missingTheme || evidence.highChase ? "watch" : evidence.strong || evidence.leaderPositive ? "ready" : item.status || "watch"
   });
 }
 
@@ -12232,8 +12237,8 @@ function resolvePortfolioRotationOpportunityEvidence(item = {}) {
     || Number(trend.return20dPct) > 18
     || Number(trend.lowPositionPct120) > 85;
   const score = Math.max(0, themeRotationScore + trendRotationScore + textScore + readinessScore + (leaderPositive && !highChase ? 12 : 0) - (highChase ? 24 : 0));
-  const strong = score >= 55 && !highChase;
   const hasTheme = Boolean(theme.id || theme.name);
+  const strong = score >= 55 && !highChase && hasTheme;
   const low120 = Number(trend.lowPositionPct120);
   const low250 = Number(trend.lowPositionPct250);
   const signal = trend.pullbackSetup?.signal || "";
@@ -13699,6 +13704,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
   const portfolioFitItems = listById.get("portfolio_fit")?.items || [];
   const themeAllocationItems = listById.get("theme_allocation")?.items || [];
   const themeMomentumItems = listById.get("theme_momentum")?.items || [];
+  const rotationItems = listById.get("rotation_opportunity")?.items || [];
   const staleCatchdownItems = listById.get("stale_catchdown_risk")?.items || [];
   const chaseItems = listById.get("chase_risk")?.items || [];
   const drawdownDefenseItems = listById.get("drawdown_defense")?.items || [];
@@ -13738,6 +13744,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
     ...portfolioFitItems,
     ...themeAllocationItems,
     ...themeMomentumItems,
+    ...rotationItems,
     ...drawdownDefenseItems.filter((item) => !/优先|保护|降级/.test(item.action || "")),
     ...dataConfidenceItems.filter((item) => !/阻塞/.test(item.action || "")),
     ...feeItems,
@@ -14399,10 +14406,10 @@ function isPortfolioCustomerBuyAction(item = {}) {
   const blockerText = stripNegatedPortfolioCustomerRiskPhrases(text);
   const mainForceMicroReview = /主力预热(?:微型试探|买入复核)|主力进场.*微型|题材预热.*微型/.test(text)
     && /0\.5%-1\.2%|微型|试探/.test(text);
-  if (mainForceMicroReview && !/卖出|减仓|止盈|止损|回吐|接盘|退潮|主力撤离|旧新闻|旧催化|数据阻塞|持仓数据阻塞|阻塞|过期|不能提交买入|不得买入|不给买入|不买|不能把/.test(blockerText)) {
+  if (mainForceMicroReview && !/卖出|减仓|止盈|止损|回吐|接盘|退潮|主力撤离|旧新闻|旧催化|数据阻塞|持仓数据阻塞|阻塞|过期|缺题材雷达|缺当前题材|缺少当前题材|缺新闻逻辑|缺主力|补题材证据|题材证据|不能提交买入|不得买入|不给买入|不买|不能把|只观察/.test(blockerText)) {
     return true;
   }
-  if (/卖出|减仓|止盈|止损|回吐|追涨|高位|拥挤|回避|接盘|退潮|主力撤离|旧新闻|旧催化|数据阻塞|持仓数据阻塞|阻塞|过期|不能提交买入|不得买入|不给买入|不买|不能把/.test(blockerText)) {
+  if (/卖出|减仓|止盈|止损|回吐|追涨|高位|拥挤|回避|接盘|退潮|主力撤离|旧新闻|旧催化|数据阻塞|持仓数据阻塞|阻塞|过期|缺题材雷达|缺当前题材|缺少当前题材|缺新闻逻辑|缺主力|补题材证据|题材证据|不能提交买入|不得买入|不给买入|不买|不能把|只观察/.test(blockerText)) {
     return false;
   }
   return hasPortfolioCustomerExecutableBuyIntent(text);
@@ -14515,7 +14522,7 @@ function shouldIncludePortfolioAlertItem(laneId = "", listId = "", item = {}) {
     item.decision?.nextStep
   ].filter(Boolean).join(" ");
   if (laneId === "buy") {
-    if (/回避|卖出|减仓|止损|止盈|追涨|接盘|退潮|主力撤离|阻塞|补证|不得买入|不给买入|不买|只能观察/.test(text)) return false;
+    if (/回避|卖出|减仓|止损|止盈|追涨|接盘|退潮|主力撤离|阻塞|补证|缺题材雷达|缺当前题材|缺少当前题材|缺新闻逻辑|缺主力|题材证据|不得买入|不给买入|不买|只能观察|只观察/.test(text)) return false;
     return hasPortfolioCustomerExecutableBuyIntent(text)
       || (["cash_redeployment", "buy_preparation", "position_sizing", "launch_setup"].includes(listId) && /买入|试探|启动仓|再部署|可买|小仓|微型/.test(text));
   }
@@ -14768,15 +14775,17 @@ function finalizePortfolioRankingDecisionMatrixRow(row = {}) {
   const riskText = `${riskRef?.action || ""} ${riskRef?.reason || ""} ${riskRef?.gaps?.join(" ") || ""}`;
   const dataText = `${dataRef?.action || ""} ${dataRef?.reason || ""} ${dataRef?.gaps?.join(" ") || ""}`;
   const buyText = `${buyRef?.action || ""} ${buyRef?.reason || ""}`;
+  const sectorText = `${sectorRef?.action || ""} ${sectorRef?.reason || ""} ${sectorRef?.gaps?.join(" ") || ""} ${sectorRef?.nextStep || ""}`;
   const hasHardRisk = /卖出|减仓|止损|止盈|回吐|追涨|回避|防线|风险/.test(riskText);
   const hasFeeOnlyReview = /费率|费用|持有期|赎回|申购|销售服务费|A\/C|A\/C\/D\/I|份额|低费|替代/.test(dataText);
   const hasHardDataSignal = /数据阻塞|过期|补数据|补证|不能提交买入|证据不足|无法核验|关键数据.*缺|净值.*缺|走势.*缺|来源.*缺|持仓.*缺|前十大.*缺/.test(dataText);
   const hasDataBlock = hasHardDataSignal || (/缺(?:失|少|口)?/.test(dataText) && !hasFeeOnlyReview);
+  const hasSectorBlock = /先补题材证据|缺题材雷达|缺当前题材|缺少当前题材|缺新闻逻辑|缺主力|不给买入金额|只观察/.test(sectorText);
   const hasSoftDataConstraint = Boolean(dataRef && !hasDataBlock && (hasFeeOnlyReview || /缺(?:失|少|口)?/.test(dataText)));
   const hasBuyReview = /买入|试探|启动|再部署|复核/.test(buyText);
   const action = hasHardRisk
     ? "先处理风险"
-    : hasDataBlock
+    : hasDataBlock || hasSectorBlock
       ? "先补证据"
       : hasBuyReview
         ? "买入复核"
@@ -14785,13 +14794,16 @@ function finalizePortfolioRankingDecisionMatrixRow(row = {}) {
           : "继续观察";
   const nextStep = hasHardRisk
     ? riskRef?.nextStep || "先处理风险项，再讨论是否买入或持有。"
-    : hasDataBlock
-      ? dataRef?.nextStep || "先补齐净值、费率、份额和持仓证据。"
+    : hasDataBlock || hasSectorBlock
+      ? hasSectorBlock
+        ? sectorRef?.nextStep || "先补齐题材雷达、新闻/资金和代表基金承载证据。"
+        : dataRef?.nextStep || "先补齐净值、费率、份额和持仓证据。"
       : buyRef?.nextStep || sectorRef?.nextStep || "继续等待下一轮榜单复核。";
   const verdict = buildPortfolioRankingDecisionMatrixVerdict({
     action,
     hasHardRisk,
     hasDataBlock,
+    hasSectorBlock,
     hasSoftDataConstraint,
     hasBuyReview,
     buyRef,
@@ -14813,7 +14825,9 @@ function finalizePortfolioRankingDecisionMatrixRow(row = {}) {
     matrixScore,
     action,
     verdict,
-    reason: selectPortfolioRankingFirstText(buyRef?.reason, riskRef?.reason, dataRef?.reason, sectorRef?.reason) || "等待经理复核。",
+    reason: hasSectorBlock
+      ? selectPortfolioRankingFirstText(sectorRef?.reason, dataRef?.reason, buyRef?.reason, riskRef?.reason) || "等待经理复核。"
+      : selectPortfolioRankingFirstText(buyRef?.reason, riskRef?.reason, dataRef?.reason, sectorRef?.reason) || "等待经理复核。",
     cells: {
       buy: buildPortfolioRankingDecisionMatrixCell(buyRef),
       sector: buildPortfolioRankingDecisionMatrixCell(sectorRef),
@@ -14825,14 +14839,15 @@ function finalizePortfolioRankingDecisionMatrixRow(row = {}) {
   };
 }
 
-function buildPortfolioRankingDecisionMatrixVerdict({ action = "", hasHardRisk = false, hasDataBlock = false, hasSoftDataConstraint = false, hasBuyReview = false, buyRef = null, sectorRef = null, riskRef = null, dataRef = null, nextStep = "" } = {}) {
+function buildPortfolioRankingDecisionMatrixVerdict({ action = "", hasHardRisk = false, hasDataBlock = false, hasSectorBlock = false, hasSoftDataConstraint = false, hasBuyReview = false, buyRef = null, sectorRef = null, riskRef = null, dataRef = null, nextStep = "" } = {}) {
   const supports = normalizeStringArray([
     buyRef ? `买点：${shortenPortfolioCustomerText(buyRef.action || buyRef.reason || buyRef.listTitle, 32)}` : "",
-    sectorRef ? `板块/质量：${shortenPortfolioCustomerText(sectorRef.action || sectorRef.reason || sectorRef.listTitle, 32)}` : ""
+    sectorRef && !hasSectorBlock ? `板块/质量：${shortenPortfolioCustomerText(sectorRef.action || sectorRef.reason || sectorRef.listTitle, 32)}` : ""
   ]).slice(0, 2);
   const blockers = normalizeStringArray([
     hasHardRisk && riskRef ? `风险：${shortenPortfolioCustomerText(riskRef.action || riskRef.reason || riskRef.listTitle, 36)}` : "",
-    hasDataBlock && dataRef ? `数据/费率：${shortenPortfolioCustomerText(dataRef.action || dataRef.reason || dataRef.listTitle, 36)}` : ""
+    hasDataBlock && dataRef ? `数据/费率：${shortenPortfolioCustomerText(dataRef.action || dataRef.reason || dataRef.listTitle, 36)}` : "",
+    hasSectorBlock && sectorRef ? `板块/题材：${shortenPortfolioCustomerText(sectorRef.action || sectorRef.reason || sectorRef.listTitle, 36)}` : ""
   ]).slice(0, 2);
   const constraints = normalizeStringArray([
     hasSoftDataConstraint && dataRef ? `费率/份额：${shortenPortfolioCustomerText(dataRef.action || dataRef.reason || dataRef.listTitle, 36)}` : "",
@@ -14850,12 +14865,12 @@ function buildPortfolioRankingDecisionMatrixVerdict({ action = "", hasHardRisk =
       nextStep
     };
   }
-  if (hasDataBlock) {
+  if (hasDataBlock || hasSectorBlock) {
     return {
       tone: "data",
       label: "先补证据",
       permission: "不给买入金额",
-      summary: "数据或费率证据不完整，不能把候选包装成确定买点。",
+      summary: hasSectorBlock ? "当前题材雷达或板块证据不完整，不能把纯走势低位包装成轮动买点。" : "数据或费率证据不完整，不能把候选包装成确定买点。",
       supports,
       blockers,
       constraints,
