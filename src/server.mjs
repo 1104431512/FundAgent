@@ -2590,11 +2590,12 @@ const PORTFOLIO_USER_FACING_SECTION_PATTERN = /^(?:虚拟基金经理日报|直�
 function formatReadablePortfolioUserFacingText(text = "") {
   const lines = String(text || "")
     .split(/\r?\n/)
-    .flatMap((line) => splitOverlongPortfolioActionLine(line))
+    .flatMap((line) => splitReadablePortfolioUserFacingLine(line))
     .map((line) => line.trimEnd());
   const output = [];
   for (const line of lines) {
-    const trimmed = line.trim();
+    const rawLine = String(line || "").trimEnd();
+    const trimmed = rawLine.trim();
     if (!trimmed) {
       if (output.length && output[output.length - 1] !== "") output.push("");
       continue;
@@ -2604,21 +2605,37 @@ function formatReadablePortfolioUserFacingText(text = "") {
     if (isSection && output.length && previous !== "") {
       output.push("");
     }
-    output.push(trimmed);
+    output.push(/^ {2,}\S/.test(rawLine) ? rawLine : trimmed);
   }
   return output.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+function splitReadablePortfolioUserFacingLine(line = "") {
+  const actionLines = splitOverlongPortfolioActionLine(line);
+  if (actionLines.length > 1) return actionLines;
+  return splitOverlongPortfolioNarrativeLine(line);
+}
+
 function splitOverlongPortfolioActionLine(line = "") {
   const text = String(line || "");
-  if (text.length < 240 || !/^(?:[-*•]\s*)?(?:买入|卖出|观察|持有|回避|申购|赎回)\s+\d{6}\b/.test(text.trim())) {
+  if (text.length < 100 || !/^(?:[-*•]\s*)?(?:买入|卖出|观察|持有|回避|申购|赎回)\s+\d{6}\b/.test(text.trim())) {
     return [text];
   }
-  const parts = text.split(/(?<=。)\s*/).map((item) => item.trim()).filter(Boolean);
+  const parts = text.split(/(?<=[。；])\s*/).map((item) => item.trim()).filter(Boolean);
   if (parts.length <= 1) return [text];
   const first = parts[0];
-  const rest = parts.slice(1).join(" ");
-  return rest ? [first, `  ${rest}`] : [first];
+  return [first, ...parts.slice(1).map((part) => `  ${part}`)];
+}
+
+function splitOverlongPortfolioNarrativeLine(line = "") {
+  const text = String(line || "");
+  const trimmed = text.trim();
+  if (text.length < 70 || !/^(?:市场判断|投委会意见|经理判断|风险控制|回溯学习点|客户行动牌|主力题材作战图|今日手法|本次重点|下一步)[：:]/.test(trimmed)) {
+    return [text];
+  }
+  const parts = text.split(/(?<=[。；])\s*/).map((item) => item.trim()).filter(Boolean);
+  if (parts.length <= 1) return [text];
+  return [parts[0], ...parts.slice(1).map((part) => `  ${part}`)];
 }
 
 function normalizePortfolioUserFacingArray(value, limit = 8, account = {}) {

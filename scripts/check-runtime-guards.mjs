@@ -3477,8 +3477,8 @@ const requiredPatterns = [
     message: "dense metric line compaction must preserve readability and point users to charts/reviews for details."
   },
   {
-    pattern: /PORTFOLIO_USER_FACING_SECTION_PATTERN[\s\S]{0,900}function formatReadablePortfolioUserFacingText[\s\S]{0,1200}splitOverlongPortfolioActionLine/,
-    message: "portfolio reports must insert readable section spacing and split overlong action lines."
+    pattern: /PORTFOLIO_USER_FACING_SECTION_PATTERN[\s\S]{0,900}function formatReadablePortfolioUserFacingText[\s\S]{0,1200}splitReadablePortfolioUserFacingLine[\s\S]{0,900}splitOverlongPortfolioActionLine[\s\S]{0,900}splitOverlongPortfolioNarrativeLine/,
+    message: "portfolio reports must insert readable section spacing and split overlong action and narrative lines."
   },
   {
     pattern: /function hasNumericDumpWithoutInterpretation[\s\S]{0,900}hasDenseUserFacingMetricLine/,

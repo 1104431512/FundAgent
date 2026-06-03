@@ -9317,6 +9317,14 @@ assert(readablePortfolioReport.includes("\n\n今日手法"), "portfolio reports 
 assert(readablePortfolioReport.includes("\n\n市场判断"), "portfolio reports must keep market view visually separated");
 assert(readablePortfolioReport.includes("\n\n投委会意见"), "portfolio committee sections must not be glued to the prior paragraph");
 assert(readablePortfolioReport.includes("其余明细交给配图和后续复盘"), "portfolio dense action reasons must be compacted for card readability");
+const readableLongPortfolioReport = manager.normalizePortfolioUserFacingText([
+  "市场判断：账户现金充足但主力题材需要重新验证；低空经济进入预热榜但代表基金还没有补齐；如果继续只写等待机会，客户会看不到经理到底在查什么；下一轮必须先刷新新闻、板块资金和代表基金承载。",
+  "风险控制：科技链持仓偏热且底层持仓重叠；若主力资金转流出，需要先降风险；若新闻催化落空，相关候选只能0元观察；若代表基金费用或前十大持仓缺失，不提交申购。",
+  "观察 000041 主力低位启动基金C：系统主力预热机会纪律：低空经济有线索；为什么动：示范区政策落地，主力资金开始流入；代表基金：前十大持仓命中万丰奥威和中信海直；风险边界：只允许0.5%-1.2%微型试探；下一步：补齐A/C份额费率和5日/10日温和转强。"
+].join("\n"));
+assert(readableLongPortfolioReport.includes("\n  低空经济进入预热榜"), "long market-view paragraphs must split semicolon clauses into readable indented lines");
+assert(readableLongPortfolioReport.includes("\n  若主力资金转流出"), "long risk-control paragraphs must split risk clauses instead of staying as one dense block");
+assert(readableLongPortfolioReport.includes("\n  为什么动：示范区政策落地"), "long action lines must split semicolon clauses and expose why-move evidence on its own line");
 const readableDecisionCard = manager.buildPortfolioDecisionCard({
   decision: {
     summary: "今日采取高位科技减仓复核 + 低位医药小额试探 + 购买准备队列继续等待触发的虚拟组合操作，不做重仓追涨。",
