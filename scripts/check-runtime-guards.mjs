@@ -981,6 +981,14 @@ const requiredPatterns = [
     message: "answer-derived watchlist updates must treat catchdown, theme retreat, main-capital withdrawal, and stale-catalyst wording as rejected no-buy context."
   },
   {
+    pattern: /function buildPortfolioWatchlistUpdatesFromAnswerProfiles[\s\S]{0,900}getAnswerWatchlistHardRiskWarnings\(profile\)[\s\S]{0,700}rejectedByHardRisk[\s\S]{0,700}blocked/,
+    message: "answer-derived watchlist updates must block structured catchdown/theme-support risks even when the model answer sounds positive."
+  },
+  {
+    pattern: /function getAnswerWatchlistHardRiskWarnings[\s\S]{0,1000}getPortfolioActionableThemeSupportGap\(profile\)[\s\S]{0,500}function isAnswerWatchlistHardRiskText/,
+    message: "answer-derived watchlist hard-risk detection must include missing current theme support, retreat, stale radar, and catchdown warnings."
+  },
+  {
     pattern: /source === "fund_screening_answer"[\s\S]{0,120}具体基金分析/,
     message: "screening-derived watchlist candidates must explain their screening-answer origin."
   },

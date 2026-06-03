@@ -3845,16 +3845,21 @@ function buildPortfolioWatchlistUpdatesFromAnswerProfiles(profiles = [], options
       seen.add(code);
       const context = extractAnswerWatchlistProfileContext(answerText, profile);
       const role = inferAnswerWatchlistRole(profile, context);
+      const hardRiskWarnings = getAnswerWatchlistHardRiskWarnings(profile);
       const rejectedByAnswer = isAnswerWatchlistRejectedContext(context);
-      const status = rejectedByAnswer ? "blocked" : inferPortfolioWatchStatusFromAnswerProfile(profile, role);
+      const rejectedByHardRisk = hardRiskWarnings.length > 0;
+      const rejected = rejectedByAnswer || rejectedByHardRisk;
+      const status = rejected ? "blocked" : inferPortfolioWatchStatusFromAnswerProfile(profile, role);
       const trendEvidence = formatPortfolioSeedVerifiedTrendEvidence(profile);
       const shareClass = profile?.fees?.shareClass || profile?.shareClass || profile?.seed?.shareClass || inferFundShareClass(profile?.name || profile?.seed?.name || "");
       const feeModel = profile?.fees?.shareClassFeeModel || profile?.shareClassFeeModel || profile?.seed?.shareClassFeeModel || inferShareClassFeeModel(shareClass, profile?.fees || {});
       const oneYearFeeCost = toNumber(profile?.fees?.feeImpact?.oneYearCostPer10000);
-      const answerRole = rejectedByAnswer ? "暂不买入/排除" : role === "backup" ? "备选观察" : "买入参考";
+      const answerRole = rejected ? "暂不买入/排除" : role === "backup" ? "备选观察" : "买入参考";
       const originLabel = formatAnswerWatchlistSourceLabel(source);
       const statusReason = rejectedByAnswer
         ? "回答中明确写了暂不买入、回避、排除、接盘/退潮/主力撤离或旧题材风险，系统写入暂不买入而不是可买。"
+        : rejectedByHardRisk
+          ? `结构化下钻已识别接盘/退潮/主力撤离或题材支撑缺口，系统写入暂不买入而不是可买：${hardRiskWarnings.slice(0, 2).join("；")}。`
         : formatAnswerWatchlistStatusReason(status, role, profile);
       const gapEvidence = formatAnswerWatchlistGapEvidence(profile, {
         status,
@@ -3871,6 +3876,7 @@ function buildPortfolioWatchlistUpdatesFromAnswerProfiles(profiles = [], options
         status,
         priority: scoreAnswerWatchPriority(status, role),
         candidateRole: rejectedByAnswer
+          || rejectedByHardRisk
           ? `${originLabel}排除候选`
           : role === "backup" ? `${originLabel}备选观察候选` : `${originLabel}主推荐候选`,
         reason: [
@@ -3888,7 +3894,7 @@ function buildPortfolioWatchlistUpdatesFromAnswerProfiles(profiles = [], options
           Number.isFinite(Number(profile.trendProfile?.lowPositionPct120)) ? `120日位置${round(Number(profile.trendProfile.lowPositionPct120), 1)}%` : ""
         ].filter(Boolean),
         buyTriggers: buildAnswerWatchBuyTriggers(status, role, profile),
-        riskNotes: [...buildAnswerWatchRiskNotes(status, profile), gapEvidence].filter(Boolean),
+        riskNotes: [...hardRiskWarnings.slice(0, 3), ...buildAnswerWatchRiskNotes(status, profile), gapEvidence].filter(Boolean),
         feeNotes: [
           feeModel?.label || "份额类别和费率待基金详情页复核。",
           Number.isFinite(oneYearFeeCost) ? `估算持有1年每万元费用约 ${round(oneYearFeeCost, 0)} 元。` : ""
@@ -3948,6 +3954,37 @@ function isAnswerWatchlistRejectedContext(context = "") {
   const text = String(context || "");
   if (!text.trim()) return false;
   return /(回避|剔除|排除|不推荐|不作为主推荐|不是主推|暂不买|暂不加仓|不买|追涨|偏热|过热|不符合|风险偏高|接盘|退潮|主力(?:资金)?撤离|资金撤离|旧题材|旧新闻|旧催化|回调(?:不是|不作为|不能当|不能作为)买点|不能把回调当(?:成)?买点)/.test(text);
+}
+
+function getAnswerWatchlistHardRiskWarnings(profile = {}) {
+  if (!profile || typeof profile !== "object") return [];
+  const actionability = profile.actionability || {};
+  const warningGroups = [
+    [getHoldingRealtimeCatchdownWarning(profile)],
+    getThemeMainForcePlaybookRiskWarnings(profile),
+    getStalePortfolioThemeRefreshWarnings(profile),
+    getStaleThemeCatchdownWarnings(profile),
+    getCandidateThemeRetreatWarnings(profile),
+    getTextualCatchdownWarnings(profile),
+    getUnrefreshedMarketThemeWarnings(profile),
+    [getPortfolioActionableThemeSupportGap(profile)],
+    normalizeStringArray(actionability.decisionBlocker).filter(isAnswerWatchlistHardRiskText),
+    normalizeStringArray(actionability.blocker).filter(isAnswerWatchlistHardRiskText)
+  ];
+  const seen = new Set();
+  return warningGroups
+    .flat()
+    .map((item) => String(item || "").trim())
+    .filter((item) => {
+      if (!item || seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    })
+    .slice(0, 6);
+}
+
+function isAnswerWatchlistHardRiskText(value = "") {
+  return /(接盘|退潮|主力(?:资金)?撤离|资金撤离|旧雷达|旧题材|旧新闻|旧催化|当前题材雷达.*未确认|未被当前题材雷达确认|底层持仓|前十大持仓.*走弱|回调(?:不是|不作为|不能当|不能作为)买点|泛题材热度不能覆盖底层退潮|缺少主力进场|缺少当前题材雷达|题材支撑缺口)/.test(String(value || ""));
 }
 
 function formatAnswerWatchlistSourceLabel(source = "") {

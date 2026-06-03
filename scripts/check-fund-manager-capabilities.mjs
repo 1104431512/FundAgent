@@ -4515,6 +4515,33 @@ assert(answerWatchlistUpdates[2].candidateRole.includes("备选观察"), "backup
 assert(answerWatchlistUpdates[2].reason.includes("回答定位为备选"), "backup answer-derived watchlist candidates must preserve why they are not immediately buyable");
 assert(answerWatchlistUpdates[1].riskNotes.some((item) => item.includes("暂不买入")), "hot answer candidates must be blocked with an explicit no-buy risk note");
 assert(answerWatchlistUpdates[1].riskNotes.some((item) => item.includes("观察缺口") && item.includes("近20日+33.41%偏热")), "blocked answer-derived watchlist candidates must preserve concrete missing setup and overheat gaps");
+const unsupportedThemeAnswerWatchlistUpdates = manager.buildPortfolioWatchlistUpdatesFromAnswerProfiles([{
+  ...verifiedSeedProfile,
+  code: "000016",
+  name: "人工智能主题低位基金C",
+  type: "股票型",
+  seed: {
+    ...(verifiedSeedProfile.seed || {}),
+    name: "人工智能主题低位基金C",
+    themeOpportunityRequirement: "require_current_theme_playbook"
+  },
+  matchedThemes: [],
+  reportChartRole: "买入参考图"
+}], {
+  userText: "我想找回调完成、低位、准备启动的基金",
+  answerText: "000016 人工智能主题低位基金C：可以作为第一优先，走势回调完成且低位修复。",
+  source: "fund_recommendation_answer"
+});
+assert.equal(
+  unsupportedThemeAnswerWatchlistUpdates[0].status,
+  "blocked",
+  "answer-derived watchlist persistence must block theme-looking pullbacks when structured evidence lacks current theme support"
+);
+assert(
+  unsupportedThemeAnswerWatchlistUpdates[0].reason.includes("结构化下钻")
+    && unsupportedThemeAnswerWatchlistUpdates[0].reason.includes("当前题材雷达"),
+  "structured no-buy watchlist blocks must explain missing current theme radar support even if the model answer sounded positive"
+);
 const screeningSelectedProfiles = manager.selectFundScreeningWatchlistProfiles([
   verifiedSeedProfile
 ], [
