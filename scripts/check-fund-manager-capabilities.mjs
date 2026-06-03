@@ -7333,6 +7333,7 @@ assert(
   ),
   "news-backed main-capital flow should remove the capital-flow gap for otherwise qualified low-position representative funds"
 );
+const mainForceNewsPlaybook = manager.buildThemeMainForcePlaybook([mainForceNewsTheme], mainForceNewsBoards);
 const mainForceProofDb = {
   account: { cash: 80000, totalAsset: 100000, positionWeightPct: 0, positions: [] },
   watchlist: [{
@@ -7365,7 +7366,7 @@ const mainForceProofDb = {
     date: todayIso,
     type: "market",
     status: "completed",
-    marketSnapshot: { fetchedAt: freshThemeRefreshAt, themeLeaderboards: mainForceNewsBoards }
+    marketSnapshot: { fetchedAt: freshThemeRefreshAt, themeLeaderboards: mainForceNewsBoards, themeMainForcePlaybook: mainForceNewsPlaybook }
   }]
 };
 const mainForceProofPerformance = manager.buildPortfolioManagerPerformanceStats(mainForceProofDb);
@@ -7377,22 +7378,30 @@ assert(
   ),
   "main-force ability lane must show concrete theme/fund proof with why-move, capital, catalyst, and representative-fund next steps"
 );
+assert(
+  mainForceAbilityLane?.proofItems?.some((item) =>
+    /作战图/.test(item.tag)
+    && /人形机器人/.test(item.title)
+    && /三花智控|载体锚点|主力证据/.test(`${item.detail} ${item.nextStep} ${(item.evidence || []).join(" ")}`)
+  ),
+  "main-force ability lane must prefer main-force playbook proof with carrier anchors over generic leaderboard slogans"
+);
 const staleMainForceProofPerformance = manager.buildPortfolioManagerPerformanceStats({
   ...mainForceProofDb,
   runs: [{
     date: todayIso,
     type: "market",
     status: "completed",
-    marketSnapshot: { fetchedAt: "2000-01-01T09:30:00.000Z", themeLeaderboards: mainForceNewsBoards }
+    marketSnapshot: { fetchedAt: "2000-01-01T09:30:00.000Z", themeLeaderboards: mainForceNewsBoards, themeMainForcePlaybook: mainForceNewsPlaybook }
   }]
 });
 const staleMainForceAbilityLane = staleMainForceProofPerformance.abilityLanes?.find((item) => item.label === "主力跟随能力");
 assert(
   !staleMainForceAbilityLane?.proofItems?.some((item) =>
-    /主力进场|题材预热|低位轮动/.test(String(item.tag || ""))
+    /主力进场|题材预热|低位轮动|作战图/.test(String(item.tag || ""))
     && /人形机器人/.test(`${item.title} ${item.detail} ${(item.evidence || []).join(" ")}`)
   ),
-  "manager ability proof must not show stale theme leaderboards as current main-force evidence"
+  "manager ability proof must not show stale theme leaderboards or stale playbooks as current main-force evidence"
 );
 const staleNewsOnlyThemeRadar = manager.buildThemeRadar({
   conceptBoards: [],

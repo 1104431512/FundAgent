@@ -15389,12 +15389,19 @@ function buildPortfolioManagerAbilityLanes({
   const staleRiskRanking = buildPortfolioStaleCatchdownRiskRanking(watchlist);
   const themeMomentumRanking = buildPortfolioThemeMomentumRanking(watchlist);
   const latestThemeLeaderboards = findLatestPortfolioThemeLeaderboardsFromRuns(runs);
+  const latestThemeMainForcePlaybook = findLatestPortfolioThemeMainForcePlaybookFromRuns(runs);
   const antiCatchdownProofItems = collectPortfolioAbilityRankingProofItems(staleRiskRanking, {
     limit: 3,
     tone: "warn",
     tag: "接盘拦截"
   });
+  const playbookRiskProofItems = collectPortfolioAbilityThemeMainForcePlaybookProofItems(latestThemeMainForcePlaybook, ["avoid_catchdown", "avoid_chase"], {
+    limit: 2
+  });
   const themeLeaderboardProofItems = collectPortfolioAbilityThemeLeaderboardProofItems(latestThemeLeaderboards, ["mainCapital", "preheat", "lowRotation"], {
+    limit: 3
+  });
+  const playbookFollowProofItems = collectPortfolioAbilityThemeMainForcePlaybookProofItems(latestThemeMainForcePlaybook, ["follow_main_capital", "preheat_watch", "low_rotation"], {
     limit: 3
   });
   const themeMomentumProofItems = collectPortfolioAbilityRankingProofItems(themeMomentumRanking, {
@@ -15402,7 +15409,8 @@ function buildPortfolioManagerAbilityLanes({
     tone: "ok",
     tag: "代表基金"
   });
-  const mainForceProofItems = mergePortfolioAbilityProofItems(themeLeaderboardProofItems, themeMomentumProofItems).slice(0, 4);
+  const mainForceProofItems = mergePortfolioAbilityProofItems(playbookFollowProofItems, themeLeaderboardProofItems, themeMomentumProofItems).slice(0, 4);
+  const antiCatchdownMergedProofItems = mergePortfolioAbilityProofItems(antiCatchdownProofItems, playbookRiskProofItems).slice(0, 4);
   const correctionCount = operationLanes.find((lane) => lane.id === "correction")?.count || 0;
   const pendingCount = operationLanes.find((lane) => lane.id === "pending")?.count || 0;
   const catchdownReplayCount = countPortfolioBacktestAbilityItems(backtestItems, [/退潮接盘亏损回测/, /追高买入回测/]);
@@ -15428,20 +15436,24 @@ function buildPortfolioManagerAbilityLanes({
   const mainCapitalThemeCount = latestThemeLeaderboards?.mainCapital?.items?.length || 0;
   const preheatThemeCount = latestThemeLeaderboards?.preheat?.items?.length || 0;
   const lowRotationThemeCount = latestThemeLeaderboards?.lowRotation?.items?.length || 0;
+  const playbookOpportunityCount = Number(latestThemeMainForcePlaybook?.opportunityCount || 0);
+  const playbookRiskCount = Number(latestThemeMainForcePlaybook?.riskCount || 0);
   return [
     {
       id: "anti_catchdown",
       label: "防接盘能力",
       headline: catchdownReplayCount
         ? `${catchdownReplayCount} 个接盘/追高问题待修复`
+        : playbookRiskCount
+          ? `作战图标记 ${playbookRiskCount} 个接盘/追涨风险`
         : staleRiskCount
           ? `已识别 ${staleRiskCount} 个接盘风险`
           : "暂无明确接盘亏损样本",
-      detail: staleRiskCount || catchdownReplayCount
-        ? "退潮、主力撤离、旧催化和追涨风险会进入风险榜，不能再包装成低位启动。"
+      detail: staleRiskCount || catchdownReplayCount || playbookRiskCount
+        ? "退潮、主力撤离、旧催化和追涨风险会进入风险榜与作战图，不能再包装成低位启动。"
         : "继续要求每个回调候选先证明资金回流、新闻催化和代表持仓承载。",
-      tone: catchdownReplayCount ? "bad" : staleRiskCount ? "warn" : "ok",
-      proofItems: antiCatchdownProofItems
+      tone: catchdownReplayCount ? "bad" : staleRiskCount || playbookRiskCount ? "warn" : "ok",
+      proofItems: antiCatchdownMergedProofItems
     },
     {
       id: "main_force_follow",
@@ -15450,6 +15462,8 @@ function buildPortfolioManagerAbilityLanes({
         ? `${missedThemeCount} 个主力预热错过`
         : executableThemeCount
           ? `${executableThemeCount} 个可微型/小仓复核`
+          : playbookOpportunityCount
+            ? `作战图 ${playbookOpportunityCount} 条主力/预热线索`
           : mainCapitalThemeCount || preheatThemeCount || lowRotationThemeCount
             ? `题材雷达 ${mainCapitalThemeCount + preheatThemeCount + lowRotationThemeCount} 条可复核`
           : themeOpportunityCount
@@ -15458,7 +15472,7 @@ function buildPortfolioManagerAbilityLanes({
       detail: mainForceProofItems.length
         ? "先解释题材为什么动，再验证主力资金、代表基金持仓承载和低位买点，合格才允许微型试探。"
         : "主力进场和题材预热必须同时说明新闻逻辑、资金是否跟进、基金是否真实承载题材。",
-      tone: missedThemeCount ? "warn" : executableThemeCount || mainCapitalThemeCount || preheatThemeCount ? "ok" : themeOpportunityCount || lowRotationThemeCount ? "info" : "muted",
+      tone: missedThemeCount ? "warn" : executableThemeCount || playbookOpportunityCount || mainCapitalThemeCount || preheatThemeCount ? "ok" : themeOpportunityCount || lowRotationThemeCount ? "info" : "muted",
       proofItems: mainForceProofItems
     },
     {
@@ -15511,6 +15525,27 @@ function findLatestPortfolioThemeLeaderboardsFromRuns(runs = []) {
   return null;
 }
 
+function findLatestPortfolioThemeMainForcePlaybookFromRuns(runs = []) {
+  const sortedRuns = (Array.isArray(runs) ? runs : [])
+    .filter((run) => run?.marketSnapshot)
+    .sort((a, b) => Date.parse(b.completedAt || b.startedAt || b.date || "") - Date.parse(a.completedAt || a.startedAt || a.date || ""));
+  for (const run of sortedRuns) {
+    const snapshot = run.marketSnapshot || {};
+    if (!isFreshPortfolioMarketSnapshot(snapshot, {
+      label: "历史运行主力作战图",
+      fallbackDate: run.completedAt || run.startedAt || run.date || ""
+    })) continue;
+    if (snapshot.themeMainForcePlaybook) return snapshot.themeMainForcePlaybook;
+    const leaderboards = snapshot.themeLeaderboards || (Array.isArray(snapshot.themeRadar) && snapshot.themeRadar.length
+      ? buildThemeLeaderboards(snapshot.themeRadar)
+      : null);
+    if (leaderboards || (Array.isArray(snapshot.themeRadar) && snapshot.themeRadar.length)) {
+      return buildThemeMainForcePlaybook(snapshot.themeRadar || [], leaderboards);
+    }
+  }
+  return null;
+}
+
 function collectPortfolioAbilityRankingProofItems(ranking = {}, options = {}) {
   const limit = Math.max(1, Number(options.limit || 3));
   const items = Array.isArray(ranking.items) ? ranking.items : [];
@@ -15522,6 +15557,37 @@ function collectPortfolioAbilityRankingProofItems(ranking = {}, options = {}) {
     nextStep: normalizePortfolioUserFacingText(item.decision?.nextStep || ranking.nextAction || "").slice(0, 92),
     tone: options.tone || resolvePortfolioAbilityProofTone(item.action || ranking.id || "")
   })).filter((item) => item.title || item.detail || item.evidence.length);
+}
+
+function collectPortfolioAbilityThemeMainForcePlaybookProofItems(playbook = null, laneIds = [], options = {}) {
+  if (!playbook || typeof playbook !== "object") return [];
+  const limit = Math.max(1, Number(options.limit || 3));
+  const laneMeta = {
+    follow_main_capital: { title: "作战图·主力快跟", tone: "ok" },
+    preheat_watch: { title: "作战图·题材预热", tone: "info" },
+    low_rotation: { title: "作战图·低位轮动", tone: "info" },
+    avoid_catchdown: { title: "作战图·退潮回避", tone: "warn" },
+    avoid_chase: { title: "作战图·追涨回避", tone: "warn" }
+  };
+  const allowed = new Set(laneIds || []);
+  return (Array.isArray(playbook.lanes) ? playbook.lanes : []).flatMap((lane) => {
+    if (allowed.size && !allowed.has(lane.id)) return [];
+    const meta = laneMeta[lane.id] || { title: lane.title || "作战图", tone: lane.tone || "info" };
+    const items = Array.isArray(lane.items) ? lane.items : [];
+    return items.slice(0, limit).map((item) => ({
+      title: normalizePortfolioUserFacingText(item.name || item.id || meta.title).slice(0, 42),
+      tag: normalizePortfolioUserFacingText(`${meta.title}${item.action ? ` · ${item.action}` : ""}`).slice(0, 32),
+      detail: normalizePortfolioUserFacingText(item.whyMove || item.newsLogic || lane.subtitle || "").slice(0, 108),
+      evidence: normalizePortfolioUserFacingArray([
+        item.capitalProof ? `主力证据：${item.capitalProof}` : "",
+        item.catalyst ? `催化：${item.catalyst}` : "",
+        ...(Array.isArray(item.carrierAnchors) && item.carrierAnchors.length ? [`载体锚点：${item.carrierAnchors.slice(0, 3).join(" / ")}`] : []),
+        ...(Array.isArray(item.evidence) ? item.evidence : [])
+      ], 3),
+      nextStep: normalizePortfolioUserFacingText(item.nextStep || item.invalidation || lane.action || "").slice(0, 96),
+      tone: meta.tone
+    })).filter((item) => item.title || item.detail || item.evidence.length);
+  });
 }
 
 function collectPortfolioAbilityThemeLeaderboardProofItems(leaderboards = null, laneKeys = [], options = {}) {

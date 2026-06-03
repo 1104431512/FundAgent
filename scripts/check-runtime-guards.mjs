@@ -1481,8 +1481,8 @@ const requiredPatterns = [
     message: "portfolio public API must expose manager performance proof statistics with correctness, profitability, and operation-kind review cards."
   },
   {
-    pattern: /(?=[\s\S]*function buildPortfolioManagerAbilityLanes)(?=[\s\S]*findLatestPortfolioThemeLeaderboardsFromRuns)(?=[\s\S]*collectPortfolioAbilityRankingProofItems)(?=[\s\S]*collectPortfolioAbilityThemeLeaderboardProofItems)(?=[\s\S]*proofItems)(?=[\s\S]*防接盘能力)(?=[\s\S]*主力跟随能力)/,
-    message: "manager ability lanes must expose concrete proof items from catchdown risk rankings and latest theme leaderboards, not only generic ability slogans."
+    pattern: /(?=[\s\S]*function buildPortfolioManagerAbilityLanes)(?=[\s\S]*findLatestPortfolioThemeLeaderboardsFromRuns)(?=[\s\S]*findLatestPortfolioThemeMainForcePlaybookFromRuns)(?=[\s\S]*collectPortfolioAbilityRankingProofItems)(?=[\s\S]*collectPortfolioAbilityThemeLeaderboardProofItems)(?=[\s\S]*collectPortfolioAbilityThemeMainForcePlaybookProofItems)(?=[\s\S]*proofItems)(?=[\s\S]*防接盘能力)(?=[\s\S]*主力跟随能力)/,
+    message: "manager ability lanes must expose concrete proof items from catchdown risk rankings, latest theme leaderboards, and the main-force playbook, not only generic ability slogans."
   },
   {
     pattern: /(?=[\s\S]*function classifyPortfolioManagerOperation)(?=[\s\S]*退潮接盘亏损回测)(?=[\s\S]*接盘失误)(?=[\s\S]*主力预热错过回测)(?=[\s\S]*主线错过)(?=[\s\S]*0\.5%-1\.2%微型试探)/,
@@ -2367,6 +2367,10 @@ const requiredPatterns = [
   {
     pattern: /function findLatestPortfolioThemeLeaderboardsFromRuns[\s\S]{0,900}isFreshPortfolioMarketSnapshot[\s\S]{0,500}themeLeaderboards/,
     message: "manager ability proof must reject stale theme leaderboards before showing main-capital follow evidence."
+  },
+  {
+    pattern: /function findLatestPortfolioThemeMainForcePlaybookFromRuns[\s\S]{0,1000}isFreshPortfolioMarketSnapshot[\s\S]{0,800}themeMainForcePlaybook/,
+    message: "manager ability proof must reject stale main-force playbooks before showing main-force evidence."
   },
   {
     pattern: /function buildPortfolioWatchlistThemeCoverageText[\s\S]{0,500}filter\(isPortfolioThemeRepresentativeCoverageCandidate\)/,
