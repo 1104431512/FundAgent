@@ -737,6 +737,10 @@ const requiredPatterns = [
     message: "fund recommendation prompts must list candidates according to the declared sort policy."
   },
   {
+    pattern: /function extractAnswerRecommendationSection[\s\S]{0,500}结果榜[\s\S]{0,220}推荐清单/,
+    message: "fund recommendation quality must treat first-screen result leaderboards as recommendation sections."
+  },
+  {
     pattern: /account\.cash 才是当下可动用现金[\s\S]{0,180}receivableCash 是赎回在途资金[\s\S]{0,180}不能当作已经到账的买入火力/,
     message: "portfolio decision prompts must distinguish deployable cash from unsettled redemption receivables."
   },

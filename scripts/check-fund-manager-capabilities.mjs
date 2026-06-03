@@ -10350,6 +10350,32 @@ assert(
   promotedWatchQuality.issues.includes("watch_candidate_promoted_to_recommendation"),
   "quality gate must reject watch/reject candidates promoted into the recommendation list"
 );
+const promotedWatchInResultBoardQuality = manager.evaluateFundAnswerQuality({
+  text: [
+    "直接结论：可以小仓复核。",
+    "排序口径：高夏普/低回撤优先，再看买点。",
+    "结果榜：1. 000003 追涨观察基金A：第一优先，走势更强；2. 000001 低位修复基金A：第二优先。",
+    "推荐清单：",
+    "1. 000001 低位修复基金A：C类，近5日+1.4%、近10日+2.8%，120日位置38.5%，可以分批。",
+    "1万元执行：激进给000001买1500元，均衡给000001买800元，保守0元。"
+  ].join("\n"),
+  workflow: "fund_recommendation",
+  userText: setupQuery,
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      candidates: [
+        { ...setupDigest, code: "000001", name: "低位修复基金A" },
+        { ...hotDigest, code: "000003", name: "追涨观察基金A" }
+      ]
+    }
+  }
+});
+assert(
+  promotedWatchInResultBoardQuality.issues.includes("watch_candidate_promoted_to_recommendation"),
+  "quality gate must reject watch/reject candidates promoted in the first-screen result leaderboard, not only in the later recommendation list"
+);
 
 const watchExecutionQuality = manager.evaluateFundAnswerQuality({
   text: [

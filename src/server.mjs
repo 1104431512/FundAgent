@@ -20094,7 +20094,7 @@ function extractAnswerChartEvidenceSections(text) {
 function extractAnswerRecommendationSection(text) {
   const body = String(text || "");
   if (!body.trim()) return "";
-  const startMarkers = ["推荐清单", "推荐候选", "主推荐", "候选基金", "推荐：", "推荐:"];
+  const startMarkers = ["结果榜", "排序结果", "优先顺序", "首选顺序", "推荐清单", "推荐候选", "主推荐", "候选基金", "推荐：", "推荐:"];
   const starts = startMarkers.map((marker) => body.indexOf(marker)).filter((index) => index >= 0);
   if (!starts.length) return body;
   const start = Math.min(...starts);
