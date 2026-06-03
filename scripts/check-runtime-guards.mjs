@@ -1621,6 +1621,18 @@ const requiredPatterns = [
     message: "pullback/setup discovery must still require current theme playbook evidence when the theme radar is missing."
   },
   {
+    pattern: /function inferPullbackSetupCandidateSearchKeywords[\s\S]{0,520}inferPullbackSetupPlaybookSearchKeywords/,
+    message: "pullback/setup discovery must use theme playbook opportunity keywords and carrier anchors when recalling candidates."
+  },
+  {
+    pattern: /function inferPullbackSetupPlaybookSearchKeywords[\s\S]{0,420}buildPortfolioThemeOpportunityKeywordGroups[\s\S]{0,820}group\.anchors/,
+    message: "pullback/setup playbook keyword recovery must include carrier anchors, not only broad theme names."
+  },
+  {
+    pattern: /async function fetchPullbackSetupCandidates[\s\S]{0,520}inferPullbackSetupCandidateSearchKeywords\(userText,\s*themeRadar,\s*marketSnapshot\)/,
+    message: "pullback/setup candidate fetching must call the combined radar and playbook keyword entrypoint."
+  },
+  {
     pattern: /(?=[\s\S]*function evaluatePullbackAnswerDiscipline[\s\S]{0,600}shouldRequireThemeOpportunityBackingForDeepDive\(deepDive\)[\s\S]{0,500}classifyPullbackSetupCandidateForSummary\(candidate,\s*\{\s*requireThemeOpportunityBacking\s*\}\))(?=[\s\S]*function buildPullbackQualityFallbackAnswer[\s\S]{0,1200}classifyPullbackSetupCandidateForSummary\(candidate,\s*\{[\s\S]{0,220}shouldRequireThemeOpportunityBackingForDeepDive\(deepDive\))/,
     message: "answer quality and deterministic fallback must pass deepDive-level theme-playbook requirements into pullback candidate bucketing."
   },

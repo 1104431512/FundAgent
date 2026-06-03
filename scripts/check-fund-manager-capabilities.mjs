@@ -8715,6 +8715,20 @@ assert(
   ),
   "portfolio representative-fund recall must derive search keywords and holding anchors from the main-force playbook"
 );
+const missingRadarPlaybookKeywords = manager.inferPullbackSetupCandidateSearchKeywords("我想找回调完成准备启动的基金", [], {
+  fetchedAt: freshThemeRefreshAt,
+  themeRadar: [],
+  themeLeaderboards: manager.buildThemeLeaderboards([]),
+  themeMainForcePlaybook: lowAltitudePlaybook
+});
+assert(
+  missingRadarPlaybookKeywords.some((item) => /低空经济|飞行汽车/.test(item)),
+  "pullback candidate recall must use main-force playbook opportunity keywords when themeRadar is missing"
+);
+assert(
+  missingRadarPlaybookKeywords.some((item) => /万丰奥威|中信海直/.test(item)),
+  "pullback candidate recall must use playbook carrier anchors to find representative funds when themeRadar is missing"
+);
 assert(adminSource.includes("renderPortfolioThemeLeaderboards") && adminSource.includes("getPortfolioLatestThemeLeaderboards"), "admin sector board must render latest market theme leaderboards instead of hiding them in raw run JSON");
 assert(adminStyleSource.includes(".theme-leaderboard-board") && adminStyleSource.includes(".theme-leaderboard-lane-sell"), "admin styles must provide compact visible lanes for theme leaderboards and retreat risks");
 assert(adminSource.includes("theme-leaderboard-decision") && adminSource.includes("theme-leaderboard-evidence") && adminSource.includes("theme-leaderboard-why"), "admin theme leaderboards must render why-move, next-step, and evidence blocks for each theme");

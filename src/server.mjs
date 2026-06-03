@@ -4598,7 +4598,7 @@ function collectPortfolioThemeOpportunityLeaderboardItems(marketSnapshot = null)
     ["preheat", "题材预热榜"],
     ["lowRotation", "低位轮动榜"]
   ];
-  return lanes.flatMap(([key, fallbackTitle]) =>
+  const leaderboardItems = lanes.flatMap(([key, fallbackTitle]) =>
     (leaderboards?.[key]?.items || []).slice(0, 3).map((item) => {
       const playbook = [item.id, item.name]
         .map((value) => playbookByKey.get(normalizeIntentText(value)))
@@ -4621,6 +4621,23 @@ function collectPortfolioThemeOpportunityLeaderboardItems(marketSnapshot = null)
       };
     })
   );
+  if (leaderboardItems.length) return leaderboardItems;
+  return playbookItems.slice(0, 9).map((item) => ({
+    laneKey: item.laneKey || item.sourceKey || "",
+    title: item.title || item.laneTitle || "主力/预热题材",
+    id: item.id || "",
+    name: item.name || "",
+    score: Number(item.score || 0),
+    reason: item.reason || "",
+    catalyst: item.catalyst || "",
+    sourceType: item.sourceType || "",
+    newsLogic: item.newsLogic || "",
+    whyMove: item.whyMove || "",
+    capitalProof: item.capitalProof || "",
+    carrierSearchKeywords: normalizeStringArray(item.carrierSearchKeywords),
+    carrierAnchors: normalizeStringArray(item.carrierAnchors),
+    playbookAction: item.playbookAction || item.action || ""
+  }));
 }
 
 function selectPortfolioActionableThemeSignal(candidate = {}) {
@@ -28174,6 +28191,32 @@ function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
     .slice(0, Number(process.env.PULLBACK_SETUP_KEYWORD_LIMIT || 32));
 }
 
+function inferPullbackSetupCandidateSearchKeywords(userText, themeRadar = [], marketSnapshot = null) {
+  const allowPrecious = isPreciousMetalQuestion(userText);
+  const playbookKeywords = inferPullbackSetupPlaybookSearchKeywords(userText, marketSnapshot);
+  return [...new Set([
+    ...playbookKeywords,
+    ...inferPullbackSetupSearchKeywords(userText, themeRadar)
+  ])]
+    .filter((keyword) => allowPrecious || !isPreciousMetalKeyword(keyword))
+    .slice(0, Number(process.env.PULLBACK_SETUP_KEYWORD_LIMIT || 32));
+}
+
+function inferPullbackSetupPlaybookSearchKeywords(userText = "", marketSnapshot = null) {
+  const focused = inferFocusedFundSearchKeywords(userText);
+  const normalizedUserText = normalizeIntentText(userText);
+  const groups = buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot)
+    .filter((group) => !focused.length || group.keywords.some((keyword) => {
+      const value = normalizeIntentText(keyword);
+      return value && (normalizedUserText.includes(value) || focused.some((item) => areThemeTermsRelated(item, keyword)));
+    }));
+  return [...new Set(groups.flatMap((group) => [
+    group.name,
+    ...normalizeStringArray(group.keywords),
+    ...normalizeStringArray(group.anchors)
+  ]).filter(Boolean))].slice(0, 18);
+}
+
 function themeMatchesSearchText(theme = {}, normalizedText = "") {
   const text = String(normalizedText || "").trim();
   if (!text) return false;
@@ -28185,7 +28228,7 @@ function themeMatchesSearchText(theme = {}, normalizedText = "") {
 
 async function fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar = []) {
   const focusedKeywords = inferFocusedFundSearchKeywords(userText);
-  const keywordGroups = await Promise.all(inferPullbackSetupSearchKeywords(userText, themeRadar).map((keyword) =>
+  const keywordGroups = await Promise.all(inferPullbackSetupCandidateSearchKeywords(userText, themeRadar, marketSnapshot).map((keyword) =>
     fetchFundSearchCandidates(keyword).catch((error) => ({ ok: false, keyword, error: error.message, items: [] }))
   ));
   const rankingGroups = await fetchPullbackSetupRankingCandidates();
@@ -37275,6 +37318,7 @@ export {
   matchCandidateThemes,
   inferPortfolioBlockedFollowThroughSearchKeywords,
   inferPortfolioThemeOpportunitySearchKeywords,
+  inferPullbackSetupCandidateSearchKeywords,
   inferPullbackSetupSearchKeywords,
   inferEastmoneySecidFromHolding,
   inferFundShareClass,
