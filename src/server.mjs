@@ -13727,12 +13727,27 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
   const feeItems = listById.get("fee_suitability")?.items || [];
   const replacementItems = listById.get("replacement_choice")?.items || [];
   const holdingsItems = listById.get("holdings_outlook")?.items || [];
+  const blockerItems = [
+    ...synthesisItems,
+    ...cashRedeploymentItems,
+    ...positionSizingItems,
+    ...qualityItems,
+    ...managerStabilityItems,
+    ...portfolioFitItems,
+    ...themeAllocationItems,
+    ...themeMomentumItems,
+    ...rotationItems,
+    ...feeItems,
+    ...replacementItems,
+    ...holdingsItems
+  ].filter(hasPortfolioCustomerThemeEvidenceBlocker);
   const riskAvoid = [
     ...synthesisItems.filter((item) => /回避/.test(item.action || "")),
     ...staleCatchdownItems,
     ...chaseItems,
     ...drawdownDefenseItems.filter((item) => /回撤|防线|保护|降级/.test(item.action || item.reason || "")),
-    ...dataConfidenceItems.filter((item) => /阻塞|过期|缺/.test(item.action || item.reason || item.facts?.join(" ") || ""))
+    ...dataConfidenceItems.filter((item) => /阻塞|过期|缺/.test(item.action || item.reason || item.facts?.join(" ") || "")),
+    ...blockerItems
   ];
   const riskAvoidCodes = new Set(riskAvoid.map((item) => item.code).filter(Boolean));
   const buyReview = [
@@ -13745,7 +13760,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
     ...themeAllocationItems.filter((item) => /主题配置复核/.test(item.action || "")),
     ...themeMomentumItems.filter((item) => /买入复核|微型试探|小仓/.test(item.action || ""))
   ]
-    .filter((item) => item?.code && !riskAvoidCodes.has(item.code))
+    .filter((item) => item?.code && !riskAvoidCodes.has(item.code) && !hasPortfolioCustomerBuyBlocker(item))
     .slice(0, 3);
   const usedCodes = new Set([
     ...riskAvoid.map((item) => item.code).filter(Boolean),
@@ -13798,7 +13813,7 @@ function buildPortfolioRankingCustomerActionDeck({ customerDigest = {}, alertCen
   const buySourceItems = [
     ...(customerDigest.buyReview || []),
     ...((lanes.get("buy")?.items || []))
-  ].filter((item) => item?.code && !sellBlockCodes.has(item.code) && !dataBlockCodes.has(item.code) && isPortfolioCustomerBuyAction(item));
+  ].filter((item) => item?.code && !sellBlockCodes.has(item.code) && !dataBlockCodes.has(item.code) && !hasPortfolioCustomerBuyBlocker(item) && isPortfolioCustomerBuyAction(item));
   const buyCandidateCodes = new Set(buySourceItems.map((item) => item.code).filter(Boolean));
   const avoidSourceItems = [
     ...(customerDigest.riskAvoid || []).filter((item) =>
@@ -14418,15 +14433,12 @@ function isPortfolioCustomerSellAction(item = {}) {
 
 function isPortfolioCustomerBuyAction(item = {}) {
   const text = getPortfolioCustomerActionSearchText(item);
-  const blockerText = stripNegatedPortfolioCustomerRiskPhrases(text);
   const mainForceMicroReview = /主力预热(?:微型试探|买入复核)|主力进场.*微型|题材预热.*微型/.test(text)
     && /0\.5%-1\.2%|微型|试探/.test(text);
-  if (mainForceMicroReview && !/卖出|减仓|止盈|止损|回吐|接盘|退潮|主力撤离|旧新闻|旧催化|数据阻塞|持仓数据阻塞|阻塞|过期|缺题材雷达|缺当前题材|缺少当前题材|缺新闻逻辑|缺主力|补题材证据|题材证据|不能提交买入|不得买入|不给买入|不买|不能把|只观察/.test(blockerText)) {
+  if (mainForceMicroReview && !hasPortfolioCustomerBuyBlocker(item)) {
     return true;
   }
-  if (/卖出|减仓|止盈|止损|回吐|追涨|高位|拥挤|回避|接盘|退潮|主力撤离|旧新闻|旧催化|数据阻塞|持仓数据阻塞|阻塞|过期|缺题材雷达|缺当前题材|缺少当前题材|缺新闻逻辑|缺主力|补题材证据|题材证据|不能提交买入|不得买入|不给买入|不买|不能把|只观察/.test(blockerText)) {
-    return false;
-  }
+  if (hasPortfolioCustomerBuyBlocker(item)) return false;
   return hasPortfolioCustomerExecutableBuyIntent(text);
 }
 
@@ -14436,8 +14448,24 @@ function stripNegatedPortfolioCustomerRiskPhrases(text = "") {
     .replace(/(?:追涨|高位|拥挤|接盘|退潮|主力撤离|旧新闻|旧催化|数据阻塞|阻塞|过期)[^，。；]{0,14}(?:未触发|不成立|已排除)/g, "");
 }
 
+function hasPortfolioCustomerBuyBlocker(item = {}) {
+  return hasPortfolioCustomerBuyBlockerText(getPortfolioCustomerActionSearchText(item));
+}
+
+function hasPortfolioCustomerThemeEvidenceBlocker(item = {}) {
+  const text = stripNegatedPortfolioCustomerRiskPhrases(getPortfolioCustomerActionSearchText(item));
+  return /接盘|退潮|主力(?:资金)?撤离|资金撤离|旧新闻|旧催化|旧题材|旧标签|历史热点|低位轮动标签缺少当前题材雷达刷新|当前题材雷达.*(?:未确认|缺少刷新|刷新时间无法验证|过期)|重新刷新主力资金\/新闻催化|表面回调|缺题材雷达|缺当前题材|缺少当前题材|缺新闻逻辑|缺主力|缺少主力|先补题材证据|补题材证据|题材证据/.test(text);
+}
+
+function hasPortfolioCustomerBuyBlockerText(text = "") {
+  const blockerText = stripNegatedPortfolioCustomerRiskPhrases(text);
+  return /卖出|减仓|止盈|止损|回吐|追涨|高位|拥挤|回避|接盘|退潮|主力(?:资金)?撤离|资金撤离|旧新闻|旧催化|旧题材|旧标签|历史热点|低位轮动标签缺少当前题材雷达刷新|当前题材雷达.*(?:未确认|缺少刷新|刷新时间无法验证|过期)|重新刷新主力资金\/新闻催化|表面回调|数据阻塞|持仓数据阻塞|阻塞|过期|缺题材雷达|缺当前题材|缺少当前题材|缺新闻逻辑|缺主力|缺少主力|先补题材证据|补题材证据|题材证据|不能提交买入|不得买入|不给买入|不给买入金额|不买|暂不买|不能把|只观察|只能观察|0元观察|零元观察|blocked/i.test(blockerText);
+}
+
 function hasPortfolioCustomerExecutableBuyIntent(text = "") {
-  return /买入|申购|加仓|试探|启动仓|再部署|可买|小仓|微型/.test(String(text || ""));
+  const body = String(text || "");
+  return /买入|申购|加仓|试探|启动仓|再部署|可买|小仓|微型/.test(body)
+    && !hasPortfolioCustomerBuyBlockerText(body);
 }
 
 function isPortfolioCustomerAvoidAction(item = {}) {
@@ -14537,7 +14565,7 @@ function shouldIncludePortfolioAlertItem(laneId = "", listId = "", item = {}) {
     item.decision?.nextStep
   ].filter(Boolean).join(" ");
   if (laneId === "buy") {
-    if (/回避|卖出|减仓|止损|止盈|追涨|接盘|退潮|主力撤离|阻塞|补证|缺题材雷达|缺当前题材|缺少当前题材|缺新闻逻辑|缺主力|题材证据|不得买入|不给买入|不买|只能观察|只观察/.test(text)) return false;
+    if (hasPortfolioCustomerBuyBlocker(item)) return false;
     return hasPortfolioCustomerExecutableBuyIntent(text)
       || (["cash_redeployment", "buy_preparation", "position_sizing", "launch_setup"].includes(listId) && /买入|试探|启动仓|再部署|可买|小仓|微型/.test(text));
   }
@@ -14693,16 +14721,35 @@ function buildPortfolioRankingConsensusRadar(decisionMatrix = {}, priorityQueue 
 
 function buildPortfolioRankingConsensusRadarItem(item = {}, priority = null) {
   const verdict = item.verdict || {};
-  const laneId = resolvePortfolioConsensusRadarLane(verdict);
   const supports = normalizeStringArray(verdict.supports);
   const blockers = normalizeStringArray(verdict.blockers);
   const constraints = normalizeStringArray(verdict.constraints);
   const cells = item.cells || {};
+  const blockerProbe = {
+    action: verdict.label || item.action || "",
+    reason: [
+      verdict.summary,
+      item.reason,
+      ...blockers,
+      ...constraints,
+      cells.buy?.text,
+      cells.sector?.text,
+      cells.risk?.text,
+      cells.data?.text
+    ].filter(Boolean).join(" "),
+    nextStep: verdict.nextStep || item.nextStep || ""
+  };
+  const forceBlockerLane = hasPortfolioCustomerBuyBlocker(blockerProbe);
+  const laneId = forceBlockerLane
+    ? isPortfolioCustomerCatchdownAvoidAction(blockerProbe) || /追涨|高位|拥挤|卖出|减仓|止盈|止损|回吐|风险/.test(getPortfolioCustomerActionSearchText(blockerProbe))
+      ? "risk"
+      : "data"
+    : resolvePortfolioConsensusRadarLane(verdict);
   const supportCount = supports.length + (cells.buy ? 1 : 0) + (cells.sector ? 1 : 0);
-  const blockerCount = blockers.length;
+  const blockerCount = blockers.length + (forceBlockerLane ? 1 : 0);
   const constraintCount = constraints.length;
   const supportText = supports[0] || cells.buy?.text || cells.sector?.text || item.reason || "等待经理复核。";
-  const blockerText = blockers[0] || (laneId === "risk" ? cells.risk?.text : laneId === "data" ? cells.data?.text : "") || "";
+  const blockerText = blockers[0] || (forceBlockerLane ? blockerProbe.reason : "") || (laneId === "risk" ? cells.risk?.text : laneId === "data" ? cells.data?.text : "") || "";
   const constraintText = constraints[0] || verdict.nextStep || item.nextStep || "";
   return {
     laneId,

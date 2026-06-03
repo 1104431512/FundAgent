@@ -2761,7 +2761,7 @@ const requiredPatterns = [
     message: "decision matrix verdict must expose missing current theme radar as a sector/theme blocker."
   },
   {
-    pattern: /function shouldIncludePortfolioAlertItem[\s\S]{0,900}laneId === "buy"[\s\S]{0,500}缺题材雷达/,
+    pattern: /function shouldIncludePortfolioAlertItem[\s\S]{0,900}laneId === "buy"[\s\S]{0,260}hasPortfolioCustomerBuyBlocker/,
     message: "customer buy alerts must exclude candidates whose only rotation evidence lacks current theme radar."
   },
   {
@@ -3841,7 +3841,7 @@ const requiredPatterns = [
     message: "manager ranking boards must include a replacement-choice lane that compares same-fund share classes and same-exposure alternatives before buying."
   },
   {
-    pattern: /function buildPortfolioRankingCustomerDigest[\s\S]{0,1800}const buyReview = \[[\s\S]{0,900}\.\.\.themeMomentumItems\.filter[\s\S]{0,900}\]\s*[\r\n]+\s*\.filter/,
+    pattern: /function buildPortfolioRankingCustomerDigest[\s\S]{0,3200}const buyReview = \[[\s\S]{0,900}\.\.\.themeMomentumItems\.filter[\s\S]{0,1200}hasPortfolioCustomerBuyBlocker/,
     message: "customer buy-review digest must not treat replacement-choice or low-fee alternatives as buy signals."
   },
   {
@@ -3877,8 +3877,28 @@ const requiredPatterns = [
     message: "manager ranking boards must translate multi-angle rankings into customer-facing buy/watch/avoid digest buckets."
   },
   {
-    pattern: /(?=[\s\S]*function hasPortfolioCustomerExecutableBuyIntent)(?=[\s\S]*function isPortfolioCustomerBuyAction[\s\S]{0,900}不得买入)(?=[\s\S]*function shouldIncludePortfolioAlertItem[\s\S]{0,900}只能观察)/,
+    pattern: /(?=[\s\S]*function hasPortfolioCustomerExecutableBuyIntent[\s\S]{0,500}hasPortfolioCustomerBuyBlockerText)(?=[\s\S]*function isPortfolioCustomerBuyAction[\s\S]{0,900}hasPortfolioCustomerBuyBlocker)(?=[\s\S]*function shouldIncludePortfolioAlertItem[\s\S]{0,900}hasPortfolioCustomerBuyBlocker)/,
     message: "customer action cards must not classify generic review/watch-only theme candidates as buy-review items."
+  },
+  {
+    pattern: /function hasPortfolioCustomerBuyBlockerText[\s\S]{0,900}低位轮动标签缺少当前题材雷达刷新[\s\S]{0,700}不给买入金额/,
+    message: "customer-facing portfolio buy blockers must catch stale low-rotation radar gaps and no-buy amount blockers."
+  },
+  {
+    pattern: /buildPortfolioRankingCustomerDigest[\s\S]{0,2200}hasPortfolioCustomerThemeEvidenceBlocker[\s\S]{0,1800}hasPortfolioCustomerBuyBlocker/,
+    message: "stale theme blockers must be shared with the customer buy-review digest."
+  },
+  {
+    pattern: /buildPortfolioRankingCustomerActionDeck[\s\S]{0,1400}hasPortfolioCustomerBuyBlocker/,
+    message: "stale theme blockers must be shared with the customer action deck buy lane."
+  },
+  {
+    pattern: /shouldIncludePortfolioAlertItem[\s\S]{0,700}hasPortfolioCustomerBuyBlocker/,
+    message: "stale theme blockers must be shared with the alert center buy lane."
+  },
+  {
+    pattern: /buildPortfolioRankingConsensusRadarItem[\s\S]{0,1400}hasPortfolioCustomerBuyBlocker/,
+    message: "stale theme blockers must be shared with the consensus radar."
   },
   {
     pattern: /(?=[\s\S]*function buildPortfolioRankingCustomerActionDeck[\s\S]{0,1500}dataSourceItems\.filter\(isPortfolioCustomerHardDataBlocker\))(?=[\s\S]*function buildPortfolioRankingCustomerActionDeck[\s\S]{0,1900}buyCandidateCodes)(?=[\s\S]*function buildPortfolioRankingCustomerActionDeck[\s\S]{0,2600}isPortfolioCustomerHardAvoidAction)(?=[\s\S]*function buildPortfolioRankingCustomerActionDeck[\s\S]{0,3300}buySourceItems\.filter\(\(item\) => !blockedCodes\.has\(item\.code\)\))/,

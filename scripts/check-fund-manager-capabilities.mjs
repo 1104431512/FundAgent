@@ -1327,6 +1327,37 @@ assert(
   "customer action deck must not place stale low-rotation labels into buy review"
 );
 assert(
+  !(staleLowRotationBoard.customerDigest?.buyReview || []).some((item) => item.code === "000090"),
+  "customer digest must not summarize stale low-rotation labels as buy-review candidates"
+);
+assert(
+  !(staleLowRotationBoard.alertCenter?.lanes.find((lane) => lane.id === "buy")?.items || []).some((item) => item.code === "000090"),
+  "alert center buy lane must not surface stale low-rotation labels as buy-review alerts"
+);
+assert(
+  (staleLowRotationBoard.alertCenter?.lanes.find((lane) => lane.id === "data")?.items || []).some((item) => item.code === "000090")
+    || (staleLowRotationBoard.alertCenter?.lanes.find((lane) => lane.id === "sell")?.items || []).some((item) => item.code === "000090"),
+  "alert center must move stale low-rotation labels into blocker lanes instead of hiding the issue"
+);
+assert(
+  !(staleLowRotationBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.items || []).some((item) => item.code === "000090"),
+  "customer action leaderboard must not rank stale low-rotation labels in the buy lane"
+);
+assert(
+  (staleLowRotationBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "data")?.items || []).some((item) => item.code === "000090")
+    || (staleLowRotationBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "avoid")?.items || []).some((item) => item.code === "000090"),
+  "customer action leaderboard must route stale low-rotation labels to data/avoid lanes with an explicit blocker"
+);
+assert(
+  !(staleLowRotationBoard.consensusRadar.lanes.find((lane) => lane.id === "buy")?.items || []).some((item) => item.code === "000090"),
+  "consensus radar must not mark stale low-rotation labels as consensus-buy candidates"
+);
+assert(
+  (staleLowRotationBoard.consensusRadar.lanes.find((lane) => lane.id === "data")?.items || []).some((item) => item.code === "000090")
+    || (staleLowRotationBoard.consensusRadar.lanes.find((lane) => lane.id === "risk")?.items || []).some((item) => item.code === "000090"),
+  "consensus radar must route stale low-rotation labels into data/risk blocker lanes"
+);
+assert(
   staleLowRotationBoard.decisionMatrix.items.find((item) => item.code === "000090")?.verdict?.tone === "data",
   "decision matrix must treat stale low-rotation labels as a data/theme blocker"
 );
