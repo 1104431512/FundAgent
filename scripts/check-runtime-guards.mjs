@@ -1409,6 +1409,10 @@ const requiredPatterns = [
     message: "theme radar must auto-extract fresh news-only preheat topics instead of relying only on preset theme rules."
   },
   {
+    pattern: /(?=[\s\S]*function extractEmergingNewsTopicTerms)(?=[\s\S]*主力资金\|资金\|ETF资金[\s\S]{0,420}净流入\|流入\|抢筹)(?=[\s\S]*function normalizeEmergingNewsTopicTerm[\s\S]{0,700}新品发布[\s\S]{0,260}订单加速落地[\s\S]{0,260}适配加速)/,
+    message: "emerging news topic extraction must preserve specific main-capital theme names and strip event-tail words before representative-fund search."
+  },
+  {
     pattern: /(?=[\s\S]*function buildThemeRadar)(?=[\s\S]*marketEvidenceCoverageCount)(?=[\s\S]*Number\(theme\.marketEvidenceCoverageCount \|\| 0\) > 0)/,
     message: "theme radar must not surface broad static themes from fund vehicle names alone when no board, news, commodity, or overseas evidence exists."
   },

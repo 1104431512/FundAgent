@@ -7396,6 +7396,32 @@ assert(
   manager.buildThemeLeaderboards(hardTechCatalystRadar).preheat.items.some((item) => /人形机器人|商业航天|AI\/算力|半导体/.test(item.name) && /产业落地|技术突破|政策落地/.test(item.catalyst)),
   "preheat leaderboards must surface hard-tech news catalysts with readable reason labels before the board fully diffuses"
 );
+const emergingTopicNameRadar = manager.buildThemeRadar({
+  conceptBoards: [],
+  industryBoards: [],
+  fastNews: [
+    { title: "钠离子电池板块获主力资金净流入 储能订单加速落地", showTime: "10:18", mediaName: "测试快讯" },
+    { title: "AI眼镜新品发布 端侧模型适配加速 产业链订单改善", showTime: "10:22", mediaName: "测试快讯" }
+  ],
+  fundCandidates: {
+    stockFunds: [
+      { code: "159014", name: "钠离子电池主题C", type: "股票型基金", oneMonthPct: 1.4, dailyPct: 0.2, shareClass: "C", keywords: ["钠离子电池", "储能"] },
+      { code: "159015", name: "AI眼镜端侧AI主题C", type: "股票型基金", oneMonthPct: 1.2, dailyPct: 0.2, shareClass: "C", keywords: ["AI眼镜", "端侧AI"] }
+    ]
+  }
+});
+assert(
+  emergingTopicNameRadar.some((theme) => /钠离子电池/.test(theme.name) || /钠离子电池/.test((theme.keywords || []).join(" "))),
+  "emerging-news extraction must keep full specific names like sodium-ion battery instead of truncating them to generic fragments"
+);
+assert(
+  emergingTopicNameRadar.some((theme) => /AI眼镜/.test(theme.name) || /AI眼镜/.test((theme.keywords || []).join(" "))),
+  "emerging-news extraction must keep AI-glasses as the investable theme name"
+);
+assert(
+  !emergingTopicNameRadar.some((theme) => /钠离（新闻预热）|订单加速落地（新闻预热）|AI眼镜新品（新闻预热）/.test(theme.name || "")),
+  "emerging-news extraction must strip event tails and avoid malformed theme names that pollute representative-fund search"
+);
 const mainForceNewsRadar = manager.buildThemeRadar({
   conceptBoards: [],
   industryBoards: [],
