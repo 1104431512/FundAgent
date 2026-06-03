@@ -3249,6 +3249,10 @@ const requiredPatterns = [
     message: "deep-dive scoring must prefer current-radar theme labels over stale candidate labels."
   },
   {
+    pattern: /(?=[\s\S]*function hasPullbackThemeOpportunityBacking[\s\S]{0,900}hasFreshPullbackLowRotationThemeEvidence\(candidate,\s*theme\))(?=[\s\S]*低位轮动标签缺少当前题材雷达刷新)(?=[\s\S]*function isFreshPortfolioThemeRefreshSupportForTheme[\s\S]{0,1100}isPortfolioThemeRefreshFreshEnough\(refresh\)[\s\S]{0,900}matchedThemeNames)/,
+    message: "pullback/setup main recommendations must require fresh current-radar evidence before low-rotation labels can support a buyable result."
+  },
+  {
     pattern: /(?=[\s\S]*function hasPortfolioPlaybookOpportunitySeedContext)(?=[\s\S]*collectPortfolioManagerPlaybookOpportunityMatches\(candidate\))(?=[\s\S]*function formatPortfolioWatchSeedKind[\s\S]{0,520}hasPortfolioPlaybookOpportunitySeedContext\(candidate\)[\s\S]{0,120}主力预热代表基金候选)(?=[\s\S]*function buildPortfolioWatchlistUpdatesFromSeedCandidates[\s\S]{0,1800}formatPortfolioSeedPlaybookOpportunityEvidence\(candidate\))/,
     message: "watchlist seed updates must preserve main-force playbook opportunity context for search-returned representative fund candidates."
   },

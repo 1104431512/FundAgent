@@ -21014,7 +21014,9 @@ function hasPullbackThemeOpportunityBacking(candidate = {}) {
   const actionableThemes = getCandidateThemeSignals(candidate).filter((theme) => {
     if (!isActionableThemeSupport(theme)) return false;
     const lowRotation = hasUsableThemeLowRotationSupport(theme);
-    return lowRotation || hasTraceableFreshThemeCatalystContext(theme);
+    return lowRotation
+      ? hasFreshPullbackLowRotationThemeEvidence(candidate, theme)
+      : hasTraceableFreshThemeCatalystContext(theme);
   });
   if (!actionableThemes.length) return false;
   return hasVerifiedThemeCarrierEvidence(candidate);
@@ -21029,10 +21031,58 @@ function getPullbackThemeOpportunityBackingGap(candidate = {}, options = {}) {
   if (!hasActionableThemeSupport(candidate)) {
     return "缺少主力进场、题材预热或低位轮动支撑，暂不能把回调当启动";
   }
+  const actionableThemes = themeSignals.filter(isActionableThemeSupport);
+  const hasFreshOpportunityTheme = actionableThemes.some((theme) =>
+    hasUsableThemeLowRotationSupport(theme)
+      ? hasFreshPullbackLowRotationThemeEvidence(candidate, theme)
+      : hasTraceableFreshThemeCatalystContext(theme)
+  );
+  if (!hasFreshOpportunityTheme) {
+    return "低位轮动标签缺少当前题材雷达刷新，不能只凭旧标签和净值回调做主推荐";
+  }
   if (!hasPullbackThemeOpportunityBacking(candidate)) {
     return "题材逻辑有线索，但前十大持仓或指数名称没有证明基金真实承载该题材";
   }
   return "";
+}
+
+function hasFreshPullbackLowRotationThemeEvidence(candidate = {}, theme = {}) {
+  if (!hasUsableThemeLowRotationSupport(theme)) return false;
+  if (hasTraceableFreshThemeCatalystContext(theme)) return true;
+  return [
+    candidate?.marketThemeRefresh,
+    candidate?.seed?.marketThemeRefresh
+  ].some((refresh) => isFreshPortfolioThemeRefreshSupportForTheme(refresh, theme));
+}
+
+function isFreshPortfolioThemeRefreshSupportForTheme(refresh = {}, theme = {}) {
+  if (!refresh || typeof refresh !== "object" || refresh.noCurrentThemeMatch) return false;
+  if (!isPortfolioThemeRefreshFreshEnough(refresh)) return false;
+  if (!hasPortfolioThemeRefreshEvidence(refresh)) return false;
+  const supportText = normalizeIntentText([
+    refresh.supportLabel,
+    refresh.summary,
+    refresh.evidence,
+    refresh.reason,
+    refresh.newsLogic,
+    ...normalizeStringArray(refresh.supportSignals),
+    ...normalizeStringArray(refresh.dataBasis)
+  ].filter(Boolean).join(" "));
+  if (!/(?:当前主力进场|主力进场|题材预热|低位轮动|资金回流|资金净流入|主力资金|新闻催化|产业催化)/.test(supportText)) {
+    return false;
+  }
+  const themeText = normalizeIntentText([
+    theme.name,
+    theme.id,
+    ...normalizeStringArray(theme.themeKeywords),
+    ...normalizeStringArray(theme.boardNames),
+    ...normalizeStringArray(theme.leaderStocks)
+  ].filter(Boolean).join(" "));
+  if (!themeText) return true;
+  const refreshNames = normalizeStringArray(refresh.matchedThemeNames);
+  return refreshNames.some((name) => areThemeTermsRelated(themeText, name))
+    || areThemeTermsRelated(themeText, supportText)
+    || inferHoldingThemeTags(supportText).some((tag) => areThemeTermsRelated(themeText, tag));
 }
 
 function formatPullbackCandidateThemeOpportunityEvidence(candidate = {}, options = {}) {
@@ -23517,7 +23567,7 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
     );
     return [
       "直接结论：这次先不买，也不硬凑基金代码。",
-      "排序口径：接盘风险优先，其次看回调是否真完成、题材是否有当前资金和新闻支撑。",
+      `排序口径：${sortPolicy}；出现旧题材、主力撤离或接盘风险时先剔除，不进入可买榜。`,
       "结果榜：暂无合格主推荐；观察池只按复核顺序排，不给买入金额。",
       `原因：${evidenceLine}`,
       catchdownLine,

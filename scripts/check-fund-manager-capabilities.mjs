@@ -8916,6 +8916,62 @@ assert(
   "actionability evidence must include top-ten holdings outlook, not only trend and fee signals"
 );
 assert.equal(holdingsActionability.holdingsOutlook.hasHoldings, true, "actionability must carry the structured holdings outlook profile");
+const freshLowRotationMarketThemeRefresh = {
+  source: "current_market_theme_radar",
+  refreshedAt: freshThemeRefreshAt,
+  noCurrentThemeMatch: false,
+  matchedThemeNames: ["医药"],
+  supportLabel: "医药同方向有低位轮动支撑",
+  supportSignals: ["医药同方向有低位轮动支撑"],
+  summary: "医药已有当前题材雷达支撑：低位轮动，前十大持仓承载清晰。",
+  dataBasis: ["当前题材雷达：低位轮动", "主力资金回流"]
+};
+const freshLowRotationThemeDigest = {
+  ...holdingsSupportedDigest,
+  code: "000033",
+  name: "新鲜低位轮动基金C",
+  themeOpportunityRequirement: "require_current_theme_playbook",
+  marketThemeRefresh: freshLowRotationMarketThemeRefresh,
+  seed: {
+    ...holdingsSupportedDigest.seed,
+    marketThemeRefresh: freshLowRotationMarketThemeRefresh
+  }
+};
+assert.equal(
+  manager.classifyPullbackSetupCandidateForSummary(freshLowRotationThemeDigest, { requireThemeOpportunityBacking: true }),
+  "main_candidate",
+  "fresh current-radar low-rotation support with verified top holdings should remain eligible for main pullback recommendations"
+);
+const staleLowRotationThemeDigest = {
+  ...holdingsSupportedDigest,
+  code: "000034",
+  name: "旧低位轮动接盘基金C",
+  themeOpportunityRequirement: "require_current_theme_playbook",
+  seed: {
+    ...holdingsSupportedDigest.seed
+  }
+};
+assert.equal(
+  manager.classifyPullbackSetupCandidateForSummary(staleLowRotationThemeDigest, { requireThemeOpportunityBacking: true }),
+  "watch_or_reject",
+  "old low-rotation labels without current radar refresh must not become main pullback recommendations"
+);
+const staleLowRotationFallback = manager.buildPullbackQualityFallbackAnswer({
+  userText: `${setupQuery}，按高夏普优先`,
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      requireThemeOpportunityBacking: true,
+      candidates: [staleLowRotationThemeDigest]
+    }
+  },
+  issues: ["watch_candidate_given_buy_execution"]
+});
+assert(staleLowRotationFallback.includes("直接结论：这次先不买"), "stale low-rotation fallback must stay no-buy");
+assert(staleLowRotationFallback.includes("低位轮动标签缺少当前题材雷达刷新"), "stale low-rotation fallback must explain that old rotation tags are not enough");
+assert(staleLowRotationFallback.includes("排序口径：高夏普/低回撤优先"), "no-buy fallback must still echo the requested ranking priority");
+assert(!staleLowRotationFallback.includes("推荐清单："), "stale low-rotation fallback must not create a buy recommendation section");
 const dynamicThemeHoldingSupported = {
   ...setupDigest,
   code: "000041",
