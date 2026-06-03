@@ -1361,6 +1361,25 @@ assert(
   staleLowRotationBoard.decisionMatrix.items.find((item) => item.code === "000090")?.verdict?.tone === "data",
   "decision matrix must treat stale low-rotation labels as a data/theme blocker"
 );
+const staleLowRotationPersistDb = manager.normalizePortfolioDb({
+  account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
+  watchlist: [staleLowRotationReadyWatch]
+});
+const staleLowRotationAppliedUpdates = manager.applyPortfolioWatchlistUpdates(staleLowRotationPersistDb, [{
+  operation: "UPSERT",
+  code: "000090",
+  name: "旧标签低位轮动基金C",
+  reason: "模型本轮继续保留旧低位轮动候选，但没有重新声明状态。"
+}], { profiles: [] });
+assert.notEqual(
+  staleLowRotationAppliedUpdates[0]?.status,
+  "ready",
+  "watchlist persistence must recheck the effective merged status, not preserve stale ready when the model omits status"
+);
+assert(
+  staleLowRotationAppliedUpdates[0]?.readinessGaps?.some((item) => item.includes("低位轮动标签缺少当前题材雷达刷新")),
+  "watchlist persistence downgrade must keep the stale low-rotation radar gap visible after saving"
+);
 const freshLowRotationReadyWatch = {
   ...staleLowRotationReadyWatch,
   code: "000091",

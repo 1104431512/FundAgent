@@ -1969,6 +1969,10 @@ const requiredPatterns = [
     message: "portfolio watchlist write path must downgrade model-written ready candidates without NAV verification."
   },
   {
+    pattern: /function applyPortfolioWatchlistUpdates[\s\S]{0,900}effectiveUpdate[\s\S]{0,220}status:\s*update\.status \|\| existing\?\.status[\s\S]{0,360}guardPortfolioWatchlistReadyUpdate\(effectiveUpdate/,
+    message: "portfolio watchlist write path must recheck the effective merged ready status even when the model omits status."
+  },
+  {
     pattern: /enforcePortfolioBuyDiscipline/,
     message: "portfolio BUY execution must be blocked before virtual orders when NAV/trend/chase discipline fails."
   },

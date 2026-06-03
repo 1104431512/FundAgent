@@ -6881,9 +6881,15 @@ function applyPortfolioWatchlistUpdates(db, updates = [], options = {}) {
     const profile = profileByCode.get(update.code);
     const existing = byCode.get(update.code);
     const evidenceProfile = profile || existing?.lastSnapshot || null;
+    const effectiveUpdate = update.operation === "REMOVE"
+      ? update
+      : {
+          ...update,
+          status: update.status || existing?.status || ""
+        };
     const guardedUpdate = update.operation === "REMOVE"
       ? update
-      : guardPortfolioWatchlistReadyUpdate(update, evidenceProfile, existing);
+      : guardPortfolioWatchlistReadyUpdate(effectiveUpdate, evidenceProfile, existing);
     const snapshot = profile ? buildPortfolioFundSnapshot(profile) : update.lastSnapshot || existing?.lastSnapshot || null;
     const defaults = {
       now,
@@ -37203,6 +37209,7 @@ export {
   getPortfolioReviewSkillIds,
   getPortfolioWeeklySkillIds,
   getRuntimeRelease,
+  applyPortfolioWatchlistUpdates,
   guardPortfolioWatchlistReadyUpdate,
   classifyPullbackSetupCandidateForSummary,
   cancelPortfolioActiveOrder,
