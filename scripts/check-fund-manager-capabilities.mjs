@@ -8658,6 +8658,83 @@ assert(
   playbookRiskReadiness.score <= 46 && playbookRiskReadiness.gaps.some((item) => item.includes("作战图风险")),
   "watchlist readiness must cap playbook catchdown-risk carriers and show the playbook risk as a first-screen gap"
 );
+const playbookOnlyWatchlistRiskDb = manager.normalizePortfolioDb({
+  watchlist: [{
+    code: "000061",
+    name: "宽泛成长优选混合C",
+    status: "ready",
+    readinessScore: 92,
+    lastSnapshot: {
+      ...setupDigest,
+      code: "000061",
+      name: "宽泛成长优选混合C",
+      matchedThemes: [],
+      holdings: {
+        ok: true,
+        equityDisclosureDate: "2099-03-31",
+        equityTopHoldings: [
+          "300502 新易盛 6.2%",
+          "300308 中际旭创 5.1%",
+          "002384 东山精密 3.4%"
+        ]
+      }
+    }
+  }]
+});
+const playbookOnlyWatchlistRefresh = manager.refreshPortfolioWatchlistThemesWithMarketRadar(playbookOnlyWatchlistRiskDb, {
+  marketSnapshot: {
+    fetchedAt: freshThemeRefreshAt,
+    themeRadar: [],
+    themeMainForcePlaybook: mainForcePlaybook
+  }
+});
+assert.deepEqual(playbookOnlyWatchlistRefresh, ["000061"], "watchlist refresh must run even when themeRadar is empty but the main-force playbook is available");
+assert.equal(
+  playbookOnlyWatchlistRiskDb.watchlist[0].status,
+  "blocked",
+  "playbook-only risk refresh must downgrade ready watchlist funds whose top holdings hit catchdown risk lanes"
+);
+assert(
+  playbookOnlyWatchlistRiskDb.watchlist[0].riskNotes.some((item) => item.includes("作战图风险"))
+    && playbookOnlyWatchlistRiskDb.watchlist[0].lastSnapshot?.playbookRiskWarnings?.some((item) => item.includes("作战图风险")),
+  "playbook-only watchlist refresh must persist playbook risk warnings into both risk notes and lastSnapshot"
+);
+const playbookOnlyHeldRiskDb = manager.normalizePortfolioDb({
+  account: {
+    positions: [{
+      code: "000062",
+      name: "宽泛均衡持仓基金C",
+      currentValue: 6000,
+      fundSnapshot: {
+        ...setupDigest,
+        code: "000062",
+        name: "宽泛均衡持仓基金C",
+        holdings: {
+          ok: true,
+          equityDisclosureDate: "2099-03-31",
+          equityTopHoldings: [
+            "300502 新易盛 6.2%",
+            "300308 中际旭创 5.1%",
+            "002384 东山精密 3.4%"
+          ]
+        }
+      }
+    }]
+  }
+});
+const playbookOnlyHeldRefresh = manager.refreshPortfolioHeldPositionsThemesWithMarketRadar(playbookOnlyHeldRiskDb, {
+  marketSnapshot: {
+    fetchedAt: freshThemeRefreshAt,
+    themeRadar: [],
+    themeMainForcePlaybook: mainForcePlaybook
+  }
+});
+assert.deepEqual(playbookOnlyHeldRefresh, ["000062"], "held-position theme refresh must run from the main-force playbook even when themeRadar is empty");
+assert(
+  playbookOnlyHeldRiskDb.account.positions[0].themeRiskNotes.some((item) => item.includes("作战图风险"))
+    && playbookOnlyHeldRiskDb.account.positions[0].fundSnapshot?.playbookRiskWarnings?.some((item) => item.includes("作战图风险")),
+  "playbook-only held-position refresh must persist catchdown risk warnings for sell/de-risk review"
+);
 const compactPlaybookSnapshot = manager.compactMarketSnapshotForModel({
   fetchedAt: freshThemeRefreshAt,
   marketIndicators: {},

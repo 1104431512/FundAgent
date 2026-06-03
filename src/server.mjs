@@ -1457,7 +1457,12 @@ function refreshPortfolioWatchlistThemesWithMarketRadar(db = {}, options = {}) {
     : Array.isArray(options.themeRadar)
       ? options.themeRadar
       : [];
-  if (!themeRadar.length || !db || typeof db !== "object") return [];
+  const marketContext = options.marketSnapshot && typeof options.marketSnapshot === "object"
+    ? { ...options.marketSnapshot, themeRadar }
+    : { themeRadar };
+  const playbook = getMarketThemeMainForcePlaybook(marketContext, themeRadar);
+  if ((!themeRadar.length && !playbook) || !db || typeof db !== "object") return [];
+  if (playbook && !marketContext.themeMainForcePlaybook) marketContext.themeMainForcePlaybook = playbook;
   db.watchlist = normalizePortfolioWatchlist(db.watchlist);
   const profileByCode = new Map((options.profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
   const refreshed = [];
@@ -1471,7 +1476,7 @@ function refreshPortfolioWatchlistThemesWithMarketRadar(db = {}, options = {}) {
       name: item.name || profile?.name || item.lastSnapshot?.name || "",
       type: item.type || profile?.type || item.lastSnapshot?.type || ""
     };
-    const current = refreshPortfolioCandidateThemesWithMarketRadar(source, themeRadar);
+    const current = refreshPortfolioCandidateThemesWithMarketRadar(source, marketContext);
     if (current === source) return item;
     const snapshot = profile ? buildPortfolioFundSnapshot(current) : {
       ...(item.lastSnapshot || {}),
@@ -1479,12 +1484,17 @@ function refreshPortfolioWatchlistThemesWithMarketRadar(db = {}, options = {}) {
       seed: {
         ...(item.lastSnapshot?.seed || {}),
         matchedThemes: current.seed?.matchedThemes || current.matchedThemes || [],
-        holdingThemeRefresh: current.seed?.holdingThemeRefresh || current.holdingThemeRefresh || null
+        holdingThemeRefresh: current.seed?.holdingThemeRefresh || current.holdingThemeRefresh || null,
+        playbookRiskWarnings: current.seed?.playbookRiskWarnings || current.playbookRiskWarnings || [],
+        playbookRiskMatches: current.seed?.playbookRiskMatches || current.playbookRiskMatches || []
       },
       marketThemeRefresh: current.marketThemeRefresh,
-      holdingThemeRefresh: current.holdingThemeRefresh || null
+      holdingThemeRefresh: current.holdingThemeRefresh || null,
+      playbookRiskWarnings: current.playbookRiskWarnings || [],
+      playbookRiskMatches: current.playbookRiskMatches || []
     };
     const retreatWarnings = [
+      ...getThemeMainForcePlaybookRiskWarnings(current),
       ...getCandidateThemeRetreatWarnings(current),
       ...getStaleThemeCatchdownWarnings(current)
     ];
@@ -1492,10 +1502,11 @@ function refreshPortfolioWatchlistThemesWithMarketRadar(db = {}, options = {}) {
       ? "旧题材线索未被当前题材雷达确认，不能作为买入依据。"
       : "";
     const riskNotes = retreatWarnings.length
-      ? mergeStringLists(retreatWarnings, item.riskNotes, ["当前题材雷达已刷新，旧题材标签不得作为买入依据。"]).slice(0, 8)
-      : mergeStringLists(item.riskNotes, [unconfirmedThemeWarning || "当前题材雷达已刷新。"]).slice(0, 8);
+      ? mergeStringLists(retreatWarnings, item.riskNotes, [themeRadar.length ? "当前题材雷达已刷新，旧题材标签不得作为买入依据。" : "当前题材作战图已刷新，命中风险通道的候选不得作为买入依据。"]).slice(0, 8)
+      : mergeStringLists(item.riskNotes, [unconfirmedThemeWarning || (themeRadar.length ? "当前题材雷达已刷新。" : "当前题材作战图已刷新。")]).slice(0, 8);
     const setupEvidence = mergeStringLists(item.setupEvidence, [
-      `当前题材雷达：${(current.matchedThemes || []).map((theme) => theme.name || theme.id).filter(Boolean).slice(0, 2).join("、")}`
+      themeRadar.length ? `当前题材雷达：${(current.matchedThemes || []).map((theme) => theme.name || theme.id).filter(Boolean).slice(0, 2).join("、")}` : "",
+      getThemeMainForcePlaybookRiskWarnings(current).length ? `当前题材作战图风险：${getThemeMainForcePlaybookRiskWarnings(current)[0]}` : ""
     ]).slice(0, 8);
     const status = retreatWarnings.length && ["ready", "waiting_pullback", "watch"].includes(item.status)
       ? "blocked"
@@ -1508,13 +1519,13 @@ function refreshPortfolioWatchlistThemesWithMarketRadar(db = {}, options = {}) {
       status,
       priority: retreatWarnings.length && status === "blocked" ? 5 : retreatWarnings.length ? Math.max(Number(item.priority || 3), 4) : item.priority,
       reason: retreatWarnings.length
-        ? [item.reason, `系统当前题材雷达复核：${retreatWarnings[0]}`].filter(Boolean).join(" ").slice(0, 1200)
+        ? [item.reason, `系统当前题材${themeRadar.length ? "雷达" : "作战图"}复核：${retreatWarnings[0]}`].filter(Boolean).join(" ").slice(0, 1200)
         : unconfirmedThemeWarning
           ? [item.reason, `系统当前题材雷达复核：${unconfirmedThemeWarning}`].filter(Boolean).join(" ").slice(0, 1200)
         : item.reason,
       riskNotes,
       setupEvidence,
-      dataBasis: mergeStringLists(item.dataBasis, ["来源：current_market_theme_radar"]).slice(0, 8),
+      dataBasis: mergeStringLists(item.dataBasis, [themeRadar.length ? "来源：current_market_theme_radar" : "来源：theme_main_force_playbook"]).slice(0, 8),
       lastSnapshot: snapshot
     };
   });
@@ -1527,7 +1538,12 @@ function refreshPortfolioHeldPositionsThemesWithMarketRadar(db = {}, options = {
     : Array.isArray(options.themeRadar)
       ? options.themeRadar
       : [];
-  if (!themeRadar.length || !db?.account || typeof db.account !== "object") return [];
+  const marketContext = options.marketSnapshot && typeof options.marketSnapshot === "object"
+    ? { ...options.marketSnapshot, themeRadar }
+    : { themeRadar };
+  const playbook = getMarketThemeMainForcePlaybook(marketContext, themeRadar);
+  if ((!themeRadar.length && !playbook) || !db?.account || typeof db.account !== "object") return [];
+  if (playbook && !marketContext.themeMainForcePlaybook) marketContext.themeMainForcePlaybook = playbook;
   db.account.positions = Array.isArray(db.account.positions) ? db.account.positions : [];
   const profileByCode = new Map((options.profiles || []).filter(Boolean).map((profile) => [profile.code, profile]));
   const refreshed = [];
@@ -1541,15 +1557,18 @@ function refreshPortfolioHeldPositionsThemesWithMarketRadar(db = {}, options = {
       name: position.name || profile?.name || position.fundSnapshot?.name || "",
       type: position.fundSnapshot?.type || profile?.type || "组合持仓"
     };
-    const current = refreshPortfolioCandidateThemesWithMarketRadar(source, themeRadar);
+    const current = refreshPortfolioCandidateThemesWithMarketRadar(source, marketContext);
     if (current === source && !profile) return position;
     const snapshot = profile ? buildPortfolioFundSnapshot(current, position) : {
       ...(position.fundSnapshot || {}),
       matchedThemes: current.matchedThemes || [],
       marketThemeRefresh: current.marketThemeRefresh,
-      holdingThemeRefresh: current.holdingThemeRefresh || null
+      holdingThemeRefresh: current.holdingThemeRefresh || null,
+      playbookRiskWarnings: current.playbookRiskWarnings || [],
+      playbookRiskMatches: current.playbookRiskMatches || []
     };
     const themeWarnings = [
+      ...getThemeMainForcePlaybookRiskWarnings(current),
       ...getCandidateThemeRetreatWarnings(current),
       ...getStaleThemeCatchdownWarnings(current)
     ];
@@ -1557,7 +1576,7 @@ function refreshPortfolioHeldPositionsThemesWithMarketRadar(db = {}, options = {
       ...position,
       name: position.name || current.name || "",
       fundSnapshot: snapshot,
-      dataBasis: mergeStringLists(position.dataBasis, ["来源：current_market_theme_radar"]).slice(0, 8),
+      dataBasis: mergeStringLists(position.dataBasis, [themeRadar.length ? "来源：current_market_theme_radar" : "来源：theme_main_force_playbook"]).slice(0, 8),
       themeRiskNotes: mergeStringLists(position.themeRiskNotes, themeWarnings).slice(0, 5)
     };
     nextPosition.riskBudget = buildPortfolioPositionRiskBudget(nextPosition, snapshot);
@@ -37283,6 +37302,7 @@ export {
   buildPortfolioDecisionCard,
   buildPortfolioDecisionReadinessQueue,
   buildPortfolioDecisionRankingBoard,
+  refreshPortfolioWatchlistThemesWithMarketRadar,
   refreshPortfolioHeldPositionsThemesWithMarketRadar,
   buildPortfolioActiveOrderStatusLines,
   buildPortfolioRedeploymentPlan,

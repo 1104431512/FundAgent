@@ -2325,8 +2325,16 @@ const requiredPatterns = [
     message: "portfolio decision ranking boards must refresh current market theme radar and preview same-day seed candidates before model prompts."
   },
   {
-    pattern: /function refreshPortfolioWatchlistThemesWithMarketRadar[\s\S]{0,2600}retreatWarnings\.length[\s\S]{0,240}\["ready",\s*"waiting_pullback",\s*"watch"\]\.includes\(item\.status\)[\s\S]{0,160}\?\s*"blocked"/,
+    pattern: /function refreshPortfolioWatchlistThemesWithMarketRadar(?=[\s\S]{0,5200}retreatWarnings\.length)(?=[\s\S]{0,5400}\["ready",\s*"waiting_pullback",\s*"watch"\]\.includes\(item\.status\)[\s\S]{0,180}\?\s*"blocked")/,
     message: "current market retreat radar must block buy-candidate watchlist statuses instead of leaving them as vague wait states."
+  },
+  {
+    pattern: /function refreshPortfolioWatchlistThemesWithMarketRadar(?=[\s\S]{0,1200}getMarketThemeMainForcePlaybook\(marketContext,\s*themeRadar\))(?=[\s\S]{0,1600}!\s*themeRadar\.length\s*&&\s*!playbook)(?=[\s\S]{0,4300}getThemeMainForcePlaybookRiskWarnings\(current\))(?=[\s\S]{0,5600}theme_main_force_playbook)/,
+    message: "watchlist theme refresh must still run from the main-force playbook when themeRadar is empty and downgrade playbook-risk candidates."
+  },
+  {
+    pattern: /function refreshPortfolioHeldPositionsThemesWithMarketRadar(?=[\s\S]{0,1200}getMarketThemeMainForcePlaybook\(marketContext,\s*themeRadar\))(?=[\s\S]{0,1600}!\s*themeRadar\.length\s*&&\s*!playbook)(?=[\s\S]{0,3600}getThemeMainForcePlaybookRiskWarnings\(current\))(?=[\s\S]{0,4600}theme_main_force_playbook)/,
+    message: "held-position theme refresh must still run from the main-force playbook when themeRadar is empty so sell/de-risk review catches catchdown risk."
   },
   {
     pattern: /function refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,2300}markUnrefreshedMarketThemeSignal[\s\S]{0,900}noCurrentThemeMatch:\s*true/,
@@ -2349,7 +2357,7 @@ const requiredPatterns = [
     message: "portfolio BUY discipline must explicitly block old theme labels that are not confirmed by the current radar."
   },
   {
-    pattern: /function refreshPortfolioWatchlistThemesWithMarketRadar[\s\S]{0,2600}unconfirmedThemeWarning[\s\S]{0,500}item\.status === "ready"[\s\S]{0,160}\?\s*"waiting_pullback"/,
+    pattern: /function refreshPortfolioWatchlistThemesWithMarketRadar(?=[\s\S]{0,5200}unconfirmedThemeWarning)(?=[\s\S]{0,5600}item\.status === "ready"[\s\S]{0,180}\?\s*"waiting_pullback")/,
     message: "old unconfirmed theme labels must downgrade ready watchlist candidates before ranking."
   },
   {
