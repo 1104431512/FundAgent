@@ -4155,10 +4155,10 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 12px;
   height: 100%;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .sector-terminal-head {
@@ -4204,6 +4204,303 @@ body[data-active-tab="portfolio"][data-active-portfolio-view]:not([data-active-p
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
+}
+
+.theme-playbook-board {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #d9e4ec;
+  border-left: 4px solid #23846f;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbfa 100%);
+  box-shadow: 0 8px 22px rgba(24, 53, 73, 0.06);
+}
+
+.theme-playbook-empty {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px dashed #c8d8e2;
+  border-radius: 8px;
+  background: #f9fbfc;
+}
+
+.theme-playbook-empty strong,
+.theme-playbook-empty small,
+.theme-playbook-head strong,
+.theme-playbook-head small,
+.theme-playbook-lane-head strong,
+.theme-playbook-lane-head small,
+.theme-playbook-item-title strong,
+.theme-playbook-item p,
+.theme-playbook-carrier span,
+.theme-playbook-decision small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.theme-playbook-empty strong {
+  color: #263746;
+  font-size: 14px;
+}
+
+.theme-playbook-empty small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.theme-playbook-head {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.theme-playbook-head strong {
+  color: #1d2d3b;
+  font-size: 15px;
+}
+
+.theme-playbook-head small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.theme-playbook-head span {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 9px;
+  border: 1px solid #c7e1d7;
+  border-radius: 999px;
+  color: #17664f;
+  background: #eef9f4;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.theme-playbook-lanes {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.theme-playbook-lane {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid #e0e8ee;
+  border-top: 3px solid #496579;
+  border-radius: 8px;
+  background: #fbfcfd;
+  overflow: hidden;
+}
+
+.theme-playbook-lane-buy {
+  border-top-color: #20805a;
+}
+
+.theme-playbook-lane-watch,
+.theme-playbook-lane-rotation {
+  border-top-color: #2f6f9f;
+}
+
+.theme-playbook-lane-sell,
+.theme-playbook-lane-chase {
+  border-top-color: #b54747;
+}
+
+.theme-playbook-lane-head {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 9px 10px;
+  border-bottom: 1px solid #e5ecf2;
+  background: #ffffff;
+}
+
+.theme-playbook-lane-head strong {
+  color: #253746;
+  font-size: 13px;
+}
+
+.theme-playbook-lane-head small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.theme-playbook-lane-head span {
+  min-width: 24px;
+  min-height: 23px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #2a485c;
+  background: #edf4f8;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.theme-playbook-items {
+  min-width: 0;
+  max-height: 310px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  overflow: auto;
+  padding: 8px;
+}
+
+.theme-playbook-item {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid #e5ebf1;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.theme-playbook-lane-sell .theme-playbook-item,
+.theme-playbook-lane-chase .theme-playbook-item {
+  border-color: #ead2d2;
+  background: #fffafa;
+}
+
+.theme-playbook-item-title,
+.theme-playbook-proof,
+.theme-playbook-evidence {
+  min-width: 0;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 7px;
+}
+
+.theme-playbook-item-title strong {
+  color: #1f2f3d;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.theme-playbook-item p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.42;
+}
+
+.theme-playbook-why {
+  color: #213747;
+  font-weight: 760;
+}
+
+.theme-playbook-proof,
+.theme-playbook-evidence {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.theme-playbook-proof small,
+.theme-playbook-evidence small {
+  min-height: 21px;
+  padding: 3px 7px;
+  border: 1px solid #dbe7ef;
+  border-radius: 999px;
+  color: #30536b;
+  background: #f2f7fb;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.theme-playbook-proof small:first-child {
+  border-color: #c9e2d5;
+  color: #17664f;
+  background: #eff9f4;
+}
+
+.theme-playbook-evidence small {
+  border-color: #e6d9ba;
+  color: #6c4f17;
+  background: #fff8e6;
+}
+
+.theme-playbook-carrier {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+  padding: 6px 7px;
+  border: 1px solid #dce8ef;
+  border-radius: 7px;
+  background: #f7fafc;
+}
+
+.theme-playbook-carrier b {
+  color: #183247;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.theme-playbook-carrier span {
+  color: #314e61;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.theme-playbook-decision {
+  display: grid;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid #e2e8ef;
+  border-radius: 8px;
+  background: #f8fbfd;
+}
+
+.theme-playbook-decision small {
+  color: #30485a;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.theme-playbook-decision b {
+  display: inline-block;
+  min-width: 42px;
+  margin-right: 6px;
+  color: #183247;
+}
+
+.theme-playbook-discipline {
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-top: 1px;
+}
+
+.theme-playbook-discipline small {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border: 1px solid #d9e6ee;
+  border-radius: 999px;
+  color: #315268;
+  background: #f5f9fb;
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
 }
 
 .theme-leaderboard-empty {
@@ -9890,6 +10187,7 @@ button.danger-button:hover {
   .position-command-row,
   .position-lane-grid,
   .risk-lane-grid,
+  .theme-playbook-lanes,
   .theme-leaderboard-board,
   .sector-lane-grid,
   .data-lane-grid,

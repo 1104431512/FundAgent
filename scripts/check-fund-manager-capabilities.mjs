@@ -3230,6 +3230,33 @@ const historicalRunWithAccount = {
         title: "退潮回避榜",
         items: [{ name: "光模块/CPO", reason: "主力撤离或题材退潮，先等资金回流", action: "等资金回流后再看" }]
       }
+    },
+    themeMainForcePlaybook: {
+      title: "主力题材作战图",
+      summary: "本轮先跟随1条主力线索，同时回避1条退潮风险。",
+      opportunityCount: 1,
+      riskCount: 1,
+      discipline: ["先看主力进场、预热催化和新闻时效，再找承载基金。"],
+      lanes: [
+        {
+          id: "follow_main_capital",
+          title: "主力进场快跟",
+          subtitle: "资金刚开始配合、新闻逻辑说得清，优先召回代表基金。",
+          action: "立即找代表基金，小仓复核",
+          tone: "buy",
+          items: [{
+            name: "AI/算力",
+            whyMove: "为什么动：产业订单催化叠加主力资金流入。",
+            capitalProof: "主力资金均值净流入1.2%",
+            catalyst: "产业订单",
+            carrierRule: "代表基金必须核验前十大持仓。",
+            carrierSearchKeywords: ["AI算力基金", "光模块基金"],
+            carrierAnchors: ["新易盛", "中际旭创"],
+            nextStep: "先召回代表基金并核验前十大持仓。",
+            invalidation: "失效条件：主力转出或新闻催化过期。"
+          }]
+        }
+      ]
     }
   },
   accountAfter: { investedCost: 30002.28, cumulativePnlPct: -1.09, cumulativePnl: -328.07 }
@@ -3246,6 +3273,8 @@ assert(publicHistoricalRunFull.team[0].reason.includes("按实际投入成本300
 assert(publicHistoricalRunFull.observation.summary.includes("按实际投入成本30002.28元计-1.09%"), "public nested run reports must use the run's invested-cost denominator");
 assert.equal(publicHistoricalRunBrief.marketSnapshot.themeLeaderboards.mainCapital.items[0].name, "AI/算力", "public brief run summaries must expose compact theme leaderboards for the admin sector board");
 assert.equal(publicHistoricalRunFull.marketSnapshot.themeLeaderboards.retreat.items[0].name, "光模块/CPO", "public full run summaries must expose retreat theme leaderboards for customer-visible diagnostics");
+assert.equal(publicHistoricalRunBrief.marketSnapshot.themeMainForcePlaybook.lanes[0].items[0].carrierAnchors[0], "新易盛", "public brief run summaries must expose main-force playbook carrier anchors for the admin sector board");
+assert(publicHistoricalRunFull.marketSnapshot.themeMainForcePlaybook.lanes[0].items[0].nextStep.includes("代表基金"), "public full run summaries must expose main-force playbook next steps for customer-visible diagnostics");
 assert.equal(publicHistoricalRunFull.observation.sources[0], "https://example.com/portfolio/report", "public run account-context sanitization must still preserve source URLs");
 assert(!/相对初始本金|初始资金口径|初始本金口径|本金口径/.test(publicHistoricalRunText), "public historical run output must not leak initial-capital denominator wording");
 const publicHistoricalRunWithFallback = manager.summarizePortfolioRunBrief(
@@ -7451,6 +7480,9 @@ assert(adminSource.includes("renderPortfolioThemeLeaderboards") && adminSource.i
 assert(adminStyleSource.includes(".theme-leaderboard-board") && adminStyleSource.includes(".theme-leaderboard-lane-sell"), "admin styles must provide compact visible lanes for theme leaderboards and retreat risks");
 assert(adminSource.includes("theme-leaderboard-decision") && adminSource.includes("theme-leaderboard-evidence") && adminSource.includes("theme-leaderboard-why"), "admin theme leaderboards must render why-move, next-step, and evidence blocks for each theme");
 assert(adminStyleSource.includes(".theme-leaderboard-decision") && adminStyleSource.includes(".theme-leaderboard-evidence") && adminStyleSource.includes(".theme-leaderboard-why"), "admin theme leaderboard why-move, next-step, and evidence blocks must be styled visibly");
+assert(adminSource.includes("renderPortfolioThemeMainForcePlaybook") && adminSource.includes("getPortfolioLatestThemeMainForcePlaybook"), "admin sector board must render the main-force theme playbook before raw theme leaderboards");
+assert(adminSource.includes("theme-playbook-carrier") && adminSource.includes("载体锚点") && adminSource.includes("theme-playbook-decision"), "admin main-force playbook cards must show carrier anchors, next steps, and invalidation boundaries");
+assert(adminStyleSource.includes(".theme-playbook-board") && adminStyleSource.includes(".theme-playbook-lane-sell") && adminStyleSource.includes(".theme-playbook-carrier"), "admin styles must make the main-force playbook compact, visible, and risk-colored");
 const actionablePullbackDigest = {
   ...setupDigest,
   code: "000041",

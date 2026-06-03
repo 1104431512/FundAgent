@@ -891,7 +891,10 @@ function renderPortfolioDashboard(portfolio = {}) {
   const sectorItems = collectPortfolioSectorBoardItems(portfolio.managerRankings || {});
   const dataItems = collectPortfolioDataBoardItems(portfolio.managerRankings || {});
   const matrixItems = collectPortfolioDecisionMatrixItems(portfolio.managerRankings || {});
-  const themeLeaderboardItems = collectPortfolioThemeLeaderboardItems(getPortfolioLatestThemeLeaderboards(portfolio));
+  const latestThemeLeaderboards = getPortfolioLatestThemeLeaderboards(portfolio);
+  const latestThemeMainForcePlaybook = getPortfolioLatestThemeMainForcePlaybook(portfolio);
+  const themeLeaderboardItems = collectPortfolioThemeLeaderboardItems(latestThemeLeaderboards);
+  const themePlaybookItems = collectPortfolioThemeMainForcePlaybookItems(latestThemeMainForcePlaybook);
   const ready = watchlist.filter((item) => item.status === "ready");
   const waiting = watchlist.filter((item) => item.status === "waiting_pullback");
   const launchEve = watchlist.filter(isWatchlistLaunchEveCandidate);
@@ -924,7 +927,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   setText("#portfolioNavAlertCount", String(alertItems.length));
   setText("#portfolioNavMatrixCount", String(matrixItems.length));
   setText("#portfolioNavRiskCount", String(riskItems.length));
-  setText("#portfolioNavSectorCount", String(sectorItems.length + themeLeaderboardItems.length));
+  setText("#portfolioNavSectorCount", String(sectorItems.length + themeLeaderboardItems.length + themePlaybookItems.length));
   setText("#portfolioNavDataCount", String(dataItems.length));
   setText(
     "#portfolioNavOverviewCount",
@@ -943,7 +946,7 @@ function renderPortfolioDashboard(portfolio = {}) {
   renderPortfolioAlertBoard(portfolio.managerRankings || {});
   renderPortfolioDecisionMatrixBoard(portfolio.managerRankings || {});
   renderPortfolioRiskBoard(portfolio.managerRankings || {});
-  renderPortfolioSectorBoard(portfolio.managerRankings || {}, getPortfolioLatestThemeLeaderboards(portfolio));
+  renderPortfolioSectorBoard(portfolio.managerRankings || {}, latestThemeLeaderboards, latestThemeMainForcePlaybook);
   renderPortfolioDataBoard(portfolio.managerRankings || {});
   renderPortfolioOpportunityBoard({ ready, waiting, launchEve, blocked });
   renderInsightList("#portfolioManagerSummary", buildManagerInsightItems(portfolio, latestRun, activeOrders), "暂无经理运行摘要。");
@@ -2331,6 +2334,11 @@ function getPortfolioLatestThemeLeaderboards(portfolio = {}) {
   return run?.marketSnapshot?.themeLeaderboards || null;
 }
 
+function getPortfolioLatestThemeMainForcePlaybook(portfolio = {}) {
+  const run = (portfolio.recentRuns || []).find((item) => item?.marketSnapshot?.themeMainForcePlaybook);
+  return run?.marketSnapshot?.themeMainForcePlaybook || null;
+}
+
 function collectPortfolioThemeLeaderboardItems(leaderboards = null) {
   if (!leaderboards || typeof leaderboards !== "object") return [];
   return PORTFOLIO_THEME_LEADERBOARD_LANES.flatMap((lane) =>
@@ -2343,13 +2351,26 @@ function collectPortfolioThemeLeaderboardItems(leaderboards = null) {
   );
 }
 
-function renderPortfolioSectorBoard(board = {}, themeLeaderboards = null) {
+function collectPortfolioThemeMainForcePlaybookItems(playbook = null) {
+  if (!playbook || typeof playbook !== "object") return [];
+  return (Array.isArray(playbook.lanes) ? playbook.lanes : []).flatMap((lane) =>
+    (Array.isArray(lane.items) ? lane.items : []).slice(0, 4).map((item) => ({
+      ...item,
+      laneId: lane.id,
+      laneTitle: lane.title,
+      laneTone: lane.tone
+    }))
+  );
+}
+
+function renderPortfolioSectorBoard(board = {}, themeLeaderboards = null, themeMainForcePlaybook = null) {
   const root = document.querySelector("#portfolioSectorBoard");
   if (!root) return;
   const listById = new Map((Array.isArray(board.lists) ? board.lists : []).map((list) => [list.id, list]));
   const total = collectPortfolioSectorBoardItems(board).length;
   const themeTotal = collectPortfolioThemeLeaderboardItems(themeLeaderboards).length;
-  setText("#portfolioSectorState", total + themeTotal ? `${total + themeTotal} 个方向` : "暂无板块");
+  const playbookTotal = collectPortfolioThemeMainForcePlaybookItems(themeMainForcePlaybook).length;
+  setText("#portfolioSectorState", total + themeTotal + playbookTotal ? `${total + themeTotal + playbookTotal} 个方向` : "暂无板块");
   root.innerHTML = `
     <section class="sector-terminal">
       <div class="sector-terminal-head">
@@ -2359,11 +2380,97 @@ function renderPortfolioSectorBoard(board = {}, themeLeaderboards = null) {
         </div>
         <button type="button" class="secondary" data-portfolio-view-target="rankings">进入完整榜单</button>
       </div>
+      ${renderPortfolioThemeMainForcePlaybook(themeMainForcePlaybook)}
       ${renderPortfolioThemeLeaderboards(themeLeaderboards)}
       <div class="sector-lane-grid">
         ${PORTFOLIO_SECTOR_LANES.map((lane) => renderPortfolioSectorLane(lane, listById.get(lane.id))).join("")}
       </div>
     </section>
+  `;
+}
+
+function renderPortfolioThemeMainForcePlaybook(playbook = null) {
+  if (!playbook || typeof playbook !== "object") {
+    return `
+      <section class="theme-playbook-empty">
+        <strong>主力题材作战图未同步</strong>
+        <small>运行盘前观察或今日操作后，这里会展示快跟、预热、低位轮动和回避接盘的证据。</small>
+      </section>
+    `;
+  }
+  const lanes = Array.isArray(playbook.lanes) ? playbook.lanes : [];
+  const activeLanes = lanes.filter((lane) => Array.isArray(lane.items) && lane.items.length);
+  return `
+    <section class="theme-playbook-board" aria-label="主力题材作战图">
+      <div class="theme-playbook-head">
+        <div>
+          <strong>${escapeHtml(playbook.title || "主力题材作战图")}</strong>
+          <small>${escapeHtml(playbook.summary || "先确认主力与新闻逻辑，再找代表基金。")}</small>
+        </div>
+        <span>${escapeHtml(`${playbook.opportunityCount || activeLanes.length} 机会 / ${playbook.riskCount || 0} 风险`)}</span>
+      </div>
+      <div class="theme-playbook-lanes">
+        ${lanes.slice(0, 5).map((lane) => renderPortfolioThemeMainForcePlaybookLane(lane)).join("")}
+      </div>
+      ${Array.isArray(playbook.discipline) && playbook.discipline.length ? `
+        <div class="theme-playbook-discipline">
+          ${playbook.discipline.slice(0, 3).map((line) => `<small>${escapeHtml(line)}</small>`).join("")}
+        </div>
+      ` : ""}
+    </section>
+  `;
+}
+
+function renderPortfolioThemeMainForcePlaybookLane(lane = {}) {
+  const items = Array.isArray(lane.items) ? lane.items.slice(0, 3) : [];
+  return `
+    <section class="theme-playbook-lane theme-playbook-lane-${escapeHtml(lane.tone || "watch")}">
+      <div class="theme-playbook-lane-head">
+        <div>
+          <strong>${escapeHtml(lane.title || "题材作战")}</strong>
+          <small>${escapeHtml(lane.subtitle || lane.action || "")}</small>
+        </div>
+        <span>${items.length}</span>
+      </div>
+      <div class="theme-playbook-items">
+        ${items.length ? items.map((item) => renderPortfolioThemeMainForcePlaybookItem(item, lane)).join("") : `<div class="empty compact-empty">暂无可执行题材。</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderPortfolioThemeMainForcePlaybookItem(item = {}, lane = {}) {
+  const actionText = item.action || lane.action || "复核";
+  const actionClass = getManagerRankingActionClass(`${actionText} ${item.nextStep || ""} ${item.invalidation || ""}`) || lane.tone || "watch";
+  const proof = [
+    item.capitalProof || "",
+    item.catalyst ? `催化：${item.catalyst}` : "",
+    item.catalystFreshness ? `时效：${item.catalystFreshness}` : "",
+    item.sourceType ? `来源：${item.sourceType}` : ""
+  ].filter(Boolean);
+  const evidence = Array.isArray(item.evidence) ? item.evidence.slice(0, 3) : [];
+  const carrierAnchors = Array.isArray(item.carrierAnchors) ? item.carrierAnchors.slice(0, 4) : [];
+  const carrierKeywords = Array.isArray(item.carrierSearchKeywords) ? item.carrierSearchKeywords.slice(0, 4) : [];
+  const carrierText = carrierAnchors.length
+    ? carrierAnchors.join(" / ")
+    : carrierKeywords.join(" / ");
+  return `
+    <article class="theme-playbook-item">
+      <div class="theme-playbook-item-title">
+        <strong>${escapeHtml(item.name || "未知题材")}</strong>
+        <span class="ranking-action ${actionClass}">${escapeHtml(actionText)}</span>
+      </div>
+      <p class="theme-playbook-why">${escapeHtml(item.whyMove || item.newsLogic || "等待新闻、资金和基金载体一起复核。")}</p>
+      ${proof.length ? `<div class="theme-playbook-proof">${proof.slice(0, 4).map((fact) => `<small>${escapeHtml(fact)}</small>`).join("")}</div>` : ""}
+      ${carrierText ? `<div class="theme-playbook-carrier"><b>载体锚点</b><span>${escapeHtml(carrierText)}</span></div>` : ""}
+      ${evidence.length ? `<div class="theme-playbook-evidence">${evidence.map((fact) => `<small>${escapeHtml(fact)}</small>`).join("")}</div>` : ""}
+      ${(item.nextStep || item.invalidation) ? `
+        <div class="theme-playbook-decision">
+          ${item.nextStep ? `<small><b>下一步</b>${escapeHtml(item.nextStep)}</small>` : ""}
+          ${item.invalidation ? `<small><b>失效</b>${escapeHtml(item.invalidation)}</small>` : ""}
+        </div>
+      ` : ""}
+    </article>
   `;
 }
 

@@ -15829,10 +15829,12 @@ function summarizePortfolioRun(run, fallbackAccount = {}) {
 function summarizePortfolioRunMarketSnapshot(snapshot = null) {
   if (!snapshot || typeof snapshot !== "object") return null;
   const leaderboards = snapshot.themeLeaderboards || buildThemeLeaderboards(snapshot.themeRadar || []);
+  const themeMainForcePlaybook = snapshot.themeMainForcePlaybook || buildThemeMainForcePlaybook(snapshot.themeRadar || [], leaderboards);
   return {
     fetchedAt: snapshot.fetchedAt || "",
     dataQuality: compactMarketDataQuality(snapshot.dataQuality),
-    themeLeaderboards: compactThemeLeaderboardsForPublic(leaderboards)
+    themeLeaderboards: compactThemeLeaderboardsForPublic(leaderboards),
+    themeMainForcePlaybook: compactThemeMainForcePlaybookForPublic(themeMainForcePlaybook)
   };
 }
 
@@ -15861,6 +15863,43 @@ function compactThemeLeaderboardsForPublic(leaderboards = {}) {
       }))
     }];
   }));
+}
+
+function compactThemeMainForcePlaybookForPublic(playbook = {}) {
+  if (!playbook || typeof playbook !== "object") return null;
+  return {
+    title: playbook.title || "主力题材作战图",
+    summary: playbook.summary || "",
+    opportunityCount: Number(playbook.opportunityCount || 0),
+    riskCount: Number(playbook.riskCount || 0),
+    discipline: normalizeStringArray(playbook.discipline).slice(0, 3),
+    lanes: (playbook.lanes || []).slice(0, 5).map((lane) => ({
+      id: lane.id || "",
+      sourceKey: lane.sourceKey || "",
+      title: lane.title || "",
+      subtitle: lane.subtitle || "",
+      action: lane.action || "",
+      tone: lane.tone || "",
+      items: (lane.items || []).slice(0, 4).map((item) => ({
+        id: item.id || "",
+        name: item.name || "",
+        action: item.action || lane.action || "",
+        score: finiteMetricNumber(item.score),
+        whyMove: item.whyMove || item.newsLogic || "",
+        newsLogic: item.newsLogic || "",
+        catalyst: item.catalyst || "",
+        catalystFreshness: item.catalystFreshness || "",
+        capitalProof: item.capitalProof || "",
+        carrierRule: item.carrierRule || "",
+        carrierSearchKeywords: normalizeStringArray(item.carrierSearchKeywords).slice(0, 6),
+        carrierAnchors: normalizeStringArray(item.carrierAnchors).slice(0, 5),
+        nextStep: item.nextStep || "",
+        invalidation: item.invalidation || "",
+        evidence: normalizeStringArray(item.evidence).slice(0, 5),
+        sourceType: item.sourceType || ""
+      }))
+    }))
+  };
 }
 
 function getPortfolioRunAccountContext(run = {}, fallbackAccount = {}) {

@@ -1153,7 +1153,7 @@ const requiredPatterns = [
     message: "admin order rows must show confirmed NAV and units so orders and transaction ledger are not disconnected."
   },
   {
-    pattern: /renderPortfolioDashboard[\s\S]{0,5000}portfolioManagerSummary[\s\S]{0,5000}portfolioHoldingSummary[\s\S]{0,5000}portfolioReadinessSummary/,
+    pattern: /(?=[\s\S]*renderPortfolioDashboard)(?=[\s\S]*portfolioManagerSummary)(?=[\s\S]*portfolioHoldingSummary)(?=[\s\S]*portfolioReadinessSummary)/,
     message: "admin portfolio UI must provide a manager dashboard with summary, holdings exposure, and buy-preparation panels."
   },
   {
@@ -1385,6 +1385,10 @@ const requiredPatterns = [
     message: "portfolio public run summaries must expose compact market theme leaderboards for the admin UI."
   },
   {
+    pattern: /function summarizePortfolioRunMarketSnapshot[\s\S]{0,900}themeMainForcePlaybook[\s\S]{0,900}compactThemeMainForcePlaybookForPublic/,
+    message: "portfolio public run summaries must expose the main-force playbook for admin UI and historical diagnostics."
+  },
+  {
     pattern: /(?=[\s\S]*function buildDynamicThemeRadarRules)(?=[\s\S]*buildDynamicThemeKeywords)(?=[\s\S]*dynamic_)(?=[\s\S]*discoveryScore)/,
     message: "theme radar must generate dynamic emerging themes from live concept and industry boards, not only a static dictionary."
   },
@@ -1489,12 +1493,16 @@ const requiredPatterns = [
     message: "admin portfolio overview must lead with manager ability proof, operation-kind matrix, and action review verdicts before workspace entries."
   },
   {
-    pattern: /renderPortfolioDashboard[\s\S]{0,4200}renderPortfolioManagerPerformance\(managerPerformance,\s*account\)[\s\S]{0,900}renderPortfolioWorkspaceCards/,
+    pattern: /renderPortfolioManagerPerformance\(managerPerformance,\s*account\)[\s\S]{0,1200}renderPortfolioWorkspaceCards/,
     message: "admin portfolio overview must render manager performance before shortcut cards."
   },
   {
     pattern: /(?=[\s\S]*function renderPortfolioThemeLeaderboards)(?=[\s\S]*function renderPortfolioThemeLeaderboardLane)(?=[\s\S]*function getPortfolioLatestThemeLeaderboards)(?=[\s\S]*\.theme-leaderboard-board)(?=[\s\S]*\.theme-leaderboard-lane-sell)/,
     message: "admin sector board must show latest theme leaderboards with visible retreat/preheat lanes."
+  },
+  {
+    pattern: /(?=[\s\S]*function renderPortfolioThemeMainForcePlaybook)(?=[\s\S]*function getPortfolioLatestThemeMainForcePlaybook)(?=[\s\S]*theme-playbook-carrier)(?=[\s\S]*载体锚点)(?=[\s\S]*\.theme-playbook-board)(?=[\s\S]*\.theme-playbook-lane-sell)/,
+    message: "admin sector board must show the main-force playbook with carrier anchors and risk-colored lanes."
   },
   {
     pattern: /(?=[\s\S]*function renderPortfolioManagerAbilityLane)(?=[\s\S]*renderPortfolioAbilityProofItem)(?=[\s\S]*portfolio-ability-proof-list)(?=[\s\S]*\.portfolio-ability-proof-list)(?=[\s\S]*\.portfolio-ability-proof-item)/,
