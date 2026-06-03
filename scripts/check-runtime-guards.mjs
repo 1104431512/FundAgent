@@ -1617,6 +1617,10 @@ const requiredPatterns = [
     message: "pullback/setup discovery must require current theme playbook, news logic, and carrier evidence before pure trend setups become main recommendations."
   },
   {
+    pattern: /function shouldRequireThemeOpportunityBackingForQuestion[\s\S]{0,260}options\.preferPullbackSetup\) return true[\s\S]{0,900}当前没有可用题材雷达，主推荐必须降级为待复核/,
+    message: "pullback/setup discovery must still require current theme playbook evidence when the theme radar is missing."
+  },
+  {
     pattern: /(?=[\s\S]*function evaluatePullbackAnswerDiscipline[\s\S]{0,600}shouldRequireThemeOpportunityBackingForDeepDive\(deepDive\)[\s\S]{0,500}classifyPullbackSetupCandidateForSummary\(candidate,\s*\{\s*requireThemeOpportunityBacking\s*\}\))(?=[\s\S]*function buildPullbackQualityFallbackAnswer[\s\S]{0,1200}classifyPullbackSetupCandidateForSummary\(candidate,\s*\{[\s\S]{0,220}shouldRequireThemeOpportunityBackingForDeepDive\(deepDive\))/,
     message: "answer quality and deterministic fallback must pass deepDive-level theme-playbook requirements into pullback candidate bucketing."
   },

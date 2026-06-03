@@ -7578,6 +7578,18 @@ assert(themeRequiredSummary.includes("题材作战=缺少当前题材雷达/新�
 assert(themeRequiredSummary.includes("题材逻辑有线索，但前十大持仓或指数名称没有证明基金真实承载该题材"), "deep-dive summary must explain representative-fund carrier failures");
 assert(themeRequiredSummary.includes("表面回调可能继续下探"), "deep-dive summary must explain intraday top-holding weakness as a catchdown risk");
 assert(themeRequiredSummary.includes("题材作战=AI/算力主力进场") && themeRequiredSummary.includes("逻辑=主力刚进场"), "deep-dive summary must carry main-capital news logic into candidate evidence");
+const missingRadarRequiredSummary = manager.buildMarketDeepDiveSummary({
+  ok: true,
+  focus: "pullback_setup_discovery",
+  selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+  themeOpportunityRequirement: "require_current_theme_playbook",
+  requireThemeOpportunityBacking: true,
+  themeRadar: [],
+  candidates: [pureTrendRequiredSetupDigest]
+});
+assert(missingRadarRequiredSummary.includes("当前没有可用题材雷达，主推荐必须降级为待复核"), "pullback discovery must not fall back to pure NAV setups when current theme radar is missing");
+assert(missingRadarRequiredSummary.includes("mainCandidateCodes=none"), "missing theme radar must prevent pure trend pullbacks from becoming main candidates");
+assert(/watchOrRejectCodes=.*000047/.test(missingRadarRequiredSummary), "missing theme radar must move pure trend pullbacks into watch/reject");
 const deepDiveOnlyRequirementPureDigest = {
   ...setupDigest,
   code: "000051",

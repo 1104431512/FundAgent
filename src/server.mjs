@@ -20864,12 +20864,12 @@ function shouldRequireThemeOpportunityBackingForDeepDive(deepDive = {}) {
 }
 
 function shouldRequireThemeOpportunityBackingForQuestion(userText = "", themeRadar = [], options = {}) {
-  if (!Array.isArray(themeRadar) || !themeRadar.length) return false;
   if (isPreciousMetalQuestion(userText)) return false;
+  if (options.preferPullbackSetup) return true;
+  if (!Array.isArray(themeRadar) || !themeRadar.length) return false;
   const normalized = normalizeIntentText(userText);
   return Boolean(
-    options.preferPullbackSetup
-    || options.forRecommendation
+    options.forRecommendation
     || hasAny(normalized, ["主力", "资金", "题材", "热点", "板块", "预热", "新闻", "时事", "催化", "轮动", "低位", "启动"])
   );
 }
