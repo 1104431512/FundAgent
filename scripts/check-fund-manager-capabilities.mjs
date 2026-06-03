@@ -1526,6 +1526,58 @@ assert(
   missingResultFirstQuality.issues.includes("missing_result_first_ranking_summary"),
   "fund answer quality must reject multi-candidate answers that state a sort policy but do not give a first-screen result leaderboard"
 );
+const genericLeaderboardFallbackEvidence = {
+  marketDeepDive: {
+    candidates: [
+      { code: "000081", name: "买点靠前低夏普基金C", risk: { oneYear: { ok: true, sharpe: 0.22, maxDrawdownPct: -29, annualizedReturnPct: 3.2, annualizedVolatilityPct: 25 } } },
+      { code: "000082", name: "高夏普稳健基金C", risk: { oneYear: { ok: true, sharpe: 1.38, maxDrawdownPct: -8.8, annualizedReturnPct: 11.6, annualizedVolatilityPct: 10 } } },
+      { code: "000083", name: "费用友好备选基金A", risk: { oneYear: { ok: true, sharpe: 0.68, maxDrawdownPct: -15.4, annualizedReturnPct: 8.1, annualizedVolatilityPct: 16 } } }
+    ]
+  }
+};
+const genericMissingResultDraft = "直接结论：可以分批买一点。\n排序口径：高夏普/低回撤优先，再看买点和费用。\n下面详细解释：000081 买点靠前；000082 风险收益更好；000083 费用可以。";
+const genericLeaderboardFallback = manager.buildFundResultLeaderboardFallback({
+  text: genericMissingResultDraft,
+  workflow: "fund_recommendation",
+  userText: "现在经理太啰嗦了，直接按高夏普优先给我排结果",
+  evidence: genericLeaderboardFallbackEvidence,
+  issues: missingResultFirstQuality.issues
+});
+assert(
+  genericLeaderboardFallback.includes("直接结论：") && genericLeaderboardFallback.includes("排序口径：") && genericLeaderboardFallback.includes("结果榜："),
+  "generic result fallback must generate the first-screen direct conclusion, sort policy, and result board"
+);
+const genericFallbackResultLine = genericLeaderboardFallback.split(/\r?\n/).find((line) => line.startsWith("结果榜：")) || "";
+assert(
+  genericFallbackResultLine.indexOf("000082") >= 0 && genericFallbackResultLine.indexOf("000082") < genericFallbackResultLine.indexOf("000081"),
+  "generic result fallback must actually rank the higher-Sharpe candidate first when the user asks for high-Sharpe priority"
+);
+assert(
+  !/结果榜：.*(?:夏普\s*\d|回撤-?\d|近20日|近60日)/.test(genericFallbackResultLine),
+  "generic result fallback result board must explain in plain language instead of dumping metrics"
+);
+const genericLeaderboardFallbackQuality = manager.evaluateFundAnswerQuality({
+  text: genericLeaderboardFallback,
+  workflow: "fund_recommendation",
+  userText: "现在经理太啰嗦了，直接按高夏普优先给我排结果",
+  evidence: genericLeaderboardFallbackEvidence
+});
+assert(
+  genericLeaderboardFallbackQuality.ok,
+  `generic result fallback must pass answer quality checks, got ${genericLeaderboardFallbackQuality.issues.join(",")}`
+);
+const genericEnforcedLeaderboard = await manager.enforceFundAnswerQuality({
+  text: genericMissingResultDraft,
+  workflow: "fund_recommendation",
+  userText: "现在经理太啰嗦了，直接按高夏普优先给我排结果",
+  intent: { workflow: "fund_recommendation", mode: "ranked_recommendation" },
+  evidence: genericLeaderboardFallbackEvidence
+});
+const genericEnforcedResultLine = genericEnforcedLeaderboard.split(/\r?\n/).find((line) => line.startsWith("结果榜：")) || "";
+assert(
+  genericEnforcedResultLine.indexOf("000082") >= 0 && genericEnforcedResultLine.indexOf("000082") < genericEnforcedResultLine.indexOf("000081"),
+  "quality enforcement must use the deterministic result leaderboard fallback for ordinary high-Sharpe ranking requests"
+);
 const actionDeckLines = manager.buildPortfolioCustomerActionDeckStatusLines(rankingBoard.customerActionDeck).join("\n");
 assert(actionDeckLines.includes("买入理由："), "customer action deck status must explain why a fund can be bought instead of using a generic reason label");
 assert(actionDeckLines.includes("加备选理由："), "customer action deck status must explain why a fund belongs in backup/watch instead of only saying wait");

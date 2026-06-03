@@ -789,6 +789,14 @@ const requiredPatterns = [
     message: "fund answer quality must have a deterministic compact fallback for verbose ranked answers."
   },
   {
+    pattern: /function buildFundResultLeaderboardFallback[\s\S]{0,900}missing_result_first_ranking_summary[\s\S]{0,1600}sortFundAnswerRankedCandidatesByRequestedPriority[\s\S]{0,1300}结果榜/,
+    message: "fund answer quality must have a deterministic result leaderboard fallback when ranked answers omit the first-screen result board."
+  },
+  {
+    pattern: /const resultLeaderboardFallback = buildFundResultLeaderboardFallback[\s\S]{0,520}evaluateFundAnswerQuality[\s\S]{0,260}fundAnswerQualityDeterministicFallbacks/,
+    message: "fund answer enforcement must try deterministic result leaderboards before relying on model rewrite for ordinary ranking failures."
+  },
+  {
     pattern: /质检问题包含 verbose_result_answer_detail[\s\S]{0,260}压缩为：直接结论、排序口径、结果榜、最多3条为什么这样排、1条执行、最多2条边界/,
     message: "fund answer rewrite guidance must compress verbose ranked answers into direct result-first summaries."
   },
@@ -3585,7 +3593,7 @@ const requiredPatterns = [
     message: "watch-only pullback fallback lines must surface catchdown evidence, not only missing numeric setup metrics."
   },
   {
-    pattern: /const deterministicFallback = buildPullbackQualityFallbackAnswer[\s\S]{0,1200}FUND_ANSWER_QUALITY_REWRITE/,
+    pattern: /const deterministicFallback = buildPullbackQualityFallbackAnswer[\s\S]{0,2200}FUND_ANSWER_QUALITY_REWRITE/,
     message: "severe pullback/setup quality violations must use deterministic fallback before model rewrite."
   },
   {

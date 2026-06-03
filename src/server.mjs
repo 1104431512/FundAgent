@@ -22846,6 +22846,14 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       return dataQualityFallback;
     }
   }
+  const resultLeaderboardFallback = buildFundResultLeaderboardFallback({ text: localizedText, workflow, userText, evidence, issues: localizedEvaluation.issues });
+  if (resultLeaderboardFallback) {
+    const resultLeaderboardEvaluation = evaluateFundAnswerQuality({ text: resultLeaderboardFallback, workflow, userText, evidence });
+    if (resultLeaderboardEvaluation.ok) {
+      updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
+      return resultLeaderboardFallback;
+    }
+  }
   const conciseResultFallback = buildConciseFundResultAnswerFallback(localizedText, localizedEvaluation.issues);
   if (conciseResultFallback) {
     const conciseResultEvaluation = evaluateFundAnswerQuality({ text: conciseResultFallback, workflow, userText, evidence });
@@ -22944,6 +22952,14 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
         updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
         return deterministicFallback;
       }
+      const resultLeaderboardFallback = buildFundResultLeaderboardFallback({ text: cleanedRewrite, workflow, userText, evidence, issues: secondPass.issues });
+      if (resultLeaderboardFallback) {
+        const resultLeaderboardEvaluation = evaluateFundAnswerQuality({ text: resultLeaderboardFallback, workflow, userText, evidence });
+        if (resultLeaderboardEvaluation.ok) {
+          updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
+          return resultLeaderboardFallback;
+        }
+      }
       const conciseResultFallback = buildConciseFundResultAnswerFallback(cleanedRewrite, secondPass.issues);
       if (conciseResultFallback) {
         const conciseResultEvaluation = evaluateFundAnswerQuality({ text: conciseResultFallback, workflow, userText, evidence });
@@ -22971,6 +22987,11 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
     if (dataQualityFallback) {
       updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
       return dataQualityFallback;
+    }
+    const resultLeaderboardFallback = buildFundResultLeaderboardFallback({ text: localizedText, workflow, userText, evidence, issues: localizedEvaluation.issues });
+    if (resultLeaderboardFallback) {
+      updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
+      return resultLeaderboardFallback;
     }
     const conciseResultFallback = buildConciseFundResultAnswerFallback(localizedText, localizedEvaluation.issues);
     if (conciseResultFallback) {
@@ -23598,6 +23619,128 @@ function buildMarketDataQualityDisclosureFallback(text, evidence, issues = []) {
     note,
     ...lines.slice(1)
   ].join("\n");
+}
+
+function buildFundResultLeaderboardFallback({ text = "", workflow = "", userText = "", evidence = null, issues = [] } = {}) {
+  const issueSet = new Set(issues || []);
+  const needsLeaderboard = [
+    "missing_result_sort_policy",
+    "missing_requested_result_sort_policy",
+    "requested_result_sort_order_mismatch",
+    "missing_result_first_ranking_summary",
+    "opening_metric_dump_before_result",
+    "result_ranking_metric_dump"
+  ].some((issue) => issueSet.has(issue));
+  if (!needsLeaderboard) return "";
+  if (!shouldRequireFundAnswerResultFirstRankingSummary({ text, workflow, userText, evidence })) return "";
+
+  const candidateByCode = getEvidenceFundCandidatesForRanking(evidence);
+  if (candidateByCode.size < 2) return "";
+  const sectionCodes = extractFundCodes(extractAnswerRecommendationSection(text))
+    .filter((code) => candidateByCode.has(code));
+  const answerCodes = extractFundCodes(text)
+    .filter((code) => candidateByCode.has(code));
+  const sourceCodes = sectionCodes.length >= 2
+    ? sectionCodes
+    : answerCodes.length >= 2
+      ? answerCodes
+      : [...candidateByCode.keys()];
+  const seen = new Set();
+  const ranked = sortFundAnswerRankedCandidatesByRequestedPriority(
+    sourceCodes
+      .map((code) => {
+        const candidate = candidateByCode.get(code);
+        if (!candidate || seen.has(code)) return null;
+        seen.add(code);
+        return { code, candidate, score: getFundAnswerFallbackBaseScore(candidate) };
+      })
+      .filter(Boolean),
+    userText
+  ).slice(0, 3);
+  if (ranked.length < 2) return "";
+
+  const sortPolicy = formatFundAnswerSortPolicy(userText, "风险收益质量优先，其次看买点、题材支撑和费用。");
+  const blockedCount = ranked.filter((item) => isFundAnswerLeaderboardNoBuyCandidate(item.candidate)).length;
+  const directLine = blockedCount === ranked.length
+    ? "直接结论：这次只给优先复核榜，暂不直接买。"
+    : "直接结论：先看结果榜，第一名才有小仓验证资格，其余只做备选复核。";
+  const resultLine = `结果榜：${ranked.map((item, index) =>
+    `${index + 1}. ${formatFundAnswerLeaderboardCandidate(item.candidate, { sortPolicy, userText })}`
+  ).join("；")}`;
+  const executionLine = blockedCount === ranked.length
+    ? "执行：1万元资金先买入0元；只把前三名加入复核，等买点和题材证据齐了再谈金额。"
+    : "执行：1万元资金里第一名最多1000元验证，第二、三名先0元备选；没有买点/题材确认就继续等。";
+  return normalizeUserFacingFundAnswer([
+    directLine,
+    `排序口径：${sortPolicy}`,
+    resultLine,
+    buildFundAnswerLeaderboardWhyLine(userText),
+    executionLine,
+    "边界：如果题材退潮、主力撤离、净值证据过期或走势变成追涨，排名再高也不买。"
+  ].filter(Boolean).join("\n"));
+}
+
+function getFundAnswerFallbackBaseScore(candidate = {}) {
+  const risk = selectPortfolioQualityRiskPeriod(candidate.lastSnapshot || candidate);
+  const sharpe = finiteMetricNumber(risk?.sharpe);
+  const maxDrawdown = finiteMetricNumber(risk?.maxDrawdownPct);
+  const riskFallback = (Number.isFinite(sharpe) ? sharpe * 20 : 0)
+    + (Number.isFinite(maxDrawdown) ? Math.max(-60, maxDrawdown) : 0);
+  return finiteMetricNumber(candidate.actionability?.readinessScore)
+    ?? finiteMetricNumber(candidate.readinessScore)
+    ?? finiteMetricNumber(candidate.score)
+    ?? finiteMetricNumber(candidate.setupRankScore)
+    ?? finiteMetricNumber(candidate.forwardScore)
+    ?? riskFallback;
+}
+
+function formatFundAnswerLeaderboardCandidate(candidate = {}, { sortPolicy = "", userText = "" } = {}) {
+  const label = getFundAnswerCandidateLabel(candidate);
+  const blocked = isFundAnswerLeaderboardNoBuyCandidate(candidate);
+  const reason = buildFundAnswerLeaderboardReason(candidate, { sortPolicy, userText, blocked });
+  return `${label}：${reason}${blocked ? "，先0元复核" : "，可小仓验证"}`;
+}
+
+function getFundAnswerCandidateLabel(candidate = {}) {
+  const code = candidate.code || candidate.fundCode || candidate.seed?.code || candidate.lastSnapshot?.code || "待复核";
+  const name = candidate.name || candidate.fundName || candidate.seed?.name || candidate.lastSnapshot?.name || "";
+  return `${code} ${name}`.trim();
+}
+
+function buildFundAnswerLeaderboardReason(candidate = {}, { sortPolicy = "", userText = "", blocked = false } = {}) {
+  const trend = candidate.trendProfile || candidate.lastSnapshot?.trendProfile || {};
+  if (blocked) return "存在买入前置缺口，不能只因排序靠前就动手";
+  if (/高夏普|低回撤|风险收益|质量/.test(sortPolicy)) return "风险收益更稳，适合排在前面";
+  if (/低波动/.test(sortPolicy)) return "波动更低，适合稳一点的排序";
+  if (/费用|份额/.test(sortPolicy)) return "份额和费用负担更友好";
+  if (/主力|新闻|题材/.test(sortPolicy)) return "题材和资金线索更清楚";
+  if (/回调|低位|启动|追涨|接盘/.test(sortPolicy) || isPullbackSetupRequest(userText)) {
+    return trend.pullbackSetup?.signalText ? "更接近回调后的启动点" : "买点证据相对更完整";
+  }
+  return "综合质量、买点和费用后更靠前";
+}
+
+function isFundAnswerLeaderboardNoBuyCandidate(candidate = {}) {
+  const actionability = candidate.actionability || {};
+  const text = [
+    candidate.decisionBlocker,
+    candidate.blocker,
+    candidate.reason,
+    candidate.riskNotes,
+    candidate.readinessGaps,
+    candidate.gaps,
+    actionability.decisionBlocker,
+    actionability.blocker,
+    actionability.gaps
+  ].flat().filter(Boolean).join(" ");
+  return hasStaleFundEvidence(candidate)
+    || hasStaleThemeCatchdownEvidence(candidate)
+    || /(?:不得|不能|不给|禁止|暂停|暂不|先不|不建议|只|0元|零元).{0,12}(?:买入|申购|建仓|试探|验证|参与)|(?:接盘|退潮|主力撤离|旧题材|缺题材|缺少当前题材|缺新闻逻辑|缺主力|补证据|待复核|过期|追涨|偏热|blocked)/i.test(text);
+}
+
+function buildFundAnswerLeaderboardWhyLine(userText = "") {
+  const sortPolicy = formatFundAnswerSortPolicy(userText, "风险收益质量优先，其次看买点、题材支撑和费用。");
+  return `为什么这样排：先按“${sortPolicy}”筛第一层，再剔除接盘、过期数据和缺题材证据的标的。`;
 }
 
 function buildConciseFundResultAnswerFallback(text, issues = []) {
@@ -36981,6 +37124,7 @@ export {
   evaluatePortfolioWatchReadiness,
   evaluatePortfolioWatchlistFreshness,
   evaluateFundAnswerQuality,
+  buildFundResultLeaderboardFallback,
   buildConciseFundResultAnswerFallback,
   fetchChinaRealtimeIndexQuotes,
   fetchEastmoneyChinaIndexQuotes,
