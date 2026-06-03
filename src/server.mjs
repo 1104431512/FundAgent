@@ -3778,7 +3778,7 @@ function buildPortfolioWatchlistUpdatesFromAnswerProfiles(profiles = [], options
       const answerRole = rejectedByAnswer ? "暂不买入/排除" : role === "backup" ? "备选观察" : "买入参考";
       const originLabel = formatAnswerWatchlistSourceLabel(source);
       const statusReason = rejectedByAnswer
-        ? "回答中明确写了暂不买入、回避或排除，系统写入暂不买入而不是可买。"
+        ? "回答中明确写了暂不买入、回避、排除、接盘/退潮/主力撤离或旧题材风险，系统写入暂不买入而不是可买。"
         : formatAnswerWatchlistStatusReason(status, role, profile);
       const gapEvidence = formatAnswerWatchlistGapEvidence(profile, {
         status,
@@ -3871,7 +3871,7 @@ function inferAnswerWatchlistRole(profile = {}, context = "") {
 function isAnswerWatchlistRejectedContext(context = "") {
   const text = String(context || "");
   if (!text.trim()) return false;
-  return /(回避|剔除|排除|不推荐|不作为主推荐|不是主推|暂不买|暂不加仓|不买|追涨|偏热|过热|不符合|风险偏高)/.test(text);
+  return /(回避|剔除|排除|不推荐|不作为主推荐|不是主推|暂不买|暂不加仓|不买|追涨|偏热|过热|不符合|风险偏高|接盘|退潮|主力(?:资金)?撤离|资金撤离|旧题材|旧新闻|旧催化|回调(?:不是|不作为|不能当|不能作为)买点|不能把回调当(?:成)?买点)/.test(text);
 }
 
 function formatAnswerWatchlistSourceLabel(source = "") {

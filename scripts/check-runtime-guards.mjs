@@ -945,6 +945,10 @@ const requiredPatterns = [
     message: "answer-derived watchlist updates must not turn explicitly rejected funds into ready buys."
   },
   {
+    pattern: /function isAnswerWatchlistRejectedContext[\s\S]{0,700}接盘[\s\S]{0,220}主力/,
+    message: "answer-derived watchlist updates must treat catchdown, theme retreat, main-capital withdrawal, and stale-catalyst wording as rejected no-buy context."
+  },
+  {
     pattern: /source === "fund_screening_answer"[\s\S]{0,120}具体基金分析/,
     message: "screening-derived watchlist candidates must explain their screening-answer origin."
   },

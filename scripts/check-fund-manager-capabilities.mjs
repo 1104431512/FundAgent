@@ -4192,6 +4192,19 @@ const rejectedScreeningWatchlistUpdates = manager.buildPortfolioWatchlistUpdates
 });
 assert.equal(rejectedScreeningWatchlistUpdates[0].status, "blocked", "answer context must prevent rejected screening funds from becoming ready watchlist buys");
 assert(rejectedScreeningWatchlistUpdates[0].reason.includes("暂不买入/排除"), "rejected screening candidates must preserve the no-buy answer context");
+const catchdownRejectedAnswerWatchlistUpdates = manager.buildPortfolioWatchlistUpdatesFromAnswerProfiles([
+  verifiedSeedProfile
+], {
+  userText: "000010 可以买吗",
+  answerText: "000010 中证A500ETF联接C：走势看似回调完成，但当前是旧题材接盘风险，主力资金撤离，回调不能当买点。",
+  source: "fund_screening_answer"
+});
+assert.equal(catchdownRejectedAnswerWatchlistUpdates[0].status, "blocked", "answer context with catchdown/main-capital-retreat risk must block watchlist persistence even when the NAV setup looks ready");
+assert(
+  catchdownRejectedAnswerWatchlistUpdates[0].reason.includes("接盘/退潮/主力撤离")
+    && catchdownRejectedAnswerWatchlistUpdates[0].candidateRole.includes("排除候选"),
+  "catchdown answer-derived watchlist entries must preserve the explicit no-buy risk reason"
+);
 const dailyRecheckUpdates = manager.buildPortfolioWatchlistRecheckUpdates([
   { code: "000010", name: "中证A500ETF联接C", status: "waiting_pullback", priority: 3, reason: "等低位启动确认", buyTriggers: ["温和转强"] },
   { code: "000011", name: "热门强势主题基金A", status: "ready", priority: 1, reason: "原本接近可买" },
