@@ -10840,6 +10840,7 @@ function buildPortfolioDecisionSynthesisRanking(watchlist = []) {
 function buildPortfolioDecisionSynthesisRankingItem(item = {}) {
   const evidence = resolvePortfolioDecisionSynthesisEvidence(item);
   if (!evidence.shouldSurface) return null;
+  if (evidence.hardCatchdown) return null;
   return buildPortfolioRankingItem({
     code: item.code,
     name: item.name,
@@ -10865,6 +10866,15 @@ function resolvePortfolioDecisionSynthesisEvidence(item = {}) {
   const fee = resolvePortfolioWatchFeeSuitabilityEvidence(item);
   const outlook = resolvePortfolioWatchHoldingsOutlook(item);
   const themeSupportGap = getPortfolioWatchThemeSupportGap(item);
+  const hardCatchdown = Boolean(
+    chase.holdingRealtimeCatchdownRisk
+    || chase.staleThemeRefreshRisk
+    || chase.staleCatchdownRisk
+    || chase.staleCatalystRisk
+    || chase.themeRetreatRisk
+    || chase.unsupportedHoldingThemeRisk
+    || themeSupportGap
+  );
   const readinessScore = Number(item.readinessScore || 0);
   const setupSignal = trend.pullbackSetup?.signal || "";
   const low120 = Number(trend.lowPositionPct120);
@@ -10923,6 +10933,7 @@ function resolvePortfolioDecisionSynthesisEvidence(item = {}) {
   return {
     score,
     shouldSurface,
+    hardCatchdown,
     action,
     level,
     reason: buildPortfolioDecisionSynthesisReason({ buyable, starter, chase, fee, rotation, themeSupportGap }),
@@ -12055,12 +12066,13 @@ function buildPortfolioRotationOpportunityRankingItem(item = {}) {
   if (!riskGate.ok) return null;
   const evidence = resolvePortfolioRotationOpportunityEvidence(item);
   if (!evidence.shouldSurface) return null;
+  if (evidence.themeRetreatRisk) return null;
   return buildPortfolioRankingItem({
     code: item.code,
     name: item.name,
     source: "板块轮动",
     score: round(evidence.score, 1),
-    action: evidence.themeRetreatRisk ? "题材退潮回避" : evidence.highChase ? "轮动降温观察" : evidence.leaderPositive ? "主力预热复核" : evidence.strong ? "轮动启动复核" : "低位轮动观察",
+    action: evidence.highChase ? "轮动降温观察" : evidence.leaderPositive ? "主力预热复核" : evidence.strong ? "轮动启动复核" : "低位轮动观察",
     reason: buildPortfolioRotationOpportunityReason(evidence),
     facts: buildPortfolioRotationOpportunityFacts(evidence),
     decision: {

@@ -2321,6 +2321,14 @@ const requiredPatterns = [
     message: "portfolio customer action leaderboard status lines must lead with sort policy and ranked results instead of verbose trigger dumps."
   },
   {
+    pattern: /function buildPortfolioRotationOpportunityRankingItem[\s\S]{0,260}if \(!riskGate\.ok\) return null[\s\S]{0,260}if \(evidence\.themeRetreatRisk\) return null/,
+    message: "portfolio rotation opportunity ranking must drop retreat/catchdown themes instead of showing them as positive rotation opportunities."
+  },
+  {
+    pattern: /function buildPortfolioDecisionSynthesisRankingItem[\s\S]{0,220}if \(evidence\.hardCatchdown\) return null[\s\S]{0,900}hardCatchdown = Boolean\([\s\S]{0,360}staleCatchdownRisk[\s\S]{0,360}unsupportedHoldingThemeRisk/,
+    message: "portfolio decision synthesis ranking must not surface hard catchdown risks inside the positive buy-class synthesis lane."
+  },
+  {
     pattern: /(?=[\s\S]*function buildPortfolioConsensusRadarStatusLines[\s\S]{0,1200}共识雷达)(?=[\s\S]*buildPortfolioStatusAnswer[\s\S]{0,6200}buildPortfolioConsensusRadarStatusLines[\s\S]{0,900}buildPortfolioCustomerActionLeaderboardStatusLines)/,
     message: "portfolio status answers must translate consensus radar before detailed action leaderboards."
   },
@@ -2653,7 +2661,7 @@ const requiredPatterns = [
     message: "cash redeployment must treat concentrated top-holding themes without current radar support as hard no-buy gaps."
   },
   {
-    pattern: /function resolvePortfolioDecisionSynthesisEvidence[\s\S]{0,1200}themeSupportGap[\s\S]{0,1200}先补题材证据/,
+    pattern: /function buildPortfolioDecisionSynthesisRankingItem[\s\S]{0,220}if \(evidence\.hardCatchdown\) return null[\s\S]{0,1400}function resolvePortfolioDecisionSynthesisEvidence[\s\S]{0,700}hardCatchdown[\s\S]{0,600}themeSupportGap/,
     message: "decision-synthesis ranking must not classify unsupported theme pullbacks as buy-review candidates."
   },
   {

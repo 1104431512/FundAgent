@@ -5289,6 +5289,44 @@ assert(
   ),
   "catchdown risk ranking must surface broad-theme/precise-subtheme divergence as no-buy risk"
 );
+const broadAiCpoTrapBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
+  account: { cash: 90000, totalAsset: 100000, positionWeightPct: 5 },
+  watchlist: [{
+    code: "000019",
+    name: "成长精选混合C",
+    status: "ready",
+    readinessScore: 92,
+    candidateRole: "AI/算力低位修复候选",
+    setupEvidence: ["AI/算力大类仍热，但底层CPO/光模块已退潮。"],
+    lastSnapshot: broadAiCpoTrapProfile
+  }]
+}));
+assert(
+  broadAiCpoTrapBoard.lists.find((item) => item.id === "stale_catchdown_risk")?.items.some((item) =>
+    item.code === "000019"
+    && item.facts.some((fact) => fact.includes("泛题材热度不能覆盖底层退潮"))
+  ),
+  "full ranking board must route broad-AI/precise-CPO retreat traps into the catchdown risk lane"
+);
+for (const positiveLaneId of ["buy_preparation", "launch_setup", "cash_redeployment", "theme_allocation", "theme_momentum", "rotation_opportunity", "decision_synthesis"]) {
+  assert(
+    !broadAiCpoTrapBoard.lists.find((item) => item.id === positiveLaneId)?.items.some((item) => item.code === "000019"),
+    `full ranking board must not put broad-AI/precise-CPO retreat traps into positive lane ${positiveLaneId}`
+  );
+}
+assert(
+  !(broadAiCpoTrapBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "000019"),
+  "customer action deck must not put broad-AI/precise-CPO retreat traps into buy review"
+);
+assert(
+  (broadAiCpoTrapBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000019"),
+  "customer action deck must show broad-AI/precise-CPO retreat traps as catchdown avoid items"
+);
+assert(
+  !(broadAiCpoTrapBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.items || []).some((item) => item.code === "000019")
+    && (broadAiCpoTrapBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "avoid")?.items || []).some((item) => item.code === "000019"),
+  "customer action leaderboard must rank broad-AI/precise-CPO retreat traps in avoid, not buy"
+);
 const broadNoRadarProfile = {
   ...verifiedSeedProfile,
   matchedThemes: [],
