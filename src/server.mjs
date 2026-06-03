@@ -22583,7 +22583,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "当前任务不是分析用户已经给出的某一只基金，也不是截图 screening；当前任务是根据用户文字、公开市场快照和基金候选池，给出教育性的基金方向与候选清单。",
     "推荐顺序必须是：先判断题材/事件/催化阶段，再判断基金承载工具；基金净值走势只能作为确认信号，不能作为第一推荐理由。",
     "工作流硬门槛：每次推荐先过“题材作战图 -> 基金承载 -> 买点执行”三关。题材作战图要说明主力进场榜、题材预热榜、低位轮动榜、追涨风险榜或退潮回避榜；基金承载要说明前十大持仓、指数名称或代表股票是否对得上；买点执行才谈回调完成、低位启动和仓位。",
-    "用户更关心走势和分析思路，不要把回答写成数字清单。每只基金最多保留3个关键数字，其他用“低位修复、短期偏热、等待确认、回撤未完成”等自然中文解释。",
+    "用户更关心走势和分析思路，不要把回答写成数字清单。每只基金最多保留2-3个真正改变动作的数字，其他用“低位修复、短期偏热、等待确认、回撤未完成”等自然中文解释。",
     "如果市场快照或下钻摘要里有题材雷达，必须先用题材阶段、主力跟随、预热评分、新闻逻辑、拥挤度和操作倾向判断赔率，再筛选基金。",
     "遇到主力开始进场或题材预热的方向，必须解释题材上涨背后的新闻/政策/产业逻辑，并判断基金本身是否已经出现低位买点；逻辑成立但买点差一点时给触发条件，逻辑与资金都成立时可以给小仓试探，不要机械地只说等待。",
     "候选下钻摘要若出现 themeOpportunityRequirement=require_current_theme_playbook，主推荐必须同时满足：低位/回调启动、当前题材有主力进场/题材预热/低位轮动支撑、新闻或产业催化说得清、前十大持仓或指数名称能承载题材；缺任一项只能放观察或排除。",
@@ -22597,6 +22597,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先选择 pullbackSetup.signal 为 pullback_complete 或 launch_setup 的候选；同时检查5日/10日是否刚转强、120日区间位置是否偏低。短期涨幅偏热、20日/60日大涨且 entryBias 为 wait_pullback 的候选只能列入观察，不得作为主推荐。",
     "推荐清单必须先写排序口径。用户指定“高夏普优先、低回撤优先、主力题材优先、费用优先”等偏好时必须照这个偏好排序；用户未指定时，默认按买点成立度、主力资金/新闻逻辑、风险收益质量（高夏普/低回撤）、费用和持仓承载排序。",
     "多候选回答的前三行必须固定为：直接结论、排序口径、结果榜。结果榜用“1. 代码 名称：一句话原因；2. ...”直接给首选顺序，后面再展开，不要先铺指标。结果榜只能写人话理由，不能把近5日、近20日、夏普、回撤、规模等数字堆在第一屏。",
+    "榜单型回答必须短：先给排出来的结果，再给最多3条为什么这样排、1条执行方案、最多2条决策边界。不要把推荐清单、题材雷达、自评估、风险清单都写成完整长报告。",
     "不要编造 marketSnapshot 里没有的基金代码、涨跌幅、排名、金价或新闻。",
     "推荐基金时不要默认偏向 A 类；同一基金存在 A/C/D/I 等份额时，按用户持有期和费用模型说明为什么选这个份额，并提示可替代份额。",
     "如果候选下钻里出现 seed.alternativeShareClasses 或 seed.sameExposureAlternatives，不要把它们当成独立推荐名额；主推荐只列一个代表，替代份额/同指数替代品放在该条下面说明。",
@@ -22633,13 +22634,13 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
     "2. 排序口径：用一句话说明本次结果按什么优先排；用户说高夏普优先就写高夏普/低回撤优先，用户说主力题材优先就写主力资金和新闻逻辑优先，不要擅自换口径，也不要先铺数据。",
     "3. 结果榜：一行给出排序后的首选顺序，例如“1. 000001：高夏普且低位修复；2. 000005：主力题材承载更清楚；3. ...”。如果暂未筛到合格主推荐，就写“暂无主推荐，观察顺序是...”。结果榜只写一句话理由，不写指标明细。",
-    "4. 题材雷达：先列 1-3 个相关题材的中文板块位置、主力节奏、新闻逻辑、拥挤度、为什么现在值得/不值得看；不要输出任何内部字段名。",
-    "5. 自评估：这类需求是否适合现在做、把握度如何、适合激进/均衡/保守哪类。",
-    "6. 推荐清单：按排序口径给优先 3-4 个候选基金或 ETF。每个候选先写“第几优先 + 一句话原因”，再写代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号，以及“配图看什么”。5日/10日早期转强、120日区间低位、回撤、夏普、费用里只保留最能改变动作的2-3个数字，其余改成自然中文。只能使用快照、下钻或经理自选候选池中的候选代码；如果没有足够代码，就写“待复核方向”。",
+    "4. 为什么这样排：最多3条，用走势、主力/新闻、持仓承载、费用或风险收益质量解释排序，不要逐项报指标。",
+    "5. 推荐清单：按排序口径只展开优先 3-4 个候选基金或 ETF；每个候选先写“第几优先 + 一句话原因”，再写份额类别、费用模型、主题承载逻辑和配图看点。5日/10日早期转强、120日区间低位、回撤、夏普、费用里只保留最能改变动作的2-3个数字，其余改成自然中文。只能使用快照、下钻或经理自选候选池中的候选代码；如果没有足够代码，就写“待复核方向”。",
     "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
+    "6. 备选观察：如果有未到买点但值得等的候选，用一行写 3-5 个代码和触发条件；偏热、追涨或回避对象不要混进备选。",
     "7. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
-    "8. 备选观察：如果有未到买点但值得等的候选，列 3-5 个备选，说明还差什么触发，以及对应配图看什么；偏热、追涨或回避对象单独写排除原因，不要混进备选。",
-    "9. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的题材或价格条件。"
+    "8. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的题材或价格条件。",
+    "全文控制在 12-16 行内；除结果榜外，每行尽量不超过90字。"
   ].join("\n");
 
   const draft = await callModel({
@@ -22689,14 +22690,15 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "你是飞书机器人“基金经理”的基金问答工作流。",
     "当前任务是回答用户问题，不是单只基金 screening；除非用户给出明确基金代码或截图，否则不要强行输出 Verdict/Score/8 角色评审。",
     "遇到“某主题最近值不值得买”时，必须先判断题材/新闻/市场阶段，再判断基金或 ETF 工具；基金净值走势只是确认信号。",
-    "用户更关心走势和分析思路，不要把回答写成数字清单。每只基金最多保留3个关键数字，其他用走势、位置、风险边界来解释。",
+    "用户更关心走势和分析思路，不要把回答写成数字清单。每只基金最多保留2-3个真正改变动作的数字，其他用走势、位置、风险边界来解释。",
     "如果传入 marketSnapshot，可用它回答近期市场/题材问题；涉及黄金、白银或贵金属时，优先引用 marketIndicators.preciousMetals 和相关基金候选。",
     "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度、盘中走势和数据新鲜度；若盘中冲高回落或尾盘转弱，只能降低买入把握度，成交和盈亏仍以确认净值为准。",
     "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
     "如果市场快照或下钻摘要里有题材雷达，优先引用中文题材阶段、主力节奏、新闻逻辑、拥挤度和操作倾向，避免只按历史涨幅回答。",
     "候选下钻摘要若出现 themeOpportunityRequirement=require_current_theme_playbook，回答必须解释题材为什么动、主力是否跟进、基金是否真实承载该题材；纯走势合格但缺题材/新闻/持仓承载的候选只能观察。",
     "涉及买入、卖出、推荐、备选或多只基金比较时，前两段必须包含排序口径。用户指定高夏普、低回撤、主力题材、费用等偏好时必须按偏好；未指定时按动作影响、买点成立、主力/新闻、风险收益质量和费用持仓承载排序。",
-    "多候选回答前三行必须像榜单摘要：直接结论、排序口径、结果榜。结果榜直接给 1/2/3 的首选顺序和一句话原因，后面再展开证据；结果榜不要堆近5日、近20日、夏普、回撤、规模等指标明细。",
+    "多候选回答前三行必须像榜单摘要：直接结论、排序口径、结果榜。结果榜直接给 1/2/3 的首选顺序和一句话原因，后面再展开少量证据；结果榜不要堆近5日、近20日、夏普、回撤、规模等指标明细。",
+    "榜单型回答必须短：先给排出来的结果，再给最多3条为什么这样排、1条执行方案、最多2条决策边界；不要把问答写成日报或指标长报告。",
     "如果提供了候选基金下钻摘要，必须使用下钻候选的走势画像、风险、费用、持仓和可操作性评估来形成买/等/回避判断。",
     "如果提供了经理自选候选池，必须把它当成已经沉淀的备选来源先复核；ready 可以进入买入参考，waiting 或启动前夜只能说明等待条件。",
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，最终回答要用自然中文说明数据缺口、降低把握度；缺少贵金属/板块/排行/新闻模块时，不得声称已完整联网或给重仓买入。",
@@ -22731,7 +22733,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "经理自选候选池：",
     portfolioWatchlistContext.summary,
     "",
-    "请直接回答用户问题。若用户问“值得买吗”，必须给中文动作“买入 / 分批买入 / 等待 / 回避”之一，并给新资金和已有持仓分别怎么做。若涉及多个候选或比较，前三行固定为“直接结论：...”“排序口径：...”“结果榜：1. ...；2. ...”，例如高夏普/低回撤优先、主力资金和新闻逻辑优先、接盘风险优先；再给排序后的结果，不要先铺数字。如回答里给出具体基金候选，主买入和备选观察都要写代码、中文走势证据、触发条件和配图看点；偏热回避对象不要和备选混写。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
+    "请直接回答用户问题。若用户问“值得买吗”，必须给中文动作“买入 / 分批买入 / 等待 / 回避”之一，并给新资金和已有持仓分别怎么做。若涉及多个候选或比较，前三行固定为“直接结论：...”“排序口径：...”“结果榜：1. ...；2. ...”，例如高夏普/低回撤优先、主力资金和新闻逻辑优先、接盘风险优先；再给排序后的结果，不要先铺数字。后文最多写3条为什么这样排、1条执行、2条边界。如回答里给出具体基金候选，主买入和备选观察都要写代码、中文走势证据、触发条件和配图看点；偏热回避对象不要和备选混写。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
   ].join("\n");
 
   const draft = await callModel({
@@ -22813,6 +22815,14 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       return dataQualityFallback;
     }
   }
+  const conciseResultFallback = buildConciseFundResultAnswerFallback(localizedText, localizedEvaluation.issues);
+  if (conciseResultFallback) {
+    const conciseResultEvaluation = evaluateFundAnswerQuality({ text: conciseResultFallback, workflow, userText, evidence });
+    if (conciseResultEvaluation.ok) {
+      updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
+      return conciseResultFallback;
+    }
+  }
 
   if (String(process.env.FUND_ANSWER_QUALITY_REWRITE ?? "true") === "false") {
     return localizedText;
@@ -22849,6 +22859,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "若质检问题包含 missing_result_first_ranking_summary，必须把回答前三行改成“直接结论：...”“排序口径：...”“结果榜：1. ...；2. ...”，先给首选顺序，再讲原因。",
       "若质检问题包含 opening_metric_dump_before_result，必须把开头的近5日/10日/20日/夏普/回撤等指标移到后文；开头只保留动作、排序口径和榜单原因。",
       "若质检问题包含 result_ranking_metric_dump，必须重写结果榜：只保留代码、名称、优先级和一句话人话理由，数字明细放到后文且每只最多3个关键数字。",
+      "若质检问题包含 verbose_result_answer_detail，说明榜单后面又写成了指标长报告；必须压缩为：直接结论、排序口径、结果榜、最多3条为什么这样排、1条执行、最多2条边界。不要逐只复述完整数据。",
       "若质检问题包含 unsolicited_score_label，说明用户没有要求打分却出现“评分/得分/Score: xx”；必须删掉评分字段，改成自然把握度和操作理由。",
       "若证据没有 mainCandidateCodes，必须直接说明暂未筛到合格的回调完成/低位启动主推荐，不能硬凑基金代码。",
       "保持适合飞书卡片阅读，不要 Markdown 表格或代码块。",
@@ -22902,6 +22913,14 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
         updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
         return deterministicFallback;
       }
+      const conciseResultFallback = buildConciseFundResultAnswerFallback(cleanedRewrite, secondPass.issues);
+      if (conciseResultFallback) {
+        const conciseResultEvaluation = evaluateFundAnswerQuality({ text: conciseResultFallback, workflow, userText, evidence });
+        if (conciseResultEvaluation.ok) {
+          updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
+          return conciseResultFallback;
+        }
+      }
     }
     return cleanedRewrite || localizedText;
   } catch (error) {
@@ -22921,6 +22940,11 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
     if (dataQualityFallback) {
       updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
       return dataQualityFallback;
+    }
+    const conciseResultFallback = buildConciseFundResultAnswerFallback(localizedText, localizedEvaluation.issues);
+    if (conciseResultFallback) {
+      updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
+      return conciseResultFallback;
     }
     return localizedText;
   }
@@ -22985,6 +23009,10 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   if (shouldRequireFundAnswerResultFirstRankingSummary({ text, workflow, userText, evidence })
     && hasMetricHeavyResultRankingSummary(rawText)) {
     issues.push("result_ranking_metric_dump");
+  }
+  if (shouldRequireConciseFundResultAnswer({ text, workflow, userText, evidence })
+    && hasVerboseFundResultAnswer(rawText, { workflow, userText, evidence })) {
+    issues.push("verbose_result_answer_detail");
   }
   issues.push(...evaluateMarketDataQualityDisclosure({ text, workflow, evidence }));
   issues.push(...evaluateStaleFundEvidenceActionDiscipline({ text, evidence }));
@@ -23185,6 +23213,48 @@ function hasMetricHeavyResultRankingSummary(text = "") {
   if (nonCodeMetricCount < 4) return false;
   const reasonWords = (resultText.match(/(?:高夏普|低回撤|低波动|低位|回调|启动|修复|转强|主力|资金|新闻|催化|承载|费用|前景|更稳|适合|等待|观察|回避|追涨|接盘|风险|边界|理由|因为|所以)/g) || []).length;
   return nonCodeMetricCount >= 6 || reasonWords < 3;
+}
+
+function shouldRequireConciseFundResultAnswer({ text = "", workflow = "", userText = "", evidence = null } = {}) {
+  if (workflow === "conversation") return false;
+  if (!shouldRequireFundAnswerResultFirstRankingSummary({ text, workflow, userText, evidence })) return false;
+  const prompt = String(userText || "");
+  return workflow === "fund_recommendation"
+    || /排序|排行|优先|首选|备选|选哪个|比较|推荐|高夏普|低回撤|低波动|费用优先|主力题材/.test(prompt)
+    || getEvidenceFundCandidateCount(evidence) >= 2;
+}
+
+function hasVerboseFundResultAnswer(text = "", { workflow = "", userText = "" } = {}) {
+  const raw = String(text || "").trim();
+  if (!raw) return false;
+  const lines = raw
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length <= 10) return false;
+
+  const priorityAsk = /高夏普|低回撤|低波动|费用优先|排序|排行|优先|首选|选哪个|比较/.test(String(userText || ""));
+  const lineLimit = priorityAsk ? 12 : 18;
+  const detailLines = lines.slice(3);
+  const sectionHeadingCount = detailLines.filter((line) =>
+    /^(?:推荐清单|备选观察|观察\/排除|题材雷达|自评估|1万元执行|执行方案|决策边界|风险边界|缺失数据|为什么这样排|详细分析|投委会|市场判断|今日操作)\s*[：:]/.test(line)
+  ).length;
+  const metricDetailLines = detailLines.filter((line) =>
+    countUserFacingNonCodeMetricNumbers(line) >= 4
+    && /(?:近\s*\d+\s*日|夏普|回撤|规模|费率|费用|净值|位置|收益|涨幅|跌幅)/.test(line)
+  ).length;
+  const longMetricLines = detailLines.filter((line) =>
+    line.length > 120 && countUserFacingNonCodeMetricNumbers(line) >= 2
+  ).length;
+  const candidateDetailLines = detailLines.filter((line) => /\b\d{6}\b/.test(line)).length;
+  const nonCodeMetricCount = countUserFacingNonCodeMetricNumbers(raw);
+  const hardLengthLimit = priorityAsk ? 1300 : workflow === "fund_recommendation" ? 1900 : 1600;
+
+  if (metricDetailLines >= 3) return true;
+  if (longMetricLines >= 4) return true;
+  if (lines.length > lineLimit && (sectionHeadingCount >= 4 || metricDetailLines >= 1 || candidateDetailLines >= 5)) return true;
+  if (lines.length > lineLimit + 6 && nonCodeMetricCount >= 14) return true;
+  return raw.length > hardLengthLimit && candidateDetailLines >= 4;
 }
 
 function searchFirstIndex(text = "", needles = []) {
@@ -23497,6 +23567,63 @@ function buildMarketDataQualityDisclosureFallback(text, evidence, issues = []) {
     note,
     ...lines.slice(1)
   ].join("\n");
+}
+
+function buildConciseFundResultAnswerFallback(text, issues = []) {
+  if (!(issues || []).includes("verbose_result_answer_detail")) return "";
+  const lines = String(text || "")
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) return "";
+
+  const directLine = lines.find((line) => /^(?:直接结论|结论|经理最终判断)\s*[：:]/.test(line)) || lines[0] || "";
+  const sortLine = lines.find((line) => /^(?:排序口径|排序规则|优先级)\s*[：:]/.test(line)) || "";
+  const resultLine = lines.find((line) => /^(?:结果榜|排序结果|优先顺序|推荐清单)\s*[：:]/.test(line)) || "";
+  if (!directLine || !sortLine || !resultLine) return "";
+
+  const resultCodes = extractFundCodes(resultLine);
+  const allCodes = extractFundCodes(lines.join(" "));
+  const extraCodes = allCodes.filter((code) => !resultCodes.includes(code)).slice(0, 9);
+  const reasonLines = lines
+    .filter((line) =>
+      ![directLine, sortLine, resultLine].includes(line)
+      && !hasDenseUserFacingMetricLine(line)
+      && line.length <= 130
+      && /(?:为什么|理由|首选|高夏普|低回撤|低波动|更稳|主力|新闻|催化|回调|低位|启动|费用|持仓|承载|接盘|风险|等待|观察|回避)/.test(line)
+      && !/^(?:1万元执行|执行方案|决策边界|风险边界|缺失数据|备选观察|观察\/排除)\s*[：:]/.test(line)
+    )
+    .slice(0, 3)
+    .map((line) => line
+      .replace(/^[-*•]\s*/, "")
+      .replace(/^(?:为什么这样排|理由|首选理由|推荐清单)\s*[：:]\s*/, "")
+      .trim());
+  const executionLine = lines.find((line) =>
+    /(?:1万元执行|执行方案|激进|均衡|保守|买入0元|0元观察|仓位|金额|比例)/.test(line)
+    && !hasDenseUserFacingMetricLine(line)
+  ) || "";
+  const boundaryLines = lines
+    .filter((line) =>
+      /(?:决策边界|风险边界|触发|失效|暂停|回避|等待|数据缺口|缺失数据|待复核|不重仓|少买|不买)/.test(line)
+      && !hasDenseUserFacingMetricLine(line)
+      && line.length <= 150
+    )
+    .filter((line) => ![directLine, sortLine, resultLine, executionLine].includes(line))
+    .slice(0, 2);
+  const chartLine = extraCodes.length
+    ? `配图参考：结果榜优先看${(resultCodes.slice(0, 4).join("、") || "首选基金")}；备选只看${extraCodes.join("、")}，用于确认买点和风险，不代表都能买。`
+    : "";
+
+  const output = [
+    directLine,
+    sortLine,
+    resultLine,
+    reasonLines.length ? `为什么这样排：${reasonLines.join("；")}` : "",
+    executionLine ? `执行：${executionLine.replace(/^(?:执行|执行方案)\s*[：:]\s*/, "")}` : "",
+    chartLine,
+    ...boundaryLines.map((line) => line.replace(/^(?:决策边界|风险边界)\s*[：:]\s*/, "边界："))
+  ].filter(Boolean).join("\n");
+  return normalizeUserFacingFundAnswer(output);
 }
 
 function countEligibleFundReportProfiles(profiles = []) {
@@ -36823,6 +36950,7 @@ export {
   evaluatePortfolioWatchReadiness,
   evaluatePortfolioWatchlistFreshness,
   evaluateFundAnswerQuality,
+  buildConciseFundResultAnswerFallback,
   fetchChinaRealtimeIndexQuotes,
   fetchEastmoneyChinaIndexQuotes,
   fetchGlobalMarketQuotes,
@@ -36861,6 +36989,7 @@ export {
   hasActivePortfolioOrderForAction,
   hasActionableThemeSupport,
   hasNumericDumpWithoutInterpretation,
+  hasVerboseFundResultAnswer,
   hasPortfolioTransactionForOrderDedupe,
   hasPortfolioStarterBuySetup,
   hasPortfolioThemeMicroStarterSetup,

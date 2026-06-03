@@ -1348,6 +1348,67 @@ assert(
   metricHeavyResultBoardQuality.issues.includes("result_ranking_metric_dump"),
   "fund answer quality must reject result leaderboards that dump metrics instead of human-readable reasons"
 );
+const verboseRankedAnswer = [
+  "直接结论：可以分批买入，但只做小仓验证。",
+  "排序口径：高夏普/低回撤优先，再看买点和费用。",
+  "结果榜：1. 000005 高夏普基金C：风险收益更稳；2. 000001 低位启动基金C：买点接近；3. 000002 备选基金A：先观察触发。",
+  "为什么这样排：先看风险收益质量，再看是否已经低位修复。",
+  "推荐清单：",
+  "1. 000005 高夏普基金C：近5日+1.2%，近10日+2.1%，近20日+3.8%，120日位置36.5%，夏普1.3，回撤-9.8%，规模46亿，C类销售服务费0.4%。",
+  "2. 000001 低位启动基金C：近5日+1.0%，近10日+1.9%，近20日+3.2%，120日位置35.2%，夏普0.7，回撤-17.5%，规模18亿，C类销售服务费0.4%。",
+  "3. 000002 备选基金A：近5日+0.8%，近10日+1.4%，近20日+2.6%，120日位置44.2%，夏普0.5，回撤-21.0%，规模22亿，A类申购费0.15%。",
+  "4. 000003 观察基金C：近5日+0.6%，近10日+1.1%，近20日+2.2%，120日位置48.1%，夏普0.4，回撤-23.0%，规模12亿，C类销售服务费0.5%。",
+  "5. 000004 排除基金C：近5日+3.6%，近10日+6.1%，近20日+12.2%，120日位置88.1%，夏普0.6，回撤-19.0%，规模32亿，短期偏热。",
+  "备选观察：000002、000003 等5日/10日继续转强；000004 等回撤降温。",
+  "1万元执行：激进1000元，均衡500元，保守先0元观察。",
+  "决策边界：如果主力题材证据缺失或走势冲高回落，暂停买入。",
+  "缺失数据：还需要复核前十大持仓和最新费用。"
+].join("\n");
+const verboseRankedQuality = manager.evaluateFundAnswerQuality({
+  text: verboseRankedAnswer,
+  workflow: "fund_recommendation",
+  userText: "推荐几个基金，按高夏普优先",
+  evidence: {
+    marketDeepDive: {
+      candidates: ["000001", "000002", "000003", "000004", "000005"].map((code) => ({ code }))
+    }
+  }
+});
+assert(
+  verboseRankedQuality.issues.includes("verbose_result_answer_detail"),
+  "fund answer quality must reject result-first answers that become verbose metric reports after the leaderboard"
+);
+assert(
+  manager.hasVerboseFundResultAnswer(verboseRankedAnswer, { workflow: "fund_recommendation", userText: "推荐几个基金，按高夏普优先" }),
+  "verbose ranked answer detector must be exported for regression checks"
+);
+const conciseRankedFallback = manager.buildConciseFundResultAnswerFallback(verboseRankedAnswer, verboseRankedQuality.issues);
+assert(
+  conciseRankedFallback.includes("直接结论：") && conciseRankedFallback.includes("排序口径：") && conciseRankedFallback.includes("结果榜："),
+  "concise fallback must preserve direct conclusion, sort policy, and ranked result"
+);
+assert(
+  conciseRankedFallback.split(/\r?\n/).filter(Boolean).length <= 8,
+  "concise fallback must compress verbose ranked answers into a short customer-readable result"
+);
+assert(
+  !/推荐清单：[\s\S]*(?:近20日|夏普\d|回撤-?\d)/.test(conciseRankedFallback),
+  "concise fallback must remove the metric-heavy recommendation dump"
+);
+const conciseRankedFallbackQuality = manager.evaluateFundAnswerQuality({
+  text: conciseRankedFallback,
+  workflow: "fund_recommendation",
+  userText: "推荐几个基金，按高夏普优先",
+  evidence: {
+    marketDeepDive: {
+      candidates: ["000001", "000002", "000003", "000004", "000005"].map((code) => ({ code }))
+    }
+  }
+});
+assert(
+  !conciseRankedFallbackQuality.issues.includes("verbose_result_answer_detail"),
+  "concise fallback must pass the verbosity gate"
+);
 const missingResultFirstQuality = manager.evaluateFundAnswerQuality({
   text: "直接结论：可以分批买入1000元。\n排序口径：高夏普/低回撤优先，再看买点和费用。\n下面详细解释：000001 低位启动基金C适合放第一档；000005 现金再部署基金C适合做第二档。",
   workflow: "fund_recommendation",

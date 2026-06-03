@@ -761,12 +761,36 @@ const requiredPatterns = [
     message: "fund recommendation prompts must keep result leaderboards reason-first instead of metric-first."
   },
   {
+    pattern: /榜单型回答必须短[\s\S]{0,180}最多3条为什么这样排[\s\S]{0,180}1条执行方案[\s\S]{0,180}最多2条决策边界/,
+    message: "fund recommendation prompts must keep ranked answers concise instead of turning them into long metric reports."
+  },
+  {
+    pattern: /全文控制在 12-16 行内/,
+    message: "fund recommendation prompts must set a short line budget for customer-facing ranked answers."
+  },
+  {
     pattern: /推荐清单：按排序口径/,
     message: "fund recommendation prompts must list candidates according to the declared sort policy."
   },
   {
     pattern: /function extractAnswerRecommendationSection[\s\S]{0,500}结果榜[\s\S]{0,220}推荐清单/,
     message: "fund recommendation quality must treat first-screen result leaderboards as recommendation sections."
+  },
+  {
+    pattern: /function evaluateFundAnswerQuality[\s\S]{0,5200}verbose_result_answer_detail/,
+    message: "fund answer quality must reject result-first answers that become verbose after the leaderboard."
+  },
+  {
+    pattern: /function shouldRequireConciseFundResultAnswer[\s\S]{0,700}function hasVerboseFundResultAnswer[\s\S]{0,1300}metricDetailLines/,
+    message: "fund answer quality must detect long metric-heavy ranked answers after the result board."
+  },
+  {
+    pattern: /function buildConciseFundResultAnswerFallback[\s\S]{0,1200}最多3条为什么这样排|function buildConciseFundResultAnswerFallback[\s\S]{0,1800}为什么这样排/,
+    message: "fund answer quality must have a deterministic compact fallback for verbose ranked answers."
+  },
+  {
+    pattern: /质检问题包含 verbose_result_answer_detail[\s\S]{0,260}压缩为：直接结论、排序口径、结果榜、最多3条为什么这样排、1条执行、最多2条边界/,
+    message: "fund answer rewrite guidance must compress verbose ranked answers into direct result-first summaries."
   },
   {
     pattern: /account\.cash 才是当下可动用现金[\s\S]{0,180}receivableCash 是赎回在途资金[\s\S]{0,180}不能当作已经到账的买入火力/,
