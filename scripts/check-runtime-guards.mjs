@@ -1881,6 +1881,10 @@ const requiredPatterns = [
     message: "portfolio decision matrix must show a traffic-light buy/wait/block verdict with supports, constraints, and blockers."
   },
   {
+    pattern: /(?=[\s\S]*function isPortfolioDecisionMatrixCatchdownRisk[\s\S]{0,900}stale_catchdown_risk)(?=[\s\S]*function buildPortfolioRankingDecisionMatrixVerdict[\s\S]{0,1600}接盘风险拦截[\s\S]{0,320}0元观察[\s\S]{0,320}不是低位启动[\s\S]{0,320}主力资金回流[\s\S]{0,180}代表持仓止跌)/,
+    message: "portfolio decision matrix must translate stale-theme pullbacks into a visible 0-yuan catchdown-risk verdict with reopening conditions."
+  },
+  {
     pattern: /(?=[\s\S]*\.matrix-terminal\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.matrix-table\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.matrix-body\s*\{[\s\S]*overflow:\s*auto)/,
     message: "admin portfolio decision matrix must be bounded with an internally scrollable table."
   },

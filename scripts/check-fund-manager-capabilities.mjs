@@ -9123,6 +9123,22 @@ assert(
     && staleCatchdownBoard.customerDecisionSummary.primaryAction.includes("000042"),
   "customer decision summary must put catchdown avoidance ahead of ordinary buy review when stale-theme pullbacks are present"
 );
+const staleCatchdownMatrixItem = staleCatchdownBoard.decisionMatrix?.items?.find((item) => item.code === "000042");
+assert(
+  staleCatchdownMatrixItem?.verdict?.tone === "risk"
+    && staleCatchdownMatrixItem.verdict.label.includes("接盘风险")
+    && staleCatchdownMatrixItem.verdict.permission.includes("0元")
+    && staleCatchdownMatrixItem.verdict.summary.includes("不是低位启动")
+    && staleCatchdownMatrixItem.verdict.summary.includes("主力撤离"),
+  "decision matrix must translate stale-theme pullbacks into a clear 0-yuan catchdown-risk verdict, not a generic risk label"
+);
+assert(
+  staleCatchdownMatrixItem?.nextStep?.includes("新鲜新闻/政策催化")
+    && staleCatchdownMatrixItem.nextStep.includes("主力资金回流")
+    && staleCatchdownMatrixItem.nextStep.includes("代表持仓止跌")
+    && staleCatchdownMatrixItem.nextStep.includes("低位温和转强"),
+  "decision matrix must show the reopening conditions before stale-theme pullbacks can re-enter buy review"
+);
 const oldPreheatCurrentRetreatDb = manager.normalizePortfolioDb({
   account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
   watchlist: [{

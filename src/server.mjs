@@ -14912,7 +14912,7 @@ function finalizePortfolioRankingDecisionMatrixRow(row = {}) {
   const dataText = `${dataRef?.action || ""} ${dataRef?.reason || ""} ${dataRef?.gaps?.join(" ") || ""}`;
   const buyText = `${buyRef?.action || ""} ${buyRef?.reason || ""}`;
   const sectorText = `${sectorRef?.action || ""} ${sectorRef?.reason || ""} ${sectorRef?.gaps?.join(" ") || ""} ${sectorRef?.nextStep || ""}`;
-  const hasHardRisk = /卖出|减仓|止损|止盈|回吐|追涨|回避|防线|风险/.test(riskText);
+  const hasHardRisk = /卖出|减仓|止损|止盈|回吐|追涨|回避|防线|风险|接盘|退潮|主力(?:资金)?撤离|资金撤离|旧新闻|旧催化|旧题材|表面回调/.test(riskText);
   const hasFeeOnlyReview = /费率|费用|持有期|赎回|申购|销售服务费|A\/C|A\/C\/D\/I|份额|低费|替代/.test(dataText);
   const hasHardDataSignal = /数据阻塞|过期|补数据|补证|不能提交买入|证据不足|无法核验|关键数据.*缺|净值.*缺|走势.*缺|来源.*缺|持仓.*缺|前十大.*缺/.test(dataText);
   const hasDataBlock = hasHardDataSignal || (/缺(?:失|少|口)?/.test(dataText) && !hasFeeOnlyReview);
@@ -14970,9 +14970,30 @@ function finalizePortfolioRankingDecisionMatrixRow(row = {}) {
       risk: buildPortfolioRankingDecisionMatrixCell(riskRef),
       data: buildPortfolioRankingDecisionMatrixCell(dataRef)
     },
-    nextStep,
+    nextStep: verdict.nextStep || nextStep,
     tags: refs.map((ref) => `${ref.listTitle}#${ref.rank}`).slice(0, 5)
   };
+}
+
+function isPortfolioDecisionMatrixCatchdownRisk({ riskRef = null, nextStep = "", blockers = [], constraints = [] } = {}) {
+  const riskText = [
+    riskRef?.listId,
+    riskRef?.listTitle,
+    riskRef?.action,
+    riskRef?.reason,
+    riskRef?.nextStep,
+    ...normalizeStringArray(riskRef?.facts),
+    ...normalizeStringArray(riskRef?.highlights),
+    ...normalizeStringArray(riskRef?.risks),
+    ...normalizeStringArray(riskRef?.gaps),
+    nextStep,
+    ...normalizeStringArray(blockers),
+    ...normalizeStringArray(constraints)
+  ].filter(Boolean).join(" ");
+  if (!riskText) return false;
+  if (/stale_catchdown_risk/.test(riskText)) return true;
+  if (isTextualCatchdownRiskSegment(riskText)) return true;
+  return /接盘|题材退潮|退潮|主力(?:资金)?撤离|资金撤离|旧新闻|旧催化|旧题材|旧雷达|历史热点|表面回调|未被当前题材雷达确认|低位轮动标签缺少当前题材雷达刷新/.test(riskText);
 }
 
 function buildPortfolioRankingDecisionMatrixVerdict({ action = "", hasHardRisk = false, hasDataBlock = false, hasSectorBlock = false, hasSoftDataConstraint = false, hasBuyReview = false, buyRef = null, sectorRef = null, riskRef = null, dataRef = null, nextStep = "" } = {}) {
@@ -14990,6 +15011,18 @@ function buildPortfolioRankingDecisionMatrixVerdict({ action = "", hasHardRisk =
     !hasHardRisk && !hasDataBlock && riskRef ? `风险线：${shortenPortfolioCustomerText(riskRef.action || riskRef.reason || riskRef.listTitle, 36)}` : ""
   ]).slice(0, 2);
   if (hasHardRisk) {
+    if (isPortfolioDecisionMatrixCatchdownRisk({ riskRef, nextStep, blockers, constraints })) {
+      return {
+        tone: "risk",
+        label: "接盘风险拦截",
+        permission: "0元观察",
+        summary: "这不是低位启动，是旧题材/主力撤离后的表面回调；没有资金回流和新鲜催化前不新增买入。",
+        supports,
+        blockers,
+        constraints,
+        nextStep: "新鲜新闻/政策催化、主力资金回流、代表持仓止跌、基金低位温和转强同时出现后，再回到小仓复核；否则维持0元观察。"
+      };
+    }
     return {
       tone: "risk",
       label: "先处理风险",
