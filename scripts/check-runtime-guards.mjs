@@ -729,6 +729,14 @@ const requiredPatterns = [
     message: "fund answer quality must require the sort policy to follow user-specified priorities such as high-Sharpe or low-drawdown first."
   },
   {
+    pattern: /function evaluateFundAnswerQuality[\s\S]{0,3600}hasFundAnswerRequestedSortOrderMismatch\(\{ text: rawText, userText, evidence \}\)[\s\S]{0,180}requested_result_sort_order_mismatch/,
+    message: "fund answer quality must reject answers that state the requested priority but list candidates in the wrong evidence-backed order."
+  },
+  {
+    pattern: /function hasFundAnswerRequestedSortOrderMismatch[\s\S]{0,900}extractAnswerRecommendationSection\(text\)[\s\S]{0,900}compareFundAnswerRankedCandidatesByRequestedPriority/,
+    message: "fund answer quality must compare the answer's recommendation order against evidence-backed requested-priority scores."
+  },
+  {
     pattern: /(?=[\s\S]*function sortFundAnswerRankedCandidatesByRequestedPriority)(?=[\s\S]*function getFundAnswerPriorityScore[\s\S]{0,1200}risk_adjusted_quality[\s\S]{0,700}sharpe)(?=[\s\S]*function buildPullbackQualityFallbackAnswer[\s\S]{0,1800}sortFundAnswerRankedCandidatesByRequestedPriority)/,
     message: "deterministic fund fallbacks must actually reorder candidates by requested priorities such as high-Sharpe, not only state the policy."
   },

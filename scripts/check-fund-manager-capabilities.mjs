@@ -1266,6 +1266,34 @@ assert(
   !requestedSharpeMatchedQuality.issues.includes("missing_requested_result_sort_policy"),
   "fund answer quality must allow answers whose sort policy follows the user-specified high-Sharpe priority"
 );
+const requestedSharpeOrderEvidence = {
+  marketDeepDive: {
+    candidates: [
+      { code: "000001", risk: { oneYear: { ok: true, sharpe: 0.18, maxDrawdownPct: -32, annualizedReturnPct: 3.5, annualizedVolatilityPct: 28 } } },
+      { code: "000005", risk: { oneYear: { ok: true, sharpe: 1.32, maxDrawdownPct: -9.8, annualizedReturnPct: 12.4, annualizedVolatilityPct: 11 } } }
+    ]
+  }
+};
+const requestedSharpeWrongOrderQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：可以分批买入。\n排序口径：高夏普/低回撤优先，再看买点和费用。\n结果榜：1. 000001 低夏普基金C：买点更近；2. 000005 高夏普基金C：风险收益更稳。\n1万元执行：激进1000元，均衡500元，保守先观察。",
+  workflow: "fund_recommendation",
+  userText: "推荐几个基金，按高夏普优先",
+  evidence: requestedSharpeOrderEvidence
+});
+assert(
+  requestedSharpeWrongOrderQuality.issues.includes("requested_result_sort_order_mismatch"),
+  "fund answer quality must reject result boards that state high-Sharpe priority but list a lower-Sharpe candidate first"
+);
+const requestedSharpeRightOrderQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：可以分批买入。\n排序口径：高夏普/低回撤优先，再看买点和费用。\n结果榜：1. 000005 高夏普基金C：风险收益更稳；2. 000001 低夏普基金C：买点更近但质量排后。\n1万元执行：激进1000元，均衡500元，保守先观察。",
+  workflow: "fund_recommendation",
+  userText: "推荐几个基金，按高夏普优先",
+  evidence: requestedSharpeOrderEvidence
+});
+assert(
+  !requestedSharpeRightOrderQuality.issues.includes("requested_result_sort_order_mismatch"),
+  "fund answer quality must allow result boards whose order actually follows the requested high-Sharpe priority"
+);
 const metricHeavyResultBoardQuality = manager.evaluateFundAnswerQuality({
   text: "直接结论：可以分批买入。\n排序口径：高夏普/低回撤优先，再看买点。\n结果榜：1. 000001 低位基金C：近5日+1.1%，近20日+3.3%，夏普0.9，回撤-11.3%；2. 000002 备选基金A：近5日+1.4%，近20日+3.6%，夏普0.8，回撤-12.1%。\n推荐清单：000001 第一优先，000002 第二优先。",
   workflow: "fund_recommendation",
@@ -10841,6 +10869,57 @@ const highSharpeRecommendationBlock = highSharpePriorityFallback.split("推荐�
 assert(
   !highSharpeRecommendationBlock.includes("近20日") && !highSharpeRecommendationBlock.includes("近60日") && !highSharpeRecommendationBlock.includes("250日位置"),
   "deterministic fallback recommendation details must keep only the decisive 5d/10d/120d numbers instead of a full metric dump"
+);
+const highSharpeWrongOrderAnswer = [
+  "直接结论：可以分批买入。",
+  "排序口径：高夏普/低回撤优先，再看买点和费用。",
+  "结果榜：1. 000071 买点更强低夏普基金C：买点更近；2. 000072 高夏普低回撤基金C：风险收益更稳。",
+  "推荐清单：",
+  "1. 000071 买点更强低夏普基金C：C类，5日/10日温和转强，120日位置低，建议分批买入。",
+  "2. 000072 高夏普低回撤基金C：C类，5日/10日温和转强，120日位置低，建议分批买入。",
+  "1万元执行：激进2000元以内，均衡1000元以内，保守先0元观察。"
+].join("\n");
+const highSharpeWrongOrderEvidence = {
+  marketDeepDive: {
+    ok: true,
+    selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+    candidates: [
+      {
+        ...setupDigest,
+        code: "000071",
+        name: "买点更强低夏普基金C",
+        risk: { oneYear: { ok: true, sharpe: 0.25, maxDrawdownPct: -31, annualizedReturnPct: 4, annualizedVolatilityPct: 28 } }
+      },
+      {
+        ...setupDigestSecond,
+        code: "000072",
+        name: "高夏普低回撤基金C",
+        risk: { oneYear: { ok: true, sharpe: 1.45, maxDrawdownPct: -9.6, annualizedReturnPct: 13.8, annualizedVolatilityPct: 12 } }
+      }
+    ]
+  }
+};
+const highSharpeWrongOrderQuality = manager.evaluateFundAnswerQuality({
+  text: highSharpeWrongOrderAnswer,
+  workflow: "fund_recommendation",
+  userText: "我想找回调完成低位启动的基金，按高夏普优先",
+  evidence: highSharpeWrongOrderEvidence
+});
+assert(
+  highSharpeWrongOrderQuality.issues.includes("requested_result_sort_order_mismatch"),
+  "pullback answer quality must reject result boards whose actual order ignores the requested high-Sharpe priority"
+);
+const highSharpeEnforcedOrder = await manager.enforceFundAnswerQuality({
+  text: highSharpeWrongOrderAnswer,
+  workflow: "fund_recommendation",
+  userText: "我想找回调完成低位启动的基金，按高夏普优先",
+  intent: { workflow: "fund_recommendation", mode: "pullback_setup_discovery" },
+  evidence: highSharpeWrongOrderEvidence
+});
+const highSharpeEnforcedResultLine = highSharpeEnforcedOrder.split("\n").find((line) => line.startsWith("结果榜：")) || "";
+assert(
+  highSharpeEnforcedResultLine.indexOf("000072") >= 0 && highSharpeEnforcedResultLine.indexOf("000072") < highSharpeEnforcedResultLine.indexOf("000071"),
+  "quality enforcement must rewrite wrong high-Sharpe ordering into a result board where the high-Sharpe candidate comes first"
 );
 
 const deterministicNoMainFallback = manager.buildPullbackQualityFallbackAnswer({

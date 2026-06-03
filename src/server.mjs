@@ -22830,6 +22830,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "若质检问题包含 numeric_dump_without_interpretation，必须删除大部分指标堆砌：每只基金最多保留3个最能改变动作的数字，其余改成走势、位置、触发条件和操作理由。",
       "若质检问题包含 missing_result_sort_policy，必须在直接结论后补一行“排序口径：...”，说明本次按高夏普/低回撤、主力资金/新闻逻辑、买点成立度、费用或接盘风险中的哪一项优先；推荐清单必须按这个口径排序。",
       "若质检问题包含 missing_requested_result_sort_policy，说明用户已经指定高夏普、低回撤、主力题材、费用或低位启动等优先级；必须把排序口径改成用户指定的优先级，不能换成系统默认口径。",
+      "若质检问题包含 requested_result_sort_order_mismatch，说明回答口径虽然写了用户偏好，但结果榜顺序没有按证据执行；必须按证据重新排序，例如高夏普/低回撤优先时把风险收益质量更高的基金排在前面。",
       "若质检问题包含 missing_result_first_ranking_summary，必须把回答前三行改成“直接结论：...”“排序口径：...”“结果榜：1. ...；2. ...”，先给首选顺序，再讲原因。",
       "若质检问题包含 opening_metric_dump_before_result，必须把开头的近5日/10日/20日/夏普/回撤等指标移到后文；开头只保留动作、排序口径和榜单原因。",
       "若质检问题包含 result_ranking_metric_dump，必须重写结果榜：只保留代码、名称、优先级和一句话人话理由，数字明细放到后文且每只最多3个关键数字。",
@@ -22954,6 +22955,9 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
     && requestedSortPriorities.length
     && !hasFundAnswerRequestedSortPolicy(rawText, requestedSortPriorities)) {
     issues.push("missing_requested_result_sort_policy");
+  }
+  if (hasFundAnswerRequestedSortOrderMismatch({ text: rawText, userText, evidence })) {
+    issues.push("requested_result_sort_order_mismatch");
   }
   if (shouldRequireFundAnswerResultFirstRankingSummary({ text, workflow, userText, evidence })
     && !hasFundAnswerResultFirstRankingSummary(rawText)) {
@@ -23183,6 +23187,46 @@ function getEvidenceFundCandidateCount(evidence = null) {
     ...(Array.isArray(evidence?.marketSnapshot?.fundCandidates?.preciousMetalFunds) ? evidence.marketSnapshot.fundCandidates.preciousMetalFunds : [])
   ];
   return new Set(candidates.map((item) => item?.code || item?.fundCode).filter(Boolean)).size;
+}
+
+function getEvidenceFundCandidatesForRanking(evidence = null) {
+  const fundCandidates = evidence?.marketSnapshot?.fundCandidates || {};
+  const groups = [
+    ...(Array.isArray(evidence?.marketDeepDive?.candidates) ? evidence.marketDeepDive.candidates : []),
+    ...(Array.isArray(evidence?.portfolioWatchlist) ? evidence.portfolioWatchlist : []),
+    ...(Array.isArray(fundCandidates.stockFunds) ? fundCandidates.stockFunds : []),
+    ...(Array.isArray(fundCandidates.hybridFunds) ? fundCandidates.hybridFunds : []),
+    ...(Array.isArray(fundCandidates.indexFunds) ? fundCandidates.indexFunds : []),
+    ...(Array.isArray(fundCandidates.qdiiFunds) ? fundCandidates.qdiiFunds : []),
+    ...(Array.isArray(fundCandidates.preciousMetalFunds) ? fundCandidates.preciousMetalFunds : [])
+  ];
+  const byCode = new Map();
+  for (const item of groups) {
+    const code = String(item?.code || item?.fundCode || item?.seed?.code || item?.lastSnapshot?.code || "").match(/^\d{6}$/)?.[0] || "";
+    if (!code || byCode.has(code)) continue;
+    byCode.set(code, item);
+  }
+  return byCode;
+}
+
+function hasFundAnswerRequestedSortOrderMismatch({ text = "", userText = "", evidence = null } = {}) {
+  const priorities = getRequestedFundAnswerSortPriorities(userText);
+  if (!priorities.length) return false;
+  const candidateByCode = getEvidenceFundCandidatesForRanking(evidence);
+  if (candidateByCode.size < 2) return false;
+  const recommendationSection = extractAnswerRecommendationSection(text);
+  const answerCodes = extractFundCodes(recommendationSection)
+    .filter((code) => candidateByCode.has(code));
+  if (answerCodes.length < 2) return false;
+  const rankedItems = answerCodes.map((code) => ({ code, candidate: candidateByCode.get(code) }));
+  for (let index = 0; index < rankedItems.length - 1; index += 1) {
+    const current = rankedItems[index];
+    const next = rankedItems[index + 1];
+    if (compareFundAnswerRankedCandidatesByRequestedPriority(current, next, priorities) > 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function isExplicitScoreRequest(userText = "") {
@@ -23526,6 +23570,7 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
     "missing_pullback_timing_evidence",
     "missing_pullback_share_class_fee",
     "missing_pullback_three_tier_execution",
+    "requested_result_sort_order_mismatch",
     "stale_theme_candidate_given_buy_execution",
     "stale_theme_candidate_given_buy_signal"
   ]);
@@ -34956,7 +35001,7 @@ function summarizeFundAnswerQualityIssueCategories(issues = []) {
   add(/missing_pullback_three_tier_execution/, "缺少激进/均衡/保守三档执行方案");
   add(/missing_market_data_quality_disclosure/, "公开数据源不完整但没有主动降级说明");
   add(/insufficient_chart_linked_candidates/, "图文覆盖不足：有候选却没有补足买入参考和备选观察配图");
-  add(/missing_requested_result_sort_policy/, "回答没有按用户指定优先级排序：高夏普、低回撤、主力题材或费用等偏好必须进入排序口径");
+  add(/missing_requested_result_sort_policy|requested_result_sort_order_mismatch/, "回答没有按用户指定优先级排序：高夏普、低回撤、主力题材或费用等偏好必须进入排序口径并真实改变结果顺序");
   add(/missing_result_first_ranking_summary|opening_metric_dump_before_result|result_ranking_metric_dump/, "回答开头仍不够像客户榜单：必须先给直接结论、排序口径和结果榜，再展开少量关键证据");
   add(/internal_signal_leak|raw_english_section_leak|stiff_confidence_label/, "表达仍有内部字段、英文栏目或生硬把握度，需要中文自然化");
   add(/generic_cliche_answer|risk_dump_without_decision_boundary|missing_actionable_decision/, "回答偏套话或只堆风险，缺少动作边界");
