@@ -1201,6 +1201,10 @@ const requiredPatterns = [
     message: "theme radar must treat fresh traceable main-capital news as positive capital evidence for preheat follow-through."
   },
   {
+    pattern: /(?=[\s\S]*function hasConflictingThemeCapitalOutflow[\s\S]{0,900}avgFlow[\s\S]{0,300}<= -0\.8)(?=[\s\S]*function hasPositiveThemeMainCapitalEvidence[\s\S]{0,500}hasConflictingThemeCapitalOutflow\(theme\)\) return false)(?=[\s\S]*function hasNewsMainCapitalEvidence[\s\S]{0,260}hasConflictingThemeCapitalOutflow\(theme\)\) return false)/,
+    message: "fresh news main-capital claims must not override confirmed board outflow or retreating capital evidence."
+  },
+  {
     pattern: /function scoreNewsMainCapitalConfirmation[\s\S]{0,1500}资金抢筹[\s\S]{0,900}主力资金[\s\S]{0,900}return Math\.min\(44,\s*score\)/,
     message: "theme radar must convert explicit main-capital news into a bounded capital-follow boost."
   },

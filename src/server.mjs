@@ -21364,13 +21364,24 @@ function hasPositiveThemeMainCapitalEvidence(theme = {}) {
   const avgFlow = finiteMetricNumber(theme.avgMainNetInflowPct);
   const maxFlow = finiteMetricNumber(theme.maxMainNetInflowPct);
   const minFlow = finiteMetricNumber(theme.minMainNetInflowPct);
+  if (hasConflictingThemeCapitalOutflow(theme)) return false;
   if (Number.isFinite(avgFlow) && avgFlow >= 0.5) return true;
   if (Number.isFinite(maxFlow) && maxFlow >= 1.5 && (!Number.isFinite(minFlow) || minFlow > -2)) return true;
   return hasStrongMainInflowRankSignal(theme.mainInflowRankScore) || hasNewsMainCapitalEvidence(theme);
 }
 
+function hasConflictingThemeCapitalOutflow(theme = {}) {
+  const avgFlow = finiteMetricNumber(theme.avgMainNetInflowPct);
+  const minFlow = finiteMetricNumber(theme.minMainNetInflowPct);
+  const outflowBoards = Number(theme.boardOutflowCount || 0);
+  return (Number.isFinite(avgFlow) && avgFlow <= -0.8)
+    || (Number.isFinite(minFlow) && minFlow <= -3)
+    || outflowBoards >= 2;
+}
+
 function hasNewsMainCapitalEvidence(theme = {}) {
   if (!hasTraceableFreshThemeCatalystContext(theme)) return false;
+  if (hasConflictingThemeCapitalOutflow(theme)) return false;
   const text = [
     ...(Array.isArray(theme.catalystProfile?.tags) ? theme.catalystProfile.tags : []),
     theme.catalystProfile?.summary,

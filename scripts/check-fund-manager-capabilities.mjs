@@ -6302,6 +6302,28 @@ assert.equal(
   false,
   "portfolio discipline must reject traceable preheat themes until positive main-capital evidence is present"
 );
+const conflictingOutflowMicroStarterDigest = {
+  ...microStarterDigest,
+  code: "000058",
+  name: "新闻资金冲突预热基金C",
+  seed: {
+    matchedThemes: [{
+      ...capitalEnteringDigest.seed.matchedThemes[0],
+      avgMainNetInflowPct: -1.2,
+      minMainNetInflowPct: -3.4,
+      boardOutflowCount: 2,
+      mainInflowRankScore: 32,
+      newsLogic: "主力刚进场：新闻催化：AI算力订单改善（10:10 测试快讯）；主力线索：新闻称主力净流入"
+    }]
+  }
+};
+const conflictingOutflowActionability = manager.buildFundActionabilitySignals(conflictingOutflowMicroStarterDigest);
+assert(["wait", "avoid"].includes(conflictingOutflowActionability.action), "micro-starter actionability must not buy when news main-capital claims conflict with real board outflow");
+assert.equal(
+  manager.hasPortfolioThemeMicroStarterSetup({ ...conflictingOutflowMicroStarterDigest, actionability: conflictingOutflowActionability }),
+  false,
+  "portfolio discipline must reject news-funded preheat themes when average or weakest board flow is clearly outflowing"
+);
 const rankOnlyMicroStarterDigest = {
   ...microStarterDigest,
   code: "000057",
