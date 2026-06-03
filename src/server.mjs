@@ -4038,9 +4038,11 @@ function buildPortfolioRedeploymentPlan(account = {}, watchlist = [], profiles =
   const cashLikePct = totalAsset > 0 && Number.isFinite(cash + receivableCash) ? (cash + receivableCash) / totalAsset * 100 : null;
   const pendingBuyPct = totalAsset > 0 && Number.isFinite(pendingBuy) ? pendingBuy / totalAsset * 100 : null;
   const accountBudget = buildPortfolioAccountRiskBudget(account);
+  const redeploymentCashTriggerPct = finiteNumberOr(process.env.PORTFOLIO_REDEPLOYMENT_CASH_TRIGGER_PCT, 60);
+  const redeploymentMaxPositionPct = finiteNumberOr(process.env.PORTFOLIO_REDEPLOYMENT_MAX_POSITION_PCT, 35);
   const pressureActive = Number.isFinite(cashPct)
-    && cashPct >= 60
-    && (!Number.isFinite(positionWeightPct) || positionWeightPct <= 10)
+    && cashPct >= redeploymentCashTriggerPct
+    && (!Number.isFinite(positionWeightPct) || positionWeightPct <= redeploymentMaxPositionPct)
     && (!Number.isFinite(pendingBuyPct) || pendingBuyPct <= 3)
     && !accountBudget.blockNewBuys;
   const profileByCode = new Map((profiles || []).filter((profile) => profile?.code).map((profile) => [profile.code, profile]));
@@ -4126,8 +4128,8 @@ function buildPortfolioRedeploymentPlan(account = {}, watchlist = [], profiles =
   const executableCount = candidates.filter((item) => ["verified_buy", "starter_buy", "theme_micro_starter"].includes(item.redeploymentAction)).length;
   const summary = pressureActive
     ? executableCount
-      ? `现金${formatFallbackPct(cashPct)}且低仓位，发现${executableCount}只可小仓再部署候选。`
-      : `现金${formatFallbackPct(cashPct)}且低仓位，但候选仍缺关键触发条件，必须写清前三个缺口。`
+      ? `现金${formatFallbackPct(cashPct)}且仓位不高，发现${executableCount}只可小仓再部署候选。`
+      : `现金${formatFallbackPct(cashPct)}且仓位不高，但候选仍缺关键触发条件，必须写清前三个缺口。`
     : "现金/仓位/回撤预算暂未触发强制再部署。";
   return {
     pressureActive,

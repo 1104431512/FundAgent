@@ -2249,6 +2249,10 @@ const requiredPatterns = [
     message: "portfolio redeployment plan must force high-cash low-exposure portfolios to review starter buys with realtime valuation evidence."
   },
   {
+    pattern: /function buildPortfolioRedeploymentPlan[\s\S]{0,950}PORTFOLIO_REDEPLOYMENT_CASH_TRIGGER_PCT[\s\S]{0,360}PORTFOLIO_REDEPLOYMENT_MAX_POSITION_PCT[\s\S]{0,520}positionWeightPct\) \|\| positionWeightPct <= redeploymentMaxPositionPct/,
+    message: "portfolio redeployment plan must activate for high-cash moderate-exposure accounts, not only near-empty portfolios."
+  },
+  {
     pattern: /function buildPortfolioMissedFollowThroughReviewQueue[\s\S]{0,2200}findPortfolioBacktestMissedFollowThroughCandidates[\s\S]{0,2200}小仓试探 \/ 主动降级 \/ 明确复查时间/,
     message: "portfolio decisions must expose missed follow-through candidates as a concrete review queue."
   },

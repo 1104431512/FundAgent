@@ -1651,15 +1651,13 @@ const staleLiquidatedEquityBrief = manager.summarizePortfolioEquityBrief({
 });
 assert.equal(staleLiquidatedEquityBrief.investedCostBasis, 30002.28, "equity history summaries must retain the actual invested denominator after full liquidation");
 assert.equal(staleLiquidatedEquityBrief.cumulativePnlPct, 7.44, "equity history summaries must repair stale 0% invested-cost returns after full liquidation");
-assert.equal(
-  manager.buildPortfolioRedeploymentPlan(
-    { totalAsset: 100000, cash: 70000, investedValue: 30000, positionWeightPct: 0, riskBudget: { blockNewBuys: false } },
-    [],
-    []
-  ).pressureActive,
-  false,
-  "redeployment pressure must not mistake stale 0% stored weights for a truly empty portfolio"
+const staleZeroWeightRedeploymentPlan = manager.buildPortfolioRedeploymentPlan(
+  { totalAsset: 100000, cash: 70000, investedValue: 30000, positionWeightPct: 0, riskBudget: { blockNewBuys: false } },
+  [],
+  []
 );
+assert.equal(staleZeroWeightRedeploymentPlan.account.positionWeightPct, 30, "redeployment pressure must derive actual exposure when stored position weight is stale 0%");
+assert.equal(staleZeroWeightRedeploymentPlan.pressureActive, true, "high cash with only moderate actual exposure must still trigger redeployment review instead of passive waiting");
 const runtimeDiagnostics = manager.buildRuntimeDiagnostics({
   counters: {
     modelCalls: 100,
@@ -5243,6 +5241,18 @@ const redeploymentPlan = manager.buildPortfolioRedeploymentPlan(redeploymentAcco
 assert.equal(redeploymentPlan.pressureActive, true, "redeployment plan must activate when high cash and flat exposure persist");
 assert.equal(redeploymentPlan.candidates[0].redeploymentAction, "starter_buy", "redeployment plan must surface eligible starter buys instead of generic waiting");
 assert(redeploymentPlan.candidates[0].realtimeEvidence.includes("实时估算"), "redeployment plan must carry near-real-time valuation evidence into the decision prompt");
+const moderateExposureRedeploymentPlan = manager.buildPortfolioRedeploymentPlan(
+  {
+    ...redeploymentAccount,
+    cash: 70000,
+    investedValue: 30550,
+    positionWeightPct: 30.55
+  },
+  redeploymentWatchlist,
+  [starterSetupProfile]
+);
+assert.equal(moderateExposureRedeploymentPlan.pressureActive, true, "redeployment plan must still activate at about 70% cash and 30% exposure so the manager does not sit idle for weeks");
+assert.equal(moderateExposureRedeploymentPlan.candidates[0].redeploymentAction, "starter_buy", "moderate-exposure redeployment must push qualified low-position candidates into starter review");
 const tinyFundRedeploymentPlan = manager.buildPortfolioRedeploymentPlan(
   redeploymentAccount,
   [{ ...redeploymentWatchlist[0], code: "000021", name: "低位小规模基金C" }],
