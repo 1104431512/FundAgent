@@ -1633,6 +1633,18 @@ const requiredPatterns = [
     message: "pullback/setup candidate fetching must call the combined radar and playbook keyword entrypoint."
   },
   {
+    pattern: /searchKeywords:\s*preferPullbackSetup[\s\S]{0,180}inferPullbackSetupCandidateSearchKeywords\(userText,\s*relevantThemeRadar,\s*scopedMarketSnapshot\)/,
+    message: "market deep dives must expose the combined pullback setup search keywords used for playbook-driven candidate recall."
+  },
+  {
+    pattern: /(?=[\s\S]*function buildPullbackQualityFallbackAnswer)(?=[\s\S]*const evidenceRecoveryLine = buildPullbackFallbackEvidenceRecoveryLine\(deepDive,\s*userText\))(?=[\s\S]*evidenceRecoveryLine,)/,
+    message: "no-main pullback fallbacks must tell users which playbook keywords and carrier anchors will be used to recover evidence."
+  },
+  {
+    pattern: /function buildPullbackFallbackEvidenceRecoveryLine[\s\S]{0,700}补证据路径[\s\S]{0,240}前十大持仓或指数名称能承载题材/,
+    message: "pullback evidence recovery lines must name the next search keywords and carrier-holding verification requirement."
+  },
+  {
     pattern: /(?=[\s\S]*function evaluatePullbackAnswerDiscipline[\s\S]{0,600}shouldRequireThemeOpportunityBackingForDeepDive\(deepDive\)[\s\S]{0,500}classifyPullbackSetupCandidateForSummary\(candidate,\s*\{\s*requireThemeOpportunityBacking\s*\}\))(?=[\s\S]*function buildPullbackQualityFallbackAnswer[\s\S]{0,1200}classifyPullbackSetupCandidateForSummary\(candidate,\s*\{[\s\S]{0,220}shouldRequireThemeOpportunityBackingForDeepDive\(deepDive\))/,
     message: "answer quality and deterministic fallback must pass deepDive-level theme-playbook requirements into pullback candidate bucketing."
   },

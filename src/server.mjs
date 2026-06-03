@@ -24030,6 +24030,7 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
     const evidenceLine = Number.isFinite(Number(hottest.return20dPct)) || Number.isFinite(Number(hottest.return60dPct))
       ? `候选池里偏热样本的近20日约${formatFallbackPct(hottest.return20dPct)}、近60日约${formatFallbackPct(hottest.return60dPct)}，不符合“回调完成后低位启动”。`
       : "候选池没有同时满足回调完成、低位修复和不过热的标的。";
+    const evidenceRecoveryLine = buildPullbackFallbackEvidenceRecoveryLine(deepDive, userText);
     const watchLines = watch.map((item, index) =>
       `${index + 1}. ${formatPullbackFallbackWatchCandidate(item.candidate, { requireThemeOpportunityBacking })}`
     );
@@ -24038,6 +24039,7 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
       `排序口径：${sortPolicy}；出现旧题材、主力撤离或接盘风险时先剔除，不进入可买榜。`,
       "结果榜：暂无合格主推荐；观察池只按复核顺序排，不给买入金额。",
       `原因：${evidenceLine}`,
+      evidenceRecoveryLine,
       catchdownLine,
       ...(watchLines.length ? ["", "观察池（不是主推荐）：", ...watchLines] : []),
       "",
@@ -24073,6 +24075,14 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
       ? "接盘风险边界：旧催化、主力撤离或底层持仓走弱的候选一律不做验证仓，等资金回流和新鲜催化同时出现后再复核。"
       : "决策边界：若近20日涨幅继续快速扩大，或近60日收益进入偏热区间，暂停买入并等下一次回撤确认。"
   ].filter(Boolean).join("\n");
+}
+
+function buildPullbackFallbackEvidenceRecoveryLine(deepDive = {}, userText = "") {
+  const keywords = normalizeStringArray(deepDive.searchKeywords)
+    .filter((item) => !isPreciousMetalKeyword(item) || isPreciousMetalQuestion(userText))
+    .slice(0, 6);
+  if (!keywords.length) return "";
+  return `补证据路径：下一轮优先按 ${keywords.join(" / ")} 找代表基金；必须同时核验当前题材仍有主力/新闻支撑、前十大持仓或指数名称能承载题材，再看5日/10日是否温和转强。`;
 }
 
 function buildThemePlaybookQualityFallbackAnswer({ workflow, userText, evidence, issues = [] } = {}) {
@@ -28969,7 +28979,7 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
     themeOpportunityRequirement,
     requireThemeOpportunityBacking,
     searchKeywords: preferPullbackSetup
-      ? inferPullbackSetupSearchKeywords(userText, relevantThemeRadar)
+      ? inferPullbackSetupCandidateSearchKeywords(userText, relevantThemeRadar, scopedMarketSnapshot)
       : inferFocusedFundSearchKeywords(userText),
     selectionDiscipline: preferPullbackSetup ? "prefer_pullback_complete_launch_setup_not_chase" : "balanced_theme_relevance",
     selectedCodes: selectedForDive.map((item) => item.code),

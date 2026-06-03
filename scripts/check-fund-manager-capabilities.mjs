@@ -11399,6 +11399,20 @@ assert(deterministicNoMainFallback.includes("还差：回调完成/启动前夜�
 assert(deterministicNoMainFallback.includes("近60日+36.64%偏热"), "no-main fallback must surface concrete overheat evidence for rejected candidates");
 assert(!deterministicNoMainFallback.includes("推荐清单："), "no-main fallback must not create a recommendation section");
 assert(!/000003.{0,40}(?:买入|分批|配置)\d+/s.test(deterministicNoMainFallback), "no-main fallback must not assign buy amounts to rejected candidates");
+const noMainPlaybookRecoveryFallback = manager.buildPullbackQualityFallbackAnswer({
+  userText: setupQuery,
+  issues: noQualifiedQuality.issues,
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      searchKeywords: ["低空经济", "飞行汽车", "万丰奥威", "中信海直"],
+      candidates: [{ ...hotDigest, code: "000003", name: "追涨观察基金A" }]
+    }
+  }
+});
+assert(noMainPlaybookRecoveryFallback.includes("补证据路径：下一轮优先按 低空经济 / 飞行汽车 / 万丰奥威 / 中信海直 找代表基金"), "no-main fallback must show the playbook-driven evidence recovery path instead of only saying wait");
+assert(noMainPlaybookRecoveryFallback.includes("前十大持仓或指数名称能承载题材"), "evidence recovery path must tell the manager to verify carrier holdings before buying");
 const unconfirmedOldRadarFallback = manager.buildPullbackQualityFallbackAnswer({
   userText: setupQuery,
   issues: ["watch_candidate_given_buy_execution"],
