@@ -2408,6 +2408,16 @@ const missedThemeMomentumDecision = manager.ensurePortfolioMissedFollowThroughRe
 assert.equal(missedThemeMomentumDecision.actions[0].action, "BUY", "missed theme momentum guard must inject a BUY review for executable preheat setups");
 assert.equal(missedThemeMomentumDecision.actions[0].targetWeightPct, 1.2, "missed theme momentum guard must cap injected reviews at the micro-starter size");
 assert(missedThemeMomentumDecision.actions[0].rotationCheck.includes("低空经济") || missedThemeMomentumDecision.actions[0].rotationCheck.includes("题材预热"), "missed theme momentum guard must carry the theme/news logic into the action");
+assert(
+  missedThemeMomentumDecision.actions[0].reason.includes("为什么动")
+    && missedThemeMomentumDecision.actions[0].reason.includes("10:18")
+    && missedThemeMomentumDecision.actions[0].reason.includes("微型试探"),
+  "missed theme momentum guard must put the concrete news/current-event logic directly in the customer-visible action reason"
+);
+assert(
+  missedThemeMomentumDecision.actions[0].dataBasis.includes("来源：portfolio_missed_theme_momentum_guard"),
+  "missed theme momentum guard must keep a traceable source for injected micro-starter reviews"
+);
 const missedThemeMomentumPerformance = manager.buildPortfolioManagerPerformanceStats(missedThemeMomentumFixture);
 assert(
   missedThemeMomentumPerformance.recentReviews.some((item) =>

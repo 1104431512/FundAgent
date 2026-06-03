@@ -4656,6 +4656,9 @@ function ensurePortfolioMissedFollowThroughReviewed(decision = {}, db = {}) {
     const themeMomentum = candidate.opportunityKind === "theme_momentum";
     const canProbe = Boolean(candidate.themeMicroStarter) || candidate.status === "ready" || Number(candidate.readinessScore || 0) >= 85;
     const targetWeightPct = canProbe ? candidate.themeMicroStarter ? 1.2 : 1.5 : 0;
+    const themeWhyMove = themeMomentum && candidate.newsLogic
+      ? `为什么动：${shortenPortfolioCustomerText(candidate.newsLogic, 88)}；`
+      : "";
     nextActions.push({
       action: canProbe ? "BUY" : "WATCH",
       code: candidate.code,
@@ -4664,9 +4667,11 @@ function ensurePortfolioMissedFollowThroughReviewed(decision = {}, db = {}) {
       targetWeightPct,
       reason: canProbe
         ? themeMomentum
-          ? `系统主力预热机会成本复核：${candidate.themeName || "相关题材"} 有新闻/资金逻辑，${candidate.name || candidate.code} 等待后继续走强；本轮只给1.2%以内微型试探，而不是继续笼统观望。`
+          ? `系统主力预热机会成本复核：${candidate.themeName || "相关题材"} ${themeWhyMove}${candidate.name || candidate.code} 等待后继续走强；本轮只给1.2%以内微型试探，而不是继续笼统观望。`
           : `系统机会成本复核：${candidate.name || candidate.code} 等待后继续走强，若费用和净值复核通过，本轮应给1.5%以内小仓试探，而不是继续笼统观望。`
-        : `系统机会成本复核：${candidate.name || candidate.code} 等待后继续走强，但本轮仍需主动降级或写清复查时间；${candidate.firstTrigger || "触发条件未补齐"}。`,
+        : themeMomentum
+          ? `系统主力预热机会成本复核：${candidate.themeName || "相关题材"} ${themeWhyMove}${candidate.name || candidate.code} 等待后继续走强，但本轮仍需主动降级或写清复查时间；${candidate.firstTrigger || "触发条件未补齐"}。`
+          : `系统机会成本复核：${candidate.name || candidate.code} 等待后继续走强，但本轮仍需主动降级或写清复查时间；${candidate.firstTrigger || "触发条件未补齐"}。`,
       rotationCheck: themeMomentum
         ? candidate.newsLogic || "只跟随主力刚进场或题材预热，必须能解释大涨背后的新闻/资金逻辑。"
         : "只处理低位/回调后继续转强的候选，不因新闻热度追高。",

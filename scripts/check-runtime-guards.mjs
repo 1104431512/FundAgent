@@ -2265,6 +2265,10 @@ const requiredPatterns = [
     message: "portfolio decisions must inject capped micro-starter reviews for missed main-capital/preheat opportunities."
   },
   {
+    pattern: /function ensurePortfolioMissedFollowThroughReviewed[\s\S]{0,900}themeWhyMove[\s\S]{0,900}为什么动[\s\S]{0,1300}系统主力预热机会成本复核[\s\S]{0,900}微型试探/,
+    message: "missed main-capital/preheat review actions must show the why-move news logic in the customer-visible reason."
+  },
+  {
     pattern: /function hasVerifiedThemeCarrierEvidence[\s\S]{0,1800}matchedThemeHoldings[\s\S]{0,900}isExplicitThemeIndexVehicle/,
     message: "portfolio theme micro-starters must verify that the representative fund actually carries the live theme through holdings or a specific index/ETF vehicle."
   },
