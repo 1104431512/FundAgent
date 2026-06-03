@@ -3609,8 +3609,8 @@ const requiredPatterns = [
     message: "portfolio theme opportunity guard must inject customer-readable why-move, capital/theme, and representative-fund logic into actions."
   },
   {
-    pattern: /(?=[\s\S]*function ensurePortfolioThemeRepresentativeRecallAction)(?=[\s\S]*theme_representative_recall)(?=[\s\S]*主力预热代表基金召回)(?=[\s\S]*前十大持仓)(?=[\s\S]*补齐前买入金额为0元)/,
-    message: "portfolio theme opportunity guard must inject a 0-yuan representative-fund recall action when live main-capital/preheat themes lack usable carriers."
+    pattern: /(?=[\s\S]*function ensurePortfolioThemeRepresentativeRecallAction)(?=[\s\S]*theme_representative_recall)(?=[\s\S]*主力预热代表基金召回)(?=[\s\S]*代表基金搜索词)(?=[\s\S]*承载锚点)(?=[\s\S]*至少补3只)(?=[\s\S]*function collectPortfolioThemeRepresentativeExpansionKeywords)(?=[\s\S]*function collectPortfolioThemeRepresentativeCarrierAnchors)/,
+    message: "portfolio theme opportunity guard must inject a 0-yuan representative-fund recall action with search terms, carrier anchors, and at least three candidates per live theme."
   },
   {
     pattern: /function buildPortfolioRankingBoard[\s\S]{0,240000}buildPortfolioStaleCatchdownRiskRanking\(watchlist\)[\s\S]{0,240000}function buildPortfolioStaleCatchdownRiskRanking[\s\S]{0,2000}stale_catchdown_risk[\s\S]{0,2000}接盘风险榜[\s\S]{0,2000}表面回调/,

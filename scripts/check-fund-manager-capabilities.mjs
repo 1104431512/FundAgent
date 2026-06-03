@@ -1033,7 +1033,11 @@ assert(
   "capability diagnostics must surface live main-capital/preheat themes that lack representative funds in the watchlist"
 );
 assert(
-  manager.buildPortfolioCapabilityActionQueue(themeRepresentativeGapDb).some((item) => item.action.includes("代表基金候选") && item.action.includes("前十大持仓")),
+  manager.buildPortfolioCapabilityDiagnostics(themeRepresentativeGapDb).items.some((item) => item.label === "主力预热代表基金缺口" && item.note.includes("至少扩充3只")),
+  "capability diagnostics must require multiple representative candidates instead of accepting a single fragile fund shell"
+);
+assert(
+  manager.buildPortfolioCapabilityActionQueue(themeRepresentativeGapDb).some((item) => item.action.includes("代表基金候选") && item.action.includes("至少补3只") && item.action.includes("前十大持仓")),
   "capability action queue must turn missing theme representatives into concrete candidate expansion work"
 );
 const themeRepresentativeRecallDecision = manager.ensurePortfolioThemeOpportunityReviewed(
@@ -1049,6 +1053,16 @@ assert(
   /低空经济|代表基金|为什么动|前十大持仓|费用|追涨风险/.test(themeRepresentativeRecallAction?.reason || "")
     && themeRepresentativeRecallAction?.dataBasis?.some((item) => item.includes("theme_representative_recall")),
   "theme representative recall actions must explain live theme logic, representative-fund gaps, and traceable data basis"
+);
+assert(
+  themeRepresentativeRecallAction?.reason?.includes("搜索词")
+    && themeRepresentativeRecallAction?.reason?.includes("承载锚点")
+    && themeRepresentativeRecallAction?.reason?.includes("至少扩充3只")
+    && themeRepresentativeRecallAction?.positionCheck?.includes("优先搜索")
+    && themeRepresentativeRecallAction?.riskControl?.includes("至少补3只")
+    && themeRepresentativeRecallAction?.dataBasis?.some((item) => item.includes("代表基金搜索词"))
+    && themeRepresentativeRecallAction?.dataBasis?.some((item) => item.includes("承载锚点")),
+  "theme representative recall must carry concrete search terms, carrier anchors, and a three-candidate expansion requirement"
 );
 assert(
   themeRepresentativeRecallDecision.learningNotes.some((item) => item.includes("召回代表基金"))
