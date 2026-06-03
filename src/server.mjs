@@ -28933,7 +28933,7 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
   for (let roundIndex = 0; preferPullbackSetup
     && backfillLimit
     && roundIndex < backfillRounds
-    && !hasQualifiedPullbackMainCandidate(candidates); roundIndex += 1) {
+    && !hasQualifiedPullbackMainCandidate(candidates, { requireThemeOpportunityBacking }); roundIndex += 1) {
     const nextBackfill = selectPullbackBackfillCandidates(merged, selectedForDive, backfillLimit);
     if (!nextBackfill.length) break;
     backfillSelected = [...backfillSelected, ...nextBackfill];
@@ -29042,8 +29042,12 @@ async function fetchMarketResearchDigests(candidates = []) {
   }));
 }
 
-function hasQualifiedPullbackMainCandidate(candidates = []) {
-  return (candidates || []).some((candidate) => classifyPullbackSetupCandidateForSummary(candidate) === "main_candidate");
+function hasQualifiedPullbackMainCandidate(candidates = [], options = {}) {
+  return (candidates || []).some((candidate) =>
+    classifyPullbackSetupCandidateForSummary(candidate, {
+      requireThemeOpportunityBacking: Boolean(options.requireThemeOpportunityBacking)
+    }) === "main_candidate"
+  );
 }
 
 function isPullbackSetupRequest(text) {
@@ -37314,6 +37318,7 @@ export {
   hasPortfolioStarterBuySetup,
   hasPortfolioThemeMicroStarterSetup,
   hasStaleThemeCatchdownRisk,
+  hasQualifiedPullbackMainCandidate,
   hasVerifiedThemeCarrierEvidence,
   ensurePortfolioHeldPositionsReviewed,
   ensurePortfolioMissedFollowThroughReviewed,

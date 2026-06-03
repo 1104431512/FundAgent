@@ -11083,6 +11083,16 @@ const secondBackfillBatch = manager.selectPullbackBackfillCandidates([
   ...firstBackfillBatch
 ], 1);
 assert.deepEqual(secondBackfillBatch.map((item) => item.code), ["000103"], "pullback backfill must support another round instead of stopping after one miss");
+assert.equal(
+  manager.hasQualifiedPullbackMainCandidate([{ ...setupDigest, code: "000104", name: "纯走势未带题材基金C", themeOpportunityRequirement: "", seed: {} }], { requireThemeOpportunityBacking: true }),
+  false,
+  "pullback backfill stop condition must not treat pure NAV-curve setups as qualified when the deep dive requires current theme backing"
+);
+assert.equal(
+  manager.hasQualifiedPullbackMainCandidate([playbookOpportunityOnlyDigest], { requireThemeOpportunityBacking: true }),
+  true,
+  "pullback backfill stop condition should stop once a playbook-backed carrier is truly qualified"
+);
 
 const promotedWatchQuality = manager.evaluateFundAnswerQuality({
   text: [

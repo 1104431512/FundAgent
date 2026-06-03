@@ -545,6 +545,14 @@ const requiredPatterns = [
     message: "pullback/setup backfill must exclude already tested products while continuing the search."
   },
   {
+    pattern: /hasQualifiedPullbackMainCandidate\(candidates,\s*\{\s*requireThemeOpportunityBacking\s*\}\)/,
+    message: "pullback/setup backfill must use deepDive-level current-theme requirements before deciding a main candidate is qualified."
+  },
+  {
+    pattern: /function hasQualifiedPullbackMainCandidate\(candidates = \[\],\s*options = \{\}\)[\s\S]{0,520}requireThemeOpportunityBacking:\s*Boolean\(options\.requireThemeOpportunityBacking\)/,
+    message: "qualified pullback main-candidate checks must pass current-theme requirements into candidate bucketing."
+  },
+  {
     pattern: /FEISHU_REPORT_TREND_IMAGE_LIMIT\s*\|\|\s*12/,
     message: "fund report image defaults should show a broad buy and backup chart set when available."
   },
