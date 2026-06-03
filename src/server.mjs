@@ -3944,6 +3944,10 @@ function buildPortfolioDecisionReadinessQueue(watchlist = [], profiles = []) {
     .map((item) => {
       const profile = profileByCode.get(item.code) || item.lastSnapshot || null;
       const readiness = evaluatePortfolioWatchReadiness(item, profile);
+      const riskGate = resolvePortfolioPositiveWatchRankingGate({
+        ...item,
+        lastSnapshot: profile || item.lastSnapshot
+      });
       return {
         code: item.code,
         name: item.name,
@@ -3953,10 +3957,11 @@ function buildPortfolioDecisionReadinessQueue(watchlist = [], profiles = []) {
         readinessLabel: readiness.label,
         reason: item.reason,
         firstTrigger: item.buyTriggers?.[0] || "",
-        firstRisk: item.riskNotes?.[0] || "",
+        firstRisk: riskGate.ok ? item.riskNotes?.[0] || "" : riskGate.reason,
         positionPlan: item.positionPlan || "",
         trendEvidence: profile ? formatPortfolioSeedVerifiedTrendEvidence(profile) : item.lastSnapshot?.trendSummary || "",
-        readinessGaps: readiness.gaps,
+        readinessGaps: riskGate.ok ? readiness.gaps : mergeStringLists([riskGate.reason], readiness.gaps),
+        positiveRankingGate: riskGate.ok ? "通过" : "接盘/追涨风险未解除，不能进入买入准备或低位启动主推荐。",
         feeNotes: item.feeNotes || [],
         reviewDate: item.reviewDate || ""
       };
@@ -10762,7 +10767,10 @@ function buildPortfolioBuyPreparationRanking(watchlist = []) {
   const items = watchlist
     .filter((item) => ["ready", "waiting_pullback"].includes(item.status))
     .map((item) => {
-      const readinessScore = Number(item.readinessScore || 0);
+      const riskGate = resolvePortfolioPositiveWatchRankingGate(item);
+      if (!riskGate.ok) return null;
+      const readiness = evaluatePortfolioWatchReadiness(item, item.lastSnapshot || null);
+      const readinessScore = Number(readiness.score || item.readinessScore || 0);
       const highReadiness = readinessScore >= 85;
       const mediumReadiness = readinessScore >= 60;
       return buildRankingItemFromWatch(item, {
@@ -10770,12 +10778,14 @@ function buildPortfolioBuyPreparationRanking(watchlist = []) {
         action: highReadiness ? "买入复核" : mediumReadiness ? "触发复核" : "补证据",
         reason: highReadiness
           ? "买入准备度较高，适合进入金额和触发条件复核。"
-          : selectPortfolioRankingFirstText(item.readinessGaps, item.buyTriggers, item.reason) || "方向可跟踪，但还需要补齐买点证据。",
+          : selectPortfolioRankingFirstText(readiness.gaps, item.readinessGaps, item.buyTriggers, item.reason) || "方向可跟踪，但还需要补齐买点证据。",
+        gaps: readiness.gaps,
         nextStep: highReadiness
           ? "复核金额、份额类别和15:00前交易规则，再决定小仓或分批。"
           : "等待缺口消失后再升级，避免把备选误当成买入。"
       });
     })
+    .filter(Boolean)
     .sort(compareRankingItems)
     .slice(0, 6);
   return buildPortfolioRankingList({
@@ -10792,6 +10802,7 @@ function buildPortfolioLaunchSetupRanking(watchlist = []) {
   const items = watchlist
     .filter((item) => isLowBaseLaunchWatchSeed(item))
     .filter((item) => !["blocked", "removed", "in_position"].includes(item.status))
+    .filter((item) => resolvePortfolioPositiveWatchRankingGate(item).ok)
     .map((item) => buildRankingItemFromWatch(item, {
       score: Number(item.readinessScore || 0) + 8 - Number(item.priority || 3),
       action: "启动前夜复核",
@@ -10843,12 +10854,13 @@ function buildPortfolioCashRedeploymentRanking(db = {}, watchlist = []) {
 function buildPortfolioCashRedeploymentRankingItem(item = {}, context = {}) {
   const readinessScore = Number(item.readinessScore || 0);
   const trend = item.lastSnapshot?.trendProfile || {};
+  const riskGate = resolvePortfolioPositiveWatchRankingGate(item);
   const return20d = finiteMetricNumber(trend.return20dPct);
   const low120 = finiteMetricNumber(trend.lowPositionPct120);
   const themeSupportGap = getPortfolioWatchThemeSupportGap(item);
   const highChase = hasHighChaseTheme(item.lastSnapshot || item)
     || (Number.isFinite(return20d) && return20d > 12 && Number.isFinite(low120) && low120 > 80);
-  if (highChase || item.status === "blocked" || themeSupportGap) return null;
+  if (!riskGate.ok || highChase || item.status === "blocked" || themeSupportGap) return null;
   const ready = item.status === "ready" && readinessScore >= 80;
   const starter = item.status === "ready" || readinessScore >= 60;
   if (!starter) return null;
@@ -12153,6 +12165,54 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
     },
     status: "warning"
   });
+}
+
+function resolvePortfolioPositiveWatchRankingGate(item = {}) {
+  const evidence = resolvePortfolioChaseRiskEvidence(item);
+  const themeSupportGap = getPortfolioWatchThemeSupportGap(item);
+  const hardCatchdown = Boolean(
+    evidence.holdingRealtimeCatchdownRisk
+    || evidence.staleThemeRefreshRisk
+    || evidence.staleCatchdownRisk
+    || evidence.staleCatalystRisk
+    || evidence.themeRetreatRisk
+    || evidence.unsupportedHoldingThemeRisk
+    || themeSupportGap
+  );
+  const chaseOnly = Boolean(evidence.shouldSurface && Number(evidence.score || 0) >= 20);
+  if (!hardCatchdown && !chaseOnly) {
+    return {
+      ok: true,
+      reason: "",
+      evidence,
+      facts: []
+    };
+  }
+  const firstFact = selectPortfolioRankingFirstText(
+    themeSupportGap,
+    evidence.holdingRealtimeWarning,
+    evidence.holdingThemeSupportGap,
+    evidence.staleThemeRefreshWarnings,
+    evidence.staleCatalystWarnings,
+    evidence.staleThemeWarnings,
+    evidence.themeRetreatWarnings,
+    evidence.themeRisk,
+    evidence.hotEvidence
+  );
+  const reason = hardCatchdown
+    ? `正向买入门禁拦截：${firstFact || "旧题材、主力撤离或底层持仓走弱风险未解除"}，不能进入买入准备、低位启动或现金再部署。`
+    : `正向买入门禁拦截：${firstFact || "追涨风险未解除"}，先去追涨风险榜复核，不能进入买入准备。`;
+  return {
+    ok: false,
+    hardCatchdown,
+    chaseOnly,
+    reason,
+    evidence,
+    facts: buildPortfolioChaseRiskFacts(evidence).slice(0, 5),
+    nextStep: hardCatchdown
+      ? "先放入接盘风险榜或数据补证；等新鲜催化、主力资金回流和代表持仓止跌后，才允许恢复买入复核。"
+      : "先等短期涨幅降温、位置回落或健康回撤后，再恢复买入准备复核。"
+  };
 }
 
 function buildPortfolioChaseRiskRankingItem(item = {}) {

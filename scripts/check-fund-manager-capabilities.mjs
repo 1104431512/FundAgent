@@ -7483,18 +7483,40 @@ const staleCatchdownRanking = manager.buildPortfolioStaleCatchdownRiskRanking([{
 }]);
 assert(staleCatchdownRanking.items.some((item) => item.code === "000042" && item.action.includes("接盘")), "stale catchdown risk ranking must expose retreating-theme pullbacks as a separate no-buy risk");
 assert(staleCatchdownRanking.items[0]?.decision?.gaps.some((item) => item.includes("主力资金回流")), "stale catchdown risk ranking must require capital-flow recovery before any buy review");
-const staleCatchdownBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
+const staleCatchdownBoardDb = manager.normalizePortfolioDb({
   account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
   watchlist: [{
     code: "000042",
     name: "退潮回调接盘基金C",
     status: "ready",
     readinessScore: 86,
+    candidateRole: "低位启动前夜候选",
+    setupEvidence: ["低位启动前夜候选", "净值回调完成但题材退潮，必须先等主力资金回流。"],
+    dataBasis: ["low_base_turn_scan"],
     lastSnapshot: staleCatchdownDigest
   }]
-}));
+});
+const staleCatchdownBoard = manager.buildPortfolioRankingBoard(staleCatchdownBoardDb);
 assert(staleCatchdownBoard.lists.find((item) => item.id === "stale_catchdown_risk")?.items.some((item) => item.code === "000042"), "manager ranking board must include a dedicated stale-catchdown risk lane");
 assert(staleCatchdownBoard.priorityQueue.some((item) => item.code === "000042" && item.listId === "stale_catchdown_risk"), "priority queue must put stale-catchdown risk ahead of ordinary watch review");
+assert(
+  !staleCatchdownBoard.lists.find((item) => item.id === "buy_preparation")?.items.some((item) => item.code === "000042"),
+  "positive buy-preparation ranking must exclude high-readiness pullbacks when stale-theme catchdown risk is active"
+);
+assert(
+  !staleCatchdownBoard.lists.find((item) => item.id === "launch_setup")?.items.some((item) => item.code === "000042"),
+  "low-base launch ranking must not present stale-theme catchdown candidates as ready-to-launch funds"
+);
+assert(
+  !staleCatchdownBoard.lists.find((item) => item.id === "cash_redeployment")?.items.some((item) => item.code === "000042"),
+  "cash redeployment ranking must not use stale-theme pullbacks to solve high-cash pressure"
+);
+const staleCatchdownReadinessQueue = manager.buildPortfolioDecisionReadinessQueue(staleCatchdownBoardDb.watchlist);
+assert(
+  staleCatchdownReadinessQueue[0]?.positiveRankingGate?.includes("接盘/追涨风险未解除")
+    && staleCatchdownReadinessQueue[0].firstRisk.includes("正向买入门禁拦截"),
+  "model readiness queue must carry a hard no-buy gate for stale-theme pullbacks instead of only exposing a high ready status"
+);
 assert(!(staleCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "000042"), "customer action deck must not place stale catchdown candidates in buy-review");
 assert((staleCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000042"), "customer action deck must present stale catchdown candidates as no-buy/avoid items");
 const staleCatchdownAvoidCard = staleCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "avoid");

@@ -1257,6 +1257,14 @@ const requiredPatterns = [
     message: "customer decision summaries must put catchdown avoidance before buy review when stale-theme pullbacks are present."
   },
   {
+    pattern: /(?=[\s\S]*function resolvePortfolioPositiveWatchRankingGate)(?=[\s\S]*正向买入门禁拦截)(?=[\s\S]*function buildPortfolioBuyPreparationRanking[\s\S]{0,900}resolvePortfolioPositiveWatchRankingGate)(?=[\s\S]*function buildPortfolioLaunchSetupRanking[\s\S]{0,900}resolvePortfolioPositiveWatchRankingGate)(?=[\s\S]*function buildPortfolioCashRedeploymentRankingItem[\s\S]{0,900}resolvePortfolioPositiveWatchRankingGate)/,
+    message: "positive portfolio rankings must use the stale-catchdown gate before surfacing buy-preparation, launch-setup, or cash-redeployment candidates."
+  },
+  {
+    pattern: /function buildPortfolioDecisionReadinessQueue[\s\S]{0,1200}resolvePortfolioPositiveWatchRankingGate[\s\S]{0,1200}positiveRankingGate/,
+    message: "model readiness queues must carry the same positive-ranking no-buy gate so stale-theme pullbacks are not shown as merely high-readiness candidates."
+  },
+  {
     pattern: /(?=[\s\S]*function buildPortfolioRankingCustomerActionDeck[\s\S]*hasMainForceBuy)(?=[\s\S]*主力预热复核优先)(?=[\s\S]*新闻来源\/时间[\s\S]{0,180}主力资金延续[\s\S]{0,180}0\.5%-1\.2%)/,
     message: "customer buy cards must prioritize fresh main-capital/preheat micro-starter opportunities with news, capital, and sizing constraints."
   },
