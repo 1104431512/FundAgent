@@ -1239,6 +1239,33 @@ const rankingGuardActions = manager.buildPortfolioRankingBoardReviewActions(rank
 ]);
 assert(rankingGuardActions.some((item) => item.code === "008327"), "ranking board fallback must add omitted sell-risk ranking items for review");
 assert(rankingGuardActions.some((item) => item.dataBasis.includes("来源：manager_ranking_board")), "ranking board fallback must leave traceable data basis");
+const userHoldingDeRiskFallback = manager.buildPortfolioRankingBoardReviewActions({
+  lists: [{
+    id: "user_holding_alerts",
+    title: "用户持仓提醒榜",
+    items: [{
+      rank: 1,
+      code: "000042",
+      name: "旧题材接盘基金C",
+      action: "卖出/减仓提醒",
+      reason: "用户真实持仓暴露旧题材，主力撤离后表面回调不是买点。",
+      facts: ["用户admin持仓", "优先提醒"],
+      decision: {
+        highlights: ["提醒客户先处理真实持仓风险。"],
+        risks: ["主力撤离后的接盘风险。"],
+        gaps: [],
+        nextStep: "优先推送给对应用户，提醒其复核卖出或减仓。"
+      }
+    }]
+  }]
+}, []);
+assert.equal(userHoldingDeRiskFallback[0]?.action, "WATCH", "user-held de-risk alerts must not create virtual SELL orders when the holding may be external");
+assert(
+  userHoldingDeRiskFallback[0]?.reason.includes("用户真实持仓卖出/减仓提醒")
+    && userHoldingDeRiskFallback[0]?.reason.includes("不提交虚拟赎回"),
+  "user-held de-risk fallback must surface urgent sell/reduce guidance without pretending it is a virtual portfolio order"
+);
+assert(userHoldingDeRiskFallback[0]?.dataBasis.includes("来源：user_holding_derisk_alert"), "user-held de-risk fallback must leave a traceable alert source");
 const themeMomentumBuyFallback = manager.buildPortfolioRankingBoardReviewActions({
   lists: [{
     id: "theme_momentum",
@@ -1249,7 +1276,7 @@ const themeMomentumBuyFallback = manager.buildPortfolioRankingBoardReviewActions
       name: "低空预热种子基金C",
       action: "主力预热微型试探",
       reason: "低空经济有主力进场和新闻逻辑，代表基金已通过微型试探复核。",
-      facts: ["题材低空经济", "新闻逻辑政策加速落地"],
+      facts: ["题材低空经济", "新闻：东方财富快讯10:16 政策加速落地"],
       decision: {
         highlights: ["主力资金开始配合。"],
         risks: [],
@@ -1262,6 +1289,28 @@ const themeMomentumBuyFallback = manager.buildPortfolioRankingBoardReviewActions
 }, []);
 assert.equal(themeMomentumBuyFallback[0]?.action, "BUY", "ranking fallback must turn executable main-capital/preheat micro-starters into BUY reviews");
 assert.equal(themeMomentumBuyFallback[0]?.targetWeightPct, 1.2, "ranking fallback BUY reviews must keep micro-starter sizing caps");
+const untraceableThemeMomentumFallback = manager.buildPortfolioRankingBoardReviewActions({
+  lists: [{
+    id: "theme_momentum",
+    title: "主力预热机会榜",
+    items: [{
+      rank: 1,
+      code: "000097",
+      name: "无来源预热基金C",
+      action: "主力预热微型试探",
+      reason: "题材据说有主力进场和新闻逻辑，但没有新闻来源或时间。",
+      facts: ["题材机器人"],
+      decision: {
+        highlights: ["主力资金开始配合。"],
+        risks: [],
+        gaps: [],
+        nextStep: "只允许0.5%-1.2%微型试探。"
+      },
+      status: "ready"
+    }]
+  }]
+}, []);
+assert.equal(untraceableThemeMomentumFallback[0]?.action, "WATCH", "theme-momentum fallback must not upgrade to BUY when news/catalyst lacks traceable source or timestamp");
 const themeMomentumUpgradeDecision = manager.ensurePortfolioRankingBoardReviewed({
   actions: [{ action: "WATCH", code: "000099", name: "低空预热种子基金C", reason: "模型仍然笼统观察。" }],
   watchlistUpdates: [],
@@ -1277,6 +1326,7 @@ const themeMomentumUpgradeDecision = manager.ensurePortfolioRankingBoardReviewed
       name: "低空预热种子基金C",
       action: "主力预热微型试探",
       reason: "低空经济有主力进场和新闻逻辑，代表基金已通过微型试探复核。",
+      facts: ["新闻：东方财富快讯10:16 政策加速落地"],
       decision: {
         highlights: ["主力资金开始配合。"],
         risks: [],
@@ -6585,6 +6635,7 @@ const rankingUpgradeCatchdownDecision = manager.ensurePortfolioRankingBoardRevie
       name: "边际退潮回调基金C",
       action: "主力预热微型试探",
       reason: "历史看似有主力进场和新闻逻辑，代表基金已通过微型试探复核。",
+      facts: ["新闻：东方财富快讯10:16 历史催化被重新讨论"],
       decision: {
         highlights: ["主力资金开始配合。"],
         risks: [],

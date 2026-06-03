@@ -4821,11 +4821,45 @@ function inferPortfolioRankingBoardReviewAction(list = {}, item = {}) {
     return /优先卖出|卖出|减仓|止损|止盈|回吐/.test(actionText) ? "SELL" : "HOLD";
   }
   if (isPortfolioRankingBoardBuyReviewList(listId) && isPortfolioRankingBoardBuyReviewText(actionText)) {
+    if (listId === "theme_momentum" && !hasTraceablePortfolioRankingThemeMomentumEvidence(list, item)) {
+      return "WATCH";
+    }
     return "BUY";
   }
   if (listId === "replacement_choice") return "WATCH";
   if (listId === "user_holding_alerts") return "WATCH";
   return "WATCH";
+}
+
+function hasTraceablePortfolioRankingThemeMomentumEvidence(list = {}, item = {}) {
+  const text = [
+    list.title,
+    item.action,
+    item.reason,
+    ...(Array.isArray(item.facts) ? item.facts : []),
+    ...(Array.isArray(item.decision?.highlights) ? item.decision.highlights : []),
+    ...(Array.isArray(item.decision?.risks) ? item.decision.risks : []),
+    ...(Array.isArray(item.decision?.gaps) ? item.decision.gaps : []),
+    item.decision?.nextStep
+  ].filter(Boolean).join(" ");
+  const hasWhyMove = /为什么动|大涨逻辑|题材逻辑|新闻|催化|政策|订单|产业|落地|发布|获批|会议|财报|公告/.test(text);
+  const hasTrace = /(?:\d{1,2}:\d{2}|东方财富|新浪财经|财联社|证券时报|上证报|中证报|快讯|电报|source[:=])/i.test(text);
+  const hasCapital = /主力|资金|流入|抢筹|净流入|主力进场|资金开始配合/.test(text);
+  return hasWhyMove && hasTrace && hasCapital;
+}
+
+function isPortfolioUserHoldingDeRiskAlert(list = {}, item = {}) {
+  if (String(list.id || "") !== "user_holding_alerts") return false;
+  const text = [
+    item.action,
+    item.reason,
+    ...(Array.isArray(item.facts) ? item.facts : []),
+    ...(Array.isArray(item.decision?.highlights) ? item.decision.highlights : []),
+    ...(Array.isArray(item.decision?.risks) ? item.decision.risks : []),
+    ...(Array.isArray(item.decision?.gaps) ? item.decision.gaps : []),
+    item.decision?.nextStep
+  ].filter(Boolean).join(" ");
+  return /卖出|减仓|止损|止盈|回吐|接盘|退潮|主力(?:资金)?撤离|资金撤离|旧题材|历史热点|回调不是买点|回调不能当买点/.test(text);
 }
 
 function isPortfolioRankingBoardBuyReviewList(listId = "") {
@@ -4875,6 +4909,7 @@ function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = [
       const risks = normalizeStringArray(decision.risks);
       const gaps = normalizeStringArray(decision.gaps);
       const facts = normalizeStringArray(item.facts);
+      const userHoldingDeRiskAlert = isPortfolioUserHoldingDeRiskAlert(list, item);
       actions.push({
         action: reviewAction,
         code,
@@ -4882,9 +4917,12 @@ function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = [
         amount: 0,
         targetWeightPct,
         rankingBasis: basis,
-        reason: `${basis}；本轮先给${reviewAction === "BUY" ? "买入" : reviewAction === "SELL" ? "分批减仓/卖出" : reviewAction === "HOLD" ? "持仓" : "观察"}复核，不允许静默跳过。`,
+        reason: userHoldingDeRiskAlert
+          ? `${basis}；用户真实持仓卖出/减仓提醒：这不是普通观察项，经理必须提示客户复核卖点、成本和到账规则；由于该仓位不一定属于虚拟组合，本轮不提交虚拟赎回。`
+          : `${basis}；本轮先给${reviewAction === "BUY" ? "买入" : reviewAction === "SELL" ? "分批减仓/卖出" : reviewAction === "HOLD" ? "持仓" : "观察"}复核，不允许静默跳过。`,
         dataBasis: mergeStringLists([
           "来源：manager_ranking_board",
+          userHoldingDeRiskAlert ? "来源：user_holding_derisk_alert" : "",
           item.source ? `榜单来源：${item.source}` : "",
           item.score ? `榜单评分${item.score}` : "",
           ...facts
@@ -4893,11 +4931,13 @@ function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = [
         positionCheck: facts.join("；") || item.reason || "等待走势和位置证据复核。",
         chaseRisk: risks[0] || gaps[0] || "若榜单项缺少低位、转强或费用证据，保持观察，不追涨。",
         feeCheck: facts.find((fact) => /[ACDI]类|费用|申购|销售服务费|赎回/.test(fact)) || "执行前仍需核验份额类别、申购费、销售服务费和赎回规则。",
-        riskControl: decision.nextStep || (reviewAction === "SELL"
-          ? "先复核赎回到账和减仓比例，禁止用补仓替代风控。"
-          : reviewAction === "BUY"
-            ? "只按榜单给小仓复核；执行前仍要经过净值、费用、仓位和题材退潮守卫。"
-          : "下一轮继续跟踪榜单触发条件，未满足前不提交虚拟申购。")
+        riskControl: userHoldingDeRiskAlert
+          ? (decision.nextStep || "优先提醒对应用户复核卖出/减仓；先确认客户真实成本、持有份额、赎回费和到账日，不提交虚拟组合赎回单。")
+          : decision.nextStep || (reviewAction === "SELL"
+            ? "先复核赎回到账和减仓比例，禁止用补仓替代风控。"
+            : reviewAction === "BUY"
+              ? "只按榜单给小仓复核；执行前仍要经过净值、费用、仓位和题材退潮守卫。"
+            : "下一轮继续跟踪榜单触发条件，未满足前不提交虚拟申购。")
       });
       existingCodes.add(code);
     }

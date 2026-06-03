@@ -3513,8 +3513,12 @@ const requiredPatterns = [
     message: "ranking-board guards must add traceable fallback review actions when top ranked items are omitted."
   },
   {
-    pattern: /function inferPortfolioRankingBoardReviewAction[\s\S]{0,900}isPortfolioRankingBoardBuyReviewText[\s\S]{0,1800}function resolvePortfolioRankingReviewTargetWeight[\s\S]{0,900}1\.2/,
-    message: "ranking-board fallback must turn executable main-capital/preheat micro-starters into capped BUY reviews instead of always WATCH."
+    pattern: /function inferPortfolioRankingBoardReviewAction[\s\S]{0,1200}hasTraceablePortfolioRankingThemeMomentumEvidence[\s\S]{0,2600}function hasTraceablePortfolioRankingThemeMomentumEvidence[\s\S]{0,1600}(?:东方财富|新浪财经|财联社|source)[\s\S]{0,2400}function resolvePortfolioRankingReviewTargetWeight[\s\S]{0,900}1\.2/,
+    message: "ranking-board fallback must turn only traceable news/main-capital preheat micro-starters into capped BUY reviews instead of always WATCH."
+  },
+  {
+    pattern: /(?=[\s\S]*function isPortfolioUserHoldingDeRiskAlert[\s\S]{0,1200}主力\(\?:资金\)\?撤离)(?=[\s\S]*用户真实持仓卖出\/减仓提醒)(?=[\s\S]*来源：user_holding_derisk_alert)(?=[\s\S]*不提交虚拟组合赎回单)/,
+    message: "ranking-board guards must turn external user-held stale-theme alerts into explicit sell/reduce reminders without creating virtual redemption orders."
   },
   {
     pattern: /function ensurePortfolioRankingBoardReviewed[\s\S]{0,3600}upgradePortfolioRankingBoardWatchAction[\s\S]{0,2200}系统榜单升级[\s\S]{0,1200}题材退潮守卫/,
