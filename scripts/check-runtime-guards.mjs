@@ -3817,6 +3817,10 @@ const requiredPatterns = [
     message: "ranking-board guards must turn external user-held stale-theme alerts into explicit sell/reduce reminders without creating virtual redemption orders."
   },
   {
+    pattern: /(?=[\s\S]*function buildPortfolioRankingBoardReviewActions[\s\S]{0,1800}catchdownRiskReview)(?=[\s\S]*接盘风险复核[\s\S]{0,260}这不是低位启动[\s\S]{0,180}不能试探买入)(?=[\s\S]*来源：stale_catchdown_risk_guard)(?=[\s\S]*function isPortfolioRankingBoardCatchdownRiskReview[\s\S]{0,360}stale_catchdown_risk)/,
+    message: "ranking-board fallback must turn stale-catchdown lanes into explicit zero-yuan no-test-buy review actions."
+  },
+  {
     pattern: /function ensurePortfolioRankingBoardReviewed[\s\S]{0,3600}upgradePortfolioRankingBoardWatchAction[\s\S]{0,2200}系统榜单升级[\s\S]{0,1200}题材退潮守卫/,
     message: "ranking-board guards must upgrade generic WATCH actions into capped BUY reviews when a top ranking lane says the mainline/preheat candidate is executable."
   },

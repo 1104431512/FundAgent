@@ -5063,6 +5063,7 @@ function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = [
       const gaps = normalizeStringArray(decision.gaps);
       const facts = normalizeStringArray(item.facts);
       const userHoldingDeRiskAlert = isPortfolioUserHoldingDeRiskAlert(list, item);
+      const catchdownRiskReview = isPortfolioRankingBoardCatchdownRiskReview(list, item);
       actions.push({
         action: reviewAction,
         code,
@@ -5072,20 +5073,31 @@ function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = [
         rankingBasis: basis,
         reason: userHoldingDeRiskAlert
           ? `${basis}；用户真实持仓卖出/减仓提醒：这不是普通观察项，经理必须提示客户复核卖点、成本和到账规则；由于该仓位不一定属于虚拟组合，本轮不提交虚拟赎回。`
+          : catchdownRiskReview
+            ? `${basis}；接盘风险复核：这不是低位启动，本轮只能0元观察，不能试探买入；必须等新鲜催化、主力资金回流、代表持仓止跌和基金低位温和转强同时出现。`
           : `${basis}；本轮先给${reviewAction === "BUY" ? "买入" : reviewAction === "SELL" ? "分批减仓/卖出" : reviewAction === "HOLD" ? "持仓" : "观察"}复核，不允许静默跳过。`,
         dataBasis: mergeStringLists([
           "来源：manager_ranking_board",
           userHoldingDeRiskAlert ? "来源：user_holding_derisk_alert" : "",
+          catchdownRiskReview ? "来源：stale_catchdown_risk_guard" : "",
           item.source ? `榜单来源：${item.source}` : "",
           item.score ? `榜单评分${item.score}` : "",
           ...facts
         ], highlights.slice(0, 2)),
-        rotationCheck: highlights[0] || item.reason || "按经理榜单复核轮动、低位和用户持仓提醒。",
-        positionCheck: facts.join("；") || item.reason || "等待走势和位置证据复核。",
-        chaseRisk: risks[0] || gaps[0] || "若榜单项缺少低位、转强或费用证据，保持观察，不追涨。",
+        rotationCheck: catchdownRiskReview
+          ? "题材退潮或主力撤离未解除，不能把表面回调当成低位启动。"
+          : highlights[0] || item.reason || "按经理榜单复核轮动、低位和用户持仓提醒。",
+        positionCheck: catchdownRiskReview
+          ? "先看代表持仓是否止跌、主力是否回流；未确认前维持0元观察。"
+          : facts.join("；") || item.reason || "等待走势和位置证据复核。",
+        chaseRisk: catchdownRiskReview
+          ? risks[0] || "旧题材/主力撤离后的反弹容易变成接盘，不给买入金额。"
+          : risks[0] || gaps[0] || "若榜单项缺少低位、转强或费用证据，保持观察，不追涨。",
         feeCheck: facts.find((fact) => /[ACDI]类|费用|申购|销售服务费|赎回/.test(fact)) || "执行前仍需核验份额类别、申购费、销售服务费和赎回规则。",
         riskControl: userHoldingDeRiskAlert
           ? (decision.nextStep || "优先提醒对应用户复核卖出/减仓；先确认客户真实成本、持有份额、赎回费和到账日，不提交虚拟组合赎回单。")
+          : catchdownRiskReview
+            ? "榜单机会本轮只保留为0元观察；等新鲜新闻/政策催化、主力资金回流、代表持仓止跌、基金低位温和转强同时成立后，再允许重新进入小仓复核。"
           : decision.nextStep || (reviewAction === "SELL"
             ? "先复核赎回到账和减仓比例，禁止用补仓替代风控。"
             : reviewAction === "BUY"
@@ -5096,6 +5108,15 @@ function buildPortfolioRankingBoardReviewActions(board = {}, existingActions = [
     }
   }
   return actions;
+}
+
+function isPortfolioRankingBoardCatchdownRiskReview(list = {}, item = {}) {
+  return String(list?.id || "") === "stale_catchdown_risk"
+    || isPortfolioCustomerCatchdownAvoidAction({
+      ...item,
+      listId: list?.id || "",
+      listTitle: list?.title || ""
+    });
 }
 
 function buildPortfolioHeldPositionReviewActions(positions = [], existingActions = [], options = {}) {

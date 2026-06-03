@@ -9139,6 +9139,24 @@ assert(
     && staleCatchdownMatrixItem.nextStep.includes("低位温和转强"),
   "decision matrix must show the reopening conditions before stale-theme pullbacks can re-enter buy review"
 );
+const staleCatchdownFallbackActions = manager.buildPortfolioRankingBoardReviewActions(staleCatchdownBoard, []);
+const staleCatchdownFallbackAction = staleCatchdownFallbackActions.find((item) => item.code === "000042");
+assert.equal(staleCatchdownFallbackAction?.action, "WATCH", "ranking-board fallback must keep stale-theme catchdown candidates as WATCH rather than BUY");
+assert.equal(staleCatchdownFallbackAction?.targetWeightPct, 0, "ranking-board fallback must keep stale-theme catchdown target weight at zero");
+assert(
+  staleCatchdownFallbackAction?.reason.includes("这不是低位启动")
+    && staleCatchdownFallbackAction.reason.includes("0元观察")
+    && staleCatchdownFallbackAction.reason.includes("不能试探买入"),
+  "ranking-board fallback must explain stale-theme catchdown review as a zero-yuan no-test-buy action"
+);
+assert(
+  staleCatchdownFallbackAction?.riskControl.includes("新鲜新闻/政策催化")
+    && staleCatchdownFallbackAction.riskControl.includes("主力资金回流")
+    && staleCatchdownFallbackAction.riskControl.includes("代表持仓止跌")
+    && staleCatchdownFallbackAction.riskControl.includes("低位温和转强"),
+  "ranking-board fallback must show the reopening conditions before stale-theme catchdown candidates can be reviewed for small buys"
+);
+assert(staleCatchdownFallbackAction?.dataBasis.includes("来源：stale_catchdown_risk_guard"), "ranking-board fallback must leave a traceable stale-catchdown guard source");
 const oldPreheatCurrentRetreatDb = manager.normalizePortfolioDb({
   account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
   watchlist: [{
