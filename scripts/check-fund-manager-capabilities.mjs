@@ -235,6 +235,15 @@ const normalizedRankingDb = manager.normalizePortfolioDb({
         ],
         establishDate: "2018-06-01",
         scale: { valueYi: 18.6 },
+        marketThemeRefresh: {
+          source: "current_market_theme_radar",
+          refreshedAt: freshThemeRefreshAt,
+          noCurrentThemeMatch: false,
+          matchedThemeNames: ["医药/创新药"],
+          supportLabel: "医药同方向有低位轮动支撑",
+          supportSignals: ["当前题材雷达：低位轮动", "主力资金回流"],
+          summary: "当前题材雷达刷新后仍显示医药低位轮动。"
+        },
         matchedThemes: [{
           id: "medicine",
           name: "医药/创新药",
@@ -1249,6 +1258,104 @@ assert(
   noRadarRotationBoard.decisionMatrix.items.find((item) => item.code === "000089")?.verdict?.tone === "data"
     && noRadarRotationBoard.decisionMatrix.items.find((item) => item.code === "000089")?.verdict?.blockers?.some((item) => item.includes("板块/题材")),
   "decision matrix must treat missing current theme radar as a blocker, not as sector support for buy review"
+);
+const staleLowRotationReadyWatch = {
+  code: "000090",
+  name: "旧标签低位轮动基金C",
+  status: "ready",
+  readinessScore: 91,
+  reason: "低位轮动，回调完成，准备启动。",
+  setupEvidence: ["低位轮动"],
+  buyTriggers: ["5日/10日温和转强"],
+  lastSnapshot: {
+    code: "000090",
+    name: "旧标签低位轮动基金C",
+    trendProfile: {
+      ok: true,
+      trendLabel: "pullback_complete",
+      entryBias: "buyable_now",
+      return5dPct: 1.1,
+      return10dPct: 2.2,
+      return20dPct: 3.4,
+      return60dPct: -5.2,
+      lowPositionPct120: 28,
+      lowPositionPct250: 42,
+      pullbackSetup: { signal: "pullback_complete", signalText: "回调完成" }
+    },
+    matchedThemes: [{
+      id: "medicine_old_rotation",
+      name: "医药旧低位轮动",
+      stage: "low_position_rotation",
+      positionSignal: "low_position_rotation",
+      rotationScore: 68,
+      lowPositionScore: 70,
+      crowdingScore: 18
+    }]
+  }
+};
+assert(
+  manager.hasActionableThemeSupport(staleLowRotationReadyWatch.lastSnapshot),
+  "legacy low-rotation labels may still look actionable under the broad theme predicate"
+);
+assert(
+  !manager.hasFreshActionableThemeSupport(staleLowRotationReadyWatch.lastSnapshot),
+  "candidate-level actionable theme support must reject old low-rotation labels without current radar refresh"
+);
+const staleLowRotationReadiness = manager.evaluatePortfolioWatchReadiness(staleLowRotationReadyWatch, staleLowRotationReadyWatch.lastSnapshot);
+assert(
+  staleLowRotationReadiness.gaps.some((item) => item.includes("低位轮动标签缺少当前题材雷达刷新")),
+  "watch readiness must block stale low-rotation labels even when the NAV trend looks like pullback completion"
+);
+assert(
+  staleLowRotationReadiness.score <= 46 && staleLowRotationReadiness.label === "条件不足",
+  "stale low-rotation readiness must be capped below buy-preparation levels"
+);
+const staleLowRotationBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
+  account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
+  watchlist: [staleLowRotationReadyWatch]
+}));
+const staleLowRotationItem = staleLowRotationBoard.lists.find((item) => item.id === "rotation_opportunity")?.items.find((item) => item.code === "000090");
+assert(
+  staleLowRotationItem?.action === "先补题材证据"
+    && staleLowRotationItem.status === "watch"
+    && staleLowRotationItem.reason.includes("低位轮动标签缺少当前题材雷达刷新")
+    && staleLowRotationItem.decision?.nextStep.includes("不给买入金额"),
+  "rotation ranking must downgrade old low-rotation labels into evidence-first watch items"
+);
+assert(
+  !(staleLowRotationBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "000090"),
+  "customer action deck must not place stale low-rotation labels into buy review"
+);
+assert(
+  staleLowRotationBoard.decisionMatrix.items.find((item) => item.code === "000090")?.verdict?.tone === "data",
+  "decision matrix must treat stale low-rotation labels as a data/theme blocker"
+);
+const freshLowRotationReadyWatch = {
+  ...staleLowRotationReadyWatch,
+  code: "000091",
+  name: "新鲜雷达低位轮动基金C",
+  lastSnapshot: {
+    ...staleLowRotationReadyWatch.lastSnapshot,
+    code: "000091",
+    name: "新鲜雷达低位轮动基金C",
+    marketThemeRefresh: {
+      source: "current_market_theme_radar",
+      refreshedAt: freshThemeRefreshAt,
+      noCurrentThemeMatch: false,
+      matchedThemeNames: ["医药旧低位轮动"],
+      supportLabel: "医药同方向有低位轮动支撑",
+      supportSignals: ["当前题材雷达：低位轮动", "主力资金回流"],
+      summary: "当前题材雷达刷新后仍显示医药低位轮动。"
+    }
+  }
+};
+assert(
+  manager.hasFreshActionableThemeSupport(freshLowRotationReadyWatch.lastSnapshot),
+  "fresh current-radar low-rotation support must remain eligible as actionable theme evidence"
+);
+assert(
+  !manager.evaluatePortfolioWatchReadiness(freshLowRotationReadyWatch, freshLowRotationReadyWatch.lastSnapshot).gaps.some((item) => item.includes("低位轮动标签缺少当前题材雷达刷新")),
+  "fresh low-rotation radar support must not be overblocked by the stale-label guard"
 );
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "avoid")?.items.some((item) => avoidActionCodes.includes(item.code)), "customer action leaderboard must rank avoid candidates separately from buy candidates");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "data")?.items.some((item) => dataActionCodes.includes(item.code)), "customer action leaderboard must rank data blockers as their own evidence lane");
@@ -6313,7 +6420,25 @@ const rotationSupportedDigest = {
   ...setupDigest,
   code: "000021",
   name: "低位轮动修复基金C",
+  marketThemeRefresh: {
+    source: "current_market_theme_radar",
+    refreshedAt: freshThemeRefreshAt,
+    noCurrentThemeMatch: false,
+    matchedThemeNames: ["医药"],
+    supportLabel: "医药同方向有低位轮动支撑",
+    supportSignals: ["当前题材雷达：低位轮动", "主力资金回流"],
+    summary: "当前题材雷达刷新后仍显示医药低位轮动。"
+  },
   seed: {
+    marketThemeRefresh: {
+      source: "current_market_theme_radar",
+      refreshedAt: freshThemeRefreshAt,
+      noCurrentThemeMatch: false,
+      matchedThemeNames: ["医药"],
+      supportLabel: "医药同方向有低位轮动支撑",
+      supportSignals: ["当前题材雷达：低位轮动", "主力资金回流"],
+      summary: "当前题材雷达刷新后仍显示医药低位轮动。"
+    },
     matchedThemes: [{
       id: "medicine",
       name: "医药",
@@ -8974,11 +9099,23 @@ assert(
   /旧题材线索未被当前题材雷达确认|历史热点/.test(unconfirmedOldThemeFallback),
   "pullback deterministic fallback must explain current-radar-unconfirmed old theme labels as catchdown risk"
 );
+const freshLowRotationMarketThemeRefresh = {
+  source: "current_market_theme_radar",
+  refreshedAt: freshThemeRefreshAt,
+  noCurrentThemeMatch: false,
+  matchedThemeNames: ["医药"],
+  supportLabel: "医药同方向有低位轮动支撑",
+  supportSignals: ["医药同方向有低位轮动支撑"],
+  summary: "医药已有当前题材雷达支撑：低位轮动，前十大持仓承载清晰。",
+  dataBasis: ["当前题材雷达：低位轮动", "主力资金回流"]
+};
 const holdingsSupportedDigest = {
   ...setupDigest,
   code: "000031",
   name: "医药低位修复基金C",
+  marketThemeRefresh: freshLowRotationMarketThemeRefresh,
   seed: {
+    marketThemeRefresh: freshLowRotationMarketThemeRefresh,
     matchedThemes: [{
       id: "medicine",
       name: "医药",
@@ -9049,16 +9186,6 @@ assert(
   "actionability evidence must include top-ten holdings outlook, not only trend and fee signals"
 );
 assert.equal(holdingsActionability.holdingsOutlook.hasHoldings, true, "actionability must carry the structured holdings outlook profile");
-const freshLowRotationMarketThemeRefresh = {
-  source: "current_market_theme_radar",
-  refreshedAt: freshThemeRefreshAt,
-  noCurrentThemeMatch: false,
-  matchedThemeNames: ["医药"],
-  supportLabel: "医药同方向有低位轮动支撑",
-  supportSignals: ["医药同方向有低位轮动支撑"],
-  summary: "医药已有当前题材雷达支撑：低位轮动，前十大持仓承载清晰。",
-  dataBasis: ["当前题材雷达：低位轮动", "主力资金回流"]
-};
 const freshLowRotationThemeDigest = {
   ...holdingsSupportedDigest,
   code: "000033",
@@ -9080,8 +9207,10 @@ const staleLowRotationThemeDigest = {
   code: "000034",
   name: "旧低位轮动接盘基金C",
   themeOpportunityRequirement: "require_current_theme_playbook",
+  marketThemeRefresh: null,
   seed: {
-    ...holdingsSupportedDigest.seed
+    ...holdingsSupportedDigest.seed,
+    marketThemeRefresh: null
   }
 };
 assert.equal(

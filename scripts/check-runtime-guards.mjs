@@ -1277,6 +1277,14 @@ const requiredPatterns = [
     message: "main-capital/preheat opportunities must require traceable fresh news or industry catalyst logic before entering actionable recall."
   },
   {
+    pattern: /function hasFreshActionableThemeSupport[\s\S]{0,420}isFreshActionableThemeSupportForCandidate[\s\S]{0,700}hasFreshPullbackLowRotationThemeEvidence\(candidate,\s*theme\)/,
+    message: "candidate-level actionable theme support must require fresh current-radar evidence for low-rotation labels."
+  },
+  {
+    pattern: /function getPortfolioActionableThemeSupportGap[\s\S]{0,2200}hasFreshActionableThemeSupport\(candidate\)[\s\S]{0,260}低位轮动标签缺少当前题材雷达刷新/,
+    message: "portfolio theme support gaps must block stale low-rotation labels before buy readiness."
+  },
+  {
     pattern: /(?=[\s\S]*function hasTraceableFreshThemeCatalystContext)(?=[\s\S]*latestNewsTime)(?=[\s\S]*快讯\|新闻源\|来源)(?=[\s\S]*function isThemeLowBaseMicroStarterSupport[\s\S]{0,500}hasTraceableFreshThemeCatalystContext\(theme\))/,
     message: "main-capital/preheat micro-starter buys must require traceable catalyst source or timestamp, not just generic newsLogic text."
   },
@@ -2389,7 +2397,7 @@ const requiredPatterns = [
     message: "portfolio customer action leaderboard status lines must lead with sort policy and ranked results instead of verbose trigger dumps."
   },
   {
-    pattern: /function buildPortfolioRotationOpportunityRankingItem[\s\S]{0,260}if \(!riskGate\.ok\) return null[\s\S]{0,260}if \(evidence\.themeRetreatRisk\) return null/,
+    pattern: /function buildPortfolioRotationOpportunityRankingItem[\s\S]{0,260}resolvePortfolioPositiveWatchRankingGate\(item\)[\s\S]{0,260}if \(!riskGate\.ok && !evidence\.themeSupportGap\) return null[\s\S]{0,260}if \(evidence\.themeRetreatRisk\) return null/,
     message: "portfolio rotation opportunity ranking must drop retreat/catchdown themes instead of showing them as positive rotation opportunities."
   },
   {
@@ -2637,7 +2645,7 @@ const requiredPatterns = [
     message: "top-ten holding exposure must split broad technology into precise CPO/optical-module, AI-server/liquid-cooling, and semiconductor subthemes."
   },
   {
-    pattern: /function hasPortfolioCurrentSupportForHoldingTheme[\s\S]{0,1600}isActionableThemeSupport[\s\S]{0,1200}function isThemeSignalRelatedToHoldingTheme/,
+    pattern: /function hasPortfolioCurrentSupportForHoldingTheme[\s\S]{0,1600}isFreshActionableThemeSupportForCandidate\(candidate,\s*theme\)[\s\S]{0,1200}function isThemeSignalRelatedToHoldingTheme/,
     message: "holding-derived theme exposure must reopen only when same-direction current radar, main-capital, or news support is present."
   },
   {
@@ -2733,7 +2741,7 @@ const requiredPatterns = [
     message: "decision-synthesis ranking must not classify unsupported theme pullbacks as buy-review candidates."
   },
   {
-    pattern: /function buildPortfolioRotationOpportunityRankingItem[\s\S]{0,900}evidence\.missingTheme \? "先补题材证据"[\s\S]{0,1400}不给买入金额[\s\S]{0,500}status: evidence\.missingTheme/,
+    pattern: /(?=[\s\S]*function buildPortfolioRotationOpportunityRankingItem[\s\S]{0,1600}evidence\.themeSupportGap \|\| evidence\.missingTheme)(?=[\s\S]*function buildPortfolioRotationOpportunityRankingItem[\s\S]{0,3600}不给买入金额)(?=[\s\S]*function buildPortfolioRotationOpportunityRankingItem[\s\S]{0,4200}status: evidence\.themeSupportGap)/,
     message: "rotation-opportunity ranking must keep pure low-position trends without current theme radar out of buy-review."
   },
   {
@@ -3299,6 +3307,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*function hasPullbackThemeOpportunityBacking[\s\S]{0,900}hasFreshPullbackLowRotationThemeEvidence\(candidate,\s*theme\))(?=[\s\S]*低位轮动标签缺少当前题材雷达刷新)(?=[\s\S]*function isFreshPortfolioThemeRefreshSupportForTheme[\s\S]{0,1100}isPortfolioThemeRefreshFreshEnough\(refresh\)[\s\S]{0,900}matchedThemeNames)/,
     message: "pullback/setup main recommendations must require fresh current-radar evidence before low-rotation labels can support a buyable result."
+  },
+  {
+    pattern: /function resolvePortfolioRotationOpportunityEvidence[\s\S]{0,1600}themeSupportGap = getPortfolioActionableThemeSupportGap[\s\S]{0,1300}themeSupportGap \? 36/,
+    message: "rotation opportunity ranking must downgrade stale low-rotation theme labels instead of scoring them as buyable rotation."
   },
   {
     pattern: /(?=[\s\S]*function hasPortfolioPlaybookOpportunitySeedContext)(?=[\s\S]*collectPortfolioManagerPlaybookOpportunityMatches\(candidate\))(?=[\s\S]*function formatPortfolioWatchSeedKind[\s\S]{0,520}hasPortfolioPlaybookOpportunitySeedContext\(candidate\)[\s\S]{0,120}主力预热代表基金候选)(?=[\s\S]*function buildPortfolioWatchlistUpdatesFromSeedCandidates[\s\S]{0,1800}formatPortfolioSeedPlaybookOpportunityEvidence\(candidate\))/,
