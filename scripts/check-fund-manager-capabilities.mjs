@@ -1242,6 +1242,20 @@ assert(
   !sortedPolicyQuality.issues.includes("missing_result_sort_policy"),
   "fund answer quality must allow ranked recommendations that state a customer-readable sort policy"
 );
+assert(
+  !sortedPolicyQuality.issues.includes("missing_result_first_ranking_summary"),
+  "fund answer quality must allow recommendation answers that start with direct conclusion, sort policy, and ranked result"
+);
+const missingResultFirstQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：可以分批买入1000元。\n排序口径：高夏普/低回撤优先，再看买点和费用。\n下面详细解释：000001 低位启动基金C适合放第一档；000005 现金再部署基金C适合做第二档。",
+  workflow: "fund_recommendation",
+  userText: "推荐几个基金，按质量好一点的优先",
+  evidence: { marketDeepDive: { candidates: [{ code: "000001" }, { code: "000005" }] } }
+});
+assert(
+  missingResultFirstQuality.issues.includes("missing_result_first_ranking_summary"),
+  "fund answer quality must reject multi-candidate answers that state a sort policy but do not give a first-screen result leaderboard"
+);
 const actionDeckLines = manager.buildPortfolioCustomerActionDeckStatusLines(rankingBoard.customerActionDeck).join("\n");
 assert(actionDeckLines.includes("买入理由："), "customer action deck status must explain why a fund can be bought instead of using a generic reason label");
 assert(actionDeckLines.includes("加备选理由："), "customer action deck status must explain why a fund belongs in backup/watch instead of only saying wait");
@@ -9223,6 +9237,18 @@ const numericDumpQuality = manager.evaluateFundAnswerQuality({
 });
 assert(numericDumpQuality.issues.includes("numeric_dump_without_interpretation"), "quality gate must reject numeric dumps that lack enough trend interpretation");
 assert(manager.hasNumericDumpWithoutInterpretation(numericDumpAnswer), "numeric dump detector must be exported for deterministic regression coverage");
+const openingMetricDumpQuality = manager.evaluateFundAnswerQuality({
+  text: [
+    "000001 低位基金C：近5日+1.1%，近10日+2.2%，近20日+3.3%，近60日-4.4%，120日位置38.5%，250日位置42.2%，距高点-7.1%，夏普0.8，回撤-12.3%。",
+    "直接结论：可以分批买入1000元。",
+    "排序口径：高夏普/低回撤优先，再看买点和费用。",
+    "结果榜：1. 000001 低位基金C：风险收益更稳；2. 000002 备选基金A：等待触发。"
+  ].join("\n"),
+  workflow: "fund_recommendation",
+  userText: "推荐几个基金，按高夏普优先",
+  evidence: { marketDeepDive: { candidates: [setupDigest, setupDigestSecond] } }
+});
+assert(openingMetricDumpQuality.issues.includes("opening_metric_dump_before_result"), "quality gate must reject answers that open with a metric dump before the result leaderboard");
 const missingThemeLogicQuality = manager.evaluateFundAnswerQuality({
   text: "直接结论：分批买入1000元。\n000048 主力新闻低位基金C：走势低位修复，5日/10日刚转强，120日位置38.5%，C类适合短期战术观察。\n执行：激进1000元，均衡500元，保守先观察。",
   workflow: "fund_recommendation",

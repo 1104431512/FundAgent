@@ -697,7 +697,7 @@ const requiredPatterns = [
     message: "fund recommendation prompts must send compact market snapshots instead of full raw snapshots."
   },
   {
-    pattern: /function answerFundQuestionWithModel[\s\S]{0,1800}marketSnapshotForModel = compactMarketSnapshotForModel\(marketSnapshot\)[\s\S]{0,2600}JSON\.stringify\(marketSnapshotForModel, null, 2\)/,
+    pattern: /function answerFundQuestionWithModel[\s\S]{0,1800}marketSnapshotForModel = compactMarketSnapshotForModel\(marketSnapshot\)[\s\S]{0,3400}JSON\.stringify\(marketSnapshotForModel, null, 2\)/,
     message: "fund QA prompts must send compact market snapshots instead of full raw snapshots."
   },
   {
@@ -713,12 +713,24 @@ const requiredPatterns = [
     message: "fund answer quality must reject multi-candidate recommendations that omit a customer-readable sort policy."
   },
   {
+    pattern: /function evaluateFundAnswerQuality[\s\S]{0,3000}missing_result_first_ranking_summary[\s\S]{0,900}opening_metric_dump_before_result/,
+    message: "fund answer quality must force result-first ranked summaries and reject metric-heavy openings."
+  },
+  {
     pattern: /function shouldRequireFundAnswerSortPolicy[\s\S]{0,900}fundCodes\.size >= 2[\s\S]{0,900}function hasFundAnswerSortPolicy[\s\S]{0,500}排序口径/,
     message: "fund answer quality must require and recognize customer-readable result ranking policies."
   },
   {
+    pattern: /function hasFundAnswerResultFirstRankingSummary[\s\S]{0,800}直接结论[\s\S]{0,500}结果榜/,
+    message: "fund answer quality must recognize direct-conclusion plus result-board openings."
+  },
+  {
     pattern: /推荐清单必须先写排序口径[\s\S]{0,900}高夏普[\s\S]{0,520}低回撤/,
     message: "fund recommendation prompts must mention high-Sharpe and low-drawdown ranking priorities."
+  },
+  {
+    pattern: /多候选回答的前三行必须固定为[\s\S]{0,160}直接结论[\s\S]{0,160}排序口径[\s\S]{0,160}结果榜/,
+    message: "fund recommendation prompts must force result-first leaderboard openings for multi-candidate answers."
   },
   {
     pattern: /推荐清单：按排序口径/,

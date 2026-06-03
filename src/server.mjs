@@ -22403,6 +22403,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "marketDeepDive 中的 trendProfile、actionability、entryBias、fitLabel 等是内部字段；最终回答必须翻译成中文用户话术，不要原样输出字段名或 extended_uptrend/staged_buy/wait_pullback 这类枚举。",
     "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先选择 pullbackSetup.signal 为 pullback_complete 或 launch_setup 的候选；同时检查5日/10日是否刚转强、120日区间位置是否偏低。短期涨幅偏热、20日/60日大涨且 entryBias 为 wait_pullback 的候选只能列入观察，不得作为主推荐。",
     "推荐清单必须先写排序口径。用户指定“高夏普优先、低回撤优先、主力题材优先、费用优先”等偏好时按偏好排序；用户未指定时，默认按买点成立度、主力资金/新闻逻辑、风险收益质量（高夏普/低回撤）、费用和持仓承载排序。",
+    "多候选回答的前三行必须固定为：直接结论、排序口径、结果榜。结果榜用“1. 代码 名称：一句话原因；2. ...”直接给首选顺序，后面再展开，不要先铺指标。",
     "不要编造 marketSnapshot 里没有的基金代码、涨跌幅、排名、金价或新闻。",
     "推荐基金时不要默认偏向 A 类；同一基金存在 A/C/D/I 等份额时，按用户持有期和费用模型说明为什么选这个份额，并提示可替代份额。",
     "如果候选下钻里出现 seed.alternativeShareClasses 或 seed.sameExposureAlternatives，不要把它们当成独立推荐名额；主推荐只列一个代表，替代份额/同指数替代品放在该条下面说明。",
@@ -22438,13 +22439,14 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "请输出：",
     "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
     "2. 排序口径：用一句话说明本次结果按什么优先排，例如“高夏普/低回撤优先”“主力资金和新闻逻辑优先”“接盘风险优先”；不要先铺数据。",
-    "3. 题材雷达：先列 1-3 个相关题材的中文板块位置、主力节奏、新闻逻辑、拥挤度、为什么现在值得/不值得看；不要输出任何内部字段名。",
-    "4. 自评估：这类需求是否适合现在做、把握度如何、适合激进/均衡/保守哪类。",
-    "5. 推荐清单：按排序口径给优先 3-4 个候选基金或 ETF。每个候选先写“第几优先 + 一句话原因”，再写代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号，以及“配图看什么”。5日/10日早期转强、120日区间低位、回撤、夏普、费用里只保留最能改变动作的2-3个数字，其余改成自然中文。只能使用快照、下钻或经理自选候选池中的候选代码；如果没有足够代码，就写“待复核方向”。",
+    "3. 结果榜：一行给出排序后的首选顺序，例如“1. 000001：高夏普且低位修复；2. 000005：主力题材承载更清楚；3. ...”。如果暂未筛到合格主推荐，就写“暂无主推荐，观察顺序是...”。",
+    "4. 题材雷达：先列 1-3 个相关题材的中文板块位置、主力节奏、新闻逻辑、拥挤度、为什么现在值得/不值得看；不要输出任何内部字段名。",
+    "5. 自评估：这类需求是否适合现在做、把握度如何、适合激进/均衡/保守哪类。",
+    "6. 推荐清单：按排序口径给优先 3-4 个候选基金或 ETF。每个候选先写“第几优先 + 一句话原因”，再写代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号，以及“配图看什么”。5日/10日早期转强、120日区间低位、回撤、夏普、费用里只保留最能改变动作的2-3个数字，其余改成自然中文。只能使用快照、下钻或经理自选候选池中的候选代码；如果没有足够代码，就写“待复核方向”。",
     "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
-    "6. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
-    "7. 备选观察：如果有未到买点但值得等的候选，列 3-5 个备选，说明还差什么触发，以及对应配图看什么；偏热、追涨或回避对象单独写排除原因，不要混进备选。",
-    "8. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的题材或价格条件。"
+    "7. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
+    "8. 备选观察：如果有未到买点但值得等的候选，列 3-5 个备选，说明还差什么触发，以及对应配图看什么；偏热、追涨或回避对象单独写排除原因，不要混进备选。",
+    "9. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的题材或价格条件。"
   ].join("\n");
 
   const draft = await callModel({
@@ -22501,6 +22503,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "如果市场快照或下钻摘要里有题材雷达，优先引用中文题材阶段、主力节奏、新闻逻辑、拥挤度和操作倾向，避免只按历史涨幅回答。",
     "候选下钻摘要若出现 themeOpportunityRequirement=require_current_theme_playbook，回答必须解释题材为什么动、主力是否跟进、基金是否真实承载该题材；纯走势合格但缺题材/新闻/持仓承载的候选只能观察。",
     "涉及买入、卖出、推荐、备选或多只基金比较时，前两段必须包含排序口径。用户指定高夏普、低回撤、主力题材、费用等偏好时按偏好；未指定时按动作影响、买点成立、主力/新闻、风险收益质量和费用持仓承载排序。",
+    "多候选回答前三行必须像榜单摘要：直接结论、排序口径、结果榜。结果榜直接给 1/2/3 的首选顺序和一句话原因，后面再展开证据。",
     "如果提供了候选基金下钻摘要，必须使用下钻候选的走势画像、风险、费用、持仓和可操作性评估来形成买/等/回避判断。",
     "如果提供了经理自选候选池，必须把它当成已经沉淀的备选来源先复核；ready 可以进入买入参考，waiting 或启动前夜只能说明等待条件。",
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，最终回答要用自然中文说明数据缺口、降低把握度；缺少贵金属/板块/排行/新闻模块时，不得声称已完整联网或给重仓买入。",
@@ -22535,7 +22538,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "经理自选候选池：",
     portfolioWatchlistContext.summary,
     "",
-    "请直接回答用户问题。若用户问“值得买吗”，必须给中文动作“买入 / 分批买入 / 等待 / 回避”之一，并给新资金和已有持仓分别怎么做。若涉及多个候选或比较，先写“排序口径：...”，例如高夏普/低回撤优先、主力资金和新闻逻辑优先、接盘风险优先；再给排序后的结果，不要先铺数字。如回答里给出具体基金候选，主买入和备选观察都要写代码、中文走势证据、触发条件和配图看点；偏热回避对象不要和备选混写。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
+    "请直接回答用户问题。若用户问“值得买吗”，必须给中文动作“买入 / 分批买入 / 等待 / 回避”之一，并给新资金和已有持仓分别怎么做。若涉及多个候选或比较，前三行固定为“直接结论：...”“排序口径：...”“结果榜：1. ...；2. ...”，例如高夏普/低回撤优先、主力资金和新闻逻辑优先、接盘风险优先；再给排序后的结果，不要先铺数字。如回答里给出具体基金候选，主买入和备选观察都要写代码、中文走势证据、触发条件和配图看点；偏热回避对象不要和备选混写。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
   ].join("\n");
 
   const draft = await callModel({
@@ -22648,6 +22651,8 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "若质检问题包含 missing_market_data_quality_disclosure，必须在前两段用自然中文说明公开数据缺口、缺了哪些模块，并把结论降级为观察、待复核、少量试探或不重仓。",
       "若质检问题包含 numeric_dump_without_interpretation，必须删除大部分指标堆砌：每只基金最多保留3个最能改变动作的数字，其余改成走势、位置、触发条件和操作理由。",
       "若质检问题包含 missing_result_sort_policy，必须在直接结论后补一行“排序口径：...”，说明本次按高夏普/低回撤、主力资金/新闻逻辑、买点成立度、费用或接盘风险中的哪一项优先；推荐清单必须按这个口径排序。",
+      "若质检问题包含 missing_result_first_ranking_summary，必须把回答前三行改成“直接结论：...”“排序口径：...”“结果榜：1. ...；2. ...”，先给首选顺序，再讲原因。",
+      "若质检问题包含 opening_metric_dump_before_result，必须把开头的近5日/10日/20日/夏普/回撤等指标移到后文；开头只保留动作、排序口径和榜单原因。",
       "若质检问题包含 unsolicited_score_label，说明用户没有要求打分却出现“评分/得分/Score: xx”；必须删掉评分字段，改成自然把握度和操作理由。",
       "若证据没有 mainCandidateCodes，必须直接说明暂未筛到合格的回调完成/低位启动主推荐，不能硬凑基金代码。",
       "保持适合飞书卡片阅读，不要 Markdown 表格或代码块。",
@@ -22726,7 +22731,8 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
 }
 
 function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
-  const body = String(text || "").replace(/\s+/g, " ").trim();
+  const rawText = String(text || "");
+  const body = rawText.replace(/\s+/g, " ").trim();
   const firstScreen = body.slice(0, 650);
   const issues = [];
   const actionSeeking = workflow !== "conversation" && (
@@ -22762,6 +22768,14 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   if (unsolicitedScoreLabel) issues.push("unsolicited_score_label");
   if (shouldRequireFundAnswerSortPolicy({ text, workflow, userText, evidence }) && !hasFundAnswerSortPolicy(body)) {
     issues.push("missing_result_sort_policy");
+  }
+  if (shouldRequireFundAnswerResultFirstRankingSummary({ text, workflow, userText, evidence })
+    && !hasFundAnswerResultFirstRankingSummary(rawText)) {
+    issues.push("missing_result_first_ranking_summary");
+  }
+  if (shouldRequireFundAnswerResultFirstRankingSummary({ text, workflow, userText, evidence })
+    && hasMetricHeavyOpeningBeforeResult(rawText)) {
+    issues.push("opening_metric_dump_before_result");
   }
   issues.push(...evaluateMarketDataQualityDisclosure({ text, workflow, evidence }));
   issues.push(...evaluateStaleFundEvidenceActionDiscipline({ text, evidence }));
@@ -22799,6 +22813,45 @@ function shouldRequireFundAnswerSortPolicy({ text = "", workflow = "", userText 
 function hasFundAnswerSortPolicy(text = "") {
   const body = String(text || "");
   return /排序口径|排序规则|优先级|按.{0,24}优先|高夏普优先|低回撤优先|低波动优先|费用优先|主力.{0,12}优先|接盘风险优先|第[一二三四五12345]优先/.test(body);
+}
+
+function shouldRequireFundAnswerResultFirstRankingSummary({ text = "", workflow = "", userText = "", evidence = null } = {}) {
+  if (workflow === "conversation") return false;
+  if (!shouldRequireFundAnswerSortPolicy({ text, workflow, userText, evidence })) return false;
+  return workflow === "fund_recommendation"
+    || /排序|排行|优先|首选|备选|选哪个|比较|推荐|高夏普|低回撤|低波动|费用优先|主力题材/.test(String(userText || ""))
+    || getEvidenceFundCandidateCount(evidence) >= 2
+    || new Set((String(text || "").match(/\b\d{6}\b/g) || [])).size >= 2;
+}
+
+function hasFundAnswerResultFirstRankingSummary(text = "") {
+  const lines = String(text || "")
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const firstBlock = lines.slice(0, 4).join(" ");
+  const hasDirectConclusion = /直接结论/.test(firstBlock);
+  const hasSortPolicy = hasFundAnswerSortPolicy(firstBlock);
+  const hasRankedResult = /(?:结果榜|结果|首选|优先顺序|排序结果|排名).{0,80}(?:1[.、]|第[一1]优先|\b\d{6}\b)|(?:1[.、]\s*\d{6}|第一优先|第1优先|首选\s*\d{6})/.test(firstBlock);
+  const hasNoMainRecommendationResult = /(?:暂无|暂未|没有|未筛到|没筛到).{0,32}(?:主推荐|合格|可买|结果)|(?:先不买|不硬凑).{0,32}(?:结果|主推荐|基金代码)/.test(firstBlock);
+  return hasDirectConclusion && hasSortPolicy && (hasRankedResult || hasNoMainRecommendationResult);
+}
+
+function hasMetricHeavyOpeningBeforeResult(text = "") {
+  const raw = String(text || "");
+  const resultIndex = searchFirstIndex(raw, ["排序口径", "排序规则", "结果榜", "排序结果", "推荐清单", "首选"]);
+  const opening = raw.slice(0, resultIndex >= 0 ? Math.min(resultIndex, 650) : 650).replace(/\s+/g, " ").trim();
+  if (!opening) return false;
+  const metricCount = countUserFacingMetricNumbers(opening);
+  const metricWords = (opening.match(/(?:近\s*\d+\s*日|夏普|回撤|规模|费率|费用|净值|高点|低位|涨幅|跌幅|收益|位置)/g) || []).length;
+  return metricCount >= 8 && metricWords >= 5;
+}
+
+function searchFirstIndex(text = "", needles = []) {
+  const indexes = needles
+    .map((needle) => String(text || "").indexOf(needle))
+    .filter((index) => index >= 0);
+  return indexes.length ? Math.min(...indexes) : -1;
 }
 
 function getEvidenceFundCandidateCount(evidence = null) {
@@ -23187,6 +23240,8 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
     );
     return [
       "直接结论：这次先不买，也不硬凑基金代码。",
+      "排序口径：接盘风险优先，其次看回调是否真完成、题材是否有当前资金和新闻支撑。",
+      "结果榜：暂无合格主推荐；观察池只按复核顺序排，不给买入金额。",
       `原因：${evidenceLine}`,
       catchdownLine,
       ...(watchLines.length ? ["", "观察池（不是主推荐）：", ...watchLines] : []),
@@ -23205,6 +23260,8 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
   );
   return [
     "直接结论：只保留符合回调启动纪律的候选，偏热或等待回撤的标的不放进主推荐。",
+    "排序口径：买点成立度优先，其次看题材/主力支撑、风险收益质量和份额费用。",
+    `结果榜：${recommendationLines.map((line, index) => `${index + 1}. ${line.replace(/^\d+\.\s*/, "")}`).join("；")}`,
     "我对这条筛选把握度中等偏高，依据是下钻信号已经把主候选和观察池分开。",
     "",
     "推荐清单：",
@@ -23249,6 +23306,8 @@ function buildThemePlaybookQualityFallbackAnswer({ workflow, userText, evidence,
     : `代表基金：当前还缺可验证代表基金，必须先补前十大持仓或指数名称承载证据。`;
   return [
     "直接结论：先按0元观察处理，不把“等待机会”当操作结论。",
+    "排序口径：主力资金和新闻逻辑优先，其次看代表基金是否真实承载题材和买点是否成立。",
+    `结果榜：暂无可买主推荐；${candidateLabel || "候选基金"}只进入题材复核顺序，不给买入金额。`,
     `题材为什么动：${themeName}；${themeLogic}。来源/时间必须用当天快讯、公告或盘中数据复核。`,
     capitalLine,
     carrierLine,
@@ -34549,6 +34608,7 @@ function summarizeFundAnswerQualityIssueCategories(issues = []) {
   add(/missing_pullback_three_tier_execution/, "缺少激进/均衡/保守三档执行方案");
   add(/missing_market_data_quality_disclosure/, "公开数据源不完整但没有主动降级说明");
   add(/insufficient_chart_linked_candidates/, "图文覆盖不足：有候选却没有补足买入参考和备选观察配图");
+  add(/missing_result_first_ranking_summary|opening_metric_dump_before_result/, "回答开头仍不够像客户榜单：必须先给直接结论、排序口径和结果榜，再展开少量关键证据");
   add(/internal_signal_leak|raw_english_section_leak|stiff_confidence_label/, "表达仍有内部字段、英文栏目或生硬把握度，需要中文自然化");
   add(/generic_cliche_answer|risk_dump_without_decision_boundary|missing_actionable_decision/, "回答偏套话或只堆风险，缺少动作边界");
   return [...new Set(categories)];
