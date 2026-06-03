@@ -813,6 +813,10 @@ const requiredPatterns = [
     message: "priority ranking requests such as high-Sharpe first must stay in short leaderboard mode instead of expanding into a repeated recommendation report."
   },
   {
+    pattern: /function isFundAnswerPriorityLeaderboardRequest[\s\S]{0,900}太啰嗦[\s\S]{0,220}干巴巴[\s\S]{0,220}直接给[\s\S]{0,220}结果[\s\S]{0,220}少报数据/,
+    message: "customer complaints about verbosity or metric dumps must also trigger short result-leaderboard mode."
+  },
+  {
     pattern: /function buildConciseFundResultAnswerFallback[\s\S]{0,1200}最多3条为什么这样排|function buildConciseFundResultAnswerFallback[\s\S]{0,1800}为什么这样排/,
     message: "fund answer quality must have a deterministic compact fallback for verbose ranked answers."
   },
@@ -3191,6 +3195,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*WATCHLIST_HARD_RISK_RULES)(?=[\s\S]*旧题材未确认)(?=[\s\S]*历史热点)(?=[\s\S]*接盘风险)(?=[\s\S]*退潮接盘)(?=[\s\S]*底层持仓走弱)(?=[\s\S]*表面回调可能继续下探)(?=[\s\S]*持仓未承载题材)(?=[\s\S]*renderWatchlistHardRiskStrip)(?=[\s\S]*watchlist-hard-risk-strip)(?=[\s\S]*watchlist-risk-danger)/,
     message: "admin watchlist UI must highlight hard risks such as weak top-holding pulse, holdings-carrier mismatch, capital retreat, and chase risk before long evidence text."
+  },
+  {
+    pattern: /(?=[\s\S]*function renderWatchlistCatchdownNotice)(?=[\s\S]*function isWatchlistCatchdownRiskItem)(?=[\s\S]*接盘风险)(?=[\s\S]*只做0元观察)(?=[\s\S]*这不是低位启动)(?=[\s\S]*\.watchlist-catchdown-notice)/,
+    message: "admin watchlist categories must surface stale-catchdown candidates as zero-yuan observation before the detailed fund cards."
   },
   {
     pattern: /购买准备队列/,

@@ -4626,12 +4626,16 @@ function renderWatchlistStatusButton(category, items = []) {
   const statusClass = getWatchlistStatusClass(category.status);
   const best = items[0];
   const active = category.status === activeWatchlistStatus;
+  const catchdownCount = items.filter(isWatchlistCatchdownRiskItem).length;
+  const statusHint = catchdownCount && category.status === "blocked"
+    ? `接盘风险 ${catchdownCount} 只 · 只做0元观察`
+    : best ? selectWatchlistPrimaryGap(best) : category.hint;
   return `
     <button type="button" class="watchlist-status-tab${active ? " active" : ""}" data-watchlist-status-filter="${escapeHtml(category.status)}">
       <span class="watchlist-pill ${statusClass}">${items.length} 只</span>
       <strong>${escapeHtml(category.title)}</strong>
       <small>${escapeHtml(best ? `${best.code || ""} ${best.name || ""}`.trim() : category.hint)}</small>
-      <em>${escapeHtml(best ? selectWatchlistPrimaryGap(best) : category.hint)}</em>
+      <em>${escapeHtml(statusHint)}</em>
     </button>
   `;
 }
@@ -4661,6 +4665,7 @@ function renderWatchlistCategory(category, items = []) {
         <span class="watchlist-pill ${statusClass}">${items.length} 只</span>
       </div>
       ${best ? `<small class="category-lead">优先看：${escapeHtml(best.code)} ${escapeHtml(best.name || "")} · ${escapeHtml(selectWatchlistPrimaryGap(best))}</small>` : ""}
+      ${renderWatchlistCatchdownNotice(items)}
       <div class="fund-card-grid compact-fund-grid">
         ${items.map(renderWatchlistItem).join("")}
       </div>
@@ -4972,6 +4977,37 @@ function renderWatchlistHardRiskStrip(item = {}) {
       `).join("")}
     </div>
   `;
+}
+
+function renderWatchlistCatchdownNotice(items = []) {
+  const catchdownItems = (items || []).filter(isWatchlistCatchdownRiskItem);
+  if (!catchdownItems.length) return "";
+  const lead = catchdownItems[0] || {};
+  const trigger = lead.buyTriggers?.find((item) => /主力资金回流|代表持仓止跌|新鲜/.test(item))
+    || lead.positionPlan
+    || selectWatchlistPrimaryGap(lead)
+    || "等待新鲜催化、主力资金回流和代表持仓止跌后再复核。";
+  return `
+    <div class="watchlist-catchdown-notice">
+      <strong>接盘风险 ${catchdownItems.length} 只</strong>
+      <span>${escapeHtml([lead.code, lead.name].filter(Boolean).join(" "))}：这不是低位启动，只能0元观察。</span>
+      <small>${escapeHtml(trigger)}</small>
+    </div>
+  `;
+}
+
+function isWatchlistCatchdownRiskItem(item = {}) {
+  if (!item || typeof item !== "object") return false;
+  const text = [
+    item.candidateRole,
+    item.reason,
+    item.positionPlan,
+    ...(Array.isArray(item.buyTriggers) ? item.buyTriggers : []),
+    ...(Array.isArray(item.riskNotes) ? item.riskNotes : []),
+    ...(Array.isArray(item.readinessGaps) ? item.readinessGaps : [])
+  ].filter(Boolean).join(" ");
+  return /接盘风险|退潮|主力(?:资金)?撤离|资金撤离|旧题材|旧催化|旧新闻|表面回调|不是低位启动|0元观察/.test(text)
+    || collectWatchlistHardRisks(item).some((risk) => ["catchdown", "retreat", "unconfirmed_theme", "stale_catalyst", "holding_pulse"].includes(risk.id));
 }
 
 function collectWatchlistHardRisks(item = {}) {

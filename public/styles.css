@@ -7747,6 +7747,44 @@ button.danger-button:hover {
   background: #eff6ff;
 }
 
+.watchlist-catchdown-notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 10px;
+  align-items: center;
+  margin: 8px 0 10px;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-left: 4px solid #b3261e;
+  border-radius: 8px;
+  color: #7f1d1d;
+  background: #fff7f7;
+}
+
+.watchlist-catchdown-notice strong,
+.watchlist-catchdown-notice span,
+.watchlist-catchdown-notice small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.watchlist-catchdown-notice strong {
+  grid-row: 1 / span 2;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.watchlist-catchdown-notice span {
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.watchlist-catchdown-notice small {
+  color: #9f1239;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .watchlist-action-card p,
 .watchlist-action-card small {
   display: block;

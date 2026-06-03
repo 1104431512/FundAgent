@@ -1539,6 +1539,24 @@ assert(
   manager.hasVerboseFundResultAnswer(verboseRankedAnswer, { workflow: "fund_recommendation", userText: "推荐几个基金，按高夏普优先" }),
   "verbose ranked answer detector must be exported for regression checks"
 );
+assert(
+  manager.hasVerboseFundResultAnswer(verboseRankedAnswer, { workflow: "fund_recommendation", userText: "经理太啰嗦了，干巴巴的讲数据，直接给我结果，少报数据" }),
+  "concise-result complaints must trigger the same short leaderboard mode even without a formal priority phrase"
+);
+const conciseComplaintQuality = manager.evaluateFundAnswerQuality({
+  text: verboseRankedAnswer,
+  workflow: "fund_recommendation",
+  userText: "经理太啰嗦了，干巴巴的讲数据，直接给我结果，少报数据",
+  evidence: {
+    marketDeepDive: {
+      candidates: ["000001", "000002", "000003", "000004", "000005"].map((code) => ({ code }))
+    }
+  }
+});
+assert(
+  conciseComplaintQuality.issues.includes("verbose_result_answer_detail"),
+  "quality gate must reject long metric reports when the customer explicitly asks for direct results"
+);
 const conciseRankedFallback = manager.buildConciseFundResultAnswerFallback(verboseRankedAnswer, verboseRankedQuality.issues);
 assert(
   conciseRankedFallback.includes("直接结论：") && conciseRankedFallback.includes("排序口径：") && conciseRankedFallback.includes("结果榜："),
@@ -3680,6 +3698,9 @@ assert(adminStyleSource.includes("ranking-action-leaderboard") && adminStyleSour
 assert(adminStyleSource.includes("ranking-action-boundary"), "admin UI must style action leaderboard execution boundaries clearly");
 assert(adminStyleSource.includes("ranking-action-crosscheck"), "admin UI must style action leaderboard cross-check evidence clearly");
 assert(adminSource.includes("接盘风险") && adminSource.includes("退潮接盘") && adminSource.includes("表面回调可能继续下探"), "admin watchlist hard-risk strip must surface stale catchdown risk as a first-class danger chip");
+assert(adminSource.includes("renderWatchlistCatchdownNotice") && adminSource.includes("isWatchlistCatchdownRiskItem"), "admin watchlist must render a category-level catchdown notice before long fund cards");
+assert(adminSource.includes("只做0元观察") && adminSource.includes("这不是低位启动"), "admin watchlist catchdown notice must translate stale pullbacks into zero-yuan observation language");
+assert(adminStyleSource.includes(".watchlist-catchdown-notice"), "admin stylesheet must style the watchlist catchdown notice as a first-scan warning strip");
 assert(adminSource.includes("旧催化") && adminSource.includes("stale_catalyst"), "admin watchlist hard-risk strip must separately highlight old-catalyst catchdown risk");
 assert(adminSource.includes("旧题材未确认") && adminSource.includes("unconfirmed_theme") && adminSource.includes("历史热点"), "admin hard-risk chips must visibly flag old theme labels that are not confirmed by the current radar");
 assert(adminSource.includes("renderRunActionRiskStrip") && adminSource.includes("collectRunActionHardRisks"), "admin run action cards must render hard-risk chips for old catalysts, catchdown, and retreat warnings");
