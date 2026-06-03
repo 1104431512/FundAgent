@@ -273,7 +273,7 @@ const requiredPatterns = [
     message: "fund answer quality gate must require Chinese data-gap disclosure and conviction downgrade."
   },
   {
-    pattern: /function evaluateFundAnswerQuality[\s\S]{0,2400}evaluateStaleFundEvidenceActionDiscipline/,
+    pattern: /function evaluateFundAnswerQuality[\s\S]{0,3400}evaluateStaleFundEvidenceActionDiscipline/,
     message: "fund answer quality gate must reject buy language based on stale NAV/trend evidence."
   },
   {
@@ -281,7 +281,7 @@ const requiredPatterns = [
     message: "stale evidence quality gate must distinguish stale-data buy execution and buy-signal leaks."
   },
   {
-    pattern: /function evaluateFundAnswerQuality[\s\S]{0,2500}evaluateStaleThemeCatchdownAnswerDiscipline/,
+    pattern: /function evaluateFundAnswerQuality[\s\S]{0,3400}evaluateStaleThemeCatchdownAnswerDiscipline/,
     message: "fund answer quality gate must run stale-theme catchdown buy-language discipline."
   },
   {
@@ -709,6 +709,22 @@ const requiredPatterns = [
     message: "portfolio decision prompts must reduce numeric dumps and prioritize customer-readable trend logic."
   },
   {
+    pattern: /function evaluateFundAnswerQuality[\s\S]{0,2400}missing_result_sort_policy/,
+    message: "fund answer quality must reject multi-candidate recommendations that omit a customer-readable sort policy."
+  },
+  {
+    pattern: /function shouldRequireFundAnswerSortPolicy[\s\S]{0,900}fundCodes\.size >= 2[\s\S]{0,900}function hasFundAnswerSortPolicy[\s\S]{0,500}排序口径/,
+    message: "fund answer quality must require and recognize customer-readable result ranking policies."
+  },
+  {
+    pattern: /推荐清单必须先写排序口径[\s\S]{0,900}高夏普[\s\S]{0,520}低回撤/,
+    message: "fund recommendation prompts must mention high-Sharpe and low-drawdown ranking priorities."
+  },
+  {
+    pattern: /推荐清单：按排序口径/,
+    message: "fund recommendation prompts must list candidates according to the declared sort policy."
+  },
+  {
     pattern: /account\.cash 才是当下可动用现金[\s\S]{0,180}receivableCash 是赎回在途资金[\s\S]{0,180}不能当作已经到账的买入火力/,
     message: "portfolio decision prompts must distinguish deployable cash from unsettled redemption receivables."
   },
@@ -889,7 +905,11 @@ const requiredPatterns = [
     message: "portfolio capability diagnostics must require explicit follow-through after starter buy orders."
   },
   {
-    pattern: /function buildPortfolioStarterBuyFollowUpQueue[\s\S]{0,3600}确认前不追加[\s\S]{0,2200}function ensurePortfolioStarterBuyFollowUpReviewed[\s\S]{0,2200}portfolio_starter_buy_follow_up_guard/,
+    pattern: /function buildPortfolioStarterBuyFollowUpQueue[\s\S]{0,5200}确认前不追加/,
+    message: "portfolio starter-buy follow-up queues must keep the no-add-before-confirmation rule."
+  },
+  {
+    pattern: /function ensurePortfolioStarterBuyFollowUpReviewed[\s\S]{0,2600}portfolio_starter_buy_follow_up_guard/,
     message: "portfolio decisions must force scale/hold/exit follow-up for pending or confirmed starter buys."
   },
   {
@@ -1193,7 +1213,7 @@ const requiredPatterns = [
     message: "main-capital/preheat micro-starter buys must require positive fund-flow or main-inflow leaderboard confirmation."
   },
   {
-    pattern: /function buildPortfolioThemeOpportunityPlan[\s\S]{0,2600}capitalFlowGap[\s\S]{0,500}hasPositiveThemeMainCapitalEvidence\(theme\)[\s\S]{0,700}缺少正向主力资金或主力流入榜确认/,
+    pattern: /function buildPortfolioThemeOpportunityPlan[\s\S]{0,3600}capitalFlowGap[\s\S]{0,500}hasPositiveThemeMainCapitalEvidence\(theme\)[\s\S]{0,700}缺少正向主力资金或主力流入榜确认/,
     message: "theme opportunity plans must downgrade traceable news/preheat candidates that lack positive main-capital confirmation."
   },
   {
@@ -1203,6 +1223,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*function hasConflictingThemeCapitalOutflow[\s\S]{0,900}avgFlow[\s\S]{0,300}<= -0\.8)(?=[\s\S]*function hasPositiveThemeMainCapitalEvidence[\s\S]{0,500}hasConflictingThemeCapitalOutflow\(theme\)\) return false)(?=[\s\S]*function hasNewsMainCapitalEvidence[\s\S]{0,260}hasConflictingThemeCapitalOutflow\(theme\)\) return false)/,
     message: "fresh news main-capital claims must not override confirmed board outflow or retreating capital evidence."
+  },
+  {
+    pattern: /(?=[\s\S]*function isStaleThemeCatchdownRiskTheme[\s\S]{0,900}leaderSignal === "capital_outflow")(?=[\s\S]*function hasThemeCapitalRetreatRisk[\s\S]{0,900}leaderSignal === "capital_outflow")/,
+    message: "theme retreat and catchdown guards must treat main-force capital_outflow leader signals as hard no-buy risk."
   },
   {
     pattern: /function hasUsableThemeLowRotationSupport[\s\S]{0,220}hasConflictingThemeCapitalOutflow\(theme\)\) return false[\s\S]{0,900}minRotation[\s\S]{0,500}lowPosition >= minLowPosition/,
@@ -1717,19 +1741,23 @@ const requiredPatterns = [
     message: "admin portfolio ranking radar must use an adaptive action-card grid instead of forcing a horizontal scrollbar."
   },
   {
-    pattern: /portfolio-workspace-switcher[\s\S]{0,260}position:\s*sticky/,
+    pattern: /portfolio-workspace-switcher[^]*?position:\s*sticky/,
     message: "admin portfolio workspace switcher must stay reachable and remain usable on narrow screens."
   },
   {
-    pattern: /portfolio-terminal-shell[\s\S]{0,340}grid-template-columns:\s*minmax\(78px,\s*90px\)\s*minmax\(0,\s*1fr\)[\s\S]{0,900}portfolio-terminal-rail[\s\S]{0,360}grid-row:\s*1\s*\/\s*span\s*2/,
+    pattern: /portfolio-terminal-shell[^]*?grid-template-columns:\s*minmax\(78px,\s*90px\)\s*minmax\(0,\s*1fr\)[^]*?portfolio-terminal-rail[^]*?grid-row:\s*1\s*\/\s*span\s*2/,
     message: "admin portfolio terminal workspace must keep only the primary entry navigation in a stable left rail."
   },
   {
-    pattern: /(?=[\s\S]*portfolio-workspace-dock)(?=[\s\S]*\.portfolio-workspace-dock\s*\{[\s\S]*grid-column:\s*2[\s\S]*grid-row:\s*1[\s\S]*overflow:\s*hidden)(?=[\s\S]*@media \(min-width:\s*861px\)[\s\S]*\.portfolio-workspace-group\.active\s*\{[\s\S]*display:\s*flex[\s\S]*overflow-x:\s*auto)/,
+    pattern: /\.portfolio-workspace-dock\s*\{[\s\S]{0,700}grid-column:\s*2[\s\S]{0,260}grid-row:\s*1[\s\S]{0,260}overflow:\s*hidden/,
     message: "admin portfolio secondary entries must live in a compact top dock instead of a long side menu."
   },
   {
-    pattern: /@media \(max-width: 860px\)[\s\S]{0,4200}portfolio-workspace-switcher[\s\S]{0,600}overflow-x:\s*auto/,
+    pattern: /@media \(min-width:\s*861px\)[\s\S]{0,5200}\.portfolio-workspace-group\.active\s*\{[\s\S]{0,360}display:\s*flex[\s\S]{0,360}overflow-x:\s*auto/,
+    message: "admin portfolio secondary entry groups must scroll horizontally in the compact desktop dock."
+  },
+  {
+    pattern: /@media \(max-width: 860px\)[^]*?portfolio-workspace-switcher[^]*?overflow-x:\s*auto/,
     message: "admin portfolio workspace switcher must remain usable on narrow screens."
   },
   {
@@ -1737,8 +1765,12 @@ const requiredPatterns = [
     message: "ranking-to-watchlist jumps must open the dedicated watchlist workspace."
   },
   {
-    pattern: /(?=[\s\S]*function renderWatchlist[\s\S]*renderWatchlistTerminal)(?=[\s\S]*function renderWatchlistTerminal[\s\S]*watchlist-terminal[\s\S]*watchlist-status-stage)(?=[\s\S]*function renderWatchlistStatusButton[\s\S]*data-watchlist-status-filter)/,
+    pattern: /function renderWatchlist[\s\S]{0,700}renderWatchlistTerminal[\s\S]{0,2600}function renderWatchlistTerminal[\s\S]{0,1600}watchlist-terminal[\s\S]{0,1200}watchlist-status-stage/,
     message: "admin watchlist must use focused status-category navigation instead of showing every candidate category as one long page."
+  },
+  {
+    pattern: /function renderWatchlistStatusButton[\s\S]{0,900}data-watchlist-status-filter/,
+    message: "admin watchlist must expose status-category filter buttons for focused navigation."
   },
   {
     pattern: /(?=[\s\S]*自选池终端)(?=[\s\S]*watchlist-panel[\s\S]{0,360}grid-template-rows:\s*auto minmax\(0,\s*1fr\))(?=[\s\S]*watchlist-panel \.watchlist-list[\s\S]{0,360}overflow:\s*hidden)/,
@@ -2129,11 +2161,15 @@ const requiredPatterns = [
     message: "current market retreat radar must block buy-candidate watchlist statuses instead of leaving them as vague wait states."
   },
   {
-    pattern: /(?=[\s\S]*function refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,1600}markUnrefreshedMarketThemeSignal)(?=[\s\S]*function refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,2600}noCurrentThemeMatch:\s*true)/,
+    pattern: /function refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,2300}markUnrefreshedMarketThemeSignal[\s\S]{0,900}noCurrentThemeMatch:\s*true/,
     message: "current market radar refresh must downgrade old theme labels that are not confirmed today."
   },
   {
-    pattern: /function refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,2600}buildPortfolioMarketThemeRefresh\(matchedThemes[\s\S]{0,2600}function buildPortfolioMarketThemeRefresh[\s\S]{0,900}supportSignals[\s\S]{0,900}newsLogic[\s\S]{0,900}dataBasis/,
+    pattern: /function refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,3200}marketThemeRefresh:\s*buildPortfolioMarketThemeRefresh\(matchedThemes/,
+    message: "candidate market-theme refresh must write a structured marketThemeRefresh object after current-radar matching."
+  },
+  {
+    pattern: /function buildPortfolioMarketThemeRefresh[\s\S]{0,1100}supportSignals[\s\S]{0,1100}newsLogic[\s\S]{0,1100}dataBasis/,
     message: "candidate market-theme refresh must preserve why-move, support-signal, and data-basis evidence, not just matched theme names."
   },
   {
@@ -2141,7 +2177,7 @@ const requiredPatterns = [
     message: "unrefreshed theme labels must become non-actionable and carry a readable current-radar warning."
   },
   {
-    pattern: /function getPortfolioActionableThemeSupportGap(?=[\s\S]{0,1800}getUnrefreshedMarketThemeWarnings\(candidate\))(?=[\s\S]{0,2800}旧题材线索未被当前题材雷达确认)(?=[\s\S]{0,3200}历史热点)/,
+    pattern: /function getPortfolioActionableThemeSupportGap[\s\S]{0,1800}getUnrefreshedMarketThemeWarnings\(candidate\)[\s\S]{0,2200}function getUnrefreshedMarketThemeWarnings[\s\S]{0,900}旧题材线索未被当前题材雷达确认[\s\S]{0,900}历史热点/,
     message: "portfolio BUY discipline must explicitly block old theme labels that are not confirmed by the current radar."
   },
   {
@@ -2267,6 +2303,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*function buildPortfolioCustomerActionLeaderboardStatusLines[\s\S]{0,900}客户行动排行)(?=[\s\S]*function buildPortfolioStatusAnswer[\s\S]{0,6200}buildPortfolioCustomerActionLeaderboardStatusLines[\s\S]{0,900}buildPortfolioCustomerActionDeckStatusLines)/,
     message: "portfolio status answers must translate customer action leaderboards before detailed action-card lines."
+  },
+  {
+    pattern: /function buildPortfolioCustomerActionLeaderboardStatusLines[\s\S]{0,1200}排序口径[\s\S]{0,500}结果：\$\{results/,
+    message: "portfolio customer action leaderboard status lines must lead with sort policy and ranked results instead of verbose trigger dumps."
   },
   {
     pattern: /(?=[\s\S]*function buildPortfolioConsensusRadarStatusLines[\s\S]{0,1200}共识雷达)(?=[\s\S]*buildPortfolioStatusAnswer[\s\S]{0,6200}buildPortfolioConsensusRadarStatusLines[\s\S]{0,900}buildPortfolioCustomerActionLeaderboardStatusLines)/,
@@ -3605,6 +3645,18 @@ const requiredPatterns = [
     message: "portfolio decisions must deterministically review main-capital/preheat theme opportunities instead of allowing generic waiting."
   },
   {
+    pattern: /function buildPortfolioThemeOpportunityPlan[\s\S]{0,2600}themeEvidenceSource\s*=\s*refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,1200}selectPortfolioActionableThemeSignal\(themeEvidenceSource\)/,
+    message: "portfolio theme opportunity planning must refresh self-selected historical theme labels against the current market radar before promoting main-capital/preheat opportunities."
+  },
+  {
+    pattern: /function refreshPortfolioCandidateThemesWithMarketRadar[\s\S]{0,1900}mergeMatchedThemeSignals\(\s*matchCandidateThemes\(candidate,\s*themeRadar\),\s*matchCurrentThemeRadarByPreviousThemeSignals\(candidate,\s*themeRadar\)/,
+    message: "current-radar refresh must verify both direct candidate matches and historical theme id/name matches before downgrading old labels."
+  },
+  {
+    pattern: /function matchCurrentThemeRadarByPreviousThemeSignals[\s\S]{0,700}hasThemeCapitalRetreatRisk\(theme\)[\s\S]{0,220}isStaleThemeCatchdownRiskTheme\(theme\)[\s\S]{0,220}isUnrefreshedMarketThemeSignal\(theme\)[\s\S]{0,1100}current_radar_same_theme[\s\S]{0,900}function mergeMatchedThemeSignals/,
+    message: "historical theme id/name matches must be traceable, deduped, and must not revive retreat/catchdown/unconfirmed old labels."
+  },
+  {
     pattern: /(?=[\s\S]*function ensurePortfolioThemeOpportunityReviewed)(?=[\s\S]*formatPortfolioThemeOpportunityCustomerLogic)(?=[\s\S]*为什么动)(?=[\s\S]*资金\/题材)(?=[\s\S]*代表基金)/,
     message: "portfolio theme opportunity guard must inject customer-readable why-move, capital/theme, and representative-fund logic into actions."
   },
@@ -3673,8 +3725,8 @@ const requiredPatterns = [
     message: "manager ranking boards must produce and compact a customer decision summary before detailed ranking cards."
   },
   {
-    pattern: /(?=[\s\S]*const customerActionLeaderboard = buildPortfolioRankingCustomerActionLeaderboard)(?=[\s\S]*customerActionLeaderboard[\s\S]{0,700}customerDecisionSummary)(?=[\s\S]*compactPortfolioRankingBoardForModel[\s\S]{0,1500}customerActionLeaderboard)/,
-    message: "manager ranking boards must produce and compact customer action leaderboards by buy, wait, avoid, sell, and data lanes."
+    pattern: /(?=[\s\S]*const customerActionLeaderboard = buildPortfolioRankingCustomerActionLeaderboard)(?=[\s\S]*customerActionLeaderboard[\s\S]{0,700}customerDecisionSummary)(?=[\s\S]*compactPortfolioRankingBoardForModel[\s\S]{0,1800}customerActionLeaderboard[\s\S]{0,900}sortPolicy)/,
+    message: "manager ranking boards must produce and compact customer action leaderboards by buy, wait, avoid, sell, data lanes, and sort policy."
   },
   {
     pattern: /(?=[\s\S]*function buildPortfolioRankingConsensusRadar)(?=[\s\S]*consensusRadar)(?=[\s\S]*compactPortfolioRankingBoardForModel[\s\S]*consensusRadar)/,
@@ -3817,8 +3869,8 @@ const requiredPatterns = [
     message: "admin manager ranking board must keep health, digest, priority queue, and selected list inside a bounded terminal stage."
   },
   {
-    pattern: /(?=[\s\S]*buildPortfolioCustomerActionCrossCheck[\s\S]*supportingEvidence[\s\S]*constraintEvidence)(?=[\s\S]*buildPortfolioCustomerActionLeaderboardStatusLines[\s\S]*交叉验证)(?=[\s\S]*renderManagerCustomerActionCrossCheck[\s\S]*ranking-action-crosscheck)/,
-    message: "customer action leaderboards must show cross-ranking validation and constraints, not only ranks and reasons."
+    pattern: /(?=[\s\S]*buildPortfolioCustomerActionCrossCheck[\s\S]*supportingEvidence[\s\S]*constraintEvidence)(?=[\s\S]*buildPortfolioCustomerActionLeaderboardItem[\s\S]*crossCheckSummary)(?=[\s\S]*renderManagerCustomerActionCrossCheck[\s\S]*ranking-action-crosscheck)/,
+    message: "customer action leaderboard details must preserve cross-ranking validation and constraints while concise status lines stay result-first."
   },
   {
     pattern: /getDefaultManagerRankingFilter[\s\S]{0,900}priorityQueue[\s\S]{0,900}listId/,
@@ -3983,14 +4035,25 @@ const requiredPatterns = [
 ];
 
 const traceGuards = process.env.CHECK_RUNTIME_GUARDS_TRACE === "1";
+const profileGuards = process.env.CHECK_RUNTIME_GUARDS_PROFILE === "1";
 const failures = [];
 for (const item of forbiddenPatterns) {
   if (traceGuards) console.error(`[forbidden] ${item.message}`);
-  if (item.pattern.test(server)) failures.push(item.message);
+  if (profileGuards) console.error(`[forbidden start] ${item.message}`);
+  const startedAt = Date.now();
+  const matched = item.pattern.test(server);
+  const elapsedMs = Date.now() - startedAt;
+  if (profileGuards && elapsedMs > 20) console.error(`[forbidden ${elapsedMs}ms] ${item.message}`);
+  if (matched) failures.push(item.message);
 }
 for (const item of requiredPatterns) {
   if (traceGuards) console.error(`[required] ${item.message}`);
-  if (!item.pattern.test(allSource)) failures.push(item.message);
+  if (profileGuards) console.error(`[required start] ${item.message}`);
+  const startedAt = Date.now();
+  const matched = item.pattern.test(allSource);
+  const elapsedMs = Date.now() - startedAt;
+  if (profileGuards && elapsedMs > 20) console.error(`[required ${elapsedMs}ms] ${item.message}`);
+  if (!matched) failures.push(item.message);
 }
 
 if (failures.length) {

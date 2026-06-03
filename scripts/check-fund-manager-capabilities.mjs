@@ -1155,6 +1155,7 @@ assert(rankingBoard.customerDecisionSummary?.lines?.some((line) => line.includes
 const decisionSummaryLines = manager.buildPortfolioCustomerDecisionSummaryStatusLines(rankingBoard.customerDecisionSummary).join("\n");
 assert(decisionSummaryLines.includes("客户决策摘要") && decisionSummaryLines.includes("先处理卖出/减仓") && decisionSummaryLines.includes("可小仓复核"), "portfolio status replies must show the customer decision summary before detailed action cards");
 assert(rankingBoard.customerActionLeaderboard?.lanes?.length === 5, "customer action leaderboard must split buy, wait, avoid, sell, and data into separate ranked lanes");
+assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.sortPolicy?.includes("高夏普") && rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.sortPolicy?.includes("低回撤"), "customer action leaderboard buy lane must expose a clear sort policy such as high-Sharpe/low-drawdown priority");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "sell")?.items.some((item) => item.code === "008327" && item.rank === 1), "customer action leaderboard must rank urgent sell/de-risk positions in the sell lane");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.items.every((item) => item.rank && item.reason && item.nextStep && item.reviewWindow && item.trigger && item.invalidation), "customer action leaderboard buy lane items must be ranked with reasons, next steps, review windows, triggers, and invalidation boundaries");
 assert(rankingBoard.customerActionLeaderboard.lanes.find((lane) => lane.id === "buy")?.items.every((item) => item.crossCheckSummary && item.supportingEvidence?.length && Array.isArray(item.constraintEvidence)), "customer action leaderboard buy lane items must expose cross-ranking supporting evidence and unresolved constraints");
@@ -1218,8 +1219,29 @@ const consensusDirectLines = manager.buildPortfolioStatusDirectConclusionLines({
 assert(consensusDirectLines.includes("多榜单交叉") && (consensusDirectLines.includes("008327") || consensusDirectLines.includes("000005")), "direct portfolio status conclusion must use consensus radar before falling back to generic action cards");
 const leaderboardStatusLines = manager.buildPortfolioCustomerActionLeaderboardStatusLines(rankingBoard.customerActionLeaderboard).join("\n");
 assert(leaderboardStatusLines.includes("客户行动排行") && leaderboardStatusLines.includes("卖出/减仓榜") && leaderboardStatusLines.includes("补证据榜"), "portfolio status replies must translate customer action leaderboards into readable action-ranked lines");
-assert(leaderboardStatusLines.includes("复核期限：") && leaderboardStatusLines.includes("触发：") && leaderboardStatusLines.includes("失效/降级："), "portfolio status replies must include review windows, triggers, and invalidation boundaries for action leaderboards");
-assert(leaderboardStatusLines.includes("交叉验证：") && leaderboardStatusLines.includes("支持="), "portfolio status replies must show cross-ranking validation instead of action ranks alone");
+assert(leaderboardStatusLines.includes("排序口径：") && leaderboardStatusLines.includes("结果：1."), "portfolio status replies must lead action leaderboards with sort policy and ranked results");
+assert(leaderboardStatusLines.includes("高夏普") && leaderboardStatusLines.includes("低回撤"), "portfolio status replies must explain quality-oriented priority such as high-Sharpe and low-drawdown before details");
+assert(!leaderboardStatusLines.includes("复核期限：") && !leaderboardStatusLines.includes("失效/降级："), "portfolio status action leaderboard lines must stay concise instead of dumping every trigger and invalidation boundary");
+const missingSortPolicyQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：可以分批买入。\n推荐清单：000001 低位启动基金C，走势接近买点；000005 现金再部署基金C，回撤修复。",
+  workflow: "fund_recommendation",
+  userText: "推荐几个基金，按质量好一点的优先",
+  evidence: { marketDeepDive: { candidates: [{ code: "000001" }, { code: "000005" }] } }
+});
+assert(
+  missingSortPolicyQuality.issues.includes("missing_result_sort_policy"),
+  "fund answer quality must reject multi-candidate recommendations that do not explain the ranking priority"
+);
+const sortedPolicyQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：可以分批买入。\n排序口径：高夏普/低回撤优先，再看买点和费用。\n推荐清单：第一优先 000001 低位启动基金C，夏普较好且回撤可控；第二优先 000005 现金再部署基金C，买点接近。",
+  workflow: "fund_recommendation",
+  userText: "推荐几个基金，按质量好一点的优先",
+  evidence: { marketDeepDive: { candidates: [{ code: "000001" }, { code: "000005" }] } }
+});
+assert(
+  !sortedPolicyQuality.issues.includes("missing_result_sort_policy"),
+  "fund answer quality must allow ranked recommendations that state a customer-readable sort policy"
+);
 const actionDeckLines = manager.buildPortfolioCustomerActionDeckStatusLines(rankingBoard.customerActionDeck).join("\n");
 assert(actionDeckLines.includes("买入理由："), "customer action deck status must explain why a fund can be bought instead of using a generic reason label");
 assert(actionDeckLines.includes("加备选理由："), "customer action deck status must explain why a fund belongs in backup/watch instead of only saying wait");
@@ -6973,6 +6995,72 @@ const themeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
 assert.equal(themeOpportunityPlan.candidates[0].opportunityAction, "theme_micro_starter", "theme opportunity plan must convert actionable main-capital/preheat setups into micro-starter candidates");
 assert.equal(themeOpportunityPlan.candidates[0].executable, true, "theme opportunity candidates should be executable only after buy discipline and fee checks pass");
 assert(themeOpportunityPlan.candidates[0].newsLogic.includes("新闻催化"), "theme opportunity plan must preserve the news/current-event logic behind the move");
+const staleSelfSelectedThemeOpportunityDigest = {
+  ...executableMicroStarterDigest,
+  code: "000059",
+  name: "旧AI低位基金C",
+  marketThemeRefresh: {
+    source: "current_market_theme_radar",
+    refreshedAt: "2000-01-01T00:00:00.000Z",
+    matchedThemeNames: ["AI/算力"],
+    supportLabel: "当前主力进场",
+    supportSignals: ["AI/算力主力资金净流入"],
+    summary: "旧AI主力进场标签"
+  },
+  seed: {
+    ...(executableMicroStarterDigest.seed || {}),
+    name: "旧AI低位基金C",
+    matchedThemes: executableMicroStarterDigest.seed.matchedThemes
+  }
+};
+const currentRobotRadarForOpportunity = [rankOnlyMicroStarterDigest.seed.matchedThemes[0]];
+const staleSelfSelectedThemeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
+  redeploymentAccount,
+  [{
+    code: "000059",
+    name: "旧AI低位基金C",
+    status: "watch",
+    readinessScore: 92,
+    lastSnapshot: staleSelfSelectedThemeOpportunityDigest
+  }],
+  [staleSelfSelectedThemeOpportunityDigest],
+  {
+    fetchedAt: "2026-05-20T06:30:00.000Z",
+    themeRadar: currentRobotRadarForOpportunity,
+    themeLeaderboards: manager.buildThemeLeaderboards(currentRobotRadarForOpportunity)
+  }
+);
+assert(
+  !staleSelfSelectedThemeOpportunityPlan.candidates.some((item) => item.code === "000059"),
+  "theme opportunity plan must refresh self-selected historical themes against the current radar before promoting them as opportunities"
+);
+const staleSelfSelectedThemeOpportunityDecision = manager.ensurePortfolioThemeOpportunityReviewed(
+  { actions: [], learningNotes: [] },
+  redeploymentAccount,
+  [{
+    code: "000059",
+    name: "旧AI低位基金C",
+    status: "watch",
+    readinessScore: 92,
+    lastSnapshot: staleSelfSelectedThemeOpportunityDigest
+  }],
+  {
+    profiles: [staleSelfSelectedThemeOpportunityDigest],
+    marketSnapshot: {
+      fetchedAt: "2026-05-20T06:30:00.000Z",
+      themeRadar: currentRobotRadarForOpportunity,
+      themeLeaderboards: manager.buildThemeLeaderboards(currentRobotRadarForOpportunity)
+    }
+  }
+);
+assert(
+  !staleSelfSelectedThemeOpportunityDecision.actions.some((item) => item.code === "000059" && item.action === "BUY"),
+  "theme opportunity guard must not inject BUY actions from historical main-capital labels that today's radar no longer confirms"
+);
+assert(
+  staleSelfSelectedThemeOpportunityDecision.actions.some((item) => item.name === "主力预热代表基金召回" && item.reason.includes("人形机器人")),
+  "when stale self-selected themes are rejected, the guard should recall representative funds for the live current-radar theme instead"
+);
 const noCapitalFlowThemeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
   redeploymentAccount,
   [{

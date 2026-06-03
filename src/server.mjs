@@ -1342,7 +1342,10 @@ function refreshPortfolioCandidateThemesWithMarketRadar(candidate = {}, marketSn
     }
     return next;
   };
-  const matchedThemes = matchCandidateThemes(candidate, themeRadar);
+  const matchedThemes = mergeMatchedThemeSignals(
+    matchCandidateThemes(candidate, themeRadar),
+    matchCurrentThemeRadarByPreviousThemeSignals(candidate, themeRadar)
+  );
   if (!matchedThemes.length) {
     const previousThemes = getCandidateThemeSignals(candidate);
     if (!previousThemes.length) {
@@ -4252,15 +4255,22 @@ function buildPortfolioThemeOpportunityPlan(account = {}, watchlist = [], profil
     .map((item) => {
       const profile = profileByCode.get(item.code) || item.lastSnapshot || null;
       const evidenceSource = profile || item;
-      const theme = selectPortfolioActionableThemeSignal({
+      const themeEvidenceSource = refreshPortfolioCandidateThemesWithMarketRadar({
         ...evidenceSource,
+        code: item.code || evidenceSource?.code || "",
         name: item.name || evidenceSource?.name || "",
+        shareClass: item.shareClass || evidenceSource?.shareClass || evidenceSource?.fees?.shareClass || "",
+        marketThemeRefresh: evidenceSource?.marketThemeRefresh || item.marketThemeRefresh || null,
+        holdingThemeRefresh: evidenceSource?.holdingThemeRefresh || item.holdingThemeRefresh || null,
         matchedThemes: evidenceSource?.matchedThemes || item.matchedThemes || [],
         seed: {
           ...(evidenceSource?.seed || {}),
-          matchedThemes: evidenceSource?.seed?.matchedThemes || evidenceSource?.matchedThemes || item.matchedThemes || []
+          matchedThemes: evidenceSource?.seed?.matchedThemes || evidenceSource?.matchedThemes || item.matchedThemes || [],
+          marketThemeRefresh: evidenceSource?.seed?.marketThemeRefresh || evidenceSource?.marketThemeRefresh || item.seed?.marketThemeRefresh || null,
+          holdingThemeRefresh: evidenceSource?.seed?.holdingThemeRefresh || evidenceSource?.holdingThemeRefresh || item.seed?.holdingThemeRefresh || null
         }
-      });
+      }, marketSnapshot);
+      const theme = selectPortfolioActionableThemeSignal(themeEvidenceSource);
       if (!theme) return null;
       const lane = findPortfolioThemeOpportunityLaneForTheme(theme, themeLaneItems);
       const readiness = evaluatePortfolioWatchReadiness(item, profile);
@@ -9661,18 +9671,24 @@ function buildPortfolioCustomerActionLeaderboardStatusLines(board = {}) {
   if (!lanes.length) return [];
   const lines = [`${board.title || "客户行动排行"}：${board.summary || lanes.map((lane) => `${lane.title}${lane.count || 0}项`).join("，")}。`];
   for (const lane of lanes.slice(0, 5)) {
-    const top = Array.isArray(lane.items) ? lane.items[0] : null;
-    const subject = top ? [top.code, top.name].filter(Boolean).join(" ") : "";
-    const action = top?.action ? `（${top.action}）` : "";
-    const reason = shortenPortfolioCustomerText(top?.reason || lane.purpose || "", 58);
-    const nextStep = shortenPortfolioCustomerText(top?.nextStep || lane.topAction || lane.purpose || "", 62);
-    const reviewWindow = shortenPortfolioCustomerText(top?.reviewWindow || "", 40);
-    const trigger = shortenPortfolioCustomerText(top?.trigger || "", 54);
-    const invalidation = shortenPortfolioCustomerText(top?.invalidation || "", 54);
-    const crossCheck = shortenPortfolioCustomerText(top?.crossCheckSummary || "", 66);
-    lines.push(`- ${lane.title || "行动榜"}：${subject ? `${subject}${action}` : "暂无第一对象"}${reason ? `。原因：${reason}` : ""}${nextStep ? `。下一步：${nextStep}` : ""}${crossCheck ? `。交叉验证：${crossCheck}` : ""}${reviewWindow ? `。复核期限：${reviewWindow}` : ""}${trigger ? `。触发：${trigger}` : ""}${invalidation ? `。失效/降级：${invalidation}` : ""}`);
+    const items = Array.isArray(lane.items) ? lane.items.slice(0, 3) : [];
+    const top = items[0] || null;
+    const results = formatPortfolioCustomerActionLeaderboardResults(items);
+    const reason = shortenPortfolioCustomerText(top?.reason || lane.purpose || "", 54);
+    const policy = shortenPortfolioCustomerText(lane.sortPolicy || getPortfolioCustomerActionLaneSortPolicy(lane.id), 86);
+    lines.push(`- ${lane.title || "行动榜"}：排序口径：${policy}。结果：${results || "暂无第一对象"}${reason ? `。首选理由：${reason}` : ""}`);
   }
   return lines;
+}
+
+function formatPortfolioCustomerActionLeaderboardResults(items = []) {
+  return (items || [])
+    .slice(0, 3)
+    .map((item, index) => {
+      const subject = [item.code, item.name].filter(Boolean).join(" ") || item.action || "待复核";
+      return `${index + 1}. ${subject}`;
+    })
+    .join("；");
 }
 
 function buildPortfolioConsensusRadarStatusLines(radar = {}) {
@@ -13876,6 +13892,7 @@ function buildPortfolioRankingCustomerActionLeaderboard({ customerActionDeck = {
       id: def.id,
       title: def.title,
       purpose: def.purpose,
+      sortPolicy: getPortfolioCustomerActionLaneSortPolicy(def.id),
       target: def.target,
       tone: card.tone || def.id,
       count: items.length,
@@ -13939,6 +13956,7 @@ function buildPortfolioCustomerActionLeaderboardItem(item = {}, context = {}) {
     crossCheckSummary: crossCheck.summary,
     supportingEvidence: crossCheck.supportingEvidence,
     constraintEvidence: crossCheck.constraintEvidence,
+    sortPolicy: getPortfolioCustomerActionLaneSortPolicy(laneId),
     score: sourceScore,
     queueRank: queueItem.queueRank || null,
     listTitle: queueItem.listTitle || alertItem.laneTitle || "",
@@ -13950,6 +13968,16 @@ function buildPortfolioCustomerActionLeaderboardItem(item = {}, context = {}) {
       ...(item.tags || [])
     ]).slice(0, 4)
   };
+}
+
+function getPortfolioCustomerActionLaneSortPolicy(laneId = "") {
+  const id = String(laneId || "").trim();
+  if (id === "buy") return "按可执行性排序：主力资金/新闻逻辑优先，其次买点接近度，再看高夏普、低回撤、费用和持仓承载。";
+  if (id === "sell") return "按风险紧急度排序：客户真实持仓和利润回吐优先，其次单仓回撤、题材退潮和重叠暴露。";
+  if (id === "wait") return "按转正概率排序：低位修复优先，其次5日/10日转强、板块轮动和证据补齐速度。";
+  if (id === "avoid") return "按接盘风险排序：旧题材/主力撤离优先，其次高位追涨、拥挤和数据冲突。";
+  if (id === "data") return "按执行阻塞排序：净值时效优先，其次份额费率、前十大持仓和来源完整性。";
+  return "按动作影响排序：先处理最能改变买、等、卖结论的对象。";
 }
 
 function buildPortfolioCustomerActionCrossCheck(laneId = "", context = {}) {
@@ -14154,6 +14182,9 @@ function scorePortfolioCustomerBuyPriority(item = {}) {
   if (/新闻|催化|政策|订单|产业/.test(text)) score += 12;
   if (/主力|资金|流入/.test(text)) score += 12;
   if (/代表基金|前十大|持仓|承载|龙头/.test(text)) score += 10;
+  if (/夏普|风险收益|质量/.test(text)) score += 10;
+  if (/低回撤|最大回撤|回撤防线|回撤较低|回撤可控/.test(text)) score += 8;
+  if (/费用|费率|低费|每万元/.test(text)) score += 5;
   if (/0\.5%-1\.2%|微型/.test(text)) score += 8;
   return score;
 }
@@ -14841,6 +14872,7 @@ function compactPortfolioRankingBoardForModel(board = {}) {
         id: lane.id || "",
         title: lane.title || "",
         purpose: lane.purpose || "",
+        sortPolicy: lane.sortPolicy || "",
         target: lane.target || "",
         count: Number(lane.count || 0),
         topAction: lane.topAction || "",
@@ -21516,6 +21548,7 @@ function isStaleThemeCatchdownRiskTheme(theme = {}) {
   const declineBoards = Number(theme.boardDeclineCount || 0);
   const explicitRetreat = ["capital_outflow", "theme_fading"].includes(String(theme.retreatSignal || ""))
     || ["theme_fading", "capital_outflow"].includes(String(theme.stage || ""))
+    || theme.leaderSignal === "capital_outflow"
     || theme.positionSignal === "capital_outflow_watch";
   const lacksFreshSupport = (!Number.isFinite(follow) || follow < 50)
     && (!Number.isFinite(preheat) || preheat < 52);
@@ -21566,6 +21599,7 @@ function hasThemeCapitalRetreatRisk(theme = {}) {
   const declineBoards = Number(theme.boardDeclineCount || 0);
   const explicitRetreat = ["capital_outflow", "theme_fading"].includes(String(theme.retreatSignal || ""))
     || ["theme_fading", "capital_outflow"].includes(String(theme.stage || ""))
+    || theme.leaderSignal === "capital_outflow"
     || theme.positionSignal === "capital_outflow_watch";
   const weakTheme = (!Number.isFinite(forward) || forward < 32) && (!Number.isFinite(rotation) || rotation < 35);
   const flowWeak = (Number.isFinite(avgFlow) && avgFlow <= -1) || (Number.isFinite(minFlow) && minFlow <= -3) || outflowBoards >= 2;
@@ -22368,6 +22402,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，最终回答要用自然中文说明数据缺口、降低把握度；缺少贵金属/板块/排行/新闻模块时，不得声称已完整联网或给重仓买入。",
     "marketDeepDive 中的 trendProfile、actionability、entryBias、fitLabel 等是内部字段；最终回答必须翻译成中文用户话术，不要原样输出字段名或 extended_uptrend/staged_buy/wait_pullback 这类枚举。",
     "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先选择 pullbackSetup.signal 为 pullback_complete 或 launch_setup 的候选；同时检查5日/10日是否刚转强、120日区间位置是否偏低。短期涨幅偏热、20日/60日大涨且 entryBias 为 wait_pullback 的候选只能列入观察，不得作为主推荐。",
+    "推荐清单必须先写排序口径。用户指定“高夏普优先、低回撤优先、主力题材优先、费用优先”等偏好时按偏好排序；用户未指定时，默认按买点成立度、主力资金/新闻逻辑、风险收益质量（高夏普/低回撤）、费用和持仓承载排序。",
     "不要编造 marketSnapshot 里没有的基金代码、涨跌幅、排名、金价或新闻。",
     "推荐基金时不要默认偏向 A 类；同一基金存在 A/C/D/I 等份额时，按用户持有期和费用模型说明为什么选这个份额，并提示可替代份额。",
     "如果候选下钻里出现 seed.alternativeShareClasses 或 seed.sameExposureAlternatives，不要把它们当成独立推荐名额；主推荐只列一个代表，替代份额/同指数替代品放在该条下面说明。",
@@ -22402,13 +22437,14 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "",
     "请输出：",
     "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
-    "2. 题材雷达：先列 1-3 个相关题材的中文板块位置、主力节奏、新闻逻辑、拥挤度、为什么现在值得/不值得看；不要输出任何内部字段名。",
-    "3. 自评估：这类需求是否适合现在做、把握度如何、适合激进/均衡/保守哪类。",
-    "4. 推荐清单：优先 3-4 个候选基金或 ETF。每个候选包含代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号、趋势/自评估动作、为什么入选，以及“配图看什么”。5日/10日早期转强、120日区间低位、回撤、费用里只保留最能改变动作的2-3个数字，其余改成自然中文。只能使用快照、下钻或经理自选候选池中的候选代码；如果没有足够代码，就写“待复核方向”。",
+    "2. 排序口径：用一句话说明本次结果按什么优先排，例如“高夏普/低回撤优先”“主力资金和新闻逻辑优先”“接盘风险优先”；不要先铺数据。",
+    "3. 题材雷达：先列 1-3 个相关题材的中文板块位置、主力节奏、新闻逻辑、拥挤度、为什么现在值得/不值得看；不要输出任何内部字段名。",
+    "4. 自评估：这类需求是否适合现在做、把握度如何、适合激进/均衡/保守哪类。",
+    "5. 推荐清单：按排序口径给优先 3-4 个候选基金或 ETF。每个候选先写“第几优先 + 一句话原因”，再写代码、名称、份额类别、费用模型、主题承载逻辑、回调/启动信号，以及“配图看什么”。5日/10日早期转强、120日区间低位、回撤、夏普、费用里只保留最能改变动作的2-3个数字，其余改成自然中文。只能使用快照、下钻或经理自选候选池中的候选代码；如果没有足够代码，就写“待复核方向”。",
     "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
-    "5. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
-    "6. 备选观察：如果有未到买点但值得等的候选，列 3-5 个备选，说明还差什么触发，以及对应配图看什么；偏热、追涨或回避对象单独写排除原因，不要混进备选。",
-    "7. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的题材或价格条件。"
+    "6. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
+    "7. 备选观察：如果有未到买点但值得等的候选，列 3-5 个备选，说明还差什么触发，以及对应配图看什么；偏热、追涨或回避对象单独写排除原因，不要混进备选。",
+    "8. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的题材或价格条件。"
   ].join("\n");
 
   const draft = await callModel({
@@ -22464,6 +22500,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
     "如果市场快照或下钻摘要里有题材雷达，优先引用中文题材阶段、主力节奏、新闻逻辑、拥挤度和操作倾向，避免只按历史涨幅回答。",
     "候选下钻摘要若出现 themeOpportunityRequirement=require_current_theme_playbook，回答必须解释题材为什么动、主力是否跟进、基金是否真实承载该题材；纯走势合格但缺题材/新闻/持仓承载的候选只能观察。",
+    "涉及买入、卖出、推荐、备选或多只基金比较时，前两段必须包含排序口径。用户指定高夏普、低回撤、主力题材、费用等偏好时按偏好；未指定时按动作影响、买点成立、主力/新闻、风险收益质量和费用持仓承载排序。",
     "如果提供了候选基金下钻摘要，必须使用下钻候选的走势画像、风险、费用、持仓和可操作性评估来形成买/等/回避判断。",
     "如果提供了经理自选候选池，必须把它当成已经沉淀的备选来源先复核；ready 可以进入买入参考，waiting 或启动前夜只能说明等待条件。",
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，最终回答要用自然中文说明数据缺口、降低把握度；缺少贵金属/板块/排行/新闻模块时，不得声称已完整联网或给重仓买入。",
@@ -22498,7 +22535,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "经理自选候选池：",
     portfolioWatchlistContext.summary,
     "",
-    "请直接回答用户问题。若用户问“值得买吗”，必须给中文动作“买入 / 分批买入 / 等待 / 回避”之一，并给新资金和已有持仓分别怎么做。如回答里给出具体基金候选，主买入和备选观察都要写代码、中文走势证据、触发条件和配图看点；偏热回避对象不要和备选混写。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
+    "请直接回答用户问题。若用户问“值得买吗”，必须给中文动作“买入 / 分批买入 / 等待 / 回避”之一，并给新资金和已有持仓分别怎么做。若涉及多个候选或比较，先写“排序口径：...”，例如高夏普/低回撤优先、主力资金和新闻逻辑优先、接盘风险优先；再给排序后的结果，不要先铺数字。如回答里给出具体基金候选，主买入和备选观察都要写代码、中文走势证据、触发条件和配图看点；偏热回避对象不要和备选混写。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
   ].join("\n");
 
   const draft = await callModel({
@@ -22610,6 +22647,7 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
       "若质检问题包含 insufficient_chart_linked_candidates，必须补足 12 张左右可配图候选：主买入参考和备选观察分开写，每只都写代码、买入/备选角色、图上看的走势/回撤/低位/费用证据。",
       "若质检问题包含 missing_market_data_quality_disclosure，必须在前两段用自然中文说明公开数据缺口、缺了哪些模块，并把结论降级为观察、待复核、少量试探或不重仓。",
       "若质检问题包含 numeric_dump_without_interpretation，必须删除大部分指标堆砌：每只基金最多保留3个最能改变动作的数字，其余改成走势、位置、触发条件和操作理由。",
+      "若质检问题包含 missing_result_sort_policy，必须在直接结论后补一行“排序口径：...”，说明本次按高夏普/低回撤、主力资金/新闻逻辑、买点成立度、费用或接盘风险中的哪一项优先；推荐清单必须按这个口径排序。",
       "若质检问题包含 unsolicited_score_label，说明用户没有要求打分却出现“评分/得分/Score: xx”；必须删掉评分字段，改成自然把握度和操作理由。",
       "若证据没有 mainCandidateCodes，必须直接说明暂未筛到合格的回调完成/低位启动主推荐，不能硬凑基金代码。",
       "保持适合飞书卡片阅读，不要 Markdown 表格或代码块。",
@@ -22722,6 +22760,9 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   if (rawEnglishSectionLeak) issues.push("raw_english_section_leak");
   if (numericOverload) issues.push("numeric_dump_without_interpretation");
   if (unsolicitedScoreLabel) issues.push("unsolicited_score_label");
+  if (shouldRequireFundAnswerSortPolicy({ text, workflow, userText, evidence }) && !hasFundAnswerSortPolicy(body)) {
+    issues.push("missing_result_sort_policy");
+  }
   issues.push(...evaluateMarketDataQualityDisclosure({ text, workflow, evidence }));
   issues.push(...evaluateStaleFundEvidenceActionDiscipline({ text, evidence }));
   issues.push(...evaluateStaleThemeCatchdownAnswerDiscipline({ text, evidence }));
@@ -22740,6 +22781,34 @@ function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {
   }
 
   return { ok: issues.length === 0, issues };
+}
+
+function shouldRequireFundAnswerSortPolicy({ text = "", workflow = "", userText = "", evidence = null } = {}) {
+  if (workflow === "conversation") return false;
+  const prompt = String(userText || "");
+  const body = String(text || "");
+  const explicitRankingAsk = /排序|排行|优先|首选|备选|选哪个|比较|推荐|高夏普|低回撤|低波动|费用优先|主力题材/.test(prompt);
+  const fundCodes = new Set((body.match(/\b\d{6}\b/g) || []));
+  const candidateCount = getEvidenceFundCandidateCount(evidence);
+  return workflow === "fund_recommendation"
+    || explicitRankingAsk
+    || fundCodes.size >= 2
+    || candidateCount >= 2;
+}
+
+function hasFundAnswerSortPolicy(text = "") {
+  const body = String(text || "");
+  return /排序口径|排序规则|优先级|按.{0,24}优先|高夏普优先|低回撤优先|低波动优先|费用优先|主力.{0,12}优先|接盘风险优先|第[一二三四五12345]优先/.test(body);
+}
+
+function getEvidenceFundCandidateCount(evidence = null) {
+  const candidates = [
+    ...(Array.isArray(evidence?.marketDeepDive?.candidates) ? evidence.marketDeepDive.candidates : []),
+    ...(Array.isArray(evidence?.portfolioWatchlist) ? evidence.portfolioWatchlist : []),
+    ...(Array.isArray(evidence?.marketSnapshot?.fundCandidates?.stockFunds) ? evidence.marketSnapshot.fundCandidates.stockFunds : []),
+    ...(Array.isArray(evidence?.marketSnapshot?.fundCandidates?.preciousMetalFunds) ? evidence.marketSnapshot.fundCandidates.preciousMetalFunds : [])
+  ];
+  return new Set(candidates.map((item) => item?.code || item?.fundCode).filter(Boolean)).size;
 }
 
 function isExplicitScoreRequest(userText = "") {
@@ -26587,6 +26656,50 @@ function matchCandidateThemes(candidate, themes = []) {
     .filter(Boolean)
     .sort((a, b) => Number(b.matchScore || 0) - Number(a.matchScore || 0))
     .map(({ matchScore, ...theme }) => theme)
+    .slice(0, 3);
+}
+
+function matchCurrentThemeRadarByPreviousThemeSignals(candidate = {}, themes = []) {
+  const previousKeys = new Set(getCandidateThemeSignals(candidate)
+    .filter((theme) =>
+      !hasThemeCapitalRetreatRisk(theme)
+      && !isStaleThemeCatchdownRiskTheme(theme)
+      && !isUnrefreshedMarketThemeSignal(theme)
+    )
+    .flatMap((theme) => [theme.id, theme.name])
+    .map((value) => normalizeIntentText(value))
+    .filter(Boolean));
+  if (!previousKeys.size) return [];
+  return (themes || [])
+    .map((theme) => {
+      const currentKeys = [theme.id, theme.name]
+        .map((value) => normalizeIntentText(value))
+        .filter(Boolean);
+      if (!currentKeys.some((key) => previousKeys.has(key))) return null;
+      return {
+        ...compactMatchedThemeSignal(theme),
+        matchBasis: "current_radar_same_theme",
+        matchScore: 24 + Number(theme.forwardScore || 0) * 0.12 + Number(theme.capitalFollowScore || 0) * 0.1
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(b.matchScore || 0) - Number(a.matchScore || 0))
+    .map(({ matchScore, ...theme }) => theme)
+    .slice(0, 3);
+}
+
+function mergeMatchedThemeSignals(...groups) {
+  const seen = new Set();
+  return groups
+    .flat()
+    .filter(Boolean)
+    .filter((theme) => {
+      const key = normalizeIntentText(theme.id || theme.name || "");
+      if (!key) return false;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .slice(0, 3);
 }
 
