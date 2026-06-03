@@ -11669,6 +11669,8 @@ function buildPortfolioThemeMomentumRanking(watchlist = []) {
 }
 
 function buildPortfolioThemeMomentumRankingItem(item = {}) {
+  const riskGate = resolvePortfolioPositiveWatchRankingGate(item);
+  if (!riskGate.ok) return null;
   const profile = item.lastSnapshot || {};
   const theme = selectPortfolioActionableThemeSignal({
     ...profile,
@@ -11851,6 +11853,8 @@ function buildPortfolioRotationOpportunityRanking(watchlist = []) {
 }
 
 function buildPortfolioRotationOpportunityRankingItem(item = {}) {
+  const riskGate = resolvePortfolioPositiveWatchRankingGate(item);
+  if (!riskGate.ok) return null;
   const evidence = resolvePortfolioRotationOpportunityEvidence(item);
   if (!evidence.shouldSurface) return null;
   return buildPortfolioRankingItem({

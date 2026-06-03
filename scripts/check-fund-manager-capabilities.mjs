@@ -7511,6 +7511,14 @@ assert(
   !staleCatchdownBoard.lists.find((item) => item.id === "cash_redeployment")?.items.some((item) => item.code === "000042"),
   "cash redeployment ranking must not use stale-theme pullbacks to solve high-cash pressure"
 );
+assert(
+  !staleCatchdownBoard.lists.find((item) => item.id === "theme_momentum")?.items.some((item) => item.code === "000042"),
+  "main-force/preheat opportunity ranking must exclude stale-theme catchdown candidates instead of showing them as weak opportunities"
+);
+assert(
+  !staleCatchdownBoard.lists.find((item) => item.id === "rotation_opportunity")?.items.some((item) => item.code === "000042"),
+  "rotation opportunity ranking must not keep retreating themes inside a positive opportunity lane"
+);
 const staleCatchdownReadinessQueue = manager.buildPortfolioDecisionReadinessQueue(staleCatchdownBoardDb.watchlist);
 assert(
   staleCatchdownReadinessQueue[0]?.positiveRankingGate?.includes("接盘/追涨风险未解除")
