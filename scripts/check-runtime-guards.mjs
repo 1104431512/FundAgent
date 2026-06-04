@@ -101,6 +101,10 @@ const requiredPatterns = [
     message: "market snapshots must carry a real-time or near-real-time fund valuation layer."
   },
   {
+    pattern: /marketIndicators\.marketBreadth/,
+    message: "market snapshots must carry fixed-code market breadth and main-capital breadth indicators."
+  },
+  {
     pattern: /marketIndicators\.globalMarkets/,
     message: "market snapshots must carry overseas index and FX quotes for QDII decisions."
   },
@@ -754,7 +758,7 @@ const requiredPatterns = [
     message: "A-share market temperature must have a public Eastmoney realtime index fallback when Yangjibao is unavailable."
   },
   {
-    pattern: /marketIndicators:\s*\{[\s\S]{0,260}chinaIndices[\s\S]{0,900}compactMarketQuoteItems\(summary\.marketIndicators\?\.chinaIndices/,
+    pattern: /function compactMarketSnapshotForModel[\s\S]{0,260}const marketIndicators = \{[\s\S]{0,260}chinaIndices:\s*compactMarketQuoteItems\(summary\.marketIndicators\?\.chinaIndices[\s\S]{0,900}marketIndicators,/,
     message: "compact market snapshots must preserve Yangjibao China index evidence for model prompts."
   },
   {

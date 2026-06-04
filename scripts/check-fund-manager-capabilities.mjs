@@ -12190,6 +12190,53 @@ const compactThemeHistorySnapshot = manager.compactMarketSnapshotForModel({
 });
 assert(JSON.stringify(compactThemeHistorySnapshot).includes("题材历史"), "compact market snapshots must send theme history momentum to the model");
 assert(JSON.stringify(compactThemeHistorySnapshot).includes("历史连续性"), "compact theme radar items must include history continuity labels");
+const broadMarketBreadth = manager.buildMarketBreadthIndicators({
+  conceptBoards: [
+    { name: "机器人", changePct: 2.4, mainNetInflowPct: 3.2 },
+    { name: "半导体", changePct: 1.8, mainNetInflowPct: 2.5 },
+    { name: "创新药", changePct: 1.2, mainNetInflowPct: 1.1 },
+    { name: "电力设备", changePct: 0.9, mainNetInflowPct: 0.8 }
+  ],
+  industryBoards: [
+    { name: "电子", changePct: 1.5, mainNetInflowPct: 1.4 },
+    { name: "计算机", changePct: 0.7, mainNetInflowPct: 0.6 }
+  ],
+  chinaIndices: [{ name: "沪深300", changePct: 0.8 }, { name: "创业板指", changePct: 1.1 }],
+  fetchedAt: "2026-05-22T09:45:00.000Z"
+});
+assert.equal(broadMarketBreadth.regime, "broad_risk_on", "market breadth must identify broad risk-on when most boards rise with main inflow");
+assert.equal(broadMarketBreadth.actionBias, "allow_staged_buy", "broad risk-on breadth should allow staged-buy review instead of default observation");
+const outflowMarketBreadth = manager.buildMarketBreadthIndicators({
+  conceptBoards: [
+    { name: "光模块", changePct: -2.4, mainNetInflowPct: -3.2, coverageSources: ["主力流出榜"] },
+    { name: "PCB", changePct: -1.6, mainNetInflowPct: -2.1, coverageSources: ["主力流出榜"] },
+    { name: "算力", changePct: -0.9, mainNetInflowPct: -1.8 },
+    { name: "传媒", changePct: -0.7, mainNetInflowPct: -1.2 }
+  ],
+  industryBoards: [
+    { name: "通信", changePct: -1.3, mainNetInflowPct: -2.8 },
+    { name: "电子", changePct: -0.4, mainNetInflowPct: -0.9 },
+    { name: "银行", changePct: 0.2, mainNetInflowPct: 0.1 },
+    { name: "煤炭", changePct: 0.1, mainNetInflowPct: -0.2 }
+  ],
+  chinaIndices: [{ name: "沪深300", changePct: -0.7 }, { name: "创业板指", changePct: -1.4 }],
+  fetchedAt: "2026-05-22T10:00:00.000Z"
+});
+assert.equal(outflowMarketBreadth.regime, "risk_off_outflow", "market breadth must identify broad main-capital outflow before the model recommends funds");
+assert.equal(outflowMarketBreadth.actionBias, "defensive_watch", "outflow breadth must downgrade new buys into defensive watch");
+assert(outflowMarketBreadth.summary.includes("主力流出") || outflowMarketBreadth.summary.includes("退潮压力"), "market breadth summary must explain outflow or retreat pressure in Chinese");
+const compactBreadthSnapshot = manager.compactMarketSnapshotForModel({
+  fetchedAt: "2026-05-22T10:00:00.000Z",
+  dataQuality: { ok: true, level: "good", notes: [] },
+  marketIndicators: { marketBreadth: outflowMarketBreadth },
+  themes: {},
+  themeRadar: [],
+  fundCandidates: {},
+  errors: [],
+  sources: []
+});
+assert(JSON.stringify(compactBreadthSnapshot).includes("市场状态"), "compact market snapshots must expose market breadth state to the model");
+assert(JSON.stringify(compactBreadthSnapshot).includes("操作倾向"), "compact market breadth must expose a customer-readable action bias");
 const cachedFallbackQuality = manager.buildMarketDataQuality(cachedMarketComponents, {
   fundCandidates: { stockFunds: Array.from({ length: 12 }, (_, index) => ({ code: String(index).padStart(6, "0") })) },
   fetchedAt: freshThemeRefreshAt

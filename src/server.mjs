@@ -2132,6 +2132,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "必须执行组合穿透暴露检查：同题材仓位、同一底层前十大持仓重叠、单一风格过热时，组合经理和风控经理必须写清不加仓或减风险条件。",
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，marketView、team 和 actions.dataBasis 必须写清数据缺口；dataQuality.cached 非空时必须说明哪些模块来自缓存回退，只能用于连续性计算，不能当作实时买点确认；缺少关键板块、排行、新闻或贵金属模块时，只能 WATCH、HOLD 或小额试探，不能当作完整联网证据下重仓 BUY。",
     "必须使用 marketSnapshot.marketIndicators.realtimeFundValuations 复核候选当下温度、盘中走势和数据新鲜度；若盘中走势显示冲高回落或尾盘转弱，不能把最新估算涨幅当作追买理由；成交和盈亏仍以确认净值为准。",
+    "必须使用 marketSnapshot.marketIndicators.marketBreadth 复核市场宽度和主力宽度；如果宽度显示窄幅追涨、主力流出或退潮压力高，新增买入只能降级为观察/小额复核。",
     "若操作或候选涉及 QDII/海外基金，必须使用 marketSnapshot.marketIndicators.globalMarkets 复核外盘和人民币汇率温度，并写清净值披露时差。",
     "若现金再部署纪律提示 pressureActive=true 且存在 verified_buy、starter_buy 或 theme_micro_starter 候选，actions 必须逐只给 BUY 或明确 WATCH 拦截理由；但候选 actionPermission 写着0元观察时，只能 WATCH，不能 BUY、小仓试探或写成可买。符合小仓启动条件时优先 0.5%-2.5% 试探，theme_micro_starter 只能 0.5%-1.2% 微型试探，不要继续空泛观望。",
     "给用户看的 summary、reason 和 riskControl 要先讲走势、轮动和操作边界，再放必要数字；不要把每个动作写成一长串指标。",
@@ -20740,6 +20741,7 @@ function summarizeMarketSnapshot(snapshot) {
     dataQuality: compactMarketDataQuality(snapshot.dataQuality),
     marketIndicators: {
       chinaIndices: (snapshot.marketIndicators?.chinaIndices || []).slice(0, 12),
+      marketBreadth: snapshot.marketIndicators?.marketBreadth || null,
       preciousMetals: (snapshot.marketIndicators?.preciousMetals || []).slice(0, 10),
       globalMarkets: (snapshot.marketIndicators?.globalMarkets || []).slice(0, 12),
       realtimeFundValuations: (snapshot.marketIndicators?.realtimeFundValuations || []).slice(0, 24)
@@ -20768,16 +20770,19 @@ function summarizeMarketSnapshot(snapshot) {
 function compactMarketSnapshotForModel(snapshot = null) {
   const summary = summarizeMarketSnapshot(snapshot);
   if (!summary) return null;
+  const marketIndicators = {
+    chinaIndices: compactMarketQuoteItems(summary.marketIndicators?.chinaIndices || [], 8),
+    preciousMetals: compactMarketQuoteItems(summary.marketIndicators?.preciousMetals || [], 6),
+    globalMarkets: compactMarketQuoteItems(summary.marketIndicators?.globalMarkets || [], 8),
+    realtimeFundValuations: compactRealtimeFundValuations(summary.marketIndicators?.realtimeFundValuations || [], 12)
+  };
+  const compactMarketBreadth = compactMarketBreadthForModel(summary.marketIndicators?.marketBreadth);
+  if (compactMarketBreadth) marketIndicators.marketBreadth = compactMarketBreadth;
   return {
     fetchedAt: summary.fetchedAt || "",
     note: summary.note || "",
     dataQuality: summary.dataQuality,
-    marketIndicators: {
-      chinaIndices: compactMarketQuoteItems(summary.marketIndicators?.chinaIndices || [], 8),
-      preciousMetals: compactMarketQuoteItems(summary.marketIndicators?.preciousMetals || [], 6),
-      globalMarkets: compactMarketQuoteItems(summary.marketIndicators?.globalMarkets || [], 8),
-      realtimeFundValuations: compactRealtimeFundValuations(summary.marketIndicators?.realtimeFundValuations || [], 12)
-    },
+    marketIndicators,
     themes: {
       conceptBoards: compactMarketBoardItems(summary.themes?.conceptBoards || [], 6),
       industryBoards: compactMarketBoardItems(summary.themes?.industryBoards || [], 6)
@@ -20952,6 +20957,20 @@ function compactMarketBoardItems(items = [], limit = 6) {
     quoteTime: item.quoteTime || "",
     榜单线索: Array.isArray(item.coverageSources) ? item.coverageSources.slice(0, 3).join("、") : ""
   }));
+}
+
+function compactMarketBreadthForModel(breadth = null) {
+  if (!breadth || typeof breadth !== "object") return null;
+  return {
+    结论: breadth.summary || "",
+    市场状态: breadth.regimeText || "",
+    操作倾向: breadth.actionBiasText || "",
+    风险等级: breadth.riskLevelText || "",
+    上涨占比: finiteMetricNumber(breadth.risingPct),
+    主力流入占比: finiteMetricNumber(breadth.mainInflowPct),
+    追涨压力: finiteMetricNumber(breadth.chasePressureScore),
+    退潮压力: finiteMetricNumber(breadth.retreatPressureScore)
+  };
 }
 
 function compactThemeRadarForModel(theme = {}) {
@@ -21839,6 +21858,17 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
       return `- ${fields.join("，")}`;
     }));
     lines.push("质量要求：A股指数温度只用于判断市场风险偏好，不能替代具体基金净值、前十大持仓和费用核验。");
+  }
+  const marketBreadth = marketSnapshot.marketIndicators?.marketBreadth;
+  if (marketBreadth?.ok) {
+    lines.push(`市场宽度：${marketBreadth.summary || marketBreadth.regimeText || ""}`);
+    lines.push([
+      Number.isFinite(Number(marketBreadth.risingPct)) ? `上涨板块${formatFallbackPlainPct(marketBreadth.risingPct)}` : "",
+      Number.isFinite(Number(marketBreadth.mainInflowPct)) ? `主力流入板块${formatFallbackPlainPct(marketBreadth.mainInflowPct)}` : "",
+      Number.isFinite(Number(marketBreadth.chasePressureScore)) ? `追涨压力${round(marketBreadth.chasePressureScore, 0)}` : "",
+      Number.isFinite(Number(marketBreadth.retreatPressureScore)) ? `退潮压力${round(marketBreadth.retreatPressureScore, 0)}` : ""
+    ].filter(Boolean).join("，"));
+    lines.push(`质量要求：市场宽度是固定代码计算的全局风险过滤器；窄幅追涨或主力流出时，任何题材基金都必须先降级为等待/0元复核。`);
   }
   const realtimeValuations = marketSnapshot.marketIndicators?.realtimeFundValuations || [];
   if (realtimeValuations.length) {
@@ -24003,6 +24033,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "候选下钻摘要若出现 themeOpportunityRequirement=require_current_theme_playbook，主推荐必须同时满足：低位/回调启动、当前题材有主力进场/题材预热/低位轮动支撑、新闻或产业催化说得清、前十大持仓或指数名称能承载题材；缺任一项只能放观察或排除。",
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
     "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度、盘中走势和数据新鲜度；若盘中冲高回落或尾盘转弱，只能降低买入把握度，成交和盈亏仍以确认净值为准。",
+    "marketSnapshot.marketIndicators.marketBreadth 是固定代码算出的市场宽度和主力宽度；若显示窄幅追涨、主力流出或退潮压力高，任何局部题材热度都必须降级，不能包装成可买信号。",
     "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
     "如果提供了候选基金下钻摘要，必须使用走势画像、风险、费用、持仓和可操作性评估来筛掉不适合的候选；不要只复述市场快照。",
     "如果提供了经理自选候选池，必须先复核这些已经沉淀的 ready/waiting/启动前夜候选；ready 可以进入主推荐评估，waiting 或启动前夜只能写备选观察和触发条件，不能当成自动买入。",
@@ -24132,6 +24163,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "用户更关心走势和分析思路，不要把回答写成数字清单。每只基金最多保留2-3个真正改变动作的数字，其他用走势、位置、风险边界来解释。",
     "如果传入 marketSnapshot，可用它回答近期市场/题材问题；涉及黄金、白银或贵金属时，优先引用 marketIndicators.preciousMetals 和相关基金候选。",
     "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度、盘中走势和数据新鲜度；若盘中冲高回落或尾盘转弱，只能降低买入把握度，成交和盈亏仍以确认净值为准。",
+    "marketSnapshot.marketIndicators.marketBreadth 是固定代码算出的市场宽度和主力宽度；若显示窄幅追涨、主力流出或退潮压力高，任何局部题材热度都必须降级，不能包装成可买信号。",
     "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
     "如果市场快照或下钻摘要里有题材雷达，优先引用中文题材阶段、主力节奏、新闻逻辑、拥挤度和操作倾向，避免只按历史涨幅回答。",
     "候选下钻摘要若出现 themeOpportunityRequirement=require_current_theme_playbook，回答必须解释题材为什么动、主力是否跟进、基金是否真实承载该题材；纯走势合格但缺题材/新闻/持仓承载的候选只能观察。",
@@ -26889,6 +26921,12 @@ async function fetchMarketSnapshot(options = {}) {
   const themeLeaderboards = buildThemeLeaderboards(themeRadar);
   const themeMainForcePlaybook = buildThemeMainForcePlaybook(themeRadar, themeLeaderboards);
   const themeHistory = buildThemeRadarHistorySummary(themeRadar);
+  const marketBreadth = buildMarketBreadthIndicators({
+    conceptBoards: conceptBoards.items || [],
+    industryBoards: industryBoards.items || [],
+    chinaIndices: yangjibaoIndices.items || [],
+    fetchedAt
+  });
   const dataQuality = buildMarketDataQuality(snapshotParts, {
     fundCandidates,
     fetchedAt,
@@ -26914,6 +26952,7 @@ async function fetchMarketSnapshot(options = {}) {
     dataQuality,
     marketIndicators: {
       chinaIndices: yangjibaoIndices.items || [],
+      marketBreadth,
       preciousMetals: preciousMetals.items || [],
       globalMarkets: globalMarketQuotes.items || [],
       realtimeFundValuations: realtimeFundValuationsResolved.items || []
@@ -27280,6 +27319,174 @@ function buildThemeRadarHistorySummary(themeRadar = []) {
     cooling: items.filter((item) => item.continuity === "cooling" || item.continuity === "retreat_or_catchdown").slice(0, 5),
     newThemes: items.filter((item) => item.continuity === "new_preheat").slice(0, 5)
   };
+}
+
+function buildMarketBreadthIndicators({ conceptBoards = [], industryBoards = [], chinaIndices = [], fetchedAt = new Date().toISOString() } = {}) {
+  const boards = [...(conceptBoards || []), ...(industryBoards || [])]
+    .filter((item) => item && String(item.name || item.boardCode || "").trim())
+    .map((item) => ({
+      ...item,
+      changePct: finiteMetricNumber(item.changePct),
+      mainNetInflowPct: finiteMetricNumber(item.mainNetInflowPct)
+    }));
+  const boardCount = boards.length;
+  const risingBoards = boards.filter((item) => Number.isFinite(item.changePct) && item.changePct > 0);
+  const fallingBoards = boards.filter((item) => Number.isFinite(item.changePct) && item.changePct < 0);
+  const mainInflowBoards = boards.filter((item) => Number.isFinite(item.mainNetInflowPct) && item.mainNetInflowPct > 0);
+  const mainOutflowBoards = boards.filter((item) => Number.isFinite(item.mainNetInflowPct) && item.mainNetInflowPct < 0);
+  const hotChaseBoards = boards.filter((item) => Number(item.changePct || 0) >= 5 || Number(item.coverageSignalScore || 0) >= 60 && Number(item.changePct || 0) >= 3.8);
+  const retreatBoards = boards.filter((item) =>
+    Number(item.mainNetInflowPct || 0) < 0 && Number(item.changePct || 0) <= 0
+    || (item.coverageSources || []).some((source) => /主力流出|跌幅/.test(String(source || ""))) && Number(item.changePct || 0) <= 0.5
+  );
+  const risingPct = boardCount ? round((risingBoards.length / boardCount) * 100, 1) : null;
+  const fallingPct = boardCount ? round((fallingBoards.length / boardCount) * 100, 1) : null;
+  const mainInflowPct = boardCount ? round((mainInflowBoards.length / boardCount) * 100, 1) : null;
+  const mainOutflowPct = boardCount ? round((mainOutflowBoards.length / boardCount) * 100, 1) : null;
+  const averageChangePct = boards.length ? round(averageNumeric(boards.map((item) => item.changePct).filter(Number.isFinite)), 2) : null;
+  const averageMainNetInflowPct = boards.length ? round(averageNumeric(boards.map((item) => item.mainNetInflowPct).filter(Number.isFinite)), 2) : null;
+  const indexTemperature = scoreChinaIndexTemperature(chinaIndices);
+  const chasePressureScore = clampScore(
+    hotChaseBoards.length * 8
+    + Math.max(0, Number(averageChangePct || 0) - 1.8) * 12
+    + Math.max(0, 45 - Number(risingPct || 0)) * 0.25
+  );
+  const retreatPressureScore = clampScore(
+    retreatBoards.length * 7
+    + Math.max(0, Number(mainOutflowPct || 0) - 45) * 0.75
+    + Math.max(0, -Number(averageMainNetInflowPct || 0)) * 10
+    + Math.max(0, -Number(indexTemperature || 0)) * 0.4
+  );
+  const breadthScore = clampScore(
+    Number(risingPct || 0) * 0.42
+    + Number(mainInflowPct || 0) * 0.38
+    + Math.max(0, Number(averageChangePct || 0)) * 7
+    + Math.max(0, Number(averageMainNetInflowPct || 0)) * 8
+    + Math.max(0, Number(indexTemperature || 0)) * 0.18
+    - Number(chasePressureScore || 0) * 0.22
+    - Number(retreatPressureScore || 0) * 0.34
+  );
+  const regime = inferMarketBreadthRegime({
+    risingPct,
+    mainInflowPct,
+    mainOutflowPct,
+    averageChangePct,
+    averageMainNetInflowPct,
+    chasePressureScore,
+    retreatPressureScore,
+    breadthScore
+  });
+  const riskLevel = inferMarketBreadthRiskLevel({ regime, chasePressureScore, retreatPressureScore, breadthScore });
+  const actionBias = inferMarketBreadthActionBias({ regime, riskLevel });
+  return {
+    ok: boardCount > 0,
+    label: "A股板块市场宽度",
+    fetchedAt,
+    boardCount,
+    risingCount: risingBoards.length,
+    fallingCount: fallingBoards.length,
+    mainInflowCount: mainInflowBoards.length,
+    mainOutflowCount: mainOutflowBoards.length,
+    risingPct,
+    fallingPct,
+    mainInflowPct,
+    mainOutflowPct,
+    averageChangePct,
+    averageMainNetInflowPct,
+    indexTemperature,
+    breadthScore: round(breadthScore, 1),
+    chasePressureScore: round(chasePressureScore, 1),
+    retreatPressureScore: round(retreatPressureScore, 1),
+    regime,
+    regimeText: formatMarketBreadthRegime(regime),
+    riskLevel,
+    riskLevelText: formatMarketBreadthRiskLevel(riskLevel),
+    actionBias,
+    actionBiasText: formatMarketBreadthActionBias(actionBias),
+    summary: buildMarketBreadthSummary({ regime, riskLevel, actionBias, risingPct, mainInflowPct, averageChangePct, averageMainNetInflowPct, chasePressureScore, retreatPressureScore }),
+    topRisers: boards.filter((item) => Number.isFinite(item.changePct)).sort((a, b) => Number(b.changePct) - Number(a.changePct)).slice(0, 6),
+    topDecliners: boards.filter((item) => Number.isFinite(item.changePct)).sort((a, b) => Number(a.changePct) - Number(b.changePct)).slice(0, 6),
+    topInflow: boards.filter((item) => Number.isFinite(item.mainNetInflowPct)).sort((a, b) => Number(b.mainNetInflowPct) - Number(a.mainNetInflowPct)).slice(0, 6),
+    topOutflow: boards.filter((item) => Number.isFinite(item.mainNetInflowPct)).sort((a, b) => Number(a.mainNetInflowPct) - Number(b.mainNetInflowPct)).slice(0, 6)
+  };
+}
+
+function scoreChinaIndexTemperature(items = []) {
+  const changes = (items || [])
+    .map((item) => finiteMetricNumber(item.changePct))
+    .filter(Number.isFinite);
+  if (!changes.length) return 0;
+  return round(averageNumeric(changes) * 12, 1);
+}
+
+function inferMarketBreadthRegime({ risingPct = null, mainInflowPct = null, mainOutflowPct = null, averageChangePct = null, averageMainNetInflowPct = null, chasePressureScore = 0, retreatPressureScore = 0, breadthScore = 0 } = {}) {
+  const rising = Number(risingPct || 0);
+  const inflow = Number(mainInflowPct || 0);
+  const outflow = Number(mainOutflowPct || 0);
+  const avgChange = Number(averageChangePct || 0);
+  const avgFlow = Number(averageMainNetInflowPct || 0);
+  if (Number(retreatPressureScore || 0) >= 58 || outflow >= 62 && rising < 45) return "risk_off_outflow";
+  if (Number(chasePressureScore || 0) >= 62 && rising < 55) return "narrow_chase";
+  if (rising >= 62 && inflow >= 55 && avgChange >= 0.5 && avgFlow >= 0) return "broad_risk_on";
+  if (Number(breadthScore || 0) >= 52 && inflow >= 48 && rising >= 45) return "selective_main_inflow";
+  if (rising >= 45 && outflow < 55) return "mixed_rotation";
+  return "weak_wait";
+}
+
+function inferMarketBreadthRiskLevel({ regime = "", chasePressureScore = 0, retreatPressureScore = 0, breadthScore = 0 } = {}) {
+  if (["risk_off_outflow", "narrow_chase"].includes(regime) || Number(retreatPressureScore || 0) >= 58) return "high";
+  if (Number(chasePressureScore || 0) >= 48 || Number(breadthScore || 0) < 35) return "medium";
+  return "low";
+}
+
+function inferMarketBreadthActionBias({ regime = "", riskLevel = "" } = {}) {
+  if (regime === "risk_off_outflow") return "defensive_watch";
+  if (regime === "narrow_chase") return "avoid_chasing_wait_pullback";
+  if (regime === "broad_risk_on") return "allow_staged_buy";
+  if (regime === "selective_main_inflow") return "follow_main_with_filters";
+  if (riskLevel === "high") return "zero_yuan_review";
+  return "rotation_watch";
+}
+
+function formatMarketBreadthRegime(value = "") {
+  return {
+    broad_risk_on: "全市场风险偏好改善",
+    selective_main_inflow: "主力选择性进场",
+    mixed_rotation: "轮动混合",
+    narrow_chase: "窄幅追涨",
+    risk_off_outflow: "主力流出偏防守",
+    weak_wait: "弱势等待"
+  }[value] || "市场状态待确认";
+}
+
+function formatMarketBreadthRiskLevel(value = "") {
+  return { low: "低", medium: "中", high: "高" }[value] || "未知";
+}
+
+function formatMarketBreadthActionBias(value = "") {
+  return {
+    defensive_watch: "先防守，买入降为观察",
+    avoid_chasing_wait_pullback: "不追涨，等回调和宽度扩散",
+    allow_staged_buy: "允许分批，但仍需基金买点过关",
+    follow_main_with_filters: "可跟主力，但只选低位和承载明确的基金",
+    zero_yuan_review: "0元复核，先不动资金",
+    rotation_watch: "观察轮动，等待更清晰主线"
+  }[value] || "观察";
+}
+
+function buildMarketBreadthSummary({ regime = "", riskLevel = "", actionBias = "", risingPct = null, mainInflowPct = null, averageChangePct = null, averageMainNetInflowPct = null, chasePressureScore = null, retreatPressureScore = null } = {}) {
+  const parts = [
+    formatMarketBreadthRegime(regime),
+    Number.isFinite(Number(risingPct)) ? `上涨板块${formatFallbackPlainPct(risingPct)}` : "",
+    Number.isFinite(Number(mainInflowPct)) ? `主力流入板块${formatFallbackPlainPct(mainInflowPct)}` : "",
+    Number.isFinite(Number(averageChangePct)) ? `平均涨跌${formatFallbackPct(averageChangePct)}` : "",
+    Number.isFinite(Number(averageMainNetInflowPct)) ? `平均主力${formatFallbackPct(averageMainNetInflowPct)}` : "",
+    Number.isFinite(Number(chasePressureScore)) && Number(chasePressureScore) >= 48 ? `追涨压力${round(chasePressureScore, 0)}` : "",
+    Number.isFinite(Number(retreatPressureScore)) && Number(retreatPressureScore) >= 48 ? `退潮压力${round(retreatPressureScore, 0)}` : "",
+    `风险${formatMarketBreadthRiskLevel(riskLevel)}`,
+    formatMarketBreadthActionBias(actionBias)
+  ].filter(Boolean);
+  return parts.join("；");
 }
 
 function getMarketSnapshotCacheAgeHours(cachedAt = "", nowIso = new Date().toISOString()) {
@@ -40772,6 +40979,7 @@ export {
   buildCachedFundNavHistoryFallback,
   buildCachedFundRankingFallback,
   attachThemeRadarHistoryMomentum,
+  buildMarketBreadthIndicators,
   cacheFundResearchDigest,
   cacheFundNavHistory,
   cacheFundRankingResult,
