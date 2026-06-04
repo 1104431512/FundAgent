@@ -7938,6 +7938,21 @@ assert(
     && !/A\/C份额优选|同类低费替代|份额\/同类替代优选/.test(`${holdingRealtimeWeakReplacementItem?.action || ""} ${holdingRealtimeWeakReplacementItem?.reason || ""}`),
   "replacement-choice ranking must not repackage stale-catchdown funds as cheaper alternative opportunities"
 );
+const holdingRealtimeWeakActionQueueLines = manager.buildPortfolioWatchlistActionQueueLines([holdingRealtimeWeakFeeWatch]).join("\n");
+assert(
+  !holdingRealtimeWeakActionQueueLines.includes("000050")
+    && holdingRealtimeWeakActionQueueLines.includes("暂无接近可买"),
+  "watchlist buy-preparation queue must not show catchdown-gated ready items as near-buy candidates"
+);
+const holdingRealtimeWeakLaunchLines = manager.buildPortfolioWatchlistLaunchEveLines([{
+  ...holdingRealtimeWeakFeeWatch,
+  candidateRole: "低位启动前夜候选",
+  setupEvidence: ["回调完成", "低位启动前夜"]
+}]).join("\n");
+assert(
+  !holdingRealtimeWeakLaunchLines.includes("000050"),
+  "watchlist launch-eve focus must not show catchdown-gated low-base items as launch setups"
+);
 const staleCatchdownOnlyTheme = {
   id: "old_compute_catchdown",
   name: "旧算力回调",

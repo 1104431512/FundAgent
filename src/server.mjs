@@ -10509,6 +10509,7 @@ function buildPortfolioWatchlistLaunchEveLines(watchlist = [], options = {}) {
   const focusItems = normalizePortfolioWatchlistForDisplay(watchlist)
     .filter((item) => isLowBaseLaunchWatchSeed(item))
     .filter((item) => !["blocked", "removed", "in_position"].includes(item.status))
+    .filter((item) => resolvePortfolioPositiveWatchRankingGate(item).ok)
     .map((item) => ({ ...item, ...evaluatePortfolioWatchReadiness(item) }))
     .sort(comparePortfolioWatchReadiness)
     .slice(0, 3);
@@ -10530,11 +10531,13 @@ function buildPortfolioWatchlistActionQueueLines(watchlist = [], options = {}) {
   const compact = Boolean(options.compact);
   const ready = normalizePortfolioWatchlistForDisplay(watchlist)
     .filter((item) => item.status === "ready")
+    .filter((item) => resolvePortfolioPositiveWatchRankingGate(item).ok)
     .map((item) => ({ ...item, ...evaluatePortfolioWatchReadiness(item) }))
     .sort(comparePortfolioWatchReadiness)
     .slice(0, 3);
   const waiting = normalizePortfolioWatchlistForDisplay(watchlist)
     .filter((item) => item.status === "waiting_pullback")
+    .filter((item) => resolvePortfolioPositiveWatchRankingGate(item).ok)
     .map((item) => ({ ...item, ...evaluatePortfolioWatchReadiness(item) }))
     .sort(comparePortfolioWatchReadiness)
     .slice(0, 3);

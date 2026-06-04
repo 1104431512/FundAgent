@@ -3413,6 +3413,10 @@ const requiredPatterns = [
     message: "portfolio buy-preparation queues must use display status so catchdown candidates cannot appear as ready or waiting."
   },
   {
+    pattern: /function buildPortfolioWatchlistActionQueueLines[\s\S]{0,900}item\.status === "ready"[\s\S]{0,260}resolvePortfolioPositiveWatchRankingGate\(item\)\.ok[\s\S]{0,900}item\.status === "waiting_pullback"[\s\S]{0,260}resolvePortfolioPositiveWatchRankingGate\(item\)\.ok/,
+    message: "portfolio buy-preparation queues must also pass the stale-catchdown positive gate, not only display-status routing."
+  },
+  {
     pattern: /function formatPortfolioOutput[\s\S]*const ready = selectWatchlistDisplayStatusItems\(watchlist,\s*"ready"\)\.length[\s\S]*const catchdown = watchlist\.filter\(isWatchlistCatchdownRiskItem\)\.length[\s\S]*接盘风险/,
     message: "admin raw portfolio output must summarize ready/waiting counts by display status and explicitly show catchdown risk counts."
   },
@@ -3427,6 +3431,10 @@ const requiredPatterns = [
   {
     pattern: /function buildPortfolioWatchlistLaunchEveLines[\s\S]{0,260}normalizePortfolioWatchlistForDisplay[\s\S]{0,420}!\["blocked",\s*"removed",\s*"in_position"\]\.includes\(item\.status\)/,
     message: "launch-eve watchlist focus must use display status so catchdown candidates stay out of launch review."
+  },
+  {
+    pattern: /function buildPortfolioWatchlistLaunchEveLines[\s\S]{0,520}resolvePortfolioPositiveWatchRankingGate\(item\)\.ok/,
+    message: "launch-eve watchlist focus must pass the stale-catchdown positive gate before showing launch setups."
   },
   {
     pattern: /启动前夜重点复核/,
