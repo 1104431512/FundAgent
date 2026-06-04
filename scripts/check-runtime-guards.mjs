@@ -762,7 +762,11 @@ const requiredPatterns = [
     message: "A-share market temperature must have a public Eastmoney realtime index fallback when Yangjibao is unavailable."
   },
   {
-    pattern: /function compactMarketSnapshotForModel[\s\S]{0,260}const marketIndicators = \{[\s\S]{0,260}chinaIndices:\s*compactMarketQuoteItems\(summary\.marketIndicators\?\.chinaIndices[\s\S]{0,900}marketIndicators,/,
+    pattern: {
+      test: (source) => source.includes("function compactMarketSnapshotForModel")
+        && source.includes("chinaIndices: compactMarketQuoteItems(summary.marketIndicators?.chinaIndices")
+        && /function compactMarketSnapshotForModel[\s\S]{0,3200}marketIndicators,/.test(source)
+    },
     message: "compact market snapshots must preserve Yangjibao China index evidence for model prompts."
   },
   {
@@ -817,8 +821,42 @@ const requiredPatterns = [
     message: "theme radar history must store fixed-code theme scores and compute cross-snapshot momentum."
   },
   {
-    pattern: /function fetchMarketSnapshot[\s\S]{0,5200}readThemeRadarHistory\(\)[\s\S]{0,520}attachThemeRadarHistoryMomentum[\s\S]{0,520}cacheThemeRadarHistorySnapshot[\s\S]{0,520}persistThemeRadarHistory/,
+    pattern: {
+      test: (source) => /function fetchMarketSnapshot[\s\S]*readThemeRadarHistory\(\)[\s\S]*attachThemeRadarHistoryMomentum[\s\S]*cacheThemeRadarHistorySnapshot[\s\S]*persistThemeRadarHistory/.test(source)
+    },
     message: "market snapshots must annotate theme radar with historical momentum before model judgment."
+  },
+  {
+    pattern: {
+      test: (source) => source.includes("MARKET_BOARD_HISTORY_PATH")
+        && source.includes("market-board-history.json")
+        && source.includes("MARKET_BOARD_HISTORY_MAX_AGE_DAYS")
+    },
+    message: "market boards must keep a persistent history cache so sector rotation is not judged from one-off snapshots."
+  },
+  {
+    pattern: /function readMarketBoardHistory[\s\S]{0,520}boards[\s\S]{0,900}function persistMarketBoardHistory[\s\S]{0,760}marketBoardHistoryWrites/,
+    message: "market board history must have deterministic read and persist helpers."
+  },
+  {
+    pattern: {
+      test: (source) => source.includes("function cacheMarketBoardHistorySnapshot")
+        && source.includes("function sanitizeMarketBoardHistoryPoint")
+        && source.includes("function buildMarketBoardHistoryMomentum")
+        && source.includes("main_inflow_turning_positive")
+        && source.includes("cooling_outflow")
+    },
+    message: "market board history must store board flow points and compute fixed-code rotation signals."
+  },
+  {
+    pattern: {
+      test: (source) => /function fetchMarketSnapshot[\s\S]*readMarketBoardHistory\(\)[\s\S]*attachMarketBoardHistoryMomentum\(conceptBoards\.items[\s\S]*attachMarketBoardHistoryMomentum\(industryBoards\.items[\s\S]*cacheMarketBoardHistorySnapshot[\s\S]*persistMarketBoardHistory/.test(source)
+    },
+    message: "market snapshots must annotate concept and industry boards with historical rotation before theme scoring."
+  },
+  {
+    pattern: /const boardRotation = buildMarketBoardRotationSummary[\s\S]{0,1200}marketIndicators:\s*\{[\s\S]{0,260}boardRotation/,
+    message: "market snapshots must expose fixed-code board rotation summaries beside market breadth and news pulse."
   },
   {
     pattern: {
@@ -828,6 +866,14 @@ const requiredPatterns = [
         && source.includes("历史连续性")
     },
     message: "compact model snapshots must expose theme history and per-theme continuity in Chinese."
+  },
+  {
+    pattern: /function compactMarketBoardRotationForModel[\s\S]{0,900}主力刚转强[\s\S]{0,900}退潮转弱/,
+    message: "compact model snapshots must expose board rotation turns and no-buy cooling lanes in Chinese."
+  },
+  {
+    pattern: /板块轮动历史[\s\S]{0,700}主力刚转强[\s\S]{0,700}不能包装成买点/,
+    message: "fund and portfolio prompts must use board rotation history as an action filter, not a raw metric dump."
   },
   {
     pattern: {

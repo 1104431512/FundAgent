@@ -12229,6 +12229,72 @@ const compactNewsPulseSnapshot = manager.compactMarketSnapshotForModel({
 });
 assert(JSON.stringify(compactNewsPulseSnapshot).includes("新闻密度"), "compact market snapshots must expose fixed-code news pulse density to the model");
 assert(JSON.stringify(compactNewsPulseSnapshot).includes("单条新闻噪音"), "compact news pulse must preserve the no-buy downgrade for unconfirmed single news");
+const boardHistory = {
+  version: 1,
+  updatedAt: "2026-05-22T10:00:00.000Z",
+  boards: {
+    "concept_机器人": {
+      key: "concept_机器人",
+      name: "机器人",
+      kind: "concept",
+      snapshots: [
+        { at: "2026-05-22T09:30:00.000Z", name: "机器人", kind: "concept", changePct: -0.4, mainNetInflowPct: -0.3 },
+        { at: "2026-05-22T10:00:00.000Z", name: "机器人", kind: "concept", changePct: 0.1, mainNetInflowPct: 0.2 }
+      ]
+    },
+    "concept_cpo": {
+      key: "concept_cpo",
+      name: "CPO",
+      kind: "concept",
+      snapshots: [
+        { at: "2026-05-22T09:30:00.000Z", name: "CPO", kind: "concept", changePct: 3.2, mainNetInflowPct: 2.1 }
+      ]
+    },
+    "industry_传媒": {
+      key: "industry_传媒",
+      name: "传媒",
+      kind: "industry",
+      snapshots: [
+        { at: "2026-05-22T09:30:00.000Z", name: "传媒", kind: "industry", changePct: 1.2, mainNetInflowPct: 1.4 }
+      ]
+    }
+  }
+};
+const boardsWithHistory = manager.attachMarketBoardHistoryMomentum([
+  { name: "机器人", kind: "concept", changePct: 1.4, mainNetInflowPct: 1.7, leadStock: "机器人龙头" },
+  { name: "CPO", kind: "concept", changePct: 6.2, mainNetInflowPct: 1.0 },
+  { name: "传媒", kind: "industry", changePct: -0.8, mainNetInflowPct: -1.2 }
+], boardHistory, "2026-05-22T10:45:00.000Z", "concept");
+assert.equal(boardsWithHistory.find((item) => item.name === "机器人").historyMomentum.signal, "main_inflow_turning_positive", "board history must detect main-capital turning positive before model judgment");
+assert.equal(boardsWithHistory.find((item) => item.name === "CPO").historyMomentum.signal, "hot_chase", "board history must flag hot chase risk from historical board movement");
+assert.equal(boardsWithHistory.find((item) => item.name === "传媒").historyMomentum.signal, "cooling_outflow", "board history must detect board outflow cooling instead of treating pullback as buyable");
+const boardRotationSummary = manager.buildMarketBoardRotationSummary({
+  conceptBoards: boardsWithHistory.filter((item) => item.kind === "concept"),
+  industryBoards: boardsWithHistory.filter((item) => item.kind === "industry"),
+  fetchedAt: "2026-05-22T10:45:00.000Z"
+});
+assert(boardRotationSummary.mainInflowTurns.some((item) => item.name === "机器人"), "board rotation summary must expose main-inflow turn boards");
+assert(boardRotationSummary.coolingOutflow.some((item) => item.name === "传媒"), "board rotation summary must expose cooling/outflow boards");
+const compactBoardRotationSnapshot = manager.compactMarketSnapshotForModel({
+  fetchedAt: "2026-05-22T10:45:00.000Z",
+  dataQuality: { ok: true, level: "good", notes: [] },
+  marketIndicators: { boardRotation: boardRotationSummary },
+  themes: {},
+  themeRadar: [],
+  fundCandidates: {},
+  errors: [],
+  sources: []
+});
+assert(JSON.stringify(compactBoardRotationSnapshot).includes("主力刚转强"), "compact market snapshots must expose board rotation turns to the model");
+assert(JSON.stringify(compactBoardRotationSnapshot).includes("退潮转弱"), "compact board rotation must carry no-buy cooling/outflow lanes");
+const historyBackedThemeRadar = manager.buildThemeRadar({
+  conceptBoards: boardsWithHistory,
+  fastNews: [{ title: `机器人订单落地 主力资金净流入`, showTime: `${todayIso} 10:20`, mediaName: "财联社" }],
+  fundCandidates: { stockFunds: [{ code: "000123", name: "机器人产业基金C", keywords: ["机器人"] }] }
+});
+const historyBackedRobotTheme = historyBackedThemeRadar.find((theme) => /机器人/.test(theme.name || theme.newsLogic || ""));
+assert(historyBackedRobotTheme && Number(historyBackedRobotTheme.boardHistoryTurnScore || 0) > 0, "theme radar must use board history turns as fixed-code rotation evidence");
+assert(JSON.stringify(historyBackedRobotTheme).includes("轮动历史"), "theme radar evidence must explain board rotation history in Chinese");
 const broadMarketBreadth = manager.buildMarketBreadthIndicators({
   conceptBoards: [
     { name: "机器人", changePct: 2.4, mainNetInflowPct: 3.2 },

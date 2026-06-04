@@ -19,6 +19,7 @@ const FUND_RESEARCH_DIGEST_CACHE_PATH = path.resolve(process.env.FUND_RESEARCH_D
 const FUND_NAV_HISTORY_CACHE_PATH = path.resolve(process.env.FUND_NAV_HISTORY_CACHE_PATH || path.join(ROOT, "data", "fund-nav-history-cache.json"));
 const FUND_RANKING_CACHE_PATH = path.resolve(process.env.FUND_RANKING_CACHE_PATH || path.join(ROOT, "data", "fund-ranking-cache.json"));
 const THEME_RADAR_HISTORY_PATH = path.resolve(process.env.THEME_RADAR_HISTORY_PATH || path.join(ROOT, "data", "theme-radar-history.json"));
+const MARKET_BOARD_HISTORY_PATH = path.resolve(process.env.MARKET_BOARD_HISTORY_PATH || path.join(ROOT, "data", "market-board-history.json"));
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
 const PUBLIC_DIR = path.join(ROOT, "public");
 const SKILLS_DIR = path.join(ROOT, "skills");
@@ -57,6 +58,9 @@ const FUND_RANKING_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_RANKING_CACHE_M
 const THEME_RADAR_HISTORY_MAX_AGE_DAYS = Number(process.env.THEME_RADAR_HISTORY_MAX_AGE_DAYS || 14);
 const THEME_RADAR_HISTORY_POINT_LIMIT = Number(process.env.THEME_RADAR_HISTORY_POINT_LIMIT || 18);
 const THEME_RADAR_HISTORY_MIN_INTERVAL_MINUTES = Number(process.env.THEME_RADAR_HISTORY_MIN_INTERVAL_MINUTES || 30);
+const MARKET_BOARD_HISTORY_MAX_AGE_DAYS = Number(process.env.MARKET_BOARD_HISTORY_MAX_AGE_DAYS || 14);
+const MARKET_BOARD_HISTORY_POINT_LIMIT = Number(process.env.MARKET_BOARD_HISTORY_POINT_LIMIT || 24);
+const MARKET_BOARD_HISTORY_MIN_INTERVAL_MINUTES = Number(process.env.MARKET_BOARD_HISTORY_MIN_INTERVAL_MINUTES || 30);
 const pendingImageMessages = new Map();
 const pendingUserPortfolioImportRequests = new Map();
 const DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS = [
@@ -2133,6 +2137,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，marketView、team 和 actions.dataBasis 必须写清数据缺口；dataQuality.cached 非空时必须说明哪些模块来自缓存回退，只能用于连续性计算，不能当作实时买点确认；缺少关键板块、排行、新闻或贵金属模块时，只能 WATCH、HOLD 或小额试探，不能当作完整联网证据下重仓 BUY。",
     "必须使用 marketSnapshot.marketIndicators.realtimeFundValuations 复核候选当下温度、盘中走势和数据新鲜度；若盘中走势显示冲高回落或尾盘转弱，不能把最新估算涨幅当作追买理由；成交和盈亏仍以确认净值为准。",
     "必须使用 marketSnapshot.marketIndicators.marketBreadth 复核市场宽度和主力宽度；如果宽度显示窄幅追涨、主力流出或退潮压力高，新增买入只能降级为观察/小额复核。",
+    "必须使用 marketSnapshot.marketIndicators.boardRotation 复核板块主力历史变化；主力刚转强/低位轮动可进入找代表基金，退潮转弱或追涨风险必须降级。",
     "必须使用 marketSnapshot.marketIndicators.newsPulse 复核新闻催化密度；密集新鲜新闻可作为题材预热和找代表基金的入口，单条无资金/板块验证的新闻只能观察，不能直接买。",
     "若操作或候选涉及 QDII/海外基金，必须使用 marketSnapshot.marketIndicators.globalMarkets 复核外盘和人民币汇率温度，并写清净值披露时差。",
     "若现金再部署纪律提示 pressureActive=true 且存在 verified_buy、starter_buy 或 theme_micro_starter 候选，actions 必须逐只给 BUY 或明确 WATCH 拦截理由；但候选 actionPermission 写着0元观察时，只能 WATCH，不能 BUY、小仓试探或写成可买。符合小仓启动条件时优先 0.5%-2.5% 试探，theme_micro_starter 只能 0.5%-1.2% 微型试探，不要继续空泛观望。",
@@ -20743,6 +20748,7 @@ function summarizeMarketSnapshot(snapshot) {
     marketIndicators: {
       chinaIndices: (snapshot.marketIndicators?.chinaIndices || []).slice(0, 12),
       marketBreadth: snapshot.marketIndicators?.marketBreadth || null,
+      boardRotation: snapshot.marketIndicators?.boardRotation || null,
       newsPulse: snapshot.marketIndicators?.newsPulse || null,
       preciousMetals: (snapshot.marketIndicators?.preciousMetals || []).slice(0, 10),
       globalMarkets: (snapshot.marketIndicators?.globalMarkets || []).slice(0, 12),
@@ -20780,6 +20786,8 @@ function compactMarketSnapshotForModel(snapshot = null) {
   };
   const compactMarketBreadth = compactMarketBreadthForModel(summary.marketIndicators?.marketBreadth);
   if (compactMarketBreadth) marketIndicators.marketBreadth = compactMarketBreadth;
+  const compactBoardRotation = compactMarketBoardRotationForModel(summary.marketIndicators?.boardRotation);
+  if (compactBoardRotation) marketIndicators.boardRotation = compactBoardRotation;
   const compactNewsPulse = compactNewsPulseForModel(summary.marketIndicators?.newsPulse);
   if (compactNewsPulse) marketIndicators.newsPulse = compactNewsPulse;
   return {
@@ -20952,15 +20960,19 @@ function compactRealtimeFundValuations(items = [], limit = 12) {
 }
 
 function compactMarketBoardItems(items = [], limit = 6) {
-  return (items || []).slice(0, limit).map((item) => ({
-    boardCode: item.boardCode || "",
-    name: item.name || "",
-    changePct: finiteMetricNumber(item.changePct),
-    mainNetInflowPct: finiteMetricNumber(item.mainNetInflowPct),
-    leadStock: item.leadStock || "",
-    quoteTime: item.quoteTime || "",
-    榜单线索: Array.isArray(item.coverageSources) ? item.coverageSources.slice(0, 3).join("、") : ""
-  }));
+  return (items || []).slice(0, limit).map((item) => {
+    const compact = {
+      boardCode: item.boardCode || "",
+      name: item.name || "",
+      changePct: finiteMetricNumber(item.changePct),
+      mainNetInflowPct: finiteMetricNumber(item.mainNetInflowPct),
+      leadStock: item.leadStock || "",
+      quoteTime: item.quoteTime || "",
+      榜单线索: Array.isArray(item.coverageSources) ? item.coverageSources.slice(0, 3).join("、") : ""
+    };
+    if (item.historyMomentum?.label) compact.历史轮动 = item.historyMomentum.label;
+    return compact;
+  });
 }
 
 function compactMarketBreadthForModel(breadth = null) {
@@ -20974,6 +20986,26 @@ function compactMarketBreadthForModel(breadth = null) {
     主力流入占比: finiteMetricNumber(breadth.mainInflowPct),
     追涨压力: finiteMetricNumber(breadth.chasePressureScore),
     退潮压力: finiteMetricNumber(breadth.retreatPressureScore)
+  };
+}
+
+function compactMarketBoardRotationForModel(rotation = null) {
+  if (!rotation || typeof rotation !== "object" || !rotation.ok) return null;
+  const compactItems = (items = []) => (items || []).slice(0, 4).map((item) => ({
+    板块: item.name || "",
+    类型: item.kindText || "",
+    轮动: item.label || "",
+    动作: item.actionText || "",
+    主力变化: finiteMetricNumber(item.mainFlowDelta),
+    涨跌变化: finiteMetricNumber(item.changeDelta)
+  }));
+  return {
+    结论: rotation.summary || "",
+    主力刚转强: compactItems(rotation.mainInflowTurns),
+    低位轮动: compactItems(rotation.lowRotationTurns),
+    持续流入: compactItems(rotation.sustainedInflow),
+    退潮转弱: compactItems(rotation.coolingOutflow),
+    追涨风险: compactItems(rotation.hotChase)
   };
 }
 
@@ -21018,12 +21050,16 @@ function compactThemeRadarForModel(theme = {}) {
     历史出现次数: theme.historyMomentum?.sightings || 0,
     主要催化: theme.primaryCatalyst || "",
     题材逻辑: theme.newsLogic || "",
-    相关板块: (theme.evidence?.boards || []).slice(0, 2).map((item) => ({
-      name: item.name || "",
-      changePct: finiteMetricNumber(item.changePct),
-      mainNetInflowPct: finiteMetricNumber(item.mainNetInflowPct),
-      榜单线索: Array.isArray(item.coverageSources) ? item.coverageSources.slice(0, 3).join("、") : ""
-    })),
+    相关板块: (theme.evidence?.boards || []).slice(0, 2).map((item) => {
+      const compact = {
+        name: item.name || "",
+        changePct: finiteMetricNumber(item.changePct),
+        mainNetInflowPct: finiteMetricNumber(item.mainNetInflowPct),
+        榜单线索: Array.isArray(item.coverageSources) ? item.coverageSources.slice(0, 3).join("、") : ""
+      };
+      if (item.historyMomentum?.label) compact.历史轮动 = item.historyMomentum.label;
+      return compact;
+    }),
     海外市场: (theme.evidence?.globalMarkets || []).slice(0, 2).map((item) => ({
       name: item.name || "",
       changePct: finiteMetricNumber(item.changePct),
@@ -21890,6 +21926,33 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
       Number.isFinite(Number(marketBreadth.retreatPressureScore)) ? `退潮压力${round(marketBreadth.retreatPressureScore, 0)}` : ""
     ].filter(Boolean).join("，"));
     lines.push(`质量要求：市场宽度是固定代码计算的全局风险过滤器；窄幅追涨或主力流出时，任何题材基金都必须先降级为等待/0元复核。`);
+  }
+  const boardRotation = marketSnapshot.marketIndicators?.boardRotation;
+  if (boardRotation?.ok) {
+    lines.push(`板块轮动历史：${boardRotation.summary || ""}`);
+    const rotationLanes = [
+      ["mainInflowTurns", "主力刚转强"],
+      ["lowRotationTurns", "低位轮动"],
+      ["sustainedInflow", "持续流入"],
+      ["coolingOutflow", "退潮转弱"],
+      ["hotChase", "追涨风险"]
+    ];
+    for (const [key, label] of rotationLanes) {
+      const items = (boardRotation[key] || []).slice(0, 2);
+      if (!items.length) continue;
+      const text = items.map((item) => {
+        const parts = [
+          item.name || "",
+          item.label || "",
+          item.actionText || "",
+          Number.isFinite(Number(item.mainFlowDelta)) ? `主力变化${formatSignedNumber(item.mainFlowDelta)}` : "",
+          Number.isFinite(Number(item.changeDelta)) ? `涨跌变化${formatSignedNumber(item.changeDelta)}%` : ""
+        ].filter(Boolean);
+        return parts.join("，");
+      }).join(" / ");
+      lines.push(`- ${label}：${text}`);
+    }
+    lines.push("质量要求：板块轮动历史只证明资金和热度的边际变化；主力刚转强可用于找代表基金，退潮转弱和追涨风险不能包装成买点。");
   }
   const newsPulse = marketSnapshot.marketIndicators?.newsPulse;
   if (newsPulse?.ok && Array.isArray(newsPulse.topTopics) && newsPulse.topTopics.length) {
@@ -24072,6 +24135,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
     "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度、盘中走势和数据新鲜度；若盘中冲高回落或尾盘转弱，只能降低买入把握度，成交和盈亏仍以确认净值为准。",
     "marketSnapshot.marketIndicators.marketBreadth 是固定代码算出的市场宽度和主力宽度；若显示窄幅追涨、主力流出或退潮压力高，任何局部题材热度都必须降级，不能包装成可买信号。",
+    "marketSnapshot.marketIndicators.boardRotation 是固定代码从板块历史缓存算出的主力轮动变化；优先找主力刚转强、低位轮动的代表基金，回避退潮转弱和追涨风险。",
     "marketSnapshot.marketIndicators.newsPulse 是固定代码算出的新闻题材脉冲；优先把密集新鲜新闻作为预热/找代表基金线索，单条新闻或缺资金/板块确认时只能观察。",
     "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
     "如果提供了候选基金下钻摘要，必须使用走势画像、风险、费用、持仓和可操作性评估来筛掉不适合的候选；不要只复述市场快照。",
@@ -24203,6 +24267,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "如果传入 marketSnapshot，可用它回答近期市场/题材问题；涉及黄金、白银或贵金属时，优先引用 marketIndicators.preciousMetals 和相关基金候选。",
     "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度、盘中走势和数据新鲜度；若盘中冲高回落或尾盘转弱，只能降低买入把握度，成交和盈亏仍以确认净值为准。",
     "marketSnapshot.marketIndicators.marketBreadth 是固定代码算出的市场宽度和主力宽度；若显示窄幅追涨、主力流出或退潮压力高，任何局部题材热度都必须降级，不能包装成可买信号。",
+    "marketSnapshot.marketIndicators.boardRotation 是固定代码从板块历史缓存算出的主力轮动变化；回答板块/题材机会时要先说明是刚转强、低位轮动、持续流入、退潮还是追涨风险。",
     "marketSnapshot.marketIndicators.newsPulse 是固定代码算出的新闻题材脉冲；用户问题材为什么动或找预热方向时，先看新闻密度、新鲜度和是否有资金/板块确认。",
     "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
     "如果市场快照或下钻摘要里有题材雷达，优先引用中文题材阶段、主力节奏、新闻逻辑、拥挤度和操作倾向，避免只按历史涨幅回答。",
@@ -26946,9 +27011,14 @@ async function fetchMarketSnapshot(options = {}) {
   const snapshotParts = [...baseComponents, ...realtimeComponents];
   const realtimeFundValuationsResolved = realtimeComponents[0]?.result || realtimeFundValuations;
   persistMarketSnapshotCache(cache);
+  const marketBoardHistory = readMarketBoardHistory();
+  const conceptBoardItems = attachMarketBoardHistoryMomentum(conceptBoards.items || [], marketBoardHistory, fetchedAt, "concept");
+  const industryBoardItems = attachMarketBoardHistoryMomentum(industryBoards.items || [], marketBoardHistory, fetchedAt, "industry");
+  cacheMarketBoardHistorySnapshot(marketBoardHistory, [...conceptBoardItems, ...industryBoardItems], fetchedAt);
+  persistMarketBoardHistory(marketBoardHistory);
   const themeRadarRaw = buildThemeRadar({
-    conceptBoards: conceptBoards.items || [],
-    industryBoards: industryBoards.items || [],
+    conceptBoards: conceptBoardItems,
+    industryBoards: industryBoardItems,
     preciousMetals: preciousMetals.items || [],
     globalMarkets: globalMarketQuotes.items || [],
     fastNews: fastNews.items || [],
@@ -26967,9 +27037,14 @@ async function fetchMarketSnapshot(options = {}) {
     fetchedAt
   });
   const marketBreadth = buildMarketBreadthIndicators({
-    conceptBoards: conceptBoards.items || [],
-    industryBoards: industryBoards.items || [],
+    conceptBoards: conceptBoardItems,
+    industryBoards: industryBoardItems,
     chinaIndices: yangjibaoIndices.items || [],
+    fetchedAt
+  });
+  const boardRotation = buildMarketBoardRotationSummary({
+    conceptBoards: conceptBoardItems,
+    industryBoards: industryBoardItems,
     fetchedAt
   });
   const dataQuality = buildMarketDataQuality(snapshotParts, {
@@ -26998,14 +27073,15 @@ async function fetchMarketSnapshot(options = {}) {
     marketIndicators: {
       chinaIndices: yangjibaoIndices.items || [],
       marketBreadth,
+      boardRotation,
       newsPulse,
       preciousMetals: preciousMetals.items || [],
       globalMarkets: globalMarketQuotes.items || [],
       realtimeFundValuations: realtimeFundValuationsResolved.items || []
     },
     themes: {
-      conceptBoards: conceptBoards.items || [],
-      industryBoards: industryBoards.items || []
+      conceptBoards: conceptBoardItems,
+      industryBoards: industryBoardItems
     },
     themeRadar,
     themeLeaderboards,
@@ -27161,6 +27237,298 @@ function buildCachedMarketSnapshotComponent(component = {}, cache = {}, fetchedA
       liveError: String(liveError || "").slice(0, 240)
     }
   };
+}
+
+function readMarketBoardHistory(filePath = MARKET_BOARD_HISTORY_PATH) {
+  const raw = safeReadJson(filePath);
+  return raw && typeof raw === "object" && raw.boards && typeof raw.boards === "object"
+    ? { ...raw, boards: raw.boards }
+    : { version: 1, updatedAt: "", boards: {} };
+}
+
+function persistMarketBoardHistory(history = {}, filePath = MARKET_BOARD_HISTORY_PATH) {
+  try {
+    pruneMarketBoardHistory(history);
+    const payload = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      boards: history.boards || {}
+    };
+    ensureDir(path.dirname(filePath));
+    fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    updateStats({ counters: { marketBoardHistoryWrites: 1 }, last: { lastMarketBoardHistoryWriteAt: payload.updatedAt } });
+    return payload;
+  } catch (error) {
+    console.warn("[market-board-history-write-error]", error.message);
+    recordError(error, { marketBoardHistoryWriteFailures: 1 });
+    return history;
+  }
+}
+
+function getMarketBoardHistoryKey(board = {}, kind = "") {
+  const value = board.boardCode || board.name || board.id || "";
+  const scope = board.kind || kind || "board";
+  const normalized = normalizeIntentText(value).replace(/[^\w\u4e00-\u9fff-]+/g, "_").slice(0, 80);
+  return normalized ? `${scope}_${normalized}` : "";
+}
+
+function cacheMarketBoardHistorySnapshot(history = {}, boards = [], observedAt = new Date().toISOString()) {
+  history.boards = history.boards && typeof history.boards === "object" ? history.boards : {};
+  const nowMs = Date.parse(observedAt);
+  let updates = 0;
+  for (const board of boards || []) {
+    const key = getMarketBoardHistoryKey(board, board.kind || "");
+    if (!key) continue;
+    const entry = history.boards[key] || {
+      key,
+      boardCode: board.boardCode || "",
+      name: board.name || "",
+      kind: board.kind || "",
+      firstSeenAt: observedAt,
+      lastSeenAt: "",
+      snapshots: []
+    };
+    entry.boardCode = board.boardCode || entry.boardCode || "";
+    entry.name = board.name || entry.name || key;
+    entry.kind = board.kind || entry.kind || "";
+    entry.lastSeenAt = observedAt;
+    const snapshots = Array.isArray(entry.snapshots) ? entry.snapshots : [];
+    const last = snapshots[snapshots.length - 1] || {};
+    const lastMs = Date.parse(last.at || "");
+    const minIntervalMs = Math.max(1, MARKET_BOARD_HISTORY_MIN_INTERVAL_MINUTES) * 60_000;
+    const point = sanitizeMarketBoardHistoryPoint(board, observedAt);
+    if (Number.isFinite(nowMs) && Number.isFinite(lastMs) && nowMs - lastMs < minIntervalMs) {
+      snapshots[snapshots.length - 1] = point;
+    } else {
+      snapshots.push(point);
+    }
+    entry.snapshots = snapshots.slice(-Math.max(3, MARKET_BOARD_HISTORY_POINT_LIMIT));
+    history.boards[key] = entry;
+    updates += 1;
+  }
+  pruneMarketBoardHistory(history, observedAt);
+  updateStats({ counters: { marketBoardHistoryBoardsObserved: updates } });
+  return history;
+}
+
+function sanitizeMarketBoardHistoryPoint(board = {}, observedAt = new Date().toISOString()) {
+  return {
+    at: observedAt,
+    boardCode: board.boardCode || "",
+    name: board.name || "",
+    kind: board.kind || "",
+    changePct: finiteMetricNumber(board.changePct),
+    mainNetInflowPct: finiteMetricNumber(board.mainNetInflowPct),
+    leadStock: board.leadStock || "",
+    coverageSignalScore: finiteMetricNumber(board.coverageSignalScore),
+    coverageSources: normalizeStringArray(board.coverageSources).slice(0, 4)
+  };
+}
+
+function pruneMarketBoardHistory(history = {}, nowIso = new Date().toISOString()) {
+  history.boards = history.boards && typeof history.boards === "object" ? history.boards : {};
+  const nowMs = Date.parse(nowIso);
+  const maxAgeMs = Math.max(1, MARKET_BOARD_HISTORY_MAX_AGE_DAYS) * 24 * 60 * 60_000;
+  for (const [key, entry] of Object.entries(history.boards)) {
+    const snapshots = (Array.isArray(entry?.snapshots) ? entry.snapshots : [])
+      .filter((point) => {
+        const atMs = Date.parse(point?.at || "");
+        return !Number.isFinite(nowMs) || !Number.isFinite(atMs) || nowMs - atMs <= maxAgeMs;
+      })
+      .slice(-Math.max(3, MARKET_BOARD_HISTORY_POINT_LIMIT));
+    if (!snapshots.length) {
+      delete history.boards[key];
+      continue;
+    }
+    history.boards[key] = {
+      ...entry,
+      snapshots,
+      firstSeenAt: entry.firstSeenAt || snapshots[0]?.at || "",
+      lastSeenAt: snapshots[snapshots.length - 1]?.at || entry.lastSeenAt || ""
+    };
+  }
+  return history;
+}
+
+function attachMarketBoardHistoryMomentum(boards = [], history = {}, observedAt = new Date().toISOString(), kind = "") {
+  return (boards || []).map((board) => ({
+    ...board,
+    kind: board.kind || kind || "",
+    historyMomentum: buildMarketBoardHistoryMomentum({ ...board, kind: board.kind || kind || "" }, history, observedAt)
+  }));
+}
+
+function buildMarketBoardHistoryMomentum(board = {}, history = {}, observedAt = new Date().toISOString()) {
+  const key = getMarketBoardHistoryKey(board, board.kind || "");
+  const entry = key ? history?.boards?.[key] : null;
+  const nowMs = Date.parse(observedAt);
+  const snapshots = (Array.isArray(entry?.snapshots) ? entry.snapshots : [])
+    .filter((point) => {
+      const atMs = Date.parse(point?.at || "");
+      return Number.isFinite(atMs) && (!Number.isFinite(nowMs) || atMs < nowMs);
+    })
+    .sort((a, b) => Date.parse(a.at || "") - Date.parse(b.at || ""));
+  const latest = snapshots[snapshots.length - 1] || null;
+  const first = snapshots[0] || null;
+  const currentChange = finiteMetricNumber(board.changePct);
+  const currentFlow = finiteMetricNumber(board.mainNetInflowPct);
+  const previousChange = finiteMetricNumber(latest?.changePct);
+  const previousFlow = finiteMetricNumber(latest?.mainNetInflowPct);
+  const firstFlow = finiteMetricNumber(first?.mainNetInflowPct);
+  const changeDelta = Number.isFinite(currentChange) && Number.isFinite(previousChange) ? round(currentChange - previousChange, 2) : null;
+  const mainFlowDelta = Number.isFinite(currentFlow) && Number.isFinite(previousFlow) ? round(currentFlow - previousFlow, 2) : null;
+  const trendFlowDelta = Number.isFinite(currentFlow) && Number.isFinite(firstFlow) ? round(currentFlow - firstFlow, 2) : null;
+  const signal = inferMarketBoardRotationSignal({
+    currentChange,
+    currentFlow,
+    previousChange,
+    previousFlow,
+    changeDelta,
+    mainFlowDelta,
+    sightings: snapshots.length
+  });
+  return {
+    key,
+    signal,
+    label: formatMarketBoardRotationSignal(signal),
+    actionText: formatMarketBoardRotationAction(signal),
+    firstSeenAt: entry?.firstSeenAt || first?.at || "",
+    previousSeenAt: latest?.at || "",
+    sightings: snapshots.length,
+    previousChangePct: previousChange,
+    previousMainNetInflowPct: previousFlow,
+    currentChangePct: currentChange,
+    currentMainNetInflowPct: currentFlow,
+    changeDelta,
+    mainFlowDelta,
+    trendFlowDelta
+  };
+}
+
+function inferMarketBoardRotationSignal({ currentChange = null, currentFlow = null, previousChange = null, previousFlow = null, changeDelta = null, mainFlowDelta = null, sightings = 0 } = {}) {
+  const change = Number(currentChange);
+  const flow = Number(currentFlow);
+  const prevChange = Number(previousChange);
+  const prevFlow = Number(previousFlow);
+  const delta = Number(mainFlowDelta);
+  const changeMove = Number(changeDelta);
+  if (!Number.isFinite(change) && !Number.isFinite(flow)) return "unknown";
+  if (!sightings) {
+    if (Number.isFinite(flow) && flow > 0.8 && Number.isFinite(change) && change <= 4.5) return "new_main_inflow";
+    return "new_observed";
+  }
+  if (Number.isFinite(flow) && flow < -0.5 && (!Number.isFinite(prevFlow) || prevFlow >= 0 || delta <= -0.8 || change < 0)) return "cooling_outflow";
+  if (Number.isFinite(change) && (change >= 5.5 || (change >= 3.8 && Number.isFinite(delta) && delta < 0))) return "hot_chase";
+  if (Number.isFinite(flow) && flow >= 0.5 && (!Number.isFinite(prevFlow) || prevFlow <= 0 || delta >= 0.8) && (!Number.isFinite(change) || change <= 4.5)) return "main_inflow_turning_positive";
+  if (Number.isFinite(flow) && flow >= 0.2 && Number.isFinite(change) && change <= 2.8 && (!Number.isFinite(prevChange) || prevChange <= 0.8 || changeMove >= 0.2)) return "low_rotation_building";
+  if (Number.isFinite(flow) && Number.isFinite(prevFlow) && flow > 0.5 && prevFlow > 0.2 && (!Number.isFinite(change) || change <= 4.5)) return "sustained_inflow";
+  if (Number.isFinite(delta) && delta <= -0.8) return "flow_weakening";
+  return "observed";
+}
+
+function formatMarketBoardRotationSignal(value = "") {
+  return {
+    new_main_inflow: "首次记录即有主力流入",
+    new_observed: "首次记录，等待下一次确认",
+    main_inflow_turning_positive: "主力资金刚转强",
+    low_rotation_building: "低位轮动开始修复",
+    sustained_inflow: "主力资金持续流入",
+    cooling_outflow: "主力资金转弱流出",
+    hot_chase: "短线涨幅偏热",
+    flow_weakening: "主力边际减弱",
+    observed: "历史变化不明显",
+    unknown: "历史信号不足"
+  }[value] || "历史信号不足";
+}
+
+function formatMarketBoardRotationAction(value = "") {
+  return {
+    new_main_inflow: "可加入题材观察，等待基金买点",
+    new_observed: "先记录，不直接买",
+    main_inflow_turning_positive: "优先找承载基金复核",
+    low_rotation_building: "找低位启动前夜候选",
+    sustained_inflow: "可跟踪，但防止追高",
+    cooling_outflow: "降级观察，避免接回调",
+    hot_chase: "不追涨，等降温回踩",
+    flow_weakening: "降低买入把握度",
+    observed: "继续观察",
+    unknown: "继续补数据"
+  }[value] || "继续观察";
+}
+
+function buildMarketBoardRotationSummary({ conceptBoards = [], industryBoards = [], fetchedAt = new Date().toISOString() } = {}) {
+  const boards = [...(conceptBoards || []), ...(industryBoards || [])]
+    .filter((item) => item?.historyMomentum)
+    .map(compactMarketBoardRotationItem)
+    .filter(Boolean);
+  const lane = (signals = [], limit = 5) => boards
+    .filter((item) => signals.includes(item.signal))
+    .sort((a, b) => scoreMarketBoardRotationItem(b) - scoreMarketBoardRotationItem(a))
+    .slice(0, limit);
+  const result = {
+    ok: boards.length > 0,
+    label: "板块轮动历史",
+    fetchedAt,
+    boardCount: boards.length,
+    mainInflowTurns: lane(["main_inflow_turning_positive", "new_main_inflow"], 5),
+    lowRotationTurns: lane(["low_rotation_building"], 5),
+    sustainedInflow: lane(["sustained_inflow"], 5),
+    coolingOutflow: lane(["cooling_outflow", "flow_weakening"], 5),
+    hotChase: lane(["hot_chase"], 5)
+  };
+  result.summary = formatMarketBoardRotationSummary(result);
+  return result;
+}
+
+function compactMarketBoardRotationItem(board = {}) {
+  const momentum = board.historyMomentum || {};
+  const name = board.name || board.boardCode || "";
+  if (!name) return null;
+  return {
+    boardCode: board.boardCode || "",
+    name,
+    kind: board.kind || "",
+    kindText: board.kind === "concept" ? "概念" : board.kind === "industry" ? "行业" : "板块",
+    signal: momentum.signal || "",
+    label: momentum.label || "",
+    actionText: momentum.actionText || "",
+    changePct: finiteMetricNumber(board.changePct),
+    mainNetInflowPct: finiteMetricNumber(board.mainNetInflowPct),
+    changeDelta: finiteMetricNumber(momentum.changeDelta),
+    mainFlowDelta: finiteMetricNumber(momentum.mainFlowDelta),
+    sightings: Number(momentum.sightings || 0),
+    previousSeenAt: momentum.previousSeenAt || "",
+    leadStock: board.leadStock || ""
+  };
+}
+
+function scoreMarketBoardRotationItem(item = {}) {
+  const flow = Number(item.mainNetInflowPct || 0);
+  const flowDelta = Number(item.mainFlowDelta || 0);
+  const change = Number(item.changePct || 0);
+  const sightings = Number(item.sightings || 0);
+  const signalBonus = {
+    main_inflow_turning_positive: 30,
+    new_main_inflow: 24,
+    low_rotation_building: 22,
+    sustained_inflow: 18,
+    cooling_outflow: 26,
+    flow_weakening: 14,
+    hot_chase: 24
+  }[item.signal] || 0;
+  return signalBonus + Math.max(0, flow) * 8 + Math.max(0, flowDelta) * 12 + Math.max(0, change) * 3 + Math.min(10, sightings * 2);
+}
+
+function formatMarketBoardRotationSummary(rotation = {}) {
+  const main = (rotation.mainInflowTurns || []).length;
+  const low = (rotation.lowRotationTurns || []).length;
+  const cooling = (rotation.coolingOutflow || []).length;
+  const hot = (rotation.hotChase || []).length;
+  if (main || low) {
+    return `发现${main}个主力刚转强板块、${low}个低位轮动修复板块；${cooling ? `${cooling}个板块转弱需回避；` : ""}${hot ? `${hot}个板块偏热防追涨。` : ""}`.trim();
+  }
+  if (cooling || hot) return `机会不足，${cooling}个板块转弱、${hot}个板块偏热，先防接盘和追涨。`;
+  return rotation.boardCount ? "板块历史已有记录，但暂未形成清晰轮动信号。" : "板块历史数据不足，等待下一次快照。";
 }
 
 function readThemeRadarHistory(filePath = THEME_RADAR_HISTORY_PATH) {
@@ -28388,7 +28756,8 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
         leadStock: board.leadStock || "",
         quoteTime: board.quoteTime || "",
         coverageSources: Array.isArray(board.coverageSources) ? board.coverageSources.slice(0, 4) : [],
-        rankSignals: Array.isArray(board.rankSignals) ? board.rankSignals.slice(0, 4) : []
+        rankSignals: Array.isArray(board.rankSignals) ? board.rankSignals.slice(0, 4) : [],
+        historyMomentum: board.historyMomentum || null
       }));
     const newsKeywords = expandThemeNewsKeywords(rule.newsKeywords || rule.keywords, {
       name: rule.name,
@@ -28450,6 +28819,8 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
     const boardModerateRiseCount = boardChangeValues.filter((value) => value >= 0 && value <= 4.5).length;
     const mainInflowRankScore = scoreThemeBoardRankSignals(boards, /主力流入/);
     const mainOutflowRankScore = scoreThemeBoardRankSignals(boards, /主力流出/);
+    const boardHistoryTurnScore = scoreThemeBoardHistoryMomentum(boards, ["main_inflow_turning_positive", "new_main_inflow", "low_rotation_building", "sustained_inflow"]);
+    const boardHistoryRetreatScore = scoreThemeBoardHistoryMomentum(boards, ["cooling_outflow", "flow_weakening", "hot_chase"]);
     const avgMainNetInflowPct = boardFlowValues.length ? averageNumeric(boardFlowValues) : null;
     const minMainNetInflowPct = boardFlowValues.length ? Math.min(...boardFlowValues) : null;
     const maxMainNetInflowPct = boardFlowValues.length ? Math.max(...boardFlowValues) : null;
@@ -28465,6 +28836,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + maxOutflow * 6
       + Math.abs(maxBoardDropPct) * 8
       + mainOutflowRankScore * 0.7
+      + boardHistoryRetreatScore * 0.55
     );
     const freshNewsCount = newsCatalystProfile.fresh === false ? 0 : news.length;
     const catalystScore = clampScore(freshNewsCount * 6 + newsCatalystProfile.score + metals.filter((item) => Number.isFinite(item.changePct)).length * 4 + overseasMarkets.filter((item) => Number.isFinite(item.changePct)).length * 3);
@@ -28498,6 +28870,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + maxInflow * 5
       + mainInflowRankScore * 1.25
       + (hasStrongMainInflowRankSignal(mainInflowRankScore) ? 12 : 0)
+      + boardHistoryTurnScore * 0.55
       + newsMainCapitalScore
       + catalystScore * 0.16
       + vehicleScore * 0.14
@@ -28514,6 +28887,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + Math.max(0, 18 - boardScore) * 0.32
       + capitalFollowScore * 0.12
       + mainInflowRankScore * 0.12
+      + boardHistoryTurnScore * 0.28
       + newsMainCapitalScore * 0.25
       + newsOnlyPreheatBoost
       - crowdingScore * 0.46
@@ -28524,6 +28898,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + vehicleScore * 0.25
       + lowPositionScore * 0.45
       + capitalFollowScore * 0.12
+      + boardHistoryTurnScore * 0.35
       + preheatScore * 0.1
       + newsOnlyPreheatBoost * 0.18
       + Math.max(0, 28 - boardScore) * 0.25
@@ -28538,6 +28913,7 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       + capitalFollowScore * 0.2
       + preheatScore * 0.16
       + newsMainCapitalScore * 0.16
+      + boardHistoryTurnScore * 0.24
       + newsOnlyPreheatBoost * 0.12
       - crowdingScore * 0.36
       - capitalRetreatScore * 0.32
@@ -28598,6 +28974,8 @@ function buildThemeRadar({ conceptBoards = [], industryBoards = [], preciousMeta
       evidenceCoverageCount,
       mainInflowRankScore: round(mainInflowRankScore, 1),
       mainOutflowRankScore: round(mainOutflowRankScore, 1),
+      boardHistoryTurnScore: round(boardHistoryTurnScore, 1),
+      boardHistoryRetreatScore: round(boardHistoryRetreatScore, 1),
       maxBoardDropPct: round(maxBoardDropPct, 2),
       retreatSignal,
       leaderSignal,
@@ -30179,6 +30557,22 @@ function scoreThemeBoardRankSignals(boards = [], sourcePattern = /主力流入/)
   return clampScore(score);
 }
 
+function scoreThemeBoardHistoryMomentum(boards = [], signals = []) {
+  const wanted = new Set(signals);
+  return clampScore((boards || []).reduce((sum, board) => {
+    const momentum = board.historyMomentum || {};
+    if (!wanted.has(momentum.signal)) return sum;
+    const flow = Number(momentum.currentMainNetInflowPct ?? board.mainNetInflowPct);
+    const flowDelta = Number(momentum.mainFlowDelta);
+    const change = Number(momentum.currentChangePct ?? board.changePct);
+    return sum
+      + 14
+      + Math.max(0, Number.isFinite(flow) ? flow : 0) * 6
+      + Math.max(0, Number.isFinite(flowDelta) ? flowDelta : 0) * 10
+      + Math.max(0, Number.isFinite(change) ? change : 0) * 2;
+  }, 0));
+}
+
 function formatThemeBoardRankSignal(boards = [], sourcePattern = /主力流入/) {
   const entries = (boards || [])
     .flatMap((board) => (board.rankSignals || [])
@@ -30404,6 +30798,7 @@ function buildThemeCatalystLogic({ rule = {}, news = [], boards = [], metals = [
     const lead = topBoard.leadStock ? `，龙头${topBoard.leadStock}` : "";
     facts.push(`板块验证：${topBoard.name}${formatSignedNumber(topBoard.changePct)}%${lead}`);
   }
+  if (topBoard.historyMomentum?.label) facts.push(`轮动历史：${topBoard.name}${topBoard.historyMomentum.label}`);
   const inflowRank = formatThemeBoardRankSignal(boards, /主力流入/);
   const outflowRank = formatThemeBoardRankSignal(boards, /主力流出/);
   if (inflowRank) facts.push(`榜单线索：${inflowRank}`);
@@ -41367,6 +41762,9 @@ export {
   attachThemeRadarHistoryMomentum,
   buildMarketBreadthIndicators,
   buildNewsPulseIndicators,
+  attachMarketBoardHistoryMomentum,
+  buildMarketBoardHistoryMomentum,
+  buildMarketBoardRotationSummary,
   collectNewsPulseTopicSeeds,
   cacheFundResearchDigest,
   cacheFundNavHistory,
@@ -41435,10 +41833,12 @@ export {
   readFundResearchDigestCache,
   readFundNavHistoryCache,
   readFundRankingCache,
+  readMarketBoardHistory,
   readThemeRadarHistory,
   persistFundResearchDigestCache,
   persistFundNavHistoryCache,
   persistFundRankingCache,
+  persistMarketBoardHistory,
   persistThemeRadarHistory,
   getFundRecommendationSkillIds,
   getDeploymentFreshness,
