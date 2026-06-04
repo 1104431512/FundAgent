@@ -10613,6 +10613,10 @@ assert(
   dynamicWeakActionability.decisionBlocker.some((item) => item.includes("持仓承载") || item.includes("题材名字")),
   "actionability blocker must explain that the fund name/theme is not enough without top-ten holdings support"
 );
+assert(
+  !dynamicWeakActionability.decisiveEvidence.some((item) => /主力进场|题材预热|逻辑=/.test(item)),
+  "actionability decisive evidence must not present main-force/preheat theme support when top-ten holdings do not carry the live theme"
+);
 const dynamicWeakReadiness = manager.evaluatePortfolioWatchReadiness({
   code: "000042",
   name: "低空经济错配基金C",

@@ -3809,19 +3809,27 @@ const requiredPatterns = [
     message: "fund actionability must incorporate structured top-ten holdings outlook."
   },
   {
+    pattern: /buildFundActionabilitySignals[\s\S]{0,3200}let leaderThemeSupport = hasActionabilityLeaderThemeSupport\(digest,\s*holdingsOutlook\)[\s\S]{0,3200}isActionabilityHoldingsCarrierHardBlocker\(holdingsDiscipline\.blocker\)[\s\S]{0,320}leaderThemeSupport = false/,
+    message: "fund actionability must not award or display main-force theme support when catchdown, stale radar, or holdings-carrier hard gaps exist."
+  },
+  {
+    pattern: /function hasActionabilityThemeExecutionHardGap[\s\S]{0,1800}前十大持仓未命中题材龙头[\s\S]{0,900}matchedThemeHoldings[\s\S]{0,700}isExplicitThemeIndexVehicle/,
+    message: "fund actionability theme hard gaps must treat top-ten holdings carrier mismatch as a no-main-force-evidence condition."
+  },
+  {
     pattern: /buildFundActionabilitySignals[\s\S]{0,5400}getActionabilityEntryDiscipline\(trend[\s\S]{0,1800}boundedScore = Math\.min\(boundedScore, entryDiscipline\.scoreCap\)/,
     message: "fund actionability must cap buy/staged-buy scores when the trend says wait for pullback."
   },
   {
-    pattern: /buildFundActionabilitySignals[\s\S]{0,4600}getActionabilityFreshnessDiscipline\(digest[\s\S]{0,1200}boundedScore = Math\.min\(boundedScore, freshnessDiscipline\.scoreCap\)/,
+    pattern: /buildFundActionabilitySignals[\s\S]{0,6200}getActionabilityFreshnessDiscipline\(digest[\s\S]{0,1600}boundedScore = Math\.min\(boundedScore, freshnessDiscipline\.scoreCap\)/,
     message: "fund actionability must cap buy/staged-buy scores when NAV or trend evidence is stale."
   },
   {
-    pattern: /buildFundActionabilitySignals[\s\S]{0,5200}getActionabilityIntradayDiscipline\(digest[\s\S]{0,1300}boundedScore = Math\.min\(boundedScore, intradayDiscipline\.scoreCap\)/,
+    pattern: /buildFundActionabilitySignals[\s\S]{0,6800}getActionabilityIntradayDiscipline\(digest[\s\S]{0,1700}boundedScore = Math\.min\(boundedScore, intradayDiscipline\.scoreCap\)/,
     message: "fund actionability must cap buy/staged-buy scores when intraday valuation fades from the high."
   },
   {
-    pattern: /buildFundActionabilitySignals[\s\S]{0,6000}getActionabilityValuationSourceDiscipline\(digest[\s\S]{0,1400}boundedScore = Math\.min\(boundedScore, valuationSourceDiscipline\.scoreCap\)/,
+    pattern: /buildFundActionabilitySignals[\s\S]{0,7600}getActionabilityValuationSourceDiscipline\(digest[\s\S]{0,1800}boundedScore = Math\.min\(boundedScore, valuationSourceDiscipline\.scoreCap\)/,
     message: "fund actionability must cap buy/staged-buy scores when realtime valuation sources disagree."
   },
   {

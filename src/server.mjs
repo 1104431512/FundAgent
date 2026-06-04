@@ -32972,17 +32972,7 @@ function buildFundActionabilitySignals(digest) {
   if (feeImpact?.holdingPeriodFit === "short_term_only_high_long_holding_drag") score -= 4;
   if (missingFeeData.length) score -= Math.min(6, missingFeeData.length * 2);
   score += Math.round(holdingsOutlook.score * 0.45);
-  const leaderThemeSupport = getCandidateThemeSignals(digest).some((theme) =>
-    !hasThemeCapitalRetreatRisk(theme)
-    && !isStaleThemeCatchdownRiskTheme(theme)
-    && (
-      ["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)
-      || ["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)
-      || Number(theme.capitalFollowScore) >= 55
-      || Number(theme.preheatScore) >= 55
-    )
-  );
-  if (leaderThemeSupport && ["pullback_complete", "launch_setup"].includes(trend.pullbackSetup?.signal)) score += 6;
+  let leaderThemeSupport = hasActionabilityLeaderThemeSupport(digest, holdingsOutlook);
   const hasBuySetup = ["pullback_complete", "launch_setup"].includes(trend.pullbackSetup?.signal || "")
     && ["buyable_now", "staged_buy"].includes(trend.entryBias);
   const microStarterSupport = hasActionabilityMicroStarterSupport(digest, trend);
@@ -32995,6 +32985,11 @@ function buildFundActionabilitySignals(digest) {
   const valuationSourceDiscipline = getActionabilityValuationSourceDiscipline(digest, { isMoneyMarket });
   const themeRetreatDiscipline = getActionabilityThemeRetreatDiscipline(digest, { isMoneyMarket });
   const holdingsDiscipline = getActionabilityHoldingsOutlookDiscipline(holdingsOutlook, { isMoneyMarket });
+  const holdingsCarrierHardBlocker = isActionabilityHoldingsCarrierHardBlocker(holdingsDiscipline.blocker);
+  if (holdingsCarrierHardBlocker) {
+    leaderThemeSupport = false;
+  }
+  if (leaderThemeSupport && ["pullback_complete", "launch_setup"].includes(trend.pullbackSetup?.signal)) score += 6;
   if (Number.isFinite(intradayDiscipline.scorePenalty)) {
     score -= intradayDiscipline.scorePenalty;
   }
@@ -33055,12 +33050,19 @@ function buildFundActionabilitySignals(digest) {
   const feeEvidenceOk = feeType !== "unknown" && !missingFeeData.length;
   const evidenceCount = [trend.ok, risk.ok, holdingsOutlook.hasHoldings, feeEvidenceOk].filter(Boolean).length;
   const confidence = evidenceCount >= 4 ? "high" : evidenceCount >= 2 ? "medium" : "low";
-  const decisiveEvidence = [
+  const themeEvidence = formatCandidateThemeEvidence(digest);
+  const shouldShowThemeEvidence = hasThemeRetreatNoBuyOverride(digest)
+    || getThemeMainForcePlaybookRiskWarnings(digest).length
+    || getTextualCatchdownWarnings(digest).length
+    || getUnrefreshedMarketThemeWarnings(digest).length
+    || getStaleCatalystThemeWarnings(digest).length
+    || (leaderThemeSupport && !holdingsCarrierHardBlocker);
+  let decisiveEvidence = [
     trend.ok ? formatTrendActionabilityEvidence(trend, digest) : "",
     trend.pullbackSetup?.signal && trend.pullbackSetup.signal !== "none" ? `回调启动信号=${trend.pullbackSetup.signalText}，评分=${trend.pullbackSetup.score}` : "",
     formatIntradayTrendActionabilityEvidence(intradayTrend),
     formatValuationSourceAgreementEvidence(valuationSourceAgreement),
-    formatCandidateThemeEvidence(digest),
+    shouldShowThemeEvidence ? themeEvidence : "",
     microStarterOnly ? formatThemeMicroStarterActionabilityEvidence(digest, trend) : "",
     risk.ok ? `近一年收益${risk.totalReturnPct}%，最大回撤${risk.maxDrawdownPct}%，夏普${risk.sharpe}` : "",
     holdingsOutlook.evidence,
@@ -33084,6 +33086,9 @@ function buildFundActionabilitySignals(digest) {
     feeImpact?.feeDragLevel === "high" ? "持有期费用拖累偏高，买入强度需下调或改选低费率份额。" : "",
     highDrawdown ? "近一年回撤偏深，只能按卫星仓或战术仓处理。" : ""
   ].filter(Boolean).slice(0, 4);
+  if (decisionBlocker.some(isActionabilityHoldingsCarrierHardBlocker)) {
+    decisiveEvidence = decisiveEvidence.filter((item) => !/(?:主力进场|题材预热|逻辑=)/.test(item));
+  }
 
   return {
     score: boundedScore,
@@ -33097,6 +33102,62 @@ function buildFundActionabilitySignals(digest) {
     decisionBlocker,
     holdingsOutlook
   };
+}
+
+function isActionabilityHoldingsCarrierHardBlocker(blocker = "") {
+  const text = String(blocker || "");
+  if (!text) return false;
+  if (/缺少前十大持仓|缺少前十大持仓\/行业前景验证/.test(text)) return false;
+  return /持仓承载|未命中题材龙头|匹配度不足|没有证明基金真实承载|题材名字直接当买入理由/.test(text);
+}
+
+function hasActionabilityLeaderThemeSupport(digest = {}, holdingsOutlook = null) {
+  if (!digest || typeof digest !== "object") return false;
+  if (hasActionabilityThemeExecutionHardGap(digest, holdingsOutlook)) return false;
+  return getCandidateThemeSignals(digest).some((theme) =>
+    isFreshActionableThemeSupportForCandidate(digest, theme)
+    && (
+      ["capital_entering", "preheat_catalyst"].includes(theme.leaderSignal)
+      || ["main_capital_entering", "preheat_catalyst_watch"].includes(theme.positionSignal)
+      || Number(theme.capitalFollowScore) >= 55
+      || Number(theme.preheatScore) >= 55
+    )
+  );
+}
+
+function hasActionabilityThemeExecutionHardGap(digest = {}, holdingsOutlook = null) {
+  if (!digest || typeof digest !== "object") return false;
+  if (hasThemeRetreatRisk(digest) || hasStaleThemeCatchdownRisk(digest)) return true;
+  if (getThemeMainForcePlaybookRiskWarnings(digest).length) return true;
+  if (getTextualCatchdownWarnings(digest).length) return true;
+  if (getUnrefreshedMarketThemeWarnings(digest).length) return true;
+  if (getStaleCatalystThemeWarnings(digest).length) return true;
+  if (getPortfolioActionableThemeSupportGap(digest)) return true;
+  const outlook = holdingsOutlook && typeof holdingsOutlook === "object"
+    ? holdingsOutlook
+    : digest.holdingsOutlook || digest.actionability?.holdingsOutlook || null;
+  const riskText = normalizeStringArray(outlook?.risks).join(" ");
+  if (/前十大持仓未命中题材龙头|前十大持仓与目标主题匹配度不足|前十大持仓没有证明基金真实承载该题材/.test(riskText)) {
+    return true;
+  }
+  const themeSignals = getCandidateThemeSignals(digest);
+  const hasNamedLiveTheme = themeSignals.some((theme) =>
+    isFreshActionableThemeSupportForCandidate(digest, theme)
+    && normalizePortfolioThemeRelationTerms([
+      theme.name,
+      theme.id,
+      ...normalizeStringArray(theme.themeKeywords),
+      ...normalizeStringArray(theme.boardNames),
+      ...normalizeStringArray(theme.leaderStocks)
+    ]).length
+  );
+  const matchedHoldings = Array.isArray(outlook?.matchedThemeHoldings) ? outlook.matchedThemeHoldings : [];
+  return Boolean(
+    outlook?.hasHoldings
+    && hasNamedLiveTheme
+    && !matchedHoldings.length
+    && !isExplicitThemeIndexVehicle(digest, themeSignals)
+  );
 }
 
 function hasActionabilityMicroStarterSupport(digest = {}, trend = {}) {
