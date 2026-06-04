@@ -9073,7 +9073,8 @@ function formatEntryBias(value) {
 
 function hasThemeRetreatNoBuyOverride(candidate = {}) {
   return Boolean(candidate && typeof candidate === "object" && (
-    hasStaleThemeCatchdownRisk(candidate)
+    hasStaleThemeCatchdownEvidence(candidate)
+    || hasStaleThemeCatchdownRisk(candidate)
     || hasThemeRetreatRisk(candidate)
   ));
 }

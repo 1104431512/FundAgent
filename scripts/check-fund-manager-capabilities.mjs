@@ -5497,6 +5497,11 @@ assert(
   textOnlyCatchdownActionability.decisionBlocker.some((item) => item.includes("系统文本接盘风险拦截") && item.includes("主力资金撤离")),
   "actionability blocker must carry text-only catchdown evidence into UI cards and model prompts"
 );
+assert.equal(
+  manager.getChartEntryDecision(textOnlyCatchdownProfile, textOnlyCatchdownProfile.trendProfile).label,
+  "回调不买",
+  "fund report charts must show no-buy entry when catchdown risk only appears in text fields"
+);
 const enforcedTextOnlyCatchdownBuy = manager.enforcePortfolioBuyDiscipline([
   { action: "BUY", code: "000014", name: "文本退潮低位基金C", amount: 1000, reason: "模型仍想买入。" }
 ], [textOnlyCatchdownProfile]);
@@ -5677,6 +5682,11 @@ assert(
     && refreshRetreatWarningsBuyGuard.reason.includes("历史热点")
     && refreshRetreatWarningsBuyGuard.evidence.includes("来源：portfolio_text_catchdown_guard"),
   "market refresh retreat warnings must be translated into a current-radar old-theme no-buy reason"
+);
+assert.equal(
+  manager.getChartEntryDecision(refreshRetreatWarningsProfile, refreshRetreatWarningsProfile.trendProfile).label,
+  "回调不买",
+  "fund report charts must show no-buy entry when catchdown risk only appears in market-theme refresh warnings"
 );
 const snapshotOnlyCatchdownProfile = {
   ...verifiedSeedProfile,

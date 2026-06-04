@@ -1629,6 +1629,10 @@ const requiredPatterns = [
     message: "fund report chart buy tiles must display a no-buy label for stale-theme pullbacks."
   },
   {
+    pattern: /function hasThemeRetreatNoBuyOverride[\s\S]{0,360}hasStaleThemeCatchdownEvidence\(candidate\)/,
+    message: "fund report chart no-buy override must use the full catchdown evidence gate, including text-only and market-refresh warnings."
+  },
+  {
     pattern: /function inferPullbackSetupSearchKeywords[\s\S]{0,1200}isStaleThemeCatchdownRiskTheme\(theme\)/,
     message: "pullback setup discovery keywords must exclude stale outflow themes."
   },
