@@ -12131,6 +12131,65 @@ const cachedRankingFallback = manager.buildCachedFundRankingFallback({
 assert(cachedRankingFallback?.cacheFallback, "fund ranking cache must provide structured fallback when rankhandler fails");
 assert.equal(cachedRankingFallback.items[0].code, "000188", "fund ranking cache fallback must preserve cached low-base candidates for deterministic discovery");
 assert.equal(cachedRankingFallback.sourceMode, "cache_fallback", "fund ranking cache fallback must be explicitly marked as non-live evidence");
+const themeRadarHistory = { version: 1, updatedAt: "", themes: {} };
+manager.cacheThemeRadarHistorySnapshot(themeRadarHistory, [{
+  id: "ai_cpo",
+  name: "AI/CPO",
+  forwardScore: 28,
+  capitalFollowScore: 20,
+  preheatScore: 32,
+  capitalRetreatScore: 4,
+  stage: "watch",
+  leaderSignal: "watch",
+  actionBias: "watch_confirm",
+  newsLogic: "旧快照里只是观察线索。"
+}], "2026-05-20T09:30:00.000Z");
+const acceleratingThemeRadar = manager.attachThemeRadarHistoryMomentum([{
+  id: "ai_cpo",
+  name: "AI/CPO",
+  forwardScore: 55,
+  capitalFollowScore: 64,
+  preheatScore: 58,
+  capitalRetreatScore: 8,
+  stage: "capital_entering",
+  leaderSignal: "capital_entering",
+  actionBias: "follow_main_small",
+  newsLogic: "新快照显示主力资金和新闻催化同时增强。"
+}], themeRadarHistory, "2026-05-21T09:30:00.000Z");
+assert.equal(acceleratingThemeRadar[0].historyMomentum.continuity, "accelerating", "theme radar history must mark themes that heat up across snapshots as accelerating");
+assert(acceleratingThemeRadar[0].historyMomentum.label.includes("加速发酵"), "theme radar history must explain acceleration in customer-readable Chinese");
+manager.cacheThemeRadarHistorySnapshot(themeRadarHistory, acceleratingThemeRadar, "2026-05-21T09:30:00.000Z");
+const retreatHistoryThemeRadar = manager.attachThemeRadarHistoryMomentum([{
+  id: "ai_cpo",
+  name: "AI/CPO",
+  forwardScore: 20,
+  capitalFollowScore: 12,
+  preheatScore: 10,
+  capitalRetreatScore: 72,
+  avgMainNetInflowPct: -2.5,
+  stage: "capital_outflow",
+  leaderSignal: "capital_outflow",
+  actionBias: "avoid_until_capital_returns",
+  newsLogic: "主力资金撤离，题材退潮。"
+}], themeRadarHistory, "2026-05-22T09:30:00.000Z");
+assert.equal(retreatHistoryThemeRadar[0].historyMomentum.continuity, "retreat_or_catchdown", "theme radar history must mark retreating themes as no-buy catchdown risk");
+assert(retreatHistoryThemeRadar[0].historyMomentum.label.includes("退潮"), "theme radar history must explain retreat risk in Chinese");
+const themeHistorySummary = manager.buildThemeRadarHistorySummary([...acceleratingThemeRadar, ...retreatHistoryThemeRadar]);
+assert(themeHistorySummary.accelerating.some((item) => item.name === "AI/CPO"), "theme history summary must expose accelerating themes for the model");
+assert(themeHistorySummary.cooling.some((item) => item.name === "AI/CPO"), "theme history summary must expose cooling/retreat themes for the model");
+const compactThemeHistorySnapshot = manager.compactMarketSnapshotForModel({
+  fetchedAt: "2026-05-22T09:30:00.000Z",
+  dataQuality: { ok: true, level: "good", notes: [] },
+  marketIndicators: {},
+  themes: {},
+  themeRadar: acceleratingThemeRadar,
+  themeHistory: themeHistorySummary,
+  fundCandidates: {},
+  errors: [],
+  sources: []
+});
+assert(JSON.stringify(compactThemeHistorySnapshot).includes("题材历史"), "compact market snapshots must send theme history momentum to the model");
+assert(JSON.stringify(compactThemeHistorySnapshot).includes("历史连续性"), "compact theme radar items must include history continuity labels");
 const cachedFallbackQuality = manager.buildMarketDataQuality(cachedMarketComponents, {
   fundCandidates: { stockFunds: Array.from({ length: 12 }, (_, index) => ({ code: String(index).padStart(6, "0") })) },
   fetchedAt: freshThemeRefreshAt

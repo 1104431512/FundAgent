@@ -788,6 +788,41 @@ const requiredPatterns = [
   },
   {
     pattern: {
+      test: (source) => source.includes("THEME_RADAR_HISTORY_PATH")
+        && source.includes("theme-radar-history.json")
+        && source.includes("THEME_RADAR_HISTORY_MAX_AGE_DAYS")
+    },
+    message: "theme radar must keep a persistent history cache so topic momentum is not judged from one-off snapshots."
+  },
+  {
+    pattern: /function readThemeRadarHistory[\s\S]{0,520}themes[\s\S]{0,900}function persistThemeRadarHistory[\s\S]{0,760}themeRadarHistoryWrites/,
+    message: "theme radar history must have deterministic read and persist helpers."
+  },
+  {
+    pattern: {
+      test: (source) => source.includes("function cacheThemeRadarHistorySnapshot")
+        && source.includes("function sanitizeThemeRadarHistoryPoint")
+        && source.includes("function buildThemeRadarHistoryMomentum")
+        && source.includes("scoreDelta")
+        && source.includes("continuity")
+    },
+    message: "theme radar history must store fixed-code theme scores and compute cross-snapshot momentum."
+  },
+  {
+    pattern: /function fetchMarketSnapshot[\s\S]{0,5200}readThemeRadarHistory\(\)[\s\S]{0,520}attachThemeRadarHistoryMomentum[\s\S]{0,520}cacheThemeRadarHistorySnapshot[\s\S]{0,520}persistThemeRadarHistory/,
+    message: "market snapshots must annotate theme radar with historical momentum before model judgment."
+  },
+  {
+    pattern: {
+      test: (source) => source.includes("function compactMarketSnapshotForModel")
+        && source.includes("题材历史: compactThemeRadarHistoryForModel")
+        && source.includes("function compactThemeRadarForModel")
+        && source.includes("历史连续性")
+    },
+    message: "compact model snapshots must expose theme history and per-theme continuity in Chinese."
+  },
+  {
+    pattern: {
       test: (source) => source.includes("FUND_RESEARCH_DIGEST_CACHE_PATH")
         && source.includes("fund-research-digest-cache.json")
         && source.includes("FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS")

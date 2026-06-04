@@ -18,6 +18,7 @@ const MARKET_SNAPSHOT_CACHE_PATH = path.resolve(process.env.MARKET_SNAPSHOT_CACH
 const FUND_RESEARCH_DIGEST_CACHE_PATH = path.resolve(process.env.FUND_RESEARCH_DIGEST_CACHE_PATH || path.join(ROOT, "data", "fund-research-digest-cache.json"));
 const FUND_NAV_HISTORY_CACHE_PATH = path.resolve(process.env.FUND_NAV_HISTORY_CACHE_PATH || path.join(ROOT, "data", "fund-nav-history-cache.json"));
 const FUND_RANKING_CACHE_PATH = path.resolve(process.env.FUND_RANKING_CACHE_PATH || path.join(ROOT, "data", "fund-ranking-cache.json"));
+const THEME_RADAR_HISTORY_PATH = path.resolve(process.env.THEME_RADAR_HISTORY_PATH || path.join(ROOT, "data", "theme-radar-history.json"));
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
 const PUBLIC_DIR = path.join(ROOT, "public");
 const SKILLS_DIR = path.join(ROOT, "skills");
@@ -53,6 +54,9 @@ const MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS = Number(process.env.MARKET_SNAPSHOT_C
 const FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS || 72);
 const FUND_NAV_HISTORY_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_NAV_HISTORY_CACHE_MAX_AGE_HOURS || 168);
 const FUND_RANKING_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_RANKING_CACHE_MAX_AGE_HOURS || 48);
+const THEME_RADAR_HISTORY_MAX_AGE_DAYS = Number(process.env.THEME_RADAR_HISTORY_MAX_AGE_DAYS || 14);
+const THEME_RADAR_HISTORY_POINT_LIMIT = Number(process.env.THEME_RADAR_HISTORY_POINT_LIMIT || 18);
+const THEME_RADAR_HISTORY_MIN_INTERVAL_MINUTES = Number(process.env.THEME_RADAR_HISTORY_MIN_INTERVAL_MINUTES || 30);
 const pendingImageMessages = new Map();
 const pendingUserPortfolioImportRequests = new Map();
 const DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS = [
@@ -20748,6 +20752,7 @@ function summarizeMarketSnapshot(snapshot) {
     fastNews: (snapshot.fastNews || []).slice(0, 8),
     themeLeaderboards: snapshot.themeLeaderboards || buildThemeLeaderboards(snapshot.themeRadar || []),
     themeMainForcePlaybook: snapshot.themeMainForcePlaybook || null,
+    themeHistory: snapshot.themeHistory || buildThemeRadarHistorySummary(snapshot.themeRadar || []),
     fundCandidates: {
       stockFunds: (snapshot.fundCandidates?.stockFunds || []).slice(0, 8),
       hybridFunds: (snapshot.fundCandidates?.hybridFunds || []).slice(0, 8),
@@ -20778,6 +20783,7 @@ function compactMarketSnapshotForModel(snapshot = null) {
       industryBoards: compactMarketBoardItems(summary.themes?.industryBoards || [], 6)
     },
     themeRadar: (summary.themeRadar || []).slice(0, 6).map(compactThemeRadarForModel),
+    题材历史: compactThemeRadarHistoryForModel(summary.themeHistory),
     题材榜单: compactThemeLeaderboardsForModel(summary.themeLeaderboards || buildThemeLeaderboards(summary.themeRadar || [])),
     ...(summary.themeMainForcePlaybook ? { 题材作战图: compactThemeMainForcePlaybookForModel(summary.themeMainForcePlaybook) } : {}),
     fastNews: (summary.fastNews || []).slice(0, 6).map(compactFastNewsForModel),
@@ -20815,6 +20821,22 @@ function compactThemeLeaderboardsForModel(leaderboards = {}) {
       }))
     }];
   }));
+}
+
+function compactThemeRadarHistoryForModel(history = null) {
+  if (!history || typeof history !== "object") return null;
+  const compactItems = (items = []) => (items || []).slice(0, 4).map((item) => ({
+    题材: item.name || item.id || "",
+    连续性: item.label || "",
+    出现次数: item.sightings || 0,
+    评分变化: finiteMetricNumber(item.scoreDelta),
+    上次出现: item.previousSeenAt || ""
+  }));
+  return {
+    升温或持续: compactItems(history.accelerating),
+    降温或退潮: compactItems(history.cooling),
+    新预热: compactItems(history.newThemes)
+  };
 }
 
 function compactThemeMainForcePlaybookForModel(playbook = {}) {
@@ -20951,6 +20973,9 @@ function compactThemeRadarForModel(theme = {}) {
     退潮风险: finiteMetricNumber(theme.capitalRetreatScore),
     主力资金均值: finiteMetricNumber(theme.avgMainNetInflowPct),
     主力资金最弱: finiteMetricNumber(theme.minMainNetInflowPct),
+    历史连续性: theme.historyMomentum?.label || "",
+    历史评分变化: finiteMetricNumber(theme.historyMomentum?.scoreDelta),
+    历史出现次数: theme.historyMomentum?.sightings || 0,
     主要催化: theme.primaryCatalyst || "",
     题材逻辑: theme.newsLogic || "",
     相关板块: (theme.evidence?.boards || []).slice(0, 2).map((item) => ({
@@ -26849,7 +26874,7 @@ async function fetchMarketSnapshot(options = {}) {
   const snapshotParts = [...baseComponents, ...realtimeComponents];
   const realtimeFundValuationsResolved = realtimeComponents[0]?.result || realtimeFundValuations;
   persistMarketSnapshotCache(cache);
-  const themeRadar = buildThemeRadar({
+  const themeRadarRaw = buildThemeRadar({
     conceptBoards: conceptBoards.items || [],
     industryBoards: industryBoards.items || [],
     preciousMetals: preciousMetals.items || [],
@@ -26857,8 +26882,13 @@ async function fetchMarketSnapshot(options = {}) {
     fastNews: fastNews.items || [],
     fundCandidates
   });
+  const themeRadarHistory = readThemeRadarHistory();
+  const themeRadar = attachThemeRadarHistoryMomentum(themeRadarRaw, themeRadarHistory, fetchedAt);
+  cacheThemeRadarHistorySnapshot(themeRadarHistory, themeRadarRaw, fetchedAt);
+  persistThemeRadarHistory(themeRadarHistory);
   const themeLeaderboards = buildThemeLeaderboards(themeRadar);
   const themeMainForcePlaybook = buildThemeMainForcePlaybook(themeRadar, themeLeaderboards);
+  const themeHistory = buildThemeRadarHistorySummary(themeRadar);
   const dataQuality = buildMarketDataQuality(snapshotParts, {
     fundCandidates,
     fetchedAt,
@@ -26895,6 +26925,7 @@ async function fetchMarketSnapshot(options = {}) {
     themeRadar,
     themeLeaderboards,
     themeMainForcePlaybook,
+    themeHistory,
     fastNews: fastNews.items || [],
     fundCandidates,
     errors: snapshotParts
@@ -27044,6 +27075,210 @@ function buildCachedMarketSnapshotComponent(component = {}, cache = {}, fetchedA
       cacheAgeHours: round(ageHours, 2),
       liveError: String(liveError || "").slice(0, 240)
     }
+  };
+}
+
+function readThemeRadarHistory(filePath = THEME_RADAR_HISTORY_PATH) {
+  const raw = safeReadJson(filePath);
+  return raw && typeof raw === "object" && raw.themes && typeof raw.themes === "object"
+    ? { ...raw, themes: raw.themes }
+    : { version: 1, updatedAt: "", themes: {} };
+}
+
+function persistThemeRadarHistory(history = {}, filePath = THEME_RADAR_HISTORY_PATH) {
+  try {
+    pruneThemeRadarHistory(history);
+    const payload = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      themes: history.themes || {}
+    };
+    ensureDir(path.dirname(filePath));
+    fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    updateStats({ counters: { themeRadarHistoryWrites: 1 }, last: { lastThemeRadarHistoryWriteAt: payload.updatedAt } });
+    return payload;
+  } catch (error) {
+    console.warn("[theme-radar-history-write-error]", error.message);
+    recordError(error, { themeRadarHistoryWriteFailures: 1 });
+    return history;
+  }
+}
+
+function getThemeRadarHistoryKey(theme = {}) {
+  const value = theme.id || theme.name || theme.primaryCatalyst || "";
+  return normalizeIntentText(value).replace(/[^\w\u4e00-\u9fff-]+/g, "_").slice(0, 80);
+}
+
+function cacheThemeRadarHistorySnapshot(history = {}, themeRadar = [], observedAt = new Date().toISOString()) {
+  history.themes = history.themes && typeof history.themes === "object" ? history.themes : {};
+  const nowMs = Date.parse(observedAt);
+  let updates = 0;
+  for (const theme of themeRadar || []) {
+    const key = getThemeRadarHistoryKey(theme);
+    if (!key) continue;
+    const entry = history.themes[key] || {
+      key,
+      id: theme.id || "",
+      name: theme.name || "",
+      firstSeenAt: observedAt,
+      lastSeenAt: "",
+      snapshots: []
+    };
+    entry.id = theme.id || entry.id || "";
+    entry.name = theme.name || entry.name || key;
+    entry.lastSeenAt = observedAt;
+    const snapshots = Array.isArray(entry.snapshots) ? entry.snapshots : [];
+    const last = snapshots[snapshots.length - 1] || {};
+    const lastMs = Date.parse(last.at || "");
+    const minIntervalMs = Math.max(1, THEME_RADAR_HISTORY_MIN_INTERVAL_MINUTES) * 60_000;
+    const point = sanitizeThemeRadarHistoryPoint(theme, observedAt);
+    if (Number.isFinite(nowMs) && Number.isFinite(lastMs) && nowMs - lastMs < minIntervalMs) {
+      snapshots[snapshots.length - 1] = point;
+    } else {
+      snapshots.push(point);
+    }
+    entry.snapshots = snapshots.slice(-Math.max(3, THEME_RADAR_HISTORY_POINT_LIMIT));
+    history.themes[key] = entry;
+    updates += 1;
+  }
+  pruneThemeRadarHistory(history, observedAt);
+  updateStats({ counters: { themeRadarHistoryThemesObserved: updates } });
+  return history;
+}
+
+function sanitizeThemeRadarHistoryPoint(theme = {}, observedAt = new Date().toISOString()) {
+  return {
+    at: observedAt,
+    id: theme.id || "",
+    name: theme.name || "",
+    score: finiteMetricNumber(theme.forwardScore),
+    capitalFollowScore: finiteMetricNumber(theme.capitalFollowScore),
+    preheatScore: finiteMetricNumber(theme.preheatScore),
+    rotationScore: finiteMetricNumber(theme.rotationScore),
+    lowPositionScore: finiteMetricNumber(theme.lowPositionScore),
+    crowdingScore: finiteMetricNumber(theme.crowdingScore),
+    capitalRetreatScore: finiteMetricNumber(theme.capitalRetreatScore),
+    avgMainNetInflowPct: finiteMetricNumber(theme.avgMainNetInflowPct),
+    maxMainNetInflowPct: finiteMetricNumber(theme.maxMainNetInflowPct),
+    stage: theme.stage || "",
+    leaderSignal: theme.leaderSignal || "",
+    positionSignal: theme.positionSignal || "",
+    actionBias: theme.actionBias || "",
+    catalystSummary: theme.catalystProfile?.summary || "",
+    catalystFreshness: theme.catalystProfile?.freshnessLabel || "",
+    primaryCatalyst: shortenPortfolioCustomerText(theme.primaryCatalyst || "", 120),
+    newsLogic: shortenPortfolioCustomerText(theme.newsLogic || "", 160)
+  };
+}
+
+function pruneThemeRadarHistory(history = {}, nowIso = new Date().toISOString()) {
+  history.themes = history.themes && typeof history.themes === "object" ? history.themes : {};
+  const nowMs = Date.parse(nowIso);
+  const maxAgeMs = Math.max(1, THEME_RADAR_HISTORY_MAX_AGE_DAYS) * 24 * 60 * 60_000;
+  for (const [key, entry] of Object.entries(history.themes)) {
+    const snapshots = (Array.isArray(entry?.snapshots) ? entry.snapshots : [])
+      .filter((point) => {
+        const atMs = Date.parse(point?.at || "");
+        return !Number.isFinite(nowMs) || !Number.isFinite(atMs) || nowMs - atMs <= maxAgeMs;
+      })
+      .slice(-Math.max(3, THEME_RADAR_HISTORY_POINT_LIMIT));
+    if (!snapshots.length) {
+      delete history.themes[key];
+      continue;
+    }
+    history.themes[key] = {
+      ...entry,
+      snapshots,
+      firstSeenAt: entry.firstSeenAt || snapshots[0]?.at || "",
+      lastSeenAt: snapshots[snapshots.length - 1]?.at || entry.lastSeenAt || ""
+    };
+  }
+  return history;
+}
+
+function attachThemeRadarHistoryMomentum(themeRadar = [], history = {}, observedAt = new Date().toISOString()) {
+  return (themeRadar || []).map((theme) => ({
+    ...theme,
+    historyMomentum: buildThemeRadarHistoryMomentum(theme, history, observedAt)
+  }));
+}
+
+function buildThemeRadarHistoryMomentum(theme = {}, history = {}, observedAt = new Date().toISOString()) {
+  const key = getThemeRadarHistoryKey(theme);
+  const entry = key ? history?.themes?.[key] : null;
+  const nowMs = Date.parse(observedAt);
+  const snapshots = (Array.isArray(entry?.snapshots) ? entry.snapshots : [])
+    .filter((point) => {
+      const atMs = Date.parse(point?.at || "");
+      return Number.isFinite(atMs) && (!Number.isFinite(nowMs) || atMs < nowMs);
+    })
+    .sort((a, b) => Date.parse(a.at || "") - Date.parse(b.at || ""));
+  const latest = snapshots[snapshots.length - 1] || null;
+  const first = snapshots[0] || null;
+  const currentScore = finiteMetricNumber(theme.forwardScore) ?? 0;
+  const previousScore = finiteMetricNumber(latest?.score);
+  const firstScore = finiteMetricNumber(first?.score);
+  const scoreDelta = Number.isFinite(previousScore) ? round(currentScore - previousScore, 1) : null;
+  const trendDelta = Number.isFinite(firstScore) ? round(currentScore - firstScore, 1) : null;
+  const sightings = snapshots.length;
+  const label = formatThemeRadarHistoryMomentumLabel({ theme, latest, scoreDelta, trendDelta, sightings });
+  return {
+    key,
+    label,
+    firstSeenAt: entry?.firstSeenAt || first?.at || "",
+    previousSeenAt: latest?.at || "",
+    sightings,
+    previousScore,
+    currentScore: round(currentScore, 1),
+    scoreDelta,
+    trendDelta,
+    previousStage: latest?.stage || "",
+    previousLeaderSignal: latest?.leaderSignal || "",
+    previousActionBias: latest?.actionBias || "",
+    previousCatalyst: latest?.primaryCatalyst || latest?.newsLogic || "",
+    continuity: inferThemeRadarContinuity({ theme, latest, scoreDelta, trendDelta, sightings })
+  };
+}
+
+function inferThemeRadarContinuity({ theme = {}, latest = null, scoreDelta = null, trendDelta = null, sightings = 0 } = {}) {
+  const retreatScore = finiteMetricNumber(theme.capitalRetreatScore) ?? 0;
+  if (!latest) return "new_preheat";
+  if (hasThemeCapitalRetreatRisk(theme) || retreatScore >= 55) return "retreat_or_catchdown";
+  if (Number.isFinite(scoreDelta) && scoreDelta >= 12) return "accelerating";
+  if (Number.isFinite(scoreDelta) && scoreDelta <= -12) return "cooling";
+  if (sightings >= 3 && (finiteMetricNumber(theme.forwardScore) ?? 0) >= 40) return "sustained";
+  if (Number.isFinite(trendDelta) && trendDelta >= 10) return "slow_building";
+  return "observed";
+}
+
+function formatThemeRadarHistoryMomentumLabel({ theme = {}, latest = null, scoreDelta = null, trendDelta = null, sightings = 0 } = {}) {
+  const continuity = inferThemeRadarContinuity({ theme, latest, scoreDelta, trendDelta, sightings });
+  if (continuity === "new_preheat") return "首次进入题材雷达，按新预热线索处理";
+  if (continuity === "retreat_or_catchdown") return "历史转弱或退潮，回调先按接盘风险处理";
+  if (continuity === "accelerating") return `较上次升温${formatSignedNumber(scoreDelta)}分，题材在加速发酵`;
+  if (continuity === "cooling") return `较上次降温${formatSignedNumber(scoreDelta)}分，先等资金回流`;
+  if (continuity === "sustained") return `近${sightings}次持续出现，题材仍在发酵`;
+  if (continuity === "slow_building") return `较首次升温${formatSignedNumber(trendDelta)}分，属于慢热积累`;
+  return "已有历史线索，继续观察是否转强";
+}
+
+function buildThemeRadarHistorySummary(themeRadar = []) {
+  const items = (themeRadar || [])
+    .filter((theme) => theme?.historyMomentum)
+    .map((theme) => ({
+      id: theme.id || "",
+      name: theme.name || "",
+      label: theme.historyMomentum.label || "",
+      continuity: theme.historyMomentum.continuity || "",
+      sightings: theme.historyMomentum.sightings || 0,
+      scoreDelta: theme.historyMomentum.scoreDelta,
+      previousSeenAt: theme.historyMomentum.previousSeenAt || ""
+    }));
+  return {
+    generatedAt: new Date().toISOString(),
+    accelerating: items.filter((item) => item.continuity === "accelerating" || item.continuity === "sustained").slice(0, 5),
+    cooling: items.filter((item) => item.continuity === "cooling" || item.continuity === "retreat_or_catchdown").slice(0, 5),
+    newThemes: items.filter((item) => item.continuity === "new_preheat").slice(0, 5)
   };
 }
 
@@ -28819,6 +29054,7 @@ function buildThemeLeaderboardEvidenceChips(theme = {}) {
   }
   if (theme.catalystProfile?.summary) chips.push(`催化：${theme.catalystProfile.summary}`);
   if (theme.catalystProfile?.freshnessLabel && theme.catalystProfile.fresh !== undefined) chips.push(theme.catalystProfile.freshnessLabel);
+  if (theme.historyMomentum?.label) chips.push(`历史：${theme.historyMomentum.label}`);
   if (board.name) chips.push(`板块：${board.name}${formatSignedNumber(board.changePct)}%`);
   if (theme.primaryCatalyst && !theme.catalystProfile?.summary) chips.push(shortenPortfolioCustomerText(theme.primaryCatalyst, 28));
   if (Number.isFinite(retreat) && retreat >= 45) chips.push("退潮风险高");
@@ -38378,6 +38614,8 @@ function getDefaultStats() {
       fundRankingFetches: 0,
       fundRankingCacheWrites: 0,
       fundRankingCacheFallbacks: 0,
+      themeRadarHistoryWrites: 0,
+      themeRadarHistoryThemesObserved: 0,
       pullbackSetupDiscoveryFailures: 0,
       navHistoryFetches: 0,
       navHistoryPoints: 0,
@@ -40533,10 +40771,14 @@ export {
   applyMarketSnapshotCacheFallback,
   buildCachedFundNavHistoryFallback,
   buildCachedFundRankingFallback,
+  attachThemeRadarHistoryMomentum,
   cacheFundResearchDigest,
   cacheFundNavHistory,
   cacheFundRankingResult,
+  cacheThemeRadarHistorySnapshot,
   buildThemeRadar,
+  buildThemeRadarHistoryMomentum,
+  buildThemeRadarHistorySummary,
   buildThemeLeaderboards,
   buildThemeMainForcePlaybook,
   buildPullbackSetupPlaybookKeywordContextMap,
@@ -40597,9 +40839,11 @@ export {
   readFundResearchDigestCache,
   readFundNavHistoryCache,
   readFundRankingCache,
+  readThemeRadarHistory,
   persistFundResearchDigestCache,
   persistFundNavHistoryCache,
   persistFundRankingCache,
+  persistThemeRadarHistory,
   getFundRecommendationSkillIds,
   getDeploymentFreshness,
   getPortfolioDecisionSkillIds,
