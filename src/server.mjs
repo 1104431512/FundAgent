@@ -12541,13 +12541,14 @@ function buildPortfolioStaleCatchdownRiskRanking(watchlist = []) {
 
 function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
   const evidence = resolvePortfolioChaseRiskEvidence(item);
-  if (!evidence.staleCatchdownRisk && !evidence.staleCatalystRisk && !evidence.staleThemeRefreshRisk && !evidence.themeRetreatRisk && !evidence.holdingRealtimeCatchdownRisk && !evidence.unsupportedHoldingThemeRisk) return null;
+  if (!evidence.staleCatchdownRisk && !evidence.staleCatalystRisk && !evidence.staleThemeRefreshRisk && !evidence.themeRetreatRisk && !evidence.holdingRealtimeCatchdownRisk && !evidence.unsupportedHoldingThemeRisk && !evidence.lowSetupThemeSupportRisk) return null;
   const theme = evidence.theme || {};
   const trend = evidence.trend || {};
   const staleCatalyst = evidence.staleCatalystRisk || theme.catalystProfile?.fresh === false;
   const retreatFacts = [
     evidence.holdingRealtimeWarning || "",
     evidence.holdingThemeSupportGap || "",
+    evidence.lowSetupThemeSupportRisk ? evidence.actionableThemeSupportGap : "",
     ...(evidence.holdingRealtimeFacts || []),
     ...(evidence.staleThemeRefreshWarnings || []),
     ...(evidence.staleCatalystWarnings || []),
@@ -12565,6 +12566,7 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
     + (evidence.themeRetreatRisk ? 18 : 0)
     + (evidence.holdingRealtimeCatchdownRisk ? 28 : 0)
     + (evidence.unsupportedHoldingThemeRisk ? 22 : 0)
+    + (evidence.lowSetupThemeSupportRisk ? 24 : 0)
     + Math.min(18, Number(theme.capitalRetreatScore || 0) / 4)
   ));
   return buildPortfolioRankingItem({
@@ -12572,7 +12574,7 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
     name: item.name,
     source: "主力撤离拦截",
     score: round(score, 1),
-    action: evidence.holdingRealtimeCatchdownRisk ? "底层持仓接盘拦截" : evidence.staleThemeRefreshRisk ? "旧雷达接盘拦截" : staleCatalyst ? "旧催化接盘强拦截" : evidence.staleCatchdownRisk ? "退潮接盘强拦截" : evidence.themeRetreatRisk ? "主力撤离回避" : "底层题材未确认拦截",
+    action: evidence.holdingRealtimeCatchdownRisk ? "底层持仓接盘拦截" : evidence.staleThemeRefreshRisk ? "旧雷达接盘拦截" : staleCatalyst ? "旧催化接盘强拦截" : evidence.staleCatchdownRisk ? "退潮接盘强拦截" : evidence.themeRetreatRisk ? "主力撤离回避" : evidence.lowSetupThemeSupportRisk ? "低位无主力拦截" : "底层题材未确认拦截",
     reason: evidence.holdingRealtimeCatchdownRisk
       ? "前十大持仓盘中明显走弱，基金净值的回调修复可能只是跟跌前半段，不能直接当成启动买点。"
       : evidence.staleThemeRefreshRisk
@@ -12581,6 +12583,8 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
         ? "题材上涨逻辑停留在旧新闻/旧催化上，当前缺少新鲜主力进场证据，基金净值的回调修复不能直接当成启动买点。"
       : evidence.staleCatchdownRisk || evidence.themeRetreatRisk
         ? "题材资金已经退潮或主力撤离，基金净值的回调修复不能直接当成启动买点。"
+      : evidence.lowSetupThemeSupportRisk
+        ? "低位不等于启动；基金净值像回调完成，但当前缺少主力资金回流、新鲜新闻催化和题材雷达确认，先按接盘风险处理。"
       : "基金名字看起来宽泛，但前十大持仓已经暴露出明确底层题材；当前题材雷达没有同方向主力或新闻支撑，不能直接当成低位启动。",
     facts: retreatFacts.slice(0, 5),
     decision: {
@@ -12594,6 +12598,8 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
             ? "旧催化如果没有新资金接力，低位反弹很容易变成接盘。"
           : evidence.staleCatchdownRisk || evidence.themeRetreatRisk
             ? "容易买在旧题材反弹尾端，后续若主力不回流，回撤会明显放大。"
+          : evidence.lowSetupThemeSupportRisk
+            ? "只有低位和回调形态，没有主力/新闻/题材确认时，买入容易变成接旧题材弱反弹。"
           : "底层题材没有当前主力或新闻支撑，表面低位可能只是旧主线回落后的弱反弹。",
         evidence.themeRisk || "题材退潮或主力资金撤离，先等资金回流。",
         evidence.positionRisk || ""
@@ -12601,6 +12607,7 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
       gaps: [
         "缺主力资金回流",
         evidence.unsupportedHoldingThemeRisk ? "缺同方向当前题材雷达确认" : "",
+        evidence.lowSetupThemeSupportRisk ? "低位形态缺主力资金回流确认" : "",
         evidence.staleThemeRefreshRisk ? "缺当前主力资金/新闻催化刷新" : "",
         staleCatalyst ? "缺新鲜新闻/政策/产业预热" : "缺新的新闻/政策/产业预热",
         evidence.holdingRealtimeCatchdownRisk ? "缺底层持仓止跌确认" : "",
@@ -12612,6 +12619,8 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
           ? "先0元观察；重新刷新主力资金、新闻催化和代表持仓走势，确认仍是当前主线后，才允许回到小仓复核。"
         : staleCatalyst || evidence.staleCatchdownRisk || evidence.themeRetreatRisk
           ? "只保留观察或降级，等主力回流、题材重新预热且基金低位温和转强后，再回到主力预热或买入准备榜。"
+        : evidence.lowSetupThemeSupportRisk
+          ? "先0元观察；只有新鲜催化、主力资金回流、当前题材雷达确认和基金低位温和转强同时出现后，才允许恢复小仓复核。"
         : "先0元观察；等同方向板块出现主力净流入、新闻催化和代表持仓止跌后，再重新评估是否进入小仓复核。"
     },
     status: "warning"
@@ -12628,6 +12637,7 @@ function resolvePortfolioPositiveWatchRankingGate(item = {}) {
     || evidence.staleCatalystRisk
     || evidence.themeRetreatRisk
     || evidence.unsupportedHoldingThemeRisk
+    || evidence.lowSetupThemeSupportRisk
     || themeSupportGap
   );
   const chaseOnly = Boolean(evidence.shouldSurface && Number(evidence.score || 0) >= 20);
@@ -12643,6 +12653,7 @@ function resolvePortfolioPositiveWatchRankingGate(item = {}) {
     themeSupportGap,
     evidence.holdingRealtimeWarning,
     evidence.holdingThemeSupportGap,
+    evidence.actionableThemeSupportGap,
     evidence.staleThemeRefreshWarnings,
     evidence.staleCatalystWarnings,
     evidence.staleThemeWarnings,
@@ -12740,12 +12751,26 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
     }
   };
   const holdingThemeSupportGap = getPortfolioHoldingThemeSupportGap(supportProfile);
+  const actionableThemeSupportGap = getPortfolioActionableThemeSupportGap(supportProfile);
   const staleThemeRefreshWarnings = getStalePortfolioThemeRefreshWarnings(supportProfile);
   const staleThemeRefreshRisk = staleThemeRefreshWarnings.length > 0;
   const unsupportedHoldingThemeRisk = Boolean(holdingThemeSupportGap);
+  const lowSetupThemeSupportRisk = Boolean(
+    actionableThemeSupportGap
+    && themes.length > 0
+    && !holdingThemeSupportGap
+    && !staleThemeRefreshRisk
+    && !staleCatalystRisk
+    && !staleCatchdownRisk
+    && !themeRetreatRisk
+    && !hasThemeLeaderOrPreheatSignal(theme)
+    && !hasActionableThemeSupport(supportProfile)
+    && hasPortfolioLowSetupWithoutMainForceConfirmation(item, trend)
+  );
   const hotEvidence = [
     holdingRealtimeProfile.warning || "",
     holdingThemeSupportGap || "",
+    lowSetupThemeSupportRisk ? `低位不等于启动：${actionableThemeSupportGap}` : "",
     staleThemeRefreshWarnings[0] || "",
     staleCatalystWarnings[0] || "",
     staleThemeWarnings[0] || "",
@@ -12771,6 +12796,7 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
     staleThemeRefreshRisk ? 32 : 0,
     holdingRealtimeCatchdownRisk ? 36 : 0,
     unsupportedHoldingThemeRisk ? 32 : 0,
+    lowSetupThemeSupportRisk ? 34 : 0,
     Number.isFinite(crowding) && crowding >= 55 ? 14 : Number.isFinite(crowding) && crowding >= 40 ? 8 : 0,
     /追涨|偏热|高位|拥挤|等待回撤/.test(text) ? 10 : 0
   ].reduce((sum, value) => sum + value, 0);
@@ -12783,9 +12809,11 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
     staleThemeRefreshRisk,
     holdingRealtimeCatchdownRisk,
     unsupportedHoldingThemeRisk,
+    lowSetupThemeSupportRisk,
     holdingRealtimeWarning: holdingRealtimeProfile.warning,
     holdingRealtimeFacts: holdingRealtimeProfile.facts,
     holdingThemeSupportGap,
+    actionableThemeSupportGap,
     themeRetreatWarnings,
     staleThemeWarnings,
     staleCatalystWarnings,
@@ -12799,6 +12827,8 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
       ? "题材雷达快照已经过期，旧主力/旧新闻标签不能当成今天的买点。"
       : unsupportedHoldingThemeRisk
       ? "前十大持仓暴露出明确底层题材，但当前雷达没有同方向主力或新闻支撑。"
+      : lowSetupThemeSupportRisk
+      ? "低位不等于启动；没有主力资金回流、新鲜催化和当前题材确认前，回调先按接盘风险处理。"
       : staleCatchdownRisk
       ? "题材缺少主力进场或预热催化，回调先按接盘风险处理。"
       : staleCatalystRisk
@@ -12809,8 +12839,21 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
     positionRisk: Number.isFinite(low120) && low120 > 80 ? "基金处在区间高位，不是低位启动。" : "",
     needsPullback: Number.isFinite(r20) && r20 > 12,
     needsLowPosition: Number.isFinite(low120) && low120 > 65 || Number.isFinite(low250) && low250 > 80,
-    needsCooling: holdingRealtimeCatchdownRisk || staleThemeRefreshRisk || unsupportedHoldingThemeRisk || staleCatchdownRisk || staleCatalystRisk || themeRetreatRisk || Number.isFinite(crowding) && crowding >= 40 || theme.positionSignal === "high_chase_risk" || theme.stage === "crowded"
+    needsCooling: holdingRealtimeCatchdownRisk || staleThemeRefreshRisk || unsupportedHoldingThemeRisk || lowSetupThemeSupportRisk || staleCatchdownRisk || staleCatalystRisk || themeRetreatRisk || Number.isFinite(crowding) && crowding >= 40 || theme.positionSignal === "high_chase_risk" || theme.stage === "crowded"
   };
+}
+
+function hasPortfolioLowSetupWithoutMainForceConfirmation(item = {}, trend = {}) {
+  const low120 = finiteMetricNumber(trend.lowPositionPct120);
+  const low250 = finiteMetricNumber(trend.lowPositionPct250);
+  const setupSignal = String(trend.pullbackSetup?.signal || "");
+  const readinessScore = finiteMetricNumber(item.readinessScore);
+  const text = mergeStringLists(item.reason, item.setupEvidence, item.buyTriggers, item.riskNotes, item.candidateRole).join(" ");
+  return ["pullback_complete", "launch_setup"].includes(setupSignal)
+    || (Number.isFinite(low120) && low120 <= 55)
+    || (Number.isFinite(low250) && low250 <= 65)
+    || (Number.isFinite(readinessScore) && readinessScore >= 70)
+    || /低位|回调完成|启动前夜|准备启动|刚转强|小仓试探|买入准备/.test(text);
 }
 
 function buildPortfolioChaseRiskFacts(evidence = {}) {
@@ -15044,7 +15087,7 @@ function isPortfolioDecisionMatrixCatchdownRisk({ riskRef = null, nextStep = "",
   if (!riskText) return false;
   if (/stale_catchdown_risk/.test(riskText)) return true;
   if (isTextualCatchdownRiskSegment(riskText)) return true;
-  return /接盘|题材退潮|退潮|主力(?:资金)?撤离|资金撤离|旧新闻|旧催化|旧题材|旧雷达|历史热点|表面回调|未被当前题材雷达确认|低位轮动标签缺少当前题材雷达刷新/.test(riskText);
+  return /接盘|题材退潮|退潮|主力(?:资金)?撤离|资金撤离|旧新闻|旧催化|旧题材|旧雷达|历史热点|表面回调|低位不等于启动|低位无主力|缺主力资金回流|缺少当前主力进场|未被当前题材雷达确认/.test(riskText);
 }
 
 function buildPortfolioRankingDecisionMatrixVerdict({ action = "", hasHardRisk = false, hasDataBlock = false, hasSectorBlock = false, hasSoftDataConstraint = false, hasBuyReview = false, buyRef = null, sectorRef = null, riskRef = null, dataRef = null, nextStep = "" } = {}) {
@@ -18398,6 +18441,7 @@ function getPortfolioBacktestOpportunityCostRiskBlockReason(item = {}) {
     || evidence.staleCatalystRisk
     || evidence.themeRetreatRisk
     || evidence.unsupportedHoldingThemeRisk
+    || evidence.lowSetupThemeSupportRisk
   );
   if (!hardOpportunityRisk && !riskGate.chaseOnly) return "";
   return hardOpportunityRisk

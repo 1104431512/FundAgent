@@ -1453,6 +1453,26 @@ const requiredPatterns = [
     message: "positive portfolio rankings must use the stale-catchdown gate before surfacing buy-preparation, launch-setup, cash-redeployment, portfolio-fit, theme-allocation, theme-momentum, or rotation-opportunity candidates."
   },
   {
+    pattern: /const lowSetupThemeSupportRisk = Boolean\(/,
+    message: "low-position pullbacks without fresh main-force/catalyst confirmation must create a dedicated catchdown-risk flag."
+  },
+  {
+    pattern: /function hasPortfolioLowSetupWithoutMainForceConfirmation/,
+    message: "low-position pullbacks without fresh main-force/catalyst confirmation must have an explicit low-setup evidence predicate."
+  },
+  {
+    pattern: /低位不等于启动/,
+    message: "low-position pullbacks without fresh main-force/catalyst confirmation must explain the catchdown risk in customer-readable Chinese."
+  },
+  {
+    pattern: /低位无主力拦截/,
+    message: "low-position pullbacks without fresh main-force/catalyst confirmation must surface as a no-buy catchdown action."
+  },
+  {
+    pattern: /evidence\.lowSetupThemeSupportRisk/,
+    message: "positive portfolio ranking gates must block low-position pullbacks that lack main-force/catalyst confirmation."
+  },
+  {
     pattern: /function buildPortfolioDecisionReadinessQueue[\s\S]{0,1200}resolvePortfolioPositiveWatchRankingGate[\s\S]{0,1200}positiveRankingGate/,
     message: "model readiness queues must carry the same positive-ranking no-buy gate so stale-theme pullbacks are not shown as merely high-readiness candidates."
   },
@@ -1903,6 +1923,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*function isPortfolioDecisionMatrixCatchdownRisk[\s\S]{0,900}stale_catchdown_risk)(?=[\s\S]*function buildPortfolioRankingDecisionMatrixVerdict[\s\S]{0,1600}接盘风险拦截[\s\S]{0,320}0元观察[\s\S]{0,320}不是低位启动[\s\S]{0,320}主力资金回流[\s\S]{0,180}代表持仓止跌)/,
     message: "portfolio decision matrix must translate stale-theme pullbacks into a visible 0-yuan catchdown-risk verdict with reopening conditions."
+  },
+  {
+    pattern: /function isPortfolioDecisionMatrixCatchdownRisk[\s\S]{0,1000}低位不等于启动[\s\S]{0,320}低位无主力[\s\S]{0,320}缺主力资金回流/,
+    message: "portfolio decision matrix must classify low-position/no-main-force pullbacks as catchdown risk rows."
   },
   {
     pattern: /(?=[\s\S]*\.matrix-terminal\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.matrix-table\s*\{[\s\S]*overflow:\s*hidden)(?=[\s\S]*\.matrix-body\s*\{[\s\S]*overflow:\s*auto)/,
@@ -2825,7 +2849,11 @@ const requiredPatterns = [
     message: "portfolio BUY guard must define a text-only retreat/catchdown warning extractor."
   },
   {
-    pattern: /(?=[\s\S]*function resolvePortfolioChaseRiskEvidence[\s\S]{0,2600}unsupportedHoldingThemeRisk)(?=[\s\S]*function buildPortfolioStaleCatchdownRiskRankingItem[\s\S]{0,3000}底层题材未确认拦截)/,
+    pattern: /const unsupportedHoldingThemeRisk = Boolean\(holdingThemeSupportGap\)/,
+    message: "catchdown rankings must compute unsupported bottom-layer theme exposure from top holdings."
+  },
+  {
+    pattern: /底层题材未确认拦截/,
     message: "catchdown rankings must surface generic-name candidates whose top holdings reveal unsupported bottom-layer theme exposure."
   },
   {
@@ -3929,8 +3957,24 @@ const requiredPatterns = [
     message: "stale-catchdown risk ranking must surface old catalysts even when strong current flow avoids hard catchdown classification."
   },
   {
-    pattern: /function buildPortfolioStaleCatchdownRiskRankingItem[\s\S]{0,7000}holdingRealtimeCatchdownRisk[\s\S]{0,3200}底层持仓接盘拦截[\s\S]{0,3200}缺底层持仓止跌确认[\s\S]{0,16000}function resolvePortfolioChaseRiskEvidence[\s\S]{0,7000}buildPortfolioHoldingRealtimeEvidenceProfile[\s\S]{0,7000}function buildPortfolioHoldingRealtimeEvidenceProfile/,
+    pattern: /function buildPortfolioStaleCatchdownRiskRankingItem[\s\S]{0,2200}lowSetupThemeSupportRisk[\s\S]{0,1000}低位无主力拦截[\s\S]{0,1000}低位不等于启动/,
+    message: "stale-catchdown risk ranking must surface low-position pullbacks that lack fresh main-force/catalyst confirmation."
+  },
+  {
+    pattern: /holdingRealtimeCatchdownRisk/,
+    message: "stale-catchdown risk lane must compute intraday weak top-holding pulse as a no-buy blocker."
+  },
+  {
+    pattern: /底层持仓接盘拦截/,
     message: "stale-catchdown risk lane must surface intraday weak top-holding pulse as a customer-readable no-buy blocker."
+  },
+  {
+    pattern: /缺底层持仓止跌确认/,
+    message: "stale-catchdown risk lane must explain the live top-holding stop-fall evidence needed to reopen review."
+  },
+  {
+    pattern: /function buildPortfolioHoldingRealtimeEvidenceProfile/,
+    message: "stale-catchdown risk lane must retain the top-holding realtime evidence profile builder."
   },
   {
     pattern: /function buildPortfolioDecisionSynthesisRanking[\s\S]{0,2200}买点[\s\S]{0,2200}费率[\s\S]{0,2200}持仓前景/,

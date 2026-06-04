@@ -9072,6 +9072,101 @@ assert(
     && (highQualityStaleCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000044"),
   "customer action deck must route high-quality stale-theme candidates to avoid, not buy-review"
 );
+const lowOnlyNoMainForceTheme = {
+  id: "low_rotation_without_main_force",
+  name: "低位轮动缺主力",
+  stage: "watch",
+  positionSignal: "acceptable_position",
+  actionBias: "watch_low_rotation",
+  leaderSignal: "watch",
+  forwardScore: 50,
+  rotationScore: 34,
+  lowPositionScore: 35,
+  crowdingScore: 16,
+  capitalFollowScore: 42,
+  preheatScore: 38,
+  avgMainNetInflowPct: 0.1,
+  capitalRetreatScore: 8,
+  catalystProfile: { score: 0, tags: [], summary: "", risk: false, fresh: true, freshnessLabel: "" },
+  newsLogic: "",
+  fundKeywords: ["低位轮动缺主力"]
+};
+const lowOnlyNoMainForceDigest = {
+  ...setupDigest,
+  code: "000048",
+  name: "低位无主力回调基金C",
+  seed: { ...(setupDigest.seed || {}), matchedThemes: [lowOnlyNoMainForceTheme] },
+  matchedThemes: [lowOnlyNoMainForceTheme],
+  risk: {
+    oneYear: {
+      ok: true,
+      totalReturnPct: 12,
+      annualizedReturnPct: 12,
+      annualizedVolatilityPct: 10,
+      maxDrawdownPct: -9,
+      sharpe: 1.18
+    }
+  },
+  fundScaleYi: 12
+};
+assert(!manager.hasActionableThemeSupport(lowOnlyNoMainForceDigest), "low-position pullbacks without main-force/preheat/low-rotation evidence must fail actionable theme support");
+const lowOnlyNoMainForceRiskRanking = manager.buildPortfolioStaleCatchdownRiskRanking([{
+  code: "000048",
+  name: "低位无主力回调基金C",
+  status: "ready",
+  readinessScore: 88,
+  candidateRole: "回调完成低位候选",
+  lastSnapshot: lowOnlyNoMainForceDigest
+}]);
+assert(
+  lowOnlyNoMainForceRiskRanking.items.some((item) =>
+    item.code === "000048"
+    && item.action.includes("低位无主力")
+    && item.reason.includes("低位不等于启动")
+    && item.decision?.nextStep?.includes("0元观察")
+  ),
+  "low-position pullbacks without main-force/catalyst confirmation must enter the catchdown risk lane as zero-yuan observation"
+);
+const lowOnlyNoMainForceBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
+  account: { cash: 80000, totalAsset: 100000, positionWeightPct: 5 },
+  watchlist: [{
+    code: "000048",
+    name: "低位无主力回调基金C",
+    status: "ready",
+    readinessScore: 88,
+    candidateRole: "高夏普低位回调候选",
+    setupEvidence: ["回调完成", "低位轮动标签"],
+    lastSnapshot: lowOnlyNoMainForceDigest
+  }]
+}));
+assert(
+  lowOnlyNoMainForceBoard.lists.find((item) => item.id === "stale_catchdown_risk")?.items.some((item) => item.code === "000048"),
+  "manager board must surface low-only/no-main-force pullbacks in the stale-catchdown risk lane"
+);
+assert(
+  !lowOnlyNoMainForceBoard.lists.find((item) => item.id === "buy_preparation")?.items.some((item) => item.code === "000048"),
+  "buy-preparation ranking must not treat low-only/no-main-force pullbacks as executable"
+);
+assert(
+  !lowOnlyNoMainForceBoard.lists.find((item) => item.id === "cash_redeployment")?.items.some((item) => item.code === "000048"),
+  "cash redeployment must not spend high cash on low-only/no-main-force pullbacks"
+);
+const lowOnlyQualityItem = lowOnlyNoMainForceBoard.lists.find((item) => item.id === "quality_score")?.items.find((item) => item.code === "000048");
+assert(
+  lowOnlyQualityItem?.action.includes("不抵消接盘风险")
+    && [
+      lowOnlyQualityItem.reason,
+      ...(lowOnlyQualityItem.facts || []),
+      ...(lowOnlyQualityItem.decision?.risks || []),
+      ...(lowOnlyQualityItem.decision?.gaps || [])
+    ].join(" ").includes("低位不等于启动"),
+  "fund-quality ranking must not let high-Sharpe evidence override low-only/no-main-force catchdown risk"
+);
+assert(
+  !(lowOnlyNoMainForceBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "000048")
+    && (lowOnlyNoMainForceBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000048"),
+  "customer action deck must route low-only/no-main-force pullbacks to avoid, not buy-review"
+);
 const staleCatchdownOpportunityCostFixture = {
   account: {
     cash: 90000,
