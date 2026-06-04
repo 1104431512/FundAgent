@@ -34,6 +34,67 @@ assert(adminSource.includes("代码抓取能力") && adminSource.includes("exter
 assert(adminSource.includes("资料预热") && adminSource.includes("fundResearchWarmerCandidates") && adminSource.includes("研究缓存") && adminSource.includes("researchDigestCacheFunds"), "admin data-source page must expose fund research warmer and research cache counts");
 assert(adminSource.includes("画像样本") && adminSource.includes("researchDigestRiskMetricFunds") && adminSource.includes("researchDigestFeeFunds"), "admin data-source page must expose risk, holdings, and fee profile sample counts");
 assert(adminSource.includes("持仓脉冲") && adminSource.includes("holdingRealtimePulseItems") && adminSource.includes("持仓行情"), "admin data-source page must expose top-holding realtime pulse coverage");
+assert(serverSource.includes("buildFundResearchDigestLeaderboards") && serverSource.includes("高夏普低回撤榜") && serverSource.includes("回调启动复核榜") && serverSource.includes("持仓前景榜") && serverSource.includes("费用适配榜"), "data-source coverage must turn warmed fund research digests into fixed-code opportunity leaderboards");
+assert(adminSource.includes("基金研究机会榜") && adminSource.includes("researchDigestLeaderboardLanes") && adminSource.includes("researchDigestPrimaryReviewFunds"), "admin data-source page must show fixed-code fund research opportunity leaderboards");
+{
+  const safePullbackDigest = {
+    ok: true,
+    code: "000111",
+    name: "低回撤启动混合C",
+    nav: { unitNav: 1.12 },
+    trendProfile: {
+      ok: true,
+      latestDate: todayIso,
+      pullbackSetup: { signal: "pullback_complete", signalText: "回调完成，温和转强", score: 82 },
+      return5dPct: 1.1,
+      return10dPct: 2.2,
+      return20dPct: -1.8,
+      return60dPct: -5.5,
+      lowPositionPct120: 28,
+      lowPositionPct250: 36,
+      drawdownFromRecentHighPct: -11,
+      trendLabel: "pullback_complete",
+      entryBias: "staged_buy",
+      entryBiasText: "分批复核"
+    },
+    risk: { threeYear: { ok: true, sharpe: 1.35, sortino: 2.1, maxDrawdownPct: -10.2, annualizedReturnPct: 12.4, annualizedDownsideVolatilityPct: 7.6 } },
+    fees: { shareClassFeeModel: { type: "c", label: "C类：偏销售服务费模型" }, feeImpact: { oneYearCostPer10000: 25, holdingPeriodFit: "short_term_tactical" } },
+    scale: { amountYi: 8.2 },
+    holdings: { ok: true, equityTopHoldings: ["核心持仓A", "核心持仓B"] },
+    holdingsOutlook: { hasHoldings: true, score: 18, label: "持仓前景支撑买点", evidence: "底层持仓景气度改善" }
+  };
+  const hotChaseDigest = {
+    ...safePullbackDigest,
+    code: "000222",
+    name: "热门追涨主题A",
+    trendProfile: {
+      ok: true,
+      latestDate: todayIso,
+      pullbackSetup: { signal: "none", signalText: "未形成回调启动信号", score: 8 },
+      return5dPct: 7.8,
+      return10dPct: 13.4,
+      return20dPct: 33,
+      return60dPct: 46,
+      lowPositionPct120: 98,
+      lowPositionPct250: 99,
+      drawdownFromRecentHighPct: -0.4,
+      trendLabel: "extended_uptrend",
+      entryBias: "wait_pullback",
+      entryBiasText: "等回撤"
+    },
+    risk: { threeYear: { ok: true, sharpe: 1.7, sortino: 2.5, maxDrawdownPct: -8.5, annualizedReturnPct: 18, annualizedDownsideVolatilityPct: 6.2 } }
+  };
+  const researchBoards = manager.buildFundResearchDigestLeaderboards({
+    updatedAt: `${todayIso}T09:30:00.000Z`,
+    digests: {
+      "000111": { cachedAt: `${todayIso}T09:31:00.000Z`, digest: safePullbackDigest },
+      "000222": { cachedAt: `${todayIso}T09:31:00.000Z`, digest: hotChaseDigest }
+    }
+  });
+  assert.equal(researchBoards.lanes.pullbackLaunch.items[0].code, "000111", "pullback launch leaderboard must prefer low-position pullback completion over a hot chase candidate");
+  assert.equal(researchBoards.lanes.riskAdjusted.items[0].code, "000111", "high Sharpe/low drawdown leaderboard must still penalize wait-pullback chase risk");
+  assert(researchBoards.lanes.noBuy.items.some((item) => item.code === "000222" && item.blockers.some((text) => text.includes("追涨"))), "fixed-code research boards must expose no-buy blockers for hot chase candidates");
+}
 {
   const previousWarmerFlag = process.env.MARKET_SNAPSHOT_WARMER_ENABLED;
   process.env.MARKET_SNAPSHOT_WARMER_ENABLED = "false";
@@ -1032,6 +1093,57 @@ assert(
 assert(
   !aiInfraKeywordGroup?.keywords?.some((item) => /GPU|英伟达|国产大模型/.test(item)),
   "specific CPO/liquid-cooling catalysts must not expand into the whole generic AI-compute alias pack"
+);
+const robotThemeFundUniverseMatches = manager.buildThemeFundUniverseMatches(robotCatalystSnapshot, {
+  cache: {
+    version: 1,
+    updatedAt: `${todayIso}T09:25:00.000Z`,
+    sourceKind: "eastmoney_fundcode_search",
+    totalFunds: 26951,
+    items: [
+      { code: "000201", name: "人形机器人产业股票C", type: "股票型基金", shareClass: "C", pinyin: "JQR" },
+      { code: "000202", name: "机器人执行器精选混合A", type: "混合型基金", shareClass: "A", pinyin: "ZXQ" },
+      { code: "000203", name: "工业母机高端装备ETF联接C", type: "指数型基金", shareClass: "C", pinyin: "GDZB" },
+      { code: "000204", name: "黄金ETF联接C", type: "指数型基金", shareClass: "C", pinyin: "HJ" }
+    ]
+  },
+  groupCandidateLimit: 8,
+  candidatePoolLimit: 8
+});
+assert.equal(robotThemeFundUniverseMatches.totalFunds, 26951, "theme-fund universe matches must preserve full fund-universe totals instead of reporting only the current candidate sample");
+assert(
+  robotThemeFundUniverseMatches.matchedFundCount >= 2
+    && robotThemeFundUniverseMatches.candidatePool.some((item) => item.code === "000201")
+    && robotThemeFundUniverseMatches.candidatePool.some((item) => item.code === "000202"),
+  "theme-fund universe matches must recall multiple representative funds from the full fund-code universe"
+);
+assert(
+  !robotThemeFundUniverseMatches.candidatePool.some((item) => item.code === "000204"),
+  "non-precious theme universe recall must not leak gold funds into unrelated recommendations"
+);
+const selectedRobotUniverseSeeds = manager.selectThemeFundUniverseSeedCandidates({
+  ...robotCatalystSnapshot,
+  themeFundUniverseMatches: robotThemeFundUniverseMatches
+}, { userText: "按机器人题材推荐几个基金", limit: 5 });
+assert(
+  selectedRobotUniverseSeeds.some((item) => item.code === "000201" && item.themeOpportunityRequirement === "require_current_theme_playbook"),
+  "deep-dive seed selection must include full-universe theme matches with current-theme playbook requirements"
+);
+const compactRobotUniverseSnapshot = manager.compactMarketSnapshotForModel({
+  fetchedAt: `${todayIso}T09:30:00.000Z`,
+  themeRadar: robotCatalystSnapshot.themeRadar,
+  themeLeaderboards: robotCatalystSnapshot.themeLeaderboards,
+  themeMainForcePlaybook: manager.buildThemeMainForcePlaybook(robotCatalystSnapshot.themeRadar, robotCatalystSnapshot.themeLeaderboards),
+  themeFundUniverseMatches: robotThemeFundUniverseMatches,
+  fundUniverse: { totalFunds: 26951 },
+  fundCandidates: { stockFunds: [{ code: "000099", name: "排行样本基金C" }] },
+  fastNews: []
+});
+assert(
+  JSON.stringify(compactRobotUniverseSnapshot).includes("题材基金全量召回")
+    && JSON.stringify(compactRobotUniverseSnapshot).includes("26951")
+    && JSON.stringify(compactRobotUniverseSnapshot).includes("000201"),
+  "compact model context must expose computed theme-to-full-universe recall, not just the small ranking sample"
 );
 const directThemeCarrierSnapshot = {
   themeRadar: [{
@@ -12861,7 +12973,7 @@ assert(compactMarketSnapshot["数据源覆盖"], "compact market snapshot must i
 assert.equal(compactMarketSnapshot["数据源覆盖"].外部接口, "15/16 已配置", "compact data-source coverage must tell the model how many external interfaces are configured");
 assert.equal(compactMarketSnapshot["数据源覆盖"].实时接口, "9/10", "compact data-source coverage must tell the model how many realtime interfaces are usable");
 assert(compactMarketSnapshot["数据源覆盖"].板块覆盖.includes("88个板块"), "compact data-source coverage must preserve realtime board coverage");
-assert(compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("18只候选") && compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("实时估值24条"), "compact data-source coverage must preserve fund candidate and valuation coverage");
+assert(compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("全量基金库") && compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("18只本轮候选") && compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("实时估值24条"), "compact data-source coverage must preserve full universe, fund candidate, and valuation coverage");
 assert(compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("研究缓存2只") && compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("风险2") && compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("持仓2") && compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("费率2"), "compact data-source coverage must carry warmed fund research profile, risk, holdings, and fee sample counts");
 assert(compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("持仓脉冲1只") && compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("底层8条"), "compact data-source coverage must carry top-holding realtime pulse coverage into model evidence");
 assert(compactMarketSnapshot["数据源覆盖"].新闻覆盖.includes("28条快讯") && compactMarketSnapshot["数据源覆盖"].新闻覆盖.includes("6个题材脉冲"), "compact data-source coverage must preserve news pulse coverage");

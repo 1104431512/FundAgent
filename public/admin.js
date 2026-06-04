@@ -764,8 +764,10 @@ function renderRuntimeDataSourceCoverage(coverage = null, error = null) {
       ${renderDataSourceKpi("代码抓取能力", `${totals.liveSources || 0} 实抓`, `${board.observedMetricCells || 0} 板块指标，基金研究 ${fund.researchDigestCacheFunds || 0} 只`, "engine")}
       ${renderDataSourceKpi("本次实抓", `${totals.liveSources || 0} 个`, `可用 ${totals.usableSources || 0}，缓存回退 ${readiness.sourceHealth?.cachedSources || 0}`, "ok")}
       ${renderDataSourceKpi("实时接口", `${totals.realtimeUsableSources || 0}/${totals.realtimeSources || 0}`, `板块、指数、估值、新闻实时/准实时`, "realtime")}
+      ${renderDataSourceKpi("全量基金库", `${fund.fundUniverseTotalFunds || 0} 只`, `题材召回 ${fund.themeFundUniverseMatchedFunds || 0} 只，入池 ${fund.themeFundUniverseCandidatePoolCount || 0}`, "engine")}
       ${renderDataSourceKpi("板块维度", `${board.realtimeBoardFeeds || 0} 条`, `${board.configuredMarketTypes || 0} 类市场，每板块 ${board.metricFieldCount || 0} 项指标`, "board")}
       ${renderDataSourceKpi("板块指标", `${board.observedMetricCells || 0} 个`, `${board.observedBoards || 0} 个板块 × ${board.metricFieldCount || 0} 项字段`, "board")}
+      ${renderDataSourceKpi("基金研究榜", `${fund.researchDigestLeaderboardLanes || 0} 组`, `主复核 ${fund.researchDigestPrimaryReviewFunds || 0}，备选 ${fund.researchDigestBackupReviewFunds || 0}`, "engine")}
       ${renderDataSourceKpi("指标引擎", `${totals.activeIndicatorEngines || 0}/${totals.indicatorEngines || 0}`, `固定代码先处理，再给模型判断`, "engine")}
       ${renderDataSourceKpi("最近快照", snapshot.ageText || "暂无", snapshot.fetchedAt ? formatDateTime(snapshot.fetchedAt) : "点击刷新覆盖抓取", "snapshot")}
     </div>
@@ -779,6 +781,8 @@ function renderRuntimeDataSourceCoverage(coverage = null, error = null) {
           `当前可实抓 ${totals.liveSources || 0} 个接口，已配置 ${totals.configuredSources || 0}/${totals.externalSources || 0}`,
           `板块市场 ${board.configuredMarketTypes || 0} 类，实时榜单 ${board.realtimeBoardFeeds || 0} 条`,
           `板块指标 ${board.observedBoards || 0} 个板块 × ${board.metricFieldCount || 0} 字段 = ${board.observedMetricCells || 0} 个`,
+          `全量基金代码库 ${fund.fundUniverseTotalFunds || 0} 只，题材召回命中 ${fund.themeFundUniverseMatchedFunds || 0} 只`,
+          `固定代码基金研究榜 ${fund.researchDigestLeaderboardLanes || 0} 组，覆盖 ${fund.researchDigestLeaderboardFunds || 0} 只`,
           `基金研究 ${fund.researchDigestCacheFunds || 0} 只，持仓行情脉冲 ${fund.holdingRealtimePulseItems || 0} 条`
         ]
       })}
@@ -810,10 +814,12 @@ function renderRuntimeDataSourceCoverage(coverage = null, error = null) {
         ]
       })}
       ${renderDataSourceFocusCard({
-        title: "基金候选",
-        value: `${candidateTotal} 只`,
-        meta: `排行 ${fund.rankingCount || 0} · 贵金属 ${fund.preciousMetalFundCount || 0}`,
+        title: "基金发现",
+        value: `${fund.fundUniverseTotalFunds || 0} 只全量库`,
+        meta: `本轮候选 ${candidateTotal} · 题材召回入池 ${fund.themeFundUniverseCandidatePoolCount || 0}`,
         details: [
+          `题材召回命中 ${fund.themeFundUniverseMatchedFunds || 0} 只，处理 ${fund.themeFundUniverseProcessedThemes || 0} 条题材`,
+          `排行候选 ${fund.rankingCount || 0} 只，贵金属专题 ${fund.preciousMetalFundCount || 0} 只`,
           `实时估值 ${fund.realtimeValuationCount || 0} 条`,
           `新鲜估值 ${fund.freshRealtimeValuationCount || 0} 条`,
           `研究缓存 ${fund.researchDigestCacheFunds || 0} 只，新鲜 ${fund.freshResearchDigestCacheFunds || 0} 只`,
@@ -840,6 +846,9 @@ function renderRuntimeDataSourceCoverage(coverage = null, error = null) {
       })}
     </div>
 
+    ${renderDataSourceThemeUniverseMatches(fund.themeFundUniverseMatches)}
+    ${renderDataSourceResearchLeaderboards(fund.researchLeaderboards)}
+
     <section class="data-source-table-panel">
       <div class="data-source-section-head">
         <strong>接口清单</strong>
@@ -859,6 +868,98 @@ function renderRuntimeDataSourceCoverage(coverage = null, error = null) {
         ${(coverage.indicatorEngines || []).map(renderDataSourceEngine).join("")}
       </div>
     </section>
+  `;
+}
+
+function renderDataSourceThemeUniverseMatches(matches = null) {
+  const groups = (matches?.groups || []).filter((group) => group && (group.topCandidates || []).length);
+  return `
+    <section class="data-source-research-board">
+      <div class="data-source-section-head">
+        <strong>题材基金全量召回</strong>
+        <span>${matches?.totalFunds || 0} 只全量基金 · 命中 ${matches?.matchedFundCount || 0} · 入池 ${matches?.candidatePoolCount || 0}</span>
+      </div>
+      <div class="data-source-research-grid">
+        ${groups.slice(0, 6).map(renderDataSourceThemeUniverseGroup).join("") || `<div class="empty compact-empty">暂无题材召回候选。先刷新市场快照或全量基金代码库。</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderDataSourceThemeUniverseGroup(group = {}) {
+  return `
+    <article class="data-source-research-lane themeUniverse">
+      <div class="data-source-research-lane-head">
+        <strong>${escapeHtml(group.name || group.title || "题材线索")}</strong>
+        <small>${escapeHtml(`${group.title || group.laneKey || "题材"} · 命中 ${group.matchedFundCount || 0} 只`)}</small>
+      </div>
+      <div class="data-source-research-items">
+        ${(group.topCandidates || []).slice(0, 3).map(renderDataSourceThemeUniverseCandidate).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function renderDataSourceThemeUniverseCandidate(item = {}) {
+  return `
+    <div class="data-source-research-item">
+      <div class="data-source-research-title">
+        <strong>${escapeHtml([item.code, item.name].filter(Boolean).join(" "))}</strong>
+        <b>${escapeHtml(item.score !== undefined && item.score !== null ? `${item.score}分` : "-")}</b>
+      </div>
+      <p>${escapeHtml(item.reason || item.theme || "全量基金库命中")}</p>
+      <div class="data-source-research-tags">${escapeHtml((item.matchedTerms || []).slice(0, 4).join(" / ") || "题材承载")}</div>
+    </div>
+  `;
+}
+
+function renderDataSourceResearchLeaderboards(leaderboards = null) {
+  const lanes = leaderboards?.lanes || {};
+  const laneOrder = ["riskAdjusted", "pullbackLaunch", "holdingsOutlook", "feeFit", "noBuy"];
+  const visibleLanes = laneOrder.map((key) => lanes[key]).filter((lane) => lane && lane.items?.length);
+  return `
+    <section class="data-source-research-board">
+      <div class="data-source-section-head">
+        <strong>基金研究机会榜</strong>
+        <span>${leaderboards?.totalFunds || 0} 只基金 · ${leaderboards?.laneCount || 0} 组固定代码榜单</span>
+      </div>
+      <div class="data-source-research-grid">
+        ${visibleLanes.map(renderDataSourceResearchLeaderboardLane).join("") || `<div class="empty compact-empty">暂无基金研究榜单。先刷新市场快照或基金研究缓存。</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderDataSourceResearchLeaderboardLane(lane = {}) {
+  return `
+    <article class="data-source-research-lane ${escapeHtml(lane.id || "")}">
+      <div class="data-source-research-lane-head">
+        <strong>${escapeHtml(lane.title || "")}</strong>
+        <small>${escapeHtml(lane.subtitle || "")}</small>
+      </div>
+      <div class="data-source-research-items">
+        ${(lane.items || []).slice(0, 3).map(renderDataSourceResearchLeaderboardItem).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function renderDataSourceResearchLeaderboardItem(item = {}) {
+  const blockers = (item.blockers || []).slice(0, 2);
+  const evidence = (item.evidence || []).slice(0, 2);
+  return `
+    <div class="data-source-research-item">
+      <div class="data-source-research-title">
+        <strong>${escapeHtml([item.code, item.name].filter(Boolean).join(" "))}</strong>
+        <b>${escapeHtml(item.score !== undefined ? `${item.score}分` : "-")}</b>
+      </div>
+      <p>${escapeHtml(item.reason || item.gateLabel || "")}</p>
+      <div class="data-source-research-tags">
+        ${escapeHtml(item.gateLabel || item.gate || "固定代码排序")}
+      </div>
+      ${evidence.length ? `<div class="data-source-research-evidence">${evidence.map((text) => `<small>${escapeHtml(text)}</small>`).join("")}</div>` : ""}
+      ${blockers.length ? `<div class="data-source-research-blockers">${blockers.map((text) => `<small>${escapeHtml(text)}</small>`).join("")}</div>` : ""}
+    </div>
   `;
 }
 

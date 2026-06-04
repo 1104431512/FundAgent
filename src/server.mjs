@@ -20,6 +20,7 @@ const FUND_RESEARCH_DIGEST_CACHE_PATH = path.resolve(process.env.FUND_RESEARCH_D
 const FUND_NAV_HISTORY_CACHE_PATH = path.resolve(process.env.FUND_NAV_HISTORY_CACHE_PATH || path.join(ROOT, "data", "fund-nav-history-cache.json"));
 const FUND_RANKING_CACHE_PATH = path.resolve(process.env.FUND_RANKING_CACHE_PATH || path.join(ROOT, "data", "fund-ranking-cache.json"));
 const FUND_RANKING_HISTORY_PATH = path.resolve(process.env.FUND_RANKING_HISTORY_PATH || path.join(ROOT, "data", "fund-ranking-history.json"));
+const FUND_CODE_UNIVERSE_CACHE_PATH = path.resolve(process.env.FUND_CODE_UNIVERSE_CACHE_PATH || path.join(ROOT, "data", "fund-code-universe-cache.json"));
 const THEME_RADAR_HISTORY_PATH = path.resolve(process.env.THEME_RADAR_HISTORY_PATH || path.join(ROOT, "data", "theme-radar-history.json"));
 const MARKET_BOARD_HISTORY_PATH = path.resolve(process.env.MARKET_BOARD_HISTORY_PATH || path.join(ROOT, "data", "market-board-history.json"));
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
@@ -63,6 +64,11 @@ const FUND_NAV_HISTORY_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_NAV_HISTORY
 const FUND_RANKING_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_RANKING_CACHE_MAX_AGE_HOURS || 48);
 const FUND_RANKING_HISTORY_MAX_AGE_DAYS = Number(process.env.FUND_RANKING_HISTORY_MAX_AGE_DAYS || 21);
 const FUND_RANKING_HISTORY_POINT_LIMIT = Number(process.env.FUND_RANKING_HISTORY_POINT_LIMIT || 36);
+const FUND_CODE_UNIVERSE_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_CODE_UNIVERSE_CACHE_MAX_AGE_HOURS || 168);
+const FUND_UNIVERSE_SEARCH_RESULT_LIMIT = Number(process.env.FUND_UNIVERSE_SEARCH_RESULT_LIMIT || 80);
+const THEME_FUND_UNIVERSE_GROUP_LIMIT = Number(process.env.THEME_FUND_UNIVERSE_GROUP_LIMIT || 6);
+const THEME_FUND_UNIVERSE_GROUP_CANDIDATE_LIMIT = Number(process.env.THEME_FUND_UNIVERSE_GROUP_CANDIDATE_LIMIT || 24);
+const THEME_FUND_UNIVERSE_CANDIDATE_POOL_LIMIT = Number(process.env.THEME_FUND_UNIVERSE_CANDIDATE_POOL_LIMIT || 96);
 const THEME_RADAR_HISTORY_MAX_AGE_DAYS = Number(process.env.THEME_RADAR_HISTORY_MAX_AGE_DAYS || 14);
 const THEME_RADAR_HISTORY_POINT_LIMIT = Number(process.env.THEME_RADAR_HISTORY_POINT_LIMIT || 18);
 const THEME_RADAR_HISTORY_MIN_INTERVAL_MINUTES = Number(process.env.THEME_RADAR_HISTORY_MIN_INTERVAL_MINUTES || 30);
@@ -312,6 +318,20 @@ const DATA_SOURCE_REGISTRY = [
     outputs: ["近1周", "近1月", "近3月", "近6月", "近1年", "份额类别", "榜单历史"]
   },
   {
+    id: "eastmoney_fund_code_universe",
+    category: "基金发现",
+    provider: "东方财富",
+    label: "全量基金代码库",
+    endpoint: "https://fund.eastmoney.com/js/fundcode_search.js",
+    realtime: false,
+    realtimeText: "每日/页面更新",
+    componentKeys: ["fundCodeUniverse"],
+    counterKeys: ["fundCodeUniverseFetches"],
+    sourceKindPatterns: ["eastmoney_fundcode_search"],
+    capability: "提供六位基金代码全量宇宙，避免推荐只在少量排行样本里窄召回。",
+    outputs: ["基金代码", "基金名称", "拼音检索", "基金类型", "份额类别"]
+  },
+  {
     id: "eastmoney_fund_suggest",
     category: "基金发现",
     provider: "东方财富",
@@ -497,6 +517,7 @@ const DATA_PROCESSING_ENGINE_REGISTRY = [
   { id: "themeRadar", label: "题材雷达", category: "题材发现", evidenceKey: "themeRadar", capability: "融合板块、新闻、贵金属、海外行情和基金候选，形成题材前瞻分。" },
   { id: "themeLeaderboards", label: "题材榜单", category: "榜单", evidenceKey: "themeLeaderboards", capability: "按主力进场、题材预热、低位轮动、退潮回避和追涨风险分榜。" },
   { id: "themeMainForcePlaybook", label: "主力作战图", category: "榜单", evidenceKey: "themeMainForcePlaybook", capability: "把题材大涨背后的新闻逻辑、资金确认和代表基金承载串起来。" },
+  { id: "themeFundUniverseMatches", label: "题材基金全量召回", category: "基金发现", evidenceKey: "themeFundUniverseMatches", capability: "先跟对题材/板块，再从全量基金代码库召回承载基金，形成下钻候选池。" },
   { id: "realtimeFundValuationSignal", label: "实时估值信号", category: "基金温度", evidenceKey: "realtimeFundValuations", capability: "识别估值新鲜度、来源一致性、冲高回落和盘中转强。" },
   { id: "riskMetrics", label: "风险收益指标", category: "基金画像", evidenceKey: "riskMetrics", capability: "从历史净值计算夏普、Sortino、最大回撤、波动和下行风险。" },
   { id: "trendProfile", label: "走势画像", category: "基金画像", evidenceKey: "trendProfile", capability: "判断回调完成、启动前夜、高位延伸和破位风险。" },
@@ -1570,20 +1591,37 @@ function selectFundResearchWarmupCandidates(snapshot = null, options = {}) {
   const weekly = selectWeeklyReversalRankCandidates(all)
     .map((item) => ({ ...item, keywords: mergeStringLists(item.keywords, ["周内温和转强候选"]), setupDiscoverySource: "fund_research_warmer_weekly_reversal" }));
   const themeCarriers = selectFundResearchThemeOpportunityWarmupCandidates(all, snapshot);
+  const themeUniverseCarriers = selectThemeFundUniverseSeedCandidates(snapshot, {
+    userText: "主力进场 题材预热 低位轮动 回调完成",
+    limit: Number(process.env.FUND_RESEARCH_WARMER_THEME_UNIVERSE_LIMIT || 60)
+  }).map((item) => ({
+    ...item,
+    keywords: mergeStringLists(item.keywords, ["全量基金库题材召回", "固定代码资料预热"]),
+    setupDiscoverySource: item.setupDiscoverySource || "fund_code_universe_theme_match:warmup"
+  }));
   const marketContext = {
     ...snapshot,
     themeRadar: Array.isArray(snapshot?.themeRadar) ? snapshot.themeRadar : []
   };
   const cache = options.cache || readFundResearchDigestCache();
   const nowIso = options.nowIso || new Date().toISOString();
-  const pool = mergeCandidateFunds(themeCarriers, lowBase, weekly, all)
+  const pool = mergeCandidateFunds(themeCarriers, themeUniverseCarriers, lowBase, weekly, all)
     .map((item) => refreshPortfolioCandidateThemesWithMarketRadar({
       ...item,
       themeOpportunityRequirement: "require_current_theme_playbook"
     }, marketContext))
     .filter((item) => isFundResearchDigestWarmupNeeded(item, cache, nowIso))
     .sort((a, b) => scorePullbackSetupSeedCandidate(b, marketContext, "回调完成 低位 准备启动") - scorePullbackSetupSeedCandidate(a, marketContext, "回调完成 低位 准备启动"));
-  return selectDiversifiedDeepDiveCandidates(pool, limit, { diversifyExposure: true });
+  const directThemeCodes = new Set(themeCarriers.map((item) => item.code).filter(Boolean));
+  const priorityDirect = pool
+    .filter((item) => directThemeCodes.has(item.code))
+    .slice(0, Math.min(limit, Math.max(1, Math.min(3, directThemeCodes.size))));
+  const priorityCodes = new Set(priorityDirect.map((item) => item.code).filter(Boolean));
+  const remaining = pool.filter((item) => !priorityCodes.has(item.code));
+  return mergeCandidateFunds(
+    priorityDirect,
+    selectDiversifiedDeepDiveCandidates(remaining, Math.max(0, limit - priorityDirect.length), { diversifyExposure: true })
+  ).slice(0, limit);
 }
 
 function selectFundResearchThemeOpportunityWarmupCandidates(all = [], snapshot = null) {
@@ -21367,8 +21405,10 @@ function summarizeMarketSnapshot(snapshot) {
     fastNews: (snapshot.fastNews || []).slice(0, 8),
     themeLeaderboards: snapshot.themeLeaderboards || buildThemeLeaderboards(snapshot.themeRadar || []),
     themeMainForcePlaybook: snapshot.themeMainForcePlaybook || null,
+    themeFundUniverseMatches: snapshot.themeFundUniverseMatches || null,
     themeHistory: snapshot.themeHistory || buildThemeRadarHistorySummary(snapshot.themeRadar || []),
     dataSourceCoverage: snapshot.dataSourceCoverage || null,
+    fundUniverse: snapshot.fundUniverse || null,
     fundCandidates: {
       stockFunds: (snapshot.fundCandidates?.stockFunds || []).slice(0, 8),
       hybridFunds: (snapshot.fundCandidates?.hybridFunds || []).slice(0, 8),
@@ -21410,6 +21450,7 @@ function compactMarketSnapshotForModel(snapshot = null) {
     题材历史: compactThemeRadarHistoryForModel(summary.themeHistory),
     题材榜单: compactThemeLeaderboardsForModel(summary.themeLeaderboards || buildThemeLeaderboards(summary.themeRadar || [])),
     ...(summary.themeMainForcePlaybook ? { 题材作战图: compactThemeMainForcePlaybookForModel(summary.themeMainForcePlaybook) } : {}),
+    ...(summary.themeFundUniverseMatches ? { 题材基金全量召回: compactThemeFundUniverseMatchesForModel(summary.themeFundUniverseMatches) } : {}),
     fastNews: (summary.fastNews || []).slice(0, 6).map(compactFastNewsForModel),
     fundCandidates: {
       stockFunds: compactMarketFundCandidates(summary.fundCandidates?.stockFunds || [], 6),
@@ -21419,8 +21460,15 @@ function compactMarketSnapshotForModel(snapshot = null) {
       preciousMetalFunds: compactMarketFundCandidates(summary.fundCandidates?.preciousMetalFunds || [], 8)
     },
     errors: (summary.errors || []).slice(0, 6),
-    sources: (summary.sources || []).slice(0, 8)
+    sources: (summary.sources || []).slice(0, 4).map(compactSourceReferenceForModel)
   };
+}
+
+function compactSourceReferenceForModel(source = "") {
+  return String(source || "")
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .slice(0, 56);
 }
 
 function compactDataSourceCoverageForModel(coverage = null) {
@@ -21447,13 +21495,16 @@ function compactDataSourceCoverageForModel(coverage = null) {
     .slice(0, 4);
   const candidateCounts = fund.candidateCounts || {};
   const fundCoverageParts = [
-    `${Object.values(candidateCounts).reduce((sum, value) => sum + Number(value || 0), 0)}只候选`,
+    `全量基金库${fund.fundUniverseTotalFunds || 0}只`,
+    `${Object.values(candidateCounts).reduce((sum, value) => sum + Number(value || 0), 0)}只本轮候选`,
+    Number(fund.themeFundUniverseCandidatePoolCount || 0) > 0 ? `题材召回${fund.themeFundUniverseMatchedFunds || 0}只/入池${fund.themeFundUniverseCandidatePoolCount || 0}` : "",
     `实时估值${fund.realtimeValuationCount || 0}条`,
     `研究缓存${fund.researchDigestCacheFunds || 0}只`,
     `画像${fund.researchDigestProfileFunds || 0}/风险${fund.researchDigestRiskMetricFunds || 0}/持仓${fund.researchDigestHoldingFunds || 0}/费率${fund.researchDigestFeeFunds || 0}`,
+    Number(fund.researchDigestLeaderboardLanes || 0) > 0 ? `机会榜${fund.researchDigestLeaderboardLanes}组/主${fund.researchDigestPrimaryReviewFunds || 0}/备${fund.researchDigestBackupReviewFunds || 0}` : "",
     `持仓脉冲${fund.holdingRealtimePulseFunds || 0}只/底层${fund.holdingRealtimePulseItems || 0}条`
-  ];
-  return {
+  ].filter(Boolean);
+  const compact = {
     快照时效: snapshot.ageText || "",
     外部接口: `${totals.configuredSources ?? 0}/${totals.externalSources ?? 0} 已配置`,
     实时接口: `${totals.realtimeUsableSources ?? 0}/${totals.realtimeSources ?? 0}`,
@@ -21472,6 +21523,29 @@ function compactDataSourceCoverageForModel(coverage = null) {
     缓存源: cachedSources,
     缺口源: missingSources
   };
+  const fundResearchBoards = compactFundResearchLeaderboardsForModel(fund.researchLeaderboards);
+  if (fundResearchBoards.length) compact.基金研究榜 = fundResearchBoards;
+  return compact;
+}
+
+function compactFundResearchLeaderboardsForModel(leaderboards = {}) {
+  const lanes = leaderboards?.lanes || {};
+  const labels = {
+    riskAdjusted: "高夏普",
+    pullbackLaunch: "启动",
+    holdingsOutlook: "持仓",
+    feeFit: "费用",
+    noBuy: "不买"
+  };
+  return ["riskAdjusted", "pullbackLaunch", "holdingsOutlook", "feeFit", "noBuy"]
+    .map((key) => {
+      const lane = lanes[key] || {};
+      const lead = lane.items?.[0] || null;
+      if (!lead?.code) return "";
+      return `${labels[key] || key}:${lead.code}/${round(Number(lead.score || 0), 1)}`;
+    })
+    .filter(Boolean)
+    .slice(0, 4);
 }
 
 function compactThemeLeaderboardsForModel(leaderboards = {}) {
@@ -22542,6 +22616,21 @@ function formatThemeMainForcePlaybookEvidenceLines(playbook = {}) {
   });
 }
 
+function formatThemeFundUniverseEvidenceLines(matches = {}) {
+  if (!matches || typeof matches !== "object") return [];
+  const lines = [
+    `- 全量基金库：${matches.totalFunds || 0}只；题材召回命中${matches.matchedFundCount || 0}只；进入下钻池${matches.candidatePoolCount || matches.candidatePool?.length || 0}只。`
+  ];
+  for (const group of (matches.groups || []).slice(0, 4)) {
+    const candidates = (group.topCandidates || []).slice(0, 4)
+      .map((item) => `${item.code || ""} ${item.name || ""}`.trim())
+      .filter(Boolean)
+      .join(" / ");
+    lines.push(`- ${group.title || group.laneKey || "题材"} ${group.name || ""}：命中${group.matchedFundCount || 0}只${group.whyMove ? `，逻辑${shortenPortfolioCustomerText(group.whyMove, 70)}` : ""}${candidates ? `，候选${candidates}` : ""}`);
+  }
+  return lines;
+}
+
 function buildMarketEvidenceSummary(userText, marketSnapshot) {
   if (!marketSnapshot) {
     return "未抓取市场快照：只能按通用基金知识回答，不能声称已看到近期行情。";
@@ -22710,6 +22799,12 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
     lines.push(...themePlaybookLines);
     lines.push("质量要求：经理必须先按作战图决定快跟、预热、低位轮动、退潮回避或追涨回避，再把代表基金作为工具复核；不能从基金涨跌倒推题材。");
   }
+  const themeFundUniverseLines = formatThemeFundUniverseEvidenceLines(marketSnapshot.themeFundUniverseMatches);
+  if (themeFundUniverseLines.length) {
+    lines.push("题材基金全量召回：");
+    lines.push(...themeFundUniverseLines);
+    lines.push("质量要求：推荐基金时必须优先从题材全量召回和后续下钻指标中选；不能把少量排行样本当作完整基金宇宙，也不能因为历史倾向反复只推黄金。");
+  }
 
   if (isPreciousMetalQuestion(userText)) {
     const metals = marketSnapshot.marketIndicators?.preciousMetals || [];
@@ -22824,6 +22919,7 @@ function buildMarketDeepDiveSummary(deepDive) {
     deepDive.focus ? `deepDive.focus=${deepDive.focus}` : "",
     deepDive.selectionDiscipline ? `selectionDiscipline=${deepDive.selectionDiscipline}` : "",
     requireThemeOpportunityBacking ? "themeOpportunityRequirement=require_current_theme_playbook" : "",
+    Array.isArray(deepDive.themeUniverseCodes) && deepDive.themeUniverseCodes.length ? `themeUniverseCodes=${deepDive.themeUniverseCodes.join("/")}` : "",
     Array.isArray(deepDive.backfillCodes) && deepDive.backfillCodes.length ? `backfillCodes=${deepDive.backfillCodes.join("/")}` : "",
     Array.isArray(deepDive.chartBackfillCodes) && deepDive.chartBackfillCodes.length ? `chartBackfillCodes=${deepDive.chartBackfillCodes.join("/")}` : "",
     Array.isArray(deepDive.searchKeywords) && deepDive.searchKeywords.length ? `searchKeywords=${deepDive.searchKeywords.join("/")}` : ""
@@ -27637,6 +27733,7 @@ async function fetchMarketSnapshot(options = {}) {
     hybridFundsRaw,
     indexFundsRaw,
     qdiiFundsRaw,
+    fundCodeUniverseRaw,
     preciousMetalsRaw,
     preciousMetalFundsRaw,
     globalMarketQuotesRaw,
@@ -27649,6 +27746,7 @@ async function fetchMarketSnapshot(options = {}) {
     fetchFundRanking("hh", "混合型基金").catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchFundRanking("zs", "指数型基金").catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchFundRanking("qdii", "QDII基金").catch((error) => ({ ok: false, error: error.message, items: [] })),
+    fetchFundCodeUniverse({ fetchedAt }).catch((error) => ({ ok: false, error: error.message, items: [], totalFunds: 0 })),
     fetchPreciousMetalQuotes().catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchPreciousMetalFundCandidates().catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchGlobalMarketQuotes().catch((error) => ({ ok: false, error: error.message, items: [] })),
@@ -27662,6 +27760,7 @@ async function fetchMarketSnapshot(options = {}) {
     { key: "hybridFunds", label: "混合型基金排行", critical: true, result: hybridFundsRaw },
     { key: "indexFunds", label: "指数型基金排行", critical: true, result: indexFundsRaw },
     { key: "qdiiFunds", label: "QDII基金排行", critical: false, result: qdiiFundsRaw },
+    { key: "fundCodeUniverse", label: "全量基金代码库", critical: true, result: fundCodeUniverseRaw },
     { key: "preciousMetals", label: "贵金属行情", critical: false, result: preciousMetalsRaw },
     { key: "preciousMetalFunds", label: "贵金属基金候选", critical: false, result: preciousMetalFundsRaw },
     { key: "globalMarketQuotes", label: "海外指数与汇率", critical: false, result: globalMarketQuotesRaw },
@@ -27675,6 +27774,7 @@ async function fetchMarketSnapshot(options = {}) {
   const hybridFunds = componentByKey.get("hybridFunds") || {};
   const indexFunds = componentByKey.get("indexFunds") || {};
   const qdiiFunds = componentByKey.get("qdiiFunds") || {};
+  const fundCodeUniverse = componentByKey.get("fundCodeUniverse") || {};
   const preciousMetals = componentByKey.get("preciousMetals") || {};
   const preciousMetalFunds = componentByKey.get("preciousMetalFunds") || {};
   const globalMarketQuotes = componentByKey.get("globalMarketQuotes") || {};
@@ -27720,6 +27820,17 @@ async function fetchMarketSnapshot(options = {}) {
   persistThemeRadarHistory(themeRadarHistory);
   const themeLeaderboards = buildThemeLeaderboards(themeRadar);
   const themeMainForcePlaybook = buildThemeMainForcePlaybook(themeRadar, themeLeaderboards);
+  const fundUniverse = summarizeFundCodeUniverseResult(fundCodeUniverse);
+  const themeFundUniverseMatches = buildThemeFundUniverseMatches({
+    fetchedAt,
+    themeRadar,
+    themeLeaderboards,
+    themeMainForcePlaybook,
+    fundUniverse
+  }, {
+    fundCodeUniverse,
+    fetchedAt
+  });
   const themeHistory = buildThemeRadarHistorySummary(themeRadar);
   const newsPulse = buildNewsPulseIndicators({
     fastNews: fastNews.items || [],
@@ -27776,8 +27887,10 @@ async function fetchMarketSnapshot(options = {}) {
     themeRadar,
     themeLeaderboards,
     themeMainForcePlaybook,
+    themeFundUniverseMatches,
     themeHistory,
     fastNews: fastNews.items || [],
+    fundUniverse,
     fundCandidates,
     errors: snapshotParts
       .filter((item) => item?.result && item.result.ok === false)
@@ -27786,6 +27899,7 @@ async function fetchMarketSnapshot(options = {}) {
       "https://push2.eastmoney.com/api/qt/clist/get",
       "https://push2.eastmoney.com/api/qt/ulist.np/get",
       "https://fund.eastmoney.com/data/rankhandler.aspx",
+      "https://fund.eastmoney.com/js/fundcode_search.js",
       "https://fundgz.1234567.com.cn/js/{code}.js",
       "https://stock.finance.sina.com.cn/fundInfo/api/openapi.php/FdFundService.getEstimateNetworthPic?symbol={code}",
       "https://www.haoetf.com/",
@@ -27882,8 +27996,10 @@ function sanitizeLatestMarketSnapshot(snapshot = {}) {
     themeRadar: snapshot.themeRadar || [],
     themeLeaderboards: snapshot.themeLeaderboards || null,
     themeMainForcePlaybook: snapshot.themeMainForcePlaybook || null,
+    themeFundUniverseMatches: snapshot.themeFundUniverseMatches || null,
     themeHistory: snapshot.themeHistory || null,
     fastNews: snapshot.fastNews || [],
+    fundUniverse: snapshot.fundUniverse || null,
     fundCandidates: snapshot.fundCandidates || {},
     errors: snapshot.errors || [],
     sources: snapshot.sources || []
@@ -27898,6 +28014,9 @@ function sanitizeLatestMarketSnapshot(snapshot = {}) {
   for (const key of ["stockFunds", "hybridFunds", "indexFunds", "qdiiFunds", "preciousMetalFunds"]) {
     if (Array.isArray(clone.fundCandidates?.[key])) clone.fundCandidates[key] = clone.fundCandidates[key].slice(0, 80);
   }
+  if (Array.isArray(clone.fundUniverse?.sample)) clone.fundUniverse.sample = clone.fundUniverse.sample.slice(0, 80);
+  if (Array.isArray(clone.themeFundUniverseMatches?.groups)) clone.themeFundUniverseMatches.groups = clone.themeFundUniverseMatches.groups.slice(0, 6);
+  if (Array.isArray(clone.themeFundUniverseMatches?.candidatePool)) clone.themeFundUniverseMatches.candidatePool = clone.themeFundUniverseMatches.candidatePool.slice(0, 96);
   return clone;
 }
 
@@ -27972,6 +28091,7 @@ function getMarketSnapshotCacheItemLimit(key = "") {
     hybridFunds: 80,
     indexFunds: 80,
     qdiiFunds: 60,
+    fundCodeUniverse: 120,
     preciousMetals: 30,
     preciousMetalFunds: 60,
     globalMarketQuotes: 40,
@@ -29091,7 +29211,9 @@ function buildMarketDataQuality(components = [], options = {}) {
 function normalizeMarketDataQualityComponent(component = {}) {
   const result = component.result || component.data || component;
   const items = Array.isArray(result?.items) ? result.items : [];
-  const count = items.length;
+  const count = Number.isFinite(Number(result?.totalFunds || result?.totalCount))
+    ? Number(result.totalFunds || result.totalCount)
+    : items.length;
   const freshCount = Number.isFinite(Number(result?.freshCount)) ? Number(result.freshCount) : null;
   const staleCount = Number.isFinite(Number(result?.staleCount)) ? Number(result.staleCount) : null;
   const sourceKinds = Array.isArray(result?.sourceKinds) ? result.sourceKinds.filter(Boolean).slice(0, 6) : [];
@@ -29099,7 +29221,7 @@ function normalizeMarketDataQualityComponent(component = {}) {
     ? String(result?.error || component.error || "抓取失败")
     : "";
   let status = error ? "missing" : count > 0 ? "available" : "empty";
-  if ((component.key || result?.key) === "realtimeFundValuations" && count > 0 && freshCount === 0 && !result?.cacheFallback) {
+  if ((component.key || result?.key) === "realtimeFundValuations" && items.length > 0 && freshCount === 0 && !result?.cacheFallback) {
     status = "stale";
   }
   if (result?.cacheFallback && count > 0) {
@@ -29318,10 +29440,26 @@ function buildDataSourceEvidenceReadiness(context = {}) {
   }
 
   const candidateTotal = Object.values(fund.candidateCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+  const fundUniverseTotal = Number(fund.fundUniverseTotalFunds || totals.fundUniverseTotalFunds || 0);
+  const themeUniversePool = Number(fund.themeFundUniverseCandidatePoolCount || totals.themeFundUniverseCandidatePoolCount || 0);
   const valuationCount = Number(fund.realtimeValuationCount || 0);
   const freshValuationCount = Number(fund.freshRealtimeValuationCount || 0);
+  score += addScore("全量基金库", fundUniverseTotal >= 20000 ? 8 : fundUniverseTotal >= 5000 ? 5 : fundUniverseTotal >= 1000 ? 3 : 0, 8);
+  score += addScore("题材召回", themeUniversePool >= 48 ? 6 : themeUniversePool >= 18 ? 4 : themeUniversePool >= 6 ? 2 : 0, 6);
   score += addScore("基金候选", candidateTotal >= 100 ? 8 : candidateTotal >= 48 ? 6 : candidateTotal >= 18 ? 4 : 1, 8);
   score += addScore("实时估值", valuationCount >= 20 ? 8 : valuationCount >= 10 ? 6 : valuationCount >= 4 ? 3 : 0, 8);
+  if (fundUniverseTotal >= 20000) {
+    strengths.push(`全量基金代码库已覆盖 ${fundUniverseTotal} 只，推荐不应局限在少量排行样本。`);
+  } else {
+    blockers.push("全量基金代码库覆盖不足，容易丢失大量基金代码。");
+    repairs.push("刷新东方财富全量基金代码库，并保证题材召回使用全量缓存。");
+  }
+  if (themeUniversePool >= 18) {
+    strengths.push(`题材基金全量召回已形成 ${themeUniversePool} 只下钻候选。`);
+  } else {
+    blockers.push("题材到基金的全量召回候选偏少，经理容易只从排行样本或黄金等少数题材里推荐。");
+    repairs.push("用题材作战图关键词扩展全量基金召回，再做净值、费用和持仓下钻。");
+  }
   if (candidateTotal < 30) {
     blockers.push("基金候选池太小，容易把用户需求误收敛到少数题材。");
     repairs.push("扩展基金排行、搜索和主题候选召回。");
@@ -29402,8 +29540,8 @@ function buildDataSourceEvidenceReadiness(context = {}) {
     actionText,
     scoreParts,
     strengths: [...new Set(strengths)].slice(0, 5),
-    blockers: [...new Set(blockers)].slice(0, 6),
-    requiredRepairs: [...new Set(repairs)].slice(0, 6),
+    blockers: [...new Set(blockers)].slice(0, 8),
+    requiredRepairs: [...new Set(repairs)].slice(0, 8),
     sourceHealth: {
       cachedSources: cachedSources.length,
       missingSources: missingSources.length,
@@ -29531,6 +29669,8 @@ function buildDataSourceRepairQueue(context = {}) {
   }
 
   const candidateTotal = Object.values(fund.candidateCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+  const fundUniverseTotal = Number(fund.fundUniverseTotalFunds || totals.fundUniverseTotalFunds || 0);
+  const themeUniversePool = Number(fund.themeFundUniverseCandidatePoolCount || totals.themeFundUniverseCandidatePoolCount || 0);
   const valuationCount = Number(fund.realtimeValuationCount || 0);
   const freshValuationCount = Number(fund.freshRealtimeValuationCount || 0);
   if (Number(board.observedBoards || 0) < 40 || Number(board.realtimeBoardFeeds || 0) < 8) {
@@ -29545,6 +29685,30 @@ function buildDataSourceRepairQueue(context = {}) {
       impact: "板块覆盖不足会让轮动和主力宽度失真。"
     });
   }
+  if (fundUniverseTotal < 20000) {
+    add({
+      id: "fund_code_universe",
+      priority: "critical",
+      priorityScore: 90,
+      category: "基金发现",
+      title: "修复全量基金代码库",
+      reason: `当前全量基金库 ${fundUniverseTotal} 只，不能支撑六位代码全覆盖。`,
+      action: "刷新东方财富 fundcode_search 全量代码库，并使用独立全量缓存，而不是市场快照里的少量样本。",
+      impact: "全量库不足会直接丢失上万只基金，推荐会被窄候选池限制。"
+    });
+  }
+  if (themeUniversePool < 18) {
+    add({
+      id: "theme_fund_universe_recall",
+      priority: "high",
+      priorityScore: 82,
+      category: "基金发现",
+      title: "扩展题材到基金的全量召回",
+      reason: `当前题材召回入池 ${themeUniversePool} 只，仍不足以让经理从板块里挑基金。`,
+      action: "先用题材作战图确定主力/预热/低位轮动线索，再从全量基金库召回承载基金，随后下钻走势、费率和前十大持仓。",
+      impact: "召回不足时，经理会退回排行样本或固定题材，表现为反复推荐黄金、观望或硬凑。"
+    });
+  }
   if (candidateTotal < 48) {
     add({
       id: "fund_candidate_recall",
@@ -29553,7 +29717,7 @@ function buildDataSourceRepairQueue(context = {}) {
       category: "基金发现",
       title: "扩展基金候选召回",
       reason: `当前候选 ${candidateTotal} 只，容易把用户需求收窄到少数题材。`,
-      action: "补基金排行、主题搜索、榜单历史和代表基金关键词召回。",
+      action: "补基金排行、主题搜索、榜单历史、全量基金代码库和代表基金关键词召回。",
       impact: "候选池不足会导致推荐硬凑。"
     });
   }
@@ -29715,6 +29879,17 @@ function buildMarketSnapshotCoverageFromCache(cache = readMarketSnapshotCache(),
   const themeRadar = attachThemeRadarHistoryMomentum(themeRadarRaw, readThemeRadarHistory(), cachedAt || nowIso);
   const themeLeaderboards = buildThemeLeaderboards(themeRadar);
   const themeMainForcePlaybook = buildThemeMainForcePlaybook(themeRadar, themeLeaderboards);
+  const fundUniverse = summarizeFundCodeUniverseResult(
+    buildCachedFundCodeUniverseFallback(readFundCodeUniverseCache(), { fetchedAt: cachedAt || nowIso, liveError: "覆盖报告使用全量基金代码缓存" })
+      || resultFor("fundCodeUniverse")
+  );
+  const themeFundUniverseMatches = buildThemeFundUniverseMatches({
+    fetchedAt: cachedAt || nowIso,
+    themeRadar,
+    themeLeaderboards,
+    themeMainForcePlaybook,
+    fundUniverse
+  }, { fetchedAt: cachedAt || nowIso });
   const qualityComponents = Object.values(components).map((component) => ({
     key: component.key || "",
     label: component.label || component.key || "",
@@ -29765,7 +29940,9 @@ function buildMarketSnapshotCoverageFromCache(cache = readMarketSnapshotCache(),
     themeRadar,
     themeLeaderboards,
     themeMainForcePlaybook,
+    themeFundUniverseMatches,
     fastNews,
+    fundUniverse,
     fundCandidates
   };
 }
@@ -29829,6 +30006,8 @@ function buildDataSourceComponentStatusMap(snapshot = null, cache = readMarketSn
   for (const researchStatus of buildFundResearchDigestComponentStatuses(nowIso)) {
     if (researchStatus.count) add(researchStatus, researchStatus.status);
   }
+  const universeStatus = buildFundCodeUniverseComponentStatus(nowIso);
+  if (universeStatus.count) add(universeStatus, universeStatus.status);
   const holdingPulseStatus = buildFundHoldingRealtimePulseComponentStatus(nowIso);
   if (holdingPulseStatus.count) add(holdingPulseStatus, holdingPulseStatus.status);
 
@@ -29902,6 +30081,25 @@ function buildFundResearchDigestComponentStatuses(nowIso = new Date().toISOStrin
   ];
 }
 
+function buildFundCodeUniverseComponentStatus(nowIso = new Date().toISOString()) {
+  const stats = buildFundCodeUniverseStats(readFundCodeUniverseCache(), nowIso);
+  if (!stats.totalFunds) {
+    return { key: "fundCodeUniverse", label: "全量基金代码库", status: "missing", count: 0 };
+  }
+  return {
+    key: "fundCodeUniverse",
+    label: "全量基金代码库",
+    status: stats.fresh ? "available" : "cached",
+    count: stats.totalFunds,
+    freshCount: stats.fresh ? stats.totalFunds : 0,
+    staleCount: stats.fresh ? 0 : stats.totalFunds,
+    sourceKinds: [stats.sourceKind || "eastmoney_fundcode_search"],
+    sourceMode: stats.fresh ? "fund_code_universe_cache" : "cache_fallback",
+    cacheFetchedAt: stats.updatedAt || "",
+    cacheAgeHours: Number.isFinite(Number(stats.latestAgeHours)) ? stats.latestAgeHours : null
+  };
+}
+
 function buildFundHoldingRealtimePulseComponentStatus(nowIso = new Date().toISOString()) {
   const stats = buildFundResearchDigestCacheStats(readFundResearchDigestCache(), nowIso);
   if (!stats.holdingRealtimePulseFunds) {
@@ -29930,6 +30128,7 @@ function getDataSourceCoverageComponentItems(snapshot = null, key = "") {
     hybridFunds: snapshot.fundCandidates?.hybridFunds,
     indexFunds: snapshot.fundCandidates?.indexFunds,
     qdiiFunds: snapshot.fundCandidates?.qdiiFunds,
+    fundCodeUniverse: snapshot.fundUniverse?.sample,
     preciousMetalFunds: snapshot.fundCandidates?.preciousMetalFunds,
     preciousMetals: snapshot.marketIndicators?.preciousMetals,
     globalMarketQuotes: snapshot.marketIndicators?.globalMarkets,
@@ -29961,6 +30160,7 @@ function formatDataSourceComponentLabel(key = "") {
     hybridFunds: "混合型基金排行",
     indexFunds: "指数型基金排行",
     qdiiFunds: "QDII基金排行",
+    fundCodeUniverse: "全量基金代码库",
     preciousMetalFunds: "贵金属基金候选",
     preciousMetals: "贵金属行情",
     globalMarketQuotes: "海外指数与汇率",
@@ -30098,11 +30298,26 @@ function buildFundDataCoverage(snapshot = null, componentStatusMap = new Map()) 
     .reduce((sum, key) => sum + Number(candidateCounts[key] || 0), 0);
   const realtimeItems = getDataSourceCoverageComponentItems(snapshot, "realtimeFundValuations");
   const realtimeStatus = componentStatusMap.get("realtimeFundValuations") || {};
+  const fundUniverseStatus = componentStatusMap.get("fundCodeUniverse") || {};
+  const fundUniverse = snapshot?.fundUniverse || {};
+  const themeFundUniverseMatches = snapshot?.themeFundUniverseMatches || {};
   const history = readFundRankingHistory();
   const researchCache = buildFundResearchDigestCacheStats();
+  const researchLeaderboards = buildFundResearchDigestLeaderboards();
   return {
     candidateCounts,
     rankingCount,
+    fundUniverseTotalFunds: Number(fundUniverse.totalFunds || fundUniverseStatus.count || 0),
+    fundUniverseSourceMode: fundUniverse.sourceMode || fundUniverseStatus.sourceMode || "",
+    fundUniverseFresh: fundUniverseStatus.status === "available",
+    fundUniverseCacheAgeHours: Number.isFinite(Number(fundUniverse.cacheAgeHours ?? fundUniverseStatus.cacheAgeHours)) ? Number(fundUniverse.cacheAgeHours ?? fundUniverseStatus.cacheAgeHours) : null,
+    fundUniverseTypeCounts: fundUniverse.typeCounts || {},
+    fundUniverseShareClassCounts: fundUniverse.shareClassCounts || {},
+    themeFundUniverseProcessedThemes: Number(themeFundUniverseMatches.processedThemeCount || 0),
+    themeFundUniverseGroups: Number(themeFundUniverseMatches.groupCount || 0),
+    themeFundUniverseMatchedFunds: Number(themeFundUniverseMatches.matchedFundCount || 0),
+    themeFundUniverseCandidatePoolCount: Number(themeFundUniverseMatches.candidatePoolCount || themeFundUniverseMatches.candidatePool?.length || 0),
+    themeFundUniverseMatches,
     preciousMetalFundCount: Number(candidateCounts.preciousMetalFunds || 0),
     realtimeValuationCount: realtimeItems.length || Number(realtimeStatus.count || 0),
     freshRealtimeValuationCount: Number.isFinite(Number(realtimeStatus.freshCount)) ? Number(realtimeStatus.freshCount) : realtimeItems.filter((item) => item?.isFresh !== false).length,
@@ -30121,6 +30336,11 @@ function buildFundDataCoverage(snapshot = null, componentStatusMap = new Map()) 
     freshHoldingRealtimePulseFunds: researchCache.freshHoldingRealtimePulseFunds,
     holdingRealtimePulseItems: researchCache.holdingRealtimePulseItems,
     holdingRealtimePulseSourceKinds: researchCache.holdingRealtimePulseSourceKinds,
+    researchDigestLeaderboardFunds: researchLeaderboards.totalFunds,
+    researchDigestLeaderboardLanes: researchLeaderboards.laneCount,
+    researchDigestPrimaryReviewFunds: researchLeaderboards.primaryReviewFunds,
+    researchDigestBackupReviewFunds: researchLeaderboards.backupReviewFunds,
+    researchLeaderboards,
     researchDigestUpdatedAt: researchCache.updatedAt
   };
 }
@@ -30170,6 +30390,8 @@ function hasDataProcessingEngineEvidence(engine = {}, snapshot = null, counters 
       return snapshot?.themeLeaderboards && Object.keys(snapshot.themeLeaderboards).length > 0;
     case "themeMainForcePlaybook":
       return Boolean(snapshot?.themeMainForcePlaybook);
+    case "themeFundUniverseMatches":
+      return Number(snapshot?.themeFundUniverseMatches?.candidatePoolCount || snapshot?.themeFundUniverseMatches?.candidatePool?.length || 0) > 0;
     case "realtimeFundValuationSignal":
       return getDataSourceCoverageComponentItems(snapshot, "realtimeFundValuations").length > 0;
     case "riskMetrics":
@@ -30261,6 +30483,192 @@ function buildFundResearchDigestCacheStats(cache = readFundResearchDigestCache()
   return stats;
 }
 
+function buildFundResearchDigestLeaderboards(cache = readFundResearchDigestCache(), options = {}) {
+  const limit = Math.max(1, Number(options.limit || 5));
+  const entries = Object.entries(cache?.digests || {})
+    .map(([code, entry]) => buildFundResearchDigestLeaderboardBaseItem(code, entry, options.nowIso))
+    .filter(Boolean);
+  const lanes = {
+    riskAdjusted: buildFundResearchDigestLeaderboardLane({
+      id: "riskAdjusted",
+      title: "高夏普低回撤榜",
+      subtitle: "先看基金底子，避免只因题材热就追进去。",
+      sortKey: "riskAdjustedScore",
+      items: entries,
+      limit
+    }),
+    pullbackLaunch: buildFundResearchDigestLeaderboardLane({
+      id: "pullbackLaunch",
+      title: "回调启动复核榜",
+      subtitle: "寻找回调完成、低位刚转强、不是高位追涨的候选。",
+      sortKey: "pullbackLaunchScore",
+      items: entries,
+      limit
+    }),
+    holdingsOutlook: buildFundResearchDigestLeaderboardLane({
+      id: "holdingsOutlook",
+      title: "持仓前景榜",
+      subtitle: "把前十大持仓和底层实时脉冲纳入候选基金排序。",
+      sortKey: "holdingsOutlookScore",
+      items: entries,
+      limit
+    }),
+    feeFit: buildFundResearchDigestLeaderboardLane({
+      id: "feeFit",
+      title: "费用适配榜",
+      subtitle: "区分A/C等份额费用，短线和中线不混用同一结论。",
+      sortKey: "feeFitScore",
+      items: entries,
+      limit
+    }),
+    noBuy: buildFundResearchDigestNoBuyLane(entries, limit)
+  };
+  const primaryReviewFunds = entries.filter((item) => item.gate === "primary_review").length;
+  const backupReviewFunds = entries.filter((item) => item.gate === "backup_review").length;
+  return {
+    version: 1,
+    sourceKind: "fund_research_digest_fixed_code_leaderboards",
+    generatedAt: options.generatedAt || new Date().toISOString(),
+    totalFunds: entries.length,
+    primaryReviewFunds,
+    backupReviewFunds,
+    laneCount: Object.keys(lanes).length,
+    lanes
+  };
+}
+
+function buildFundResearchDigestLeaderboardBaseItem(code = "", entry = {}, nowIso = new Date().toISOString()) {
+  const digest = entry?.digest || null;
+  if (!digest || typeof digest !== "object") return null;
+  const scorecard = digest.computedOpportunityScorecard || buildFundComputedOpportunityScorecard(digest);
+  const dimensions = scorecard.dimensions || {};
+  const blockers = normalizeStringArray(scorecard.blockers).slice(0, 5);
+  const riskScore = Number(dimensions.riskQuality?.score || 0);
+  const entryScore = Number(dimensions.entryTiming?.score || 0);
+  const themeScore = Number(dimensions.themeSupport?.score || 0);
+  const holdingsScore = Number(dimensions.holdingsOutlook?.score || 0);
+  const feeScore = Number(dimensions.feeFit?.score || 0);
+  const dataScore = Number(dimensions.dataQuality?.score || 0);
+  const scaleScore = Number(dimensions.scaleStability?.score || 0);
+  const managerScore = Number(scorecard.managerPriorityScore || 0);
+  const pullbackScore = Number(scoreResearchDigestForPullbackSetup(digest) || 0);
+  const chasePenalty = blockers.some((item) => /追涨|等待回撤|接盘|退潮/.test(item)) ? 22 : 0;
+  const dataPenalty = blockers.some((item) => /数据不足|缓存回退|过期/.test(item)) ? 18 : 0;
+  const blockerPenalty = Math.min(24, blockers.length * 5);
+  return {
+    code: String(digest.code || code || "").trim(),
+    name: digest.name || entry.name || "",
+    cachedAt: entry.cachedAt || "",
+    cacheAgeHours: round(getMarketSnapshotCacheAgeHours(entry.cachedAt, nowIso), 2),
+    gate: scorecard.recommendationGate || "observe_only",
+    gateLabel: scorecard.label || formatComputedFundOpportunityLabel(scorecard.recommendationGate),
+    managerPriorityScore: round(managerScore, 1),
+    riskAdjustedScore: round(riskScore * 0.56 + dataScore * 0.16 + scaleScore * 0.14 + feeScore * 0.08 + managerScore * 0.06 - dataPenalty - chasePenalty * 0.6, 1),
+    pullbackLaunchScore: round(pullbackScore * 0.62 + entryScore * 0.22 + themeScore * 0.1 + holdingsScore * 0.06 - chasePenalty - dataPenalty, 1),
+    holdingsOutlookScore: round(holdingsScore * 0.58 + themeScore * 0.18 + dataScore * 0.14 + managerScore * 0.1 - blockerPenalty, 1),
+    feeFitScore: round(feeScore * 0.62 + dataScore * 0.16 + riskScore * 0.12 + managerScore * 0.1 - (blockers.some((item) => /费用/.test(item)) ? 24 : 0), 1),
+    noBuyScore: round(blockers.length * 24 + chasePenalty + dataPenalty + Math.max(0, 58 - managerScore), 1),
+    dimensions,
+    blockers,
+    evidence: normalizeFundResearchLeaderboardEvidence(scorecard.keyEvidence || buildComputedFundOpportunityKeyEvidence(digest, dimensions)),
+    nextStep: scorecard.nextStep || buildComputedFundOpportunityNextStep(scorecard.recommendationGate, blockers)
+  };
+}
+
+function buildFundResearchDigestLeaderboardLane({ id = "", title = "", subtitle = "", sortKey = "", items = [], limit = 5 } = {}) {
+  const ranked = (items || [])
+    .map((item) => buildFundResearchDigestLeaderboardLaneItem(item, sortKey))
+    .filter((item) => item && Number.isFinite(Number(item.score)))
+    .sort(compareFundResearchDigestLeaderboardItems)
+    .slice(0, limit);
+  return {
+    id,
+    title,
+    subtitle,
+    sortKey,
+    items: ranked
+  };
+}
+
+function buildFundResearchDigestNoBuyLane(items = [], limit = 5) {
+  const ranked = (items || [])
+    .filter((item) => item.blockers?.length || item.gate === "observe_only")
+    .map((item) => buildFundResearchDigestLeaderboardLaneItem(item, "noBuyScore", {
+      reason: item.blockers?.[0] || "固定代码评分未放行",
+      nextStep: item.nextStep || "只观察，不给买入金额。"
+    }))
+    .filter(Boolean)
+    .sort(compareFundResearchDigestLeaderboardItems)
+    .slice(0, limit);
+  return {
+    id: "noBuy",
+    title: "不买/降级榜",
+    subtitle: "把追涨、数据缺口、规模费用等硬阻断提前暴露给经理。",
+    sortKey: "noBuyScore",
+    items: ranked
+  };
+}
+
+function buildFundResearchDigestLeaderboardLaneItem(item = {}, sortKey = "", overrides = {}) {
+  const score = Number(item[sortKey]);
+  if (!Number.isFinite(score)) return null;
+  const dimensionEvidence = collectFundResearchLeaderboardDimensionEvidence(item, sortKey);
+  const evidence = normalizeFundResearchLeaderboardEvidence([
+    ...(dimensionEvidence || []),
+    ...(item.evidence || [])
+  ]).slice(0, 4);
+  return {
+    code: item.code,
+    name: item.name,
+    score: round(score, 1),
+    gate: item.gate,
+    gateLabel: item.gateLabel,
+    reason: overrides.reason || buildFundResearchLeaderboardReason(sortKey, item, evidence),
+    nextStep: overrides.nextStep || item.nextStep,
+    blockers: normalizeStringArray(item.blockers).slice(0, 3),
+    evidence,
+    cachedAt: item.cachedAt || "",
+    cacheAgeHours: item.cacheAgeHours
+  };
+}
+
+function compareFundResearchDigestLeaderboardItems(a = {}, b = {}) {
+  const scoreDiff = Number(b.score || 0) - Number(a.score || 0);
+  if (Math.abs(scoreDiff) > 0.001) return scoreDiff;
+  return String(a.code || "").localeCompare(String(b.code || ""));
+}
+
+function collectFundResearchLeaderboardDimensionEvidence(item = {}, sortKey = "") {
+  const dimensions = item.dimensions || {};
+  if (sortKey === "riskAdjustedScore") return dimensions.riskQuality?.evidence || [];
+  if (sortKey === "pullbackLaunchScore") return dimensions.entryTiming?.evidence || [];
+  if (sortKey === "holdingsOutlookScore") return dimensions.holdingsOutlook?.evidence || [];
+  if (sortKey === "feeFitScore") return dimensions.feeFit?.evidence || [];
+  if (sortKey === "noBuyScore") return item.blockers || [];
+  return item.evidence || [];
+}
+
+function buildFundResearchLeaderboardReason(sortKey = "", item = {}, evidence = []) {
+  const firstEvidence = evidence[0] || item.gateLabel || "";
+  if (sortKey === "riskAdjustedScore") return firstEvidence ? `风险收益质量靠前：${firstEvidence}` : "风险收益质量靠前。";
+  if (sortKey === "pullbackLaunchScore") return firstEvidence ? `买点复核靠前：${firstEvidence}` : "回调启动复核靠前。";
+  if (sortKey === "holdingsOutlookScore") return firstEvidence ? `底层持仓前景靠前：${firstEvidence}` : "前十大持仓前景靠前。";
+  if (sortKey === "feeFitScore") return firstEvidence ? `费用和份额更适配：${firstEvidence}` : "费用和份额适配度靠前。";
+  return firstEvidence || "固定代码已排序。";
+}
+
+function normalizeFundResearchLeaderboardEvidence(values = []) {
+  return normalizeStringArray(values)
+    .map((item) => String(item)
+      .replace(/\bholding_period_flexible\b/g, "持有期灵活")
+      .replace(/\bshort_term_tactical\b/g, "偏短线战术")
+      .replace(/\blong_term_holding\b/g, "偏长期持有")
+      .replace(/\bbuyable_now\b/g, "可买复核")
+      .replace(/\bstaged_buy\b/g, "分批复核")
+      .replace(/\bwait_pullback\b/g, "等回撤"))
+    .filter(Boolean);
+}
+
 function buildDataSourceHistoryStores() {
   const themeHistory = readThemeRadarHistory();
   const boardHistory = readMarketBoardHistory();
@@ -30330,10 +30738,16 @@ function buildDataSourceCoverageTotals({ sources = [], boardCoverage = {}, fundC
     boardMetricFields: Number(boardCoverage.metricFieldCount || 0),
     observedBoards: Number(boardCoverage.observedBoards || 0),
     fundCandidates: Object.values(fundCoverage.candidateCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0),
+    fundUniverseTotalFunds: Number(fundCoverage.fundUniverseTotalFunds || 0),
+    themeFundUniverseMatchedFunds: Number(fundCoverage.themeFundUniverseMatchedFunds || 0),
+    themeFundUniverseCandidatePoolCount: Number(fundCoverage.themeFundUniverseCandidatePoolCount || 0),
     realtimeFundValuations: Number(fundCoverage.realtimeValuationCount || 0),
     researchDigestCacheFunds: Number(fundCoverage.researchDigestCacheFunds || 0),
     freshResearchDigestCacheFunds: Number(fundCoverage.freshResearchDigestCacheFunds || 0),
     sufficientResearchDigestFunds: Number(fundCoverage.sufficientResearchDigestFunds || 0),
+    researchDigestLeaderboardFunds: Number(fundCoverage.researchDigestLeaderboardFunds || 0),
+    researchDigestPrimaryReviewFunds: Number(fundCoverage.researchDigestPrimaryReviewFunds || 0),
+    researchDigestBackupReviewFunds: Number(fundCoverage.researchDigestBackupReviewFunds || 0),
     holdingRealtimePulseFunds: Number(fundCoverage.holdingRealtimePulseFunds || 0),
     holdingRealtimePulseItems: Number(fundCoverage.holdingRealtimePulseItems || 0),
     fastNews: Number(newsCoverage.fastNewsCount || 0)
@@ -30385,7 +30799,7 @@ function buildDataSourceCoverageSummary({ totals = {}, boardCoverage = {}, fundC
     evidenceReadiness ? `证据门槛 ${evidenceReadiness.score} 分：${evidenceReadiness.label}。` : "",
     `已接入 ${totals.externalSources || 0} 个外部数据接口，${totals.configuredSources || 0} 个无需额外授权或已配置；当前报告识别 ${totals.liveSources || 0} 个最新实抓接口、${totals.sampledSources || 0} 个有样本接口。`,
     `板块市场支持 ${boardCoverage.configuredMarketTypes || 0} 类市场、${boardCoverage.realtimeBoardFeeds || 0} 条实时榜单维度；最近样本形成 ${boardCoverage.observedBoards || 0} 个板块 × ${boardCoverage.metricFieldCount || 0} 类字段 = ${boardCoverage.observedMetricCells || 0} 个板块指标单元。`,
-    `最近快照覆盖 ${boardCoverage.observedBoards || 0} 个板块、${totals.fundCandidates || 0} 只候选基金、${fundCoverage.realtimeValuationCount || 0} 条实时估值、${newsCoverage.fastNewsCount || 0} 条快讯；基金研究缓存 ${fundCoverage.researchDigestCacheFunds || 0} 只，其中新鲜 ${fundCoverage.freshResearchDigestCacheFunds || 0} 只，持仓实时脉冲 ${fundCoverage.holdingRealtimePulseFunds || 0} 只。`,
+    `最近快照覆盖 ${boardCoverage.observedBoards || 0} 个板块、全量基金库 ${fundCoverage.fundUniverseTotalFunds || 0} 只、本轮排行/专题候选 ${totals.fundCandidates || 0} 只、题材全量召回命中 ${fundCoverage.themeFundUniverseMatchedFunds || 0} 只并入池 ${fundCoverage.themeFundUniverseCandidatePoolCount || 0} 只、实时估值 ${fundCoverage.realtimeValuationCount || 0} 条、${newsCoverage.fastNewsCount || 0} 条快讯；基金研究缓存 ${fundCoverage.researchDigestCacheFunds || 0} 只，其中新鲜 ${fundCoverage.freshResearchDigestCacheFunds || 0} 只，固定代码机会榜覆盖 ${fundCoverage.researchDigestLeaderboardFunds || 0} 只，持仓实时脉冲 ${fundCoverage.holdingRealtimePulseFunds || 0} 只。`,
     `固定代码指标引擎 ${totals.indicatorEngines || 0} 个，已有样本 ${totals.activeIndicatorEngines || 0} 个；快照时间 ${snapshotMeta.ageText || "暂无"}。`
   ].filter(Boolean).join(" ");
 }
@@ -33696,11 +34110,20 @@ async function fetchPullbackSetupCandidates(userText, marketSnapshot, themeRadar
     keywords: [...new Set([...(item.keywords || []), "市场候选池"].filter(Boolean))],
     setupDiscoverySource: "market_snapshot"
   }));
+  const themeUniverseItems = selectThemeFundUniverseSeedCandidates(marketSnapshot, {
+    userText,
+    limit: Number(process.env.PULLBACK_SETUP_THEME_UNIVERSE_LIMIT || 80)
+  }).map((item) => ({
+    ...item,
+    keywords: mergeStringLists(item.keywords, ["回调启动候选", "全量基金库题材召回"]),
+    setupDiscoverySource: item.setupDiscoverySource || "fund_code_universe_theme_match:pullback"
+  }));
 
   const rankingItems = filterFocusedPullbackRankingCandidates(rankingGroups, focusedKeywords);
   const scopedSnapshotItems = filterFocusedPullbackRankingCandidates(snapshotItems, focusedKeywords);
+  const scopedThemeUniverseItems = filterFocusedPullbackRankingCandidates(themeUniverseItems, focusedKeywords);
 
-  return mergeCandidateFunds(keywordItems, rankingItems, scopedSnapshotItems)
+  return mergeCandidateFunds(keywordItems, scopedThemeUniverseItems, rankingItems, scopedSnapshotItems)
     .filter((item) => !shouldSuppressPreciousMetalCandidate(userText, item))
     .sort((a, b) => scorePullbackSetupSeedCandidate(b, themeRadar, userText) - scorePullbackSetupSeedCandidate(a, themeRadar, userText))
     .slice(0, Number(process.env.PULLBACK_SETUP_SEED_LIMIT || 80));
@@ -34342,6 +34765,13 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
         })
       : Promise.resolve([])
   ]);
+  const themeUniverseCandidates = precious
+    ? []
+    : selectThemeFundUniverseSeedCandidates(scopedMarketSnapshot, {
+        userText,
+        preferPullbackSetup,
+        limit: Number(process.env.MARKET_DEEP_DIVE_THEME_UNIVERSE_LIMIT || 80)
+      });
   const snapshotCandidates = precious
     ? (marketSnapshot.fundCandidates?.preciousMetalFunds || [])
     : options.forRecommendation
@@ -34355,7 +34785,7 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
   const scopedSnapshotCandidates = preferPullbackSetup && focusedKeywords.length
     ? filterFocusedPullbackRankingCandidates(snapshotCandidates, focusedKeywords)
     : snapshotCandidates;
-  const merged = mergeCandidateFunds(focusedCandidates, pullbackSetupCandidates, scopedSnapshotCandidates)
+  const merged = mergeCandidateFunds(focusedCandidates, themeUniverseCandidates, pullbackSetupCandidates, scopedSnapshotCandidates)
     .filter((item) => !shouldSuppressPreciousMetalCandidate(userText, item))
     .map((item) => refreshPortfolioCandidateThemesWithMarketRadar({
       ...item,
@@ -34442,6 +34872,7 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
       : inferFocusedFundSearchKeywords(userText),
     selectionDiscipline: preferPullbackSetup ? "prefer_pullback_complete_launch_setup_not_chase" : "balanced_theme_relevance",
     selectedCodes: selectedForDive.map((item) => item.code),
+    themeUniverseCodes: themeUniverseCandidates.slice(0, 24).map((item) => item.code).filter(Boolean),
     backfillCodes: backfillSelected.map((item) => item.code),
     chartBackfillCodes: chartBackfillSelected.map((item) => item.code),
     candidates: orderedCandidates
@@ -38465,8 +38896,548 @@ async function fetchFundRanking(fundType, label) {
     metric: "1yzf",
     sort: "desc",
     rankingMetric: "近1月涨幅",
-    limit: Number(process.env.FUND_DISCOVERY_RANK_LIMIT || 24)
+    limit: Number(process.env.FUND_DISCOVERY_RANK_LIMIT || 80)
   });
+}
+
+function readFundCodeUniverseCache(filePath = FUND_CODE_UNIVERSE_CACHE_PATH) {
+  const raw = safeReadJson(filePath);
+  return raw && typeof raw === "object" && Array.isArray(raw.items)
+    ? { ...raw, items: raw.items }
+    : { version: 1, updatedAt: "", sourceKind: "", source: "", totalFunds: 0, typeCounts: {}, shareClassCounts: {}, items: [] };
+}
+
+function persistFundCodeUniverseCache(cache = {}, filePath = FUND_CODE_UNIVERSE_CACHE_PATH) {
+  try {
+    const payload = {
+      version: 1,
+      updatedAt: cache.updatedAt || new Date().toISOString(),
+      sourceKind: cache.sourceKind || "eastmoney_fundcode_search",
+      source: cache.source || "https://fund.eastmoney.com/js/fundcode_search.js",
+      totalFunds: Number(cache.totalFunds || cache.items?.length || 0),
+      typeCounts: cache.typeCounts || buildFundUniverseTypeCounts(cache.items || []),
+      shareClassCounts: cache.shareClassCounts || buildFundUniverseShareClassCounts(cache.items || []),
+      items: cache.items || []
+    };
+    ensureDir(path.dirname(filePath));
+    fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    updateStats({ counters: { fundCodeUniverseCacheWrites: 1 }, last: { lastFundCodeUniverseCacheWriteAt: payload.updatedAt } });
+    return payload;
+  } catch (error) {
+    console.warn("[fund-code-universe-cache-write-error]", error.message);
+    recordError(error, { fundCodeUniverseCacheWriteFailures: 1 });
+    return cache;
+  }
+}
+
+async function fetchFundCodeUniverse(options = {}) {
+  const fetchedAt = options.fetchedAt || new Date().toISOString();
+  const cache = options.cache || readFundCodeUniverseCache();
+  try {
+    const result = await fetchEastmoneyFundCodeUniverseLive({ fetchedAt });
+    if (result.items.length) {
+      const payload = {
+        version: 1,
+        updatedAt: fetchedAt,
+        sourceKind: result.sourceKind,
+        source: result.source,
+        totalFunds: result.totalFunds,
+        typeCounts: result.typeCounts,
+        shareClassCounts: result.shareClassCounts,
+        items: result.items
+      };
+      if (options.persistCache !== false) persistFundCodeUniverseCache(payload);
+      return result;
+    }
+    const fallback = buildCachedFundCodeUniverseFallback(cache, { fetchedAt, liveError: "全量基金代码接口返回为空" });
+    if (fallback) return fallback;
+    return result;
+  } catch (error) {
+    const fallback = buildCachedFundCodeUniverseFallback(cache, { fetchedAt, liveError: error.message });
+    if (fallback) return fallback;
+    throw error;
+  }
+}
+
+async function fetchEastmoneyFundCodeUniverseLive({ fetchedAt = new Date().toISOString() } = {}) {
+  const source = "https://fund.eastmoney.com/js/fundcode_search.js";
+  const text = await fetchText(source);
+  const items = parseEastmoneyFundCodeUniverse(text);
+  const typeCounts = buildFundUniverseTypeCounts(items);
+  const shareClassCounts = buildFundUniverseShareClassCounts(items);
+  updateStats({
+    counters: {
+      fundCodeUniverseFetches: 1,
+      fundUniverseFundsObserved: items.length
+    },
+    last: {
+      lastFundCodeUniverseFetchAt: fetchedAt,
+      lastFundCodeUniverseCount: String(items.length)
+    }
+  });
+  return {
+    ok: items.length > 0,
+    label: "东方财富全量基金代码库",
+    fetchedAt,
+    source,
+    sourceKind: "eastmoney_fundcode_search",
+    sourceKinds: ["eastmoney_fundcode_search"],
+    totalFunds: items.length,
+    typeCounts,
+    shareClassCounts,
+    items
+  };
+}
+
+function buildCachedFundCodeUniverseFallback(cache = readFundCodeUniverseCache(), options = {}) {
+  const fetchedAt = options.fetchedAt || new Date().toISOString();
+  const items = Array.isArray(cache.items) ? cache.items : [];
+  if (!items.length) return null;
+  const ageHours = getMarketSnapshotCacheAgeHours(cache.updatedAt, fetchedAt);
+  if (!Number.isFinite(ageHours) || ageHours > FUND_CODE_UNIVERSE_CACHE_MAX_AGE_HOURS) return null;
+  updateStats({
+    counters: { fundCodeUniverseCacheFallbacks: 1 },
+    last: { lastFundCodeUniverseCacheFallbackAt: fetchedAt }
+  });
+  return {
+    ok: true,
+    label: "东方财富全量基金代码库",
+    fetchedAt,
+    source: cache.source || "https://fund.eastmoney.com/js/fundcode_search.js",
+    sourceKind: cache.sourceKind || "eastmoney_fundcode_search",
+    sourceKinds: [cache.sourceKind || "eastmoney_fundcode_search"],
+    sourceMode: "cache_fallback",
+    cacheFallback: true,
+    cacheFetchedAt: cache.updatedAt || "",
+    cacheAgeHours: round(ageHours, 2),
+    liveError: String(options.liveError || "全量基金代码实时源失败，使用缓存回退").slice(0, 240),
+    totalFunds: Number(cache.totalFunds || items.length),
+    typeCounts: cache.typeCounts || buildFundUniverseTypeCounts(items),
+    shareClassCounts: cache.shareClassCounts || buildFundUniverseShareClassCounts(items),
+    items
+  };
+}
+
+function parseEastmoneyFundCodeUniverse(text = "") {
+  const clean = String(text || "").replace(/^\uFEFF/, "").trim();
+  const match = clean.match(/var\s+r\s*=\s*(\[[\s\S]*\])\s*;?\s*$/);
+  if (!match) return [];
+  let rows = [];
+  try {
+    rows = JSON.parse(match[1]);
+  } catch {
+    return [];
+  }
+  const byCode = new Map();
+  for (const row of rows) {
+    const code = String(row?.[0] || "").trim();
+    const name = String(row?.[2] || "").trim();
+    if (!/^\d{6}$/.test(code) || !name || byCode.has(code)) continue;
+    const type = String(row?.[3] || "").trim();
+    const shareClass = inferFundShareClass(name);
+    byCode.set(code, {
+      code,
+      pinyin: String(row?.[1] || "").trim(),
+      name,
+      type,
+      fullPinyin: String(row?.[4] || "").trim(),
+      shareClass,
+      shareClassFeeModel: inferShareClassFeeModel(shareClass, {
+        sourceRatePct: "",
+        currentRatePct: "",
+        salesServiceFeePct: ""
+      }),
+      sourceKind: "eastmoney_fundcode_search",
+      source: `https://fund.eastmoney.com/${code}.html`
+    });
+  }
+  return [...byCode.values()];
+}
+
+function buildFundUniverseTypeCounts(items = []) {
+  return Object.fromEntries(Object.entries((items || []).reduce((map, item) => {
+    const key = item.type || "未知";
+    map[key] = Number(map[key] || 0) + 1;
+    return map;
+  }, {})).sort((a, b) => Number(b[1]) - Number(a[1])));
+}
+
+function buildFundUniverseShareClassCounts(items = []) {
+  return Object.fromEntries(Object.entries((items || []).reduce((map, item) => {
+    const key = item.shareClass || "未知";
+    map[key] = Number(map[key] || 0) + 1;
+    return map;
+  }, {})).sort((a, b) => Number(b[1]) - Number(a[1])));
+}
+
+function buildFundCodeUniverseStats(cache = readFundCodeUniverseCache(), nowIso = new Date().toISOString()) {
+  const items = Array.isArray(cache.items) ? cache.items : [];
+  const ageHours = getMarketSnapshotCacheAgeHours(cache.updatedAt, nowIso);
+  return {
+    totalFunds: Number(cache.totalFunds || items.length),
+    cachedFunds: items.length,
+    updatedAt: cache.updatedAt || "",
+    latestAgeHours: Number.isFinite(Number(ageHours)) ? round(ageHours, 2) : null,
+    fresh: Number.isFinite(Number(ageHours)) && ageHours <= FUND_CODE_UNIVERSE_CACHE_MAX_AGE_HOURS,
+    typeCounts: cache.typeCounts || buildFundUniverseTypeCounts(items),
+    shareClassCounts: cache.shareClassCounts || buildFundUniverseShareClassCounts(items),
+    sourceKind: cache.sourceKind || "eastmoney_fundcode_search"
+  };
+}
+
+function summarizeFundCodeUniverseResult(result = {}) {
+  const items = Array.isArray(result.items) ? result.items : [];
+  return {
+    ok: result.ok !== false && (Number(result.totalFunds || 0) > 0 || items.length > 0),
+    label: result.label || "东方财富全量基金代码库",
+    fetchedAt: result.fetchedAt || "",
+    sourceKind: result.sourceKind || "eastmoney_fundcode_search",
+    sourceMode: result.sourceMode || (result.cacheFallback ? "cache_fallback" : "live"),
+    cacheFallback: Boolean(result.cacheFallback),
+    cacheFetchedAt: result.cacheFetchedAt || "",
+    cacheAgeHours: Number.isFinite(Number(result.cacheAgeHours)) ? result.cacheAgeHours : null,
+    totalFunds: Number(result.totalFunds || items.length || 0),
+    typeCounts: result.typeCounts || buildFundUniverseTypeCounts(items),
+    shareClassCounts: result.shareClassCounts || buildFundUniverseShareClassCounts(items),
+    sample: items.slice(0, 80)
+  };
+}
+
+function searchFundCodeUniverseCandidates(keyword = "", options = {}) {
+  const searchText = normalizeIntentText(keyword);
+  if (!searchText) return { ok: true, keyword, sourceKinds: ["eastmoney_fundcode_search"], items: [] };
+  const cache = options.cache || readFundCodeUniverseCache();
+  const items = Array.isArray(cache.items) ? cache.items : [];
+  const limit = Math.max(1, Number(options.limit || FUND_UNIVERSE_SEARCH_RESULT_LIMIT));
+  const scored = items
+    .map((item) => {
+      const name = normalizeIntentText(item.name);
+      const type = normalizeIntentText(item.type);
+      const pinyin = normalizeIntentText(`${item.pinyin || ""} ${item.fullPinyin || ""}`);
+      let score = 0;
+      if (item.code === keyword) score += 120;
+      if (name === searchText) score += 100;
+      if (name.includes(searchText)) score += 60;
+      if (type.includes(searchText)) score += 38;
+      if (pinyin.includes(searchText)) score += 24;
+      if (!score) return null;
+      return {
+        ...item,
+        keywords: mergeStringLists(item.keywords, [keyword]),
+        setupDiscoverySource: "fund_code_universe_search",
+        score
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
+    .slice(0, limit)
+    .map(({ score, ...item }) => item);
+  return {
+    ok: scored.length > 0 || items.length > 0,
+    keyword,
+    sourceKinds: ["eastmoney_fundcode_search"],
+    items: scored
+  };
+}
+
+function normalizeFundCodeUniverseSourceForMatching(source = null) {
+  const value = source && typeof source === "object" ? source : readFundCodeUniverseCache();
+  const items = Array.isArray(value.items)
+    ? value.items
+    : Array.isArray(value.sample)
+      ? value.sample
+      : [];
+  return {
+    ...value,
+    totalFunds: Number(value.totalFunds || items.length || 0),
+    sourceKind: value.sourceKind || "eastmoney_fundcode_search",
+    items
+  };
+}
+
+function buildThemeFundUniverseMatches(marketSnapshot = null, options = {}) {
+  const universe = normalizeFundCodeUniverseSourceForMatching(
+    options.fundCodeUniverse || options.universe || options.cache || marketSnapshot?.fundUniverse
+  );
+  const items = Array.isArray(universe.items) ? universe.items : [];
+  const totalFunds = Number(universe.totalFunds || items.length || 0);
+  const fetchedAt = options.fetchedAt || marketSnapshot?.fetchedAt || new Date().toISOString();
+  const groupLimit = Math.max(1, Number(options.groupLimit || THEME_FUND_UNIVERSE_GROUP_LIMIT));
+  const groups = buildPortfolioThemeOpportunityKeywordGroups(marketSnapshot).slice(0, groupLimit);
+  if (!totalFunds || !items.length || !groups.length) {
+    return {
+      ok: Boolean(totalFunds && groups.length),
+      fetchedAt,
+      sourceKind: universe.sourceKind || "eastmoney_fundcode_search",
+      totalFunds,
+      processedThemeCount: groups.length,
+      groupCount: 0,
+      matchedFundCount: 0,
+      candidatePoolCount: 0,
+      analysisBasis: "先形成题材作战图，再从全量基金代码库召回承载基金。",
+      groups: [],
+      candidatePool: []
+    };
+  }
+
+  const groupMatches = groups
+    .map((group) => buildThemeFundUniverseMatchGroup(group, items, {
+      candidateLimit: options.groupCandidateLimit || THEME_FUND_UNIVERSE_GROUP_CANDIDATE_LIMIT
+    }))
+    .filter((group) => group && (group.matchedFundCount > 0 || group.topCandidates.length));
+  const candidatePoolLimit = Math.max(1, Number(options.candidatePoolLimit || THEME_FUND_UNIVERSE_CANDIDATE_POOL_LIMIT));
+  const candidatePool = mergeCandidateFunds(...groupMatches.map((group) => group.seedCandidates || []))
+    .sort((a, b) => Number(b.themeUniverseScore || 0) - Number(a.themeUniverseScore || 0))
+    .slice(0, candidatePoolLimit);
+  const matchedCodes = new Set(groupMatches.flatMap((group) => group.matchedCodes || []).filter(Boolean));
+  return {
+    ok: true,
+    fetchedAt,
+    sourceKind: universe.sourceKind || "eastmoney_fundcode_search",
+    sourceMode: universe.sourceMode || (universe.cacheFallback ? "cache_fallback" : "live_or_cache"),
+    totalFunds,
+    processedThemeCount: groups.length,
+    groupCount: groupMatches.length,
+    matchedFundCount: matchedCodes.size,
+    candidatePoolCount: candidatePool.length,
+    analysisBasis: "代码先用题材作战图/新闻逻辑/板块资金确定方向，再从全量基金代码库召回承载基金，最后交给基金下钻指标排序。",
+    requirement: "模型只能基于这个计算结果选择下钻候选，不能把少量排行样本当作全部基金宇宙。",
+    groups: groupMatches.map(({ seedCandidates, matchedCodes: _matchedCodes, ...group }) => group),
+    candidatePool: candidatePool.map(compactThemeFundUniverseSeedForSnapshot)
+  };
+}
+
+function buildThemeFundUniverseMatchGroup(group = {}, universeItems = [], options = {}) {
+  const terms = buildThemeFundUniverseSearchTerms(group);
+  if (!terms.length) return null;
+  const candidateLimit = Math.max(1, Number(options.candidateLimit || THEME_FUND_UNIVERSE_GROUP_CANDIDATE_LIMIT));
+  const themeSignal = buildMatchedThemeSignalFromPullbackPlaybookKeywordGroup(group);
+  const scored = (universeItems || [])
+    .map((item) => {
+      const match = scoreFundUniverseItemAgainstThemeGroup(item, group, terms);
+      return match ? { item, match } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(b.match.score || 0) - Number(a.match.score || 0)
+      || String(a.item.code || "").localeCompare(String(b.item.code || "")));
+  const seedCandidates = scored.slice(0, candidateLimit)
+    .map(({ item, match }) => buildThemeFundUniverseSeedCandidate(item, group, match, themeSignal));
+  return {
+    id: group.id || group.name || "",
+    laneKey: group.laneKey || "",
+    title: group.title || "",
+    name: group.name || group.id || "",
+    keywords: terms.slice(0, 12),
+    anchors: normalizeStringArray(group.anchors).slice(0, 8),
+    whyMove: shortenPortfolioCustomerText(group.whyMove || group.newsLogic || group.catalyst || "", 120),
+    capitalProof: group.capitalProof || "",
+    playbookAction: group.playbookAction || "",
+    matchedFundCount: scored.length,
+    matchedCodes: scored.map(({ item }) => item.code).filter(Boolean),
+    topCandidates: seedCandidates.slice(0, 8).map(compactThemeFundUniverseCandidate),
+    seedCandidates
+  };
+}
+
+function buildThemeFundUniverseSearchTerms(group = {}) {
+  const baseTerms = mergeStringLists(
+    group.anchors,
+    [group.name],
+    group.keywords,
+    [group.whyMove, group.newsLogic, group.catalyst]
+  );
+  const expandedTerms = expandThemeNewsKeywords(baseTerms, {
+    name: group.name || "",
+    leadStock: normalizeStringArray(group.anchors)[0] || ""
+  });
+  const ruleTerms = collectThemeFundUniverseRuleFundKeywords(group, baseTerms);
+  return mergeStringLists(baseTerms, expandedTerms, ruleTerms)
+    .flatMap((value) => String(value || "").split(/[，,、/；;+\s]+/))
+    .map((value) => value.trim())
+    .filter(isThemeOpportunitySearchKeywordUseful)
+    .slice(0, 18);
+}
+
+function collectThemeFundUniverseRuleFundKeywords(group = {}, baseTerms = []) {
+  const text = [
+    group.id,
+    group.name,
+    group.title,
+    group.whyMove,
+    group.newsLogic,
+    group.catalyst,
+    ...(baseTerms || [])
+  ].filter(Boolean).join(" ");
+  const values = [];
+  for (const rule of [...THEME_RADAR_RULES, ...THEME_NEWS_DISCOVERY_RULES]) {
+    const keys = [rule.name, ...(rule.keywords || []), ...(rule.fundKeywords || [])].filter(Boolean);
+    if (textMatchesKeywords(text, keys)) values.push(...(rule.fundKeywords || rule.keywords || []));
+  }
+  const parentRules = [
+    { needles: ["植物照明", "LED", "MiniLED", "MicroLED", "三安光电"], fundKeywords: ["半导体", "芯片", "电子", "光电"] },
+    { needles: ["光模块", "CPO", "液冷", "服务器"], fundKeywords: ["通信", "人工智能", "信息技术", "科技"] },
+    { needles: ["执行器", "减速器", "伺服", "灵巧手"], fundKeywords: ["机器人", "智能制造", "高端制造"] },
+    { needles: ["低空", "eVTOL", "飞行汽车", "无人机"], fundKeywords: ["低空", "航空", "军工", "高端制造"] },
+    { needles: ["PCB", "铜缆", "高速连接"], fundKeywords: ["电子", "通信", "人工智能", "半导体"] },
+    { needles: ["脑机接口", "BCI"], fundKeywords: ["医疗器械", "医药", "科技", "人工智能"] }
+  ];
+  for (const rule of parentRules) {
+    if (textMatchesKeywords(text, rule.needles)) values.push(...rule.fundKeywords);
+  }
+  return [...new Set(values)].slice(0, 12);
+}
+
+function scoreFundUniverseItemAgainstThemeGroup(item = {}, group = {}, terms = []) {
+  const code = String(item.code || "").trim();
+  if (!/^\d{6}$/.test(code)) return null;
+  if (!isPreciousPortfolioThemeOpportunityItem(group) && isPreciousMetalCandidate(item)) return null;
+  if (!/债|固收|现金|货币/.test(`${group.name || ""} ${group.title || ""}`) && /债券|货币|现金|同业存单|短债|纯债/.test(`${item.name || ""} ${item.type || ""}`)) return null;
+  const nameText = normalizeIntentText(item.name);
+  const typeText = normalizeIntentText(item.type);
+  const pinyinText = normalizeIntentText(`${item.pinyin || ""} ${item.fullPinyin || ""}`);
+  if (!nameText && !typeText && !pinyinText) return null;
+  const anchors = new Set(normalizeStringArray(group.anchors).map(normalizeIntentText).filter(Boolean));
+  const groupName = normalizeIntentText(group.name);
+  const matchedTerms = [];
+  let score = 0;
+  for (const term of terms || []) {
+    const value = normalizeIntentText(term);
+    if (!value || matchedTerms.some((existing) => normalizeIntentText(existing) === value)) continue;
+    let termScore = 0;
+    if (nameText === value) termScore += 90;
+    else if (nameText.includes(value)) termScore += 46;
+    if (typeText.includes(value)) termScore += 18;
+    if (value.length >= 4 && pinyinText.includes(value)) termScore += 12;
+    if (!termScore) continue;
+    if (anchors.has(value)) termScore += 24;
+    if (groupName && value === groupName) termScore += 12;
+    if (isBroadThemeOpportunityCoverageAnchor(term)) termScore *= 0.68;
+    matchedTerms.push(term);
+    score += termScore;
+  }
+  if (!matchedTerms.length || score < 18) return null;
+  const laneKey = group.laneKey || "";
+  if (laneKey === "mainCapital") score += 18;
+  else if (laneKey === "preheat") score += 15;
+  else if (laneKey === "lowRotation") score += 12;
+  if (/ETF|联接|指数/i.test(item.name || item.type || "")) score += 5;
+  if (item.shareClass === "C" || /C$|C类/.test(item.name || "")) score += 2;
+  return {
+    score: round(score, 1),
+    matchedTerms: matchedTerms.slice(0, 8)
+  };
+}
+
+function buildThemeFundUniverseSeedCandidate(item = {}, group = {}, match = {}, themeSignal = null) {
+  const matchedTheme = themeSignal || buildMatchedThemeSignalFromPullbackPlaybookKeywordGroup(group);
+  const source = `fund_code_universe_theme_match:${group.laneKey || group.id || "theme"}`;
+  return {
+    ...item,
+    shareClass: item.shareClass || inferFundShareClass(item.name || ""),
+    keywords: mergeStringLists(item.keywords, match.matchedTerms, group.keywords, group.anchors, [group.name, "全量基金库题材召回"]).slice(0, 18),
+    matchedThemes: mergeCandidateMatchedThemes(item.matchedThemes, [matchedTheme]),
+    themeOpportunityRequirement: "require_current_theme_playbook",
+    candidateRole: `${group.title || group.name || "题材作战图"}承载基金`,
+    setupDiscoverySource: source,
+    themeEvidence: formatCandidateThemeEvidence({ matchedThemes: [matchedTheme] }),
+    dataBasis: mergeStringLists(item.dataBasis, [
+      `全量基金库命中：${group.name || group.id || "题材"}`,
+      group.whyMove ? `为什么动：${shortenPortfolioCustomerText(group.whyMove, 80)}` : "",
+      group.capitalProof ? `主力证据：${group.capitalProof}` : "",
+      match.matchedTerms?.length ? `命中词：${match.matchedTerms.slice(0, 5).join("/")}` : ""
+    ]).slice(0, 8),
+    themeUniverseMatch: {
+      themeId: group.id || group.name || "",
+      themeName: group.name || group.id || "",
+      laneKey: group.laneKey || "",
+      score: match.score,
+      matchedTerms: normalizeStringArray(match.matchedTerms).slice(0, 8)
+    },
+    themeUniverseScore: match.score
+  };
+}
+
+function compactThemeFundUniverseCandidate(item = {}) {
+  return {
+    code: item.code || "",
+    name: item.name || "",
+    type: item.type || item.label || "",
+    shareClass: item.shareClass || inferFundShareClass(item.name || ""),
+    score: Number.isFinite(Number(item.themeUniverseScore || item.themeUniverseMatch?.score))
+      ? round(Number(item.themeUniverseScore || item.themeUniverseMatch?.score), 1)
+      : null,
+    theme: item.themeUniverseMatch?.themeName || item.matchedThemes?.[0]?.name || "",
+    laneKey: item.themeUniverseMatch?.laneKey || item.matchedThemes?.[0]?.leaderSignal || "",
+    matchedTerms: normalizeStringArray(item.themeUniverseMatch?.matchedTerms || item.keywords).slice(0, 5),
+    reason: normalizeStringArray(item.dataBasis).slice(0, 2).join("；"),
+    setupDiscoverySource: item.setupDiscoverySource || ""
+  };
+}
+
+function compactThemeFundUniverseSeedForSnapshot(item = {}) {
+  return {
+    code: item.code || "",
+    name: item.name || "",
+    type: item.type || item.label || "",
+    shareClass: item.shareClass || inferFundShareClass(item.name || ""),
+    shareClassFeeModel: item.shareClassFeeModel || null,
+    sourceKind: item.sourceKind || "eastmoney_fundcode_search",
+    source: item.source || "",
+    keywords: normalizeStringArray(item.keywords).slice(0, 14),
+    matchedThemes: mergeCandidateMatchedThemes(item.matchedThemes).slice(0, 2),
+    themeOpportunityRequirement: item.themeOpportunityRequirement || "require_current_theme_playbook",
+    candidateRole: item.candidateRole || "",
+    setupDiscoverySource: item.setupDiscoverySource || "",
+    themeEvidence: item.themeEvidence || "",
+    dataBasis: normalizeStringArray(item.dataBasis).slice(0, 6),
+    themeUniverseMatch: item.themeUniverseMatch || null,
+    themeUniverseScore: Number.isFinite(Number(item.themeUniverseScore)) ? round(Number(item.themeUniverseScore), 1) : null
+  };
+}
+
+function selectThemeFundUniverseSeedCandidates(marketSnapshot = null, options = {}) {
+  const matches = marketSnapshot?.themeFundUniverseMatches?.candidatePool
+    ? marketSnapshot.themeFundUniverseMatches
+    : buildThemeFundUniverseMatches(marketSnapshot, options);
+  const limit = Math.max(0, Number(options.limit || THEME_FUND_UNIVERSE_CANDIDATE_POOL_LIMIT));
+  if (!limit) return [];
+  let candidates = mergeCandidateFunds(matches.candidatePool || []);
+  const focusedKeywords = inferFocusedFundSearchKeywords(options.userText || "");
+  if (focusedKeywords.length) {
+    const aliases = buildFocusedKeywordAliases(focusedKeywords);
+    const focused = candidates.filter((item) => candidateMatchesFocusedKeywordAliases(item, aliases));
+    if (focused.length) candidates = focused;
+  }
+  if (!isPreciousMetalQuestion(options.userText || "")) {
+    candidates = candidates.filter((item) => !isPreciousMetalCandidate(item));
+  }
+  return candidates
+    .sort((a, b) => Number(b.themeUniverseScore || b.score || 0) - Number(a.themeUniverseScore || a.score || 0)
+      || String(a.code || "").localeCompare(String(b.code || "")))
+    .slice(0, limit);
+}
+
+function compactThemeFundUniverseMatchesForModel(matches = null) {
+  if (!matches || typeof matches !== "object") return null;
+  return {
+    全量基金: Number(matches.totalFunds || 0),
+    处理题材: Number(matches.processedThemeCount || 0),
+    命中基金: Number(matches.matchedFundCount || 0),
+    下钻候选: Number(matches.candidatePoolCount || matches.candidatePool?.length || 0),
+    规则: "先题材/板块作战图，再全量基金召回，再固定指标下钻排序",
+    题材召回: (matches.groups || []).slice(0, 4).map((group) => ({
+      题材: group.name || "",
+      通道: group.title || group.laneKey || "",
+      命中: Number(group.matchedFundCount || 0),
+      逻辑: group.whyMove || group.capitalProof || "",
+      候选: (group.topCandidates || []).slice(0, 4).map((item) =>
+        `${item.code || ""}${item.name ? ` ${item.name}` : ""}${item.score !== null && item.score !== undefined ? `/${item.score}` : ""}`.trim()
+      )
+    })),
+    候选池: (matches.candidatePool || []).slice(0, 10).map((item) =>
+      `${item.code || ""}${item.name ? ` ${item.name}` : ""}${item.theme ? `(${item.theme})` : ""}`.trim()
+    )
+  };
 }
 
 function readFundRankingCache(filePath = FUND_RANKING_CACHE_PATH) {
@@ -41982,6 +42953,11 @@ function getDefaultStats() {
       fundRankingHistoryWrites: 0,
       fundRankingHistoryWriteFailures: 0,
       fundRankingHistoryFundsObserved: 0,
+      fundCodeUniverseFetches: 0,
+      fundCodeUniverseCacheWrites: 0,
+      fundCodeUniverseCacheFallbacks: 0,
+      fundCodeUniverseCacheWriteFailures: 0,
+      fundUniverseFundsObserved: 0,
       themeRadarHistoryWrites: 0,
       themeRadarHistoryThemesObserved: 0,
       marketBoardHistoryWrites: 0,
@@ -44110,8 +45086,10 @@ export {
   buildPortfolioCatchdownLossMemories,
   buildPortfolioManagerPerformanceStats,
   buildPortfolioMarketSnapshotPrioritySeeds,
+  buildThemeFundUniverseMatches,
   buildPortfolioThemeOpportunitySeedCandidates,
   buildPortfolioThemeOpportunityKeywordGroups,
+  selectThemeFundUniverseSeedCandidates,
   refreshPortfolioCandidateThemesWithMarketRadar,
   buildPortfolioCapabilityDiagnostics,
   buildPortfolioCapabilityActionQueue,
@@ -44183,6 +45161,7 @@ export {
   buildFundPriorityPreferenceConfigPatch,
   buildFundPriorityPreferenceAnswer,
   buildFundComputedOpportunityScorecard,
+  buildFundResearchDigestLeaderboards,
   buildCachedFundResearchDigestFallback,
   buildDataSourceCoverageReport,
   buildDataSourceEvidenceReadiness,
@@ -44249,8 +45228,10 @@ export {
   fetchChinaRealtimeIndexQuotes,
   fetchEastmoneyChinaIndexQuotes,
   fetchFundResearchDigest,
+  fetchFundCodeUniverse,
   fetchGlobalMarketQuotes,
   fetchText,
+  searchFundCodeUniverseCandidates,
   buildRealtimeFundValuationSeedItems,
   fetchRealtimeFundValuationSnapshot,
   findPortfolioBacktestBlockedFollowThroughCandidates,

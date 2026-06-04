@@ -218,6 +218,43 @@ const requiredPatterns = [
   },
   {
     test: (source) => {
+      const builder = getFunctionSource(source, "buildFundResearchDigestLeaderboards");
+      const fundCoverage = getFunctionSource(source, "buildFundDataCoverage");
+      const compactCoverage = getFunctionSource(source, "compactDataSourceCoverageForModel");
+      return builder.includes("高夏普低回撤榜")
+        && builder.includes("回调启动复核榜")
+        && builder.includes("持仓前景榜")
+        && builder.includes("费用适配榜")
+        && source.includes("不买/降级榜")
+        && fundCoverage.includes("researchDigestLeaderboardLanes")
+        && fundCoverage.includes("researchLeaderboards")
+        && compactCoverage.includes("基金研究榜");
+    },
+    message: "fund research digests must be converted into fixed-code opportunity leaderboards for admin and model context."
+  },
+  {
+    test: (source) => {
+      const snapshot = getFunctionSource(source, "fetchMarketSnapshot");
+      const deepDive = getFunctionSource(source, "fetchMarketDeepDive");
+      const pullback = getFunctionSource(source, "fetchPullbackSetupCandidates");
+      const fundCoverage = getFunctionSource(source, "buildFundDataCoverage");
+      const compactSnapshot = getFunctionSource(source, "compactMarketSnapshotForModel");
+      return source.includes("FUND_CODE_UNIVERSE_CACHE_PATH")
+        && source.includes("eastmoney_fund_code_universe")
+        && source.includes("fetchFundCodeUniverse")
+        && source.includes("buildThemeFundUniverseMatches")
+        && source.includes("selectThemeFundUniverseSeedCandidates")
+        && snapshot.includes("themeFundUniverseMatches")
+        && deepDive.includes("themeUniverseCandidates")
+        && pullback.includes("themeUniverseItems")
+        && fundCoverage.includes("fundUniverseTotalFunds")
+        && fundCoverage.includes("themeFundUniverseCandidatePoolCount")
+        && compactSnapshot.includes("题材基金全量召回");
+    },
+    message: "fund discovery must use full fund-code universe theme recall before model recommendation and deep dive."
+  },
+  {
+    test: (source) => {
       const evidence = getFunctionSource(source, "buildMarketEvidenceSummary");
       return evidence.includes("compactDataSourceCoverageForModel")
         && evidence.includes("数据源覆盖：")
@@ -1029,7 +1066,14 @@ const requiredPatterns = [
     message: "admin runtime pages must expose fund research warmer, profile samples, top-holding realtime pulse, and warmed research cache coverage."
   },
   {
-    pattern: /function normalizeMarketDataQualityComponent[\s\S]{0,900}cacheFallback[\s\S]{0,520}status = "cached"/,
+    pattern: {
+      test: (source) => {
+        const normalizer = getFunctionSource(source, "normalizeMarketDataQualityComponent");
+        return normalizer.includes("cacheFallback")
+          && normalizer.includes('status = "cached"')
+          && normalizer.includes('sourceMode: result?.sourceMode || (result?.cacheFallback ? "cache_fallback" : "live")');
+      }
+    },
     message: "market data quality must distinguish cache fallback from live realtime evidence."
   },
   {
@@ -1205,11 +1249,13 @@ const requiredPatterns = [
   },
   {
     pattern: {
-      test: (source) => source.includes("function compactMarketSnapshotForModel")
-        && source.includes("compactRealtimeFundValuations(summary.marketIndicators?.realtimeFundValuations")
-        && source.includes("compactNewsPulseForModel(summary.marketIndicators?.newsPulse)")
-        && source.includes("compactMarketFundCandidates(summary.fundCandidates?.stockFunds")
-        && /function compactMarketSnapshotForModel[\s\S]{0,2600}errors:\s*\(summary\.errors/.test(source)
+      test: (source) => {
+        const compact = getFunctionSource(source, "compactMarketSnapshotForModel");
+        return compact.includes("compactRealtimeFundValuations(summary.marketIndicators?.realtimeFundValuations")
+          && compact.includes("compactNewsPulseForModel(summary.marketIndicators?.newsPulse)")
+          && compact.includes("compactMarketFundCandidates(summary.fundCandidates?.stockFunds")
+          && compact.includes("errors: (summary.errors");
+      }
     },
     message: "model prompts must use a compact market snapshot that preserves key evidence without raw payload bloat."
   },
