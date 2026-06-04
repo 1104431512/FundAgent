@@ -133,9 +133,22 @@ const requiredPatterns = [
         && builder.includes("buildBoardMarketCoverage")
         && builder.includes("buildFundDataCoverage")
         && builder.includes("buildNewsDataCoverage")
-        && builder.includes("buildDataProcessingEngineCoverage");
+        && builder.includes("buildDataProcessingEngineCoverage")
+        && builder.includes("buildDataSourceEvidenceReadiness");
     },
     message: "market snapshots must attach deterministic data-source coverage covering source, board, fund, news, and indicator layers."
+  },
+  {
+    test: (source) => {
+      const readiness = getFunctionSource(source, "buildDataSourceEvidenceReadiness");
+      return readiness.includes("actionGate")
+        && readiness.includes("buy_review_allowed")
+        && readiness.includes("staged_review_only")
+        && readiness.includes("watch_only")
+        && readiness.includes("data_repair_first")
+        && readiness.includes("基金实时估值覆盖或新鲜度不足");
+    },
+    message: "data-source coverage must compute a deterministic evidence-readiness gate before model buy/sell judgment."
   },
   {
     test: (source) => {
@@ -147,7 +160,9 @@ const requiredPatterns = [
         && compactCoverage.includes("板块覆盖")
         && compactCoverage.includes("基金覆盖")
         && compactCoverage.includes("新闻覆盖")
-        && compactCoverage.includes("指标引擎");
+        && compactCoverage.includes("指标引擎")
+        && compactCoverage.includes("证据门槛")
+        && compactCoverage.includes("买入约束");
     },
     message: "compact model snapshots must carry Chinese data-source coverage instead of hiding interface health from the manager."
   },
@@ -156,6 +171,8 @@ const requiredPatterns = [
       const evidence = getFunctionSource(source, "buildMarketEvidenceSummary");
       return evidence.includes("compactDataSourceCoverageForModel")
         && evidence.includes("数据源覆盖：")
+        && evidence.includes("买入约束")
+        && evidence.includes("数据阻塞")
         && evidence.includes("缓存回退源")
         && evidence.includes("数据源缺口");
     },
@@ -166,8 +183,8 @@ const requiredPatterns = [
     message: "board market coverage must show concept/industry markets, four realtime board modes, and per-board metric fields."
   },
   {
-    pattern: /(?=[\s\S]*runtimeDataSourceCoverage)(?=[\s\S]*refreshDataSourcesBtn)(?=[\s\S]*renderRuntimeDataSourceCoverage)(?=[\s\S]*数据源覆盖)/,
-    message: "admin runtime data-source page must visibly show source coverage and allow manual refresh."
+    pattern: /(?=[\s\S]*runtimeDataSourceCoverage)(?=[\s\S]*refreshDataSourcesBtn)(?=[\s\S]*renderRuntimeDataSourceCoverage)(?=[\s\S]*数据源覆盖)(?=[\s\S]*evidenceReadiness)(?=[\s\S]*买入门槛)(?=[\s\S]*证据门槛)/,
+    message: "admin runtime data-source page must visibly show source coverage, evidence readiness, and allow manual refresh."
   },
   {
     pattern: /function inferFundShareClass[\s\S]{0,500}knownProductSuffixes\.includes\(rawSuffix\)[\s\S]{0,80}return ""/,

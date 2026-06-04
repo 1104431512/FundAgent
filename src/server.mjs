@@ -21088,6 +21088,9 @@ function compactDataSourceCoverageForModel(coverage = null) {
     基金覆盖: `${Object.values(candidateCounts).reduce((sum, value) => sum + Number(value || 0), 0)}只候选；排行${fund.rankingCount || 0}；实时估值${fund.realtimeValuationCount || 0}条；历史${fund.rankingHistoryFunds || 0}`,
     新闻覆盖: `${news.fastNewsCount || 0}条快讯；${news.topTopicCount || 0}个题材脉冲`,
     指标引擎: `${totals.activeIndicatorEngines ?? activeEngines.length}/${totals.indicatorEngines ?? DATA_PROCESSING_ENGINE_REGISTRY.length} 已有样本`,
+    证据门槛: coverage.evidenceReadiness ? `${coverage.evidenceReadiness.score}分 ${coverage.evidenceReadiness.label}` : "",
+    买入约束: String(coverage.evidenceReadiness?.actionText || "").slice(0, 56),
+    数据阻塞: normalizeStringArray(coverage.evidenceReadiness?.blockers).slice(0, 2),
     已激活指标: activeEngines,
     缓存源: cachedSources,
     缺口源: missingSources
@@ -22194,8 +22197,15 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
       sourceCoverage.板块覆盖 || "",
       sourceCoverage.基金覆盖 || "",
       sourceCoverage.新闻覆盖 || "",
-      `指标引擎${sourceCoverage.指标引擎}`
+      `指标引擎${sourceCoverage.指标引擎}`,
+      sourceCoverage.证据门槛 ? `证据门槛${sourceCoverage.证据门槛}` : ""
     ].filter(Boolean).join("；"));
+    if (sourceCoverage.买入约束) {
+      lines.push(`- 买入约束：${sourceCoverage.买入约束}`);
+    }
+    if (sourceCoverage.数据阻塞?.length) {
+      lines.push(`- 数据阻塞：${sourceCoverage.数据阻塞.join("、")}。`);
+    }
     if (sourceCoverage.缓存源?.length) {
       lines.push(`- 缓存回退源：${sourceCoverage.缓存源.slice(0, 4).join("、")}；只能用于连续性计算，不能当作实时买点确认。`);
     }
@@ -28740,17 +28750,201 @@ function buildDataSourceCoverageFromSnapshot(snapshot = null, options = {}) {
     refresh: Boolean(options.refresh),
     refreshError: options.refreshError || ""
   });
+  const evidenceReadiness = buildDataSourceEvidenceReadiness({
+    totals,
+    sources,
+    boardCoverage,
+    fundCoverage,
+    newsCoverage,
+    indicatorEngines,
+    historyStores,
+    snapshotMeta
+  });
   return {
     generatedAt,
-    summary: buildDataSourceCoverageSummary({ totals, boardCoverage, fundCoverage, newsCoverage, snapshotMeta }),
+    summary: buildDataSourceCoverageSummary({ totals, boardCoverage, fundCoverage, newsCoverage, snapshotMeta, evidenceReadiness }),
     totals,
     snapshot: snapshotMeta,
+    evidenceReadiness,
     boardCoverage,
     fundCoverage,
     newsCoverage,
     sources,
     indicatorEngines,
     historyStores
+  };
+}
+
+function buildDataSourceEvidenceReadiness(context = {}) {
+  const totals = context.totals || {};
+  const sources = context.sources || [];
+  const board = context.boardCoverage || {};
+  const fund = context.fundCoverage || {};
+  const news = context.newsCoverage || {};
+  const engines = context.indicatorEngines || [];
+  const historyStores = context.historyStores || [];
+  const snapshot = context.snapshotMeta || {};
+  const blockers = [];
+  const strengths = [];
+  const repairs = [];
+  const scoreParts = [];
+  const addScore = (label, value, max) => {
+    const safeValue = Math.max(0, Math.min(Number(value || 0), Number(max || 0)));
+    scoreParts.push({ label, value: round(safeValue, 1), max });
+    return safeValue;
+  };
+  const ratioScore = (label, numerator, denominator, max) => {
+    const den = Number(denominator || 0);
+    if (den <= 0) return addScore(label, 0, max);
+    return addScore(label, (Number(numerator || 0) / den) * max, max);
+  };
+
+  let score = 0;
+  if (snapshot.dataQualityLevel === "good") {
+    score += addScore("数据质量", 12, 12);
+    strengths.push("市场快照质量完整。");
+  } else if (snapshot.dataQualityLevel === "partial") {
+    score += addScore("数据质量", 8, 12);
+    blockers.push("市场快照仍有部分模块缺口，买入只能降低把握度。");
+  } else {
+    score += addScore("数据质量", 3, 12);
+    blockers.push("市场快照质量不足，不能直接支撑具体买入。");
+    repairs.push("先修复关键市场快照模块。");
+  }
+
+  const age = Number(snapshot.ageMinutes);
+  if (!Number.isFinite(age)) {
+    score += addScore("快照时效", 0, 14);
+    blockers.push("没有可核验的市场快照时间。");
+    repairs.push("重新刷新市场快照并写入缓存。");
+  } else if (age <= 30) {
+    score += addScore("快照时效", 14, 14);
+    strengths.push("快照处于盘中可用时效。");
+  } else if (age <= 120) {
+    score += addScore("快照时效", 10, 14);
+    strengths.push("快照仍可用于当日复核。");
+  } else if (age <= 360) {
+    score += addScore("快照时效", 6, 14);
+    blockers.push("快照偏旧，只能做观察或低把握复核。");
+  } else {
+    score += addScore("快照时效", 2, 14);
+    blockers.push("快照过旧，不能当作实时买点证据。");
+    repairs.push("刷新板块、新闻和基金实时估值。");
+  }
+
+  score += ratioScore("接口配置", totals.configuredSources, totals.externalSources, 8);
+  score += ratioScore("实时接口", totals.realtimeUsableSources, totals.realtimeSources, 10);
+  score += ratioScore("样本接口", totals.sampledSources, totals.externalSources, 10);
+  if (Number(totals.realtimeUsableSources || 0) >= Math.max(6, Number(totals.realtimeSources || 0) - 2)) {
+    strengths.push("实时源覆盖较充分。");
+  } else {
+    blockers.push("实时源可用数量偏少。");
+    repairs.push("补齐基金实时估值、新闻或指数实时源。");
+  }
+
+  const observedBoards = Number(board.observedBoards || 0);
+  score += addScore("板块覆盖", observedBoards >= 80 ? 12 : observedBoards >= 40 ? 9 : observedBoards >= 16 ? 5 : 1, 12);
+  if (observedBoards >= 40 && Number(board.realtimeBoardFeeds || 0) >= 8) {
+    strengths.push("板块覆盖足够做轮动和主力宽度判断。");
+  } else {
+    blockers.push("板块样本不足，轮动判断容易失真。");
+    repairs.push("刷新概念/行业板块四榜。");
+  }
+
+  const candidateTotal = Object.values(fund.candidateCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+  const valuationCount = Number(fund.realtimeValuationCount || 0);
+  const freshValuationCount = Number(fund.freshRealtimeValuationCount || 0);
+  score += addScore("基金候选", candidateTotal >= 100 ? 8 : candidateTotal >= 48 ? 6 : candidateTotal >= 18 ? 4 : 1, 8);
+  score += addScore("实时估值", valuationCount >= 20 ? 8 : valuationCount >= 10 ? 6 : valuationCount >= 4 ? 3 : 0, 8);
+  if (candidateTotal < 30) {
+    blockers.push("基金候选池太小，容易把用户需求误收敛到少数题材。");
+    repairs.push("扩展基金排行、搜索和主题候选召回。");
+  }
+  if (valuationCount < 8 || freshValuationCount < Math.min(8, valuationCount)) {
+    blockers.push("基金实时估值覆盖或新鲜度不足，买点温度需要降级。");
+    repairs.push("补齐天天基金、Sina、HaoETF或养基宝实时估值。");
+  }
+
+  const fastNewsCount = Number(news.fastNewsCount || 0);
+  const topicCount = Number(news.topTopicCount || 0);
+  score += addScore("新闻覆盖", fastNewsCount >= 24 ? 8 : fastNewsCount >= 12 ? 6 : fastNewsCount >= 4 ? 3 : 0, 8);
+  score += addScore("题材脉冲", topicCount >= 5 ? 5 : topicCount >= 2 ? 3 : topicCount >= 1 ? 1 : 0, 5);
+  if (fastNewsCount >= 12 && topicCount >= 2) {
+    strengths.push("新闻脉冲可用于解释题材为什么动。");
+  } else {
+    blockers.push("新闻题材脉冲不足，不能证明题材上涨逻辑。");
+    repairs.push("刷新东方财富、财联社和新浪快讯。");
+  }
+
+  const activeEngines = Number(totals.activeIndicatorEngines || engines.filter((item) => item.status === "active").length);
+  score += ratioScore("指标引擎", activeEngines, totals.indicatorEngines || engines.length, 12);
+  score += addScore("历史缓存", Number(totals.historyItems || 0) >= 80 ? 5 : Number(totals.historyItems || 0) >= 20 ? 3 : Number(totals.historyItems || 0) >= 1 ? 1 : 0, 5);
+  if (activeEngines >= 8) {
+    strengths.push("固定代码指标引擎已有足够样本。");
+  } else {
+    blockers.push("活跃指标引擎偏少，模型容易退回泛泛判断。");
+    repairs.push("补齐市场宽度、板块轮动、新闻脉冲、风险收益和持仓前景样本。");
+  }
+
+  const cachedSources = sources.filter((item) => item.status === "cached");
+  const missingSources = sources.filter((item) => item.status === "missing");
+  const needsConfigSources = sources.filter((item) => item.status === "needs_config");
+  const penalty = Math.min(15, cachedSources.length * 2 + missingSources.length * 4 + (snapshot.refreshError ? 6 : 0));
+  score = Math.max(0, score - penalty);
+  if (cachedSources.length) blockers.push(`有 ${cachedSources.length} 个接口使用缓存回退，不能当作实时买点确认。`);
+  if (missingSources.length) blockers.push(`有 ${missingSources.length} 个接口最近抓取缺失。`);
+  if (needsConfigSources.length) repairs.push(`${needsConfigSources.map((item) => item.provider || item.label).slice(0, 3).join("、")} 等接口待授权配置。`);
+  if (snapshot.refreshError) {
+    blockers.push(`刷新失败：${snapshot.refreshError}`);
+    repairs.push("先处理刷新失败原因。");
+  }
+
+  if (snapshot.dataQualityLevel === "poor") score = Math.min(score, 44);
+  if (Number.isFinite(age) && age > 360) score = Math.min(score, 54);
+  if (valuationCount < 4) score = Math.min(score, 64);
+  score = Math.round(Math.max(0, Math.min(100, score)));
+  let level = "repair";
+  let label = "先补数据源";
+  let actionGate = "data_repair_first";
+  let actionText = "不允许给具体买入结论，先补齐关键市场、新闻和基金估值数据。";
+  let tone = "bad";
+  if (score >= 82) {
+    level = "strong";
+    label = "可支撑买入复核";
+    actionGate = "buy_review_allowed";
+    actionText = "允许进入逐基金买入复核，但仍必须穿透走势、持仓、费率和组合风险。";
+    tone = "ok";
+  } else if (score >= 65) {
+    level = "usable";
+    label = "只支撑小额分批";
+    actionGate = "staged_review_only";
+    actionText = "只允许小额/分批复核，禁止把单一题材或新闻包装成重仓买点。";
+    tone = "info";
+  } else if (score >= 45) {
+    level = "watch";
+    label = "只适合观察";
+    actionGate = "watch_only";
+    actionText = "只能输出观察和补源清单，具体基金买入需要等数据源刷新后再判。";
+    tone = "warn";
+  }
+  return {
+    score,
+    level,
+    label,
+    tone,
+    actionGate,
+    actionText,
+    scoreParts,
+    strengths: [...new Set(strengths)].slice(0, 5),
+    blockers: [...new Set(blockers)].slice(0, 6),
+    requiredRepairs: [...new Set(repairs)].slice(0, 6),
+    sourceHealth: {
+      cachedSources: cachedSources.length,
+      missingSources: missingSources.length,
+      needsConfigSources: needsConfigSources.length,
+      liveSources: Number(totals.liveSources || 0),
+      sampledSources: Number(totals.sampledSources || 0)
+    }
   };
 }
 
@@ -29310,13 +29504,14 @@ function formatDataSourceAge(minutes) {
   return `${round(value / 1440, 1)} 天前`;
 }
 
-function buildDataSourceCoverageSummary({ totals = {}, boardCoverage = {}, fundCoverage = {}, newsCoverage = {}, snapshotMeta = {} } = {}) {
+function buildDataSourceCoverageSummary({ totals = {}, boardCoverage = {}, fundCoverage = {}, newsCoverage = {}, snapshotMeta = {}, evidenceReadiness = null } = {}) {
   return [
+    evidenceReadiness ? `证据门槛 ${evidenceReadiness.score} 分：${evidenceReadiness.label}。` : "",
     `已接入 ${totals.externalSources || 0} 个外部数据接口，${totals.configuredSources || 0} 个无需额外授权或已配置。`,
     `板块市场支持 ${boardCoverage.configuredMarketTypes || 0} 类市场、${boardCoverage.realtimeBoardFeeds || 0} 条实时榜单维度，每个板块沉淀 ${boardCoverage.metricFieldCount || 0} 类字段。`,
     `最近快照覆盖 ${boardCoverage.observedBoards || 0} 个板块、${totals.fundCandidates || 0} 只候选基金、${fundCoverage.realtimeValuationCount || 0} 条实时估值、${newsCoverage.fastNewsCount || 0} 条快讯。`,
     `固定代码指标引擎 ${totals.indicatorEngines || 0} 个，已有样本 ${totals.activeIndicatorEngines || 0} 个；快照时间 ${snapshotMeta.ageText || "暂无"}。`
-  ].join(" ");
+  ].filter(Boolean).join(" ");
 }
 
 function buildRealtimeFundValuationSeedItems(fundCandidates = {}, options = {}) {
@@ -42992,6 +43187,7 @@ export {
   buildFundComputedOpportunityScorecard,
   buildCachedFundResearchDigestFallback,
   buildDataSourceCoverageReport,
+  buildDataSourceEvidenceReadiness,
   buildMarketDataQuality,
   buildRealtimeFundValuationSignal,
   applyMarketSnapshotCacheFallback,

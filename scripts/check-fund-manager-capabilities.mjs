@@ -12651,6 +12651,17 @@ const noisyMarketSnapshot = {
       { id: "newsPulse", label: "新闻脉冲", status: "active" },
       { id: "themeLeaderboards", label: "题材榜单", status: "active" }
     ],
+    evidenceReadiness: {
+      score: 84,
+      level: "strong",
+      label: "可支撑买入复核",
+      tone: "ok",
+      actionGate: "buy_review_allowed",
+      actionText: "允许进入逐基金买入复核，但仍必须穿透走势、持仓、费率和组合风险。",
+      strengths: ["固定代码指标引擎已有足够样本。"],
+      blockers: ["有 1 个接口使用缓存回退，不能当作实时买点确认。"],
+      requiredRepairs: ["养基宝 等接口待授权配置。"]
+    },
     sources: [
       { provider: "天天基金", label: "盘中估算净值", status: "available" },
       { provider: "新浪财经", label: "基金估值备源", status: "cached" },
@@ -12678,6 +12689,9 @@ assert(compactMarketSnapshot["数据源覆盖"].板块覆盖.includes("88个板�
 assert(compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("18只候选") && compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("实时估值24条"), "compact data-source coverage must preserve fund candidate and valuation coverage");
 assert(compactMarketSnapshot["数据源覆盖"].新闻覆盖.includes("28条快讯") && compactMarketSnapshot["数据源覆盖"].新闻覆盖.includes("6个题材脉冲"), "compact data-source coverage must preserve news pulse coverage");
 assert(compactMarketSnapshot["数据源覆盖"].已激活指标.includes("市场宽度") && compactMarketSnapshot["数据源覆盖"].已激活指标.includes("板块轮动"), "compact data-source coverage must preserve active fixed-code indicator engines");
+assert.equal(compactMarketSnapshot["数据源覆盖"].证据门槛, "84分 可支撑买入复核", "compact data-source coverage must preserve deterministic evidence-readiness score");
+assert(compactMarketSnapshot["数据源覆盖"].买入约束.includes("允许进入逐基金买入复核"), "compact data-source coverage must preserve deterministic buy gate text");
+assert(compactMarketSnapshot["数据源覆盖"].数据阻塞.some((item) => item.includes("缓存回退")), "compact data-source coverage must preserve data blockers");
 assert(compactMarketSnapshot["数据源覆盖"].缓存源.includes("新浪财经/基金估值备源"), "compact data-source coverage must show cache fallback sources");
 assert(compactMarketSnapshot["数据源覆盖"].缺口源.includes("养基宝/基金搜索/实时估值（待授权）"), "compact data-source coverage must show missing or authorization-gated sources");
 assert(compactMarketSnapshot.themeRadar[0]["板块位置"] === "交易拥挤", "compact market snapshot must carry Chinese theme-stage labels");
@@ -12689,10 +12703,63 @@ assert(compactMarketSnapshot.themeRadar[0]["操作倾向"] === "等待或小额�
 assert(!/"(?:stage|positionSignal|actionBias|stageText|positionSignalText|actionBiasText|leaderSignal|capitalFollowScore|preheatScore|newsLogic)"\s*:/.test(compactMarketSnapshotJson), "compact market snapshot must not expose raw theme-radar field names to the model");
 assert(compactMarketSnapshotJson.includes("数据源覆盖") && compactMarketSnapshotJson.includes("外部接口") && compactMarketSnapshotJson.includes("指标引擎"), "compact market snapshot must expose source coverage with Chinese labels");
 assert(!compactMarketSnapshotJson.includes("NOISY_"), "compact market snapshot must strip raw payloads that cause context-window failures");
-assert(compactMarketSnapshotJson.length < 9300, `compact market snapshot with data-source coverage must stay small enough for recommendation and QA prompts, got ${compactMarketSnapshotJson.length}`);
+assert(compactMarketSnapshotJson.length < 9400, `compact market snapshot with data-source readiness must stay small enough for recommendation and QA prompts, got ${compactMarketSnapshotJson.length}`);
 assert(serverSource.includes("compactMarketSnapshotForModel(marketSnapshot)"), "fund recommendation, QA, and portfolio prompts must use compact market snapshots");
 assert(!serverSource.includes("JSON.stringify(marketSnapshot || {}, null, 2)"), "fund recommendation prompt must not send the raw market snapshot");
 assert(!serverSource.includes("JSON.stringify(marketSnapshot, null, 2)"), "fund QA prompt must not send the raw market snapshot");
+
+const strongDataSourceReadiness = manager.buildDataSourceEvidenceReadiness({
+  totals: {
+    externalSources: 16,
+    configuredSources: 16,
+    sampledSources: 14,
+    realtimeSources: 10,
+    realtimeUsableSources: 10,
+    indicatorEngines: 12,
+    activeIndicatorEngines: 12,
+    historyItems: 120,
+    liveSources: 12
+  },
+  sources: [],
+  boardCoverage: { observedBoards: 88, realtimeBoardFeeds: 8 },
+  fundCoverage: {
+    candidateCounts: { stockFunds: 60, hybridFunds: 42, indexFunds: 20, qdiiFunds: 12, preciousMetalFunds: 6 },
+    realtimeValuationCount: 24,
+    freshRealtimeValuationCount: 24
+  },
+  newsCoverage: { fastNewsCount: 32, topTopicCount: 6 },
+  indicatorEngines: Array.from({ length: 12 }, (_, index) => ({ id: `engine${index}`, status: "active" })),
+  historyStores: [],
+  snapshotMeta: { dataQualityLevel: "good", ageMinutes: 12 }
+});
+assert.equal(strongDataSourceReadiness.actionGate, "buy_review_allowed", "strong data-source readiness must allow buy review after fixed-code evidence is sufficient");
+assert(strongDataSourceReadiness.score >= 82, "strong data-source readiness must produce a high evidence score");
+const weakDataSourceReadiness = manager.buildDataSourceEvidenceReadiness({
+  totals: {
+    externalSources: 16,
+    configuredSources: 9,
+    sampledSources: 2,
+    realtimeSources: 10,
+    realtimeUsableSources: 1,
+    indicatorEngines: 12,
+    activeIndicatorEngines: 1,
+    historyItems: 0,
+    liveSources: 1
+  },
+  sources: [{ status: "missing", provider: "东方财富" }, { status: "cached", provider: "新浪财经" }],
+  boardCoverage: { observedBoards: 5, realtimeBoardFeeds: 8 },
+  fundCoverage: {
+    candidateCounts: { stockFunds: 4, hybridFunds: 1, indexFunds: 0, qdiiFunds: 0, preciousMetalFunds: 0 },
+    realtimeValuationCount: 0,
+    freshRealtimeValuationCount: 0
+  },
+  newsCoverage: { fastNewsCount: 0, topTopicCount: 0 },
+  indicatorEngines: [{ id: "marketBreadth", status: "active" }],
+  historyStores: [],
+  snapshotMeta: { dataQualityLevel: "poor", ageMinutes: 720 }
+});
+assert.equal(weakDataSourceReadiness.actionGate, "data_repair_first", "weak data-source readiness must block model buy conclusions until sources are repaired");
+assert(weakDataSourceReadiness.blockers.some((item) => item.includes("实时估值")), "weak data-source readiness must explicitly identify missing realtime fund valuation coverage");
 
 const selectedChartProfiles = manager.selectFundReportProfilesForAnswer([
   { code: "000001", name: "低位修复基金A", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.01 }] } },

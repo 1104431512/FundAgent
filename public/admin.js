@@ -739,18 +739,20 @@ function renderRuntimeDataSourceCoverage(coverage = null, error = null) {
   const fund = coverage.fundCoverage || {};
   const news = coverage.newsCoverage || {};
   const snapshot = coverage.snapshot || {};
+  const readiness = coverage.evidenceReadiness || {};
   const sourceKinds = (news.sourceKinds || []).slice(0, 4).join("、") || "等待快讯源样本";
   const candidateTotal = Object.values(fund.candidateCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
   root.innerHTML = `
     <section class="data-source-summary-card">
       <div>
-        <span>证据覆盖</span>
-        <strong>${escapeHtml(snapshot.dataQualitySummary || "数据源覆盖报告")}</strong>
+        <span>证据门槛</span>
+        <strong>${escapeHtml(readiness.score !== undefined ? `${readiness.score}分 · ${readiness.label || "待判断"}` : snapshot.dataQualitySummary || "数据源覆盖报告")}</strong>
       </div>
-      <p>${escapeHtml(coverage.summary || "")}</p>
+      <p>${escapeHtml([coverage.summary || "", readiness.actionText || ""].filter(Boolean).join(" "))}</p>
     </section>
 
     <div class="data-source-kpi-grid">
+      ${renderDataSourceKpi("买入门槛", readiness.label || "待判断", readiness.actionText || "等待覆盖评分", readiness.tone || "snapshot")}
       ${renderDataSourceKpi("外部接口", `${totals.configuredSources || 0}/${totals.externalSources || 0}`, `已有样本 ${totals.sampledSources || 0}，待授权 ${totals.tokenRequiredSources || 0}`, "source")}
       ${renderDataSourceKpi("实时接口", `${totals.realtimeUsableSources || 0}/${totals.realtimeSources || 0}`, `板块、指数、估值、新闻实时/准实时`, "realtime")}
       ${renderDataSourceKpi("板块维度", `${board.realtimeBoardFeeds || 0} 条`, `${board.configuredMarketTypes || 0} 类市场，每板块 ${board.metricFieldCount || 0} 项指标`, "board")}
@@ -759,6 +761,16 @@ function renderRuntimeDataSourceCoverage(coverage = null, error = null) {
     </div>
 
     <div class="data-source-focus-grid">
+      ${renderDataSourceFocusCard({
+        title: "证据门槛",
+        value: readiness.score !== undefined ? `${readiness.score} 分` : "待评分",
+        meta: readiness.actionGate || "等待数据源覆盖",
+        details: [
+          ...(readiness.blockers || []).slice(0, 2),
+          ...(readiness.requiredRepairs || []).slice(0, 2),
+          ...(readiness.strengths || []).slice(0, 1)
+        ]
+      })}
       ${renderDataSourceFocusCard({
         title: "板块市场",
         value: `${board.observedBoards || 0} 个板块`,

@@ -920,6 +920,22 @@ button:disabled {
   border-left-color: var(--amber);
 }
 
+.data-source-kpi.ok {
+  border-left-color: var(--ok);
+}
+
+.data-source-kpi.info {
+  border-left-color: var(--blue);
+}
+
+.data-source-kpi.warn {
+  border-left-color: var(--warn);
+}
+
+.data-source-kpi.bad {
+  border-left-color: var(--danger);
+}
+
 .data-source-kpi strong {
   color: #172734;
   font-size: 21px;
