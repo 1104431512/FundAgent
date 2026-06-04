@@ -4780,7 +4780,7 @@ function scorePortfolioThemeOpportunityCandidate({ item = {}, profile = null, th
 
 function buildPortfolioMissedFollowThroughReviewQueue(db = {}) {
   const account = db.account || {};
-  const watchlist = normalizePortfolioWatchlist(db.watchlist || []);
+  const watchlist = normalizePortfolioWatchlistForDisplay(db.watchlist || []);
   const itemByCode = new Map(watchlist.map((item) => [item.code, item]));
   const transactions = getPortfolioDiagnosticTransactions(db);
   const orders = getPortfolioDiagnosticOrders(db);
@@ -15983,7 +15983,7 @@ function buildPortfolioManagerPerformanceStats(db = {}, options = {}) {
   const orders = getPortfolioDiagnosticOrders(db)
     .filter((item) => ["BUY", "SELL"].includes(String(item.side || "").toUpperCase()));
   const runs = Array.isArray(db.runs) ? db.runs : [];
-  const watchlist = normalizePortfolioWatchlist(db.watchlist || []);
+  const watchlist = normalizePortfolioWatchlistForDisplay(db.watchlist || []);
   const backtestDiagnostics = buildPortfolioBacktestDiagnostics(db);
   const rankingActionAudit = buildPortfolioRankingActionAudit(db, { maxRuns: 16 });
   const recentReviews = collectPortfolioManagerOperationReviews({
@@ -17877,7 +17877,7 @@ function buildPortfolioBacktestDiagnostics(db = {}) {
   const orders = getPortfolioDiagnosticOrders(db);
   const settlements = getPortfolioDiagnosticSettlements(db);
   const runs = Array.isArray(db.runs) ? db.runs : [];
-  const watchlist = normalizePortfolioWatchlist(db.watchlist || []);
+  const watchlist = normalizePortfolioWatchlistForDisplay(db.watchlist || []);
   const phases = buildPortfolioBacktestPhases({ account, transactions, orders, runs });
   const items = [];
   const add = (severity, label, value, note, phase = "") => {
@@ -18734,7 +18734,7 @@ function findPortfolioBacktestMissedFollowThroughCandidates({
   orders = [],
   totalAsset = 0
 } = {}) {
-  return normalizePortfolioWatchlist(watchlist)
+  return normalizePortfolioWatchlistForDisplay(watchlist)
     .map((item) => buildPortfolioBacktestFollowThroughCandidate(item, { transactions, orders, totalAsset }))
     .filter((item) => item && !item.blockingReason)
     .filter((item) => item.status === "ready" || Number(item.readinessScore || 0) >= 75)
@@ -18750,7 +18750,7 @@ function findPortfolioBacktestMissedThemeMomentumCandidates({
   orders = [],
   totalAsset = 0
 } = {}) {
-  return normalizePortfolioWatchlist(watchlist)
+  return normalizePortfolioWatchlistForDisplay(watchlist)
     .map((item) => buildPortfolioBacktestThemeMomentumCandidate(item, { transactions, orders, totalAsset }))
     .filter((item) => item && !item.blockingReason)
     .filter((item) => !hasRecentPortfolioBuyForCode(item.code, { transactions, orders }, 20))
@@ -18843,7 +18843,7 @@ function findPortfolioBacktestBlockedFollowThroughCandidates({
   orders = [],
   totalAsset = 0
 } = {}) {
-  return normalizePortfolioWatchlist(watchlist)
+  return normalizePortfolioWatchlistForDisplay(watchlist)
     .map((item) => buildPortfolioBacktestFollowThroughCandidate(item, { transactions, orders, totalAsset }))
     .filter((item) => item?.blockingReason || Number(item?.readinessScore || 0) < 75)
     .filter((item) => item && !hasRecentPortfolioBuyForCode(item.code, { transactions, orders }, 20))
@@ -18852,7 +18852,7 @@ function findPortfolioBacktestBlockedFollowThroughCandidates({
 }
 
 function findPortfolioBacktestDataBlockedCandidates(watchlist = []) {
-  return normalizePortfolioWatchlist(watchlist)
+  return normalizePortfolioWatchlistForDisplay(watchlist)
     .filter((item) => item.code && ["ready", "waiting_pullback", "watch"].includes(item.status))
     .map((item) => {
       const trend = item.lastSnapshot?.trendProfile || item.trendProfile || {};
@@ -23980,6 +23980,7 @@ function shouldForceShortFundPriorityLeaderboard({ text = "", workflow = "", use
   return lines.length > 6
     || !hasFundAnswerResultFirstRankingSummary(body)
     || hasMetricHeavyResultRankingSummary(body)
+    || hasDryMetricDominatedPriorityAnswer(body, { userText })
     || hasFundAnswerRequestedSortOrderMismatch({ text: body, userText, evidence })
     || lines.some((line) => /^(?:推荐清单|备选观察|观察\/排除|缺失数据|自评估|题材雷达|详细分析|投委会|市场判断)\s*[：:]/.test(line));
 }
@@ -24478,6 +24479,30 @@ function hasVerboseFundResultAnswer(text = "", { workflow = "", userText = "" } 
   if (lines.length > lineLimit && (sectionHeadingCount >= 4 || metricDetailLines >= 1 || candidateDetailLines >= 5)) return true;
   if (lines.length > lineLimit + 6 && nonCodeMetricCount >= 14) return true;
   return raw.length > hardLengthLimit && candidateDetailLines >= 4;
+}
+
+function hasDryMetricDominatedPriorityAnswer(text = "", { userText = "" } = {}) {
+  if (!isFundAnswerPriorityLeaderboardRequest(userText)) return false;
+  const lines = String(text || "")
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  if (!lines.length) return false;
+  const metricLinePattern = /(?:近\s*\d+\s*日|夏普|回撤|规模|费率|费用|净值|位置|收益|涨幅|跌幅|年化|波动|同类排名)/;
+  const denseMetricLines = lines.filter((line) =>
+    hasDenseUserFacingMetricLine(line)
+    || (countUserFacingNonCodeMetricNumbers(line) >= 4 && metricLinePattern.test(line))
+  ).length;
+  const longMetricLines = lines.filter((line) =>
+    line.length > 150 && countUserFacingNonCodeMetricNumbers(line) >= 2 && metricLinePattern.test(line)
+  ).length;
+  const firstScreen = lines.join(" ");
+  const metricWordCount = (firstScreen.match(/(?:近\s*\d+\s*日|夏普|回撤|规模|费率|费用|净值|位置|收益|涨幅|跌幅|年化|波动|同类排名)/g) || []).length;
+  const totalMetricNumbers = countUserFacingNonCodeMetricNumbers(firstScreen);
+  return denseMetricLines >= 2
+    || longMetricLines >= 2
+    || (totalMetricNumbers >= 14 && metricWordCount >= 5);
 }
 
 function searchFirstIndex(text = "", needles = []) {

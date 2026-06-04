@@ -3253,6 +3253,33 @@ const dataBlockedFixture = {
 };
 const dataBlockedBacktest = manager.buildPortfolioBacktestDiagnostics(dataBlockedFixture);
 assert(dataBlockedBacktest.items.some((item) => item.label === "候选数据源阻塞回测"), "backtest diagnostics must distinguish data-source blockage from a true lack of fund opportunities");
+const catchdownDataBlockedFixture = {
+  ...dataBlockedFixture,
+  watchlist: [{
+    code: "012047",
+    name: "旧题材抓取失败基金C",
+    status: "waiting_pullback",
+    readinessScore: 66,
+    reason: "净值下钻暂不可用，但题材已经退潮，主力资金撤离，存在接盘风险。",
+    riskNotes: ["系统接盘风险拦截：旧题材未确认，主力撤离，不能把回调当买点。"],
+    setupEvidence: ["净值验证：fetch failed", "表面回调可能继续下探"],
+    lastSnapshot: {
+      code: "012047",
+      name: "旧题材抓取失败基金C",
+      reason: "历史热点表面回调，但当前题材未确认，主力资金撤离。",
+      riskNotes: ["题材退潮、主力撤离、接盘风险。"],
+      actionability: {
+        decisionBlocker: ["系统接盘风险拦截：旧题材未确认，主力撤离，不能把回调当买点。"]
+      },
+      trendProfile: { ok: false, note: "fetch failed" }
+    }
+  }]
+};
+const catchdownDataBlockedBacktest = manager.buildPortfolioBacktestDiagnostics(catchdownDataBlockedFixture);
+assert(
+  !catchdownDataBlockedBacktest.items.some((item) => item.label === "候选数据源阻塞回测"),
+  "display-blocked catchdown candidates must not be reclassified as ordinary data-source blocked opportunities"
+);
 assert(
   manager.buildPortfolioCapabilityActionQueue(dataBlockedFixture).some((item) => item.action.includes("抓取失败当成没有机会")),
   "capability queue must turn data-blocked candidates into explicit data-source repair work"
@@ -12490,6 +12517,29 @@ assert(
     && highSharpeStrictResultLine.indexOf("000072") >= 0
     && highSharpeStrictResultLine.indexOf("000072") < highSharpeStrictResultLine.indexOf("000071"),
   "priority leaderboard enforcement must compress even almost-valid high-Sharpe answers into a strict six-line result board"
+);
+const highSharpeDryMetricSixLineAnswer = [
+  "直接结论：第一名可以小仓验证，其余先备选。",
+  "排序口径：高夏普/低回撤优先，再看买点和费用。",
+  "结果榜：1. 000072 高夏普低回撤基金C：风险收益更稳；2. 000071 买点更强低夏普基金C：买点更近。",
+  "为什么这样排：000072 近5日+1.2%、近10日+2.3%、近20日+3.5%、近60日+8.4%、120日位置36.5%、夏普1.45、回撤-9.6%、规模20亿；000071 近5日+1.6%、近10日+2.9%、近20日+4.1%、夏普0.25、回撤-31%、规模18亿。",
+  "执行：1万元里000072激进2000元、均衡1000元、保守500元；000071激进1000元、均衡500元、保守0元，继续看近5日、近10日、近20日和120日位置。",
+  "边界：如果近20日超过12%、近60日超过24%、夏普跌破0.5、回撤扩大到-20%或规模低于1亿就暂停。"
+].join("\n");
+const highSharpeDryMetricEnforced = await manager.enforceFundAnswerQuality({
+  text: highSharpeDryMetricSixLineAnswer,
+  workflow: "fund_recommendation",
+  userText: "现在经理太啰嗦了，干巴巴的讲数据，直接按高夏普优先给我结果",
+  intent: { workflow: "fund_recommendation", mode: "priority_leaderboard" },
+  evidence: highSharpeWrongOrderEvidence
+});
+const highSharpeDryMetricResultLine = highSharpeDryMetricEnforced.split(/\r?\n/).find((line) => line.startsWith("结果榜：")) || "";
+assert(
+  highSharpeDryMetricEnforced.split(/\r?\n/).filter(Boolean).length <= 6
+    && highSharpeDryMetricResultLine.indexOf("000072") >= 0
+    && highSharpeDryMetricResultLine.indexOf("000072") < highSharpeDryMetricResultLine.indexOf("000071")
+    && !/为什么这样排：.*(?:近5日|近10日|近20日|近60日|夏普\s*\d|回撤-?\d|规模\d)/.test(highSharpeDryMetricEnforced),
+  "priority leaderboard enforcement must rewrite six-line but metric-dry answers into a plain-language result board"
 );
 const highSharpeComparisonEvidence = {
   enrichments: [

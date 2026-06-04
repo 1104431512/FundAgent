@@ -853,6 +853,10 @@ const requiredPatterns = [
     message: "priority-ranking requests must force short output based on the user's wording, not only on severe quality failures."
   },
   {
+    pattern: /(?=[\s\S]*function shouldForceShortFundPriorityLeaderboard[\s\S]{0,900}hasDryMetricDominatedPriorityAnswer)(?=[\s\S]*function hasDryMetricDominatedPriorityAnswer[\s\S]{0,900}hasDenseUserFacingMetricLine[\s\S]{0,900}totalMetricNumbers >= 14)/,
+    message: "priority-ranking requests must also rewrite six-line answers that still read like dry metric dumps."
+  },
+  {
     pattern: /function buildConciseFundResultAnswerFallback[\s\S]{0,1200}最多3条为什么这样排|function buildConciseFundResultAnswerFallback[\s\S]{0,1800}为什么这样排/,
     message: "fund answer quality must have a deterministic compact fallback for verbose ranked answers."
   },
@@ -2301,8 +2305,8 @@ const requiredPatterns = [
     message: "portfolio backtests must quantify opportunity cost when unbought ready candidates keep rising."
   },
   {
-    pattern: /findPortfolioBacktestMissedFollowThroughCandidates[\s\S]{0,1600}!item\.blockingReason[\s\S]{0,900}readinessScore[\s\S]{0,5200}findPortfolioBacktestBlockedFollowThroughCandidates/,
-    message: "portfolio opportunity-cost diagnostics must exclude blocked or structurally unbuyable candidates."
+    pattern: /function findPortfolioBacktestMissedFollowThroughCandidates[\s\S]{0,320}normalizePortfolioWatchlistForDisplay\(watchlist\)[\s\S]{0,1600}!item\.blockingReason[\s\S]{0,900}readinessScore[\s\S]{0,5200}function findPortfolioBacktestBlockedFollowThroughCandidates[\s\S]{0,320}normalizePortfolioWatchlistForDisplay\(watchlist\)/,
+    message: "portfolio opportunity-cost diagnostics must use display status and exclude blocked or structurally unbuyable candidates."
   },
   {
     pattern: /少赚约[\s\S]{0,900}机会成本回测[\s\S]{0,700}等待后继续走强/,
@@ -3379,6 +3383,10 @@ const requiredPatterns = [
   {
     pattern: /function buildPortfolioCapabilityDiagnostics[\s\S]*const watchlist = normalizePortfolioWatchlistForDisplay\(db\.watchlist \|\| \[\]\)[\s\S]*const waitingCount = watchlist\.filter\(\(item\) => item\.status === "waiting_pullback"\)\.length/,
     message: "portfolio capability diagnostics must not count display-blocked catchdown candidates as waiting-pullback opportunities."
+  },
+  {
+    pattern: /(?=[\s\S]*function buildPortfolioBacktestDiagnostics[\s\S]{0,1200}const watchlist = normalizePortfolioWatchlistForDisplay\(db\.watchlist \|\| \[\]\))(?=[\s\S]*function findPortfolioBacktestDataBlockedCandidates\(watchlist = \[\]\)[\s\S]{0,320}normalizePortfolioWatchlistForDisplay\(watchlist\))/,
+    message: "portfolio backtest diagnostics and data-blocked opportunity reviews must use display status so catchdown risks cannot be reclassified as ordinary data gaps."
   },
   {
     pattern: /function selectFundWorkflowWatchlistCandidates[\s\S]{0,260}normalizePortfolioWatchlistForDisplay[\s\S]{0,320}\["ready",\s*"waiting_pullback",\s*"watch"\]\.includes\(item\.status\)/,
