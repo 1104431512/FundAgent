@@ -144,6 +144,7 @@ const requiredPatterns = [
       const fetcher = getFunctionSource(source, "fetchMarketSnapshot");
       const builder = getFunctionSource(source, "buildDataSourceCoverageFromSnapshot");
       return fetcher.includes("snapshot.dataSourceCoverage = buildDataSourceCoverageFromSnapshot")
+        && fetcher.includes("latestMarketSnapshotMemory = snapshot")
         && builder.includes("DATA_SOURCE_REGISTRY.map")
         && builder.includes("buildBoardMarketCoverage")
         && builder.includes("buildFundDataCoverage")
@@ -153,6 +154,17 @@ const requiredPatterns = [
         && builder.includes("buildDataSourceRepairQueue");
     },
     message: "market snapshots must attach deterministic data-source coverage covering source, board, fund, news, and indicator layers."
+  },
+  {
+    test: (source) => {
+      const report = getFunctionSource(source, "buildDataSourceCoverageReport");
+      const memory = getFunctionSource(source, "getLatestMarketSnapshotMemoryForCoverage");
+      return source.includes("let latestMarketSnapshotMemory = null")
+        && report.includes("getLatestMarketSnapshotMemoryForCoverage")
+        && memory.includes("MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS")
+        && memory.includes("hasDataSourceCoverageSnapshotEvidence");
+    },
+    message: "data-source coverage reports must prefer the latest warmed live snapshot before falling back to cache."
   },
   {
     test: (source) => {

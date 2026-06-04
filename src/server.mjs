@@ -490,6 +490,7 @@ const seenEventIds = new Map();
 let portfolioSchedulerTimer = null;
 let marketSnapshotWarmerTimer = null;
 let marketSnapshotWarmerInFlight = false;
+let latestMarketSnapshotMemory = null;
 let portfolioRunInFlight = false;
 let activePortfolioRunId = "";
 const cancelledPortfolioRunIds = new Set();
@@ -27517,6 +27518,7 @@ async function fetchMarketSnapshot(options = {}) {
     cache,
     generatedAt: fetchedAt
   });
+  latestMarketSnapshotMemory = snapshot;
   return snapshot;
 }
 
@@ -28793,6 +28795,7 @@ async function buildDataSourceCoverageReport(options = {}) {
   const cache = readMarketSnapshotCache();
   const portfolioDb = readPortfolioDbForDataSourceCoverage();
   const latestSnapshot = liveSnapshot
+    || getLatestMarketSnapshotMemoryForCoverage(generatedAt)
     || findLatestPortfolioMarketSnapshotForCoverage(portfolioDb)
     || buildMarketSnapshotCoverageFromCache(cache, generatedAt);
   const coverage = buildDataSourceCoverageFromSnapshot(latestSnapshot, {
@@ -29287,6 +29290,14 @@ function findLatestPortfolioMarketSnapshotForCoverage(db = {}) {
     .sort((a, b) => Date.parse(b.completedAt || b.startedAt || b.date || "") - Date.parse(a.completedAt || a.startedAt || a.date || ""))
     .map((run) => run.marketSnapshot);
   return [...directCandidates, ...runCandidates].find(hasDataSourceCoverageSnapshotEvidence) || null;
+}
+
+function getLatestMarketSnapshotMemoryForCoverage(nowIso = new Date().toISOString()) {
+  if (!hasDataSourceCoverageSnapshotEvidence(latestMarketSnapshotMemory)) return null;
+  const fetchedAt = latestMarketSnapshotMemory.fetchedAt || latestMarketSnapshotMemory.generatedAt || "";
+  const ageMinutes = getDataSourceAgeMinutes(fetchedAt, nowIso);
+  if (!Number.isFinite(ageMinutes)) return null;
+  return ageMinutes <= MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS * 60 ? latestMarketSnapshotMemory : null;
 }
 
 function hasDataSourceCoverageSnapshotEvidence(snapshot = null) {

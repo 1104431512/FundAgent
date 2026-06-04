@@ -21,6 +21,7 @@ assert(serverSource.includes("FUND_ANALYSIS_ENRICHMENT_LIMIT") && serverSource.i
 assert(/heldProfilesRaw[\s\S]{0,180}getPortfolioProfileEnrichmentLimit/.test(serverSource), "portfolio decisions must enrich held positions with the higher portfolio coverage limit");
 assert(/watchlistProfilesRaw[\s\S]{0,180}getPortfolioProfileEnrichmentLimit/.test(serverSource), "portfolio decisions must enrich watchlist candidates with the higher portfolio coverage limit");
 assert(serverSource.includes("startMarketSnapshotWarmer()") && serverSource.includes("marketSnapshotWarmerInFlight"), "server startup must proactively warm the market snapshot cache with an in-flight guard");
+assert(serverSource.includes("latestMarketSnapshotMemory = snapshot") && serverSource.includes("getLatestMarketSnapshotMemoryForCoverage"), "data-source coverage must reuse the latest warmed market snapshot before cache fallback");
 assert(adminSource.includes("快照预热") && adminSource.includes("marketSnapshotWarmerSuccesses"), "admin runtime data page must expose market snapshot warmer status");
 assert(adminSource.includes("本次实抓") && adminSource.includes("liveSources") && adminSource.includes("板块指标") && adminSource.includes("observedMetricCells"), "admin data-source page must expose live fetch counts and board indicator cells");
 {
