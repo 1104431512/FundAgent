@@ -960,16 +960,21 @@ const requiredPatterns = [
       const marketWarmer = getFunctionSource(source, "warmMarketSnapshotCache");
       const fundWarmer = getFunctionSource(source, "warmFundResearchDigestCacheFromSnapshot");
       const selector = getFunctionSource(source, "selectFundResearchWarmupCandidates");
+      const themeSelector = getFunctionSource(source, "selectFundResearchThemeOpportunityWarmupCandidates");
       return marketWarmer.includes("warmFundResearchDigestCacheFromSnapshot")
         && fundWarmer.includes("fundResearchWarmerInFlight")
         && fundWarmer.includes("fetchFundResearchDigest")
         && fundWarmer.includes("allowCacheFallback: false")
         && fundWarmer.includes("fundResearchWarmerDigests")
+        && selector.includes("selectFundResearchThemeOpportunityWarmupCandidates")
+        && themeSelector.includes("buildPortfolioThemeOpportunitySeedCandidates")
+        && themeSelector.includes("buildPortfolioThemeOpportunityKeywordGroups")
         && selector.includes("selectLowBaseTurnRankCandidates")
         && selector.includes("selectWeeklyReversalRankCandidates")
-        && selector.includes("scorePullbackSetupSeedCandidate");
+        && selector.includes("scorePullbackSetupSeedCandidate")
+        && source.includes("theme_leaderboard_carrier_seed");
     },
-    message: "market snapshot warming must also prewarm deterministic fund research digests for low-base and reversal candidates."
+    message: "market snapshot warming must also prewarm deterministic fund research digests for theme leaderboard carriers, low-base, and reversal candidates."
   },
   {
     test: (source) => {

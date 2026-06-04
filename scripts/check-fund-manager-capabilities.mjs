@@ -24,6 +24,7 @@ assert(serverSource.includes("startMarketSnapshotWarmer()") && serverSource.incl
 assert(serverSource.includes("latestMarketSnapshotMemory = snapshot") && serverSource.includes("getLatestMarketSnapshotMemoryForCoverage"), "data-source coverage must reuse the latest warmed market snapshot before cache fallback");
 assert(serverSource.includes("MARKET_SNAPSHOT_LATEST_PATH") && serverSource.includes("persistLatestMarketSnapshot(snapshot)") && serverSource.includes("getLatestMarketSnapshotPersistedForCoverage"), "market snapshots must persist complete warmed evidence for restart-safe coverage");
 assert(serverSource.includes("warmFundResearchDigestCacheFromSnapshot") && serverSource.includes("selectFundResearchWarmupCandidates") && serverSource.includes("fundResearchWarmerDigests"), "market warming must also prewarm fund research digests for fixed-code risk, holdings, and fee evidence");
+assert(serverSource.includes("selectFundResearchThemeOpportunityWarmupCandidates") && serverSource.includes("buildPortfolioThemeOpportunitySeedCandidates") && serverSource.includes("theme_leaderboard_carrier_seed"), "fund research warmer must prewarm theme leaderboard carrier funds, not only low-base ranking candidates");
 assert(serverSource.includes('componentKeys: ["fundProfiles"]') && serverSource.includes("buildFundResearchDigestComponentStatuses") && serverSource.includes("researchDigestProfileFunds"), "fund profile, nav, holdings, and fee sources must expose warmed research samples");
 assert(serverSource.includes("holding_realtime_quotes") && serverSource.includes("buildFundHoldingRealtimePulseComponentStatus") && serverSource.includes("holdingRealtimePulseFunds"), "data-source coverage must expose top-holding realtime quote pulse as independent evidence");
 assert(adminSource.includes("快照预热") && adminSource.includes("marketSnapshotWarmerSuccesses"), "admin runtime data page must expose market snapshot warmer status");
@@ -50,6 +51,96 @@ assert(
     && /FUND_ANSWER_SHORT_LEADERBOARD_BY_DEFAULT,\s*true/.test(serverSource),
   "fund recommendation defaults must be result-first and risk-adjusted instead of metric-report-first"
 );
+
+{
+  const syntheticThemeCarrierSnapshot = {
+    fetchedAt: `${todayIso}T09:45:00.000Z`,
+    fundCandidates: {
+      stockFunds: [
+        {
+          code: "000321",
+          name: "先进制造主题混合C",
+          type: "混合型",
+          oneWeekPct: 0.1,
+          oneMonthPct: 18,
+          threeMonthPct: 32,
+          sixMonthPct: 48,
+          thisYearPct: 42,
+          keywords: ["先进制造"]
+        }
+      ],
+      hybridFunds: [],
+      indexFunds: [],
+      qdiiFunds: []
+    },
+    themeRadar: [
+      {
+        id: "advanced_manufacturing",
+        name: "先进制造",
+        keywords: ["先进制造"],
+        fundKeywords: ["先进制造"],
+        stage: "preheat_catalyst",
+        leaderSignal: "preheat_catalyst",
+        positionSignal: "preheat_catalyst_watch",
+        actionBias: "preheat_watch",
+        forwardScore: 56,
+        capitalFollowScore: 52,
+        preheatScore: 72,
+        lowPositionScore: 58,
+        rotationScore: 51,
+        crowdingScore: 18,
+        capitalRetreatScore: 0,
+        catalystProfile: {
+          score: 26,
+          summary: "政策和订单催化",
+          risk: false,
+          fresh: true,
+          freshnessLabel: "当日催化",
+          latestNewsTime: `${todayIso} 09:20`
+        },
+        newsLogic: "题材预热：先进制造出现政策和订单催化",
+        primaryCatalyst: "先进制造政策催化",
+        evidence: {
+          funds: [
+            {
+              code: "000321",
+              name: "先进制造主题混合C",
+              type: "混合型",
+              keywords: ["先进制造"]
+            }
+          ]
+        }
+      }
+    ],
+    themeLeaderboards: {
+      preheat: {
+        title: "题材预热榜",
+        items: [
+          {
+            id: "advanced_manufacturing",
+            name: "先进制造",
+            reason: "政策和订单催化开始发酵",
+            whyMove: "为什么动：先进制造有当日催化，先找代表基金。",
+            newsLogic: "题材预热：先进制造出现政策和订单催化",
+            catalyst: "政策和订单催化",
+            carrierSearchKeywords: ["先进制造"],
+            carrierAnchors: ["先进制造"]
+          }
+        ]
+      }
+    }
+  };
+  const warmupCandidates = manager.selectFundResearchWarmupCandidates(syntheticThemeCarrierSnapshot, {
+    limit: 4,
+    cache: { version: 1, updatedAt: "", digests: {} },
+    nowIso: `${todayIso}T10:00:00.000Z`
+  });
+  const themeCarrier = warmupCandidates.find((item) => item.code === "000321");
+  assert(themeCarrier, "theme leaderboard carrier fund must enter fixed-code fund research warmup candidates");
+  assert(String(themeCarrier.setupDiscoverySource || "").includes("theme_leaderboard_carrier_seed"), "theme carrier warmup candidate must preserve theme leaderboard source");
+  assert((themeCarrier.keywords || []).includes("题材榜单代表基金"), "theme carrier warmup candidate must be marked as a representative fund");
+  assert.equal(themeCarrier.themeOpportunityRequirement, "require_current_theme_playbook", "theme carrier warmup must require current theme playbook evidence");
+}
 
 const setupQuery = "我想要找一个回调完成，到了低位，准备要启动的基金";
 const intent = await manager.classifyMessageIntent({

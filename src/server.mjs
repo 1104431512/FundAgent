@@ -1569,13 +1569,14 @@ function selectFundResearchWarmupCandidates(snapshot = null, options = {}) {
     .map((item) => ({ ...item, keywords: mergeStringLists(item.keywords, ["低位启动前夜候选"]), setupDiscoverySource: "fund_research_warmer_low_base" }));
   const weekly = selectWeeklyReversalRankCandidates(all)
     .map((item) => ({ ...item, keywords: mergeStringLists(item.keywords, ["周内温和转强候选"]), setupDiscoverySource: "fund_research_warmer_weekly_reversal" }));
+  const themeCarriers = selectFundResearchThemeOpportunityWarmupCandidates(all, snapshot);
   const marketContext = {
     ...snapshot,
     themeRadar: Array.isArray(snapshot?.themeRadar) ? snapshot.themeRadar : []
   };
   const cache = options.cache || readFundResearchDigestCache();
   const nowIso = options.nowIso || new Date().toISOString();
-  const pool = mergeCandidateFunds(lowBase, weekly, all)
+  const pool = mergeCandidateFunds(themeCarriers, lowBase, weekly, all)
     .map((item) => refreshPortfolioCandidateThemesWithMarketRadar({
       ...item,
       themeOpportunityRequirement: "require_current_theme_playbook"
@@ -1583,6 +1584,88 @@ function selectFundResearchWarmupCandidates(snapshot = null, options = {}) {
     .filter((item) => isFundResearchDigestWarmupNeeded(item, cache, nowIso))
     .sort((a, b) => scorePullbackSetupSeedCandidate(b, marketContext, "回调完成 低位 准备启动") - scorePullbackSetupSeedCandidate(a, marketContext, "回调完成 低位 准备启动"));
   return selectDiversifiedDeepDiveCandidates(pool, limit, { diversifyExposure: true });
+}
+
+function selectFundResearchThemeOpportunityWarmupCandidates(all = [], snapshot = null) {
+  const directSeeds = buildPortfolioThemeOpportunitySeedCandidates(snapshot)
+    .filter((item) => item?.code && !isPreciousMetalCandidate(item))
+    .map((item) => ({
+      ...item,
+      keywords: mergeStringLists(item.keywords, ["题材榜单代表基金", "固定代码资料预热"]),
+      setupDiscoverySource: item.setupDiscoverySource || "theme_leaderboard_carrier_seed:direct"
+    }));
+  const groups = buildPortfolioThemeOpportunityKeywordGroups(snapshot).slice(0, 6);
+  if (!groups.length) return directSeeds;
+  const radar = Array.isArray(snapshot?.themeRadar) ? snapshot.themeRadar : [];
+  const themeByKey = new Map(radar.flatMap((theme) =>
+    [theme.id, theme.name].map((key) => [normalizeIntentText(key), theme])
+  ).filter(([key]) => key));
+  const matchedPool = (all || [])
+    .map((candidate) => {
+      const match = findBestFundResearchThemeOpportunityWarmupMatch(candidate, groups);
+      if (!match) return null;
+      const group = match.group || {};
+      const theme = themeByKey.get(normalizeIntentText(group.id)) || themeByKey.get(normalizeIntentText(group.name)) || {};
+      const matchedTheme = Object.keys(theme).length
+        ? compactMatchedThemeSignal(theme)
+        : compactMatchedThemeSignal({
+            id: group.id || group.name || "",
+            name: group.name || group.id || "",
+            stage: group.laneKey === "lowRotation" ? "low_position_rotation" : "preheat_catalyst",
+            leaderSignal: group.laneKey === "mainCapital" ? "capital_entering" : group.laneKey === "preheat" ? "preheat_catalyst" : "",
+            positionSignal: group.laneKey === "mainCapital" ? "main_capital_entering" : group.laneKey === "lowRotation" ? "low_position_rotation" : "preheat_catalyst_watch",
+            actionBias: group.laneKey === "mainCapital" ? "follow_main_small" : "preheat_watch",
+            themeKeywords: group.keywords
+          });
+      return {
+        ...candidate,
+        keywords: mergeStringLists(candidate.keywords, group.keywords, group.anchors, ["题材榜单代表基金", "固定代码资料预热"]).slice(0, 18),
+        matchedThemes: mergeCandidateMatchedThemes(candidate.matchedThemes, [matchedTheme]),
+        themeOpportunityRequirement: "require_current_theme_playbook",
+        candidateRole: `${group.title || "主力/预热题材"}代表基金`,
+        setupDiscoverySource: `theme_leaderboard_carrier_seed:${group.laneKey || group.id || "keyword"}`,
+        themeEvidence: formatCandidateThemeEvidence({ matchedThemes: [matchedTheme] }),
+        dataBasis: mergeStringLists(candidate.dataBasis, [
+          `题材榜单：${group.title || group.name || "主力/预热题材"}`,
+          group.whyMove ? `为什么动：${shortenPortfolioCustomerText(group.whyMove, 80)}` : "",
+          group.capitalProof ? `主力证据：${group.capitalProof}` : "",
+          match.terms.length ? `命中检索词：${match.terms.slice(0, 5).join("/")}` : "",
+          group.catalyst ? `催化：${shortenPortfolioCustomerText(group.catalyst, 60)}` : ""
+        ]).slice(0, 8),
+        themeOpportunityWarmupScore: match.score
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(b.themeOpportunityWarmupScore || 0) - Number(a.themeOpportunityWarmupScore || 0))
+    .slice(0, 18);
+  return mergeCandidateFunds(directSeeds, matchedPool);
+}
+
+function findBestFundResearchThemeOpportunityWarmupMatch(candidate = {}, groups = []) {
+  const text = normalizeIntentText([
+    candidate.name,
+    candidate.type,
+    candidate.company,
+    ...(candidate.keywords || [])
+  ].filter(Boolean).join(" "));
+  if (!text) return null;
+  let best = null;
+  for (const group of groups || []) {
+    const terms = mergeStringLists(group.keywords, group.anchors, [group.name])
+      .filter(isThemeOpportunitySearchKeywordUseful)
+      .filter((term) => {
+        const value = normalizeIntentText(term);
+        return value.length >= 2 && text.includes(value);
+      })
+      .slice(0, 8);
+    if (!terms.length) continue;
+    const anchorHits = terms.filter((term) => normalizeStringArray(group.anchors).some((anchor) =>
+      normalizeIntentText(anchor) === normalizeIntentText(term)
+    )).length;
+    const score = terms.length * 10 + anchorHits * 8 + (group.laneKey === "mainCapital" ? 10 : group.laneKey === "preheat" ? 7 : 5);
+    if (!best || score > best.score) best = { group, terms, score };
+  }
+  return best && best.score >= 12 ? best : null;
 }
 
 function isFundResearchDigestWarmupNeeded(candidate = {}, cache = readFundResearchDigestCache(), nowIso = new Date().toISOString()) {
