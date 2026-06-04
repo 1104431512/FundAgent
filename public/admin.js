@@ -805,6 +805,7 @@ function renderRuntimeDataSourceCoverage(coverage = null, error = null) {
           `实时估值 ${fund.realtimeValuationCount || 0} 条`,
           `新鲜估值 ${fund.freshRealtimeValuationCount || 0} 条`,
           `研究缓存 ${fund.researchDigestCacheFunds || 0} 只，新鲜 ${fund.freshResearchDigestCacheFunds || 0} 只`,
+          `画像样本：风险 ${fund.researchDigestRiskMetricFunds || 0} · 持仓 ${fund.researchDigestHoldingFunds || 0} · 费率 ${fund.researchDigestFeeFunds || 0}`,
           `持仓脉冲 ${fund.holdingRealtimePulseFunds || 0} 只，底层 ${fund.holdingRealtimePulseItems || 0} 条`,
           `榜单历史 ${fund.rankingHistoryFunds || 0} 只`
         ]

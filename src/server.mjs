@@ -389,6 +389,7 @@ const DATA_SOURCE_REGISTRY = [
     endpoint: "https://fund.eastmoney.com/pingzhongdata/{code}.js",
     realtime: false,
     realtimeText: "基金页更新",
+    componentKeys: ["fundProfiles"],
     counterKeys: ["fundEnrichmentSuccess"],
     capability: "抓取基金基础画像、经理、规模、收益区间和资产配置。",
     outputs: ["基金名称", "规模", "经理", "资产配置", "阶段收益"]
@@ -401,6 +402,7 @@ const DATA_SOURCE_REGISTRY = [
     endpoint: "https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz",
     realtime: false,
     realtimeText: "净值更新",
+    componentKeys: ["fundNavHistories"],
     counterKeys: ["navHistoryFetches"],
     capability: "计算夏普、Sortino、最大回撤、波动和回调启动信号。",
     outputs: ["历史净值", "夏普", "Sortino", "最大回撤", "趋势画像"]
@@ -413,6 +415,7 @@ const DATA_SOURCE_REGISTRY = [
     endpoint: "https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc/zqcc",
     realtime: false,
     realtimeText: "季报披露",
+    componentKeys: ["fundHoldings"],
     counterKeys: ["fundHoldingsFetches"],
     capability: "抓取股票和债券持仓，验证基金是否真承载目标题材。",
     outputs: ["前十大股票", "前十大债券", "集中度", "题材承载"]
@@ -439,6 +442,7 @@ const DATA_SOURCE_REGISTRY = [
     endpoint: "https://fundf10.eastmoney.com/jjfl_{code}.html",
     realtime: false,
     realtimeText: "基金页更新",
+    componentKeys: ["fundFees"],
     counterKeys: ["fundFeePageFetches"],
     capability: "核验A/C/D/I份额、申购费、销售服务费和持有期成本。",
     outputs: ["份额类别", "申购费", "销售服务费", "赎回规则", "每万成本"]
@@ -29732,6 +29736,9 @@ function buildDataSourceComponentStatusMap(snapshot = null, cache = readMarketSn
     }
   }
 
+  for (const researchStatus of buildFundResearchDigestComponentStatuses(nowIso)) {
+    if (researchStatus.count) add(researchStatus, researchStatus.status);
+  }
   const holdingPulseStatus = buildFundHoldingRealtimePulseComponentStatus(nowIso);
   if (holdingPulseStatus.count) add(holdingPulseStatus, holdingPulseStatus.status);
 
@@ -29758,6 +29765,51 @@ function buildDataSourceComponentStatusMap(snapshot = null, cache = readMarketSn
 
 function getDataSourceComponentKeys() {
   return [...new Set(DATA_SOURCE_REGISTRY.flatMap((source) => source.componentKeys || []))];
+}
+
+function buildFundResearchDigestComponentStatuses(nowIso = new Date().toISOString()) {
+  const stats = buildFundResearchDigestCacheStats(readFundResearchDigestCache(), nowIso);
+  const statusFor = (count, freshCount = stats.freshFunds) => freshCount ? "available" : count ? "cached" : "missing";
+  const common = {
+    sourceMode: stats.freshFunds ? "fund_research_cache" : "cache_fallback",
+    cacheFetchedAt: stats.updatedAt || "",
+    cacheAgeHours: Number.isFinite(Number(stats.latestDigestAgeHours)) ? stats.latestDigestAgeHours : null,
+    sourceKinds: ["fund_research_digest_cache"]
+  };
+  return [
+    {
+      key: "fundProfiles",
+      label: "基金画像脚本",
+      status: statusFor(stats.profileFunds),
+      count: stats.profileFunds,
+      freshCount: Math.min(stats.profileFunds, stats.freshFunds),
+      ...common
+    },
+    {
+      key: "fundNavHistories",
+      label: "历史净值",
+      status: statusFor(stats.riskMetricFunds),
+      count: stats.riskMetricFunds,
+      freshCount: Math.min(stats.riskMetricFunds, stats.freshFunds),
+      ...common
+    },
+    {
+      key: "fundHoldings",
+      label: "前十大持仓",
+      status: statusFor(stats.holdingFunds),
+      count: stats.holdingFunds,
+      freshCount: Math.min(stats.holdingFunds, stats.freshFunds),
+      ...common
+    },
+    {
+      key: "fundFees",
+      label: "份额费率",
+      status: statusFor(stats.feeFunds),
+      count: stats.feeFunds,
+      freshCount: Math.min(stats.feeFunds, stats.freshFunds),
+      ...common
+    }
+  ];
 }
 
 function buildFundHoldingRealtimePulseComponentStatus(nowIso = new Date().toISOString()) {
@@ -29824,6 +29876,10 @@ function formatDataSourceComponentLabel(key = "") {
     globalMarketQuotes: "海外指数与汇率",
     chinaRealtimeIndices: "A股指数实时源",
     realtimeFundValuations: "实时估算净值",
+    fundProfiles: "基金画像脚本",
+    fundNavHistories: "历史净值",
+    fundHoldings: "前十大持仓",
+    fundFees: "份额费率",
     fundHoldingRealtimePulse: "前十大持仓实时行情",
     fastNews: "实时财经新闻"
   }[key] || key || "未知组件";
@@ -29966,6 +30022,8 @@ function buildFundDataCoverage(snapshot = null, componentStatusMap = new Map()) 
     researchDigestCacheFunds: researchCache.totalFunds,
     freshResearchDigestCacheFunds: researchCache.freshFunds,
     sufficientResearchDigestFunds: researchCache.sufficientFunds,
+    researchDigestProfileFunds: researchCache.profileFunds,
+    researchDigestTrendProfileFunds: researchCache.trendProfileFunds,
     researchDigestRiskMetricFunds: researchCache.riskMetricFunds,
     researchDigestHoldingFunds: researchCache.holdingFunds,
     researchDigestFeeFunds: researchCache.feeFunds,
@@ -30049,6 +30107,7 @@ function buildFundResearchDigestCacheStats(cache = readFundResearchDigestCache()
     totalFunds: entries.length,
     freshFunds: 0,
     sufficientFunds: 0,
+    profileFunds: 0,
     trendProfileFunds: 0,
     riskMetricFunds: 0,
     holdingFunds: 0,
@@ -30059,15 +30118,21 @@ function buildFundResearchDigestCacheStats(cache = readFundResearchDigestCache()
     holdingRealtimePulseSourceKinds: [],
     holdingRealtimePulseLatestAt: "",
     holdingRealtimePulseLatestAgeHours: null,
+    latestDigestAt: "",
+    latestDigestAgeHours: null,
     updatedAt: cache?.updatedAt || ""
   };
   const holdingPulseSourceKinds = new Set();
   let latestPulseMs = 0;
+  let latestDigestMs = 0;
   for (const entry of entries) {
     const digest = entry.digest || {};
     const ageHours = getMarketSnapshotCacheAgeHours(entry.cachedAt, nowIso);
     if (Number.isFinite(ageHours) && ageHours <= FUND_RESEARCH_WARMER_MAX_CACHE_AGE_HOURS) stats.freshFunds += 1;
+    const digestMs = Date.parse(entry.cachedAt || "");
+    if (Number.isFinite(digestMs) && digestMs > latestDigestMs) latestDigestMs = digestMs;
     if (isSufficientFundResearchDigestForDecision(digest)) stats.sufficientFunds += 1;
+    if (digest.name || digest.scale || Array.isArray(digest.managers) && digest.managers.length || digest.nav?.unitNav) stats.profileFunds += 1;
     if (digest.trendProfile?.ok) stats.trendProfileFunds += 1;
     const risk = selectPortfolioQualityRiskPeriod(digest);
     if (risk?.ok) stats.riskMetricFunds += 1;
@@ -30098,6 +30163,10 @@ function buildFundResearchDigestCacheStats(cache = readFundResearchDigestCache()
   if (latestPulseMs) {
     stats.holdingRealtimePulseLatestAt = new Date(latestPulseMs).toISOString();
     stats.holdingRealtimePulseLatestAgeHours = round(getMarketSnapshotCacheAgeHours(stats.holdingRealtimePulseLatestAt, nowIso), 2);
+  }
+  if (latestDigestMs) {
+    stats.latestDigestAt = new Date(latestDigestMs).toISOString();
+    stats.latestDigestAgeHours = round(getMarketSnapshotCacheAgeHours(stats.latestDigestAt, nowIso), 2);
   }
   return stats;
 }

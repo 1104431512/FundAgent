@@ -973,12 +973,32 @@ const requiredPatterns = [
       const cacheStats = getFunctionSource(source, "buildFundResearchDigestCacheStats");
       return fundCoverage.includes("researchDigestCacheFunds")
         && fundCoverage.includes("freshResearchDigestCacheFunds")
+        && fundCoverage.includes("researchDigestProfileFunds")
         && engineCoverage.includes("buildFundResearchDigestCacheStats")
+        && cacheStats.includes("profileFunds")
         && cacheStats.includes("riskMetricFunds")
         && cacheStats.includes("holdingFunds")
         && cacheStats.includes("feeFunds");
     },
     message: "data-source coverage must count warmed fund research cache for risk, holdings, and fee indicator readiness."
+  },
+  {
+    test: (source) => {
+      const registry = getFunctionSource(source, "isDataSourceConfigured");
+      const statuses = getFunctionSource(source, "buildFundResearchDigestComponentStatuses");
+      const statusMap = getFunctionSource(source, "buildDataSourceComponentStatusMap");
+      return source.includes('componentKeys: ["fundProfiles"]')
+        && source.includes('componentKeys: ["fundNavHistories"]')
+        && source.includes('componentKeys: ["fundHoldings"]')
+        && source.includes('componentKeys: ["fundFees"]')
+        && statusMap.includes("buildFundResearchDigestComponentStatuses")
+        && statuses.includes("fundProfiles")
+        && statuses.includes("fundNavHistories")
+        && statuses.includes("fundHoldings")
+        && statuses.includes("fundFees")
+        && registry.includes("return !source.requiresEnv");
+    },
+    message: "fund profile, nav, holdings, and fee sources must derive sample coverage from warmed research digests."
   },
   {
     test: (source) => {
@@ -995,8 +1015,8 @@ const requiredPatterns = [
     message: "data-source coverage must synthesize top-holding realtime pulse samples from warmed fund research digests."
   },
   {
-    pattern: /(?=[\s\S]*资料预热)(?=[\s\S]*fundResearchWarmerRuns)(?=[\s\S]*fundResearchWarmerCandidates)(?=[\s\S]*fundResearchWarmerFailures)(?=[\s\S]*研究缓存)(?=[\s\S]*researchDigestCacheFunds)(?=[\s\S]*持仓脉冲)(?=[\s\S]*holdingRealtimePulseFunds)(?=[\s\S]*持仓行情)(?=[\s\S]*holdingRealtimeQuoteFetches)/,
-    message: "admin runtime pages must expose fund research warmer, top-holding realtime pulse, and warmed research cache coverage."
+    pattern: /(?=[\s\S]*资料预热)(?=[\s\S]*fundResearchWarmerRuns)(?=[\s\S]*fundResearchWarmerCandidates)(?=[\s\S]*fundResearchWarmerFailures)(?=[\s\S]*研究缓存)(?=[\s\S]*researchDigestCacheFunds)(?=[\s\S]*画像样本)(?=[\s\S]*researchDigestRiskMetricFunds)(?=[\s\S]*持仓脉冲)(?=[\s\S]*holdingRealtimePulseFunds)(?=[\s\S]*持仓行情)(?=[\s\S]*holdingRealtimeQuoteFetches)/,
+    message: "admin runtime pages must expose fund research warmer, profile samples, top-holding realtime pulse, and warmed research cache coverage."
   },
   {
     pattern: /function normalizeMarketDataQualityComponent[\s\S]{0,900}cacheFallback[\s\S]{0,520}status = "cached"/,
