@@ -3357,8 +3357,32 @@ const requiredPatterns = [
     message: "portfolio status replies must summarize ready and waiting candidates as a buy-preparation queue."
   },
   {
+    pattern: /function getPortfolioWatchDisplayStatus[\s\S]{0,700}getPortfolioWatchCatchdownDisplayBlocker[\s\S]{0,360}"blocked"/,
+    message: "portfolio watchlist display status must route stale-theme/catchdown waiting candidates to the no-buy lane."
+  },
+  {
+    pattern: /function summarizePortfolioWatchlistForModel[\s\S]{0,180}normalizePortfolioWatchlistForDisplay[\s\S]{0,700}rawStatus/,
+    message: "portfolio model watchlist summaries must use display status while preserving raw status for traceability."
+  },
+  {
+    pattern: /function selectFundWorkflowWatchlistCandidates[\s\S]{0,260}normalizePortfolioWatchlistForDisplay[\s\S]{0,320}\["ready",\s*"waiting_pullback",\s*"watch"\]\.includes\(item\.status\)/,
+    message: "fund recommendation watchlist reuse must exclude catchdown candidates after display-status routing."
+  },
+  {
+    pattern: /function buildPortfolioWatchlistStatusLines[\s\S]{0,180}normalizePortfolioWatchlistForDisplay[\s\S]{0,900}items:\s*normalized\.filter\(\(item\)\s*=>\s*item\.status === status\)/,
+    message: "portfolio status replies must group watchlist items by display status, not raw waiting-pullback status."
+  },
+  {
+    pattern: /function buildPortfolioWatchlistActionQueueLines[\s\S]{0,900}normalizePortfolioWatchlistForDisplay[\s\S]{0,900}item\.status === "ready"[\s\S]{0,900}normalizePortfolioWatchlistForDisplay[\s\S]{0,900}item\.status === "waiting_pullback"/,
+    message: "portfolio buy-preparation queues must use display status so catchdown candidates cannot appear as ready or waiting."
+  },
+  {
     pattern: /buildPortfolioWatchlistLaunchEveLines/,
     message: "portfolio status replies must surface launch-eve watchlist candidates before the general buy-preparation queue."
+  },
+  {
+    pattern: /function buildPortfolioWatchlistLaunchEveLines[\s\S]{0,260}normalizePortfolioWatchlistForDisplay[\s\S]{0,420}!\["blocked",\s*"removed",\s*"in_position"\]\.includes\(item\.status\)/,
+    message: "launch-eve watchlist focus must use display status so catchdown candidates stay out of launch review."
   },
   {
     pattern: /启动前夜重点复核/,

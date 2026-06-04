@@ -4295,6 +4295,48 @@ assert(watchlistStatusLines.includes("费用/份额：C类更适合短中期观�
 assert(watchlistStatusLines.includes("最新走势：20日+4.8%"), "portfolio status answer must include latest trend evidence");
 assert(watchlistStatusLines.includes("缺口=低位/启动/刚转强/不过热/费用条件已满足"), "buy-preparation queue must tell managers when ready candidates have no remaining setup, early-turn, and fee gap");
 assert(watchlistStatusLines.includes("买入缺口：还差回调完成或启动前夜信号"), "watchlist detail must expose what waiting candidates still lack before buying");
+const catchdownWaitingWatchItem = {
+  code: "000004",
+  name: "旧题材回调基金C",
+  status: "waiting_pullback",
+  priority: 2,
+  candidateRole: "低位启动前夜观察备选",
+  reason: "表面回调完成，但题材退潮后仍缺少主力接力。",
+  setupEvidence: ["召回定位：低位启动前夜候选"],
+  buyTriggers: ["回踩不破前低"],
+  riskNotes: ["题材退潮、主力资金撤离，存在接盘风险。"],
+  lastSnapshot: {
+    trendProfile: {
+      ok: true,
+      pullbackSetup: { signal: "launch_setup" },
+      trendLabel: "pullback_complete",
+      entryBias: "wait_pullback",
+      return5dPct: 0.6,
+      return10dPct: 1.2,
+      return20dPct: 3.1,
+      return60dPct: -2.4,
+      lowPositionPct120: 25.2,
+      drawdownFromRecentHighPct: -12.3
+    },
+    matchedThemes: [
+      {
+        name: "AI算力",
+        stage: "theme_fading",
+        retreatSignal: "capital_outflow",
+        capitalRetreatScore: 72,
+        avgMainNetInflowPct: -2.2,
+        forwardScore: 24,
+        rotationScore: 20
+      }
+    ]
+  }
+};
+const catchdownWaitingWatchLines = manager.buildPortfolioWatchlistStatusLines([catchdownWaitingWatchItem]).join("\n");
+assert.equal(manager.getPortfolioWatchDisplayStatus(catchdownWaitingWatchItem), "blocked", "waiting-pullback watchlist candidates with catchdown evidence must be displayed as blocked");
+assert(manager.getPortfolioWatchCatchdownDisplayBlocker(catchdownWaitingWatchItem).includes("接盘风险") || manager.getPortfolioWatchCatchdownDisplayBlocker(catchdownWaitingWatchItem).includes("主力资金撤离"), "display blocker must explain the catchdown/no-buy reason");
+assert(catchdownWaitingWatchLines.includes("【暂不买入】") && catchdownWaitingWatchLines.includes("接盘风险"), "catchdown watchlist items must be shown in the no-buy lane with an explicit catchdown label");
+assert(!manager.buildPortfolioWatchlistLaunchEveLines([catchdownWaitingWatchItem]).join("\n").includes("000004"), "catchdown watchlist items must not enter launch-eve focus even when their raw role says launch setup");
+assert(!manager.buildPortfolioWatchlistActionQueueLines([catchdownWaitingWatchItem]).join("\n").includes("000004"), "catchdown watchlist items must not enter the buy-preparation queue as waiting-pullback candidates");
 const rankingAwareWatchlistLines = manager.buildPortfolioWatchlistStatusLines([normalizedWatchDb.watchlist[0]], {
   managerRankings: {
     lists: [

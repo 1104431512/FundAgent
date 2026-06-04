@@ -7170,8 +7170,93 @@ function mergeStringLists(...groups) {
   return values;
 }
 
+function getPortfolioWatchCatchdownDisplayBlocker(item = {}) {
+  if (!item || typeof item !== "object") return "";
+  const snapshot = item.lastSnapshot && typeof item.lastSnapshot === "object" ? item.lastSnapshot : {};
+  const warnings = mergeStringLists(
+    getTextualCatchdownWarnings(item, snapshot),
+    getPortfolioCatchdownLossMemoryWarnings(item, snapshot),
+    getDirectPortfolioHoldingThemeRetreatWarnings(item),
+    getDirectPortfolioHoldingThemeRetreatWarnings(snapshot),
+    getCandidateThemeRetreatWarnings(item),
+    getCandidateThemeRetreatWarnings(snapshot),
+    getStaleThemeCatchdownWarnings(item),
+    getStaleThemeCatchdownWarnings(snapshot),
+    getUnrefreshedMarketThemeWarnings(item),
+    getUnrefreshedMarketThemeWarnings(snapshot),
+    getStaleCatalystThemeWarnings(item),
+    getStaleCatalystThemeWarnings(snapshot),
+    getStalePortfolioThemeRefreshWarnings(item),
+    getStalePortfolioThemeRefreshWarnings(snapshot),
+    getThemeMainForcePlaybookRiskWarnings(item),
+    getThemeMainForcePlaybookRiskWarnings(snapshot),
+    [getHoldingRealtimeCatchdownWarning(item), getHoldingRealtimeCatchdownWarning(snapshot)]
+  ).filter(Boolean);
+  if (warnings.length) return warnings[0];
+  if (
+    hasHoldingRealtimeCatchdownRisk(item)
+    || hasHoldingRealtimeCatchdownRisk(snapshot)
+    || hasThemeRetreatRisk(item)
+    || hasThemeRetreatRisk(snapshot)
+    || hasStaleThemeCatchdownRisk(item)
+    || hasStaleThemeCatchdownRisk(snapshot)
+  ) {
+    return "系统接盘风险拦截：题材退潮、主力撤离或底层持仓走弱，不能把回调当买点。";
+  }
+  return "";
+}
+
+function getPortfolioWatchDisplayStatus(item = {}) {
+  const rawStatus = normalizePortfolioWatchStatus(item.status || "watch");
+  if (["removed", "in_position"].includes(rawStatus)) return rawStatus;
+  return getPortfolioWatchCatchdownDisplayBlocker(item) ? "blocked" : rawStatus;
+}
+
+function formatPortfolioWatchDisplayStatus(item = {}) {
+  const status = getPortfolioWatchDisplayStatus(item);
+  if (status === "blocked" && getPortfolioWatchCatchdownDisplayBlocker(item)) return "接盘风险";
+  return item.statusText || formatPortfolioWatchStatus(status);
+}
+
+function applyPortfolioWatchDisplayStatus(item = {}) {
+  const rawStatus = normalizePortfolioWatchStatus(item.status || "watch");
+  const displayStatus = getPortfolioWatchDisplayStatus(item);
+  const blocker = displayStatus === "blocked" ? getPortfolioWatchCatchdownDisplayBlocker(item) : "";
+  if (!blocker) {
+    return {
+      ...item,
+      status: displayStatus,
+      statusText: item.statusText || formatPortfolioWatchStatus(displayStatus)
+    };
+  }
+  const roleText = /接盘风险|暂不买|回避/.test(item.candidateRole || "")
+    ? item.candidateRole
+    : [item.candidateRole, "接盘风险排除候选"].filter(Boolean).join(" / ");
+  return {
+    ...item,
+    rawStatus,
+    status: "blocked",
+    statusText: "接盘风险",
+    priority: Math.max(Number(item.priority || 3), 5),
+    candidateRole: roleText,
+    riskNotes: mergeStringLists(
+      [blocker, "这不是低位启动，只做0元观察，不进入购买准备队列。"],
+      item.riskNotes
+    ).slice(0, 8),
+    buyTriggers: mergeStringLists(
+      item.buyTriggers,
+      ["等新鲜新闻/主力资金回流和代表持仓止跌后再复核。"]
+    ).slice(0, 8),
+    dataBasis: mergeStringLists(item.dataBasis, ["来源：watchlist_display_catchdown_guard"]).slice(0, 8)
+  };
+}
+
+function normalizePortfolioWatchlistForDisplay(watchlist = []) {
+  return normalizePortfolioWatchlist(watchlist).map(applyPortfolioWatchDisplayStatus);
+}
+
 function summarizePortfolioWatchlistForModel(watchlist = []) {
-  return normalizePortfolioWatchlist(watchlist)
+  return normalizePortfolioWatchlistForDisplay(watchlist)
     .filter((item) => item.status !== "removed")
     .slice(0, 30)
     .map((item) => {
@@ -7182,6 +7267,8 @@ function summarizePortfolioWatchlistForModel(watchlist = []) {
         shareClass: item.shareClass,
         type: item.type,
         status: item.status,
+        rawStatus: item.rawStatus || item.status,
+        statusText: item.statusText || formatPortfolioWatchStatus(item.status),
         priority: item.priority,
         readinessScore: readiness.score,
         readinessLabel: readiness.label,
@@ -7255,7 +7342,7 @@ function selectFundWorkflowWatchlistCandidates(watchlist = [], userText = "", op
   const limit = Math.max(0, Number(options.limit ?? 6) || 0);
   if (!limit) return [];
   const wantsPullbackSetup = isPullbackSetupRequest(userText);
-  return normalizePortfolioWatchlist(watchlist)
+  return normalizePortfolioWatchlistForDisplay(watchlist)
     .filter((item) => ["ready", "waiting_pullback", "watch"].includes(item.status))
     .filter((item) => !hasFundWorkflowWatchlistThemeBlocker(item))
     .filter((item) => isFundWorkflowWatchlistFreshEnough(item, options))
@@ -7286,7 +7373,7 @@ function selectFundWorkflowStaleWatchlistRefreshCandidates(watchlist = [], userT
   const limit = Math.max(0, Number(options.limit ?? 3) || 0);
   if (!limit) return [];
   const wantsPullbackSetup = isPullbackSetupRequest(userText);
-  return normalizePortfolioWatchlist(watchlist)
+  return normalizePortfolioWatchlistForDisplay(watchlist)
     .filter((item) => ["ready", "waiting_pullback"].includes(item.status))
     .filter((item) => !hasFundWorkflowWatchlistThemeBlocker(item))
     .filter((item) => !isFundWorkflowWatchlistFreshEnough(item, options))
@@ -7495,7 +7582,7 @@ function getPortfolioWatchlistMainCandidateBlocker(candidate = {}) {
   const watch = candidate.portfolioWatchlist || {};
   const rawStatus = watch.status || candidate.status || "";
   if (!rawStatus) return "";
-  const status = normalizePortfolioWatchStatus(rawStatus);
+  const status = getPortfolioWatchDisplayStatus({ ...candidate, ...watch, status: rawStatus });
   if (status === "ready") return "";
   if (status === "waiting_pullback") return "经理自选池状态为等待回调，只能列入备选观察，不能作为主推荐。";
   if (status === "watch") return "经理自选池状态为观察中，说明仍有规模、费用、持仓或走势缺口，不能作为主推荐。";
@@ -7513,7 +7600,8 @@ function summarizePortfolioWatchItem(item = {}) {
     shareClass: item.shareClass || "",
     type: item.type || "",
     status: item.status || "watch",
-    statusText: formatPortfolioWatchStatus(item.status),
+    rawStatus: item.rawStatus || item.status || "watch",
+    statusText: item.statusText || formatPortfolioWatchStatus(item.status),
     priority: item.priority || 3,
     readinessScore: readiness.score,
     readinessLabel: readiness.label,
@@ -10313,7 +10401,7 @@ function formatPortfolioOrderDetailStatusLine(order = {}) {
 }
 
 function buildPortfolioWatchlistStatusLines(watchlist = [], options = {}) {
-  const normalized = normalizePortfolioWatchlist(watchlist).filter((item) => item.status !== "removed");
+  const normalized = normalizePortfolioWatchlistForDisplay(watchlist).filter((item) => item.status !== "removed");
   if (!normalized.length) return ["暂无自选基金。"];
   const limitPerStatus = Math.max(1, Number(options.limitPerStatus || 4));
   const compact = Boolean(options.compact);
@@ -10401,7 +10489,7 @@ function shortenPortfolioCitationText(value = "", maxLength = 100) {
 
 function buildPortfolioWatchlistLaunchEveLines(watchlist = [], options = {}) {
   const compact = Boolean(options.compact);
-  const focusItems = normalizePortfolioWatchlist(watchlist)
+  const focusItems = normalizePortfolioWatchlistForDisplay(watchlist)
     .filter((item) => isLowBaseLaunchWatchSeed(item))
     .filter((item) => !["blocked", "removed", "in_position"].includes(item.status))
     .map((item) => ({ ...item, ...evaluatePortfolioWatchReadiness(item) }))
@@ -10423,12 +10511,12 @@ function buildPortfolioWatchlistLaunchEveLines(watchlist = [], options = {}) {
 
 function buildPortfolioWatchlistActionQueueLines(watchlist = [], options = {}) {
   const compact = Boolean(options.compact);
-  const ready = normalizePortfolioWatchlist(watchlist)
+  const ready = normalizePortfolioWatchlistForDisplay(watchlist)
     .filter((item) => item.status === "ready")
     .map((item) => ({ ...item, ...evaluatePortfolioWatchReadiness(item) }))
     .sort(comparePortfolioWatchReadiness)
     .slice(0, 3);
-  const waiting = normalizePortfolioWatchlist(watchlist)
+  const waiting = normalizePortfolioWatchlistForDisplay(watchlist)
     .filter((item) => item.status === "waiting_pullback")
     .map((item) => ({ ...item, ...evaluatePortfolioWatchReadiness(item) }))
     .sort(comparePortfolioWatchReadiness)
@@ -38466,6 +38554,7 @@ export {
   buildPortfolioRiskBudgetActions,
   buildPortfolioWatchReadinessGaps,
   buildPortfolioWatchlistRecheckUpdates,
+  buildPortfolioWatchlistActionQueueLines,
   buildPortfolioWatchlistStatusLines,
   buildPortfolioWatchlistLaunchEveLines,
   buildPortfolioWatchlistUpdatesFromAnswerProfiles,
@@ -38537,6 +38626,8 @@ export {
   getPortfolioPremarketSkillIds,
   getPortfolioReviewSkillIds,
   getPortfolioWeeklySkillIds,
+  getPortfolioWatchCatchdownDisplayBlocker,
+  getPortfolioWatchDisplayStatus,
   getRuntimeRelease,
   applyPortfolioCatchdownLossMemoryToCandidates,
   applyPortfolioCatchdownLossMemoryToWatchlist,
