@@ -1639,6 +1639,7 @@ async function executePortfolioDecision(db, run, config) {
     watchlistProfiles,
     marketSnapshot
   });
+  const decisionWatchlist = applyPortfolioCatchdownLossMemoryToWatchlist(watchlist, db);
   assertPortfolioRunActive(run);
   markPortfolioRunProgress(db, run, `资料已准备，模型正在以 ${config.modelReasoningEffort || "high"} 深度生成今日操作。`);
   await yieldToEventLoop();
@@ -1646,7 +1647,7 @@ async function executePortfolioDecision(db, run, config) {
     account: accountBefore,
     marketSnapshot,
     heldProfiles,
-    watchlist,
+    watchlist: decisionWatchlist,
     watchlistProfiles,
     watchlistSeedCandidates,
     seedProfiles,
@@ -1669,7 +1670,7 @@ async function executePortfolioDecision(db, run, config) {
             ensurePortfolioRedeploymentPlanReviewed(
               ensurePortfolioReadyWatchlistReviewed(
                 normalizePortfolioDecision(raw),
-                watchlist,
+                decisionWatchlist,
                 { profiles: watchlistProfiles }
               ),
               accountBefore,
@@ -2055,14 +2056,15 @@ async function executePortfolioWeekly(db, run, config) {
 }
 
 async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldProfiles, watchlist = [], watchlistProfiles = [], watchlistSeedCandidates = [], seedProfiles = [], missedFollowThroughQueue = [], starterBuyFollowUpQueue = [], config, profileContext, capabilityDiagnostics = null, capabilityActionQueue = null, managerRankings = null }) {
+  const decisionWatchlist = watchlist;
   const exposureSummary = buildPortfolioExposureSummary(account.positions || []);
-  const decisionCapabilityDiagnostics = capabilityDiagnostics || buildPortfolioCapabilityDiagnostics({ account, watchlist });
+  const decisionCapabilityDiagnostics = capabilityDiagnostics || buildPortfolioCapabilityDiagnostics({ account, watchlist: decisionWatchlist });
   const decisionCapabilityActionQueue = Array.isArray(capabilityActionQueue)
     ? capabilityActionQueue
-    : buildPortfolioCapabilityActionQueue({ account, watchlist });
-  const redeploymentPlan = buildPortfolioRedeploymentPlan(account, watchlist, mergePortfolioProfiles(watchlistProfiles, seedProfiles));
-  const themeOpportunityPlan = buildPortfolioThemeOpportunityPlan(account, watchlist, mergePortfolioProfiles(watchlistProfiles, seedProfiles), marketSnapshot);
-  const decisionManagerRankings = managerRankings || buildPortfolioDecisionRankingBoard({ account, watchlist, userPortfolios: [] }, watchlistSeedCandidates, {
+    : buildPortfolioCapabilityActionQueue({ account, watchlist: decisionWatchlist });
+  const redeploymentPlan = buildPortfolioRedeploymentPlan(account, decisionWatchlist, mergePortfolioProfiles(watchlistProfiles, seedProfiles));
+  const themeOpportunityPlan = buildPortfolioThemeOpportunityPlan(account, decisionWatchlist, mergePortfolioProfiles(watchlistProfiles, seedProfiles), marketSnapshot);
+  const decisionManagerRankings = managerRankings || buildPortfolioDecisionRankingBoard({ account, watchlist: decisionWatchlist, userPortfolios: [] }, watchlistSeedCandidates, {
     profiles: seedProfiles,
     heldProfiles,
     watchlistProfiles,
@@ -2155,13 +2157,13 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "要求：持仓复核队列中的每只基金必须在 actions 中逐只给 HOLD/SELL/WATCH 理由；如果继续持有，要写清减仓或止损触发条件，不能忽略。",
     "",
     "当前自选基金池：",
-    JSON.stringify(summarizePortfolioWatchlistForModel(watchlist), null, 2),
+    JSON.stringify(summarizePortfolioWatchlistForModel(decisionWatchlist), null, 2),
     "",
     "自选基金池联网资料：",
     JSON.stringify(compactWatchlistProfiles, null, 2),
     "",
     "今日购买准备队列（系统复核后）：",
-    JSON.stringify(buildPortfolioDecisionReadinessQueue(watchlist, watchlistProfiles), null, 2),
+    JSON.stringify(buildPortfolioDecisionReadinessQueue(decisionWatchlist, watchlistProfiles), null, 2),
     "要求：队列中的接近可买候选必须在 actions 中逐只给 BUY 或 WATCH/HOLD 理由；如果不买，要写清仍差的触发条件，不能忽略。",
     "",
     "系统确定性召回的低位/回调候选：",
@@ -4112,6 +4114,8 @@ function buildPortfolioDecisionReadinessQueue(watchlist = [], profiles = []) {
         ...item,
         lastSnapshot: profile || item.lastSnapshot
       });
+      const memoryWarnings = getPortfolioCatchdownLossMemoryWarnings(item, profile || item.lastSnapshot || {});
+      const memoryBlocked = memoryWarnings.length > 0;
       return {
         code: item.code,
         name: item.name,
@@ -4121,11 +4125,13 @@ function buildPortfolioDecisionReadinessQueue(watchlist = [], profiles = []) {
         readinessLabel: readiness.label,
         reason: item.reason,
         firstTrigger: item.buyTriggers?.[0] || "",
-        firstRisk: riskGate.ok ? item.riskNotes?.[0] || "" : riskGate.reason,
+        firstRisk: memoryBlocked ? memoryWarnings[0] : riskGate.ok ? item.riskNotes?.[0] || "" : riskGate.reason,
         positionPlan: item.positionPlan || "",
         trendEvidence: profile ? formatPortfolioSeedVerifiedTrendEvidence(profile) : item.lastSnapshot?.trendSummary || "",
-        readinessGaps: riskGate.ok ? readiness.gaps : mergeStringLists([riskGate.reason], readiness.gaps),
-        positiveRankingGate: riskGate.ok ? "通过" : "接盘/追涨风险未解除，不能进入买入准备或低位启动主推荐。",
+        readinessGaps: memoryBlocked
+          ? mergeStringLists(memoryWarnings, riskGate.ok ? readiness.gaps : [riskGate.reason, ...readiness.gaps])
+          : riskGate.ok ? readiness.gaps : mergeStringLists([riskGate.reason], readiness.gaps),
+        positiveRankingGate: memoryBlocked || !riskGate.ok ? "接盘/追涨风险未解除，不能进入买入准备或低位启动主推荐。" : "通过",
         feeNotes: item.feeNotes || [],
         reviewDate: item.reviewDate || ""
       };
@@ -4964,6 +4970,8 @@ function buildPortfolioReadyWatchlistReviewActions(watchlist = [], existingActio
     .map((item) => {
       const profile = profileByCode.get(item.code) || item.lastSnapshot || null;
       const trendEvidence = profile ? formatPortfolioSeedVerifiedTrendEvidence(profile) : item.lastSnapshot?.trendSummary || "";
+      const memoryWarnings = getPortfolioCatchdownLossMemoryWarnings(item, profile || item.lastSnapshot || {});
+      const memoryWarning = memoryWarnings[0] || "";
       return {
         action: "WATCH",
         code: item.code,
@@ -4974,9 +4982,11 @@ function buildPortfolioReadyWatchlistReviewActions(watchlist = [], existingActio
         dataBasis: ["来源：ready_watchlist_review_fallback", trendEvidence, item.reason].filter(Boolean),
         rotationCheck: item.setupEvidence?.[0] || trendEvidence || "等待轮动/低位证据复查。",
         positionCheck: trendEvidence || "等待净值复核。",
-        chaseRisk: item.riskNotes?.[0] || "若短期涨幅扩大，继续等待回撤，不能追涨。",
+        chaseRisk: memoryWarning || item.riskNotes?.[0] || "若短期涨幅扩大，继续等待回撤，不能追涨。",
         feeCheck: item.feeNotes?.[0] || "份额和费用待复核。",
-        riskControl: item.buyTriggers?.[0] || "下一次盘前继续复查买入触发条件。"
+        riskControl: memoryWarning
+          ? "历史接盘冷却未解除前保持0元观察；必须等主力资金回流、新鲜催化和代表持仓承载成立后再恢复微型试探。"
+          : item.buyTriggers?.[0] || "下一次盘前继续复查买入触发条件。"
       };
     });
 }
@@ -37811,6 +37821,7 @@ export {
   getPortfolioReviewSkillIds,
   getPortfolioWeeklySkillIds,
   getRuntimeRelease,
+  applyPortfolioCatchdownLossMemoryToWatchlist,
   applyPortfolioWatchlistUpdates,
   guardPortfolioWatchlistReadyUpdate,
   classifyPullbackSetupCandidateForSummary,

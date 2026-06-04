@@ -2273,6 +2273,18 @@ const requiredPatterns = [
     message: "same-theme low pullbacks after stale-catchdown losses must participate in the hard catchdown gate."
   },
   {
+    pattern: /const decisionWatchlist = applyPortfolioCatchdownLossMemoryToWatchlist\(watchlist, db\)/,
+    message: "portfolio decisions must inject same-theme catchdown-loss memory before building the model prompt."
+  },
+  {
+    pattern: /buildPortfolioDecisionReadinessQueue\(decisionWatchlist, watchlistProfiles\)/,
+    message: "portfolio decision readiness queues must use the catchdown-memory watchlist, not the raw watchlist."
+  },
+  {
+    pattern: /ensurePortfolioReadyWatchlistReviewed[\s\S]{0,180}decisionWatchlist/,
+    message: "ready-watchlist fallback actions must use the catchdown-memory watchlist."
+  },
+  {
     pattern: /主力预热错过回测[\s\S]{0,900}主力\/预热题材不能被普通等待吞掉[\s\S]{0,900}0\.5%-1\.2%微型试探/,
     message: "portfolio capability queue must turn missed main-capital/preheat opportunities into micro-starter or downgrade decisions."
   },

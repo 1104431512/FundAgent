@@ -9307,6 +9307,8 @@ assert(
   "catchdown loss memory must extract the loss-making theme from historical stale-catchdown buys"
 );
 const catchdownLossMemoryBoard = manager.buildPortfolioRankingBoard(catchdownLossMemoryDb);
+const catchdownDecisionWatchlist = manager.applyPortfolioCatchdownLossMemoryToWatchlist(catchdownLossMemoryDb.watchlist, catchdownLossMemoryDb);
+const catchdownMemoryReadinessQueue = manager.buildPortfolioDecisionReadinessQueue(catchdownDecisionWatchlist, []);
 const catchdownMemoryRiskItem = catchdownLossMemoryBoard.lists.find((item) => item.id === "stale_catchdown_risk")?.items.find((item) => item.code === "000202");
 assert(
   catchdownMemoryRiskItem?.action.includes("历史接盘冷却")
@@ -9323,6 +9325,26 @@ assert(
   (catchdownLossMemoryBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000202")
     && !(catchdownLossMemoryBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "000202"),
   "customer action deck must show same-theme catchdown-loss memory as avoid, not buy"
+);
+assert(
+  catchdownMemoryReadinessQueue.find((item) => item.code === "000202")?.positiveRankingGate?.includes("接盘/追涨风险未解除")
+    && [
+      catchdownMemoryReadinessQueue.find((item) => item.code === "000202")?.firstRisk,
+      ...(catchdownMemoryReadinessQueue.find((item) => item.code === "000202")?.readinessGaps || [])
+    ].join(" ").includes("历史接盘亏损冷却"),
+  "decision readiness queue must carry same-theme catchdown-loss memory instead of exposing a plain ready candidate"
+);
+const catchdownMemoryReadyFallback = manager.ensurePortfolioReadyWatchlistReviewed(
+  { actions: [], watchlistUpdates: [], learningNotes: [], sources: [] },
+  catchdownDecisionWatchlist,
+  { profiles: [] }
+);
+const catchdownMemoryFallbackAction = catchdownMemoryReadyFallback.actions.find((item) => item.code === "000202");
+assert(
+  catchdownMemoryFallbackAction?.action === "WATCH"
+    && catchdownMemoryFallbackAction.chaseRisk.includes("历史接盘亏损冷却")
+    && catchdownMemoryFallbackAction.targetWeightPct === 0,
+  "ready-watchlist fallback must keep same-theme catchdown-loss candidates at 0-yuan WATCH instead of creating a buy review"
 );
 assert(
   !catchdownLossMemoryBoard.lists.find((item) => item.id === "stale_catchdown_risk")?.items.some((item) => item.code === "000203"),
