@@ -11699,6 +11699,19 @@ assert(guidedChartAnswer.includes("看不懂指标时先看底部决策理由"),
 assert(!/\b(?:ENTRY|SIG|LOW\/YLOW|BATCH|STAGE|stage)\b/.test(guidedChartAnswer), "chart reading guide must not reintroduce raw legacy English labels");
 assert(guidedChartAnswer.includes("用来确认是否适合分批买入"), "buy-reference chart guide must say how the chart supports a buy decision");
 assert(guidedChartAnswer.includes("用来观察是否能从备选转入买点"), "backup chart guide must say how the chart supports a backup decision");
+const compactPriorityChartAnswer = manager.appendFundReportChartReadingGuide([
+  "直接结论：第一名小仓验证，其余先备选。",
+  "排序口径：高夏普/低回撤优先，再看买点和费用。",
+  "结果榜：1. 000072 高夏普基金C：风险收益更稳；2. 000071 低位基金C：买点更近。",
+  "为什么这样排：先看风险收益质量，再看回调启动。",
+  "执行：1万元里第一名最多1000元，第二名0元备选。",
+  "边界：题材转弱或数据过期就暂停。"
+].join("\n"), expandedChartProfiles, { compact: true });
+assert(
+  !compactPriorityChartAnswer.includes("配图阅读：")
+    && compactPriorityChartAnswer.split(/\r?\n/).filter(Boolean).length === 6,
+  "short priority leaderboards must keep the text compact even when report images are attached"
+);
 const previousCardImageChunkSize = process.env.FEISHU_CARD_IMAGE_CHUNK_SIZE;
 delete process.env.FEISHU_CARD_IMAGE_CHUNK_SIZE;
 assert.equal(manager.getFeishuCardImageChunkSize(), 4, "fund report image card chunks should keep each Feishu card readable");
@@ -12194,6 +12207,32 @@ const highSharpeEnforcedResultLine = highSharpeEnforcedOrder.split("\n").find((l
 assert(
   highSharpeEnforcedResultLine.indexOf("000072") >= 0 && highSharpeEnforcedResultLine.indexOf("000072") < highSharpeEnforcedResultLine.indexOf("000071"),
   "quality enforcement must rewrite wrong high-Sharpe ordering into a result board where the high-Sharpe candidate comes first"
+);
+const highSharpeAlmostShortAnswer = [
+  "直接结论：第一名可以小仓验证，其余先备选。",
+  "排序口径：高夏普/低回撤优先，再看买点和费用。",
+  "结果榜：1. 000072 高夏普低回撤基金C：风险收益更稳；2. 000071 买点更强低夏普基金C：买点更近。",
+  "为什么这样排：先看风险收益质量，再看回调启动是否成立。",
+  "执行：1万元里第一名最多1000元，第二名0元备选。",
+  "边界：如果题材转弱或数据过期就暂停。",
+  "补充：详细指标后续再看。"
+].join("\n");
+const highSharpeStrictShortAnswer = await manager.enforceFundAnswerQuality({
+  text: highSharpeAlmostShortAnswer,
+  workflow: "fund_recommendation",
+  userText: "推荐几个基金，按高夏普优先",
+  intent: { workflow: "fund_recommendation", mode: "priority_leaderboard" },
+  evidence: highSharpeWrongOrderEvidence
+});
+const highSharpeStrictShortLines = highSharpeStrictShortAnswer.split(/\r?\n/).filter(Boolean);
+const highSharpeStrictResultLine = highSharpeStrictShortLines.find((line) => line.startsWith("结果榜：")) || "";
+assert(
+  highSharpeStrictShortLines.length <= 6
+    && !highSharpeStrictShortAnswer.includes("补充：")
+    && !highSharpeStrictShortAnswer.includes("推荐清单：")
+    && highSharpeStrictResultLine.indexOf("000072") >= 0
+    && highSharpeStrictResultLine.indexOf("000072") < highSharpeStrictResultLine.indexOf("000071"),
+  "priority leaderboard enforcement must compress even almost-valid high-Sharpe answers into a strict six-line result board"
 );
 const sizeLiquidityPriorityFallback = manager.buildPullbackQualityFallbackAnswer({
   userText: "我想找回调完成低位启动的基金，按规模流动性优先",

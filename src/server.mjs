@@ -20741,8 +20741,9 @@ function getFundReportChartLegendLines() {
   return [...FUND_REPORT_CHART_LEGEND_LINES];
 }
 
-function appendFundReportChartReadingGuide(text, chartProfiles = []) {
+function appendFundReportChartReadingGuide(text, chartProfiles = [], options = {}) {
   const body = normalizeUserFacingFundAnswer(text).trim();
+  if (options.compact) return body;
   const snapshots = collectTrendSnapshotsFromProfiles(chartProfiles).slice(0, getFundReportChartLimit());
   if (!body || !snapshots.length || /配图阅读/.test(body)) return body;
   const lines = snapshots.map((item, index) => {
@@ -23425,6 +23426,31 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     skillContext
   ].join("\n");
 
+  const recommendationOutputInstructions = priorityLeaderboardMode
+    ? [
+      "请输出（短榜单模式，强制 6 行）：",
+      "1. 直接结论：直接说第一名能不能小仓验证，其余是备选还是0元观察。",
+      "2. 排序口径：照用户指定口径写，例如高夏普/低回撤优先；不要擅自换成买点优先。",
+      "3. 结果榜：一行给出 1/2/3 的首选顺序，每只只写一句人话理由，不堆近5日/近20日/夏普/回撤/规模等明细。",
+      "4. 为什么这样排：最多3个短理由，围绕走势、主力/新闻、持仓承载、费用或风险收益质量。",
+      "5. 执行：1万元资金怎么动，第一名上限多少，第二/三名是否0元备选。",
+      "6. 边界：最多2个会导致少买、不买或暂停加仓的条件。",
+      "禁止追加推荐清单、备选观察、缺失数据、自评估、题材雷达、日报式段落或逐只长分析。"
+    ].join("\n")
+    : [
+      "请输出：",
+      "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
+      "2. 排序口径：用一句话说明本次结果按什么优先排；用户说高夏普优先就写高夏普/低回撤优先，用户说主力题材优先就写主力资金和新闻逻辑优先，不要擅自换口径，也不要先铺数据。",
+      "3. 结果榜：一行给出排序后的首选顺序，例如“1. 000001：高夏普且低位修复；2. 000005：主力题材承载更清楚；3. ...”。如果暂未筛到合格主推荐，就写“暂无主推荐，观察顺序是...”。结果榜只写一句话理由，不写指标明细。",
+      "4. 为什么这样排：最多3条，用走势、主力/新闻、持仓承载、费用或风险收益质量解释排序，不要逐项报指标。",
+      "5. 推荐清单：按排序口径只展开优先 3-4 个候选基金或 ETF；每个候选先写“第几优先 + 一句话原因”，再写份额类别、费用模型、主题承载逻辑和配图看点。5日/10日早期转强、120日区间低位、回撤、夏普、费用里只保留最能改变动作的2-3个数字，其余改成自然中文。只能使用快照、下钻或经理自选候选池中的候选代码；如果没有足够代码，就写“待复核方向”。",
+      "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
+      "6. 备选观察：如果有未到买点但值得等的候选，用一行写 3-5 个代码和触发条件；偏热、追涨或回避对象不要混进备选。",
+      "7. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
+      "8. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的题材或价格条件。",
+      "全文控制在 12-16 行内；除结果榜外，每行尽量不超过90字。"
+    ].join("\n");
+
   const userPrompt = [
     `用户需求：${userText || "无"}`,
     "",
@@ -23449,18 +23475,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "系统识别的输出形态：",
     priorityLeaderboardMode ? "短榜单模式；只输出直接结论、排序口径、结果榜、为什么这样排、执行、边界。" : "普通推荐模式；仍需前三行先给直接结论、排序口径和结果榜。",
     "",
-    "请输出：",
-    "0. 如果这是排序/优先级类请求，或用户要求别啰嗦、直接给结果、少报数据，例如“按高夏普优先”，严格只输出 6 行：直接结论、排序口径、结果榜、为什么这样排、执行、边界；结果榜就是主体，不要再写“推荐清单”重复展开。",
-    "1. 直接结论：买 / 分批买 / 等 / 回避，以及一句理由。",
-    "2. 排序口径：用一句话说明本次结果按什么优先排；用户说高夏普优先就写高夏普/低回撤优先，用户说主力题材优先就写主力资金和新闻逻辑优先，不要擅自换口径，也不要先铺数据。",
-    "3. 结果榜：一行给出排序后的首选顺序，例如“1. 000001：高夏普且低位修复；2. 000005：主力题材承载更清楚；3. ...”。如果暂未筛到合格主推荐，就写“暂无主推荐，观察顺序是...”。结果榜只写一句话理由，不写指标明细。",
-    "4. 为什么这样排：最多3条，用走势、主力/新闻、持仓承载、费用或风险收益质量解释排序，不要逐项报指标。",
-    "5. 推荐清单：按排序口径只展开优先 3-4 个候选基金或 ETF；每个候选先写“第几优先 + 一句话原因”，再写份额类别、费用模型、主题承载逻辑和配图看点。5日/10日早期转强、120日区间低位、回撤、夏普、费用里只保留最能改变动作的2-3个数字，其余改成自然中文。只能使用快照、下钻或经理自选候选池中的候选代码；如果没有足够代码，就写“待复核方向”。",
-    "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
-    "6. 备选观察：如果有未到买点但值得等的候选，用一行写 3-5 个代码和触发条件；偏热、追涨或回避对象不要混进备选。",
-    "7. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
-    "8. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的题材或价格条件。",
-    "全文控制在 12-16 行内；除结果榜外，每行尽量不超过90字。"
+    recommendationOutputInstructions
   ].join("\n");
 
   const draft = await callModel({
@@ -23490,7 +23505,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     limit: getFundReportChartLimit()
   });
   return {
-    text: appendFundReportChartReadingGuide(text, chartProfiles),
+    text: appendFundReportChartReadingGuide(text, chartProfiles, { compact: priorityLeaderboardMode }),
     chartProfiles
   };
 }
@@ -23594,7 +23609,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     limit: getFundReportChartLimit()
   });
   return {
-    text: appendFundReportChartReadingGuide(text, chartProfiles),
+    text: appendFundReportChartReadingGuide(text, chartProfiles, { compact: priorityLeaderboardMode }),
     chartProfiles
   };
 }
@@ -23603,6 +23618,12 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
   const localizedText = removeUnsolicitedScoreLabels(normalizeUserFacingFundAnswer(text), userText);
   if (String(process.env.FUND_ANSWER_QUALITY_GATE ?? "true") === "false") {
     return localizedText;
+  }
+
+  const strictPriorityLeaderboardFallback = buildStrictFundPriorityLeaderboardFallback({ text: localizedText, workflow, userText, evidence });
+  if (strictPriorityLeaderboardFallback) {
+    updateStats({ counters: { fundAnswerQualityDeterministicFallbacks: 1 } });
+    return strictPriorityLeaderboardFallback;
   }
 
   const evaluation = evaluateFundAnswerQuality({ text, workflow, userText, evidence });
@@ -23799,6 +23820,33 @@ async function enforceFundAnswerQuality({ text, workflow, userText, intent, evid
     }
     return localizedText;
   }
+}
+
+function buildStrictFundPriorityLeaderboardFallback({ text = "", workflow = "", userText = "", evidence = null } = {}) {
+  if (!shouldForceShortFundPriorityLeaderboard({ text, workflow, userText, evidence })) return "";
+  const fallback = buildFundResultLeaderboardFallback({
+    text,
+    workflow,
+    userText,
+    evidence,
+    issues: ["verbose_result_answer_detail", "missing_result_first_ranking_summary", "result_ranking_metric_dump"]
+  });
+  if (!fallback) return "";
+  const lines = fallback.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return lines.slice(0, 6).join("\n");
+}
+
+function shouldForceShortFundPriorityLeaderboard({ text = "", workflow = "", userText = "", evidence = null } = {}) {
+  if (workflow === "conversation") return false;
+  if (!isFundAnswerPriorityLeaderboardRequest(userText)) return false;
+  if (!shouldRequireFundAnswerResultFirstRankingSummary({ text, workflow, userText, evidence })) return false;
+  const body = String(text || "");
+  const lines = body.split(/\r?\n+/).map((line) => line.trim()).filter(Boolean);
+  return lines.length > 6
+    || !hasFundAnswerResultFirstRankingSummary(body)
+    || hasMetricHeavyResultRankingSummary(body)
+    || hasFundAnswerRequestedSortOrderMismatch({ text: body, userText, evidence })
+    || lines.some((line) => /^(?:推荐清单|备选观察|观察\/排除|缺失数据|自评估|题材雷达|详细分析|投委会|市场判断)\s*[：:]/.test(line));
 }
 
 function evaluateFundAnswerQuality({ text, workflow, userText, evidence }) {

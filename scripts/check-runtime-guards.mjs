@@ -709,7 +709,7 @@ const requiredPatterns = [
     message: "model prompts must use a compact market snapshot that preserves key evidence without raw payload bloat."
   },
   {
-    pattern: /function recommendFundsWithModel[\s\S]{0,1800}marketSnapshotForModel = compactMarketSnapshotForModel\(marketSnapshot\)[\s\S]{0,4600}JSON\.stringify\(marketSnapshotForModel \|\| \{\}, null, 2\)/,
+    pattern: /function recommendFundsWithModel[\s\S]{0,1800}marketSnapshotForModel = compactMarketSnapshotForModel\(marketSnapshot\)[\s\S]{0,7200}JSON\.stringify\(marketSnapshotForModel \|\| \{\}, null, 2\)/,
     message: "fund recommendation prompts must send compact market snapshots instead of full raw snapshots."
   },
   {
@@ -829,6 +829,14 @@ const requiredPatterns = [
     message: "customer complaints about verbosity or metric dumps must also trigger short result-leaderboard mode."
   },
   {
+    pattern: /function buildStrictFundPriorityLeaderboardFallback[\s\S]{0,700}verbose_result_answer_detail[\s\S]{0,900}lines\.slice\(0,\s*6\)/,
+    message: "priority-ranking answers must be deterministically compressed to a strict six-line result leaderboard even when the model almost passes quality checks."
+  },
+  {
+    pattern: /function shouldForceShortFundPriorityLeaderboard[\s\S]{0,500}isFundAnswerPriorityLeaderboardRequest\(userText\)[\s\S]{0,800}lines\.length > 6/,
+    message: "priority-ranking requests must force short output based on the user's wording, not only on severe quality failures."
+  },
+  {
     pattern: /function buildConciseFundResultAnswerFallback[\s\S]{0,1200}最多3条为什么这样排|function buildConciseFundResultAnswerFallback[\s\S]{0,1800}为什么这样排/,
     message: "fund answer quality must have a deterministic compact fallback for verbose ranked answers."
   },
@@ -847,6 +855,10 @@ const requiredPatterns = [
   {
     pattern: /const resultLeaderboardFallback = buildFundResultLeaderboardFallback[\s\S]{0,520}evaluateFundAnswerQuality[\s\S]{0,260}fundAnswerQualityDeterministicFallbacks/,
     message: "fund answer enforcement must try deterministic result leaderboards before relying on model rewrite for ordinary ranking failures."
+  },
+  {
+    pattern: /function appendFundReportChartReadingGuide\(text,\s*chartProfiles = \[\],\s*options = \{\}\)[\s\S]{0,180}if \(options\.compact\) return body/,
+    message: "short priority leaderboards must not be expanded by appended chart-reading guides."
   },
   {
     pattern: /质检问题包含 verbose_result_answer_detail[\s\S]{0,260}压缩为：直接结论、排序口径、结果榜、最多3条为什么这样排、1条执行、最多2条边界/,
