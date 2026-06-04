@@ -154,6 +154,14 @@ const requiredPatterns = [
     message: "fund valuation must fall back to Eastmoney pingzhongdata latest official NAV when intraday estimates are unavailable or stale."
   },
   {
+    pattern: /function computePeriodRiskMetrics[\s\S]{0,1800}annualizedDownsideVolatility[\s\S]{0,700}sortino[\s\S]{0,900}annualizedDownsideVolatilityPct[\s\S]{0,260}sortino/,
+    message: "fund risk metrics must compute Sortino and annualized downside volatility from fixed-code NAV history."
+  },
+  {
+    pattern: /function scoreComputedFundRiskQuality[\s\S]{0,700}risk\?\.sortino[\s\S]{0,1200}索提诺[\s\S]{0,260}下行波动/,
+    message: "computed fund risk-quality scorecards must use Sortino/downside volatility evidence, not only Sharpe and max drawdown."
+  },
+  {
     pattern: /async function fetchFundRecentNavHistory[\s\S]{0,2600}fetchFundPingzhongNavHistory[\s\S]{0,900}deepDiveNavHistoryFallbacks[\s\S]*function parseFundPingzhongNavHistoryPoints[\s\S]{0,900}Data_netWorthTrend/,
     message: "deep-dive trend checks must repair F10 NAV failures with Eastmoney pingzhongdata NAV history."
   },
@@ -4380,7 +4388,12 @@ const requiredPatterns = [
     message: "manager ranking boards must include a fund-quality lane that checks Sharpe, drawdown, annualized return, scale, and fee evidence."
   },
   {
-    pattern: /function resolvePortfolioQualityScoreEvidence[\s\S]{0,900}resolvePortfolioPositiveWatchRankingGate[\s\S]{0,1800}质量不抵消接盘风险[\s\S]{0,900}高夏普\/低回撤不等于可以买旧题材反弹/,
+    test: (source) => {
+      const resolver = getFunctionSource(source, "resolvePortfolioQualityScoreEvidence");
+      return resolver.includes("resolvePortfolioPositiveWatchRankingGate(item)")
+        && resolver.includes("质量不抵消接盘风险")
+        && resolver.includes("高夏普/低回撤不等于可以买旧题材反弹");
+    },
     message: "fund-quality rankings must not let high-Sharpe or low-drawdown evidence override stale-theme catchdown risk."
   },
   {

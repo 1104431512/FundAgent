@@ -122,6 +122,41 @@ assert.equal(
   true,
   "saved short-leaderboard preference must make later recommendation answers stay result-first even without repeating the priority wording"
 );
+const syntheticRiskReturns = Array.from({ length: 260 }, (_, index) =>
+  index % 23 === 0 ? -0.018 : index % 7 === 0 ? -0.004 : 0.006
+);
+let syntheticNav = 1;
+const syntheticRiskPoints = syntheticRiskReturns.map((dailyReturn, index) => {
+  syntheticNav *= 1 + dailyReturn;
+  const date = new Date(Date.UTC(2025, 0, 1 + index)).toISOString().slice(0, 10);
+  return { date, cumulativeNav: Number(syntheticNav.toFixed(6)) };
+});
+const syntheticRiskMetrics = manager.computeRiskMetrics(syntheticRiskPoints);
+assert(Number.isFinite(syntheticRiskMetrics.periods["1y"].sortino), "risk metrics must compute Sortino from deterministic NAV history");
+assert(Number.isFinite(syntheticRiskMetrics.periods["1y"].annualizedDownsideVolatilityPct), "risk metrics must compute annualized downside volatility");
+assert(
+  syntheticRiskMetrics.periods["1y"].annualizedDownsideVolatilityPct < syntheticRiskMetrics.periods["1y"].annualizedVolatilityPct,
+  "downside volatility should distinguish downside risk from total volatility"
+);
+const sortinoScorecard = manager.buildFundComputedOpportunityScorecard({
+  code: "000188",
+  name: "下行风险质量测试基金C",
+  risk: {
+    oneYear: {
+      ok: true,
+      sharpe: 0.68,
+      sortino: 1.72,
+      annualizedDownsideVolatilityPct: 6.4,
+      maxDrawdownPct: -10.8,
+      annualizedReturnPct: 8.6
+    }
+  }
+});
+assert(
+  sortinoScorecard.dimensions.riskQuality.evidence.some((item) => item.includes("索提诺"))
+    && sortinoScorecard.dimensions.riskQuality.evidence.some((item) => item.includes("下行波动")),
+  "computed opportunity scorecards must expose Sortino and downside volatility as fixed-code risk-quality evidence"
+);
 const normalizedUserPortfolios = manager.normalizeUserPortfolios([
   {
     userId: "admin",

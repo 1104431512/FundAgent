@@ -9315,8 +9315,10 @@ function pickRiskPeriod(period) {
     totalReturnPct: period.totalReturnPct,
     annualizedReturnPct: period.annualizedReturnPct,
     annualizedVolatilityPct: period.annualizedVolatilityPct,
+    annualizedDownsideVolatilityPct: period.annualizedDownsideVolatilityPct,
     maxDrawdownPct: period.maxDrawdownPct,
     sharpe: period.sharpe,
+    sortino: period.sortino,
     startDate: period.startDate,
     endDate: period.endDate
   };
@@ -11842,15 +11844,17 @@ function resolvePortfolioQualityScoreEvidence(item = {}) {
   const scaleYi = getPortfolioWatchFundScaleYi(item, snapshot);
   const fee = resolvePortfolioWatchFeeSuitabilityEvidence(item);
   const concentration = getPortfolioWatchTop10Pct(item, snapshot);
-  const hasRisk = Boolean(risk?.ok || Number.isFinite(risk?.sharpe) || Number.isFinite(risk?.maxDrawdownPct) || Number.isFinite(risk?.annualizedReturnPct));
+  const hasRisk = Boolean(risk?.ok || Number.isFinite(risk?.sharpe) || Number.isFinite(risk?.sortino) || Number.isFinite(risk?.maxDrawdownPct) || Number.isFinite(risk?.annualizedReturnPct));
   const hasQualityEvidence = hasRisk || Number.isFinite(scaleYi) || Number.isFinite(concentration) || fee.shouldSurface;
   if (!hasQualityEvidence) return { shouldSurface: false };
   const riskGate = resolvePortfolioPositiveWatchRankingGate(item);
   const sharpe = finiteMetricNumber(risk?.sharpe);
+  const sortino = finiteMetricNumber(risk?.sortino);
   const maxDrawdown = finiteMetricNumber(risk?.maxDrawdownPct);
   const annualizedReturn = finiteMetricNumber(risk?.annualizedReturnPct);
   let score = 50;
-  if (Number.isFinite(sharpe)) score += sharpe >= 1 ? 18 : sharpe >= 0.6 ? 10 : sharpe >= 0.2 ? 4 : -10;
+  if (Number.isFinite(sharpe)) score += sharpe >= 1 ? 12 : sharpe >= 0.6 ? 8 : sharpe >= 0.2 ? 3 : -8;
+  if (Number.isFinite(sortino)) score += sortino >= 1.5 ? 14 : sortino >= 0.9 ? 8 : sortino >= 0.3 ? 3 : -8;
   if (Number.isFinite(maxDrawdown)) score += maxDrawdown >= -15 ? 16 : maxDrawdown >= -25 ? 6 : maxDrawdown >= -35 ? -8 : -18;
   if (Number.isFinite(annualizedReturn)) score += annualizedReturn >= 12 ? 12 : annualizedReturn >= 6 ? 6 : annualizedReturn >= 0 ? 0 : -10;
   if (Number.isFinite(scaleYi)) score += scaleYi >= 5 ? 6 : scaleYi >= 1 ? 2 : scaleYi >= 0.5 ? -6 : -16;
@@ -11863,6 +11867,7 @@ function resolvePortfolioQualityScoreEvidence(item = {}) {
   const missingRisk = !hasRisk;
   const facts = [
     Number.isFinite(sharpe) ? `夏普${round(sharpe, 2)}` : "",
+    Number.isFinite(sortino) ? `索提诺${round(sortino, 2)}` : "",
     Number.isFinite(maxDrawdown) ? `回撤${formatFallbackPlainPct(maxDrawdown)}` : "",
     Number.isFinite(annualizedReturn) ? `年化${formatFallbackPlainPct(annualizedReturn)}` : "",
     Number.isFinite(scaleYi) ? `规模${round(scaleYi, 2)}亿` : "",
@@ -11880,6 +11885,7 @@ function resolvePortfolioQualityScoreEvidence(item = {}) {
       facts: mergeStringLists(facts, riskGate.facts || []).slice(0, 6),
       highlights: [
         Number.isFinite(sharpe) && sharpe >= 0.8 ? "历史风险调整收益较好，但只能作为以后复核条件。" : "",
+        Number.isFinite(sortino) && sortino >= 1.2 ? "下行风险收益较好，但仍不能替代当前题材确认。" : "",
         Number.isFinite(maxDrawdown) && maxDrawdown >= -18 ? "历史回撤相对可控，但不能替代当前题材确认。" : ""
       ].filter(Boolean),
       risks: [
@@ -11911,6 +11917,7 @@ function resolvePortfolioQualityScoreEvidence(item = {}) {
     facts,
     highlights: [
       Number.isFinite(sharpe) && sharpe >= 0.8 ? "风险调整收益较好，适合进入质量复核。" : "",
+      Number.isFinite(sortino) && sortino >= 1.2 ? "下跌阶段的风险收益更稳。" : "",
       Number.isFinite(maxDrawdown) && maxDrawdown >= -18 ? "历史回撤相对可控。" : "",
       Number.isFinite(scaleYi) && scaleYi >= 1 ? "规模不处于清盘高风险区。" : ""
     ].filter(Boolean),
@@ -11945,7 +11952,7 @@ function selectPortfolioQualityRiskPeriod(snapshot = {}) {
     snapshot.actionability?.risk
   ].filter(Boolean);
   return periods.find((period) => period?.ok)
-    || periods.find((period) => Number.isFinite(finiteMetricNumber(period?.sharpe)) || Number.isFinite(finiteMetricNumber(period?.maxDrawdownPct)))
+    || periods.find((period) => Number.isFinite(finiteMetricNumber(period?.sharpe)) || Number.isFinite(finiteMetricNumber(period?.sortino)) || Number.isFinite(finiteMetricNumber(period?.maxDrawdownPct)))
     || {};
 }
 
@@ -13442,14 +13449,17 @@ function resolvePortfolioWatchDrawdownDefenseEvidence(item = {}) {
   const risk = selectPortfolioQualityRiskPeriod(snapshot);
   const maxDrawdown = finiteMetricNumber(risk.maxDrawdownPct);
   const volatility = finiteMetricNumber(risk.annualizedVolatilityPct ?? risk.volatilityPct);
+  const downsideVolatility = finiteMetricNumber(risk.annualizedDownsideVolatilityPct);
   const sharpe = finiteMetricNumber(risk.sharpe);
+  const sortino = finiteMetricNumber(risk.sortino);
   const trend = snapshot.trendProfile || {};
   const return20d = finiteMetricNumber(trend.return20dPct);
   const drawdownFromHigh = finiteMetricNumber(trend.drawdownFromRecentHighPct);
   const readinessScore = finiteMetricNumber(item.readinessScore);
   const absDrawdown = Number.isFinite(maxDrawdown) ? Math.abs(maxDrawdown) : null;
   const severe = Number.isFinite(absDrawdown) && absDrawdown >= 30
-    || Number.isFinite(volatility) && volatility >= 32;
+    || Number.isFinite(volatility) && volatility >= 32
+    || Number.isFinite(downsideVolatility) && downsideVolatility >= 24;
   const shouldSurface = severe
     || (Number.isFinite(absDrawdown) && absDrawdown >= 22)
     || (item.status === "ready" && Number.isFinite(absDrawdown) && absDrawdown >= 18)
@@ -13458,13 +13468,16 @@ function resolvePortfolioWatchDrawdownDefenseEvidence(item = {}) {
   const score = Math.max(0, Math.min(100,
     (Number.isFinite(absDrawdown) ? Math.min(48, absDrawdown * 1.35) : 18)
     + (Number.isFinite(volatility) ? Math.min(22, volatility * 0.55) : 0)
+    + (Number.isFinite(downsideVolatility) ? Math.min(18, downsideVolatility * 0.65) : 0)
     + (Number.isFinite(readinessScore) ? Math.min(16, readinessScore * 0.12) : 0)
     + (Number.isFinite(return20d) && return20d > 10 ? 10 : 0)
-    - (Number.isFinite(sharpe) && sharpe >= 1 ? 8 : 0)
+    - (Number.isFinite(sortino) && sortino >= 1.4 ? 9 : Number.isFinite(sharpe) && sharpe >= 1 ? 6 : 0)
   ));
   const facts = [
     Number.isFinite(maxDrawdown) ? `最大回撤${formatFallbackPlainPct(maxDrawdown)}` : "",
     Number.isFinite(volatility) ? `年化波动${formatFallbackPlainPct(volatility)}` : "",
+    Number.isFinite(downsideVolatility) ? `下行波动${formatFallbackPlainPct(downsideVolatility)}` : "",
+    Number.isFinite(sortino) ? `索提诺${round(sortino, 2)}` : "",
     Number.isFinite(sharpe) ? `夏普${round(sharpe, 2)}` : "",
     Number.isFinite(return20d) ? `20日${formatFallbackPlainPct(return20d)}` : "",
     Number.isFinite(readinessScore) ? `准备度${round(readinessScore, 0)}` : ""
@@ -13479,6 +13492,7 @@ function resolvePortfolioWatchDrawdownDefenseEvidence(item = {}) {
       : "候选有机会但回撤防线需要先写清，否则容易买完后遇到波动被动止损。",
     highlights: [
       item.status === "ready" ? "候选接近买点，必须同步检查回撤承受力。" : "",
+      Number.isFinite(sortino) && sortino >= 1.4 ? "下行风险收益较好，但仍要有止损线。" : "",
       Number.isFinite(sharpe) && sharpe >= 1 ? "夏普较好，说明回撤风险可继续量化复核。" : ""
     ].filter(Boolean),
     risks: [
@@ -20672,8 +20686,10 @@ function compactPublicRisk(risk = null) {
         totalReturnPct: finiteMetricNumber(period.totalReturnPct),
         annualizedReturnPct: finiteMetricNumber(period.annualizedReturnPct),
         annualizedVolatilityPct: finiteMetricNumber(period.annualizedVolatilityPct),
+        annualizedDownsideVolatilityPct: finiteMetricNumber(period.annualizedDownsideVolatilityPct),
         maxDrawdownPct: finiteMetricNumber(period.maxDrawdownPct),
         sharpe: finiteMetricNumber(period.sharpe),
+        sortino: finiteMetricNumber(period.sortino),
         startDate: period.startDate || "",
         endDate: period.endDate || ""
       }
@@ -24696,14 +24712,17 @@ function compareFundAnswerRankedCandidatesByRequestedPriority(a = {}, b = {}, pr
 function getFundAnswerPriorityScore(candidate = {}, priorityId = "") {
   const risk = selectPortfolioQualityRiskPeriod(candidate.lastSnapshot || candidate);
   const sharpe = finiteMetricNumber(risk?.sharpe);
+  const sortino = finiteMetricNumber(risk?.sortino);
   const maxDrawdown = finiteMetricNumber(risk?.maxDrawdownPct);
   const volatility = finiteMetricNumber(risk?.annualizedVolatilityPct);
+  const downsideVolatility = finiteMetricNumber(risk?.annualizedDownsideVolatilityPct);
   const annualizedReturn = finiteMetricNumber(risk?.annualizedReturnPct);
   const scorecard = candidate.computedOpportunityScorecard || candidate.lastSnapshot?.computedOpportunityScorecard || null;
   const dimensionScore = (key) => finiteMetricNumber(scorecard?.dimensions?.[key]?.score);
   if (priorityId === "risk_adjusted_quality") {
     const computed = dimensionScore("riskQuality");
-    return Number.isFinite(computed) ? computed : (Number.isFinite(sharpe) ? sharpe * 45 : -20)
+    return Number.isFinite(computed) ? computed : (Number.isFinite(sharpe) ? sharpe * 34 : -20)
+      + (Number.isFinite(sortino) ? sortino * 22 : 0)
       + (Number.isFinite(maxDrawdown) ? 40 + Math.max(-50, maxDrawdown) : -12)
       + (Number.isFinite(annualizedReturn) ? annualizedReturn * 0.45 : 0);
   }
@@ -24725,12 +24744,14 @@ function getFundAnswerPriorityScore(candidate = {}, priorityId = "") {
   if (priorityId === "drawdown_control") {
     const computed = dimensionScore("riskQuality");
     return Number.isFinite(computed) ? computed : (Number.isFinite(maxDrawdown) ? 60 + Math.max(-60, maxDrawdown) : -20)
-      + (Number.isFinite(sharpe) ? sharpe * 12 : 0);
+      + (Number.isFinite(downsideVolatility) ? Math.max(-24, 18 - downsideVolatility) : 0)
+      + (Number.isFinite(sortino) ? sortino * 10 : Number.isFinite(sharpe) ? sharpe * 8 : 0);
   }
   if (priorityId === "low_volatility") {
     return (Number.isFinite(volatility) ? 70 - volatility : 0)
+      + (Number.isFinite(downsideVolatility) ? 24 - downsideVolatility : 0)
       + (Number.isFinite(maxDrawdown) ? Math.max(-60, maxDrawdown) * 0.4 : 0)
-      + (Number.isFinite(sharpe) ? sharpe * 8 : 0);
+      + (Number.isFinite(sortino) ? sortino * 7 : Number.isFinite(sharpe) ? sharpe * 5 : 0);
   }
   if (priorityId === "fee_cost") {
     const computed = dimensionScore("feeFit");
@@ -25454,11 +25475,16 @@ function buildFundAnswerBlockedLeaderboardReason(candidate = {}) {
 function buildFundAnswerRiskQualityLeaderboardReason(candidate = {}) {
   const risk = selectPortfolioQualityRiskPeriod(candidate.lastSnapshot || candidate);
   const sharpe = finiteMetricNumber(risk?.sharpe);
+  const sortino = finiteMetricNumber(risk?.sortino);
   const maxDrawdown = finiteMetricNumber(risk?.maxDrawdownPct);
   const annualizedReturn = finiteMetricNumber(risk?.annualizedReturnPct);
+  if (Number.isFinite(sortino) && sortino >= 1.5 && Number.isFinite(maxDrawdown) && maxDrawdown >= -12) {
+    return "下跌时更抗打，回撤也浅，排在前面";
+  }
   if (Number.isFinite(sharpe) && sharpe >= 1 && Number.isFinite(maxDrawdown) && maxDrawdown >= -12) {
     return "夏普更高、回撤更浅，排在前面";
   }
+  if (Number.isFinite(sortino) && sortino >= 1.2) return "下行风险收益更好，适合优先看";
   if (Number.isFinite(sharpe) && sharpe >= 1) return "夏普质量更突出，适合优先看";
   if (Number.isFinite(maxDrawdown) && maxDrawdown >= -12) return "回撤更浅，风险收益更稳";
   if (Number.isFinite(annualizedReturn) && annualizedReturn > 0) return "收益质量有支撑，但还要看买点";
@@ -31577,11 +31603,19 @@ function formatComputedOpportunityScorecardEvidence(scorecard = {}) {
 function scoreComputedFundRiskQuality(candidate = {}) {
   const risk = selectPortfolioQualityRiskPeriod(candidate);
   const sharpe = finiteMetricNumber(risk?.sharpe);
+  const sortino = finiteMetricNumber(risk?.sortino);
   const maxDrawdown = finiteMetricNumber(risk?.maxDrawdownPct);
   const annualizedReturn = finiteMetricNumber(risk?.annualizedReturnPct);
+  const downsideVolatility = finiteMetricNumber(risk?.annualizedDownsideVolatilityPct);
   let score = risk?.ok ? 52 : 36;
   if (Number.isFinite(sharpe)) {
-    score += sharpe >= 1.2 ? 24 : sharpe >= 0.8 ? 18 : sharpe >= 0.4 ? 10 : sharpe < 0 ? -18 : 0;
+    score += sharpe >= 1.2 ? 18 : sharpe >= 0.8 ? 14 : sharpe >= 0.4 ? 8 : sharpe < 0 ? -14 : 0;
+  }
+  if (Number.isFinite(sortino)) {
+    score += sortino >= 1.8 ? 20 : sortino >= 1.2 ? 15 : sortino >= 0.7 ? 8 : sortino < 0 ? -16 : 0;
+  }
+  if (Number.isFinite(downsideVolatility)) {
+    score += downsideVolatility <= 8 ? 8 : downsideVolatility <= 14 ? 4 : downsideVolatility >= 25 ? -8 : 0;
   }
   if (Number.isFinite(maxDrawdown)) {
     score += maxDrawdown >= -12 ? 22 : maxDrawdown >= -18 ? 14 : maxDrawdown >= -25 ? 3 : maxDrawdown <= -35 ? -24 : -10;
@@ -31591,6 +31625,8 @@ function scoreComputedFundRiskQuality(candidate = {}) {
   }
   const evidence = [
     Number.isFinite(sharpe) ? `夏普${round(sharpe, 2)}` : "",
+    Number.isFinite(sortino) ? `索提诺${round(sortino, 2)}` : "",
+    Number.isFinite(downsideVolatility) ? `下行波动${round(downsideVolatility, 1)}%` : "",
     Number.isFinite(maxDrawdown) ? `最大回撤${round(maxDrawdown, 1)}%` : "",
     Number.isFinite(annualizedReturn) ? `年化${round(annualizedReturn, 1)}%` : ""
   ].filter(Boolean);
@@ -34241,6 +34277,11 @@ function buildFundActionabilitySignals(digest) {
     else if (risk.sharpe >= 0.5) score += 6;
     else if (risk.sharpe < 0) score -= 8;
   }
+  if (Number.isFinite(risk.sortino)) {
+    if (risk.sortino >= 1.5) score += 8;
+    else if (risk.sortino >= 0.8) score += 4;
+    else if (risk.sortino < 0) score -= 7;
+  }
   if (Number.isFinite(risk.annualizedReturnPct)) {
     if (risk.annualizedReturnPct >= 10) score += 6;
     else if (risk.annualizedReturnPct < 0) score -= 6;
@@ -34371,7 +34412,7 @@ function buildFundActionabilitySignals(digest) {
     formatRealtimeSignalActionabilityEvidence(realtimeSignal),
     shouldShowThemeEvidence ? themeEvidence : "",
     microStarterOnly ? formatThemeMicroStarterActionabilityEvidence(digest, trend) : "",
-    risk.ok ? `近一年收益${risk.totalReturnPct}%，最大回撤${risk.maxDrawdownPct}%，夏普${risk.sharpe}` : "",
+    risk.ok ? formatActionabilityRiskQualityEvidence(risk) : "",
     holdingsOutlook.evidence,
     formatMoneyMarketEvidence(digest.moneyMarket),
     fees.shareClassFeeModel?.label || "",
@@ -34864,6 +34905,16 @@ function formatRealtimeSignalActionabilityEvidence(signal = null) {
     signal.actionHint ? `提示=${signal.actionHint}` : "",
     signal.sourceConfidence ? `可信度=${signal.sourceConfidence}` : "",
     normalizeStringArray(signal.risks).length ? `风险=${normalizeStringArray(signal.risks).slice(0, 2).join("/")}` : ""
+  ].filter(Boolean).join("，");
+}
+
+function formatActionabilityRiskQualityEvidence(risk = {}) {
+  if (!risk?.ok) return "";
+  return [
+    Number.isFinite(Number(risk.totalReturnPct)) ? `近一年收益${formatFallbackPct(risk.totalReturnPct)}` : "",
+    Number.isFinite(Number(risk.maxDrawdownPct)) ? `最大回撤${formatFallbackPct(risk.maxDrawdownPct)}` : "",
+    Number.isFinite(Number(risk.sortino)) ? `下行风险收益${round(Number(risk.sortino), 2)}` : "",
+    Number.isFinite(Number(risk.sharpe)) ? `夏普${round(Number(risk.sharpe), 2)}` : ""
   ].filter(Boolean).join("，");
 }
 
@@ -36517,10 +36568,16 @@ function computePeriodRiskMetrics(points, latest, years, riskFreeRatePct) {
     }
   }
   const annualizedVolatility = standardDeviation(dailyReturns) * Math.sqrt(252);
+  const dailyRiskFreeReturn = riskFreeRatePct / 100 / 252;
+  const annualizedDownsideVolatility = downsideDeviation(dailyReturns, dailyRiskFreeReturn) * Math.sqrt(252);
   const maxDrawdown = computeMaxDrawdown(periodPoints.map((point) => point.cumulativeNav));
   const sharpe =
     annualizedVolatility > 0
       ? (annualizedReturn - riskFreeRatePct / 100) / annualizedVolatility
+      : null;
+  const sortino =
+    annualizedDownsideVolatility > 0
+      ? (annualizedReturn - riskFreeRatePct / 100) / annualizedDownsideVolatility
       : null;
 
   return {
@@ -36532,8 +36589,10 @@ function computePeriodRiskMetrics(points, latest, years, riskFreeRatePct) {
     totalReturnPct: round(totalReturn * 100, 2),
     annualizedReturnPct: round(annualizedReturn * 100, 2),
     annualizedVolatilityPct: round(annualizedVolatility * 100, 2),
+    annualizedDownsideVolatilityPct: round(annualizedDownsideVolatility * 100, 2),
     maxDrawdownPct: round(maxDrawdown * 100, 2),
-    sharpe: sharpe === null ? null : round(sharpe, 2)
+    sharpe: sharpe === null ? null : round(sharpe, 2),
+    sortino: sortino === null ? null : round(sortino, 2)
   };
 }
 
@@ -36554,6 +36613,15 @@ function standardDeviation(values) {
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
   const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1);
   return Math.sqrt(variance);
+}
+
+function downsideDeviation(values, targetReturn = 0) {
+  if (!Array.isArray(values) || values.length < 2) return 0;
+  const downsideSquares = values
+    .map((value) => Number(value) - Number(targetReturn || 0))
+    .map((excess) => Math.min(0, excess) ** 2);
+  if (!downsideSquares.length) return 0;
+  return Math.sqrt(downsideSquares.reduce((sum, value) => sum + value, 0) / downsideSquares.length);
 }
 
 async function fetchText(url, referer = "https://fund.eastmoney.com/") {
@@ -40190,6 +40258,7 @@ export {
   compactMarketDataQuality,
   compactFundHoldingRealtimePulse,
   compactPublicFundSnapshot,
+  computeRiskMetrics,
   computeTrendProfile,
   defaultSkillIdsForWorkflow,
   dedupePortfolioSettlements,
