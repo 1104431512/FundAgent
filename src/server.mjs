@@ -18,6 +18,7 @@ const MARKET_SNAPSHOT_CACHE_PATH = path.resolve(process.env.MARKET_SNAPSHOT_CACH
 const FUND_RESEARCH_DIGEST_CACHE_PATH = path.resolve(process.env.FUND_RESEARCH_DIGEST_CACHE_PATH || path.join(ROOT, "data", "fund-research-digest-cache.json"));
 const FUND_NAV_HISTORY_CACHE_PATH = path.resolve(process.env.FUND_NAV_HISTORY_CACHE_PATH || path.join(ROOT, "data", "fund-nav-history-cache.json"));
 const FUND_RANKING_CACHE_PATH = path.resolve(process.env.FUND_RANKING_CACHE_PATH || path.join(ROOT, "data", "fund-ranking-cache.json"));
+const FUND_RANKING_HISTORY_PATH = path.resolve(process.env.FUND_RANKING_HISTORY_PATH || path.join(ROOT, "data", "fund-ranking-history.json"));
 const THEME_RADAR_HISTORY_PATH = path.resolve(process.env.THEME_RADAR_HISTORY_PATH || path.join(ROOT, "data", "theme-radar-history.json"));
 const MARKET_BOARD_HISTORY_PATH = path.resolve(process.env.MARKET_BOARD_HISTORY_PATH || path.join(ROOT, "data", "market-board-history.json"));
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
@@ -55,6 +56,8 @@ const MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS = Number(process.env.MARKET_SNAPSHOT_C
 const FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS || 72);
 const FUND_NAV_HISTORY_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_NAV_HISTORY_CACHE_MAX_AGE_HOURS || 168);
 const FUND_RANKING_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_RANKING_CACHE_MAX_AGE_HOURS || 48);
+const FUND_RANKING_HISTORY_MAX_AGE_DAYS = Number(process.env.FUND_RANKING_HISTORY_MAX_AGE_DAYS || 21);
+const FUND_RANKING_HISTORY_POINT_LIMIT = Number(process.env.FUND_RANKING_HISTORY_POINT_LIMIT || 36);
 const THEME_RADAR_HISTORY_MAX_AGE_DAYS = Number(process.env.THEME_RADAR_HISTORY_MAX_AGE_DAYS || 14);
 const THEME_RADAR_HISTORY_POINT_LIMIT = Number(process.env.THEME_RADAR_HISTORY_POINT_LIMIT || 18);
 const THEME_RADAR_HISTORY_MIN_INTERVAL_MINUTES = Number(process.env.THEME_RADAR_HISTORY_MIN_INTERVAL_MINUTES || 30);
@@ -249,6 +252,235 @@ const USER_FACING_FUND_FIELD_LABELS = [
   ["return60dPct", "近60日收益"],
   ["return120dPct", "近120日收益"]
 ];
+const DATA_SOURCE_REGISTRY = [
+  {
+    id: "eastmoney_board_coverage",
+    category: "板块市场",
+    provider: "东方财富",
+    label: "概念/行业板块四榜",
+    endpoint: "https://push2.eastmoney.com/api/qt/clist/get",
+    realtime: true,
+    realtimeText: "盘中准实时",
+    componentKeys: ["conceptBoards", "industryBoards"],
+    counterKeys: ["marketBoardFetches"],
+    capability: "概念板块、行业板块各抓涨幅、跌幅、主力流入、主力流出四个方向。",
+    outputs: ["涨跌幅", "主力净流入", "主力净流入占比", "领涨股", "榜单排名", "覆盖评分", "历史轮动"]
+  },
+  {
+    id: "eastmoney_realtime_quotes",
+    category: "指数/商品",
+    provider: "东方财富",
+    label: "指数、贵金属、海外行情",
+    endpoint: "https://push2.eastmoney.com/api/qt/ulist.np/get",
+    realtime: true,
+    realtimeText: "盘中准实时",
+    componentKeys: ["chinaRealtimeIndices", "preciousMetals", "globalMarketQuotes"],
+    counterKeys: ["eastmoneyChinaIndexQuoteFetches", "preciousMetalQuoteFetches", "globalMarketQuoteFetches"],
+    capability: "A股指数、黄金白银、美元指数、海外指数和汇率行情备源。",
+    outputs: ["最新价", "涨跌幅", "振幅", "近5日", "年内涨幅", "报价时间"]
+  },
+  {
+    id: "yangjibao_index_data",
+    category: "指数/商品",
+    provider: "养基宝",
+    label: "A股指数实时源",
+    endpoint: "http://browser-plug-api.yangjibao.com/index_data",
+    realtime: true,
+    realtimeText: "盘中实时",
+    componentKeys: ["chinaRealtimeIndices"],
+    counterKeys: ["yangjibaoIndexQuoteFetches"],
+    sourceKindPatterns: ["yangjibao_plugin_index_data"],
+    capability: "作为A股指数实时温度主源或备源，和东方财富指数交叉复核。",
+    outputs: ["指数最新价", "指数涨跌幅", "报价时间"]
+  },
+  {
+    id: "eastmoney_fund_ranking",
+    category: "基金发现",
+    provider: "东方财富",
+    label: "基金排行",
+    endpoint: "https://fund.eastmoney.com/data/rankhandler.aspx",
+    realtime: false,
+    realtimeText: "交易日更新",
+    componentKeys: ["stockFunds", "hybridFunds", "indexFunds", "qdiiFunds"],
+    counterKeys: ["fundRankingFetches"],
+    capability: "股票、混合、指数、QDII排行召回候选基金，并结合榜单历史防追涨。",
+    outputs: ["近1周", "近1月", "近3月", "近6月", "近1年", "份额类别", "榜单历史"]
+  },
+  {
+    id: "eastmoney_fund_suggest",
+    category: "基金发现",
+    provider: "东方财富",
+    label: "基金搜索",
+    endpoint: "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx",
+    realtime: false,
+    realtimeText: "查询实时返回",
+    componentKeys: ["preciousMetalFunds"],
+    counterKeys: ["fundSearches", "preciousMetalFundSearches"],
+    capability: "按关键词召回主题基金，当前用于黄金/贵金属等主题候选补全。",
+    outputs: ["代码", "名称", "类型", "基金公司", "经理", "最低申购"]
+  },
+  {
+    id: "yangjibao_fund_search",
+    category: "基金发现",
+    provider: "养基宝",
+    label: "基金搜索/实时估值",
+    endpoint: "http://browser-plug-api.yangjibao.com/search_fund",
+    realtime: true,
+    realtimeText: "授权后实时",
+    requiresEnv: "YANGJIBAO_PLUGIN_TOKEN",
+    componentKeys: ["preciousMetalFunds", "realtimeFundValuations"],
+    counterKeys: ["yangjibaoFundSearchCandidateFetches", "yangjibaoFundSearchValuationFetches"],
+    sourceKindPatterns: ["yangjibao"],
+    capability: "授权后补充基金搜索和基金级实时估值，优先提升实时性。",
+    outputs: ["基金候选", "估算净值", "估算涨跌幅", "估值时间"]
+  },
+  {
+    id: "tiantian_fundgz",
+    category: "基金估值",
+    provider: "天天基金",
+    label: "盘中估算净值",
+    endpoint: "https://fundgz.1234567.com.cn/js/{code}.js",
+    realtime: true,
+    realtimeText: "盘中估算",
+    componentKeys: ["realtimeFundValuations"],
+    counterKeys: ["marketRealtimeValuationFetches"],
+    sourceKindPatterns: ["tiantian", "fundgz"],
+    capability: "候选基金盘中估值主源，判断当下温度和是否冲高回落。",
+    outputs: ["估算净值", "估算涨跌幅", "单位净值", "估算时间", "实时信号"]
+  },
+  {
+    id: "sina_fund_estimate",
+    category: "基金估值",
+    provider: "新浪财经",
+    label: "基金估值备源",
+    endpoint: "https://stock.finance.sina.com.cn/fundInfo/api/openapi.php/FdFundService.getEstimateNetworthPic",
+    realtime: true,
+    realtimeText: "盘中估算",
+    componentKeys: ["realtimeFundValuations"],
+    counterKeys: ["marketRealtimeValuationFetches"],
+    sourceKindPatterns: ["sina"],
+    capability: "天天基金估值偏旧或缺失时补充盘中估值曲线。",
+    outputs: ["估算涨跌幅", "估值曲线", "盘中趋势"]
+  },
+  {
+    id: "haoetf_qdii",
+    category: "基金估值",
+    provider: "HaoETF",
+    label: "QDII/海外基金估值",
+    endpoint: "https://www.haoetf.com/",
+    realtime: true,
+    realtimeText: "QDII估值",
+    componentKeys: ["realtimeFundValuations"],
+    counterKeys: ["marketRealtimeValuationFetches"],
+    sourceKindPatterns: ["haoetf"],
+    capability: "补充QDII、海外基金和ETF溢价折价线索。",
+    outputs: ["QDII估值", "溢价/折价", "海外净值线索"]
+  },
+  {
+    id: "eastmoney_profile",
+    category: "基金画像",
+    provider: "东方财富",
+    label: "基金画像脚本",
+    endpoint: "https://fund.eastmoney.com/pingzhongdata/{code}.js",
+    realtime: false,
+    realtimeText: "基金页更新",
+    counterKeys: ["fundEnrichmentSuccess"],
+    capability: "抓取基金基础画像、经理、规模、收益区间和资产配置。",
+    outputs: ["基金名称", "规模", "经理", "资产配置", "阶段收益"]
+  },
+  {
+    id: "eastmoney_nav_history",
+    category: "基金画像",
+    provider: "东方财富",
+    label: "历史净值",
+    endpoint: "https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz",
+    realtime: false,
+    realtimeText: "净值更新",
+    counterKeys: ["navHistoryFetches"],
+    capability: "计算夏普、Sortino、最大回撤、波动和回调启动信号。",
+    outputs: ["历史净值", "夏普", "Sortino", "最大回撤", "趋势画像"]
+  },
+  {
+    id: "eastmoney_holdings",
+    category: "基金画像",
+    provider: "东方财富",
+    label: "前十大持仓",
+    endpoint: "https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc/zqcc",
+    realtime: false,
+    realtimeText: "季报披露",
+    counterKeys: ["fundHoldingsFetches"],
+    capability: "抓取股票和债券持仓，验证基金是否真承载目标题材。",
+    outputs: ["前十大股票", "前十大债券", "集中度", "题材承载"]
+  },
+  {
+    id: "eastmoney_fee",
+    category: "基金画像",
+    provider: "东方财富",
+    label: "份额费率",
+    endpoint: "https://fundf10.eastmoney.com/jjfl_{code}.html",
+    realtime: false,
+    realtimeText: "基金页更新",
+    counterKeys: ["fundFeePageFetches"],
+    capability: "核验A/C/D/I份额、申购费、销售服务费和持有期成本。",
+    outputs: ["份额类别", "申购费", "销售服务费", "赎回规则", "每万成本"]
+  },
+  {
+    id: "eastmoney_fast_news",
+    category: "新闻时事",
+    provider: "东方财富",
+    label: "7x24快讯",
+    endpoint: "https://np-listapi.eastmoney.com/comm/web/getFastNews",
+    realtime: true,
+    realtimeText: "实时新闻",
+    componentKeys: ["fastNews"],
+    counterKeys: ["marketFastNewsFetches"],
+    sourceKindPatterns: ["eastmoney_fast_news"],
+    capability: "追踪政策、产业和市场异动催化。",
+    outputs: ["快讯标题", "媒体", "时间", "题材关键词"]
+  },
+  {
+    id: "sina_fast_news",
+    category: "新闻时事",
+    provider: "新浪财经",
+    label: "7x24快讯备源",
+    endpoint: "https://zhibo.sina.com.cn/api/zhibo/feed",
+    realtime: true,
+    realtimeText: "实时新闻",
+    componentKeys: ["fastNews"],
+    counterKeys: ["sinaFastNewsFetches"],
+    sourceKindPatterns: ["sina_finance"],
+    capability: "与东方财富、财联社快讯合并去重，提升新闻召回。",
+    outputs: ["快讯标题", "时间", "题材关键词"]
+  },
+  {
+    id: "cls_telegraph",
+    category: "新闻时事",
+    provider: "财联社",
+    label: "电报快讯",
+    endpoint: "https://m.cls.cn/telegraph",
+    realtime: true,
+    realtimeText: "实时新闻",
+    componentKeys: ["fastNews"],
+    counterKeys: ["clsTelegraphNewsFetches"],
+    sourceKindPatterns: ["cls_telegraph"],
+    capability: "补充产业、政策、公司和资金面快讯。",
+    outputs: ["电报标题", "时间", "题材关键词"]
+  }
+];
+const DATA_PROCESSING_ENGINE_REGISTRY = [
+  { id: "marketBreadth", label: "市场宽度", category: "市场状态", evidenceKey: "marketBreadth", capability: "判断上涨板块比例、主力宽度、追涨压力和退潮压力。" },
+  { id: "boardRotation", label: "板块轮动", category: "板块状态", evidenceKey: "boardRotation", capability: "用板块历史缓存识别主力刚转强、持续流入、退潮和高位追涨。" },
+  { id: "newsPulse", label: "新闻脉冲", category: "新闻状态", evidenceKey: "newsPulse", capability: "把实时新闻密度、新鲜度和题材关键词转成预热强度。" },
+  { id: "themeRadar", label: "题材雷达", category: "题材发现", evidenceKey: "themeRadar", capability: "融合板块、新闻、贵金属、海外行情和基金候选，形成题材前瞻分。" },
+  { id: "themeLeaderboards", label: "题材榜单", category: "榜单", evidenceKey: "themeLeaderboards", capability: "按主力进场、题材预热、低位轮动、退潮回避和追涨风险分榜。" },
+  { id: "themeMainForcePlaybook", label: "主力作战图", category: "榜单", evidenceKey: "themeMainForcePlaybook", capability: "把题材大涨背后的新闻逻辑、资金确认和代表基金承载串起来。" },
+  { id: "realtimeFundValuationSignal", label: "实时估值信号", category: "基金温度", evidenceKey: "realtimeFundValuations", capability: "识别估值新鲜度、来源一致性、冲高回落和盘中转强。" },
+  { id: "riskMetrics", label: "风险收益指标", category: "基金画像", evidenceKey: "riskMetrics", capability: "从历史净值计算夏普、Sortino、最大回撤、波动和下行风险。" },
+  { id: "trendProfile", label: "走势画像", category: "基金画像", evidenceKey: "trendProfile", capability: "判断回调完成、启动前夜、高位延伸和破位风险。" },
+  { id: "holdingsOutlook", label: "持仓前景", category: "基金画像", evidenceKey: "holdingsOutlook", capability: "验证前十大持仓是否承载当前主线，并识别持仓集中风险。" },
+  { id: "feeSuitability", label: "份额费率适配", category: "基金画像", evidenceKey: "fees", capability: "比较A/C/D/I份额与持有期成本，避免盈利模式被费用吃掉。" },
+  { id: "rankingHistoryMomentum", label: "榜单历史动量", category: "基金发现", evidenceKey: "rankingMomentum", capability: "识别低位榜单转周内转强、连续上榜和榜单偏热追涨。" }
+];
 const PORTFOLIO_DB_REPAIRED = Symbol("portfolioDbRepaired");
 
 let tenantAccessTokenCache = null;
@@ -395,6 +627,13 @@ async function handleApiRequest(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/stats") {
     sendJson(res, 200, { ok: true, stats: getRuntimeStats() });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/data-sources") {
+    const refresh = url.searchParams.get("refresh") === "1";
+    const coverage = await buildDataSourceCoverageReport({ refresh });
+    sendJson(res, 200, { ok: true, coverage });
     return;
   }
 
@@ -28367,6 +28606,638 @@ function buildMarketCandidateCounts(fundCandidates = {}) {
   };
 }
 
+async function buildDataSourceCoverageReport(options = {}) {
+  const generatedAt = new Date().toISOString();
+  let liveSnapshot = null;
+  let refreshError = "";
+  if (options.refresh) {
+    try {
+      liveSnapshot = await fetchMarketSnapshot();
+    } catch (error) {
+      refreshError = error.message || "刷新市场快照失败";
+      recordError(error, { dataSourceCoverageRefreshFailures: 1 });
+    }
+  }
+
+  const cache = readMarketSnapshotCache();
+  const portfolioDb = readPortfolioDbForDataSourceCoverage();
+  const latestSnapshot = liveSnapshot
+    || findLatestPortfolioMarketSnapshotForCoverage(portfolioDb)
+    || buildMarketSnapshotCoverageFromCache(cache, generatedAt);
+  const stats = getRuntimeStats();
+  const componentStatusMap = buildDataSourceComponentStatusMap(latestSnapshot, cache, generatedAt);
+  const sources = DATA_SOURCE_REGISTRY.map((source) =>
+    buildDataSourceCoverageItem(source, { componentStatusMap, stats })
+  );
+  const boardCoverage = buildBoardMarketCoverage(latestSnapshot, componentStatusMap);
+  const fundCoverage = buildFundDataCoverage(latestSnapshot, componentStatusMap);
+  const newsCoverage = buildNewsDataCoverage(latestSnapshot, componentStatusMap);
+  const indicatorEngines = buildDataProcessingEngineCoverage(latestSnapshot, stats);
+  const historyStores = buildDataSourceHistoryStores();
+  const totals = buildDataSourceCoverageTotals({
+    sources,
+    boardCoverage,
+    fundCoverage,
+    newsCoverage,
+    indicatorEngines,
+    historyStores
+  });
+  const snapshotMeta = buildDataSourceSnapshotMeta(latestSnapshot, cache, {
+    generatedAt,
+    refresh: Boolean(options.refresh),
+    refreshError
+  });
+
+  updateStats({
+    counters: {
+      dataSourceCoverageRequests: 1,
+      dataSourceCoverageRefreshes: options.refresh ? 1 : 0
+    },
+    last: { lastDataSourceCoverageAt: generatedAt }
+  });
+
+  return {
+    generatedAt,
+    refreshed: Boolean(liveSnapshot),
+    refreshRequested: Boolean(options.refresh),
+    refreshError,
+    summary: buildDataSourceCoverageSummary({ totals, boardCoverage, fundCoverage, newsCoverage, snapshotMeta }),
+    totals,
+    snapshot: snapshotMeta,
+    boardCoverage,
+    fundCoverage,
+    newsCoverage,
+    sources,
+    indicatorEngines,
+    historyStores
+  };
+}
+
+function readPortfolioDbForDataSourceCoverage() {
+  try {
+    return normalizePortfolioDb(safeReadJson(PORTFOLIO_DB_PATH));
+  } catch {
+    return {};
+  }
+}
+
+function findLatestPortfolioMarketSnapshotForCoverage(db = {}) {
+  const directCandidates = [
+    db.marketSnapshot,
+    db.latestMarketSnapshot
+  ].filter(Boolean);
+  const runCandidates = (Array.isArray(db.runs) ? db.runs : [])
+    .filter((run) => run?.marketSnapshot && typeof run.marketSnapshot === "object")
+    .sort((a, b) => Date.parse(b.completedAt || b.startedAt || b.date || "") - Date.parse(a.completedAt || a.startedAt || a.date || ""))
+    .map((run) => run.marketSnapshot);
+  return [...directCandidates, ...runCandidates].find(hasDataSourceCoverageSnapshotEvidence) || null;
+}
+
+function hasDataSourceCoverageSnapshotEvidence(snapshot = null) {
+  if (!snapshot || typeof snapshot !== "object") return false;
+  return Boolean(
+    snapshot.dataQuality
+    || snapshot.marketIndicators
+    || snapshot.themes
+    || snapshot.fundCandidates
+    || Array.isArray(snapshot.fastNews)
+    || Array.isArray(snapshot.themeRadar)
+  );
+}
+
+function buildMarketSnapshotCoverageFromCache(cache = readMarketSnapshotCache(), nowIso = new Date().toISOString()) {
+  const components = cache?.components && typeof cache.components === "object" ? cache.components : {};
+  if (!Object.keys(components).length) return null;
+  const resultFor = (key) => components[key]?.result || {};
+  const cachedAt = getLatestMarketSnapshotCacheTime(cache) || cache.updatedAt || "";
+  const fundCandidates = {
+    stockFunds: resultFor("stockFunds").items || [],
+    hybridFunds: resultFor("hybridFunds").items || [],
+    indexFunds: resultFor("indexFunds").items || [],
+    qdiiFunds: resultFor("qdiiFunds").items || [],
+    preciousMetalFunds: resultFor("preciousMetalFunds").items || []
+  };
+  const conceptBoardItems = attachMarketBoardHistoryMomentum(
+    resultFor("conceptBoards").items || [],
+    readMarketBoardHistory(),
+    cachedAt || nowIso,
+    "concept"
+  );
+  const industryBoardItems = attachMarketBoardHistoryMomentum(
+    resultFor("industryBoards").items || [],
+    readMarketBoardHistory(),
+    cachedAt || nowIso,
+    "industry"
+  );
+  const preciousMetals = resultFor("preciousMetals").items || [];
+  const globalMarkets = resultFor("globalMarketQuotes").items || [];
+  const chinaIndices = resultFor("chinaRealtimeIndices").items || [];
+  const fastNews = resultFor("fastNews").items || [];
+  const themeRadarRaw = buildThemeRadar({
+    conceptBoards: conceptBoardItems,
+    industryBoards: industryBoardItems,
+    preciousMetals,
+    globalMarkets,
+    fastNews,
+    fundCandidates
+  });
+  const themeRadar = attachThemeRadarHistoryMomentum(themeRadarRaw, readThemeRadarHistory(), cachedAt || nowIso);
+  const themeLeaderboards = buildThemeLeaderboards(themeRadar);
+  const themeMainForcePlaybook = buildThemeMainForcePlaybook(themeRadar, themeLeaderboards);
+  const qualityComponents = Object.values(components).map((component) => ({
+    key: component.key || "",
+    label: component.label || component.key || "",
+    critical: Boolean(component.critical),
+    result: {
+      ...(component.result || {}),
+      cacheFallback: true,
+      sourceMode: "cache_fallback",
+      cacheFetchedAt: component.cachedAt || "",
+      cacheAgeHours: getMarketSnapshotCacheAgeHours(component.cachedAt || "", nowIso)
+    }
+  }));
+  return {
+    fetchedAt: cachedAt,
+    generatedAt: cachedAt,
+    sourceMode: "cache_snapshot",
+    dataQuality: buildMarketDataQuality(qualityComponents, {
+      fundCandidates,
+      fetchedAt: cachedAt || nowIso,
+      yangjibaoFundRealtimeConfigured: Boolean(process.env.YANGJIBAO_PLUGIN_TOKEN)
+    }),
+    marketIndicators: {
+      chinaIndices,
+      marketBreadth: buildMarketBreadthIndicators({
+        conceptBoards: conceptBoardItems,
+        industryBoards: industryBoardItems,
+        chinaIndices,
+        fetchedAt: cachedAt || nowIso
+      }),
+      boardRotation: buildMarketBoardRotationSummary({
+        conceptBoards: conceptBoardItems,
+        industryBoards: industryBoardItems,
+        fetchedAt: cachedAt || nowIso
+      }),
+      newsPulse: buildNewsPulseIndicators({
+        fastNews,
+        themeRadar,
+        fetchedAt: cachedAt || nowIso
+      }),
+      preciousMetals,
+      globalMarkets,
+      realtimeFundValuations: resultFor("realtimeFundValuations").items || []
+    },
+    themes: {
+      conceptBoards: conceptBoardItems,
+      industryBoards: industryBoardItems
+    },
+    themeRadar,
+    themeLeaderboards,
+    themeMainForcePlaybook,
+    fastNews,
+    fundCandidates
+  };
+}
+
+function getLatestMarketSnapshotCacheTime(cache = {}) {
+  const times = Object.values(cache.components || {})
+    .map((component) => Date.parse(component?.cachedAt || ""))
+    .filter(Number.isFinite);
+  if (!times.length) return "";
+  return new Date(Math.max(...times)).toISOString();
+}
+
+function buildDataSourceComponentStatusMap(snapshot = null, cache = readMarketSnapshotCache(), nowIso = new Date().toISOString()) {
+  const map = new Map();
+  const add = (component = {}, status = "") => {
+    const key = component.key || "";
+    if (!key) return;
+    const previous = map.get(key) || {};
+    const count = Number.isFinite(Number(component.count)) ? Number(component.count) : Number(previous.count || 0);
+    map.set(key, {
+      ...previous,
+      key,
+      label: component.label || previous.label || key,
+      status: status || component.status || previous.status || "available",
+      count,
+      freshCount: Number.isFinite(Number(component.freshCount)) ? Number(component.freshCount) : previous.freshCount ?? null,
+      staleCount: Number.isFinite(Number(component.staleCount)) ? Number(component.staleCount) : previous.staleCount ?? null,
+      sourceKinds: [...new Set([...(previous.sourceKinds || []), ...normalizeStringArray(component.sourceKinds)])],
+      sourceMode: component.sourceMode || previous.sourceMode || "",
+      cacheFetchedAt: component.cacheFetchedAt || previous.cacheFetchedAt || "",
+      cacheAgeHours: Number.isFinite(Number(component.cacheAgeHours)) ? Number(component.cacheAgeHours) : previous.cacheAgeHours ?? null,
+      error: component.error || previous.error || ""
+    });
+  };
+
+  for (const item of snapshot?.dataQuality?.available || []) {
+    add(item, item.sourceMode === "cache_fallback" ? "cached" : "available");
+  }
+  for (const item of snapshot?.dataQuality?.cached || []) {
+    add(item, "cached");
+  }
+  for (const item of snapshot?.dataQuality?.missing || []) {
+    add(item, "missing");
+  }
+
+  for (const key of getDataSourceComponentKeys()) {
+    const items = getDataSourceCoverageComponentItems(snapshot, key);
+    if (items.length) {
+      add({
+        key,
+        label: formatDataSourceComponentLabel(key),
+        count: items.length,
+        freshCount: key === "realtimeFundValuations" ? items.filter((item) => item?.isFresh !== false).length : null,
+        staleCount: key === "realtimeFundValuations" ? items.filter((item) => item?.isFresh === false).length : null,
+        sourceKinds: collectDataSourceComponentKinds(items, key),
+        sourceMode: snapshot?.sourceMode || "snapshot"
+      }, map.get(key)?.status === "cached" ? "cached" : "available");
+    }
+  }
+
+  for (const component of Object.values(cache.components || {})) {
+    if (!component?.key || map.has(component.key)) continue;
+    const result = component.result || {};
+    const items = Array.isArray(result.items) ? result.items : [];
+    if (!items.length) continue;
+    add({
+      key: component.key,
+      label: component.label || component.key,
+      count: items.length,
+      freshCount: Number.isFinite(Number(result.freshCount)) ? Number(result.freshCount) : null,
+      staleCount: Number.isFinite(Number(result.staleCount)) ? Number(result.staleCount) : null,
+      sourceKinds: result.sourceKinds || [],
+      sourceMode: "cache_fallback",
+      cacheFetchedAt: component.cachedAt || "",
+      cacheAgeHours: getMarketSnapshotCacheAgeHours(component.cachedAt || "", nowIso)
+    }, "cached");
+  }
+
+  return map;
+}
+
+function getDataSourceComponentKeys() {
+  return [...new Set(DATA_SOURCE_REGISTRY.flatMap((source) => source.componentKeys || []))];
+}
+
+function getDataSourceCoverageComponentItems(snapshot = null, key = "") {
+  if (!snapshot || typeof snapshot !== "object") return [];
+  const map = {
+    conceptBoards: snapshot.themes?.conceptBoards,
+    industryBoards: snapshot.themes?.industryBoards,
+    stockFunds: snapshot.fundCandidates?.stockFunds,
+    hybridFunds: snapshot.fundCandidates?.hybridFunds,
+    indexFunds: snapshot.fundCandidates?.indexFunds,
+    qdiiFunds: snapshot.fundCandidates?.qdiiFunds,
+    preciousMetalFunds: snapshot.fundCandidates?.preciousMetalFunds,
+    preciousMetals: snapshot.marketIndicators?.preciousMetals,
+    globalMarketQuotes: snapshot.marketIndicators?.globalMarkets,
+    chinaRealtimeIndices: snapshot.marketIndicators?.chinaIndices,
+    realtimeFundValuations: snapshot.marketIndicators?.realtimeFundValuations,
+    fastNews: snapshot.fastNews
+  };
+  return Array.isArray(map[key]) ? map[key] : [];
+}
+
+function collectDataSourceComponentKinds(items = [], key = "") {
+  const kinds = items.flatMap((item) => [
+    item?.sourceKind,
+    item?.supplementalSourceKind,
+    item?.supplementalIntradaySourceKind,
+    item?.mediaName
+  ]).filter(Boolean);
+  if (key === "fastNews") {
+    return [...new Set(kinds.map((item) => String(item || "").trim()).filter(Boolean))];
+  }
+  return [...new Set(kinds)];
+}
+
+function formatDataSourceComponentLabel(key = "") {
+  return {
+    conceptBoards: "概念板块",
+    industryBoards: "行业板块",
+    stockFunds: "股票型基金排行",
+    hybridFunds: "混合型基金排行",
+    indexFunds: "指数型基金排行",
+    qdiiFunds: "QDII基金排行",
+    preciousMetalFunds: "贵金属基金候选",
+    preciousMetals: "贵金属行情",
+    globalMarketQuotes: "海外指数与汇率",
+    chinaRealtimeIndices: "A股指数实时源",
+    realtimeFundValuations: "实时估算净值",
+    fastNews: "实时财经新闻"
+  }[key] || key || "未知组件";
+}
+
+function buildDataSourceCoverageItem(source = {}, context = {}) {
+  const componentStatusMap = context.componentStatusMap || new Map();
+  const stats = context.stats || {};
+  const counters = stats.counters || {};
+  const configured = isDataSourceConfigured(source);
+  const rawComponents = (source.componentKeys || [])
+    .map((key) => componentStatusMap.get(key))
+    .filter(Boolean);
+  const sourceKindPatterns = normalizeStringArray(source.sourceKindPatterns);
+  const matchedComponents = sourceKindPatterns.length
+    ? rawComponents.filter((component) => dataSourceComponentMatchesSourceKind(component, sourceKindPatterns))
+    : rawComponents;
+  const components = configured ? matchedComponents : [];
+  const runtimeCount = (source.counterKeys || []).reduce((sum, key) => sum + Number(counters[key] || 0), 0);
+  const liveCount = components.filter((item) => item.status === "available").length;
+  const cachedCount = components.filter((item) => item.status === "cached").length;
+  const missingCount = components.filter((item) => item.status === "missing").length;
+  const observedCount = components.reduce((sum, item) => sum + Number(item.count || 0), 0);
+  let status = "configured";
+  if (!configured) status = "needs_config";
+  else if (liveCount) status = "live";
+  else if (cachedCount) status = "cached";
+  else if (runtimeCount > 0) status = "used";
+  else if (missingCount) status = "missing";
+  const sourceKinds = [...new Set(components.flatMap((item) => item.sourceKinds || []))].slice(0, 8);
+  return {
+    id: source.id || "",
+    category: source.category || "",
+    provider: source.provider || "",
+    label: source.label || "",
+    endpoint: source.endpoint || "",
+    realtime: Boolean(source.realtime),
+    realtimeText: source.realtimeText || "",
+    configured,
+    requiresEnv: source.requiresEnv || "",
+    status,
+    statusText: formatDataSourceCoverageStatus(status),
+    tone: getDataSourceCoverageTone(status),
+    observedCount,
+    runtimeCount,
+    componentKeys: source.componentKeys || [],
+    sourceKindPatterns,
+    componentLabels: components.map((item) => `${item.label || item.key} ${item.count || 0}`),
+    sourceKinds,
+    capability: source.capability || "",
+    outputs: source.outputs || []
+  };
+}
+
+function dataSourceComponentMatchesSourceKind(component = {}, patterns = []) {
+  if (!patterns.length) return true;
+  const text = normalizeStringArray(component.sourceKinds).join(" ").toLowerCase();
+  if (!text) return false;
+  return patterns.some((pattern) => text.includes(String(pattern || "").toLowerCase()));
+}
+
+function isDataSourceConfigured(source = {}) {
+  return !source.requiresEnv || Boolean(process.env[source.requiresEnv]);
+}
+
+function formatDataSourceCoverageStatus(status = "") {
+  return {
+    live: "最新快照可用",
+    cached: "缓存可用",
+    used: "已在运行中使用",
+    configured: "接口已接入",
+    missing: "最近抓取缺失",
+    needs_config: "待配置授权"
+  }[status] || "待确认";
+}
+
+function getDataSourceCoverageTone(status = "") {
+  if (status === "live" || status === "used") return "ok";
+  if (status === "cached" || status === "configured") return "info";
+  if (status === "needs_config") return "warn";
+  return "bad";
+}
+
+function buildBoardMarketCoverage(snapshot = null, componentStatusMap = new Map()) {
+  const conceptBoards = getDataSourceCoverageComponentItems(snapshot, "conceptBoards");
+  const industryBoards = getDataSourceCoverageComponentItems(snapshot, "industryBoards");
+  const metricFields = [
+    "板块代码",
+    "板块名称",
+    "最新价/点位",
+    "涨跌幅",
+    "主力净流入",
+    "主力净流入占比",
+    "领涨股",
+    "报价时间",
+    "榜单来源",
+    "榜单排名信号",
+    "历史轮动信号"
+  ];
+  const fetchModes = ["涨幅榜", "跌幅榜", "主力流入榜", "主力流出榜"];
+  const conceptStatus = componentStatusMap.get("conceptBoards") || {};
+  const industryStatus = componentStatusMap.get("industryBoards") || {};
+  const observedBoards = conceptBoards.length + industryBoards.length;
+  return {
+    configuredMarketTypes: 2,
+    configuredMarketTypeLabels: ["概念板块", "行业板块"],
+    fetchModes,
+    fetchModeCount: fetchModes.length,
+    realtimeBoardFeeds: 2 * fetchModes.length,
+    metricFields,
+    metricFieldCount: metricFields.length,
+    observedBoards,
+    observedMetricCells: observedBoards * metricFields.length,
+    conceptBoards: conceptBoards.length || Number(conceptStatus.count || 0),
+    industryBoards: industryBoards.length || Number(industryStatus.count || 0),
+    conceptStatus: formatDataSourceCoverageStatus(conceptStatus.status || ""),
+    industryStatus: formatDataSourceCoverageStatus(industryStatus.status || ""),
+    derivedIndicators: ["市场宽度", "板块轮动", "题材雷达", "主力作战图"]
+  };
+}
+
+function buildFundDataCoverage(snapshot = null, componentStatusMap = new Map()) {
+  const fundCandidates = snapshot?.fundCandidates || {};
+  const candidateCounts = snapshot?.dataQuality?.candidateCounts || buildMarketCandidateCounts(fundCandidates);
+  const rankingCount = ["stockFunds", "hybridFunds", "indexFunds", "qdiiFunds"]
+    .reduce((sum, key) => sum + Number(candidateCounts[key] || 0), 0);
+  const realtimeItems = getDataSourceCoverageComponentItems(snapshot, "realtimeFundValuations");
+  const realtimeStatus = componentStatusMap.get("realtimeFundValuations") || {};
+  const history = readFundRankingHistory();
+  return {
+    candidateCounts,
+    rankingCount,
+    preciousMetalFundCount: Number(candidateCounts.preciousMetalFunds || 0),
+    realtimeValuationCount: realtimeItems.length || Number(realtimeStatus.count || 0),
+    freshRealtimeValuationCount: Number.isFinite(Number(realtimeStatus.freshCount)) ? Number(realtimeStatus.freshCount) : realtimeItems.filter((item) => item?.isFresh !== false).length,
+    staleRealtimeValuationCount: Number.isFinite(Number(realtimeStatus.staleCount)) ? Number(realtimeStatus.staleCount) : realtimeItems.filter((item) => item?.isFresh === false).length,
+    rankingHistoryFunds: Object.keys(history.funds || {}).length,
+    rankingHistoryUpdatedAt: history.updatedAt || ""
+  };
+}
+
+function buildNewsDataCoverage(snapshot = null, componentStatusMap = new Map()) {
+  const newsItems = getDataSourceCoverageComponentItems(snapshot, "fastNews");
+  const newsPulse = snapshot?.marketIndicators?.newsPulse || null;
+  const fastNewsStatus = componentStatusMap.get("fastNews") || {};
+  return {
+    fastNewsCount: newsItems.length || Number(fastNewsStatus.count || 0),
+    sourceKinds: [...new Set([
+      ...normalizeStringArray(fastNewsStatus.sourceKinds),
+      ...newsItems.map((item) => item.sourceKind || item.mediaName).filter(Boolean)
+    ])].slice(0, 8),
+    freshNewsCount: Number(newsPulse?.freshNewsCount || 0),
+    topTopicCount: Array.isArray(newsPulse?.topTopics) ? newsPulse.topTopics.length : 0,
+    summary: newsPulse?.summary || ""
+  };
+}
+
+function buildDataProcessingEngineCoverage(snapshot = null, stats = getRuntimeStats()) {
+  const counters = stats.counters || {};
+  return DATA_PROCESSING_ENGINE_REGISTRY.map((engine) => {
+    const active = hasDataProcessingEngineEvidence(engine, snapshot, counters);
+    return {
+      ...engine,
+      status: active ? "active" : "ready",
+      statusText: active ? "已有证据" : "已接入待样本",
+      tone: active ? "ok" : "info"
+    };
+  });
+}
+
+function hasDataProcessingEngineEvidence(engine = {}, snapshot = null, counters = {}) {
+  switch (engine.id) {
+    case "marketBreadth":
+      return Boolean(snapshot?.marketIndicators?.marketBreadth);
+    case "boardRotation":
+      return Boolean(snapshot?.marketIndicators?.boardRotation);
+    case "newsPulse":
+      return Boolean(snapshot?.marketIndicators?.newsPulse);
+    case "themeRadar":
+      return Array.isArray(snapshot?.themeRadar) && snapshot.themeRadar.length > 0;
+    case "themeLeaderboards":
+      return snapshot?.themeLeaderboards && Object.keys(snapshot.themeLeaderboards).length > 0;
+    case "themeMainForcePlaybook":
+      return Boolean(snapshot?.themeMainForcePlaybook);
+    case "realtimeFundValuationSignal":
+      return getDataSourceCoverageComponentItems(snapshot, "realtimeFundValuations").length > 0;
+    case "riskMetrics":
+    case "trendProfile":
+      return Number(counters.navHistoryFetches || 0) > 0 || Number(counters.fundEnrichmentSuccess || 0) > 0;
+    case "holdingsOutlook":
+      return Number(counters.fundHoldingsFetches || 0) > 0;
+    case "feeSuitability":
+      return Number(counters.fundFeePageFetches || 0) > 0;
+    case "rankingHistoryMomentum":
+      return Object.keys(readFundRankingHistory().funds || {}).length > 0;
+    default:
+      return false;
+  }
+}
+
+function buildDataSourceHistoryStores() {
+  const themeHistory = readThemeRadarHistory();
+  const boardHistory = readMarketBoardHistory();
+  const rankingHistory = readFundRankingHistory();
+  return [
+    {
+      id: "theme-radar-history",
+      label: "题材雷达历史",
+      path: THEME_RADAR_HISTORY_PATH,
+      count: Object.keys(themeHistory.themes || {}).length,
+      updatedAt: themeHistory.updatedAt || "",
+      capability: "跨快照追踪题材连续性和分数变化。"
+    },
+    {
+      id: "market-board-history",
+      label: "板块轮动历史",
+      path: MARKET_BOARD_HISTORY_PATH,
+      count: Object.keys(boardHistory.boards || {}).length,
+      updatedAt: boardHistory.updatedAt || "",
+      capability: "跨快照追踪板块主力流入/流出和高位降温。"
+    },
+    {
+      id: "fund-ranking-history",
+      label: "基金榜单历史",
+      path: FUND_RANKING_HISTORY_PATH,
+      count: Object.keys(rankingHistory.funds || {}).length,
+      updatedAt: rankingHistory.updatedAt || "",
+      capability: "追踪基金从低位榜到周内转强榜的路径。"
+    }
+  ];
+}
+
+function buildDataSourceCoverageTotals({ sources = [], boardCoverage = {}, fundCoverage = {}, newsCoverage = {}, indicatorEngines = [], historyStores = [] } = {}) {
+  const externalSources = sources.length;
+  const configuredSources = sources.filter((source) => source.configured).length;
+  const liveSources = sources.filter((source) => source.status === "live").length;
+  const sampledSources = sources.filter((source) => ["live", "cached", "used"].includes(source.status)).length;
+  const usableSources = sources.filter((source) => ["live", "cached", "used", "configured"].includes(source.status)).length;
+  const realtimeSources = sources.filter((source) => source.realtime).length;
+  const realtimeUsableSources = sources.filter((source) => source.realtime && ["live", "cached", "used", "configured"].includes(source.status)).length;
+  const tokenRequiredSources = sources.filter((source) => source.status === "needs_config").length;
+  const activeEngines = indicatorEngines.filter((engine) => engine.status === "active").length;
+  return {
+    externalSources,
+    configuredSources,
+    sampledSources,
+    usableSources,
+    liveSources,
+    realtimeSources,
+    realtimeUsableSources,
+    tokenRequiredSources,
+    indicatorEngines: indicatorEngines.length,
+    activeIndicatorEngines: activeEngines,
+    historyStores: historyStores.length,
+    historyItems: historyStores.reduce((sum, item) => sum + Number(item.count || 0), 0),
+    boardMarketTypes: Number(boardCoverage.configuredMarketTypes || 0),
+    boardRealtimeFeeds: Number(boardCoverage.realtimeBoardFeeds || 0),
+    boardMetricFields: Number(boardCoverage.metricFieldCount || 0),
+    observedBoards: Number(boardCoverage.observedBoards || 0),
+    fundCandidates: Object.values(fundCoverage.candidateCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0),
+    realtimeFundValuations: Number(fundCoverage.realtimeValuationCount || 0),
+    fastNews: Number(newsCoverage.fastNewsCount || 0)
+  };
+}
+
+function buildDataSourceSnapshotMeta(snapshot = null, cache = {}, options = {}) {
+  const hasObservedSnapshotItems = getDataSourceComponentKeys().some((key) =>
+    getDataSourceCoverageComponentItems(snapshot, key).length > 0
+  );
+  const fetchedAt = snapshot?.fetchedAt
+    || snapshot?.updatedAt
+    || (hasObservedSnapshotItems ? snapshot?.dataQuality?.generatedAt : "")
+    || (snapshot?.sourceMode === "cache_snapshot" ? snapshot?.generatedAt : "")
+    || getLatestMarketSnapshotCacheTime(cache)
+    || "";
+  const ageMinutes = getDataSourceAgeMinutes(fetchedAt, options.generatedAt || new Date().toISOString());
+  return {
+    fetchedAt,
+    generatedAt: options.generatedAt || new Date().toISOString(),
+    sourceMode: snapshot?.sourceMode || (snapshot ? "snapshot" : "none"),
+    refreshRequested: Boolean(options.refresh),
+    refreshError: options.refreshError || "",
+    dataQualityLevel: snapshot?.dataQuality?.level || "unknown",
+    dataQualitySummary: snapshot?.dataQuality?.summary || "暂无市场快照。",
+    ageMinutes,
+    ageText: formatDataSourceAge(ageMinutes)
+  };
+}
+
+function getDataSourceAgeMinutes(value = "", nowIso = new Date().toISOString()) {
+  const atMs = Date.parse(value || "");
+  const nowMs = Date.parse(nowIso || "");
+  if (!Number.isFinite(atMs) || !Number.isFinite(nowMs)) return null;
+  return Math.max(0, Math.round((nowMs - atMs) / 60000));
+}
+
+function formatDataSourceAge(minutes) {
+  if (minutes === null || minutes === undefined || minutes === "" || !Number.isFinite(Number(minutes))) return "暂无快照";
+  const value = Number(minutes);
+  if (value < 1) return "刚刚";
+  if (value < 60) return `${value} 分钟前`;
+  if (value < 1440) return `${round(value / 60, 1)} 小时前`;
+  return `${round(value / 1440, 1)} 天前`;
+}
+
+function buildDataSourceCoverageSummary({ totals = {}, boardCoverage = {}, fundCoverage = {}, newsCoverage = {}, snapshotMeta = {} } = {}) {
+  return [
+    `已接入 ${totals.externalSources || 0} 个外部数据接口，${totals.configuredSources || 0} 个无需额外授权或已配置。`,
+    `板块市场支持 ${boardCoverage.configuredMarketTypes || 0} 类市场、${boardCoverage.realtimeBoardFeeds || 0} 条实时榜单维度，每个板块沉淀 ${boardCoverage.metricFieldCount || 0} 类字段。`,
+    `最近快照覆盖 ${boardCoverage.observedBoards || 0} 个板块、${totals.fundCandidates || 0} 只候选基金、${fundCoverage.realtimeValuationCount || 0} 条实时估值、${newsCoverage.fastNewsCount || 0} 条快讯。`,
+    `固定代码指标引擎 ${totals.indicatorEngines || 0} 个，已有样本 ${totals.activeIndicatorEngines || 0} 个；快照时间 ${snapshotMeta.ageText || "暂无"}。`
+  ].join(" ");
+}
+
 function buildRealtimeFundValuationSeedItems(fundCandidates = {}, options = {}) {
   return mergeCandidateFunds(
     options.prioritySeeds || [],
@@ -28664,9 +29535,11 @@ async function fetchEastmoneyFastNews() {
       title: item.title || "",
       showTime: item.showTime || "",
       mediaName: item.mediaName || "",
+      sourceKind: "eastmoney_fast_news",
       url: item.url || "",
       code: item.code || ""
-    })).filter((item) => item.title).slice(0, Number(process.env.MARKET_FAST_NEWS_LIMIT || 30))
+    })).filter((item) => item.title).slice(0, Number(process.env.MARKET_FAST_NEWS_LIMIT || 30)),
+    sourceKinds: ["eastmoney_fast_news"]
   };
 }
 
@@ -36458,6 +37331,246 @@ function persistFundRankingCache(cache = {}, filePath = FUND_RANKING_CACHE_PATH)
   }
 }
 
+function readFundRankingHistory(filePath = FUND_RANKING_HISTORY_PATH) {
+  const raw = safeReadJson(filePath);
+  return raw && typeof raw === "object" && raw.funds && typeof raw.funds === "object"
+    ? { ...raw, funds: raw.funds }
+    : { version: 1, updatedAt: "", funds: {} };
+}
+
+function persistFundRankingHistory(history = {}, filePath = FUND_RANKING_HISTORY_PATH) {
+  try {
+    pruneFundRankingHistory(history);
+    const payload = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      funds: history.funds || {}
+    };
+    ensureDir(path.dirname(filePath));
+    fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    updateStats({ counters: { fundRankingHistoryWrites: 1 }, last: { lastFundRankingHistoryWriteAt: payload.updatedAt } });
+    return payload;
+  } catch (error) {
+    console.warn("[fund-ranking-history-write-error]", error.message);
+    recordError(error, { fundRankingHistoryWriteFailures: 1 });
+    return history;
+  }
+}
+
+function getFundRankingHistoryKey(item = {}) {
+  return String(item.code || item.fundCode || "").trim();
+}
+
+function attachFundRankingHistoryMomentum(items = [], history = {}, context = {}) {
+  return (items || []).map((item, index) => {
+    const rank = Number(item.rank || index + 1);
+    return {
+      ...item,
+      rank,
+      rankingMomentum: buildFundRankingHistoryMomentum({ ...item, rank }, history, context)
+    };
+  });
+}
+
+function buildFundRankingHistoryMomentum(item = {}, history = {}, context = {}) {
+  const key = getFundRankingHistoryKey(item);
+  const entry = key ? history?.funds?.[key] : null;
+  const observedAt = context.fetchedAt || new Date().toISOString();
+  const nowMs = Date.parse(observedAt);
+  const snapshots = (Array.isArray(entry?.snapshots) ? entry.snapshots : [])
+    .filter((point) => {
+      const atMs = Date.parse(point?.at || "");
+      return Number.isFinite(atMs) && (!Number.isFinite(nowMs) || atMs < nowMs);
+    })
+    .sort((a, b) => Date.parse(a.at || "") - Date.parse(b.at || ""));
+  const metric = context.metric || item.metric || "";
+  const rankingMetric = context.rankingMetric || item.rankingMetric || "";
+  const latest = snapshots[snapshots.length - 1] || null;
+  const sameMetric = snapshots.filter((point) => point.metric === metric || point.rankingMetric === rankingMetric);
+  const latestSameMetric = sameMetric[sameMetric.length - 1] || null;
+  const currentRank = finiteMetricNumber(item.rank);
+  const previousRank = finiteMetricNumber(latestSameMetric?.rank ?? latest?.rank);
+  const rankDelta = Number.isFinite(currentRank) && Number.isFinite(previousRank) ? round(currentRank - previousRank, 1) : null;
+  const signal = inferFundRankingHistorySignal({
+    item,
+    metric,
+    rankingMetric,
+    latest,
+    latestSameMetric,
+    snapshots,
+    sameMetric,
+    rankDelta
+  });
+  const score = scoreFundRankingHistoryMomentumSignal(signal, { item, rankDelta, snapshots, sameMetric });
+  return {
+    signal,
+    label: formatFundRankingHistorySignal(signal),
+    actionText: formatFundRankingHistoryAction(signal),
+    score,
+    firstSeenAt: entry?.firstSeenAt || snapshots[0]?.at || "",
+    previousSeenAt: latest?.at || "",
+    sightings: snapshots.length,
+    sameMetricSightings: sameMetric.length,
+    previousRank,
+    currentRank,
+    rankDelta,
+    previousMetric: latest?.rankingMetric || latest?.metric || "",
+    currentMetric: rankingMetric || metric
+  };
+}
+
+function inferFundRankingHistorySignal({ item = {}, metric = "", rankingMetric = "", latest = null, latestSameMetric = null, snapshots = [], sameMetric = [], rankDelta = null } = {}) {
+  const oneWeek = toNumber(item.oneWeekPct);
+  const oneMonth = toNumber(item.oneMonthPct);
+  const threeMonth = toNumber(item.threeMonthPct);
+  const sixMonth = toNumber(item.sixMonthPct);
+  const isWeeklyTurn = metric === "zzf" || /周|转强/.test(String(rankingMetric || ""));
+  const priorLowBase = snapshots.some((point) => isFundRankingHistoryLowBasePoint(point));
+  if (Number.isFinite(oneWeek) && oneWeek > 6 || Number.isFinite(oneMonth) && oneMonth > 14) return "hot_chase_risk";
+  if (!latest) return "new_ranking_appearance";
+  if (isWeeklyTurn && priorLowBase && isLowBaseTurnSeedCandidate(item)) return "low_base_to_weekly_turn";
+  if (sameMetric.length >= 2) return "recurring_same_metric";
+  if (Number.isFinite(rankDelta) && rankDelta <= -8) return "rank_improving";
+  if (Number.isFinite(threeMonth) && threeMonth <= 4 && Number.isFinite(sixMonth) && sixMonth <= 12 && Number.isFinite(oneWeek) && oneWeek >= 0.2 && oneWeek <= 4.5) return "low_base_observed";
+  if (latestSameMetric) return "same_metric_observed";
+  return "cross_metric_observed";
+}
+
+function isFundRankingHistoryLowBasePoint(point = {}) {
+  const metricText = `${point.metric || ""} ${point.rankingMetric || ""}`;
+  const threeMonth = toNumber(point.threeMonthPct);
+  const sixMonth = toNumber(point.sixMonthPct);
+  return /低位|3yzf|6yzf/.test(metricText)
+    || (Number.isFinite(threeMonth) && threeMonth <= 4 && Number.isFinite(sixMonth) && sixMonth <= 12);
+}
+
+function scoreFundRankingHistoryMomentumSignal(signal = "", { item = {}, rankDelta = null, snapshots = [], sameMetric = [] } = {}) {
+  const oneWeek = toNumber(item.oneWeekPct);
+  let score = {
+    low_base_to_weekly_turn: 18,
+    recurring_same_metric: 10,
+    rank_improving: 8,
+    low_base_observed: 7,
+    new_ranking_appearance: 3,
+    same_metric_observed: 5,
+    cross_metric_observed: 4,
+    hot_chase_risk: -18
+  }[signal] || 0;
+  if (Number.isFinite(rankDelta) && rankDelta < 0) score += Math.min(8, Math.abs(rankDelta) * 0.4);
+  if ((snapshots || []).length >= 3) score += 3;
+  if ((sameMetric || []).length >= 2) score += 3;
+  if (Number.isFinite(oneWeek) && oneWeek >= 0.4 && oneWeek <= 4) score += 3;
+  return round(score, 1);
+}
+
+function formatFundRankingHistorySignal(signal = "") {
+  return {
+    low_base_to_weekly_turn: "低位榜转向周内转强",
+    recurring_same_metric: "同类榜单连续出现",
+    rank_improving: "榜单排名改善",
+    low_base_observed: "低位候选继续观察",
+    new_ranking_appearance: "新进榜，先小样本复核",
+    same_metric_observed: "同榜单再次出现",
+    cross_metric_observed: "跨榜单出现",
+    hot_chase_risk: "榜单偏热，防追涨"
+  }[signal] || "榜单历史不足";
+}
+
+function formatFundRankingHistoryAction(signal = "") {
+  return {
+    low_base_to_weekly_turn: "优先下钻净值和持仓承载",
+    recurring_same_metric: "可提高召回优先级，但仍需买点确认",
+    rank_improving: "加入备选复核",
+    low_base_observed: "等待5日/10日温和转强",
+    new_ranking_appearance: "只作观察，等待二次确认",
+    same_metric_observed: "继续观察是否转强",
+    cross_metric_observed: "复核是否从低位转强",
+    hot_chase_risk: "降级观察，避免追涨"
+  }[signal] || "继续观察";
+}
+
+function cacheFundRankingHistorySnapshot(history = {}, result = {}, fetchedAt = new Date().toISOString()) {
+  if (!result?.ok || !Array.isArray(result.items) || !result.items.length) return history;
+  history.funds = history.funds && typeof history.funds === "object" ? history.funds : {};
+  let updates = 0;
+  result.items.forEach((item, index) => {
+    const key = getFundRankingHistoryKey(item);
+    if (!key) return;
+    const entry = history.funds[key] || {
+      code: key,
+      name: item.name || "",
+      firstSeenAt: fetchedAt,
+      lastSeenAt: "",
+      snapshots: []
+    };
+    entry.name = item.name || entry.name || "";
+    entry.lastSeenAt = fetchedAt;
+    const point = sanitizeFundRankingHistoryPoint(item, result, fetchedAt, index + 1);
+    const snapshots = Array.isArray(entry.snapshots) ? entry.snapshots : [];
+    const duplicateIndex = snapshots.findIndex((snapshot) =>
+      snapshot.at === point.at
+      && snapshot.metric === point.metric
+      && snapshot.fundType === point.fundType
+      && snapshot.rankingSort === point.rankingSort
+    );
+    if (duplicateIndex >= 0) snapshots[duplicateIndex] = point;
+    else snapshots.push(point);
+    entry.snapshots = snapshots.slice(-Math.max(3, FUND_RANKING_HISTORY_POINT_LIMIT));
+    history.funds[key] = entry;
+    updates += 1;
+  });
+  pruneFundRankingHistory(history, fetchedAt);
+  updateStats({ counters: { fundRankingHistoryFundsObserved: updates } });
+  return history;
+}
+
+function sanitizeFundRankingHistoryPoint(item = {}, result = {}, observedAt = new Date().toISOString(), fallbackRank = 0) {
+  return {
+    at: observedAt,
+    code: item.code || "",
+    name: item.name || "",
+    fundType: result.fundType || item.fundType || "",
+    type: item.type || result.label || "",
+    metric: result.metric || item.metric || "",
+    rankingMetric: result.rankingMetric || item.rankingMetric || "",
+    rankingSort: result.rankingSort || result.sort || "",
+    rank: Number(item.rank || fallbackRank || 0),
+    oneWeekPct: finiteMetricNumber(item.oneWeekPct),
+    oneMonthPct: finiteMetricNumber(item.oneMonthPct),
+    threeMonthPct: finiteMetricNumber(item.threeMonthPct),
+    sixMonthPct: finiteMetricNumber(item.sixMonthPct),
+    oneYearPct: finiteMetricNumber(item.oneYearPct),
+    thisYearPct: finiteMetricNumber(item.thisYearPct),
+    dailyPct: finiteMetricNumber(item.dailyPct),
+    navDate: item.navDate || ""
+  };
+}
+
+function pruneFundRankingHistory(history = {}, nowIso = new Date().toISOString()) {
+  history.funds = history.funds && typeof history.funds === "object" ? history.funds : {};
+  const nowMs = Date.parse(nowIso);
+  const maxAgeMs = Math.max(1, FUND_RANKING_HISTORY_MAX_AGE_DAYS) * 24 * 60 * 60_000;
+  for (const [key, entry] of Object.entries(history.funds)) {
+    const snapshots = (Array.isArray(entry?.snapshots) ? entry.snapshots : [])
+      .filter((point) => {
+        const atMs = Date.parse(point?.at || "");
+        return !Number.isFinite(nowMs) || !Number.isFinite(atMs) || nowMs - atMs <= maxAgeMs;
+      })
+      .slice(-Math.max(3, FUND_RANKING_HISTORY_POINT_LIMIT));
+    if (!snapshots.length) {
+      delete history.funds[key];
+      continue;
+    }
+    history.funds[key] = {
+      ...entry,
+      snapshots,
+      firstSeenAt: entry.firstSeenAt || snapshots[0]?.at || "",
+      lastSeenAt: snapshots[snapshots.length - 1]?.at || entry.lastSeenAt || ""
+    };
+  }
+  return history;
+}
+
 function getFundRankingCacheKey({ fundType = "", metric = "", sort = "", rankingSort = "", limit = "" } = {}) {
   return [fundType, metric, sort || rankingSort, Number(limit || 0)].join("|");
 }
@@ -36519,19 +37632,30 @@ async function fetchFundRankingByMetric(fundType, label, options = {}) {
   startDate.setMonth(startDate.getMonth() - 1);
   const fetchedAt = options.fetchedAt || new Date().toISOString();
   const cache = options.cache || readFundRankingCache();
+  const rankingHistory = options.rankingHistory || readFundRankingHistory();
   const metric = options.metric || "1yzf";
   const sort = options.sort || "desc";
   const limit = Number(options.limit || process.env.FUND_DISCOVERY_RANK_LIMIT || 24);
   const datedStartDate = formatDate(startDate);
   const datedEndDate = formatDate(endDate);
   const request = { fundType, label, metric, sort, limit };
-  const buildCacheFallback = (liveError) => options.allowCacheFallback === false
-    ? null
-    : buildCachedFundRankingFallback(request, cache, {
+  const buildCacheFallback = (liveError) => {
+    if (options.allowCacheFallback === false) return null;
+    const fallback = buildCachedFundRankingFallback(request, cache, {
         fetchedAt,
         rankingMetric: options.rankingMetric || "近1月涨幅",
         liveError
       });
+    if (!fallback) return null;
+    return {
+      ...fallback,
+      items: attachFundRankingHistoryMomentum(fallback.items || [], rankingHistory, {
+        fetchedAt,
+        metric,
+        rankingMetric: fallback.rankingMetric || options.rankingMetric || "近1月涨幅"
+      })
+    };
+  };
   try {
     const datedUrl = buildFundRankingUrl({ fundType, metric, sort, limit, startDate: datedStartDate, endDate: datedEndDate });
     const text = await fetchText(datedUrl.href);
@@ -36553,20 +37677,29 @@ async function fetchFundRankingByMetric(fundType, label, options = {}) {
       }
     }
     updateStats({ counters: { fundRankingFetches: fetches, fundRankingDateFallbacks: dateFallback ? 1 : 0 } });
+    const rankingMetric = options.rankingMetric || "近1月涨幅";
     const result = {
       ok: true,
       fundType,
       label,
       metric,
-      rankingMetric: options.rankingMetric || "近1月涨幅",
+      rankingMetric,
       rankingSort: sort,
       limit,
       startDate: usedStartDate,
       endDate: usedEndDate,
       dateFallback,
-      items
+      items: attachFundRankingHistoryMomentum(items, rankingHistory, {
+        fetchedAt,
+        metric,
+        rankingMetric
+      })
     };
     if (items.length) {
+      cacheFundRankingHistorySnapshot(rankingHistory, result, fetchedAt);
+      if (options.persistRankingHistory !== false && !options.rankingHistory) {
+        persistFundRankingHistory(rankingHistory);
+      }
       const cached = cacheFundRankingResult(cache, result, fetchedAt);
       if (cached && typeof options.onCacheUpdate === "function") options.onCacheUpdate(result);
       if (cached && options.persistCache !== false && !options.cache) persistFundRankingCache(cache);
@@ -39602,8 +40735,31 @@ function getDefaultStats() {
       fundRankingFetches: 0,
       fundRankingCacheWrites: 0,
       fundRankingCacheFallbacks: 0,
+      fundRankingHistoryWrites: 0,
+      fundRankingHistoryWriteFailures: 0,
+      fundRankingHistoryFundsObserved: 0,
       themeRadarHistoryWrites: 0,
       themeRadarHistoryThemesObserved: 0,
+      marketBoardHistoryWrites: 0,
+      marketBoardHistoryBoardsObserved: 0,
+      marketRealtimeValuationFetches: 0,
+      marketRealtimeValuationCodes: 0,
+      marketRealtimeValuationFailures: 0,
+      marketSnapshotCacheWrites: 0,
+      marketSnapshotCacheLiveUpdates: 0,
+      marketSnapshotCacheFallbacks: 0,
+      marketFastNewsFetches: 0,
+      sinaFastNewsFetches: 0,
+      clsTelegraphNewsFetches: 0,
+      globalMarketQuoteFetches: 0,
+      chinaRealtimeIndexQuoteFetches: 0,
+      eastmoneyChinaIndexQuoteFetches: 0,
+      yangjibaoIndexQuoteFetches: 0,
+      yangjibaoFundSearchCandidateFetches: 0,
+      yangjibaoFundSearchValuationFetches: 0,
+      dataSourceCoverageRequests: 0,
+      dataSourceCoverageRefreshes: 0,
+      dataSourceCoverageRefreshFailures: 0,
       pullbackSetupDiscoveryFailures: 0,
       navHistoryFetches: 0,
       navHistoryPoints: 0,
@@ -41754,11 +42910,13 @@ export {
   buildFundPriorityPreferenceAnswer,
   buildFundComputedOpportunityScorecard,
   buildCachedFundResearchDigestFallback,
+  buildDataSourceCoverageReport,
   buildMarketDataQuality,
   buildRealtimeFundValuationSignal,
   applyMarketSnapshotCacheFallback,
   buildCachedFundNavHistoryFallback,
   buildCachedFundRankingFallback,
+  attachFundRankingHistoryMomentum,
   attachThemeRadarHistoryMomentum,
   buildMarketBreadthIndicators,
   buildNewsPulseIndicators,

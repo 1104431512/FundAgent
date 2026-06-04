@@ -13,6 +13,7 @@ let portfolioPollTimer = null;
 let portfolioPollFailures = 0;
 let currentPortfolio = null;
 let currentDeployment = null;
+let currentDataSourceCoverage = null;
 let activeManagerRankingFilter = "";
 let managerRankingFilterInitialized = false;
 let activePortfolioView = "overview";
@@ -163,6 +164,7 @@ document.querySelector("#saveTokenBtn").addEventListener("click", () => {
 
 document.querySelector("#reloadBtn").addEventListener("click", () => loadAll().catch(showError));
 document.querySelector("#refreshStatsBtn").addEventListener("click", () => loadStats().catch(showError));
+document.querySelector("#refreshDataSourcesBtn")?.addEventListener("click", () => loadDataSourceCoverage({ refresh: true }).catch(showError));
 document.querySelector("[data-panel='runtime']")?.addEventListener("click", (event) => {
   const viewButton = event.target.closest("[data-runtime-view-target]");
   if (!viewButton) return;
@@ -470,9 +472,10 @@ async function loadSkills() {
 }
 
 async function loadStats() {
-  const [statsResult, deploymentResult] = await Promise.allSettled([
+  const [statsResult, deploymentResult, dataSourceResult] = await Promise.allSettled([
     apiFetch("/api/stats"),
-    apiFetch("/api/deployment", { timeoutMs: 12000 })
+    apiFetch("/api/deployment", { timeoutMs: 12000 }),
+    apiFetch("/api/data-sources", { timeoutMs: 20000 })
   ]);
   if (statsResult.status === "rejected") throw statsResult.reason;
   const stats = statsResult.value.stats || {};
@@ -485,16 +488,19 @@ async function loadStats() {
     latest: {}
   };
   currentDeployment = deployment;
+  currentDataSourceCoverage = dataSourceResult.status === "fulfilled" ? dataSourceResult.value.coverage || null : null;
   const release = stats.release || {};
-  renderRuntimeTerminal(stats, deployment);
+  renderRuntimeTerminal(stats, deployment, currentDataSourceCoverage);
   renderPortfolioDeploymentStatus(deployment);
   renderRuntimeDiagnostics(stats.diagnostics);
+  renderRuntimeDataSourceCoverage(currentDataSourceCoverage, dataSourceResult.status === "rejected" ? dataSourceResult.reason : null);
   document.querySelector("#statsOutput").textContent = JSON.stringify(
     {
       startedAt: stats.startedAt,
       updatedAt: stats.updatedAt,
       release,
       deployment,
+      dataSourceCoverage: currentDataSourceCoverage,
       diagnostics: stats.diagnostics,
       last: stats.last,
       counters: stats.counters || {}
@@ -504,13 +510,36 @@ async function loadStats() {
   );
 }
 
-function renderRuntimeTerminal(stats = {}, deployment = null) {
+async function loadDataSourceCoverage({ refresh = false } = {}) {
+  const button = document.querySelector("#refreshDataSourcesBtn");
+  if (button) {
+    button.disabled = true;
+    button.textContent = refresh ? "刷新中" : "读取中";
+  }
+  try {
+    const result = await apiFetch(`/api/data-sources${refresh ? "?refresh=1" : ""}`, {
+      timeoutMs: refresh ? 150000 : 20000
+    });
+    currentDataSourceCoverage = result.coverage || null;
+    renderRuntimeDataSourceCoverage(currentDataSourceCoverage);
+    if (refresh) showToast("数据源覆盖已刷新");
+    return currentDataSourceCoverage;
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "刷新覆盖";
+    }
+  }
+}
+
+function renderRuntimeTerminal(stats = {}, deployment = null, dataSourceCoverage = currentDataSourceCoverage) {
   const counters = stats.counters || {};
   const diagnostics = stats.diagnostics || {};
   const release = stats.release || {};
   const diagnosticItems = Array.isArray(diagnostics.items) ? diagnostics.items : [];
   const conversationTotal = getRuntimeCounter(counters, "conversations");
-  const dataSourceTotal = [
+  const coverageTotals = dataSourceCoverage?.totals || {};
+  const fallbackDataSourceTotal = [
     "marketSnapshotCalls",
     "preciousMetalQuoteFetches",
     "preciousMetalFundSearches",
@@ -518,6 +547,7 @@ function renderRuntimeTerminal(stats = {}, deployment = null) {
     "fundFeePageFetches",
     "fundHoldingsFetches"
   ].reduce((sum, key) => sum + getRuntimeCounter(counters, key), 0);
+  const dataSourceTotal = Number(coverageTotals.externalSources || 0) || fallbackDataSourceTotal;
   const portfolioTotal = [
     "portfolioStatusRequests",
     "portfolioRuns",
@@ -528,7 +558,7 @@ function renderRuntimeTerminal(stats = {}, deployment = null) {
   setText("#runtimeBrief", formatRuntimeBrief(diagnostics, deployment));
   setText("#runtimeNavOverviewCount", diagnosticItems.length ? String(diagnosticItems.length) : "OK");
   setText("#runtimeNavConversationCount", formatRuntimeCount(conversationTotal));
-  setText("#runtimeNavDataCount", formatRuntimeCount(dataSourceTotal));
+  setText("#runtimeNavDataCount", coverageTotals.externalSources ? `${coverageTotals.configuredSources || 0}/${coverageTotals.externalSources}` : formatRuntimeCount(dataSourceTotal));
   setText("#runtimeNavPortfolioCount", formatRuntimeCount(portfolioTotal));
   setText("#runtimeNavReleaseCount", deployment?.status === "stale" ? "旧版" : release.branch || "-");
 
@@ -550,6 +580,14 @@ function renderRuntimeTerminal(stats = {}, deployment = null) {
       value: formatRuntimeCount(getRuntimeCounter(counters, "modelCalls")),
       meta: `路由 ${formatRuntimeCount(getRuntimeCounter(counters, "intentRouterCalls"))} · 错误 ${formatRuntimeCount(getRuntimeCounter(counters, "errors"))}`,
       tone: getRuntimeCounter(counters, "errors") ? "warn" : "ok"
+    },
+    {
+      label: "数据源覆盖",
+      value: coverageTotals.externalSources ? `${coverageTotals.configuredSources || 0}/${coverageTotals.externalSources}` : formatRuntimeCount(fallbackDataSourceTotal),
+      meta: coverageTotals.externalSources
+        ? `已有样本 ${coverageTotals.sampledSources || 0} · 实时 ${coverageTotals.realtimeUsableSources || 0}/${coverageTotals.realtimeSources || 0} · 快照 ${dataSourceCoverage?.snapshot?.ageText || "待刷新"}`
+        : "等待数据源覆盖报告",
+      tone: coverageTotals.tokenRequiredSources ? "warn" : "info"
     },
     {
       label: "经理自动化",
@@ -590,6 +628,15 @@ function renderRuntimeTerminal(stats = {}, deployment = null) {
   ]);
 
   renderRuntimeLanes("#runtimeDataBoard", [
+    {
+      title: "覆盖能力",
+      items: [
+        { label: "外部接口", value: coverageTotals.externalSources || dataSourceTotal, meta: coverageTotals.externalSources ? `已配置 ${coverageTotals.configuredSources || 0} · 已有样本 ${coverageTotals.sampledSources || 0}` : "等待覆盖报告" },
+        { label: "实时接口", value: coverageTotals.realtimeSources || 0, meta: coverageTotals.realtimeSources ? `可用 ${coverageTotals.realtimeUsableSources || 0} · 待授权 ${coverageTotals.tokenRequiredSources || 0}` : "等待覆盖报告" },
+        { label: "板块实时维度", value: coverageTotals.boardRealtimeFeeds || 0, meta: coverageTotals.boardRealtimeFeeds ? `${coverageTotals.boardMarketTypes || 0} 类板块市场 · 每板块 ${coverageTotals.boardMetricFields || 0} 指标` : "等待市场快照" },
+        { label: "指标引擎", value: coverageTotals.indicatorEngines || 0, meta: coverageTotals.indicatorEngines ? `已有样本 ${coverageTotals.activeIndicatorEngines || 0}` : "等待指标报告" }
+      ]
+    },
     {
       title: "市场与贵金属",
       items: [
@@ -674,6 +721,167 @@ function renderRuntimeLanes(selector, lanes = []) {
       </div>
     </section>
   `).join("");
+}
+
+function renderRuntimeDataSourceCoverage(coverage = null, error = null) {
+  const root = document.querySelector("#runtimeDataSourceCoverage");
+  if (!root) return;
+  if (error) {
+    root.innerHTML = `<div class="empty compact-empty">数据源覆盖报告读取失败：${escapeHtml(error.message || error)}</div>`;
+    return;
+  }
+  if (!coverage || !coverage.totals) {
+    root.innerHTML = `<div class="empty compact-empty">正在读取数据源覆盖报告。</div>`;
+    return;
+  }
+  const totals = coverage.totals || {};
+  const board = coverage.boardCoverage || {};
+  const fund = coverage.fundCoverage || {};
+  const news = coverage.newsCoverage || {};
+  const snapshot = coverage.snapshot || {};
+  const sourceKinds = (news.sourceKinds || []).slice(0, 4).join("、") || "等待快讯源样本";
+  const candidateTotal = Object.values(fund.candidateCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+  root.innerHTML = `
+    <section class="data-source-summary-card">
+      <div>
+        <span>证据覆盖</span>
+        <strong>${escapeHtml(snapshot.dataQualitySummary || "数据源覆盖报告")}</strong>
+      </div>
+      <p>${escapeHtml(coverage.summary || "")}</p>
+    </section>
+
+    <div class="data-source-kpi-grid">
+      ${renderDataSourceKpi("外部接口", `${totals.configuredSources || 0}/${totals.externalSources || 0}`, `已有样本 ${totals.sampledSources || 0}，待授权 ${totals.tokenRequiredSources || 0}`, "source")}
+      ${renderDataSourceKpi("实时接口", `${totals.realtimeUsableSources || 0}/${totals.realtimeSources || 0}`, `板块、指数、估值、新闻实时/准实时`, "realtime")}
+      ${renderDataSourceKpi("板块维度", `${board.realtimeBoardFeeds || 0} 条`, `${board.configuredMarketTypes || 0} 类市场，每板块 ${board.metricFieldCount || 0} 项指标`, "board")}
+      ${renderDataSourceKpi("指标引擎", `${totals.activeIndicatorEngines || 0}/${totals.indicatorEngines || 0}`, `固定代码先处理，再给模型判断`, "engine")}
+      ${renderDataSourceKpi("最近快照", snapshot.ageText || "暂无", snapshot.fetchedAt ? formatDateTime(snapshot.fetchedAt) : "点击刷新覆盖抓取", "snapshot")}
+    </div>
+
+    <div class="data-source-focus-grid">
+      ${renderDataSourceFocusCard({
+        title: "板块市场",
+        value: `${board.observedBoards || 0} 个板块`,
+        meta: `${board.configuredMarketTypeLabels?.join("、") || "概念/行业"} · ${board.fetchModes?.join("、") || "四榜"}`,
+        details: [
+          `实时榜单维度 ${board.realtimeBoardFeeds || 0} 条`,
+          `每个板块 ${board.metricFieldCount || 0} 个字段`,
+          `衍生：${(board.derivedIndicators || []).join("、")}`
+        ]
+      })}
+      ${renderDataSourceFocusCard({
+        title: "基金候选",
+        value: `${candidateTotal} 只`,
+        meta: `排行 ${fund.rankingCount || 0} · 贵金属 ${fund.preciousMetalFundCount || 0}`,
+        details: [
+          `实时估值 ${fund.realtimeValuationCount || 0} 条`,
+          `新鲜估值 ${fund.freshRealtimeValuationCount || 0} 条`,
+          `榜单历史 ${fund.rankingHistoryFunds || 0} 只`
+        ]
+      })}
+      ${renderDataSourceFocusCard({
+        title: "新闻时事",
+        value: `${news.fastNewsCount || 0} 条`,
+        meta: sourceKinds,
+        details: [
+          `新鲜新闻 ${news.freshNewsCount || 0} 条`,
+          `题材脉冲 ${news.topTopicCount || 0} 个`,
+          news.summary || "等待新闻脉冲样本"
+        ]
+      })}
+      ${renderDataSourceFocusCard({
+        title: "历史缓存",
+        value: `${totals.historyItems || 0} 条`,
+        meta: `${totals.historyStores || 0} 个历史库`,
+        details: (coverage.historyStores || []).map((item) => `${item.label} ${item.count || 0}`)
+      })}
+    </div>
+
+    <section class="data-source-table-panel">
+      <div class="data-source-section-head">
+        <strong>接口清单</strong>
+        <span>${totals.externalSources || 0} 个外部数据接口</span>
+      </div>
+      <div class="data-source-table">
+        ${(coverage.sources || []).map(renderDataSourceRow).join("")}
+      </div>
+    </section>
+
+    <section class="data-source-engine-panel">
+      <div class="data-source-section-head">
+        <strong>固定代码指标引擎</strong>
+        <span>${totals.activeIndicatorEngines || 0}/${totals.indicatorEngines || 0} 已有样本</span>
+      </div>
+      <div class="data-source-engine-grid">
+        ${(coverage.indicatorEngines || []).map(renderDataSourceEngine).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderDataSourceKpi(label, value, meta, tone = "") {
+  return `
+    <article class="data-source-kpi ${escapeHtml(tone)}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <small>${escapeHtml(meta)}</small>
+    </article>
+  `;
+}
+
+function renderDataSourceFocusCard(card = {}) {
+  const details = (card.details || []).filter(Boolean).slice(0, 4);
+  return `
+    <article class="data-source-focus-card">
+      <div>
+        <span>${escapeHtml(card.title || "")}</span>
+        <strong>${escapeHtml(card.value || "-")}</strong>
+        <small>${escapeHtml(card.meta || "")}</small>
+      </div>
+      <ul>
+        ${details.map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>等待样本。</li>"}
+      </ul>
+    </article>
+  `;
+}
+
+function renderDataSourceRow(source = {}) {
+  const outputs = (source.outputs || []).slice(0, 4);
+  const sourceKinds = (source.sourceKinds || []).slice(0, 3);
+  const countText = Number(source.observedCount || 0) > 0
+    ? `样本 ${formatRuntimeCount(source.observedCount)}`
+    : Number(source.runtimeCount || 0) > 0
+      ? `运行 ${formatRuntimeCount(source.runtimeCount)} 次`
+      : source.realtimeText || "待样本";
+  return `
+    <article class="data-source-row ${escapeHtml(source.tone || "")}">
+      <div class="data-source-row-main">
+        <span>${escapeHtml(source.category || "")}</span>
+        <strong>${escapeHtml(source.provider || "")} · ${escapeHtml(source.label || "")}</strong>
+        <small>${escapeHtml(source.capability || "")}</small>
+      </div>
+      <div class="data-source-row-status">
+        <b>${escapeHtml(source.statusText || "")}</b>
+        <small>${escapeHtml(countText)}</small>
+      </div>
+      <div class="data-source-row-tags">
+        ${source.realtime ? `<span>实时</span>` : `<span>更新制</span>`}
+        ${source.requiresEnv && !source.configured ? `<span>需授权</span>` : ""}
+        ${outputs.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+        ${sourceKinds.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function renderDataSourceEngine(engine = {}) {
+  return `
+    <article class="data-source-engine ${escapeHtml(engine.tone || "")}">
+      <span>${escapeHtml(engine.category || "")}</span>
+      <strong>${escapeHtml(engine.label || "")}</strong>
+      <small>${escapeHtml(engine.statusText || "")} · ${escapeHtml(engine.capability || "")}</small>
+    </article>
+  `;
 }
 
 function getRuntimeCounter(counters = {}, key) {

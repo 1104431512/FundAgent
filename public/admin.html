@@ -275,9 +275,13 @@
 
               <section class="runtime-workspace-view" data-runtime-view="data">
                 <div class="runtime-board-head">
-                  <strong>数据源</strong>
-                  <small>单独观察行情、贵金属、联网补全、费率和持仓补全是否在工作。</small>
+                  <div>
+                    <strong>数据源</strong>
+                    <small>单独观察行情、贵金属、联网补全、费率和持仓补全是否在工作。</small>
+                  </div>
+                  <button id="refreshDataSourcesBtn" type="button" class="secondary compact-button">刷新覆盖</button>
                 </div>
+                <div id="runtimeDataSourceCoverage" class="data-source-coverage-shell"></div>
                 <div id="runtimeDataBoard" class="runtime-lane-grid"></div>
               </section>
 

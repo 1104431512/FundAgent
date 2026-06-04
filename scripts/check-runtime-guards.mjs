@@ -117,6 +117,22 @@ const requiredPatterns = [
     message: "global market quote fetching must include key US/HK/Japan index and offshore RMB references."
   },
   {
+    pattern: /(?=[\s\S]*DATA_SOURCE_REGISTRY)(?=[\s\S]*eastmoney_board_coverage)(?=[\s\S]*yangjibao_fund_search)(?=[\s\S]*cls_telegraph)/,
+    message: "data source coverage must keep a fixed registry of market, fund, valuation, and news interfaces."
+  },
+  {
+    pattern: /\/api\/data-sources[\s\S]{0,260}buildDataSourceCoverageReport/,
+    message: "admin APIs must expose structured data-source coverage instead of only runtime counters."
+  },
+  {
+    pattern: /function buildBoardMarketCoverage[\s\S]{0,1600}configuredMarketTypes:\s*2[\s\S]{0,600}realtimeBoardFeeds:\s*2 \* fetchModes\.length[\s\S]{0,600}metricFieldCount/,
+    message: "board market coverage must show concept/industry markets, four realtime board modes, and per-board metric fields."
+  },
+  {
+    pattern: /(?=[\s\S]*runtimeDataSourceCoverage)(?=[\s\S]*refreshDataSourcesBtn)(?=[\s\S]*renderRuntimeDataSourceCoverage)(?=[\s\S]*数据源覆盖)/,
+    message: "admin runtime data-source page must visibly show source coverage and allow manual refresh."
+  },
+  {
     pattern: /function inferFundShareClass[\s\S]{0,500}knownProductSuffixes\.includes\(rawSuffix\)[\s\S]{0,80}return ""/,
     message: "share-class inference must not misread QDII/ETF/FOF product suffixes as A/C/I share classes."
   },
@@ -3855,7 +3871,7 @@ const requiredPatterns = [
     message: "deployment freshness must compare the running commit with the latest GitHub branch commit."
   },
   {
-    pattern: /loadStats[\s\S]{0,900}\/api\/deployment[\s\S]{0,1200}renderRuntimeTerminal\(stats,\s*deployment\)/,
+    pattern: /loadStats[\s\S]{0,900}\/api\/deployment[\s\S]{0,1400}renderRuntimeTerminal\(stats,\s*deployment(?:,\s*currentDataSourceCoverage)?\)/,
     message: "admin runtime UI must load deployment freshness without blocking the normal stats view."
   },
   {
