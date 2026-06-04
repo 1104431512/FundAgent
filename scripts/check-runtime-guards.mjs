@@ -893,7 +893,7 @@ const requiredPatterns = [
     message: "portfolio decision prompts must distinguish deployable cash from unsettled redemption receivables."
   },
   {
-    pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,2400}compactHeldProfiles = \(heldProfiles \|\| \[\]\)\.map\(compactPortfolioReviewProfile\)[\s\S]{0,5600}JSON\.stringify\(compactHeldProfiles, null, 2\)/,
+    pattern: /function buildPortfolioDecisionWithModel[\s\S]{0,2400}compactHeldProfiles = \(heldProfiles \|\| \[\]\)\.map\(compactPortfolioReviewProfile\)[\s\S]{0,7600}JSON\.stringify\(compactHeldProfiles, null, 2\)/,
     message: "portfolio decisions must compact held fund profiles before model prompts."
   },
   {
@@ -2689,6 +2689,10 @@ const requiredPatterns = [
     message: "portfolio redeployment plan must force high-cash low-exposure portfolios to review starter buys with realtime valuation evidence."
   },
   {
+    pattern: /function buildPortfolioRedeploymentPlan[\s\S]{0,3000}resolvePortfolioPositiveWatchRankingGate[\s\S]{0,3000}actionPermission[\s\S]{0,260}0元观察[\s\S]{0,900}positiveRankingGate/,
+    message: "portfolio redeployment plan must expose positive-gate-blocked raw-ready candidates as zero-yuan no-buy items."
+  },
+  {
     pattern: /function buildPortfolioRedeploymentPlan[\s\S]{0,950}PORTFOLIO_REDEPLOYMENT_CASH_TRIGGER_PCT[\s\S]{0,360}PORTFOLIO_REDEPLOYMENT_MAX_POSITION_PCT[\s\S]{0,520}positionWeightPct\) \|\| positionWeightPct <= redeploymentMaxPositionPct/,
     message: "portfolio redeployment plan must activate for high-cash moderate-exposure accounts, not only near-empty portfolios."
   },
@@ -2741,7 +2745,7 @@ const requiredPatterns = [
     message: "portfolio redeployment guard must inject small starter-buy reviews instead of allowing generic waiting."
   },
   {
-    pattern: /现金再部署纪律（系统计算；高现金低仓位时必须处理，不能只写等待机会）[\s\S]{0,700}verified_buy\/starter_buy/,
+    pattern: /现金再部署纪律（系统计算；高现金低仓位时必须处理，不能只写等待机会）[\s\S]{0,700}verified_buy\/starter_buy[\s\S]{0,500}actionPermission/,
     message: "portfolio decision prompt must include deterministic redeployment pressure and executable starter candidates."
   },
   {

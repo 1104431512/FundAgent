@@ -6579,6 +6579,9 @@ const redeploymentWatchlist = [{
 const redeploymentPlan = manager.buildPortfolioRedeploymentPlan(redeploymentAccount, redeploymentWatchlist, [starterSetupProfile]);
 assert.equal(redeploymentPlan.pressureActive, true, "redeployment plan must activate when high cash and flat exposure persist");
 assert.equal(redeploymentPlan.candidates[0].redeploymentAction, "starter_buy", "redeployment plan must surface eligible starter buys instead of generic waiting");
+assert.equal(redeploymentPlan.candidates[0].status, "waiting_pullback", "redeployment plan must preserve eligible non-blocked watch status");
+assert(redeploymentPlan.candidates[0].actionPermission.includes("BUY小仓再部署复核"), "redeployment plan must explicitly permit BUY review only for candidates that pass the positive gate");
+assert.equal(redeploymentPlan.candidates[0].positiveRankingGate, "通过", "redeployment plan must expose the positive gate result for eligible candidates");
 assert(redeploymentPlan.candidates[0].realtimeEvidence.includes("实时估算"), "redeployment plan must carry near-real-time valuation evidence into the decision prompt");
 const moderateExposureRedeploymentPlan = manager.buildPortfolioRedeploymentPlan(
   {
@@ -8214,11 +8217,27 @@ const staleCatchdownRedeployment = manager.buildPortfolioRedeploymentPlan(
 assert(
   staleCatchdownRedeployment.candidates.some((item) =>
     item.code === "000051"
+    && item.status === "blocked"
+    && item.rawStatus === "ready"
+    && item.actionPermission.includes("0元观察")
+    && item.positiveRankingGate.includes("现金再部署禁止买入")
     && item.redeploymentAction === "watch"
     && Number(item.suggestedTargetWeightPct || 0) === 0
     && item.firstGap.includes("接盘风险")
   ),
-  "cash redeployment must not turn stale-theme catchdown ready items into executable starter buys"
+  "cash redeployment must expose stale-theme catchdown raw-ready items as blocked zero-yuan candidates instead of executable starter buys"
+);
+const staleCatchdownRedeploymentDecision = manager.ensurePortfolioRedeploymentPlanReviewed(
+  { actions: [], learningNotes: [] },
+  { cash: 90000, totalAsset: 100000, positionWeightPct: 3, positions: [], riskBudget: { blockNewBuys: false } },
+  [{ code: "000051", name: "边际退潮回调基金C", status: "ready", readinessScore: 90, lastSnapshot: staleCatchdownOnlyDigest }],
+  { profiles: [staleCatchdownOnlyDigest] }
+);
+assert(
+  staleCatchdownRedeploymentDecision.actions[0]?.action === "WATCH"
+    && Number(staleCatchdownRedeploymentDecision.actions[0]?.amount || 0) === 0
+    && staleCatchdownRedeploymentDecision.actions[0]?.reason.includes("接盘风险"),
+  "redeployment fallback must keep stale-theme catchdown candidates as zero-yuan WATCH even when raw status is ready and cash is high"
 );
 const rankingUpgradeCatchdownDecision = manager.ensurePortfolioRankingBoardReviewed({
   actions: [{

@@ -2121,7 +2121,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，marketView、team 和 actions.dataBasis 必须写清数据缺口；缺少关键板块、排行、新闻或贵金属模块时，只能 WATCH、HOLD 或小额试探，不能当作完整联网证据下重仓 BUY。",
     "必须使用 marketSnapshot.marketIndicators.realtimeFundValuations 复核候选当下温度、盘中走势和数据新鲜度；若盘中走势显示冲高回落或尾盘转弱，不能把最新估算涨幅当作追买理由；成交和盈亏仍以确认净值为准。",
     "若操作或候选涉及 QDII/海外基金，必须使用 marketSnapshot.marketIndicators.globalMarkets 复核外盘和人民币汇率温度，并写清净值披露时差。",
-    "若现金再部署纪律提示 pressureActive=true 且存在 verified_buy、starter_buy 或 theme_micro_starter 候选，actions 必须逐只给 BUY 或明确 WATCH 拦截理由；符合小仓启动条件时优先 0.5%-2.5% 试探，theme_micro_starter 只能 0.5%-1.2% 微型试探，不要继续空泛观望。",
+    "若现金再部署纪律提示 pressureActive=true 且存在 verified_buy、starter_buy 或 theme_micro_starter 候选，actions 必须逐只给 BUY 或明确 WATCH 拦截理由；但候选 actionPermission 写着0元观察时，只能 WATCH，不能 BUY、小仓试探或写成可买。符合小仓启动条件时优先 0.5%-2.5% 试探，theme_micro_starter 只能 0.5%-1.2% 微型试探，不要继续空泛观望。",
     "给用户看的 summary、reason 和 riskControl 要先讲走势、轮动和操作边界，再放必要数字；不要把每个动作写成一长串指标。",
     "客户可见文本每只基金最多保留3个最能改变动作的数字；优先写“刚转强、仍偏高、回撤修复、费用拖累、持仓前景”，不要连续罗列5日/10日/20日/60日/120日。",
     "如果候选基金缺少可验证净值或走势数据，倾向 WATCH，不要强行 BUY。",
@@ -2158,7 +2158,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "现金再部署纪律（系统计算；高现金低仓位时必须处理，不能只写等待机会）：",
     JSON.stringify(redeploymentPlan, null, 2),
-    "要求：若 pressureActive=true，优先处理 candidates 前三只；verified_buy/starter_buy/theme_micro_starter 至少给 BUY 或写清本轮为何被风控拦截，blocked/watch 只能写触发条件。",
+    "要求：若 pressureActive=true，优先处理 candidates 前三只；verified_buy/starter_buy/theme_micro_starter 且 actionPermission 允许买入时至少给 BUY 或写清本轮为何被风控拦截；status=blocked、actionPermission 写0元观察或 redeploymentAction=watch 的候选只能写 WATCH 触发条件。",
     "",
     "主力/预热题材机会纪律（系统计算；不能把新闻热度直接当买点，也不能看见主力线索后空泛等待）：",
     JSON.stringify(themeOpportunityPlan, null, 2),
@@ -4221,14 +4221,32 @@ function buildPortfolioRedeploymentPlan(account = {}, watchlist = [], profiles =
     .filter((item) => ["ready", "waiting_pullback", "watch"].includes(normalizePortfolioWatchStatus(item.status || "watch")))
     .map((item) => {
       const profile = profileByCode.get(item.code) || item.lastSnapshot || null;
+      const displayItem = applyPortfolioWatchDisplayStatus({
+        ...item,
+        lastSnapshot: profile || item.lastSnapshot
+      });
+      const positiveGate = resolvePortfolioPositiveWatchRankingGate({
+        ...item,
+        ...displayItem,
+        lastSnapshot: profile || item.lastSnapshot
+      });
+      const noBuyBlocked = !positiveGate.ok || displayItem.status === "blocked";
       const readiness = evaluatePortfolioWatchReadiness(item, profile);
       const verifiedBuy = Boolean(profile && hasVerifiedPortfolioBuySetup(profile));
       const starterBuy = Boolean(profile && hasPortfolioStarterBuySetup(profile));
       const themeMicroStarter = Boolean(profile && hasPortfolioThemeMicroStarterSetup(profile));
       const feeVerified = Boolean(profile && hasVerifiedPortfolioFeeEvidence(profile));
-      const hardGap = readiness.gaps.find(isPortfolioRedeploymentHardGap);
+      const hardGap = noBuyBlocked
+        ? positiveGate.reason || "接盘/追涨风险未解除，现金再部署禁止买入。"
+        : readiness.gaps.find(isPortfolioRedeploymentHardGap);
       const buyTargetWeightPct = themeMicroStarter ? 1 : starterBuy ? 1.5 : 2.5;
-      const buyGuard = (verifiedBuy || starterBuy || themeMicroStarter)
+      const buyGuard = noBuyBlocked
+        ? {
+            ok: false,
+            reason: hardGap,
+            evidence: mergeStringLists(positiveGate.facts, [positiveGate.nextStep]).slice(0, 4)
+          }
+        : (verifiedBuy || starterBuy || themeMicroStarter)
         ? evaluatePortfolioBuyDiscipline(
             { action: "BUY", code: item.code, name: item.name || profile?.name || "", targetWeightPct: buyTargetWeightPct },
             profile,
@@ -4236,28 +4254,39 @@ function buildPortfolioRedeploymentPlan(account = {}, watchlist = [], profiles =
             account
           )
         : { ok: false, reason: readiness.gaps?.[0] || "还没有形成可执行买点。", evidence: [] };
-      const executable = Boolean(buyGuard.ok && (verifiedBuy || starterBuy || themeMicroStarter) && feeVerified && !hardGap);
+      const executable = Boolean(!noBuyBlocked && buyGuard.ok && (verifiedBuy || starterBuy || themeMicroStarter) && feeVerified && !hardGap);
       const suggestedTargetWeightPct = executable ? buyTargetWeightPct : 0;
       const firstGap = executable
         ? themeMicroStarter
           ? "主力/预热题材和低位温和转强支持微型试探，仍需盘前确认。"
           : "低位/回调/费用条件支持小仓试探，仍需盘前确认。"
         : hardGap || buyGuard.reason || readiness.gaps?.[0] || "等待下一次复核。";
+      const status = noBuyBlocked ? "blocked" : normalizePortfolioWatchStatus(displayItem.status || item.status || "watch");
       return {
         code: item.code,
         name: item.name || profile?.name || "",
         shareClass: item.shareClass || profile?.shareClass || profile?.fees?.shareClass || "",
-        status: normalizePortfolioWatchStatus(item.status || "watch"),
+        status,
+        rawStatus: item.status || "watch",
+        statusText: noBuyBlocked ? "暂不买入" : formatPortfolioWatchStatus(status),
+        actionPermission: noBuyBlocked
+          ? "0元观察；现金再部署不得BUY，不得小仓试探。"
+          : executable
+            ? "可进入BUY小仓再部署复核。"
+            : "只能WATCH等待触发，不能直接BUY。",
         priority: Number(item.priority || 3),
         readinessScore: readiness.score,
-        readinessLabel: readiness.label,
+        readinessLabel: noBuyBlocked ? "门禁拦截" : readiness.label,
         redeploymentAction: executable ? (verifiedBuy ? "verified_buy" : themeMicroStarter ? "theme_micro_starter" : "starter_buy") : "watch",
         redeploymentActionText: executable
           ? (verifiedBuy ? "可分批首仓" : themeMicroStarter ? "可微型试探" : "可小仓试探")
-          : "只观察触发条件",
+          : noBuyBlocked ? "0元观察" : "只观察触发条件",
         suggestedTargetWeightPct,
         suggestedAmount: suggestedTargetWeightPct && totalAsset > 0 ? round(totalAsset * suggestedTargetWeightPct / 100, 2) : 0,
         firstGap,
+        positiveRankingGate: noBuyBlocked
+          ? `接盘/追涨风险未解除，现金再部署禁止买入。${positiveGate.reason || ""}`.trim()
+          : "通过",
         trendEvidence: profile ? formatPortfolioSeedVerifiedTrendEvidence(profile) : item.lastSnapshot?.trendSummary || "",
         realtimeEvidence: profile ? formatPortfolioRealtimeEvidence(profile) : "",
         feeEvidence: profile ? formatPortfolioFeeVerificationEvidence(profile) : (item.feeNotes || [])[0] || "",
@@ -4329,22 +4358,23 @@ function ensurePortfolioRedeploymentPlanReviewed(decision = {}, account = {}, wa
       continue;
     }
     const canBuy = ["verified_buy", "starter_buy", "theme_micro_starter"].includes(candidate.redeploymentAction);
-    const action = canBuy ? "BUY" : "WATCH";
-    const amount = canBuy ? candidate.suggestedAmount : 0;
+    const buyAllowed = canBuy && !String(candidate.actionPermission || "").includes("0元观察");
+    const action = buyAllowed ? "BUY" : "WATCH";
+    const amount = buyAllowed ? candidate.suggestedAmount : 0;
     nextActions.push({
       action,
       code: candidate.code,
       name: candidate.name,
       amount,
-      targetWeightPct: canBuy ? candidate.suggestedTargetWeightPct : 0,
-      reason: canBuy
+      targetWeightPct: buyAllowed ? candidate.suggestedTargetWeightPct : 0,
+      reason: buyAllowed
         ? `系统再部署纪律：${candidate.name || candidate.code} 已出现${candidate.redeploymentActionText}条件，现金长期空转时应给小仓试错，而不是继续泛泛等待。`
         : `系统再部署纪律：${candidate.name || candidate.code} 需要被复核，但本轮仍不买；${candidate.firstGap}`,
       rotationCheck: "再部署只选择低位回调/启动修复候选，不因新闻热度追涨。",
       positionCheck: candidate.trendEvidence,
       chaseRisk: candidate.firstGap,
       feeCheck: candidate.feeEvidence,
-      riskControl: canBuy
+      riskControl: buyAllowed
         ? candidate.redeploymentAction === "theme_micro_starter"
           ? "单笔只做0.5%-1.2%微型试探；若主力线索变弱、新闻催化落空、实时估算转弱或费用证据失效，下一轮撤回。"
           : "单笔只做0.5%-2.5%试探；若实时估算转弱、回撤修复失败或费用证据失效，下一轮撤回。"
