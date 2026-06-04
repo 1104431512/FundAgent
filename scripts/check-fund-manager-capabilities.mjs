@@ -7819,6 +7819,10 @@ assert(
   holdingRealtimeWeakActionability.decisionBlocker.some((item) => item.includes("持仓实时降级") || item.includes("底层持仓止跌")),
   "holding realtime weakness must become a customer-readable actionability blocker"
 );
+assert(
+  !holdingRealtimeWeakActionability.decisiveEvidence.some((item) => /主力进场|题材预热|逻辑=/.test(item)),
+  "actionability decisive evidence must not keep presenting main-force/preheat support when realtime top holdings are weakening"
+);
 const staleCatchdownOnlyTheme = {
   id: "old_compute_catchdown",
   name: "旧算力回调",

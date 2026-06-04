@@ -3817,6 +3817,10 @@ const requiredPatterns = [
     message: "fund actionability theme hard gaps must treat top-ten holdings carrier mismatch as a no-main-force-evidence condition."
   },
   {
+    pattern: /function isActionabilityHoldingsCarrierHardBlocker[\s\S]{0,500}持仓实时降级[\s\S]{0,220}表面回调可能继续下探/,
+    message: "fund actionability evidence cleanup must treat realtime top-holding weakness as a hard no-main-force-evidence condition."
+  },
+  {
     pattern: /buildFundActionabilitySignals[\s\S]{0,5400}getActionabilityEntryDiscipline\(trend[\s\S]{0,1800}boundedScore = Math\.min\(boundedScore, entryDiscipline\.scoreCap\)/,
     message: "fund actionability must cap buy/staged-buy scores when the trend says wait for pullback."
   },

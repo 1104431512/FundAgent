@@ -33108,7 +33108,7 @@ function isActionabilityHoldingsCarrierHardBlocker(blocker = "") {
   const text = String(blocker || "");
   if (!text) return false;
   if (/缺少前十大持仓|缺少前十大持仓\/行业前景验证/.test(text)) return false;
-  return /持仓承载|未命中题材龙头|匹配度不足|没有证明基金真实承载|题材名字直接当买入理由/.test(text);
+  return /持仓承载|持仓实时降级|盘中明显走弱|表面回调可能继续下探|底层持仓止跌|未命中题材龙头|匹配度不足|没有证明基金真实承载|题材名字直接当买入理由/.test(text);
 }
 
 function hasActionabilityLeaderThemeSupport(digest = {}, holdingsOutlook = null) {
