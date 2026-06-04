@@ -2289,6 +2289,10 @@ const requiredPatterns = [
     message: "portfolio ranking boards must convert stale-catchdown loss backtests into same-theme no-buy memory before ranking."
   },
   {
+    pattern: /(?=[\s\S]*function applyPortfolioCatchdownLossMemoryToCandidates[\s\S]{0,420}applyPortfolioCatchdownLossMemoryToCandidate)(?=[\s\S]*function applyPortfolioCatchdownLossMemoryToCandidate[\s\S]{0,1200}不给买入金额)(?=[\s\S]*function applyPortfolioCatchdownLossMemoryToCandidate[\s\S]{0,1600}catchdownLossMemoryWarnings)/,
+    message: "portfolio seed candidates and enriched profiles must also inherit same-theme catchdown-loss memory, not only stored watchlist items."
+  },
+  {
     pattern: /buildPortfolioCatchdownLossMemories/,
     message: "portfolio manager must extract stale-catchdown loss theme memory from historical buys."
   },
@@ -2303,6 +2307,10 @@ const requiredPatterns = [
   {
     pattern: /const decisionWatchlist = applyPortfolioCatchdownLossMemoryToWatchlist\(watchlist, db\)/,
     message: "portfolio decisions must inject same-theme catchdown-loss memory before building the model prompt."
+  },
+  {
+    pattern: /watchlistSeedCandidatesRaw[\s\S]{0,520}applyPortfolioCatchdownLossMemoryToCandidates\(watchlistSeedCandidatesRaw,\s*db\)[\s\S]{0,900}applyPortfolioCatchdownLossMemoryToCandidates\([\s\S]{0,260}refreshPortfolioCandidateThemesWithMarketRadar/,
+    message: "portfolio decisions must inject catchdown-loss memory into freshly scanned seed candidates and seed profiles before model prompts."
   },
   {
     pattern: /buildPortfolioDecisionReadinessQueue\(decisionWatchlist, watchlistProfiles\)/,

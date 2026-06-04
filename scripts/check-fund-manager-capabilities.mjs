@@ -9460,6 +9460,61 @@ assert(
 );
 const catchdownLossMemoryBoard = manager.buildPortfolioRankingBoard(catchdownLossMemoryDb);
 const catchdownDecisionWatchlist = manager.applyPortfolioCatchdownLossMemoryToWatchlist(catchdownLossMemoryDb.watchlist, catchdownLossMemoryDb);
+const catchdownSeedMemoryCandidates = manager.applyPortfolioCatchdownLossMemoryToCandidates([{
+  code: "000204",
+  name: "光模块扫描回调候选C",
+  status: "ready",
+  readinessScore: 88,
+  candidateRole: "盘中扫描低位回调完成候选",
+  setupEvidence: ["回调完成", "低位修复"],
+  lastSnapshot: {
+    code: "000204",
+    name: "光模块扫描回调候选C",
+    trendProfile: {
+      ok: true,
+      trendLabel: "pullback_complete",
+      entryBias: "buyable_now",
+      lowPositionPct120: 29,
+      lowPositionPct250: 42,
+      return5dPct: 1.1,
+      return10dPct: 1.9,
+      return20dPct: 2.8,
+      pullbackSetup: { signal: "pullback_complete", signalText: "回调完成" }
+    },
+    matchedThemes: [{
+      id: "optical_scan_low",
+      name: "光模块低位修复",
+      stage: "watch",
+      positionSignal: "acceptable_position",
+      capitalFollowScore: 40,
+      preheatScore: 30,
+      rotationScore: 36,
+      lowPositionScore: 50,
+      crowdingScore: 12,
+      fundKeywords: ["光模块"]
+    }]
+  }
+}], catchdownLossMemoryDb);
+const catchdownSeedMemoryCandidate = catchdownSeedMemoryCandidates[0];
+assert(
+  catchdownSeedMemoryCandidate?.riskNotes?.some((item) => item.includes("历史接盘亏损冷却"))
+    && catchdownSeedMemoryCandidate?.readinessGaps?.some((item) => item.includes("不给买入金额"))
+    && catchdownSeedMemoryCandidate?.lastSnapshot?.catchdownLossMemoryWarnings?.some((item) => item.includes("历史接盘亏损冷却")),
+  "same-theme catchdown-loss memory must also cool newly scanned seed candidates, not only existing watchlist items"
+);
+const freshCatchdownSeedMemoryCandidates = manager.applyPortfolioCatchdownLossMemoryToCandidates([{
+  code: "000205",
+  name: "光模块主力回流扫描候选C",
+  status: "ready",
+  readinessScore: 88,
+  candidateRole: "盘中扫描主力回流候选",
+  setupEvidence: ["低位温和转强", "主力资金回流"],
+  lastSnapshot: catchdownLossMemoryDb.watchlist.find((item) => item.code === "000203")?.lastSnapshot
+}], catchdownLossMemoryDb);
+assert(
+  !freshCatchdownSeedMemoryCandidates[0]?.riskNotes?.some((item) => item.includes("历史接盘亏损冷却")),
+  "fresh main-capital/catalyst seed candidates must not be permanently blocked by same-theme catchdown-loss memory"
+);
 const catchdownMemoryReadinessQueue = manager.buildPortfolioDecisionReadinessQueue(catchdownDecisionWatchlist, []);
 const catchdownMemoryRiskItem = catchdownLossMemoryBoard.lists.find((item) => item.id === "stale_catchdown_risk")?.items.find((item) => item.code === "000202");
 assert(

@@ -1611,7 +1611,10 @@ async function executePortfolioDecision(db, run, config) {
   const heldProfiles = heldProfilesRaw.map((profile) => refreshPortfolioCandidateThemesWithMarketRadar(profile, marketSnapshot));
   const watchlistCodes = mergeFundCodes(watchlist.map((item) => item.code));
   const watchlistProfilesRaw = watchlistCodes.length ? await enrichFunds(watchlistCodes, { limit: getPortfolioProfileEnrichmentLimit() }) : [];
-  const watchlistProfiles = watchlistProfilesRaw.map((profile) => refreshPortfolioCandidateThemesWithMarketRadar(profile, marketSnapshot));
+  const watchlistProfiles = applyPortfolioCatchdownLossMemoryToCandidates(
+    watchlistProfilesRaw.map((profile) => refreshPortfolioCandidateThemesWithMarketRadar(profile, marketSnapshot)),
+    db
+  );
   const preDecisionWatchlistUpdates = applyPortfolioWatchlistUpdates(
     db,
     buildPortfolioWatchlistRecheckUpdates(watchlist, { profiles: watchlistProfiles }),
@@ -1622,7 +1625,7 @@ async function executePortfolioDecision(db, run, config) {
   }
   markPortfolioRunProgress(db, run, "正在扫描低位回调候选，补充经理自选基金池。");
   await yieldToEventLoop();
-  const watchlistSeedCandidates = await fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist, {
+  const watchlistSeedCandidatesRaw = await fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist, {
     account: accountBefore,
     profiles: watchlistProfiles
   }).catch((error) => {
@@ -1630,8 +1633,13 @@ async function executePortfolioDecision(db, run, config) {
     recordError(error, { portfolioWatchlistSeedFailures: 1 });
     return [];
   });
+  const watchlistSeedCandidates = applyPortfolioCatchdownLossMemoryToCandidates(watchlistSeedCandidatesRaw, db);
   const seedProfiles = watchlistSeedCandidates.length
-    ? (await enrichFunds(watchlistSeedCandidates.map((item) => item.code), { limit: getPortfolioSeedProfileEnrichmentLimit() })).map((profile) => refreshPortfolioCandidateThemesWithMarketRadar(profile, marketSnapshot))
+    ? applyPortfolioCatchdownLossMemoryToCandidates(
+        (await enrichFunds(watchlistSeedCandidates.map((item) => item.code), { limit: getPortfolioSeedProfileEnrichmentLimit() }))
+          .map((profile) => refreshPortfolioCandidateThemesWithMarketRadar(profile, marketSnapshot)),
+        db
+      )
     : [];
   const managerRankings = buildPortfolioDecisionRankingBoard(db, watchlistSeedCandidates, {
     profiles: seedProfiles,
@@ -1907,8 +1915,11 @@ async function executePortfolioPremarket(db, run, config) {
   const profiles = codes.length ? await enrichFunds(codes, { limit: getPortfolioProfileEnrichmentLimit() }) : [];
   const watchlist = getActivePortfolioWatchlist(db);
   const watchlistCodes = mergeFundCodes(watchlist.map((item) => item.code));
-  const watchlistProfiles = watchlistCodes.length ? await enrichFunds(watchlistCodes, { limit: getPortfolioProfileEnrichmentLimit() }) : [];
-  const watchlistSeedCandidates = await fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist, {
+  const watchlistProfiles = applyPortfolioCatchdownLossMemoryToCandidates(
+    watchlistCodes.length ? await enrichFunds(watchlistCodes, { limit: getPortfolioProfileEnrichmentLimit() }) : [],
+    db
+  );
+  const watchlistSeedCandidatesRaw = await fetchPortfolioWatchlistSeedCandidates(marketSnapshot, watchlist, {
     account,
     profiles: watchlistProfiles
   }).catch((error) => {
@@ -1916,8 +1927,12 @@ async function executePortfolioPremarket(db, run, config) {
     recordError(error, { portfolioWatchlistSeedFailures: 1 });
     return [];
   });
+  const watchlistSeedCandidates = applyPortfolioCatchdownLossMemoryToCandidates(watchlistSeedCandidatesRaw, db);
   const seedProfiles = watchlistSeedCandidates.length
-    ? await enrichFunds(watchlistSeedCandidates.map((item) => item.code), { limit: getPortfolioSeedProfileEnrichmentLimit() })
+    ? applyPortfolioCatchdownLossMemoryToCandidates(
+        await enrichFunds(watchlistSeedCandidates.map((item) => item.code), { limit: getPortfolioSeedProfileEnrichmentLimit() }),
+        db
+      )
     : [];
   const activeOrders = (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status));
   assertPortfolioRunActive(run);
@@ -13761,37 +13776,82 @@ function applyPortfolioCatchdownLossMemoryToWatchlist(watchlist = [], db = {}) {
   const memories = buildPortfolioCatchdownLossMemories(db);
   if (!memories.length) return watchlist;
   return (watchlist || []).map((item) => {
-    const matches = memories.filter((memory) =>
-      isPortfolioWatchMatchedByCatchdownLossMemory(item, memory)
-      && shouldApplyPortfolioCatchdownLossMemoryToWatch(item)
-    );
-    if (!matches.length) return item;
-    const warnings = matches.map(formatPortfolioCatchdownLossMemoryWarning).filter(Boolean).slice(0, 3);
-    const memoryFacts = matches.map((memory) => memory.label).filter(Boolean).slice(0, 3);
-    return {
-      ...item,
+    return applyPortfolioCatchdownLossMemoryToCandidate(item, memories);
+  });
+}
+
+function applyPortfolioCatchdownLossMemoryToCandidates(candidates = [], db = {}) {
+  const memories = buildPortfolioCatchdownLossMemories(db);
+  if (!memories.length) return candidates;
+  return (candidates || []).map((candidate) => applyPortfolioCatchdownLossMemoryToCandidate(candidate, memories));
+}
+
+function applyPortfolioCatchdownLossMemoryToCandidate(candidate = {}, memories = []) {
+  if (!candidate || typeof candidate !== "object" || !Array.isArray(memories) || !memories.length) return candidate;
+  const envelope = buildPortfolioCatchdownMemoryCandidateEnvelope(candidate);
+  const matches = memories.filter((memory) =>
+    isPortfolioWatchMatchedByCatchdownLossMemory(envelope, memory)
+    && shouldApplyPortfolioCatchdownLossMemoryToWatch(envelope)
+  );
+  if (!matches.length) return candidate;
+  const warnings = matches.map(formatPortfolioCatchdownLossMemoryWarning).filter(Boolean).slice(0, 3);
+  const memoryFacts = matches.map((memory) => memory.label).filter(Boolean).slice(0, 3);
+  const cooldownGap = "历史接盘亏损冷却：同主题重新证明主力资金回流、新鲜新闻催化和代表持仓承载前，不给买入金额。";
+  const next = {
+    ...candidate,
+    catchdownLossMemoryWarnings: uniquePortfolioStringArray([
+      ...normalizeStringArray(candidate.catchdownLossMemoryWarnings),
+      ...warnings
+    ]).slice(0, 4),
+    riskNotes: uniquePortfolioStringArray([
+      ...normalizeStringArray(candidate.riskNotes),
+      ...warnings
+    ]).slice(0, 8),
+    readinessGaps: uniquePortfolioStringArray([
+      ...normalizeStringArray(candidate.readinessGaps),
+      cooldownGap
+    ]).slice(0, 8)
+  };
+  if (candidate.seed && typeof candidate.seed === "object") {
+    next.seed = {
+      ...candidate.seed,
       catchdownLossMemoryWarnings: uniquePortfolioStringArray([
-        ...normalizeStringArray(item.catchdownLossMemoryWarnings),
+        ...normalizeStringArray(candidate.seed.catchdownLossMemoryWarnings),
+        ...warnings
+      ]).slice(0, 4)
+    };
+  }
+  if (candidate.lastSnapshot && typeof candidate.lastSnapshot === "object") {
+    next.lastSnapshot = {
+      ...candidate.lastSnapshot,
+      catchdownLossMemoryWarnings: uniquePortfolioStringArray([
+        ...normalizeStringArray(candidate.lastSnapshot.catchdownLossMemoryWarnings),
         ...warnings
       ]).slice(0, 4),
-      riskNotes: uniquePortfolioStringArray([
-        ...normalizeStringArray(item.riskNotes),
-        ...warnings
-      ]).slice(0, 8),
-      readinessGaps: uniquePortfolioStringArray([
-        ...normalizeStringArray(item.readinessGaps),
-        "历史接盘亏损冷却：同主题重新证明主力资金回流、新鲜新闻催化和代表持仓承载前，不给买入金额。"
-      ]).slice(0, 8),
-      lastSnapshot: {
-        ...(item.lastSnapshot || {}),
-        catchdownLossMemoryWarnings: uniquePortfolioStringArray([
-          ...normalizeStringArray(item.lastSnapshot?.catchdownLossMemoryWarnings),
-          ...warnings
-        ]).slice(0, 4),
-        catchdownLossMemoryGroups: memoryFacts
-      }
+      catchdownLossMemoryGroups: memoryFacts
     };
-  });
+  } else {
+    next.catchdownLossMemoryGroups = memoryFacts;
+  }
+  return next;
+}
+
+function buildPortfolioCatchdownMemoryCandidateEnvelope(candidate = {}) {
+  const profile = candidate.lastSnapshot && typeof candidate.lastSnapshot === "object" ? candidate.lastSnapshot : candidate;
+  return {
+    ...candidate,
+    code: candidate.code || profile.code || candidate.seed?.code || "",
+    name: candidate.name || profile.name || candidate.seed?.name || "",
+    status: candidate.status || "watch",
+    readinessScore: candidate.readinessScore ?? profile.readinessScore ?? candidate.actionability?.readinessScore,
+    reason: candidate.reason || profile.reason || "",
+    candidateRole: candidate.candidateRole || profile.candidateRole || "",
+    setupEvidence: mergeStringLists(candidate.setupEvidence, profile.setupEvidence),
+    buyTriggers: mergeStringLists(candidate.buyTriggers, profile.buyTriggers),
+    riskNotes: mergeStringLists(candidate.riskNotes, profile.riskNotes),
+    readinessGaps: mergeStringLists(candidate.readinessGaps, profile.readinessGaps),
+    lastSnapshot: profile
+  };
 }
 
 function uniquePortfolioStringArray(values = []) {
@@ -38361,6 +38421,7 @@ export {
   getPortfolioReviewSkillIds,
   getPortfolioWeeklySkillIds,
   getRuntimeRelease,
+  applyPortfolioCatchdownLossMemoryToCandidates,
   applyPortfolioCatchdownLossMemoryToWatchlist,
   applyPortfolioWatchlistUpdates,
   guardPortfolioWatchlistReadyUpdate,
