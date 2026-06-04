@@ -7463,6 +7463,11 @@ assert(
     && !staleThemeRefreshMicroStarterActionability.decisiveEvidence.some((item) => item.includes("只允许0.5%-2.5%试探仓")),
   "expired theme-radar candidates must not keep micro-starter sizing or evidence after the support-gap guard"
 );
+assert.equal(
+  staleThemeRefreshMicroStarterActionability.allocationBand,
+  "0元观察",
+  "expired theme-radar candidates must use zero-yuan observation instead of any probe-like allocation band"
+);
 assert(
   staleThemeRefreshMicroStarterActionability.decisionBlocker.some((item) => item.includes("当前题材雷达已过期")),
   "expired theme-radar candidates must explain that old main-force labels need a fresh radar refresh before any probe"
@@ -7822,6 +7827,11 @@ assert(
 assert(
   !holdingRealtimeWeakActionability.decisiveEvidence.some((item) => /主力进场|题材预热|逻辑=/.test(item)),
   "actionability decisive evidence must not keep presenting main-force/preheat support when realtime top holdings are weakening"
+);
+assert.equal(
+  holdingRealtimeWeakActionability.allocationBand,
+  "0元观察",
+  "realtime top-holding weakness must use zero-yuan observation instead of observation/probe wording"
 );
 const staleCatchdownOnlyTheme = {
   id: "old_compute_catchdown",

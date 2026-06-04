@@ -3821,6 +3821,14 @@ const requiredPatterns = [
     message: "fund actionability evidence cleanup must treat realtime top-holding weakness as a hard no-main-force-evidence condition."
   },
   {
+    pattern: /const hardNoBuyBlocker = hasActionabilityHardNoBuyBlocker[\s\S]{0,420}const allocationBand[\s\S]{0,220}0元观察/,
+    message: "fund actionability hard no-buy blockers must use zero-yuan observation instead of probe-like allocation bands."
+  },
+  {
+    pattern: /function hasActionabilityHardNoBuyBlocker[\s\S]{0,900}数据时效降级[\s\S]{0,500}表面回调可能继续下探/,
+    message: "fund actionability hard no-buy helper must include stale data and realtime top-holding weakness."
+  },
+  {
     pattern: /buildFundActionabilitySignals[\s\S]{0,5400}getActionabilityEntryDiscipline\(trend[\s\S]{0,1800}boundedScore = Math\.min\(boundedScore, entryDiscipline\.scoreCap\)/,
     message: "fund actionability must cap buy/staged-buy scores when the trend says wait for pullback."
   },

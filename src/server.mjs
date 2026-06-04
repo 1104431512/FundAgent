@@ -33036,8 +33036,16 @@ function buildFundActionabilitySignals(digest) {
         ? "weak_fit"
         : "not_suitable";
   const highDrawdown = Number.isFinite(risk.maxDrawdownPct) && risk.maxDrawdownPct <= -25;
+  const hardNoBuyBlocker = hasActionabilityHardNoBuyBlocker({
+    freshnessDiscipline,
+    themeRetreatDiscipline,
+    holdingsDiscipline,
+    holdingsCarrierHardBlocker
+  });
   const allocationBand = isMoneyMarket
     ? (action === "avoid" ? "0%" : "现金管理仓，按闲置资金和流动性需求配置")
+    : hardNoBuyBlocker
+      ? "0元观察"
     : microStarterOnly && ["buy", "staged_buy"].includes(action)
       ? "0.5%-2.5% 试探仓"
     : action === "buy"
@@ -33102,6 +33110,18 @@ function buildFundActionabilitySignals(digest) {
     decisionBlocker,
     holdingsOutlook
   };
+}
+
+function hasActionabilityHardNoBuyBlocker({ freshnessDiscipline = {}, themeRetreatDiscipline = {}, holdingsDiscipline = {}, holdingsCarrierHardBlocker = false } = {}) {
+  const blockerText = [
+    freshnessDiscipline.blocker,
+    themeRetreatDiscipline.blocker,
+    holdingsDiscipline.blocker
+  ].filter(Boolean).join(" ");
+  return Boolean(
+    holdingsCarrierHardBlocker
+    || /系统(?:文本接盘风险拦截|当前题材支撑拦截|接盘风险拦截|当前题材雷达未确认|旧催化降级|题材退潮拦截|数据时效降级)|净值\/走势已过期|重新下钻复核|题材退潮|主力资金撤离|接盘风险|旧题材|历史热点|底层持仓|表面回调可能继续下探/.test(blockerText)
+  );
 }
 
 function isActionabilityHoldingsCarrierHardBlocker(blocker = "") {
