@@ -2925,8 +2925,12 @@ const requiredPatterns = [
     message: "text-only catchdown guard must also catch historical-hotspot or old-main labels that are not confirmed by the current theme radar."
   },
   {
-    pattern: /function evaluatePortfolioBuyDiscipline[\s\S]{0,1700}getTextualCatchdownWarnings\(action,\s*profile\)[\s\S]{0,500}portfolio_text_catchdown_guard/,
+    pattern: /function evaluatePortfolioBuyDiscipline(?=[\s\S]{0,2600}getTextualCatchdownWarnings\(action,\s*profile\))(?=[\s\S]{0,3200}portfolio_text_catchdown_guard)/,
     message: "portfolio BUY guard must block text-only retreat/catchdown warnings even when structured matchedThemes are missing."
+  },
+  {
+    pattern: /function evaluatePortfolioBuyDiscipline[\s\S]{0,1800}getPortfolioCatchdownLossMemoryWarnings\(action,\s*profile\)[\s\S]{0,520}portfolio_catchdown_loss_memory_guard/,
+    message: "portfolio BUY guard must block same-theme catchdown-loss memory before final virtual subscription."
   },
   {
     pattern: /function getPortfolioActionableThemeSupportGap[\s\S]{0,500}getTextualCatchdownWarnings\(candidate\)/,
@@ -2939,6 +2943,10 @@ const requiredPatterns = [
   {
     pattern: /function buildPortfolioWatchReadinessGaps[\s\S]{0,2600}getStaleThemeCatchdownWarnings\(evidence\)[\s\S]{0,2600}getPortfolioWatchThemeSupportGap\(item,\s*evidence\)[\s\S]{0,260}gaps\.push\(themeSupportGap\)/,
     message: "watchlist readiness must downgrade stale-catchdown and theme-labeled pullbacks that lack current actionable theme support."
+  },
+  {
+    pattern: /function buildPortfolioWatchReadinessGaps(?=[\s\S]{0,900}getPortfolioCatchdownLossMemoryWarnings\(item,\s*evidence \|\| \{\}\))(?=[\s\S]{0,1200}gaps\.push\(\.\.\.lossMemoryWarnings\))/,
+    message: "watchlist readiness must cap same-theme catchdown-loss memory candidates before they sound buy-ready."
   },
   {
     pattern: /function isPortfolioRedeploymentHardGap[\s\S]{0,700}题材退潮[\s\S]{0,260}接盘风险[\s\S]{0,260}旧新闻[\s\S]{0,120}旧催化/,

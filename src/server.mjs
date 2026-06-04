@@ -6259,6 +6259,14 @@ function evaluatePortfolioBuyDiscipline(action = {}, profile = null, positions =
   }
   const trendEvidence = formatPortfolioSeedVerifiedTrendEvidence(profile);
   const themeMicroStarter = hasPortfolioThemeMicroStarterSetup(profile);
+  const lossMemoryWarnings = getPortfolioCatchdownLossMemoryWarnings(action, profile);
+  if (lossMemoryWarnings.length && !hasFreshActionableThemeSupport(profile)) {
+    return {
+      ok: false,
+      reason: `系统买入纪律拦截：${lossMemoryWarnings[0]}；历史同主题接盘亏损冷却未解除，不能提交虚拟申购。`,
+      evidence: [trendEvidence, lossMemoryWarnings[0], "来源：portfolio_catchdown_loss_memory_guard"].filter(Boolean)
+    };
+  }
   const textualCatchdownWarnings = getTextualCatchdownWarnings(action, profile);
   if (textualCatchdownWarnings.length) {
     return {
@@ -7516,13 +7524,15 @@ function buildPortfolioReadyStatusReadinessGuard(status, readiness = {}) {
 }
 
 function isPortfolioWatchStructuralReadinessGap(gap = "") {
-  return /基金规模|前十大集中度|持仓承载|前十大持仓未命中题材龙头|前十大持仓实际集中|承载逻辑需复核|目标主题匹配度不足|特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛|题材退潮|主力资金撤离|主力撤离|接盘风险|低位轮动标签缺少当前题材雷达刷新|当前题材雷达.*(?:过期|缺少刷新时间|刷新时间无法验证)|重新刷新主力资金\/新闻催化/.test(String(gap || ""));
+  return /基金规模|前十大集中度|持仓承载|前十大持仓未命中题材龙头|前十大持仓实际集中|承载逻辑需复核|目标主题匹配度不足|特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛|题材退潮|主力资金撤离|主力撤离|接盘风险|历史接盘亏损冷却|同主题.*接盘|同主题.*亏损|低位轮动标签缺少当前题材雷达刷新|当前题材雷达.*(?:过期|缺少刷新时间|刷新时间无法验证)|重新刷新主力资金\/新闻催化/.test(String(gap || ""));
 }
 
 function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
   const evidence = profile || item.lastSnapshot || null;
   const trend = evidence?.trendProfile || {};
   const gaps = [];
+  const lossMemoryWarnings = getPortfolioCatchdownLossMemoryWarnings(item, evidence || {});
+  const lossMemoryActive = Boolean(lossMemoryWarnings.length && !hasFreshActionableThemeSupport(evidence || item));
   const themeRetreatWarnings = [
     ...getDirectPortfolioHoldingThemeRetreatWarnings(evidence),
     ...getDirectPortfolioHoldingThemeRetreatWarnings(item),
@@ -7535,6 +7545,9 @@ function buildPortfolioWatchReadinessGaps(item = {}, profile = null) {
     ...getStalePortfolioThemeRefreshWarnings(evidence),
     ...getStalePortfolioThemeRefreshWarnings(item)
   ];
+  if (lossMemoryActive) {
+    gaps.push(...lossMemoryWarnings);
+  }
   if (!evidence || !trend.ok) {
     gaps.push(...themeRetreatWarnings);
     const holdingCarrierGap = getPortfolioWatchHoldingCarrierGap(evidence);
@@ -7772,7 +7785,7 @@ function evaluatePortfolioWatchReadiness(item = {}, profile = null) {
 
 function getPortfolioWatchStructuralReadinessCap(gaps = []) {
   const text = (gaps || []).join(" ");
-  if (/题材退潮|主力资金撤离|主力撤离|接盘风险|低位轮动标签缺少当前题材雷达刷新|当前题材雷达.*(?:过期|缺少刷新时间|刷新时间无法验证)|重新刷新主力资金\/新闻催化/.test(text)) return 46;
+  if (/题材退潮|主力资金撤离|主力撤离|接盘风险|历史接盘亏损冷却|同主题.*接盘|同主题.*亏损|低位轮动标签缺少当前题材雷达刷新|当前题材雷达.*(?:过期|缺少刷新时间|刷新时间无法验证)|重新刷新主力资金\/新闻催化/.test(text)) return 46;
   if (/当前主力进场|题材预热|低位轮动支撑/.test(text)) return 58;
   if (/特殊\/平台份额|可申购渠道|普通渠道可申购|起购门槛/.test(text)) return 58;
   if (/基金规模.*不能作为可直接买入|前十大集中度.*过高/.test(text)) return 58;
@@ -7795,7 +7808,7 @@ function scorePortfolioWatchReadinessGapPenalty(gap = "") {
   if (/近20日.*需降温|近60日.*需消化/.test(text)) return 16;
   if (/等待回撤|可操作性仍是等待|入场判断仍是等待/.test(text)) return 14;
   if (/暂时回避|仍是回避/.test(text)) return 28;
-  if (/题材退潮|主力资金撤离|主力撤离|低位轮动标签缺少当前题材雷达刷新|当前题材雷达.*(?:过期|缺少刷新时间|刷新时间无法验证)|重新刷新主力资金\/新闻催化/.test(text)) return 34;
+  if (/题材退潮|主力资金撤离|主力撤离|历史接盘亏损冷却|同主题.*接盘|同主题.*亏损|低位轮动标签缺少当前题材雷达刷新|当前题材雷达.*(?:过期|缺少刷新时间|刷新时间无法验证)|重新刷新主力资金\/新闻催化/.test(text)) return 34;
   if (/当前主力进场|题材预热|低位轮动支撑/.test(text)) return 24;
   if (/题材拥挤|追涨风险/.test(text)) return 16;
   if (/费用\/份额/.test(text)) return 10;

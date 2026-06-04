@@ -5477,6 +5477,63 @@ assert(
     .some((item) => item.includes("历史热点") && item.includes("当前题材雷达确认")),
   "watchlist readiness must downgrade old-main-label text even when structured matchedThemes are missing"
 );
+const catchdownMemoryExecutionProfile = {
+  ...verifiedSeedProfile,
+  code: "000017",
+  name: "历史接盘记忆低位基金C",
+  catchdownLossMemoryWarnings: ["历史接盘亏损冷却：2026-05-20 000201 CPO/光模块/通信，后续亏损约1200元；同主题低位反弹必须先证明主力资金回流、新鲜催化和代表持仓承载。"]
+};
+const catchdownMemoryBuyGuard = manager.evaluatePortfolioBuyDiscipline(
+  { action: "BUY", code: "000017", name: "历史接盘记忆低位基金C", amount: 1000 },
+  catchdownMemoryExecutionProfile
+);
+assert.equal(catchdownMemoryBuyGuard.ok, false, "portfolio buy discipline must block same-theme catchdown-loss memory before final virtual subscription");
+assert(
+  catchdownMemoryBuyGuard.reason.includes("历史接盘亏损冷却")
+    && catchdownMemoryBuyGuard.evidence.includes("来源：portfolio_catchdown_loss_memory_guard"),
+  "catchdown-loss memory BUY blocks must explain historical loss memory and leave a traceable guard source"
+);
+const enforcedCatchdownMemoryBuy = manager.enforcePortfolioBuyDiscipline([
+  { action: "BUY", code: "000017", name: "历史接盘记忆低位基金C", amount: 1000, reason: "模型仍按低位回调买入。" }
+], [catchdownMemoryExecutionProfile]);
+assert.equal(enforcedCatchdownMemoryBuy[0].action, "WATCH", "execution guard must convert catchdown-memory BUY actions into WATCH");
+assert.equal(enforcedCatchdownMemoryBuy[0].amount, 0, "catchdown-memory BUY actions must be zeroed out");
+assert(enforcedCatchdownMemoryBuy[0].dataBasis.includes("来源：portfolio_catchdown_loss_memory_guard"), "catchdown-memory execution blocks must preserve the guard data source");
+const catchdownMemoryReadiness = manager.evaluatePortfolioWatchReadiness(
+  { code: "000017", name: "历史接盘记忆低位基金C", status: "ready" },
+  catchdownMemoryExecutionProfile
+);
+assert(
+  catchdownMemoryReadiness.score <= 46
+    && catchdownMemoryReadiness.gaps.some((item) => item.includes("历史接盘亏损冷却")),
+  "watchlist readiness must cap same-theme catchdown-loss memory candidates even when trend setup looks ready"
+);
+const catchdownMemoryReopenedProfile = {
+  ...catchdownMemoryExecutionProfile,
+  code: "000018",
+  name: "历史接盘解冻基金C",
+  matchedThemes: [{
+    id: "optical_reopen",
+    name: "光模块主力回流",
+    stage: "capital_entering",
+    positionSignal: "main_capital_entering",
+    leaderSignal: "capital_entering",
+    capitalFollowScore: 72,
+    preheatScore: 58,
+    avgMainNetInflowPct: 1.4,
+    crowdingScore: 18,
+    newsLogic: "来源：题材雷达10:18，今日光模块主力资金回流，产业订单预期重新升温。",
+    catalystProfile: { fresh: true, score: 72, summary: "来源：题材雷达10:18 主力资金回流", latestNewsTime: "10:18" }
+  }]
+};
+const reopenedMemoryBuyGuard = manager.evaluatePortfolioBuyDiscipline(
+  { action: "BUY", code: "000018", name: "历史接盘解冻基金C", amount: 1000 },
+  catchdownMemoryReopenedProfile
+);
+assert(
+  !reopenedMemoryBuyGuard.evidence?.includes("来源：portfolio_catchdown_loss_memory_guard"),
+  "fresh current main-capital/catalyst support must reopen same-theme catchdown memory instead of permanent blocking"
+);
 const textOnlyUnconfirmedActionability = manager.buildFundActionabilitySignals({
   ...verifiedSeedProfile,
   code: "000016",
