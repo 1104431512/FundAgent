@@ -39542,21 +39542,88 @@ function downsideDeviation(values, targetReturn = 0) {
   return Math.sqrt(downsideSquares.reduce((sum, value) => sum + value, 0) / downsideSquares.length);
 }
 
-async function fetchText(url, referer = "https://fund.eastmoney.com/") {
-  const response = await fetchWithTimeout(
-    url,
-    {
-      headers: {
-        "user-agent": "Mozilla/5.0 FundAgent/1.0",
-        referer
+async function fetchText(url, referer = "https://fund.eastmoney.com/", options = {}) {
+  return fetchPublicDataTextWithRetry(url, {
+    ...options,
+    referer
+  });
+}
+
+async function fetchPublicDataTextWithRetry(url, options = {}) {
+  const attempts = Math.max(1, Math.floor(finiteNumberOr(options.attempts ?? process.env.PUBLIC_DATA_GET_RETRY_ATTEMPTS, 2)));
+  const delayMs = Math.max(0, finiteNumberOr(options.retryDelayMs ?? process.env.PUBLIC_DATA_GET_RETRY_DELAY_MS, 350));
+  const timeoutMs = Number(options.timeoutMs ?? PUBLIC_DATA_TIMEOUT_MS);
+  const referer = options.referer || "https://fund.eastmoney.com/";
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(
+        url,
+        {
+          headers: {
+            "user-agent": options.userAgent || "Mozilla/5.0 FundAgent/1.0",
+            referer,
+            ...(options.headers || {})
+          }
+        },
+        timeoutMs
+      );
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        const error = new Error(`HTTP ${response.status}: ${url}${detail ? ` ${detail.slice(0, 180)}` : ""}`);
+        error.httpStatus = response.status;
+        error.url = String(url || "");
+        throw error;
       }
-    },
-    PUBLIC_DATA_TIMEOUT_MS
-  );
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${url}`);
+      const text = await response.text();
+      updateStats({
+        counters: {
+          publicDataGetRequests: 1,
+          publicDataGetRetrySuccesses: attempt > 1 ? 1 : 0
+        },
+        last: {
+          lastPublicDataGetAt: new Date().toISOString(),
+          ...(attempt > 1 ? { lastPublicDataGetRetrySuccess: `${attempt}/${attempts} ${String(url).slice(0, 160)}` } : {})
+        }
+      });
+      return text;
+    } catch (error) {
+      lastError = error;
+      const retryable = isRetryablePublicDataGetError(error);
+      if (attempt >= attempts || !retryable) {
+        updateStats({
+          counters: {
+            publicDataGetRequests: 1,
+            publicDataGetFailures: 1
+          },
+          last: {
+            lastPublicDataGetFailureAt: new Date().toISOString(),
+            lastPublicDataGetFailure: `${String(error.message || error).slice(0, 180)} @ ${String(url).slice(0, 160)}`
+          }
+        });
+        throw error;
+      }
+      updateStats({
+        counters: { publicDataGetRetries: 1 },
+        last: {
+          lastPublicDataGetRetryAt: new Date().toISOString(),
+          lastPublicDataGetRetry: `${attempt + 1}/${attempts} ${String(url).slice(0, 160)}`
+        }
+      });
+      await sleep(Math.min(2500, delayMs * 2 ** (attempt - 1)));
+    }
   }
-  return response.text();
+
+  throw lastError;
+}
+
+function isRetryablePublicDataGetError(error = {}) {
+  const status = Number(error.httpStatus || 0);
+  const code = error?.cause?.code || error?.code || "";
+  if (status === 408 || status === 429 || status >= 500) return true;
+  if (code === "HTTP_TIMEOUT" || error?.name === "AbortError") return true;
+  return isRetryableHttpError(error);
 }
 
 function parseFundPingzhongData(text) {
@@ -41024,6 +41091,10 @@ function getDefaultStats() {
       marketSnapshotCacheWrites: 0,
       marketSnapshotCacheLiveUpdates: 0,
       marketSnapshotCacheFallbacks: 0,
+      publicDataGetRequests: 0,
+      publicDataGetRetries: 0,
+      publicDataGetRetrySuccesses: 0,
+      publicDataGetFailures: 0,
       marketFastNewsFetches: 0,
       sinaFastNewsFetches: 0,
       clsTelegraphNewsFetches: 0,
@@ -41162,6 +41233,14 @@ function buildRuntimeDiagnostics(stats = {}) {
       warningRate: 0.12,
       criticalRate: 0.25,
       note: "影响题材、贵金属和候选池判断，失败率高时推荐结论需要降级。"
+    }),
+    buildCounterRateDiagnostic({
+      label: "公开数据GET失败",
+      failures: counters.publicDataGetFailures,
+      total: counters.publicDataGetRequests,
+      warningRate: 0.08,
+      criticalRate: 0.18,
+      note: "影响行情、新闻、排行和净值抓取；失败率高时先看重试记录和缓存回退，不要让模型硬判。"
     }),
     buildCounterRateDiagnostic({
       label: "持仓补全失败",
@@ -43247,6 +43326,7 @@ export {
   fetchEastmoneyChinaIndexQuotes,
   fetchFundResearchDigest,
   fetchGlobalMarketQuotes,
+  fetchText,
   buildRealtimeFundValuationSeedItems,
   fetchRealtimeFundValuationSnapshot,
   findPortfolioBacktestBlockedFollowThroughCandidates,
@@ -43259,6 +43339,7 @@ export {
   getChartEntryDecision,
   getFeishuCardImageChunkSize,
   getFundReportChartLegendLines,
+  isRetryablePublicDataGetError,
   getFundReportChartLimit,
   getFundReportChartMinCount,
   getPortfolioTrendImageLimit,

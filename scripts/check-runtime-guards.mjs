@@ -113,6 +113,21 @@ const requiredPatterns = [
     message: "market snapshots must carry overseas index and FX quotes for QDII decisions."
   },
   {
+    test: (source) => {
+      const fetchTextSource = getFunctionSource(source, "fetchPublicDataTextWithRetry");
+      const retryClassifier = getFunctionSource(source, "isRetryablePublicDataGetError");
+      return getFunctionSource(source, "fetchText").includes("fetchPublicDataTextWithRetry")
+        && fetchTextSource.includes("PUBLIC_DATA_GET_RETRY_ATTEMPTS")
+        && fetchTextSource.includes("publicDataGetRetries")
+        && fetchTextSource.includes("publicDataGetRetrySuccesses")
+        && fetchTextSource.includes("publicDataGetFailures")
+        && retryClassifier.includes("HTTP_TIMEOUT")
+        && retryClassifier.includes("status === 429")
+        && retryClassifier.includes("status >= 500");
+    },
+    message: "public market-data GET fetches must retry transient failures and record retry/failure counters before falling back to cache."
+  },
+  {
     pattern: /function fetchGlobalMarketQuotes[\s\S]{0,2200}100\.NDX[\s\S]{0,600}133\.USDCNH/,
     message: "global market quote fetching must include key US/HK/Japan index and offshore RMB references."
   },
@@ -185,6 +200,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*runtimeDataSourceCoverage)(?=[\s\S]*refreshDataSourcesBtn)(?=[\s\S]*renderRuntimeDataSourceCoverage)(?=[\s\S]*数据源覆盖)(?=[\s\S]*evidenceReadiness)(?=[\s\S]*买入门槛)(?=[\s\S]*证据门槛)/,
     message: "admin runtime data-source page must visibly show source coverage, evidence readiness, and allow manual refresh."
+  },
+  {
+    pattern: /(?=[\s\S]*公开GET重试)(?=[\s\S]*publicDataGetRequests)(?=[\s\S]*publicDataGetRetries)(?=[\s\S]*publicDataGetRetrySuccesses)(?=[\s\S]*publicDataGetFailures)/,
+    message: "admin runtime data-source panel must expose public-data GET retry and failure counters."
   },
   {
     pattern: /function inferFundShareClass[\s\S]{0,500}knownProductSuffixes\.includes\(rawSuffix\)[\s\S]{0,80}return ""/,

@@ -122,6 +122,43 @@ assert.equal(
   true,
   "saved short-leaderboard preference must make later recommendation answers stay result-first even without repeating the priority wording"
 );
+const originalFetch = globalThis.fetch;
+let publicDataRetryCalls = 0;
+try {
+  globalThis.fetch = async () => {
+    publicDataRetryCalls += 1;
+    return publicDataRetryCalls === 1
+      ? new Response("rate limited", { status: 429 })
+      : new Response("retry-ok", { status: 200 });
+  };
+  const retryText = await manager.fetchText("https://example.com/public-data-retry", "https://example.com/", {
+    attempts: 2,
+    retryDelayMs: 0,
+    timeoutMs: 0
+  });
+  assert.equal(retryText, "retry-ok", "public data GET fetches must retry transient 429 failures and return the successful body");
+  assert.equal(publicDataRetryCalls, 2, "public data GET retry must perform a second request after a transient failure");
+  let publicDataNonRetryCalls = 0;
+  globalThis.fetch = async () => {
+    publicDataNonRetryCalls += 1;
+    return new Response("missing", { status: 404 });
+  };
+  await assert.rejects(
+    () => manager.fetchText("https://example.com/public-data-404", "https://example.com/", {
+      attempts: 3,
+      retryDelayMs: 0,
+      timeoutMs: 0
+    }),
+    /HTTP 404/,
+    "public data GET fetches must reject non-retryable 404 errors"
+  );
+  assert.equal(publicDataNonRetryCalls, 1, "public data GET retry must not retry ordinary 404 errors");
+  assert.equal(manager.isRetryablePublicDataGetError({ httpStatus: 429 }), true, "public data retry classifier must retry 429 throttling");
+  assert.equal(manager.isRetryablePublicDataGetError({ httpStatus: 404 }), false, "public data retry classifier must not retry 404");
+  assert.equal(manager.isRetryablePublicDataGetError({ code: "HTTP_TIMEOUT" }), true, "public data retry classifier must retry timeouts for market data");
+} finally {
+  globalThis.fetch = originalFetch;
+}
 const syntheticRiskReturns = Array.from({ length: 260 }, (_, index) =>
   index % 23 === 0 ? -0.018 : index % 7 === 0 ? -0.004 : 0.006
 );

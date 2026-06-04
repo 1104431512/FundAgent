@@ -641,6 +641,7 @@ function renderRuntimeTerminal(stats = {}, deployment = null, dataSourceCoverage
       title: "市场与贵金属",
       items: [
         { label: "市场快照", value: getRuntimeCounter(counters, "marketSnapshotCalls"), meta: "指数、板块、资金面" },
+        { label: "公开GET重试", value: getRuntimeCounter(counters, "publicDataGetRetries"), meta: `请求 ${formatRuntimeCount(getRuntimeCounter(counters, "publicDataGetRequests"))} · 成功 ${formatRuntimeCount(getRuntimeCounter(counters, "publicDataGetRetrySuccesses"))} · 失败 ${formatRuntimeCount(getRuntimeCounter(counters, "publicDataGetFailures"))}` },
         { label: "贵金属行情", value: getRuntimeCounter(counters, "preciousMetalQuoteFetches"), meta: "黄金、白银等行情补证" },
         { label: "贵金属基金", value: getRuntimeCounter(counters, "preciousMetalFundSearches"), meta: "避免只凭叙事推荐黄金" }
       ]
