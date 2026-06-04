@@ -157,6 +157,39 @@ assert(
     && sortinoScorecard.dimensions.riskQuality.evidence.some((item) => item.includes("下行波动")),
   "computed opportunity scorecards must expose Sortino and downside volatility as fixed-code risk-quality evidence"
 );
+const navHistoryCache = { version: 1, updatedAt: "", histories: {} };
+manager.cacheFundNavHistory(navHistoryCache, {
+  ok: true,
+  code: "000188",
+  sourceKind: "unit_test_nav_history",
+  points: syntheticRiskPoints
+}, `${todayIso}T08:30:00.000Z`);
+const cachedNavFallback = manager.buildCachedFundNavHistoryFallback(
+  "000188",
+  new Date(`${syntheticRiskPoints[20].date}T00:00:00Z`),
+  new Date(`${todayIso}T00:00:00Z`),
+  navHistoryCache,
+  { fetchedAt: `${todayIso}T10:00:00.000Z`, liveError: "live source failed" }
+);
+assert(cachedNavFallback?.ok && cachedNavFallback.cacheFallback, "NAV history cache must provide a structured cache fallback when live sources fail");
+assert(cachedNavFallback.points.length >= 20, "NAV history cache fallback must retain enough points for fixed-code trend/risk recomputation");
+const navCacheFallbackRisk = manager.computeRiskMetrics(cachedNavFallback.points);
+assert(Number.isFinite(navCacheFallbackRisk.periods["1y"].sortino), "cached NAV history fallback must still support fixed-code risk metrics");
+const navCacheActionability = manager.buildFundActionabilitySignals({
+  name: "净值缓存回退测试基金C",
+  trendProfile: {
+    ok: true,
+    entryBias: "staged_buy",
+    pullbackSetup: { signal: "pullback_complete", signalText: "回调完成", score: 82 }
+  },
+  risk: { oneYear: { ok: true, sharpe: 1.1, sortino: 1.7, annualizedReturnPct: 9, maxDrawdownPct: -10 } },
+  fees: { shareClassFeeModel: { type: "c_no_front_load", label: "C类" }, feeImpact: { oneYearCostPer10000: 35 } },
+  holdings: { ok: true, equityTopHoldings: [{ name: "测试持仓", pct: 5 }] },
+  navHistoryCacheFallback: true,
+  navHistoryCacheAgeHours: 1.5
+});
+assert(navCacheActionability.decisionBlocker.some((item) => item.includes("系统净值历史缓存回退降级")), "NAV history cache fallback must downgrade buy actionability");
+assert.equal(navCacheActionability.allocationBand, "0元观察", "NAV history cache fallback cannot become immediate buy sizing");
 const normalizedUserPortfolios = manager.normalizeUserPortfolios([
   {
     userId: "admin",

@@ -800,6 +800,26 @@ const requiredPatterns = [
   },
   {
     pattern: {
+      test: (source) => source.includes("FUND_NAV_HISTORY_CACHE_PATH")
+        && source.includes("fund-nav-history-cache.json")
+        && source.includes("FUND_NAV_HISTORY_CACHE_MAX_AGE_HOURS")
+    },
+    message: "fund NAV history must have a persistent cache separate from one-off live NAV fetches."
+  },
+  {
+    pattern: /function readFundNavHistoryCache[\s\S]{0,520}histories[\s\S]{0,900}function persistFundNavHistoryCache[\s\S]{0,760}fundNavHistoryCacheWrites/,
+    message: "fund NAV history cache must have deterministic read and persist helpers."
+  },
+  {
+    pattern: /function cacheFundNavHistory[\s\S]{0,1200}mergeFundNavHistoryPoints[\s\S]{0,1800}function buildCachedFundNavHistoryFallback[\s\S]{0,1400}sourceMode:\s*"cache_fallback"/,
+    message: "fund NAV history live successes must be cached and reused as structured cache fallbacks."
+  },
+  {
+    pattern: /function getActionabilityFreshnessDiscipline[\s\S]{0,900}navHistoryCacheFallback[\s\S]{0,700}系统净值历史缓存回退降级[\s\S]{0,300}不能当作实时买点确认/,
+    message: "fund actionability must downgrade NAV-history cache fallback instead of treating cached risk metrics as live buy evidence."
+  },
+  {
+    pattern: {
       test: (source) => source.includes("function fetchMarketResearchDigests")
         && source.includes("const cache = readFundResearchDigestCache()")
         && source.includes("fetchFundResearchDigest(candidate.code, candidate, {")

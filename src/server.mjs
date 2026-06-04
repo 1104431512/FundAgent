@@ -16,6 +16,7 @@ const STATS_PATH = path.resolve(process.env.STATS_PATH || path.join(ROOT, "data"
 const PORTFOLIO_DB_PATH = path.resolve(process.env.PORTFOLIO_DB_PATH || path.join(ROOT, "data", "portfolio-db.json"));
 const MARKET_SNAPSHOT_CACHE_PATH = path.resolve(process.env.MARKET_SNAPSHOT_CACHE_PATH || path.join(ROOT, "data", "market-snapshot-cache.json"));
 const FUND_RESEARCH_DIGEST_CACHE_PATH = path.resolve(process.env.FUND_RESEARCH_DIGEST_CACHE_PATH || path.join(ROOT, "data", "fund-research-digest-cache.json"));
+const FUND_NAV_HISTORY_CACHE_PATH = path.resolve(process.env.FUND_NAV_HISTORY_CACHE_PATH || path.join(ROOT, "data", "fund-nav-history-cache.json"));
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
 const PUBLIC_DIR = path.join(ROOT, "public");
 const SKILLS_DIR = path.join(ROOT, "skills");
@@ -49,6 +50,7 @@ const DEFAULT_PORTFOLIO_REPORT_IMAGE_LIMIT = 8;
 const PUBLIC_DATA_TIMEOUT_MS = Number(process.env.PUBLIC_DATA_TIMEOUT_MS || 20000);
 const MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS = Number(process.env.MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS || 48);
 const FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS || 72);
+const FUND_NAV_HISTORY_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_NAV_HISTORY_CACHE_MAX_AGE_HOURS || 168);
 const pendingImageMessages = new Map();
 const pendingUserPortfolioImportRequests = new Map();
 const DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS = [
@@ -31325,6 +31327,12 @@ function sanitizeFundResearchDigestForCache(digest = {}) {
     seed: digest.seed || {},
     themeOpportunityRequirement: digest.themeOpportunityRequirement || "",
     nav: digest.nav || {},
+    navHistorySourceKind: digest.navHistorySourceKind || "",
+    navHistorySourceMode: digest.navHistorySourceMode || "",
+    navHistoryCacheFallback: Boolean(digest.navHistoryCacheFallback),
+    navHistoryCacheAgeHours: Number.isFinite(Number(digest.navHistoryCacheAgeHours)) ? Number(digest.navHistoryCacheAgeHours) : null,
+    navHistoryCacheFetchedAt: digest.navHistoryCacheFetchedAt || "",
+    navHistoryCacheLatestDate: digest.navHistoryCacheLatestDate || "",
     intradayTrend: digest.intradayTrend || null,
     intradayTrendLabel: digest.intradayTrendLabel || "",
     valuationSourceAgreement: digest.valuationSourceAgreement || null,
@@ -31386,6 +31394,94 @@ function buildCachedFundResearchDigestFallback(code = "", seed = {}, cache = {},
     last: { lastFundResearchDigestCacheFallbackAt: fetchedAt }
   });
   return digest;
+}
+
+function readFundNavHistoryCache(filePath = FUND_NAV_HISTORY_CACHE_PATH) {
+  const raw = safeReadJson(filePath);
+  return raw && typeof raw === "object" && raw.histories && typeof raw.histories === "object"
+    ? { ...raw, histories: raw.histories }
+    : { version: 1, updatedAt: "", histories: {} };
+}
+
+function persistFundNavHistoryCache(cache = {}, filePath = FUND_NAV_HISTORY_CACHE_PATH) {
+  try {
+    const payload = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      histories: cache.histories || {}
+    };
+    ensureDir(path.dirname(filePath));
+    fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    updateStats({ counters: { fundNavHistoryCacheWrites: 1 }, last: { lastFundNavHistoryCacheWriteAt: payload.updatedAt } });
+    return payload;
+  } catch (error) {
+    console.warn("[fund-nav-history-cache-write-error]", error.message);
+    recordError(error, { fundNavHistoryCacheWriteFailures: 1 });
+    return cache;
+  }
+}
+
+function cacheFundNavHistory(cache = {}, history = {}, fetchedAt = new Date().toISOString()) {
+  const code = String(history.code || "").trim();
+  if (!/^\d{6}$/.test(code) || !history.ok || !Array.isArray(history.points) || history.points.length < 20) return null;
+  cache.histories = cache.histories && typeof cache.histories === "object" ? cache.histories : {};
+  const existing = cache.histories[code] || {};
+  const mergedPoints = mergeFundNavHistoryPoints(existing.points || [], history.points || []);
+  const latest = mergedPoints[mergedPoints.length - 1] || {};
+  cache.histories[code] = {
+    code,
+    cachedAt: fetchedAt,
+    sourceKind: history.sourceKind || existing.sourceKind || "",
+    latestDate: latest.date || "",
+    pointCount: mergedPoints.length,
+    points: mergedPoints.slice(-1500)
+  };
+  return cache.histories[code];
+}
+
+function mergeFundNavHistoryPoints(...groups) {
+  return [...new Map(groups
+    .flat()
+    .filter((point) => point?.date && Number.isFinite(Number(point.cumulativeNav)) && Number(point.cumulativeNav) > 0)
+    .map((point) => [point.date, {
+      date: point.date,
+      unitNav: finiteMetricNumber(point.unitNav),
+      cumulativeNav: finiteMetricNumber(point.cumulativeNav),
+      dailyReturnPct: finiteMetricNumber(point.dailyReturnPct)
+    }])
+  ).values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function buildCachedFundNavHistoryFallback(code = "", startDate = null, endDate = null, cache = {}, options = {}) {
+  const fundCode = String(code || "").trim();
+  const cached = fundCode ? cache?.histories?.[fundCode] : null;
+  if (!cached?.points?.length) return null;
+  const fetchedAt = options.fetchedAt || new Date().toISOString();
+  const ageHours = getMarketSnapshotCacheAgeHours(cached.cachedAt, fetchedAt);
+  if (!Number.isFinite(ageHours) || ageHours > FUND_NAV_HISTORY_CACHE_MAX_AGE_HOURS) return null;
+  const startText = formatDate(startDate);
+  const endText = formatDate(endDate);
+  const points = mergeFundNavHistoryPoints(cached.points)
+    .filter((point) => (!startText || point.date >= startText) && (!endText || point.date <= endText));
+  if (points.length < 20) return null;
+  updateStats({
+    counters: { fundNavHistoryCacheFallbacks: 1 },
+    last: { lastFundNavHistoryCacheFallbackAt: fetchedAt }
+  });
+  return {
+    ok: true,
+    code: fundCode,
+    startDate: startText,
+    endDate: endText,
+    sourceKind: "fund_nav_history_cache_fallback",
+    sourceMode: "cache_fallback",
+    cacheFallback: true,
+    cacheFetchedAt: cached.cachedAt || "",
+    cacheAgeHours: round(ageHours, 2),
+    cacheLatestDate: cached.latestDate || points[points.length - 1]?.date || "",
+    liveError: String(options.liveError || "历史净值实时源失败，使用缓存回退").slice(0, 240),
+    points
+  };
 }
 
 function hasQualifiedPullbackMainCandidate(candidates = [], options = {}) {
@@ -31773,15 +31869,19 @@ function scoreComputedFundDataQuality(candidate = {}) {
   if (fees.shareClassFeeModel?.type && fees.shareClassFeeModel.type !== "unknown") score += 8;
   if (candidate.valuationSourceAgreement?.status === "conflict") score -= 18;
   if (candidate.researchDigestCacheFallback) score -= 32;
+  if (candidate.navHistoryCacheFallback || candidate.nav?.historyCacheFallback) score -= 22;
   if (!isPullbackTrendFreshEnough(candidate)) score -= 22;
   const boundedScore = round(clampScore(score), 1);
   return {
     score: boundedScore,
     label: candidate.researchDigestCacheFallback
       ? "基金下钻使用缓存回退"
+      : candidate.navHistoryCacheFallback || candidate.nav?.historyCacheFallback
+        ? "净值历史使用缓存回退"
       : boundedScore >= 70 ? "数据完整度较好" : boundedScore >= 45 ? "数据可用但需复核" : "数据不足",
     evidence: [
       candidate.researchDigestCacheFallback ? `基金下钻使用缓存回退约${round(Number(candidate.cacheAgeHours || 0), 1)}小时前` : "",
+      candidate.navHistoryCacheFallback || candidate.nav?.historyCacheFallback ? `净值历史使用缓存回退约${round(Number(candidate.navHistoryCacheAgeHours ?? candidate.nav?.historyCacheAgeHours ?? 0), 1)}小时前` : "",
       trend.ok ? "净值走势已下钻" : "缺走势下钻",
       holdings.hasHoldings ? "前十大持仓已下钻" : "缺前十大持仓",
       fees.shareClassFeeModel?.type ? "费用份额已识别" : "缺费用份额"
@@ -31793,6 +31893,7 @@ function collectComputedFundOpportunityBlockers(candidate = {}, dimensions = {})
   const blockers = [];
   if (candidate.ok === false) blockers.push("数据不足硬阻断");
   if (candidate.researchDigestCacheFallback) blockers.push("基金下钻使用缓存回退，不能当作实时买点确认");
+  if (candidate.navHistoryCacheFallback || candidate.nav?.historyCacheFallback) blockers.push("净值历史使用缓存回退，不能当作实时买点确认");
   if (!isPullbackTrendFreshEnough(candidate)) blockers.push("净值/走势过期");
   if (hasThemeRetreatRisk(candidate) || hasStaleThemeCatchdownRisk(candidate) || getThemeMainForcePlaybookRiskWarnings(candidate).length) blockers.push("题材退潮或接盘风险");
   if (candidate.trendProfile?.trendLabel === "extended_uptrend" || candidate.trendProfile?.entryBias === "wait_pullback") blockers.push("追涨或等待回撤");
@@ -31928,8 +32029,18 @@ async function fetchFundResearchDigestLive(code, seed = {}) {
       estimatedChangePct: valuation.gszzl || "",
       navDate: valuation.jzrq || seed.navDate || "",
       estimateTime: valuation.gztime || "",
-      realtimeSignal
+      realtimeSignal,
+      historySourceKind: navHistory.sourceKind || "",
+      historySourceMode: navHistory.sourceMode || (navHistory.cacheFallback ? "cache_fallback" : "live"),
+      historyCacheFallback: Boolean(navHistory.cacheFallback),
+      historyCacheAgeHours: Number.isFinite(Number(navHistory.cacheAgeHours)) ? Number(navHistory.cacheAgeHours) : null
     },
+    navHistorySourceKind: navHistory.sourceKind || "",
+    navHistorySourceMode: navHistory.sourceMode || (navHistory.cacheFallback ? "cache_fallback" : "live"),
+    navHistoryCacheFallback: Boolean(navHistory.cacheFallback),
+    navHistoryCacheAgeHours: Number.isFinite(Number(navHistory.cacheAgeHours)) ? Number(navHistory.cacheAgeHours) : null,
+    navHistoryCacheFetchedAt: navHistory.cacheFetchedAt || "",
+    navHistoryCacheLatestDate: navHistory.cacheLatestDate || "",
     intradayTrend: valuation.intradayTrend || null,
     intradayTrendLabel: valuation.intradayTrend?.label || valuation.intradayTrendLabel || "",
     valuationSourceAgreement,
@@ -31966,19 +32077,27 @@ async function fetchFundResearchDigestLive(code, seed = {}) {
     sources: [
       `https://fund.eastmoney.com/${code}.html`,
       `https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${code}`,
+      navHistory.cacheFallback ? `cache:${FUND_NAV_HISTORY_CACHE_PATH}` : "",
       `https://fundf10.eastmoney.com/jjfl_${code}.html`,
       ...(holdingRealtimePulse.sources || [])
-    ]
+    ].filter(Boolean)
   };
   digest.actionability = buildFundActionabilitySignals(digest);
   digest.computedOpportunityScorecard = buildFundComputedOpportunityScorecard(digest);
   return digest;
 }
 
-async function fetchFundRecentNavHistory(code) {
+async function fetchFundRecentNavHistory(code, options = {}) {
   const endDate = new Date();
   const startDate = new Date(endDate);
   startDate.setMonth(startDate.getMonth() - Number(process.env.FUND_DEEP_DIVE_NAV_MONTHS || 18));
+  const fetchedAt = options.fetchedAt || new Date().toISOString();
+  const cache = options.cache || readFundNavHistoryCache();
+  const maybePersistCache = (history) => {
+    const cached = cacheFundNavHistory(cache, history, fetchedAt);
+    if (cached && options.persistCache !== false && !options.cache) persistFundNavHistoryCache(cache);
+    return cached;
+  };
   try {
     const firstPage = await fetchFundNavHistoryPage(code, 1, startDate, endDate);
     const points = [...firstPage.points];
@@ -32000,7 +32119,7 @@ async function fetchFundRecentNavHistory(code) {
       last: { lastDeepDiveNavHistoryFetchAt: new Date().toISOString() }
     });
 
-    return {
+    const history = {
       ok: deduped.length >= 20,
       code,
       startDate: formatDate(startDate),
@@ -32008,6 +32127,8 @@ async function fetchFundRecentNavHistory(code) {
       sourceKind: "eastmoney_f10_nav_history",
       points: deduped
     };
+    maybePersistCache(history);
+    return history;
   } catch (error) {
     const fallback = await fetchFundPingzhongNavHistory(code, startDate, endDate).catch((fallbackError) => ({
       ok: false,
@@ -32028,11 +32149,20 @@ async function fetchFundRecentNavHistory(code) {
     });
 
     if (fallback.ok) {
-      return {
+      const history = {
         ...fallback,
         primaryError: error.message
       };
+      maybePersistCache(history);
+      return history;
     }
+    const cached = options.allowCacheFallback === false
+      ? null
+      : buildCachedFundNavHistoryFallback(code, startDate, endDate, cache, {
+          fetchedAt,
+          liveError: `${error.message}; pingzhongdata fallback: ${fallback.error || "no points"}`
+        });
+    if (cached) return cached;
     return {
       ...fallback,
       error: `${error.message}; pingzhongdata fallback: ${fallback.error || "no points"}`
@@ -34462,7 +34592,7 @@ function hasActionabilityHardNoBuyBlocker({ freshnessDiscipline = {}, realtimeSi
   ].filter(Boolean).join(" ");
   return Boolean(
     holdingsCarrierHardBlocker
-    || /系统(?:文本接盘风险拦截|当前题材支撑拦截|接盘风险拦截|当前题材雷达未确认|旧催化降级|题材退潮拦截|数据时效降级|实时估值信号降级)|净值\/走势已过期|重新下钻复核|估值偏旧|来源分歧|冲高回落|题材退潮|主力资金撤离|接盘风险|旧题材|历史热点|底层持仓|表面回调可能继续下探/.test(blockerText)
+    || /系统(?:文本接盘风险拦截|当前题材支撑拦截|接盘风险拦截|当前题材雷达未确认|旧催化降级|题材退潮拦截|数据时效降级|净值历史缓存回退降级|实时估值信号降级)|净值\/走势已过期|净值历史缓存回退|重新下钻复核|估值偏旧|来源分歧|冲高回落|题材退潮|主力资金撤离|接盘风险|旧题材|历史热点|底层持仓|表面回调可能继续下探/.test(blockerText)
   );
 }
 
@@ -34657,6 +34787,13 @@ function getActionabilityFreshnessDiscipline(digest = {}, { isMoneyMarket = fals
     return {
       scoreCap: 58,
       blocker: `系统缓存回退降级：基金下钻使用缓存回退${Number.isFinite(Number(digest.cacheAgeHours)) ? `约${round(Number(digest.cacheAgeHours), 1)}小时前` : ""}，只能用于连续性观察，不能当作实时买点确认。`
+    };
+  }
+  if (digest.navHistoryCacheFallback || digest.nav?.historyCacheFallback) {
+    const age = Number(digest.navHistoryCacheAgeHours ?? digest.nav?.historyCacheAgeHours);
+    return {
+      scoreCap: 58,
+      blocker: `系统净值历史缓存回退降级：净值/走势使用缓存回退${Number.isFinite(age) ? `约${round(age, 1)}小时前` : ""}，只能用于连续性观察，不能当作实时买点确认。`
     };
   }
   if (isMoneyMarket) {
@@ -35222,7 +35359,11 @@ async function fetchFundProfile(code) {
     holdingRealtimePulse,
     intradayTrend: valuation.intradayTrend || null,
     valuationSourceAgreement,
-    realtimeSignal
+    realtimeSignal,
+    navHistoryCacheFallback: Boolean(navHistory.cacheFallback),
+    navHistoryCacheAgeHours: Number.isFinite(Number(navHistory.cacheAgeHours)) ? Number(navHistory.cacheAgeHours) : null,
+    navHistoryCacheFetchedAt: navHistory.cacheFetchedAt || "",
+    navHistoryCacheLatestDate: navHistory.cacheLatestDate || ""
   });
   return {
     ok: true,
@@ -35239,6 +35380,12 @@ async function fetchFundProfile(code) {
     intradayTrendLabel: valuation.intradayTrend?.label || valuation.intradayTrendLabel || "",
     valuationSourceAgreement,
     realtimeSignal,
+    navHistorySourceKind: navHistory.sourceKind || "",
+    navHistorySourceMode: navHistory.sourceMode || (navHistory.cacheFallback ? "cache_fallback" : "live"),
+    navHistoryCacheFallback: Boolean(navHistory.cacheFallback),
+    navHistoryCacheAgeHours: Number.isFinite(Number(navHistory.cacheAgeHours)) ? Number(navHistory.cacheAgeHours) : null,
+    navHistoryCacheFetchedAt: navHistory.cacheFetchedAt || "",
+    navHistoryCacheLatestDate: navHistory.cacheLatestDate || "",
     valuationSourceKind: valuation.sourceKind || "",
     supplementalIntradaySourceKind: valuation.supplementalIntradaySourceKind || "",
     fees: feeProfile,
@@ -35263,6 +35410,7 @@ async function fetchFundProfile(code) {
       `https://fundgz.1234567.com.cn/js/${code}.js`,
       `https://fund.eastmoney.com/pingzhongdata/${code}.js`,
       `https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${code}`,
+      navHistory.cacheFallback ? `cache:${FUND_NAV_HISTORY_CACHE_PATH}` : "",
       `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${code}`,
       `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=zqcc&code=${code}`,
       `https://fundf10.eastmoney.com/jjfl_${code}.html`,
@@ -35271,7 +35419,7 @@ async function fetchFundProfile(code) {
         ? [valuation.source || valuation.supplementalIntradaySource].filter(Boolean)
         : []),
       ...(holdingRealtimePulse.sources || [])
-    ]
+    ].filter(Boolean)
   };
 }
 
@@ -36409,10 +36557,17 @@ async function fetchFundArchiveHoldings(code, type) {
   };
 }
 
-async function fetchFundNavHistory(code) {
+async function fetchFundNavHistory(code, options = {}) {
   const endDate = new Date();
   const startDate = new Date(endDate);
   startDate.setFullYear(startDate.getFullYear() - 5);
+  const fetchedAt = options.fetchedAt || new Date().toISOString();
+  const cache = options.cache || readFundNavHistoryCache();
+  const maybePersistCache = (history) => {
+    const cached = cacheFundNavHistory(cache, history, fetchedAt);
+    if (cached && options.persistCache !== false && !options.cache) persistFundNavHistoryCache(cache);
+    return cached;
+  };
 
   try {
     const firstPage = await fetchFundNavHistoryPage(code, 1, startDate, endDate);
@@ -36436,7 +36591,7 @@ async function fetchFundNavHistory(code) {
       last: { lastNavHistoryFetchAt: new Date().toISOString() }
     });
 
-    return {
+    const history = {
       ok: true,
       code,
       startDate: formatDate(startDate),
@@ -36444,6 +36599,8 @@ async function fetchFundNavHistory(code) {
       sourceKind: "eastmoney_f10_nav_history",
       points: deduped
     };
+    maybePersistCache(history);
+    return history;
   } catch (error) {
     const fallback = await fetchFundPingzhongNavHistory(code, startDate, endDate).catch((fallbackError) => ({
       ok: false,
@@ -36463,11 +36620,20 @@ async function fetchFundNavHistory(code) {
       last: { lastNavHistoryFetchAt: new Date().toISOString() }
     });
     if (fallback.ok) {
-      return {
+      const history = {
         ...fallback,
         primaryError: error.message
       };
+      maybePersistCache(history);
+      return history;
     }
+    const cached = options.allowCacheFallback === false
+      ? null
+      : buildCachedFundNavHistoryFallback(code, startDate, endDate, cache, {
+          fetchedAt,
+          liveError: `${error.message}; pingzhongdata fallback: ${fallback.error || "no points"}`
+        });
+    if (cached) return cached;
     return {
       ...fallback,
       error: `${error.message}; pingzhongdata fallback: ${fallback.error || "no points"}`
@@ -38094,6 +38260,8 @@ function getDefaultStats() {
       pullbackSetupDiscoveryFailures: 0,
       navHistoryFetches: 0,
       navHistoryPoints: 0,
+      fundNavHistoryCacheWrites: 0,
+      fundNavHistoryCacheFallbacks: 0,
       analystReviewCalls: 0,
       committeeVoteCalls: 0,
       managerReviewCalls: 0,
@@ -40242,7 +40410,9 @@ export {
   buildMarketDataQuality,
   buildRealtimeFundValuationSignal,
   applyMarketSnapshotCacheFallback,
+  buildCachedFundNavHistoryFallback,
   cacheFundResearchDigest,
+  cacheFundNavHistory,
   buildThemeRadar,
   buildThemeLeaderboards,
   buildThemeMainForcePlaybook,
@@ -40302,7 +40472,9 @@ export {
   getFundQaSkillIds,
   isSufficientFundResearchDigestForDecision,
   readFundResearchDigestCache,
+  readFundNavHistoryCache,
   persistFundResearchDigestCache,
+  persistFundNavHistoryCache,
   getFundRecommendationSkillIds,
   getDeploymentFreshness,
   getPortfolioDecisionSkillIds,
