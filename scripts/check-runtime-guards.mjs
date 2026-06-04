@@ -309,6 +309,10 @@ const requiredPatterns = [
     message: "stale-theme answer quality must reuse text-only retreat/catchdown warnings."
   },
   {
+    pattern: /function collectPortfolioCatchdownTextSegments[\s\S]{0,900}supportSignals[\s\S]{0,260}retreatWarnings[\s\S]{0,420}objectArrayKeys[\s\S]{0,220}matchedThemes/,
+    message: "text-only catchdown scanning must inspect market refresh support/retreat warnings and matched theme news logic, not only top-level risk notes."
+  },
+  {
     pattern: /function hasStaleThemeCatchdownEvidence[\s\S]{0,500}getUnrefreshedMarketThemeWarnings\(candidate\)\.length/,
     message: "stale-theme answer quality must reject buy wording when old theme labels are not confirmed by the current radar."
   },

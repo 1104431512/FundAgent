@@ -6486,6 +6486,13 @@ function collectPortfolioCatchdownTextSegments(value, seen = new Set()) {
     "trendSummary",
     "newsLogic",
     "primaryCatalyst",
+    "summary",
+    "evidence",
+    "supportLabel",
+    "blocker",
+    "note",
+    "warning",
+    "riskWarning",
     "source",
     "statusText",
     "reviewDate"
@@ -6500,9 +6507,16 @@ function collectPortfolioCatchdownTextSegments(value, seen = new Set()) {
     "decisiveEvidence",
     "decisionBlocker",
     "risks",
-    "gaps"
+    "gaps",
+    "supportSignals",
+    "retreatWarnings",
+    "warnings",
+    "riskWarnings",
+    "blockers",
+    "facts"
   ];
   const nestedKeys = ["actionability", "holdingsOutlook", "marketThemeRefresh", "holdingThemeRefresh", "trendProfile", "seed"];
+  const objectArrayKeys = ["matchedThemes", "themeSignals", "themes", "relatedThemes"];
   const segments = [];
   for (const key of keys) {
     if (typeof value[key] === "string") segments.push(value[key]);
@@ -6516,6 +6530,15 @@ function collectPortfolioCatchdownTextSegments(value, seen = new Set()) {
   for (const key of nestedKeys) {
     if (value[key] && typeof value[key] === "object") {
       segments.push(...collectPortfolioCatchdownTextSegments(value[key], seen));
+    }
+  }
+  for (const key of objectArrayKeys) {
+    if (Array.isArray(value[key])) {
+      for (const item of value[key]) {
+        if (item && typeof item === "object") {
+          segments.push(...collectPortfolioCatchdownTextSegments(item, seen));
+        }
+      }
     }
   }
   return segments;

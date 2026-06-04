@@ -5421,14 +5421,18 @@ const unconfirmedOldThemeProfile = {
 const unconfirmedOldThemeBuyGuard = manager.evaluatePortfolioBuyDiscipline({ action: "BUY", code: "000010" }, unconfirmedOldThemeProfile);
 assert.equal(unconfirmedOldThemeBuyGuard.ok, false, "portfolio buy discipline must block BUY when a historical theme label is not confirmed by the current market radar");
 assert(
-  unconfirmedOldThemeBuyGuard.reason.includes("旧题材线索未被当前题材雷达确认")
-    && unconfirmedOldThemeBuyGuard.reason.includes("历史热点"),
+  /旧题材|历史热点/.test(unconfirmedOldThemeBuyGuard.reason)
+    && /当前(?:题材)?雷达/.test(unconfirmedOldThemeBuyGuard.reason)
+    && /买入依据|买点/.test(unconfirmedOldThemeBuyGuard.reason),
   "unconfirmed old-theme buy blocks must explain that stale theme labels cannot be used as today's buy basis"
 );
 const unconfirmedOldThemeActionability = manager.buildFundActionabilitySignals(unconfirmedOldThemeProfile);
 assert.equal(unconfirmedOldThemeActionability.action, "avoid", "actionability must not surface current-radar-unconfirmed old themes as buy or staged-buy");
 assert(
-  unconfirmedOldThemeActionability.decisionBlocker.some((item) => item.includes("系统当前题材雷达未确认") && item.includes("历史热点")),
+  unconfirmedOldThemeActionability.decisionBlocker.some((item) =>
+    /系统(?:当前题材雷达未确认|文本接盘风险拦截)/.test(item)
+      && /旧题材|历史热点/.test(item)
+  ),
   "actionability blocker must carry current-radar-unconfirmed old-theme evidence into UI cards and model prompts"
 );
 const unconfirmedOldThemeBuyAnswerQuality = manager.evaluateFundAnswerQuality({
@@ -5594,6 +5598,85 @@ assert.equal(textOnlyUnconfirmedActionability.action, "avoid", "actionability mu
 assert(
   textOnlyUnconfirmedActionability.decisionBlocker.some((item) => item.includes("系统文本接盘风险拦截") && item.includes("历史热点")),
   "actionability blocker must carry text-only current-radar-unconfirmed evidence into UI cards and model prompts"
+);
+const themeNewsLogicCatchdownProfile = {
+  ...verifiedSeedProfile,
+  code: "000019",
+  name: "新闻逻辑退潮基金C",
+  matchedThemes: [{
+    id: "robot_low_rotation",
+    name: "机器人低位轮动",
+    stage: "low_position_rotation",
+    positionSignal: "low_position_rotation",
+    leaderSignal: "preheat_catalyst",
+    capitalFollowScore: 64,
+    preheatScore: 72,
+    rotationScore: 61,
+    lowPositionScore: 67,
+    crowdingScore: 16,
+    newsLogic: "盘中新闻逻辑转弱：机器人板块主力资金撤离，题材退潮，回调不是买点。"
+  }]
+};
+const themeNewsLogicCatchdownBuyGuard = manager.evaluatePortfolioBuyDiscipline(
+  { action: "BUY", code: "000019", name: "新闻逻辑退潮基金C", amount: 1000 },
+  themeNewsLogicCatchdownProfile
+);
+assert.equal(themeNewsLogicCatchdownBuyGuard.ok, false, "portfolio buy discipline must scan matched-theme newsLogic text for main-force withdrawal risk");
+assert(
+  themeNewsLogicCatchdownBuyGuard.reason.includes("文本证据显示题材退潮")
+    && themeNewsLogicCatchdownBuyGuard.evidence.includes("来源：portfolio_text_catchdown_guard"),
+  "matched-theme newsLogic catchdown blocks must preserve the textual guard source"
+);
+const themeNewsLogicCatchdownActionability = manager.buildFundActionabilitySignals(themeNewsLogicCatchdownProfile);
+assert.equal(themeNewsLogicCatchdownActionability.action, "avoid", "actionability must not let positive-looking theme scores override newsLogic that says main force withdrew");
+const themeNewsLogicCatchdownAnswerQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000019 新闻逻辑退潮基金C 可以小仓买入1000元。理由是低位轮动且回调完成。",
+  workflow: "fund_qa",
+  userText: "000019 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [themeNewsLogicCatchdownProfile] } }
+});
+assert(
+  themeNewsLogicCatchdownAnswerQuality.issues.includes("stale_theme_candidate_given_buy_execution")
+    && themeNewsLogicCatchdownAnswerQuality.issues.includes("stale_theme_candidate_given_buy_signal"),
+  "quality gate must reject buy wording when matchedThemes.newsLogic contains retreat/catchdown evidence"
+);
+const refreshRetreatWarningsProfile = {
+  ...verifiedSeedProfile,
+  code: "000020",
+  name: "雷达退潮提示基金C",
+  matchedThemes: [{
+    id: "ai_app_low_rotation",
+    name: "AI应用低位轮动",
+    stage: "low_position_rotation",
+    positionSignal: "low_position_rotation",
+    leaderSignal: "preheat_catalyst",
+    capitalFollowScore: 63,
+    preheatScore: 69,
+    rotationScore: 60,
+    lowPositionScore: 65,
+    crowdingScore: 18,
+    newsLogic: "前期低位轮动标签仍在。"
+  }],
+  marketThemeRefresh: {
+    refreshedAt: freshThemeRefreshAt,
+    noCurrentThemeMatch: false,
+    matchedThemeNames: ["AI应用"],
+    supportLabel: "盘初低位轮动",
+    supportSignals: ["AI应用低位轮动标签仍在"],
+    retreatWarnings: ["当前题材雷达退潮回避：AI应用旧题材未被当前雷达重新确认，主力资金撤离。"],
+    dataBasis: ["退潮回避榜提示主力撤离"]
+  }
+};
+const refreshRetreatWarningsBuyGuard = manager.evaluatePortfolioBuyDiscipline(
+  { action: "BUY", code: "000020", name: "雷达退潮提示基金C", amount: 1000 },
+  refreshRetreatWarningsProfile
+);
+assert.equal(refreshRetreatWarningsBuyGuard.ok, false, "portfolio buy discipline must scan marketThemeRefresh retreatWarnings/support signals before buying");
+assert(
+  refreshRetreatWarningsBuyGuard.reason.includes("当前题材雷达")
+    && refreshRetreatWarningsBuyGuard.reason.includes("历史热点")
+    && refreshRetreatWarningsBuyGuard.evidence.includes("来源：portfolio_text_catchdown_guard"),
+  "market refresh retreat warnings must be translated into a current-radar old-theme no-buy reason"
 );
 const textualRiskNegationProfile = {
   ...verifiedSeedProfile,
@@ -5977,7 +6060,10 @@ const broadAiCpoTrapBuyGuard = manager.evaluatePortfolioBuyDiscipline(
 assert.equal(broadAiCpoTrapBuyGuard.ok, false, "candidate BUY discipline must block broad-AI-looking funds when top holdings show retreating CPO exposure");
 assert(
   broadAiCpoTrapBuyGuard.reason.includes("泛题材热度不能覆盖底层退潮")
-    && broadAiCpoTrapBuyGuard.evidence.includes("来源：portfolio_theme_support_guard"),
+    && (
+      broadAiCpoTrapBuyGuard.evidence.includes("来源：portfolio_theme_support_guard")
+      || broadAiCpoTrapBuyGuard.evidence.includes("来源：portfolio_text_catchdown_guard")
+    ),
   "candidate BUY block must explain the precise look-through subtheme retreat"
 );
 assert(
