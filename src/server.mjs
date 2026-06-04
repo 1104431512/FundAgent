@@ -1002,6 +1002,10 @@ async function handleFundQaWorkflow({ message, userText, intent }) {
     await replyToMessage(message.message_id, buildFundReportChartGlossaryAnswer(), { kind: "answer" });
     return;
   }
+  if (intent?.mode === "answer_priority_preference") {
+    await replyToMessage(message.message_id, buildFundPriorityPreferenceAnswer(userText), { kind: "answer" });
+    return;
+  }
 
   const needsMarketSnapshot = shouldFetchMarketSnapshotForQuestion(userText);
   await replyToMessage(
@@ -10006,14 +10010,19 @@ function buildPortfolioCustomerActionLeaderboardStatusLines(board = {}) {
     ? board.lanes.filter((lane) => Number(lane.count || 0) > 0)
     : [];
   if (!lanes.length) return [];
-  const lines = [`${board.title || "客户行动排行"}：${board.summary || lanes.map((lane) => `${lane.title}${lane.count || 0}项`).join("，")}。`];
+  const buyLane = lanes.find((lane) => lane.id === "buy");
+  const primaryPolicy = buyLane?.sortPolicy || lanes[0]?.sortPolicy || "";
+  const lines = [
+    `${board.title || "客户行动排行"}：先看结果，再看原因；${board.summary || lanes.map((lane) => `${lane.title}${lane.count || 0}项`).join("，")}。`,
+    `排序总则：${shortenPortfolioCustomerText(primaryPolicy || "按动作影响排序，先处理最能改变买、等、卖结论的对象。", 92)}`
+  ];
   for (const lane of lanes.slice(0, 5)) {
     const items = Array.isArray(lane.items) ? lane.items.slice(0, 3) : [];
     const top = items[0] || null;
     const results = formatPortfolioCustomerActionLeaderboardResults(items);
     const reason = shortenPortfolioCustomerText(top?.reason || lane.purpose || "", 54);
     const policy = shortenPortfolioCustomerText(lane.sortPolicy || getPortfolioCustomerActionLaneSortPolicy(lane.id), 86);
-    lines.push(`- ${lane.title || "行动榜"}：排序口径：${policy}。结果：${results || "暂无第一对象"}${reason ? `。首选理由：${reason}` : ""}`);
+    lines.push(`- ${lane.title || "行动榜"}：结果：${results || "暂无第一对象"}。排序口径：${policy}${reason ? `。第一名为什么：${reason}` : ""}`);
   }
   return lines;
 }
@@ -10023,7 +10032,8 @@ function formatPortfolioCustomerActionLeaderboardResults(items = []) {
     .slice(0, 3)
     .map((item, index) => {
       const subject = [item.code, item.name].filter(Boolean).join(" ") || item.action || "待复核";
-      return `${index + 1}. ${subject}`;
+      const action = item.action ? `（${shortenPortfolioCustomerText(item.action, 18)}）` : "";
+      return `${index + 1}. ${subject}${action}`;
     })
     .join("；");
 }
@@ -37462,6 +37472,20 @@ function isFundOutputPriorityPreferenceRequest(text) {
   return /(?:排序|排行|排名|优先|首选|结果榜|直接给(?:我)?结果|先给(?:我)?结果|结果优先|少报数据|少讲数据|不要(?:再)?报数|不要(?:再)?堆数据|别(?:再)?报数据|太啰嗦|啰嗦|干巴巴|高夏普|低回撤|低波动|同类排名|费用|费率|规模|流动性|基金经理|经理稳定|持仓前景|主力题材|主力资金|新闻逻辑)/.test(normalized);
 }
 
+function buildFundPriorityPreferenceAnswer(userText = "") {
+  const sortPolicy = formatFundAnswerSortPolicy(
+    userText,
+    "高夏普/低回撤优先，再看买点、主力/新闻支撑、费用和持仓承载。"
+  );
+  return normalizeUserFacingFundAnswer([
+    "已生效：以后多基金推荐先给结果，不先铺数据。",
+    `排序口径：${sortPolicy}`,
+    "固定结构：直接结论 -> 排序口径 -> 结果榜 -> 为什么这样排 -> 执行 -> 边界。",
+    "结果榜：只写第1/2/3优先和一句人话理由；夏普、回撤、规模这类数字只在会改变动作时出现。",
+    "硬纪律：旧题材、主力撤离、接盘风险和数据过期会先剔除，排名再高也不直接买。"
+  ].join("\n"));
+}
+
 function extractUserPortfolioId(text) {
   const raw = String(text || "");
   const patterns = [
@@ -38611,6 +38635,7 @@ export {
   buildFeishuImageCaption,
   buildFeishuImageSupplementText,
   buildFundReportChartGlossaryAnswer,
+  buildFundPriorityPreferenceAnswer,
   buildMarketDataQuality,
   buildThemeRadar,
   buildThemeLeaderboards,

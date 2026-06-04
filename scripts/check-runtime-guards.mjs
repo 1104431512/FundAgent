@@ -2645,7 +2645,7 @@ const requiredPatterns = [
     message: "portfolio status answers must translate customer action leaderboards before detailed action-card lines."
   },
   {
-    pattern: /function buildPortfolioCustomerActionLeaderboardStatusLines[\s\S]{0,1200}排序口径[\s\S]{0,500}结果：\$\{results/,
+    pattern: /function buildPortfolioCustomerActionLeaderboardStatusLines[\s\S]{0,1200}先看结果[\s\S]{0,900}结果：\$\{results[\s\S]{0,360}排序口径/,
     message: "portfolio customer action leaderboard status lines must lead with sort policy and ranked results instead of verbose trigger dumps."
   },
   {
@@ -3587,6 +3587,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*function isFundOutputPriorityPreferenceRequest[\s\S]{0,700}isFundAnswerPriorityLeaderboardRequest)(?=[\s\S]*hard_rule_priority_leaderboard_preference)(?=[\s\S]*answer_priority_preference)(?=[\s\S]*getFundQaSkillIds\(\["fund-recommendation"\]\))/,
     message: "priority-output preference feedback such as high-Sharpe first or less metric dumping must route to fund QA instead of plain conversation."
+  },
+  {
+    pattern: /(?=[\s\S]*function buildFundPriorityPreferenceAnswer[\s\S]{0,700}已生效：以后多基金推荐先给结果)(?=[\s\S]*handleFundQaWorkflow[\s\S]{0,420}answer_priority_preference[\s\S]{0,220}buildFundPriorityPreferenceAnswer)/,
+    message: "priority-output preference requests must get a deterministic short acknowledgement instead of another model-generated long answer."
   },
   {
     pattern: /isPullbackSetupDiscoveryAsk/,

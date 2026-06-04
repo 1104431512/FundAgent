@@ -58,6 +58,11 @@ await assertIntent({
   expectedMode: "answer_priority_preference",
   requiredSkills: ["fund-recommendation", "fund-answer-quality"]
 });
+const priorityPreferenceAnswer = manager.buildFundPriorityPreferenceAnswer("现在经理太啰嗦了，干巴巴的讲数据。我更想看到直接结果，按高夏普优先排");
+assert(priorityPreferenceAnswer.includes("已生效：以后多基金推荐先给结果"), "priority preference request must receive a deterministic result-first acknowledgement");
+assert(priorityPreferenceAnswer.includes("排序口径：高夏普/低回撤优先"), "priority preference acknowledgement must echo the requested high-Sharpe priority");
+assert(priorityPreferenceAnswer.includes("结果榜：只写第1/2/3优先") && priorityPreferenceAnswer.includes("硬纪律：旧题材"), "priority preference acknowledgement must define short leaderboard output and stale-theme discipline");
+assert(priorityPreferenceAnswer.split(/\r?\n/).filter(Boolean).length <= 5, "priority preference acknowledgement must stay short and not become another verbose answer");
 const normalizedUserPortfolios = manager.normalizeUserPortfolios([
   {
     userId: "admin",
