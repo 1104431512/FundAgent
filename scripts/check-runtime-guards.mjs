@@ -815,6 +815,30 @@ const requiredPatterns = [
     message: "fund NAV history live successes must be cached and reused as structured cache fallbacks."
   },
   {
+    pattern: {
+      test: (source) => source.includes("FUND_RANKING_CACHE_PATH")
+        && source.includes("fund-ranking-cache.json")
+        && source.includes("FUND_RANKING_CACHE_MAX_AGE_HOURS")
+    },
+    message: "fund ranking scans must have a persistent cache path and max age for rankhandler outages."
+  },
+  {
+    pattern: /function readFundRankingCache[\s\S]{0,520}rankings[\s\S]{0,900}function persistFundRankingCache[\s\S]{0,760}fundRankingCacheWrites/,
+    message: "fund ranking cache must have deterministic read and persist helpers."
+  },
+  {
+    pattern: /function cacheFundRankingResult[\s\S]{0,1200}function buildCachedFundRankingFallback[\s\S]{0,1400}sourceMode:\s*"cache_fallback"/,
+    message: "fund ranking live successes must be cached and reused as structured cache fallbacks."
+  },
+  {
+    pattern: /async function fetchFundRankingByMetric[\s\S]{0,1200}readFundRankingCache\(\)[\s\S]{0,2600}cacheFundRankingResult[\s\S]{0,900}buildCacheFallback/,
+    message: "fund ranking fetches must write successful scans and fall back to cached rankings when live scans fail or return empty."
+  },
+  {
+    pattern: /async function fetchPullbackSetupRankingCandidates[\s\S]{0,700}const cache = readFundRankingCache\(\)[\s\S]{0,1600}persistFundRankingCache\(cache\)[\s\S]{0,900}ranking_cache_fallback/,
+    message: "pullback/setup discovery must share ranking cache updates and label cached scan candidates."
+  },
+  {
     pattern: /function getActionabilityFreshnessDiscipline[\s\S]{0,900}navHistoryCacheFallback[\s\S]{0,700}系统净值历史缓存回退降级[\s\S]{0,300}不能当作实时买点确认/,
     message: "fund actionability must downgrade NAV-history cache fallback instead of treating cached risk metrics as live buy evidence."
   },
@@ -965,6 +989,10 @@ const requiredPatterns = [
   {
     pattern: /榜单型回答必须短[\s\S]{0,180}最多3条为什么这样排[\s\S]{0,180}1条执行方案[\s\S]{0,180}最多2条决策边界/,
     message: "fund recommendation prompts must keep ranked answers concise instead of turning them into long metric reports."
+  },
+  {
+    pattern: /用户没给金额时只写小仓\/0元观察[\s\S]{0,120}不要硬套1万元模板/,
+    message: "short priority leaderboards must not default to a 10k capital template when the user only asks for ranked results."
   },
   {
     pattern: /短榜单模式[\s\S]{0,160}只写直接结论、排序口径、结果榜、为什么这样排、执行、边界[\s\S]{0,220}不要再追加推荐清单/,

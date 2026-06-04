@@ -17,6 +17,7 @@ const PORTFOLIO_DB_PATH = path.resolve(process.env.PORTFOLIO_DB_PATH || path.joi
 const MARKET_SNAPSHOT_CACHE_PATH = path.resolve(process.env.MARKET_SNAPSHOT_CACHE_PATH || path.join(ROOT, "data", "market-snapshot-cache.json"));
 const FUND_RESEARCH_DIGEST_CACHE_PATH = path.resolve(process.env.FUND_RESEARCH_DIGEST_CACHE_PATH || path.join(ROOT, "data", "fund-research-digest-cache.json"));
 const FUND_NAV_HISTORY_CACHE_PATH = path.resolve(process.env.FUND_NAV_HISTORY_CACHE_PATH || path.join(ROOT, "data", "fund-nav-history-cache.json"));
+const FUND_RANKING_CACHE_PATH = path.resolve(process.env.FUND_RANKING_CACHE_PATH || path.join(ROOT, "data", "fund-ranking-cache.json"));
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
 const PUBLIC_DIR = path.join(ROOT, "public");
 const SKILLS_DIR = path.join(ROOT, "skills");
@@ -51,6 +52,7 @@ const PUBLIC_DATA_TIMEOUT_MS = Number(process.env.PUBLIC_DATA_TIMEOUT_MS || 2000
 const MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS = Number(process.env.MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS || 48);
 const FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS || 72);
 const FUND_NAV_HISTORY_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_NAV_HISTORY_CACHE_MAX_AGE_HOURS || 168);
+const FUND_RANKING_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_RANKING_CACHE_MAX_AGE_HOURS || 48);
 const pendingImageMessages = new Map();
 const pendingUserPortfolioImportRequests = new Map();
 const DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS = [
@@ -833,7 +835,7 @@ async function processFeishuFundMessage({
       message.message_id,
       isHeldSellPlan
         ? "进度：主席验收中。正在把投票结果压缩成飞书卡片，并生成持有/减仓/卖出计划。"
-        : "进度：主席验收中。正在把投票结果压缩成飞书卡片，并生成 1 万元执行方案。",
+        : "进度：主席验收中。正在把投票结果压缩成飞书卡片，并生成分档执行方案。",
       { kind: "progress" }
     ).catch((error) => {
       console.error("[progress-reply-error]", error);
@@ -23860,7 +23862,7 @@ async function buildCommitteeVoteWithModel({ userText, messageType, extracted, e
       : "5. 建议动作草案：买入 / 分批买入 / 持有 / 换基 / 观察 / 回避。",
     isHeldSellPlan
       ? "6. 持仓处置草案：激进、均衡、保守各自是继续拿、减多少或触发什么条件再卖；不要写新增申购金额。"
-      : "6. 10000 元草案：激进、均衡、保守各自金额。"
+      : "6. 执行草案：用户给新增金额时再换算金额；否则只给激进、均衡、保守的小仓/0元观察比例。"
   ].join("\n");
 
   const maxTokens = getFundWorkflowMaxOutputTokens(MIN_FUND_COMMITTEE_OUTPUT_TOKENS);
@@ -23919,7 +23921,7 @@ async function analyzeFundWithModel({ userText, messageType, extracted, enrichme
       : "3. 经理最终判断：最终动作必须是买入 / 分批买入 / 持有 / 换基 / 观察 / 回避之一，并说明最大买点和最大不买理由。",
     isHeldSellPlan
       ? "4. 复核节奏：给用户一个可执行的复核窗口，例如未来3-5个交易日看是否止跌转强、跌破哪类位置就不等、冲高回落怎么处理。"
-      : "4. 1万元执行方案：假设用户准备新增 10000 元，给出激进、均衡、保守三档的金额或比例；如果基金适合出击，激进档可以给到更高比例，但要写清止损/再评估触发条件。",
+      : "4. 执行方案：用户给出新增金额时再换算金额；否则给激进、均衡、保守三档的小仓/0元观察比例和触发条件。",
     "5. 自评估结果：是否适合当前用户真实需求，适合谁，不适合谁；把把握度写成自然句，不要写 confidence 或“信心：高”这类字段。",
     isHeldSellPlan
       ? "6. 决策边界：最多 2 条，只列会改变继续持有/减仓/卖出动作的条件，不要写通用风险清单。"
@@ -24008,7 +24010,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
       "2. 排序口径：照用户指定口径写，例如高夏普/低回撤优先；不要擅自换成买点优先。",
       "3. 结果榜：一行给出 1/2/3 的首选顺序，每只只写一句人话理由，不堆近5日/近20日/夏普/回撤/规模等明细。",
       "4. 为什么这样排：最多3个短理由，围绕走势、主力/新闻、持仓承载、费用或风险收益质量。",
-      "5. 执行：1万元资金怎么动，第一名上限多少，第二/三名是否0元备选。",
+      "5. 执行：第一名是否小仓验证，第二/三名是否0元备选；用户没给金额时只写小仓/0元观察，不要硬套1万元模板。",
       "6. 边界：最多2个会导致少买、不买或暂停加仓的条件。",
       "禁止追加推荐清单、备选观察、缺失数据、自评估、题材雷达、日报式段落或逐只长分析。"
     ].join("\n")
@@ -24021,7 +24023,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
       "5. 推荐清单：按排序口径只展开优先 3-4 个候选基金或 ETF；每个候选先写“第几优先 + 一句话原因”，再写份额类别、费用模型、主题承载逻辑和配图看点。5日/10日早期转强、120日区间低位、回撤、夏普、费用里只保留最能改变动作的2-3个数字，其余改成自然中文。只能使用快照、下钻或经理自选候选池中的候选代码；如果没有足够代码，就写“待复核方向”。",
       "   同一基金 A/C 类只能占 1 个推荐名额；同一指数/同一 ETF 联接只列 1 个主品种，其他代码只能作为替代项说明。",
       "6. 备选观察：如果有未到买点但值得等的候选，用一行写 3-5 个代码和触发条件；偏热、追涨或回避对象不要混进备选。",
-      "7. 1万元执行：直接给激进、均衡、保守三档金额或比例。",
+      "7. 执行方案：用户给出新增金额时再换算金额；否则直接给激进、均衡、保守三档的小仓/0元观察比例。",
       "8. 决策边界：最多 2 条，只写会导致少买/不买/暂停加仓的题材或价格条件。",
       "全文控制在 12-16 行内；除结果榜外，每行尽量不超过90字。"
     ].join("\n");
@@ -25383,8 +25385,8 @@ function buildFundResultLeaderboardFallback({ text = "", workflow = "", userText
     `${index + 1}. ${formatFundAnswerLeaderboardCandidate(item.candidate, { sortPolicy, userText, rankIndex: index })}`
   ).join("；")}`;
   const executionLine = blockedCount === ranked.length
-    ? "执行：1万元资金先买入0元；只把前三名加入复核，等买点和题材证据齐了再谈金额。"
-    : "执行：1万元资金里第一名最多1000元验证，第二、三名先0元备选；没有买点/题材确认就继续等。";
+    ? "执行：先买入0元；只把前三名加入复核，等买点和题材证据齐了再谈金额。"
+    : "执行：第一名只给小仓验证资格，第二、三名先0元备选；没有买点/题材确认就继续等。";
   return normalizeUserFacingFundAnswer([
     directLine,
     `排序口径：${sortPolicy}`,
@@ -25814,7 +25816,7 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
       catchdownLine,
       ...(watchLines.length ? ["", "观察池（不是主推荐）：", ...watchLines] : []),
       "",
-      "执行方案：1万元新资金暂时买入0元；激进、均衡、保守三档都先等待下一轮筛选。",
+      "执行方案：新资金暂时买入0元；激进、均衡、保守三档都先等待下一轮筛选。",
       buildPullbackFallbackRecheckCondition({ catchdownMode: catchdownIssue }),
       "我对这条纪律判断把握度较高，因为当前证据不足以支持“回调完成、低位、准备启动”的主推荐。"
     ].filter(Boolean).join("\n");
@@ -25835,7 +25837,7 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
       `排序口径：${sortPolicy}`,
       `结果榜：${resultLines.join("；")}`,
       buildFundAnswerLeaderboardWhyLine(userText),
-      "执行：1万元里第一名最多2000元以内分批验证；第二、三名先0元备选，等买点和题材证据齐了再动。",
+      "执行：第一名只做小仓分批验证；第二、三名先0元备选，等买点和题材证据齐了再动。",
       catchdownLine,
       catchdownIssue
         ? "边界：旧催化、主力撤离或底层持仓走弱的候选一律不买，等资金回流和新鲜催化同时出现后再复核。"
@@ -25851,7 +25853,7 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
     "推荐清单：",
     ...recommendationLines,
     "",
-    "1万元执行：激进2000元以内，均衡1000元以内，保守先0元观察；只分批，不追单。",
+    "执行方案：激进小仓分批验证，均衡只试一小笔，保守先0元观察；只分批，不追单。",
     catchdownLine,
     watchLines.length ? "观察/排除：" : "",
     ...watchLines,
@@ -30516,22 +30518,32 @@ async function fetchPullbackSetupRankingCandidates() {
     { metric: "6yzf", sort: "asc", label: "近6月低位候选" }
   ];
   const limit = Number(process.env.PULLBACK_SETUP_RANK_LIMIT || 60);
+  const cache = readFundRankingCache();
+  let cacheDirty = false;
   const groups = await Promise.all(fundTypes.flatMap(([fundType, label]) =>
     metrics.map((metric) =>
       fetchFundRankingByMetric(fundType, label, {
         metric: metric.metric,
         sort: metric.sort,
         rankingMetric: metric.label,
-        limit: metric.limit || limit
+        limit: metric.limit || limit,
+        cache,
+        persistCache: false,
+        onCacheUpdate: () => {
+          cacheDirty = true;
+        }
       }).catch((error) => ({ ok: false, error: error.message, items: [] }))
     )
   ));
+  if (cacheDirty) persistFundRankingCache(cache);
 
   const rankedItems = groups.flatMap((group) =>
     (group.items || []).map((item) => ({
       ...item,
       keywords: [...new Set([...(item.keywords || []), group.rankingMetric || "低位候选"].filter(Boolean))],
-      setupDiscoverySource: "ranking_scan"
+      setupDiscoverySource: group.cacheFallback ? "ranking_cache_fallback" : "ranking_scan",
+      rankingCacheFallback: Boolean(group.cacheFallback),
+      rankingCacheAgeHours: Number.isFinite(Number(group.cacheAgeHours)) ? Number(group.cacheAgeHours) : null
     }))
   );
   const weeklyReversalItems = selectWeeklyReversalRankCandidates(rankedItems).map((item) => ({
@@ -35197,46 +35209,153 @@ async function fetchFundRanking(fundType, label) {
   });
 }
 
+function readFundRankingCache(filePath = FUND_RANKING_CACHE_PATH) {
+  const raw = safeReadJson(filePath);
+  return raw && typeof raw === "object" && raw.rankings && typeof raw.rankings === "object"
+    ? { ...raw, rankings: raw.rankings }
+    : { version: 1, updatedAt: "", rankings: {} };
+}
+
+function persistFundRankingCache(cache = {}, filePath = FUND_RANKING_CACHE_PATH) {
+  try {
+    const payload = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      rankings: cache.rankings || {}
+    };
+    ensureDir(path.dirname(filePath));
+    fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    updateStats({ counters: { fundRankingCacheWrites: 1 }, last: { lastFundRankingCacheWriteAt: payload.updatedAt } });
+    return payload;
+  } catch (error) {
+    console.warn("[fund-ranking-cache-write-error]", error.message);
+    recordError(error, { fundRankingCacheWriteFailures: 1 });
+    return cache;
+  }
+}
+
+function getFundRankingCacheKey({ fundType = "", metric = "", sort = "", rankingSort = "", limit = "" } = {}) {
+  return [fundType, metric, sort || rankingSort, Number(limit || 0)].join("|");
+}
+
+function cacheFundRankingResult(cache = {}, result = {}, fetchedAt = new Date().toISOString()) {
+  if (!result?.ok || !Array.isArray(result.items) || !result.items.length) return null;
+  const key = getFundRankingCacheKey(result);
+  if (!key || key.startsWith("|")) return null;
+  cache.rankings = cache.rankings && typeof cache.rankings === "object" ? cache.rankings : {};
+  cache.rankings[key] = {
+    key,
+    fundType: result.fundType || "",
+    label: result.label || "",
+    metric: result.metric || result.rankingMetric || "",
+    rankingMetric: result.rankingMetric || "",
+    rankingSort: result.rankingSort || result.sort || "",
+    limit: Number(result.limit || result.items.length || 0),
+    startDate: result.startDate || "",
+    endDate: result.endDate || "",
+    cachedAt: fetchedAt,
+    items: result.items.slice(0, Number(result.limit || result.items.length || 0) || result.items.length)
+  };
+  return cache.rankings[key];
+}
+
+function buildCachedFundRankingFallback({ fundType = "", label = "", metric = "", sort = "", limit = 24 } = {}, cache = {}, options = {}) {
+  const key = getFundRankingCacheKey({ fundType, metric, sort, limit });
+  const cached = key ? cache?.rankings?.[key] : null;
+  if (!cached?.items?.length) return null;
+  const fetchedAt = options.fetchedAt || new Date().toISOString();
+  const ageHours = getMarketSnapshotCacheAgeHours(cached.cachedAt, fetchedAt);
+  if (!Number.isFinite(ageHours) || ageHours > FUND_RANKING_CACHE_MAX_AGE_HOURS) return null;
+  updateStats({
+    counters: { fundRankingCacheFallbacks: 1 },
+    last: { lastFundRankingCacheFallbackAt: fetchedAt }
+  });
+  return {
+    ok: true,
+    fundType,
+    label: label || cached.label || "",
+    metric,
+    rankingMetric: cached.rankingMetric || options.rankingMetric || metric,
+    rankingSort: sort,
+    limit: Number(limit || cached.limit || cached.items.length),
+    startDate: cached.startDate || "",
+    endDate: cached.endDate || "",
+    sourceMode: "cache_fallback",
+    cacheFallback: true,
+    cacheFetchedAt: cached.cachedAt || "",
+    cacheAgeHours: round(ageHours, 2),
+    liveError: String(options.liveError || "基金排行实时源失败，使用缓存回退").slice(0, 240),
+    items: (cached.items || []).slice(0, Number(limit || cached.limit || cached.items.length))
+  };
+}
+
 async function fetchFundRankingByMetric(fundType, label, options = {}) {
   const endDate = new Date();
   const startDate = new Date(endDate);
   startDate.setMonth(startDate.getMonth() - 1);
+  const fetchedAt = options.fetchedAt || new Date().toISOString();
+  const cache = options.cache || readFundRankingCache();
   const metric = options.metric || "1yzf";
   const sort = options.sort || "desc";
   const limit = Number(options.limit || process.env.FUND_DISCOVERY_RANK_LIMIT || 24);
   const datedStartDate = formatDate(startDate);
   const datedEndDate = formatDate(endDate);
-  const datedUrl = buildFundRankingUrl({ fundType, metric, sort, limit, startDate: datedStartDate, endDate: datedEndDate });
-  const text = await fetchText(datedUrl.href);
-  let items = parseFundRankData(text, label);
-  let usedStartDate = datedStartDate;
-  let usedEndDate = datedEndDate;
-  let dateFallback = false;
-  let fetches = 1;
-  if (!items.length && options.allowDateFallback !== false) {
-    const fallbackUrl = buildFundRankingUrl({ fundType, metric, sort, limit });
-    const fallbackText = await fetchText(fallbackUrl.href);
-    fetches += 1;
-    const fallbackItems = parseFundRankData(fallbackText, label);
-    if (fallbackItems.length) {
-      items = fallbackItems;
-      usedStartDate = "latest";
-      usedEndDate = "latest";
-      dateFallback = true;
+  const request = { fundType, label, metric, sort, limit };
+  const buildCacheFallback = (liveError) => options.allowCacheFallback === false
+    ? null
+    : buildCachedFundRankingFallback(request, cache, {
+        fetchedAt,
+        rankingMetric: options.rankingMetric || "近1月涨幅",
+        liveError
+      });
+  try {
+    const datedUrl = buildFundRankingUrl({ fundType, metric, sort, limit, startDate: datedStartDate, endDate: datedEndDate });
+    const text = await fetchText(datedUrl.href);
+    let items = parseFundRankData(text, label);
+    let usedStartDate = datedStartDate;
+    let usedEndDate = datedEndDate;
+    let dateFallback = false;
+    let fetches = 1;
+    if (!items.length && options.allowDateFallback !== false) {
+      const fallbackUrl = buildFundRankingUrl({ fundType, metric, sort, limit });
+      const fallbackText = await fetchText(fallbackUrl.href);
+      fetches += 1;
+      const fallbackItems = parseFundRankData(fallbackText, label);
+      if (fallbackItems.length) {
+        items = fallbackItems;
+        usedStartDate = "latest";
+        usedEndDate = "latest";
+        dateFallback = true;
+      }
     }
+    updateStats({ counters: { fundRankingFetches: fetches, fundRankingDateFallbacks: dateFallback ? 1 : 0 } });
+    const result = {
+      ok: true,
+      fundType,
+      label,
+      metric,
+      rankingMetric: options.rankingMetric || "近1月涨幅",
+      rankingSort: sort,
+      limit,
+      startDate: usedStartDate,
+      endDate: usedEndDate,
+      dateFallback,
+      items
+    };
+    if (items.length) {
+      const cached = cacheFundRankingResult(cache, result, fetchedAt);
+      if (cached && typeof options.onCacheUpdate === "function") options.onCacheUpdate(result);
+      if (cached && options.persistCache !== false && !options.cache) persistFundRankingCache(cache);
+      return result;
+    }
+    const cachedFallback = buildCacheFallback("基金排行实时源返回为空");
+    if (cachedFallback) return cachedFallback;
+    return result;
+  } catch (error) {
+    const cachedFallback = buildCacheFallback(error.message);
+    if (cachedFallback) return cachedFallback;
+    throw error;
   }
-  updateStats({ counters: { fundRankingFetches: fetches, fundRankingDateFallbacks: dateFallback ? 1 : 0 } });
-  return {
-    ok: true,
-    fundType,
-    label,
-    rankingMetric: options.rankingMetric || "近1月涨幅",
-    rankingSort: sort,
-    startDate: usedStartDate,
-    endDate: usedEndDate,
-    dateFallback,
-    items
-  };
 }
 
 function buildFundRankingUrl({ fundType, metric, sort, limit, startDate = "", endDate = "" } = {}) {
@@ -38257,6 +38376,8 @@ function getDefaultStats() {
       preciousMetalQuoteFetches: 0,
       preciousMetalFundSearches: 0,
       fundRankingFetches: 0,
+      fundRankingCacheWrites: 0,
+      fundRankingCacheFallbacks: 0,
       pullbackSetupDiscoveryFailures: 0,
       navHistoryFetches: 0,
       navHistoryPoints: 0,
@@ -39873,7 +39994,7 @@ function buildSkillFocusDirective(intent = {}, skills = []) {
     lines.push(
       "本次任务焦点：回调完成/低位启动，但低位不是第一理由，先确认题材还活着。",
       "判断顺序：先看当前题材作战图，必须分清主力进场、题材预热、低位轮动、追涨拥挤和退潮接盘；再看新闻/政策/订单/外盘催化是否新鲜、主力资金是否跟进、基金前十大持仓或指数名称是否真实承载；最后才看 5日/10日刚转强、120日区间位置偏低、20日/60日不过热。",
-      "推荐纪律：主推荐只能来自“当前题材有支撑 + 基金承载题材 + 回调/启动买点合格”的候选；题材退潮、主力撤离、旧催化、持仓不承载或只是表面回调的基金只能进观察/排除，1万元执行中必须是0元或等待条件。",
+      "推荐纪律：主推荐只能来自“当前题材有支撑 + 基金承载题材 + 回调/启动买点合格”的候选；题材退潮、主力撤离、旧催化、持仓不承载或只是表面回调的基金只能进观察/排除，执行方案中必须是0元或等待条件。",
       "如果没有合格主候选，要明确说暂未筛到，并给出下一轮要追踪的主力进场/预热题材和代表基金召回方向；不要用黄金、贵金属或其他热门基金硬凑。"
     );
   } else if (workflow === "fund_recommendation") {
@@ -40411,8 +40532,10 @@ export {
   buildRealtimeFundValuationSignal,
   applyMarketSnapshotCacheFallback,
   buildCachedFundNavHistoryFallback,
+  buildCachedFundRankingFallback,
   cacheFundResearchDigest,
   cacheFundNavHistory,
+  cacheFundRankingResult,
   buildThemeRadar,
   buildThemeLeaderboards,
   buildThemeMainForcePlaybook,
@@ -40473,8 +40596,10 @@ export {
   isSufficientFundResearchDigestForDecision,
   readFundResearchDigestCache,
   readFundNavHistoryCache,
+  readFundRankingCache,
   persistFundResearchDigestCache,
   persistFundNavHistoryCache,
+  persistFundRankingCache,
   getFundRecommendationSkillIds,
   getDeploymentFreshness,
   getPortfolioDecisionSkillIds,

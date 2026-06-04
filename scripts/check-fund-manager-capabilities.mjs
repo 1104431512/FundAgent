@@ -12105,6 +12105,32 @@ const cachedMarketComponents = manager.applyMarketSnapshotCacheFallback([
 const cachedIndustryComponent = cachedMarketComponents.find((item) => item.key === "industryBoards");
 assert(cachedIndustryComponent?.result?.cacheFallback, "market snapshot cache must provide component-level fallback when a live source fails");
 assert.equal(cachedIndustryComponent.result.items[0].name, "半导体", "market snapshot cache fallback must preserve cached board items for deterministic indicator calculations");
+const fundRankingCache = { version: 1, updatedAt: "", rankings: {} };
+manager.cacheFundRankingResult(fundRankingCache, {
+  ok: true,
+  fundType: "gp",
+  label: "股票型基金",
+  metric: "3yzf",
+  rankingMetric: "近3月低位候选",
+  rankingSort: "asc",
+  limit: 60,
+  startDate: todayIso,
+  endDate: todayIso,
+  items: [
+    { code: "000188", name: "缓存低位候选C", threeMonthPct: -9.2, oneWeekPct: 1.1 },
+    { code: "000189", name: "缓存备选基金A", threeMonthPct: -6.3, oneWeekPct: 0.8 }
+  ]
+}, `${todayIso}T08:40:00.000Z`);
+const cachedRankingFallback = manager.buildCachedFundRankingFallback({
+  fundType: "gp",
+  label: "股票型基金",
+  metric: "3yzf",
+  sort: "asc",
+  limit: 60
+}, fundRankingCache, { fetchedAt: `${todayIso}T09:30:00.000Z`, rankingMetric: "近3月低位候选", liveError: "rankhandler timeout" });
+assert(cachedRankingFallback?.cacheFallback, "fund ranking cache must provide structured fallback when rankhandler fails");
+assert.equal(cachedRankingFallback.items[0].code, "000188", "fund ranking cache fallback must preserve cached low-base candidates for deterministic discovery");
+assert.equal(cachedRankingFallback.sourceMode, "cache_fallback", "fund ranking cache fallback must be explicitly marked as non-live evidence");
 const cachedFallbackQuality = manager.buildMarketDataQuality(cachedMarketComponents, {
   fundCandidates: { stockFunds: Array.from({ length: 12 }, (_, index) => ({ code: String(index).padStart(6, "0") })) },
   fetchedAt: freshThemeRefreshAt
@@ -12544,7 +12570,7 @@ const compactPriorityChartAnswer = manager.appendFundReportChartReadingGuide([
   "排序口径：高夏普/低回撤优先，再看买点和费用。",
   "结果榜：1. 000072 高夏普基金C：风险收益更稳；2. 000071 低位基金C：买点更近。",
   "为什么这样排：先看风险收益质量，再看回调启动。",
-  "执行：1万元里第一名最多1000元，第二名0元备选。",
+  "执行：第一名小仓验证，第二名0元备选。",
   "边界：题材转弱或数据过期就暂停。"
 ].join("\n"), expandedChartProfiles, { compact: true });
 assert(
@@ -12933,12 +12959,12 @@ const deterministicMainFallback = manager.buildPullbackQualityFallbackAnswer({
   }
 });
 assert(deterministicMainFallback.includes("000001"), "deterministic fallback must keep qualified main candidates");
-assert(!deterministicMainFallback.split("推荐清单：")[1].split("1万元执行")[0].includes("000003"), "deterministic fallback must not promote watch candidates into recommendations");
+assert(!deterministicMainFallback.split("推荐清单：")[1].split("执行方案")[0].includes("000003"), "deterministic fallback must not promote watch candidates into recommendations");
 assert(deterministicMainFallback.includes("近5日+1.4%"), "deterministic fallback must show early 5-day turn evidence");
 assert(deterministicMainFallback.includes("近10日+2.8%"), "deterministic fallback must show early 10-day turn evidence");
 assert(deterministicMainFallback.includes("120日位置38.5%"), "deterministic fallback must show low-position evidence");
 assert(deterministicMainFallback.includes("C类"), "deterministic fallback must show share class evidence");
-assert(deterministicMainFallback.includes("激进2000元以内") && deterministicMainFallback.includes("均衡1000元以内") && deterministicMainFallback.includes("保守先0元观察"), "deterministic fallback must keep three-tier execution");
+assert(deterministicMainFallback.includes("执行方案：激进小仓分批验证") && deterministicMainFallback.includes("均衡只试一小笔") && deterministicMainFallback.includes("保守先0元观察"), "deterministic fallback must keep three-tier execution without hard-coded capital");
 const highSharpePriorityFallback = manager.buildPullbackQualityFallbackAnswer({
   userText: "我想找回调完成低位启动的基金，按高夏普优先",
   issues: promotedWatchQuality.issues,
@@ -12984,7 +13010,7 @@ assert(
   !/结果榜：.*(?:近5日|近10日|近20日|近60日|夏普\s*\d|回撤-?\d)/.test(highSharpeResultLine),
   "deterministic fallback result leaderboard must explain priority in plain language instead of dumping metrics"
 );
-const highSharpeRecommendationBlock = highSharpePriorityFallback.split("推荐清单：")[1]?.split("1万元执行")[0] || "";
+const highSharpeRecommendationBlock = highSharpePriorityFallback.split("推荐清单：")[1]?.split("执行方案")[0] || "";
 assert(
   !highSharpeRecommendationBlock.includes("近20日") && !highSharpeRecommendationBlock.includes("近60日") && !highSharpeRecommendationBlock.includes("250日位置"),
   "deterministic fallback recommendation details must keep only the decisive 5d/10d/120d numbers instead of a full metric dump"
@@ -13066,7 +13092,7 @@ const highSharpeAlmostShortAnswer = [
   "排序口径：高夏普/低回撤优先，再看买点和费用。",
   "结果榜：1. 000072 高夏普低回撤基金C：风险收益更稳；2. 000071 买点更强低夏普基金C：买点更近。",
   "为什么这样排：先看风险收益质量，再看回调启动是否成立。",
-  "执行：1万元里第一名最多1000元，第二名0元备选。",
+  "执行：第一名小仓验证，第二名0元备选。",
   "边界：如果题材转弱或数据过期就暂停。",
   "补充：详细指标后续再看。"
 ].join("\n");
