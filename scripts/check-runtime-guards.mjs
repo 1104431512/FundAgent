@@ -1197,16 +1197,24 @@ const requiredPatterns = [
     message: "fund workflow watchlist reuse must apply the same snapshot freshness guard as portfolio decisions."
   },
   {
-    pattern: /function selectFundWorkflowWatchlistCandidates[\s\S]{0,520}hasFundWorkflowWatchlistThemeBlocker/,
+    pattern: /function selectFundWorkflowWatchlistCandidates(?=[\s\S]{0,900}hasFundWorkflowWatchlistThemeBlocker)/,
     message: "fund workflow watchlist reuse must exclude stale-theme or no-current-radar candidates before they enter recommendation context."
+  },
+  {
+    pattern: /function selectFundWorkflowWatchlistCandidates(?=[\s\S]{0,900}resolvePortfolioPositiveWatchRankingGate\(item\)\.ok)(?=[\s\S]{0,1200}hasFundWorkflowWatchlistThemeBlocker)/,
+    message: "fund workflow watchlist reuse must pass the shared positive gate so high-chase or catchdown ready candidates cannot enter recommendation context."
   },
   {
     pattern: /function hasFundWorkflowWatchlistThemeBlocker[\s\S]{0,1200}hasPortfolioCustomerThemeEvidenceBlocker/,
     message: "fund workflow watchlist theme blocker must reuse the shared stale-theme evidence blocker."
   },
   {
-    pattern: /function selectFundWorkflowStaleWatchlistRefreshCandidates[\s\S]{0,420}hasFundWorkflowWatchlistThemeBlocker/,
+    pattern: /function selectFundWorkflowStaleWatchlistRefreshCandidates(?=[\s\S]{0,900}hasFundWorkflowWatchlistThemeBlocker)/,
     message: "fund workflow stale-refresh queue must not keep recycling candidates already blocked by stale theme evidence."
+  },
+  {
+    pattern: /function selectFundWorkflowStaleWatchlistRefreshCandidates(?=[\s\S]{0,900}resolvePortfolioPositiveWatchRankingGate\(item\)\.ok)(?=[\s\S]{0,1200}hasFundWorkflowWatchlistThemeBlocker)/,
+    message: "fund workflow stale-refresh queue must not recycle high-chase or catchdown ready candidates."
   },
   {
     pattern: /selectFundWorkflowStaleWatchlistRefreshCandidates/,

@@ -4808,14 +4808,43 @@ const workflowWatchlistInput = [
       }]
     }
   },
+  {
+    code: "000008",
+    name: "高位追涨ready基金C",
+    status: "ready",
+    priority: 1,
+    updatedAt: "2026-05-20T00:00:00.000Z",
+    reason: "模型曾标记接近可买，但最新走势已经涨成追涨。",
+    buyTriggers: ["等待回调后再复核"],
+    lastSnapshot: {
+      snapshotDate: "2026-05-20",
+      navDate: "2026-05-20",
+      trendProfile: {
+        ok: true,
+        latestDate: "2026-05-20",
+        trendLabel: "extended_uptrend",
+        entryBias: "wait_pullback",
+        return5dPct: 4.2,
+        return10dPct: 8.1,
+        return20dPct: 18.6,
+        return60dPct: 32.4,
+        lowPositionPct120: 94.5,
+        lowPositionPct250: 91.2,
+        drawdownFromRecentHighPct: -0.8,
+        pullbackSetup: { signal: "none", score: 22 }
+      }
+    }
+  },
   { code: "000003", name: "追涨拦截基金A", status: "blocked", reason: "短期偏热" }
 ];
 const workflowWatchlistCandidates = manager.selectFundWorkflowWatchlistCandidates(workflowWatchlistInput, setupQuery, { limit: 4, now: "2026-05-20T00:00:00.000Z" });
 assert.deepEqual(workflowWatchlistCandidates.map((item) => item.code), ["000001", "000002"], "fund workflows must reuse ready and launch-eve watchlist candidates while excluding blocked items");
 assert(!workflowWatchlistCandidates.some((item) => item.code === "000004"), "fund workflows must not reuse stale ready watchlist snapshots as recommendation evidence");
 assert(!workflowWatchlistCandidates.some((item) => item.code === "000007"), "fund workflows must not reuse stale-theme watchlist candidates whose low-rotation evidence lacks current radar refresh");
+assert(!workflowWatchlistCandidates.some((item) => item.code === "000008"), "fund workflows must not reuse high-chase ready watchlist candidates as recommendation evidence");
 const staleWorkflowRefreshCandidates = manager.selectFundWorkflowStaleWatchlistRefreshCandidates(workflowWatchlistInput, setupQuery, { limit: 2, now: "2026-05-20T00:00:00.000Z" });
 assert.deepEqual(staleWorkflowRefreshCandidates.map((item) => item.code), ["000004"], "fund workflows should refresh stale setup watchlist candidates before excluding them");
+assert(!staleWorkflowRefreshCandidates.some((item) => item.code === "000008"), "fund workflow stale refresh must not recycle high-chase ready candidates");
 const workflowWatchlistSummary = manager.buildFundWorkflowWatchlistSummary(workflowWatchlistCandidates);
 assert(workflowWatchlistSummary.includes("经理自选候选池（优先复核，不自动买入）"), "fund workflow prompt must expose manager-maintained candidates");
 assert(workflowWatchlistSummary.includes("000002 等待回调基金C"), "fund workflow prompt must include launch-eve watchlist candidates");

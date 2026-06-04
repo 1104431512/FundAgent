@@ -7355,6 +7355,7 @@ function selectFundWorkflowWatchlistCandidates(watchlist = [], userText = "", op
   const wantsPullbackSetup = isPullbackSetupRequest(userText);
   return normalizePortfolioWatchlistForDisplay(watchlist)
     .filter((item) => ["ready", "waiting_pullback", "watch"].includes(item.status))
+    .filter((item) => resolvePortfolioPositiveWatchRankingGate(item).ok)
     .filter((item) => !hasFundWorkflowWatchlistThemeBlocker(item))
     .filter((item) => isFundWorkflowWatchlistFreshEnough(item, options))
     .map((item) => {
@@ -7386,6 +7387,7 @@ function selectFundWorkflowStaleWatchlistRefreshCandidates(watchlist = [], userT
   const wantsPullbackSetup = isPullbackSetupRequest(userText);
   return normalizePortfolioWatchlistForDisplay(watchlist)
     .filter((item) => ["ready", "waiting_pullback"].includes(item.status))
+    .filter((item) => resolvePortfolioPositiveWatchRankingGate(item).ok)
     .filter((item) => !hasFundWorkflowWatchlistThemeBlocker(item))
     .filter((item) => !isFundWorkflowWatchlistFreshEnough(item, options))
     .filter((item) => !wantsPullbackSetup || isLowBaseLaunchWatchSeed(item) || /回调完成|启动前夜|低位|刚转强/.test([
