@@ -717,6 +717,27 @@ const requiredPatterns = [
     message: "fund and portfolio prompts must force data-gap disclosure when public sources are partial or poor."
   },
   {
+    pattern: /MARKET_SNAPSHOT_CACHE_PATH[\s\S]{0,260}market-snapshot-cache\.json/,
+    message: "market snapshots must have a persistent component cache instead of relying only on one-off live skill fetches."
+  },
+  {
+    pattern: {
+      test: (source) => source.includes("function fetchMarketSnapshot")
+        && source.includes("readMarketSnapshotCache()")
+        && source.includes("applyMarketSnapshotCacheFallback")
+        && source.includes("persistMarketSnapshotCache(cache)")
+    },
+    message: "market snapshot fetching must reuse cached successful components when live public sources fail."
+  },
+  {
+    pattern: /function normalizeMarketDataQualityComponent[\s\S]{0,900}cacheFallback[\s\S]{0,520}status = "cached"/,
+    message: "market data quality must distinguish cache fallback from live realtime evidence."
+  },
+  {
+    pattern: /function compactMarketDataQuality[\s\S]{0,900}cached:[\s\S]{0,520}cacheAgeHours/,
+    message: "compact model snapshots must expose cached data age so the model cannot treat fallback data as live."
+  },
+  {
     pattern: /function compactMarketSnapshotForModel[\s\S]{0,2200}compactRealtimeFundValuations[\s\S]{0,1200}compactMarketFundCandidates[\s\S]{0,1200}errors/,
     message: "model prompts must use a compact market snapshot that preserves key evidence without raw payload bloat."
   },
@@ -855,6 +876,18 @@ const requiredPatterns = [
   {
     pattern: /function isFundAnswerPriorityLeaderboardRequest[\s\S]{0,900}太啰嗦[\s\S]{0,220}干巴巴[\s\S]{0,220}直接给[\s\S]{0,220}结果[\s\S]{0,220}少报数据/,
     message: "customer complaints about verbosity or metric dumps must also trigger short result-leaderboard mode."
+  },
+  {
+    pattern: {
+      test: (source) => source.includes("const priorityPreferenceHint")
+        && source.includes("直接给我说结果")
+        && source.includes("explicitPriorityPreferenceHint")
+        && source.includes("isFundOutputPriorityPreferenceRequest(text)")
+        && source.includes('mode: "answer_priority_preference"')
+        && source.includes("const rankingPreference")
+        && source.includes("排出来")
+    },
+    message: "customer preference updates such as 'directly tell me results, rank by xx priority, e.g. high-Sharpe first' must be hard-routed before model intent guessing."
   },
   {
     pattern: /function buildStrictFundPriorityLeaderboardFallback[\s\S]{0,700}verbose_result_answer_detail[\s\S]{0,900}lines\.slice\(0,\s*6\)/,
@@ -3664,11 +3697,23 @@ const requiredPatterns = [
     message: "pullback/setup routing must recognize launch-eve natural language such as 回调到位, 筑底, and 刚拐头."
   },
   {
-    pattern: /(?=[\s\S]*function isFundOutputPriorityPreferenceRequest[\s\S]{0,700}isFundAnswerPriorityLeaderboardRequest)(?=[\s\S]*hard_rule_priority_leaderboard_preference)(?=[\s\S]*answer_priority_preference)(?=[\s\S]*getFundQaSkillIds\(\["fund-recommendation"\]\))/,
+    pattern: {
+      test: (source) => source.includes("function isFundOutputPriorityPreferenceRequest")
+        && source.includes("priorityPreferenceHint")
+        && source.includes("hard_rule_priority_leaderboard_preference")
+        && source.includes('mode: "answer_priority_preference"')
+        && source.includes('getFundQaSkillIds(["fund-recommendation"])')
+    },
     message: "priority-output preference feedback such as high-Sharpe first or less metric dumping must route to fund QA instead of plain conversation."
   },
   {
-    pattern: /(?=[\s\S]*function buildFundPriorityPreferenceAnswer[\s\S]{0,700}已生效：以后多基金推荐先给结果)(?=[\s\S]*handleFundQaWorkflow[\s\S]{0,420}answer_priority_preference[\s\S]{0,220}buildFundPriorityPreferenceAnswer)/,
+    pattern: {
+      test: (source) => source.includes("function buildFundPriorityPreferenceAnswer")
+        && source.includes("已生效：以后多基金推荐先给结果")
+        && source.includes("handleFundQaWorkflow")
+        && source.includes("answer_priority_preference")
+        && source.includes("buildFundPriorityPreferenceAnswer(userText)")
+    },
     message: "priority-output preference requests must get a deterministic short acknowledgement instead of another model-generated long answer."
   },
   {

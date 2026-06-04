@@ -14,6 +14,7 @@ const PORT = Number(process.env.PORT || 3001);
 const CONFIG_PATH = path.resolve(process.env.CONFIG_PATH || path.join(ROOT, "data", "config.json"));
 const STATS_PATH = path.resolve(process.env.STATS_PATH || path.join(ROOT, "data", "stats.json"));
 const PORTFOLIO_DB_PATH = path.resolve(process.env.PORTFOLIO_DB_PATH || path.join(ROOT, "data", "portfolio-db.json"));
+const MARKET_SNAPSHOT_CACHE_PATH = path.resolve(process.env.MARKET_SNAPSHOT_CACHE_PATH || path.join(ROOT, "data", "market-snapshot-cache.json"));
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
 const PUBLIC_DIR = path.join(ROOT, "public");
 const SKILLS_DIR = path.join(ROOT, "skills");
@@ -45,6 +46,7 @@ const DEFAULT_FEISHU_CARD_IMAGE_CHUNK_SIZE = 4;
 const DEFAULT_PORTFOLIO_REPORT_IMAGE_MIN = 8;
 const DEFAULT_PORTFOLIO_REPORT_IMAGE_LIMIT = 8;
 const PUBLIC_DATA_TIMEOUT_MS = Number(process.env.PUBLIC_DATA_TIMEOUT_MS || 20000);
+const MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS = Number(process.env.MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS || 48);
 const pendingImageMessages = new Map();
 const pendingUserPortfolioImportRequests = new Map();
 const DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS = [
@@ -2118,7 +2120,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "必须执行账户级回撤预算：账户回撤到预警线时缩小买入，到最大回撤预算时暂停新增买入并优先分批降风险；不能用加仓摊薄替代止损。",
     "必须执行单仓风控：浮亏触及止损线、浮盈大幅回吐或趋势破位时，先给 SELL/减仓复核，不要只写 HOLD。",
     "必须执行组合穿透暴露检查：同题材仓位、同一底层前十大持仓重叠、单一风格过热时，组合经理和风控经理必须写清不加仓或减风险条件。",
-    "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，marketView、team 和 actions.dataBasis 必须写清数据缺口；缺少关键板块、排行、新闻或贵金属模块时，只能 WATCH、HOLD 或小额试探，不能当作完整联网证据下重仓 BUY。",
+    "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，marketView、team 和 actions.dataBasis 必须写清数据缺口；dataQuality.cached 非空时必须说明哪些模块来自缓存回退，只能用于连续性计算，不能当作实时买点确认；缺少关键板块、排行、新闻或贵金属模块时，只能 WATCH、HOLD 或小额试探，不能当作完整联网证据下重仓 BUY。",
     "必须使用 marketSnapshot.marketIndicators.realtimeFundValuations 复核候选当下温度、盘中走势和数据新鲜度；若盘中走势显示冲高回落或尾盘转弱，不能把最新估算涨幅当作追买理由；成交和盈亏仍以确认净值为准。",
     "若操作或候选涉及 QDII/海外基金，必须使用 marketSnapshot.marketIndicators.globalMarkets 复核外盘和人民币汇率温度，并写清净值披露时差。",
     "若现金再部署纪律提示 pressureActive=true 且存在 verified_buy、starter_buy 或 theme_micro_starter 候选，actions 必须逐只给 BUY 或明确 WATCH 拦截理由；但候选 actionPermission 写着0元观察时，只能 WATCH，不能 BUY、小仓试探或写成可买。符合小仓启动条件时优先 0.5%-2.5% 试探，theme_micro_starter 只能 0.5%-1.2% 微型试探，不要继续空泛观望。",
@@ -2471,7 +2473,7 @@ async function buildPortfolioPremarketWithModel({ account, marketSnapshot, profi
     "盘前必须复核自选基金池：哪些已经接近可买、哪些还要等回调、哪些因为追高/费用/数据不足应降级。",
     "若现金再部署纪律提示 pressureActive=true，盘前 todayPlan 必须列出下午要买入复核还是继续观察的前三只候选，不能只写等待机会。",
     "盘前观察低位/回调候选时，必须先看题材是否有主力进场、预热催化或低位轮动；若题材退潮或主力撤离，候选应降级 blocked/watch，不能写成下午可买。",
-    "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，summary、riskAlerts 和 todayPlan 必须写清数据缺口；缺少关键板块、排行、新闻或贵金属模块时，盘前只做观察计划，不把它包装成买点确认。",
+    "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，summary、riskAlerts 和 todayPlan 必须写清数据缺口；dataQuality.cached 非空时必须说明哪些模块来自缓存回退，只能用于连续性计算，不能包装成实时买点确认；缺少关键板块、排行、新闻或贵金属模块时，盘前只做观察计划，不把它包装成买点确认。",
     "请只返回 JSON，不要 Markdown，不要代码块。",
     "",
     skillContext
@@ -20738,7 +20740,17 @@ function compactMarketDataQuality(quality = null) {
     available: (quality.available || []).slice(0, 12).map((item) => ({
       key: item.key || "",
       label: item.label || "",
-      count: Number(item.count || 0)
+      count: Number(item.count || 0),
+      sourceMode: item.sourceMode || "live",
+      cacheAgeHours: Number.isFinite(Number(item.cacheAgeHours)) ? Number(item.cacheAgeHours) : null
+    })),
+    cached: (quality.cached || []).slice(0, 8).map((item) => ({
+      key: item.key || "",
+      label: item.label || "",
+      count: Number(item.count || 0),
+      cacheFetchedAt: item.cacheFetchedAt || "",
+      cacheAgeHours: Number.isFinite(Number(item.cacheAgeHours)) ? Number(item.cacheAgeHours) : null,
+      liveError: String(item.liveError || "").slice(0, 120)
     })),
     missing: (quality.missing || []).slice(0, 12).map((item) => ({
       key: item.key || "",
@@ -26602,18 +26614,19 @@ async function enrichFunds(fundCodes, options = {}) {
 
 async function fetchMarketSnapshot(options = {}) {
   const fetchedAt = new Date().toISOString();
+  const cache = options.cache || readMarketSnapshotCache();
   const [
-    conceptBoards,
-    industryBoards,
-    stockFunds,
-    hybridFunds,
-    indexFunds,
-    qdiiFunds,
-    preciousMetals,
-    preciousMetalFunds,
-    globalMarketQuotes,
-    yangjibaoIndices,
-    fastNews
+    conceptBoardsRaw,
+    industryBoardsRaw,
+    stockFundsRaw,
+    hybridFundsRaw,
+    indexFundsRaw,
+    qdiiFundsRaw,
+    preciousMetalsRaw,
+    preciousMetalFundsRaw,
+    globalMarketQuotesRaw,
+    yangjibaoIndicesRaw,
+    fastNewsRaw
   ] = await Promise.all([
     fetchEastmoneyBoardCoverage("concept").catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchEastmoneyBoardCoverage("industry").catch((error) => ({ ok: false, error: error.message, items: [] })),
@@ -26627,6 +26640,31 @@ async function fetchMarketSnapshot(options = {}) {
     fetchChinaRealtimeIndexQuotes().catch((error) => ({ ok: false, error: error.message, items: [] })),
     fetchMarketFastNews().catch((error) => ({ ok: false, error: error.message, items: [] }))
   ]);
+  const baseComponents = applyMarketSnapshotCacheFallback([
+    { key: "conceptBoards", label: "概念板块", critical: true, result: conceptBoardsRaw },
+    { key: "industryBoards", label: "行业板块", critical: true, result: industryBoardsRaw },
+    { key: "stockFunds", label: "股票型基金排行", critical: true, result: stockFundsRaw },
+    { key: "hybridFunds", label: "混合型基金排行", critical: true, result: hybridFundsRaw },
+    { key: "indexFunds", label: "指数型基金排行", critical: true, result: indexFundsRaw },
+    { key: "qdiiFunds", label: "QDII基金排行", critical: false, result: qdiiFundsRaw },
+    { key: "preciousMetals", label: "贵金属行情", critical: false, result: preciousMetalsRaw },
+    { key: "preciousMetalFunds", label: "贵金属基金候选", critical: false, result: preciousMetalFundsRaw },
+    { key: "globalMarketQuotes", label: "海外指数与汇率", critical: false, result: globalMarketQuotesRaw },
+    { key: "chinaRealtimeIndices", label: "A股指数实时源", critical: false, result: yangjibaoIndicesRaw },
+    { key: "fastNews", label: "实时财经新闻", critical: true, result: fastNewsRaw }
+  ], cache, { fetchedAt });
+  const componentByKey = new Map(baseComponents.map((item) => [item.key, item.result || {}]));
+  const conceptBoards = componentByKey.get("conceptBoards") || {};
+  const industryBoards = componentByKey.get("industryBoards") || {};
+  const stockFunds = componentByKey.get("stockFunds") || {};
+  const hybridFunds = componentByKey.get("hybridFunds") || {};
+  const indexFunds = componentByKey.get("indexFunds") || {};
+  const qdiiFunds = componentByKey.get("qdiiFunds") || {};
+  const preciousMetals = componentByKey.get("preciousMetals") || {};
+  const preciousMetalFunds = componentByKey.get("preciousMetalFunds") || {};
+  const globalMarketQuotes = componentByKey.get("globalMarketQuotes") || {};
+  const yangjibaoIndices = componentByKey.get("chinaRealtimeIndices") || {};
+  const fastNews = componentByKey.get("fastNews") || {};
 
   const fundCandidates = {
     stockFunds: stockFunds.items || [],
@@ -26642,20 +26680,12 @@ async function fetchMarketSnapshot(options = {}) {
     recordError(error, { marketRealtimeValuationFailures: 1 });
     return { ok: false, error: error.message, items: [] };
   });
-  const snapshotParts = [
-    { key: "conceptBoards", label: "概念板块", critical: true, result: conceptBoards },
-    { key: "industryBoards", label: "行业板块", critical: true, result: industryBoards },
-    { key: "stockFunds", label: "股票型基金排行", critical: true, result: stockFunds },
-    { key: "hybridFunds", label: "混合型基金排行", critical: true, result: hybridFunds },
-    { key: "indexFunds", label: "指数型基金排行", critical: true, result: indexFunds },
-    { key: "qdiiFunds", label: "QDII基金排行", critical: false, result: qdiiFunds },
-    { key: "preciousMetals", label: "贵金属行情", critical: false, result: preciousMetals },
-    { key: "preciousMetalFunds", label: "贵金属基金候选", critical: false, result: preciousMetalFunds },
-    { key: "globalMarketQuotes", label: "海外指数与汇率", critical: false, result: globalMarketQuotes },
-    { key: "chinaRealtimeIndices", label: "A股指数实时源", critical: false, result: yangjibaoIndices },
-    { key: "realtimeFundValuations", label: "实时估算净值", critical: false, result: realtimeFundValuations },
-    { key: "fastNews", label: "实时财经新闻", critical: true, result: fastNews }
-  ];
+  const realtimeComponents = applyMarketSnapshotCacheFallback([
+    { key: "realtimeFundValuations", label: "实时估算净值", critical: false, result: realtimeFundValuations }
+  ], cache, { fetchedAt });
+  const snapshotParts = [...baseComponents, ...realtimeComponents];
+  const realtimeFundValuationsResolved = realtimeComponents[0]?.result || realtimeFundValuations;
+  persistMarketSnapshotCache(cache);
   const themeRadar = buildThemeRadar({
     conceptBoards: conceptBoards.items || [],
     industryBoards: industryBoards.items || [],
@@ -26693,7 +26723,7 @@ async function fetchMarketSnapshot(options = {}) {
       chinaIndices: yangjibaoIndices.items || [],
       preciousMetals: preciousMetals.items || [],
       globalMarkets: globalMarketQuotes.items || [],
-      realtimeFundValuations: realtimeFundValuations.items || []
+      realtimeFundValuations: realtimeFundValuationsResolved.items || []
     },
     themes: {
       conceptBoards: conceptBoards.items || [],
@@ -26725,21 +26755,158 @@ async function fetchMarketSnapshot(options = {}) {
   };
 }
 
+function readMarketSnapshotCache(filePath = MARKET_SNAPSHOT_CACHE_PATH) {
+  const raw = safeReadJson(filePath);
+  return raw && typeof raw === "object" && raw.components && typeof raw.components === "object"
+    ? { ...raw, components: raw.components }
+    : { version: 1, updatedAt: "", components: {} };
+}
+
+function persistMarketSnapshotCache(cache = {}, filePath = MARKET_SNAPSHOT_CACHE_PATH) {
+  try {
+    const payload = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      components: cache.components || {}
+    };
+    ensureDir(path.dirname(filePath));
+    fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    updateStats({ counters: { marketSnapshotCacheWrites: 1 }, last: { lastMarketSnapshotCacheWriteAt: payload.updatedAt } });
+    return payload;
+  } catch (error) {
+    console.warn("[market-snapshot-cache-write-error]", error.message);
+    recordError(error, { marketSnapshotCacheWriteFailures: 1 });
+    return cache;
+  }
+}
+
+function applyMarketSnapshotCacheFallback(components = [], cache = readMarketSnapshotCache(), options = {}) {
+  const fetchedAt = options.fetchedAt || new Date().toISOString();
+  let liveUpdates = 0;
+  let fallbackHits = 0;
+  const resolved = (components || []).map((component) => {
+    const key = component.key || component.result?.key || "";
+    const result = component.result || {};
+    if (isUsableLiveMarketComponent(result)) {
+      cacheMarketSnapshotComponent(cache, component, fetchedAt);
+      liveUpdates += 1;
+      return component;
+    }
+    const fallback = buildCachedMarketSnapshotComponent(component, cache, fetchedAt);
+    if (fallback) {
+      fallbackHits += 1;
+      return fallback;
+    }
+    return component;
+  });
+  if (liveUpdates || fallbackHits) {
+    updateStats({
+      counters: {
+        marketSnapshotCacheLiveUpdates: liveUpdates,
+        marketSnapshotCacheFallbacks: fallbackHits
+      },
+      last: fallbackHits ? { lastMarketSnapshotCacheFallbackAt: fetchedAt } : {}
+    });
+  }
+  return resolved;
+}
+
+function isUsableLiveMarketComponent(result = {}) {
+  if (!result || typeof result !== "object") return false;
+  if (result.ok === false) return false;
+  return Array.isArray(result.items) && result.items.length > 0;
+}
+
+function cacheMarketSnapshotComponent(cache = {}, component = {}, fetchedAt = new Date().toISOString()) {
+  const key = component.key || component.result?.key || "";
+  if (!key) return null;
+  cache.components = cache.components && typeof cache.components === "object" ? cache.components : {};
+  cache.components[key] = {
+    key,
+    label: component.label || component.result?.label || key,
+    cachedAt: fetchedAt,
+    critical: Boolean(component.critical),
+    result: sanitizeMarketSnapshotCacheResult(component.result || {}, key)
+  };
+  return cache.components[key];
+}
+
+function sanitizeMarketSnapshotCacheResult(result = {}, key = "") {
+  const itemLimit = getMarketSnapshotCacheItemLimit(key);
+  const items = Array.isArray(result.items) ? result.items.slice(0, itemLimit) : [];
+  const sanitized = {
+    ...result,
+    ok: result.ok !== false,
+    items
+  };
+  delete sanitized.error;
+  return sanitized;
+}
+
+function getMarketSnapshotCacheItemLimit(key = "") {
+  const overrides = {
+    conceptBoards: 80,
+    industryBoards: 80,
+    stockFunds: 80,
+    hybridFunds: 80,
+    indexFunds: 80,
+    qdiiFunds: 60,
+    preciousMetals: 30,
+    preciousMetalFunds: 60,
+    globalMarketQuotes: 40,
+    chinaRealtimeIndices: 30,
+    realtimeFundValuations: 80,
+    fastNews: 80
+  };
+  return Number(overrides[key] || process.env.MARKET_SNAPSHOT_CACHE_ITEM_LIMIT || 80);
+}
+
+function buildCachedMarketSnapshotComponent(component = {}, cache = {}, fetchedAt = new Date().toISOString()) {
+  const key = component.key || component.result?.key || "";
+  const cached = key ? cache?.components?.[key] : null;
+  if (!cached?.result || !Array.isArray(cached.result.items) || !cached.result.items.length) return null;
+  const ageHours = getMarketSnapshotCacheAgeHours(cached.cachedAt, fetchedAt);
+  if (!Number.isFinite(ageHours) || ageHours > MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS) return null;
+  const liveError = component.result?.error || component.error || "实时抓取失败或返回为空";
+  return {
+    ...component,
+    result: {
+      ...cached.result,
+      ok: true,
+      key,
+      label: component.label || cached.label || key,
+      cacheFallback: true,
+      sourceMode: "cache_fallback",
+      cacheFetchedAt: cached.cachedAt || "",
+      cacheAgeHours: round(ageHours, 2),
+      liveError: String(liveError || "").slice(0, 240)
+    }
+  };
+}
+
+function getMarketSnapshotCacheAgeHours(cachedAt = "", nowIso = new Date().toISOString()) {
+  const cachedMs = Date.parse(cachedAt);
+  const nowMs = Date.parse(nowIso);
+  if (!Number.isFinite(cachedMs) || !Number.isFinite(nowMs)) return null;
+  return Math.max(0, (nowMs - cachedMs) / 3_600_000);
+}
+
 function buildMarketDataQuality(components = [], options = {}) {
   const normalized = components
     .map(normalizeMarketDataQualityComponent)
     .filter((item) => item.key || item.label);
   const available = normalized
-    .filter((item) => item.status === "available")
-    .map(({ key, label, count, freshCount, staleCount, sourceKinds }) => ({ key, label, count, freshCount, staleCount, sourceKinds }));
+    .filter((item) => item.status === "available" || item.status === "cached")
+    .map(({ key, label, count, freshCount, staleCount, sourceKinds, sourceMode, cacheFetchedAt, cacheAgeHours }) => ({ key, label, count, freshCount, staleCount, sourceKinds, sourceMode, cacheFetchedAt, cacheAgeHours }));
   const missing = normalized
-    .filter((item) => item.status !== "available")
+    .filter((item) => item.status !== "available" && item.status !== "cached")
     .map(({ key, label, status, error }) => ({ key, label, status, error }));
-  const criticalMissing = normalized.filter((item) => item.critical && item.status !== "available");
+  const criticalMissing = normalized.filter((item) => item.critical && item.status !== "available" && item.status !== "cached");
+  const cached = normalized.filter((item) => item.status === "cached");
   const candidateCounts = buildMarketCandidateCounts(options.fundCandidates || {});
   const level = !normalized.length
     ? "poor"
-    : !missing.length
+    : !missing.length && !cached.length
       ? "good"
       : available.length >= 4 && criticalMissing.length <= 2
         ? "partial"
@@ -26754,6 +26921,9 @@ function buildMarketDataQuality(components = [], options = {}) {
   }
   if (criticalMissing.length) {
     notes.push(`关键模块缺口：${criticalMissing.slice(0, 5).map((item) => item.label).join("、")}。`);
+  }
+  if (cached.length) {
+    notes.push(`使用缓存回退：${cached.slice(0, 5).map((item) => `${item.label}${Number.isFinite(item.cacheAgeHours) ? `约${round(item.cacheAgeHours, 1)}小时前` : ""}`).join("、")}；这些数据只能用于连续性计算，不能当作实时买点确认。`);
   }
   const totalFundCandidates = Object.values(candidateCounts).reduce((sum, value) => sum + Number(value || 0), 0);
   if (totalFundCandidates < 12) {
@@ -26783,6 +26953,7 @@ function buildMarketDataQuality(components = [], options = {}) {
         : "市场数据不足，可靠性偏低。",
     generatedAt: options.fetchedAt || new Date().toISOString(),
     available,
+    cached: cached.map(({ key, label, count, cacheFetchedAt, cacheAgeHours, liveError }) => ({ key, label, count, cacheFetchedAt, cacheAgeHours, liveError })),
     missing,
     candidateCounts,
     sourceCapabilities: {
@@ -26803,8 +26974,11 @@ function normalizeMarketDataQualityComponent(component = {}) {
     ? String(result?.error || component.error || "抓取失败")
     : "";
   let status = error ? "missing" : count > 0 ? "available" : "empty";
-  if ((component.key || result?.key) === "realtimeFundValuations" && count > 0 && freshCount === 0) {
+  if ((component.key || result?.key) === "realtimeFundValuations" && count > 0 && freshCount === 0 && !result?.cacheFallback) {
     status = "stale";
+  }
+  if (result?.cacheFallback && count > 0) {
+    status = "cached";
   }
   return {
     key: component.key || result?.key || "",
@@ -26814,8 +26988,13 @@ function normalizeMarketDataQualityComponent(component = {}) {
     freshCount,
     staleCount,
     sourceKinds,
+    sourceMode: result?.sourceMode || (result?.cacheFallback ? "cache_fallback" : "live"),
+    cacheFallback: Boolean(result?.cacheFallback),
+    cacheFetchedAt: result?.cacheFetchedAt || "",
+    cacheAgeHours: Number.isFinite(Number(result?.cacheAgeHours)) ? Number(result.cacheAgeHours) : null,
     status,
-    error: error || (status === "empty" ? "返回为空" : status === "stale" ? "估算时间全部偏旧" : "")
+    liveError: result?.liveError || "",
+    error: error || (status === "empty" ? "返回为空" : status === "stale" ? "估算时间全部偏旧" : status === "cached" ? String(result?.liveError || "实时源失败，使用缓存回退") : "")
   };
 }
 
@@ -37905,8 +38084,61 @@ function isUserPortfolioImportRequest(text) {
 
 function isFundOutputPriorityPreferenceRequest(text) {
   const normalized = normalizeIntentText(text);
-  if (!normalized || !isFundAnswerPriorityLeaderboardRequest(normalized)) return false;
-  return /(?:排序|排行|排名|优先|首选|结果榜|直接给(?:我)?结果|先给(?:我)?结果|结果优先|少报数据|少讲数据|不要(?:再)?报数|不要(?:再)?堆数据|别(?:再)?报数据|太啰嗦|啰嗦|干巴巴|高夏普|低回撤|低波动|同类排名|费用|费率|规模|流动性|基金经理|经理稳定|持仓前景|主力题材|主力资金|新闻逻辑)/.test(normalized);
+  if (!normalized) return false;
+  const hasPlainComplaint = hasAny(normalized, [
+    "太啰嗦",
+    "啰嗦",
+    "干巴巴",
+    "直接给我说结果",
+    "直接给我结果",
+    "直接看结果",
+    "直接要结果",
+    "先给我结果",
+    "结果优先",
+    "少报数据",
+    "少讲数据",
+    "不要报数",
+    "不要堆数据",
+    "别报数据"
+  ]);
+  const hasRankingLead = hasAny(normalized, ["按", "按照", "以", "根据", "依照", "希望", "想", "需要"]);
+  const hasRankingTail = hasAny(normalized, ["优先", "排序", "排行", "排名", "口径", "排出来", "来排"]);
+  const hasKnownPlainPriority = hasAny(normalized, [
+    "高夏普",
+    "低回撤",
+    "低波动",
+    "同类排名",
+    "高收益",
+    "长期收益",
+    "费用",
+    "费率",
+    "规模",
+    "流动性",
+    "基金经理",
+    "经理稳定",
+    "持仓前景",
+    "主力题材",
+    "主力资金",
+    "新闻逻辑"
+  ]);
+  const outputComplaint = /(?:太啰嗦|啰嗦|干巴巴|直接给(?:我)?(?:说)?结果|直接(?:看|要|给)?结果|先给(?:我)?(?:说)?结果|结果优先|少报数据|少讲数据|不要(?:再)?报数|不要(?:再)?堆数据|别(?:再)?报数据)/.test(normalized);
+  const rankingPreference = /(?:按|以|按照|根据|依照|希望|想|需要).{0,28}(?:优先|排序|排行|排名|口径|排出来|来排)|(?:高夏普|高收益|长期收益|同类排名|低回撤|低波动|费用|费率|规模|流动性|基金经理|经理稳定|持仓前景|主力题材|主力资金|新闻逻辑).{0,12}优先|优先.{0,12}(?:高夏普|高收益|长期收益|同类排名|低回撤|低波动|费用|费率|规模|流动性|基金经理|经理稳定|持仓前景|主力题材|主力资金|新闻逻辑)/.test(normalized);
+  const knownPriority = /(?:排序|排行|排名|优先|首选|结果榜|高夏普|低回撤|低波动|同类排名|费用|费率|规模|流动性|基金经理|经理稳定|持仓前景|主力题材|主力资金|新闻逻辑)/.test(normalized);
+  return (
+    isFundAnswerPriorityLeaderboardRequest(normalized)
+    || outputComplaint
+    || rankingPreference
+    || hasPlainComplaint
+    || (hasRankingLead && hasRankingTail)
+    || (hasKnownPlainPriority && hasRankingTail)
+  ) && (
+    knownPriority
+    || outputComplaint
+    || rankingPreference
+    || hasPlainComplaint
+    || hasKnownPlainPriority
+    || hasRankingTail
+  );
 }
 
 function buildFundPriorityPreferenceConfigPatch(userText = "") {
@@ -38047,6 +38279,23 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
     };
   }
 
+  const priorityPreferenceHint =
+    (text.includes("啰嗦") || text.includes("干巴巴") || text.includes("少报数据") || text.includes("少讲数据") || text.includes("直接给我说结果") || text.includes("直接给我结果") || text.includes("直接看结果"))
+    && (text.includes("结果") || text.includes("排序") || text.includes("排行") || text.includes("排名") || text.includes("优先") || text.includes("高夏普") || text.includes("低回撤"));
+  const explicitPriorityPreferenceHint =
+    (text.includes("高夏普") || text.includes("低回撤") || text.includes("低波动") || text.includes("同类排名") || text.includes("持仓前景") || text.includes("主力资金") || text.includes("新闻逻辑"))
+    && text.includes("优先");
+  if (priorityPreferenceHint || explicitPriorityPreferenceHint || isFundOutputPriorityPreferenceRequest(text)) {
+    return {
+      workflow: "fund_qa",
+      mode: "answer_priority_preference",
+      reason: "hard_rule_priority_leaderboard_preference",
+      fundCodes,
+      skillIds: getFundQaSkillIds(["fund-recommendation"]),
+      messageType
+    };
+  }
+
   if (isUserPortfolioImportRequest(text)) {
     return {
       workflow: "user_portfolio_import",
@@ -38134,17 +38383,6 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
       reason: "hard_rule_text_mentions_specific_fund_action",
       fundCodes,
       skillIds: getFundAnalysisSkillIds(asksCompare ? ["fund-comparison", "fund-synthesis"] : ["fund-synthesis"]),
-      messageType
-    };
-  }
-
-  if (isFundOutputPriorityPreferenceRequest(text)) {
-    return {
-      workflow: "fund_qa",
-      mode: "answer_priority_preference",
-      reason: "hard_rule_priority_leaderboard_preference",
-      fundCodes,
-      skillIds: getFundQaSkillIds(["fund-recommendation"]),
       messageType
     };
   }
@@ -39092,6 +39330,7 @@ export {
   buildFundPriorityPreferenceConfigPatch,
   buildFundPriorityPreferenceAnswer,
   buildMarketDataQuality,
+  applyMarketSnapshotCacheFallback,
   buildThemeRadar,
   buildThemeLeaderboards,
   buildThemeMainForcePlaybook,

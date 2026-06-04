@@ -63,6 +63,13 @@ await assertIntent({
   expectedMode: "answer_priority_preference",
   requiredSkills: ["fund-recommendation", "fund-answer-quality"]
 });
+await assertIntent({
+  userText: "现在经理太啰嗦了，干巴巴的讲数据。我更想看到的是直接给我说结果，而这个结果是按照xx优先来排出来的，例如高夏普优先",
+  expectedWorkflow: "fund_qa",
+  expectedReason: "hard_rule_priority_leaderboard_preference",
+  expectedMode: "answer_priority_preference",
+  requiredSkills: ["fund-recommendation", "fund-answer-quality"]
+});
 const priorityPreferenceAnswer = manager.buildFundPriorityPreferenceAnswer("现在经理太啰嗦了，干巴巴的讲数据。我更想看到直接结果，按高夏普优先排");
 assert(priorityPreferenceAnswer.includes("已生效：以后多基金推荐先给结果"), "priority preference request must receive a deterministic result-first acknowledgement");
 assert(priorityPreferenceAnswer.includes("排序口径：高夏普/低回撤优先"), "priority preference acknowledgement must echo the requested high-Sharpe priority");
@@ -11948,6 +11955,35 @@ const partialMarketQuality = manager.buildMarketDataQuality([
 assert.equal(partialMarketQuality.level, "partial", "market data quality must classify recoverable source failures as partial");
 assert(partialMarketQuality.notes.some((item) => item.includes("行业板块") && item.includes("降低把握度")), "partial market data quality must explain missing modules in Chinese");
 assert.equal(manager.compactMarketDataQuality(partialMarketQuality).missing[0].label, "行业板块", "summarized market snapshots must preserve data-quality gaps");
+const cachedMarketComponents = manager.applyMarketSnapshotCacheFallback([
+  { key: "conceptBoards", label: "概念板块", critical: true, result: { ok: true, items: [{ name: "机器人", changePct: 1.2 }] } },
+  { key: "industryBoards", label: "行业板块", critical: true, result: { ok: false, error: "timeout", items: [] } },
+  { key: "stockFunds", label: "股票型基金排行", critical: true, result: { ok: true, items: [{ code: "000001" }, { code: "000002" }] } },
+  { key: "hybridFunds", label: "混合型基金排行", critical: true, result: { ok: true, items: [{ code: "000003" }] } },
+  { key: "fastNews", label: "实时财经新闻", critical: true, result: { ok: true, items: [{ title: "产业订单改善", showTime: "10:10" }] } }
+], {
+  version: 1,
+  components: {
+    industryBoards: {
+      key: "industryBoards",
+      label: "行业板块",
+      cachedAt: freshThemeRefreshAt,
+      result: { ok: true, items: [{ name: "半导体", changePct: 0.8, sourceKind: "cached_eastmoney_board" }] }
+    }
+  }
+}, { fetchedAt: freshThemeRefreshAt });
+const cachedIndustryComponent = cachedMarketComponents.find((item) => item.key === "industryBoards");
+assert(cachedIndustryComponent?.result?.cacheFallback, "market snapshot cache must provide component-level fallback when a live source fails");
+assert.equal(cachedIndustryComponent.result.items[0].name, "半导体", "market snapshot cache fallback must preserve cached board items for deterministic indicator calculations");
+const cachedFallbackQuality = manager.buildMarketDataQuality(cachedMarketComponents, {
+  fundCandidates: { stockFunds: Array.from({ length: 12 }, (_, index) => ({ code: String(index).padStart(6, "0") })) },
+  fetchedAt: freshThemeRefreshAt
+});
+assert.equal(cachedFallbackQuality.level, "partial", "cache fallback must downgrade market data quality instead of pretending the snapshot is fully live");
+assert(cachedFallbackQuality.cached.some((item) => item.key === "industryBoards"), "market data quality must expose cached fallback components");
+assert(cachedFallbackQuality.notes.some((item) => item.includes("使用缓存回退") && item.includes("行业板块")), "market data quality must explain cache fallback in Chinese");
+const compactCachedQuality = manager.compactMarketDataQuality(cachedFallbackQuality);
+assert.equal(compactCachedQuality.cached[0].key, "industryBoards", "compact model snapshot must preserve cached component metadata");
 const staleRealtimeMarketQuality = manager.buildMarketDataQuality([
   { key: "conceptBoards", label: "概念板块", critical: true, result: { ok: true, items: [{ name: "机器人" }] } },
   { key: "industryBoards", label: "行业板块", critical: true, result: { ok: true, items: [{ name: "医药" }] } },
