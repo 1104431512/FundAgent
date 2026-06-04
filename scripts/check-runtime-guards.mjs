@@ -1365,7 +1365,7 @@ const requiredPatterns = [
     message: "main-capital/preheat opportunities must require traceable fresh news or industry catalyst logic before entering actionable recall."
   },
   {
-    pattern: /function hasFreshActionableThemeSupport[\s\S]{0,420}isFreshActionableThemeSupportForCandidate[\s\S]{0,700}hasFreshPullbackLowRotationThemeEvidence\(candidate,\s*theme\)/,
+    pattern: /(?=[\s\S]*function hasFreshActionableThemeSupport[\s\S]{0,420}hasCandidateCurrentRadarSupportForLowRotationThemes\(candidate,\s*themeSignals\))(?=[\s\S]*function hasCandidateCurrentRadarSupportForLowRotationThemes[\s\S]{0,1700}isPortfolioThemeRefreshFreshEnough\(refresh\)[\s\S]{0,900}当前主力进场)(?=[\s\S]*function isFreshActionableThemeSupportForCandidate[\s\S]{0,320}hasFreshPullbackLowRotationThemeEvidence\(candidate,\s*theme\))/,
     message: "candidate-level actionable theme support must require fresh current-radar evidence for low-rotation labels."
   },
   {
@@ -1383,6 +1383,10 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*function hasPositiveThemeMainCapitalEvidence)(?=[\s\S]*avgMainNetInflowPct)(?=[\s\S]*maxMainNetInflowPct)(?=[\s\S]*mainInflowRankScore)(?=[\s\S]*function isThemeLowBaseMicroStarterSupport[\s\S]{0,650}hasPositiveThemeMainCapitalEvidence\(theme\))/,
     message: "main-capital/preheat micro-starter buys must require positive fund-flow or main-inflow leaderboard confirmation."
+  },
+  {
+    pattern: /function buildPortfolioThemeOpportunityPlan[\s\S]{0,4300}catalystGap[\s\S]{0,240}if \(catalystGap\) return null[\s\S]{0,900}capitalFlowGap/,
+    message: "theme opportunity plan must drop untraceable preheat heat instead of turning it into a watch candidate."
   },
   {
     pattern: /function buildPortfolioThemeOpportunityPlan[\s\S]{0,3600}capitalFlowGap[\s\S]{0,500}hasPositiveThemeMainCapitalEvidence\(theme\)[\s\S]{0,700}缺少正向主力资金或主力流入榜确认/,
@@ -1403,6 +1407,10 @@ const requiredPatterns = [
   {
     pattern: /function hasUsableThemeLowRotationSupport[\s\S]{0,220}hasConflictingThemeCapitalOutflow\(theme\)\) return false[\s\S]{0,900}minRotation[\s\S]{0,500}lowPosition >= minLowPosition/,
     message: "low-position rotation support must reject themes whose related boards show confirmed main-capital outflow."
+  },
+  {
+    pattern: /function hasCurrentThemeLowRotationSupport[\s\S]{0,260}hasUsableThemeLowRotationSupport\(theme,\s*metrics\)[\s\S]{0,260}hasConflictingThemeCapitalOutflow\(theme\)[\s\S]{0,360}hasTraceableFreshThemeCatalystContext\(theme\)[\s\S]{0,180}hasPositiveThemeMainCapitalEvidence\(theme\)/,
+    message: "current low-position rotation support must require fresh catalyst or positive current main-capital evidence, not only low-position scores."
   },
   {
     pattern: /function scoreNewsMainCapitalConfirmation[\s\S]{0,1500}资金抢筹[\s\S]{0,900}主力资金[\s\S]{0,900}return Math\.min\(44,\s*score\)/,
@@ -1457,8 +1465,8 @@ const requiredPatterns = [
     message: "market snapshots must expose theme leaderboards and route stale catchdown themes into retreat/avoid instead of low-rotation opportunity lanes."
   },
   {
-    pattern: /buildThemeLeaderboards[\s\S]{0,2400}preheat[\s\S]{0,800}!hasConflictingThemeCapitalOutflow\(theme\)[\s\S]{0,900}low_rotation[\s\S]{0,800}hasUsableThemeLowRotationSupport\(theme/,
-    message: "preheat and low-rotation leaderboards must not surface themes that conflict with main-capital outflow evidence."
+    pattern: /buildThemeLeaderboards[\s\S]{0,2400}preheat[\s\S]{0,800}!hasConflictingThemeCapitalOutflow\(theme\)[\s\S]{0,900}low_rotation[\s\S]{0,800}hasCurrentThemeLowRotationSupport\(theme/,
+    message: "preheat and low-rotation leaderboards must not surface themes that conflict with main-capital outflow evidence or lack current confirmation."
   },
   {
     pattern: /(?=[\s\S]*function buildPortfolioRankingCustomerActionDeck[\s\S]*hasCatchdownAvoid)(?=[\s\S]*接盘风险优先)(?=[\s\S]*新鲜新闻\/政策催化[\s\S]{0,180}主力资金回流[\s\S]{0,180}代表持仓止跌)/,
@@ -1605,8 +1613,8 @@ const requiredPatterns = [
     message: "pullback setup discovery keywords must not expand main-capital/preheat themes whose catalyst source is not traceable."
   },
   {
-    pattern: /function inferPullbackSetupSearchKeywords[\s\S]{0,1700}const capitalFlowConflict = hasConflictingThemeCapitalOutflow\(theme\);[\s\S]{0,280}lowRotationCandidate && !unresolvedLeaderHeat && !capitalFlowConflict[\s\S]{0,180}leaderCandidate && hasTraceableFreshThemeCatalystContext\(theme\) && !capitalFlowConflict/,
-    message: "pullback setup discovery keywords must not expand low-rotation or preheat themes when board outflow conflicts with the setup."
+    pattern: /(?=[\s\S]*function inferPullbackSetupSearchKeywords)(?=[\s\S]*const lowRotationCandidate = hasCurrentThemeLowRotationSupport\(theme)(?=[\s\S]*const capitalFlowConflict = hasConflictingThemeCapitalOutflow\(theme\);)(?=[\s\S]*lowRotationCandidate && !unresolvedLeaderHeat && !capitalFlowConflict)(?=[\s\S]*leaderCandidate && hasTraceableFreshThemeCatalystContext\(theme\) && !capitalFlowConflict)/,
+    message: "pullback setup discovery keywords must not expand low-rotation or preheat themes when board outflow conflicts with the setup or current confirmation is missing."
   },
   {
     pattern: /function inferPullbackSetupSearchKeywords[\s\S]{0,2400}themeMatchesSearchText\(theme,\s*text\)[\s\S]{0,700}scopedRadarKeywords[\s\S]{0,700}\.\.\.baseKeywords,\s*\.\.\.scopedRadarKeywords/,
@@ -2941,8 +2949,8 @@ const requiredPatterns = [
     message: "rotation-opportunity ranking must keep pure low-position trends without current theme radar out of buy-review."
   },
   {
-    pattern: /function finalizePortfolioRankingDecisionMatrixRow[\s\S]{0,1600}const hasSectorBlock =[\s\S]{0,700}hasDataBlock \|\| hasSectorBlock[\s\S]{0,260}\? "先补证据"/,
-    message: "decision matrix must treat missing current theme radar as a blocker before assigning buy-review actions."
+    pattern: /function finalizePortfolioRankingDecisionMatrixRow(?=[\s\S]{0,3600}refsByGroup)(?=[\s\S]{0,3600}sectorBlockPattern)(?=[\s\S]{0,3600}sectorRefs\.find)(?=[\s\S]{0,4500}const hasSectorBlock = sectorBlockPattern\.test\(sectorBlockText\))(?=[\s\S]{0,5000}hasDataBlock \|\| hasSectorBlock[\s\S]{0,260}\? "先补证据")/,
+    message: "decision matrix must scan all same-fund theme refs and treat missing current theme radar as a blocker before assigning buy-review actions."
   },
   {
     pattern: /function buildPortfolioRankingDecisionMatrixVerdict[\s\S]{0,700}hasSectorBlock[\s\S]{0,900}板块\/题材/,
@@ -3633,8 +3641,8 @@ const requiredPatterns = [
     message: "pullback/setup deep-dive ranking must incorporate sector rotation, low-position, and crowding evidence."
   },
   {
-    pattern: /function scorePullbackThemeRotation[\s\S]{0,900}const capitalFlowConflict = hasConflictingThemeCapitalOutflow\(theme\);[\s\S]{0,350}if \(capitalFlowConflict\) score -= 24[\s\S]{0,700}!capitalFlowConflict && theme\.positionSignal === "low_position_rotation"[\s\S]{0,1100}!capitalFlowConflict && Number\.isFinite\(rotation\)/,
-    message: "pullback/setup deep-dive ranking must penalize board outflow conflicts and suppress low-position rotation bonuses under conflict."
+    pattern: /function scorePullbackThemeRotation[\s\S]{0,1000}const currentLowRotationSupport = hasCurrentThemeLowRotationSupport\(theme\)[\s\S]{0,140}hasCandidateThemeRefreshSupportForLowRotationTheme\(candidate,\s*theme\)[\s\S]{0,350}if \(capitalFlowConflict\) score -= 24[\s\S]{0,700}currentLowRotationSupport && theme\.positionSignal === "low_position_rotation"[\s\S]{0,450}!currentLowRotationSupport && theme\.positionSignal === "low_position_rotation"[\s\S]{0,1100}currentLowRotationSupport && Number\.isFinite\(rotation\)/,
+    message: "pullback/setup deep-dive ranking must penalize board outflow conflicts and suppress low-position rotation bonuses unless current evidence confirms the theme."
   },
   {
     pattern: /scoreResearchDigestForPullbackSetup[\s\S]{0,3200}scoreHoldingsOutlookForCandidate/,
@@ -4085,7 +4093,7 @@ const requiredPatterns = [
     message: "manager ranking boards must produce and compact a cross-list consensus radar."
   },
   {
-    pattern: /buildPortfolioRankingCustomerDigest[\s\S]{0,2200}buyReview[\s\S]{0,2200}watchFocus[\s\S]{0,2200}riskAvoid/,
+    pattern: /function buildPortfolioRankingCustomerDigest(?=[\s\S]{0,3200}const buyReview)(?=[\s\S]{0,4200}const watchFocus)(?=[\s\S]{0,2400}const riskAvoid)(?=[\s\S]{0,5000}buyReview:\s*buyDigest)(?=[\s\S]{0,5000}watchFocus:\s*watchDigest)(?=[\s\S]{0,5000}riskAvoid:\s*riskDigest)/,
     message: "manager ranking boards must translate multi-angle rankings into customer-facing buy/watch/avoid digest buckets."
   },
   {

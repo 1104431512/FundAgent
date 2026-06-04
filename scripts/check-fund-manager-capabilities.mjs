@@ -561,7 +561,7 @@ const robotCatalystSnapshot = {
     avgMainNetInflowPct: 0.8,
     fundKeywords: ["高端制造"],
     keywords: ["智能制造"],
-    catalystProfile: { score: 32, summary: "产业订单", risk: false, fresh: true },
+    catalystProfile: { score: 32, summary: "产业订单", risk: false, fresh: true, latestNewsTime: "10:18", freshnessLabel: "财联社10:18" },
     newsLogic: "题材预热：新闻催化：人形机器人执行器订单落地；主力线索：相关板块资金净流入",
     primaryCatalyst: "人形机器人执行器订单密集落地",
     evidence: {
@@ -1294,8 +1294,8 @@ const staleLowRotationReadyWatch = {
   }
 };
 assert(
-  manager.hasActionableThemeSupport(staleLowRotationReadyWatch.lastSnapshot),
-  "legacy low-rotation labels may still look actionable under the broad theme predicate"
+  !manager.hasActionableThemeSupport(staleLowRotationReadyWatch.lastSnapshot),
+  "legacy low-rotation labels must not look actionable without current radar refresh, main-capital evidence, or fresh catalyst support"
 );
 assert(
   !manager.hasFreshActionableThemeSupport(staleLowRotationReadyWatch.lastSnapshot),
@@ -4853,9 +4853,15 @@ for (const keyword of ["黄金", "贵金属", "白银"]) {
 }
 const genericKeywordsWithPreciousRadar = manager.inferPullbackSetupSearchKeywords(setupQuery, [
   { id: "precious_metals", name: "黄金/贵金属", positionSignal: "low_position_rotation", lowPositionScore: 62, fundKeywords: ["黄金", "贵金属", "白银"] },
-  { id: "medicine", name: "医药/创新药", positionSignal: "low_position_rotation", lowPositionScore: 58, fundKeywords: ["医药", "创新药"] }
+  { id: "medicine", name: "医药/创新药", positionSignal: "low_position_rotation", rotationScore: 58, lowPositionScore: 58, avgMainNetInflowPct: 1.1, maxMainNetInflowPct: 1.8, fundKeywords: ["医药", "创新药"] }
 ]);
-assert(genericKeywordsWithPreciousRadar.includes("医药"), "generic pullback setup recall may use non-precious low-position radar keywords");
+assert(genericKeywordsWithPreciousRadar.includes("医药"), "generic pullback setup recall may use non-precious low-position radar keywords only after current capital evidence confirms the theme");
+assert(
+  !manager.inferPullbackSetupSearchKeywords(setupQuery, [
+    { id: "unsupported_medicine", name: "无资金医药", positionSignal: "low_position_rotation", rotationScore: 70, lowPositionScore: 72, fundKeywords: ["无资金医药"] }
+  ]).includes("无资金医药"),
+  "generic pullback setup recall must not use low-position radar keywords when current capital/catalyst evidence is missing"
+);
 for (const keyword of ["黄金", "贵金属", "白银"]) {
   assert(!genericKeywordsWithPreciousRadar.includes(keyword), "generic pullback setup recall must suppress precious-metal radar keywords unless explicitly requested");
 }
@@ -7520,6 +7526,83 @@ const conflictingLowRotationActionability = manager.buildFundActionabilitySignal
 assert(
   ["wait", "avoid"].includes(conflictingLowRotationActionability.action),
   "fund actionability must keep low-position pullbacks in wait/avoid when low-rotation support conflicts with main-capital outflow"
+);
+const unsupportedLowRotationTheme = {
+  id: "unsupported_low_rotation",
+  name: "无主力低位轮动",
+  stage: "low_position_rotation",
+  positionSignal: "low_position_rotation",
+  avgMainNetInflowPct: null,
+  minMainNetInflowPct: null,
+  boardOutflowCount: 0,
+  boardDeclineCount: 0,
+  capitalRetreatScore: 8,
+  capitalFollowScore: 34,
+  preheatScore: 20,
+  forwardScore: 52,
+  rotationScore: 78,
+  lowPositionScore: 82,
+  crowdingScore: 14,
+  fundKeywords: ["无主力轮动测试词"],
+  themeKeywords: ["无主力轮动测试词"],
+  newsLogic: ""
+};
+const currentLowRotationTheme = {
+  ...unsupportedLowRotationTheme,
+  id: "current_low_rotation",
+  name: "资金回流低位轮动",
+  avgMainNetInflowPct: 1.3,
+  maxMainNetInflowPct: 2.2,
+  capitalFollowScore: 48,
+  fundKeywords: ["资金回流轮动测试词"],
+  themeKeywords: ["资金回流轮动测试词"],
+  newsLogic: "板块低位轮动，主力资金盘中回流。"
+};
+const unsupportedLowRotationDigest = {
+  ...newsBackedRequiredSetupDigest,
+  code: "000053",
+  name: "无主力低位基金C",
+  matchedThemes: [unsupportedLowRotationTheme],
+  seed: {
+    ...(newsBackedRequiredSetupDigest.seed || {}),
+    matchedThemes: [unsupportedLowRotationTheme]
+  }
+};
+const currentLowRotationDigest = {
+  ...newsBackedRequiredSetupDigest,
+  code: "000054",
+  name: "资金回流低位基金C",
+  matchedThemes: [currentLowRotationTheme],
+  seed: {
+    ...(newsBackedRequiredSetupDigest.seed || {}),
+    matchedThemes: [currentLowRotationTheme]
+  }
+};
+assert.equal(
+  manager.hasActionableThemeSupport(unsupportedLowRotationDigest),
+  false,
+  "actionable theme support must not treat pure low-position/rotation scores as enough without current main-capital or fresh catalyst evidence"
+);
+assert(
+  !manager.buildThemeLeaderboards([unsupportedLowRotationTheme]).lowRotation.items.some((item) => item.name === "无主力低位轮动"),
+  "low-rotation leaderboard must not surface themes that only have low-position/rotation scores but no current evidence"
+);
+assert(
+  !manager.inferPullbackSetupSearchKeywords("我想找回调完成低位启动基金", [unsupportedLowRotationTheme]).some((item) => item.includes("无主力轮动测试词")),
+  "pullback setup keyword expansion must not search representative funds for unsupported low-rotation themes"
+);
+assert(
+  manager.buildThemeLeaderboards([currentLowRotationTheme]).lowRotation.items.some((item) => item.name === "资金回流低位轮动"),
+  "low-rotation leaderboard may surface low-position themes only after current main-capital evidence appears"
+);
+assert(
+  manager.inferPullbackSetupSearchKeywords("我想找回调完成低位启动基金", [currentLowRotationTheme]).some((item) => item.includes("资金回流轮动测试词")),
+  "pullback setup keyword expansion may use low-rotation keywords after current capital-flow evidence confirms the theme"
+);
+assert(
+  manager.scoreResearchDigestForPullbackSetup(currentLowRotationDigest) >
+    manager.scoreResearchDigestForPullbackSetup(unsupportedLowRotationDigest) + 35,
+  "pullback discovery scoring must rank current-evidence low-rotation themes far above unsupported low-position shapes"
 );
 const staleCatchdownReadiness = manager.evaluatePortfolioWatchReadiness({
   code: "000051",

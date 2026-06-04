@@ -3470,8 +3470,8 @@ function isPortfolioThemeOpportunitySeedTheme(theme = {}) {
   if (theme.positionSignal === "high_chase_risk" || theme.stage === "crowded" || Number(theme.crowdingScore) >= 55) return false;
   const capitalFlowConflict = hasConflictingThemeCapitalOutflow(theme);
   const mainOrPreheat = !capitalFlowConflict && hasTraceableFreshThemeCatalystContext(theme) && hasThemeLeaderOrPreheatSignal(theme);
-  const lowRotation = hasUsableThemeLowRotationSupport(theme);
-  return Boolean(mainOrPreheat || (lowRotation && (hasTraceableFreshThemeCatalystContext(theme) || Number(theme.capitalFollowScore) >= 45)));
+  const lowRotation = hasCurrentThemeLowRotationSupport(theme);
+  return Boolean(mainOrPreheat || lowRotation);
 }
 
 function getPortfolioThemeCoverageAnchors(group = {}) {
@@ -3483,11 +3483,11 @@ function collectThemeOpportunitySearchKeywords(theme = {}, options = {}) {
   const boards = Array.isArray(theme.evidence?.boards) ? theme.evidence.boards : [];
   const catalystKeywords = collectThemeCatalystSearchKeywords(theme, options);
   const values = [
-    theme.name,
-    ...catalystKeywords,
     ...(Array.isArray(theme.fundKeywords) ? theme.fundKeywords : []),
     ...(Array.isArray(theme.keywords) ? theme.keywords : []),
     ...(Array.isArray(theme.themeKeywords) ? theme.themeKeywords : []),
+    theme.name,
+    ...catalystKeywords,
     ...(Array.isArray(theme.newsKeywords) ? theme.newsKeywords : []),
     ...(Array.isArray(theme.boardNames) ? theme.boardNames : []),
     ...(Array.isArray(theme.leaderStocks) ? theme.leaderStocks : []),
@@ -4375,6 +4375,7 @@ function buildPortfolioThemeOpportunityPlan(account = {}, watchlist = [], profil
       const catalystGap = hasThemeLeaderOrPreheatSignal(theme) && !hasTraceableFreshThemeCatalystContext(theme)
         ? "缺可追溯的新闻时事/产业催化来源，不能把主力热度直接当买点。"
         : "";
+      if (catalystGap) return null;
       const capitalFlowGap = hasThemeLeaderOrPreheatSignal(theme)
         && hasTraceableFreshThemeCatalystContext(theme)
         && !hasPositiveThemeMainCapitalEvidence(theme)
@@ -6396,6 +6397,12 @@ function getPortfolioActionableThemeSupportGap(candidate = {}) {
     return "";
   }
   if (hasFreshActionableThemeSupport(candidate)) return "";
+  if (themeSignals.some((theme) =>
+    hasUsableThemeLowRotationSupport(theme)
+    && (theme.positionSignal === "low_position_rotation" || theme.stage === "low_position_rotation")
+  )) {
+    return "低位轮动标签缺少当前题材雷达刷新，不能只凭旧标签和净值回调做买入准备。";
+  }
   if (hasActionableThemeSupport(candidate)) {
     return "低位轮动标签缺少当前题材雷达刷新，不能只凭旧标签和净值回调做买入准备。";
   }
@@ -11058,12 +11065,14 @@ function resolvePortfolioDecisionSynthesisEvidence(item = {}) {
   );
   const readinessScore = Number(item.readinessScore || 0);
   const setupSignal = trend.pullbackSetup?.signal || "";
+  const hasExecutionSetup = ["pullback_complete", "launch_setup"].includes(setupSignal);
+  const preheatExecutionGap = rotation.leaderPositive && !hasExecutionSetup;
   const low120 = Number(trend.lowPositionPct120);
   const scoreParts = [
     Math.min(34, readinessScore * 0.34),
     rotation.strong ? 18 : rotation.shouldSurface && !rotation.highChase ? 10 : 0,
     rotation.leaderPositive && !rotation.highChase ? 12 : 0,
-    ["pullback_complete", "launch_setup"].includes(setupSignal) ? 14 : 0,
+    hasExecutionSetup ? 14 : 0,
     Number.isFinite(low120) && low120 <= 55 ? 8 : 0,
     Number(outlook.score || 0) >= 10 ? 10 : Number(outlook.score || 0) >= 5 ? 5 : 0,
     fee.missingCritical ? -14 : fee.highDrag ? -6 : 5,
@@ -11073,11 +11082,11 @@ function resolvePortfolioDecisionSynthesisEvidence(item = {}) {
   const score = Math.max(0, Math.min(100, scoreParts.reduce((sum, value) => sum + value, 0)));
   const hasPositiveEvidence = readinessScore >= 45
     || rotation.shouldSurface
-    || ["pullback_complete", "launch_setup"].includes(setupSignal)
+    || hasExecutionSetup
     || Number(outlook.score || 0) > 0;
   const shouldSurface = hasPositiveEvidence || chase.shouldSurface || fee.shouldSurface;
-  const buyable = score >= 70 && !chase.shouldSurface && !fee.missingCritical && !themeSupportGap;
-  const starter = score >= 55 && !chase.shouldSurface && !fee.missingCritical && !themeSupportGap;
+  const buyable = score >= 70 && !chase.shouldSurface && !fee.missingCritical && !themeSupportGap && !preheatExecutionGap;
+  const starter = score >= 55 && !chase.shouldSurface && !fee.missingCritical && !themeSupportGap && !preheatExecutionGap;
   const action = chase.shouldSurface
     ? "综合回避"
     : themeSupportGap
@@ -11105,7 +11114,7 @@ function resolvePortfolioDecisionSynthesisEvidence(item = {}) {
     outlook.risks?.[0] || ""
   ].filter(Boolean).slice(0, 3);
   const gaps = [
-    !["pullback_complete", "launch_setup"].includes(setupSignal) ? "缺回调完成或启动信号" : "",
+    !hasExecutionSetup ? "缺回调完成或启动信号" : "",
     themeSupportGap || "",
     rotation.missingTheme ? "缺板块轮动证据" : "",
     fee.missingCritical ? "缺费用/份额关键证据" : "",
@@ -12429,15 +12438,17 @@ function scorePortfolioWatchThemeRotation(theme = {}) {
   const crowding = Number(theme.crowdingScore);
   const capitalFollow = Number(theme.capitalFollowScore);
   const preheat = Number(theme.preheatScore);
-  if (theme.positionSignal === "low_position_rotation") score += 18;
-  if (theme.stage === "low_position_rotation") score += 14;
+  const currentLowRotationSupport = hasCurrentThemeLowRotationSupport(theme);
+  if (currentLowRotationSupport && theme.positionSignal === "low_position_rotation") score += 18;
+  if (currentLowRotationSupport && theme.stage === "low_position_rotation") score += 14;
+  if (!currentLowRotationSupport && (theme.positionSignal === "low_position_rotation" || theme.stage === "low_position_rotation")) score -= 12;
   if (theme.positionSignal === "acceptable_position") score += 8;
   if (theme.positionSignal === "main_capital_entering" || theme.leaderSignal === "capital_entering") score += 18;
   if (theme.positionSignal === "preheat_catalyst_watch" || theme.leaderSignal === "preheat_catalyst") score += 12;
   if (theme.stage === "capital_entering") score += 14;
   if (theme.stage === "preheat_catalyst") score += 10;
-  if (Number.isFinite(rotation)) score += Math.min(16, rotation / 4);
-  if (Number.isFinite(lowPosition)) score += Math.min(16, lowPosition / 4);
+  if (Number.isFinite(rotation) && currentLowRotationSupport) score += Math.min(16, rotation / 4);
+  if (Number.isFinite(lowPosition) && currentLowRotationSupport) score += Math.min(16, lowPosition / 4);
   if (Number.isFinite(capitalFollow)) score += Math.min(16, capitalFollow / 5);
   if (Number.isFinite(preheat)) score += Math.min(12, preheat / 6);
   if (Number.isFinite(crowding)) score -= crowding >= 55 ? 24 : crowding >= 40 ? 10 : 0;
@@ -14157,10 +14168,18 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
     ...staleCatchdownItems,
     ...chaseItems,
     ...drawdownDefenseItems.filter((item) => /回撤|防线|保护|降级/.test(item.action || item.reason || "")),
-    ...dataConfidenceItems.filter((item) => /阻塞|过期|缺/.test(item.action || item.reason || item.facts?.join(" ") || "")),
+    ...dataConfidenceItems.filter(isPortfolioCustomerHardDataBlocker),
     ...blockerItems
   ];
   const riskAvoidCodes = new Set(riskAvoid.map((item) => item.code).filter(Boolean));
+  const executionGapCodes = new Set(synthesisItems
+    .filter((item) => {
+      const text = getPortfolioCustomerActionSearchText(item);
+      return /继续观察|补证据/.test(item.action || "")
+        && /缺回调完成|缺启动信号|缺费用\/份额关键证据|费用\/份额证据不足|买入前必须补齐/.test(text);
+    })
+    .map((item) => item.code)
+    .filter(Boolean));
   const buyReview = [
     ...synthesisItems.filter((item) => /优先买入|小仓试探/.test(item.action || "")),
     ...cashRedeploymentItems.filter((item) => /再部署|买入复核|试探/.test(item.action || "")),
@@ -14171,7 +14190,7 @@ function buildPortfolioRankingCustomerDigest(lists = []) {
     ...themeAllocationItems.filter((item) => /主题配置复核/.test(item.action || "")),
     ...themeMomentumItems.filter((item) => /买入复核|微型试探|小仓/.test(item.action || ""))
   ]
-    .filter((item) => item?.code && !riskAvoidCodes.has(item.code) && !hasPortfolioCustomerBuyBlocker(item))
+    .filter((item) => item?.code && !riskAvoidCodes.has(item.code) && !executionGapCodes.has(item.code) && !hasPortfolioCustomerBuyBlocker(item))
     .slice(0, 3);
   const usedCodes = new Set([
     ...riskAvoid.map((item) => item.code).filter(Boolean),
@@ -14224,7 +14243,13 @@ function buildPortfolioRankingCustomerActionDeck({ customerDigest = {}, alertCen
   const buySourceItems = [
     ...(customerDigest.buyReview || []),
     ...((lanes.get("buy")?.items || []))
-  ].filter((item) => item?.code && !sellBlockCodes.has(item.code) && !dataBlockCodes.has(item.code) && !hasPortfolioCustomerBuyBlocker(item) && isPortfolioCustomerBuyAction(item));
+  ].filter((item) =>
+    item?.code
+    && !sellBlockCodes.has(item.code)
+    && !dataBlockCodes.has(item.code)
+    && !hasPortfolioCustomerBuyBlocker(item)
+    && (isPortfolioCustomerBuyAction(item) || isPortfolioCustomerExplicitBuyReviewAction(item))
+  );
   const buyCandidateCodes = new Set(buySourceItems.map((item) => item.code).filter(Boolean));
   const avoidSourceItems = [
     ...(customerDigest.riskAvoid || []).filter((item) =>
@@ -14247,10 +14272,22 @@ function buildPortfolioRankingCustomerActionDeck({ customerDigest = {}, alertCen
     3
   );
   const blockedCodes = new Set([...sellBlockCodes, ...avoidBlockCodes, ...dataBlockCodes]);
-  const buyItems = sortPortfolioCustomerBuyActionItems(uniquePortfolioCustomerActionItems(
+  const primaryBuyItems = sortPortfolioCustomerBuyActionItems(uniquePortfolioCustomerActionItems(
     buySourceItems.filter((item) => !blockedCodes.has(item.code)),
     8
   )).slice(0, 3);
+  const fallbackDigestBuyItems = primaryBuyItems.length ? [] : sortPortfolioCustomerBuyActionItems(uniquePortfolioCustomerActionItems(
+    (customerDigest.buyReview || []).filter((item) =>
+      item?.code
+      && !sellBlockCodes.has(item.code)
+      && !avoidBlockCodes.has(item.code)
+      && !isPortfolioCustomerHardDataBlocker(item)
+      && !hasPortfolioCustomerThemeEvidenceBlocker(item)
+      && (isPortfolioCustomerBuyAction(item) || isPortfolioCustomerExplicitBuyReviewAction(item))
+    ),
+    8
+  )).slice(0, 3);
+  const buyItems = primaryBuyItems.length ? primaryBuyItems : fallbackDigestBuyItems;
   const hasMainForceBuy = buyItems.some((item) => isPortfolioCustomerMainForceBuyAction(item));
   const buyCodes = new Set(buyItems.map((item) => item.code).filter(Boolean));
   const waitItems = uniquePortfolioCustomerActionItems([
@@ -14821,12 +14858,24 @@ function isPortfolioCustomerCatchdownAvoidAction(item = {}) {
 function isPortfolioCustomerHardAvoidAction(item = {}) {
   const text = getPortfolioCustomerActionSearchText(item);
   if (isPortfolioCustomerCatchdownAvoidAction(item)) return true;
-  return /chase_risk|stale_catchdown_risk|data_confidence|追涨强拦截|高位追涨|题材退潮|主力(?:资金)?撤离|旧新闻|旧催化|数据阻塞|不得买入|不给买入|不能提交买入|只(?:保留)?观察|0元观察/.test(text);
+  return /chase_risk|stale_catchdown_risk|追涨强拦截|高位追涨|题材退潮|主力(?:资金)?撤离|旧新闻|旧催化|不得买入|不给买入|不能提交买入|只(?:保留)?观察|0元观察/.test(text);
 }
 
 function isPortfolioCustomerHardDataBlocker(item = {}) {
-  const text = getPortfolioCustomerActionSearchText(item);
-  return /data_confidence|数据阻塞|持仓数据阻塞|净值(?:快照)?已?过期|走势.*过期|缺(?:少)?(?:可验证净值|净值|走势|份额|申购费|销售服务费|赎回规则|前十大|来源)|费用\/份额关键证据仍不完整|证据未补齐前|不能提交买入|不得买入|不给买入金额|补证据/.test(text);
+  if (hasPortfolioCustomerThemeEvidenceBlocker(item)) return true;
+  const evidenceText = [
+    item.matrixAction,
+    ...normalizeStringArray(item.facts),
+    ...normalizeStringArray(item.risks),
+    ...normalizeStringArray(item.gaps),
+    ...normalizeStringArray(item.tags),
+    ...normalizeStringArray(item.decision?.risks),
+    ...normalizeStringArray(item.decision?.gaps),
+    ...normalizeStringArray(item.decision?.highlights)
+  ].filter(Boolean).join(" ");
+  const actionReasonText = [item.action, item.reason].filter(Boolean).join(" ");
+  return /持仓数据阻塞|净值(?:快照|\/走势)?已?过期|走势.*过期|无法核验|关键数据[^，。；]{0,18}缺(?:可验证净值|可验证走势|走势|份额|申购费|销售服务费|赎回规则)|缺(?:少)?(?:可验证净值|可验证走势|走势|份额|申购费|销售服务费|赎回规则)|费用\/份额关键证据仍不完整|证据未补齐前|不得买入|不给买入金额/.test(evidenceText)
+    || /无法核验|不得买入|不给买入金额/.test(actionReasonText);
 }
 
 function isPortfolioCustomerMainForceBuyAction(item = {}) {
@@ -14853,14 +14902,29 @@ function isPortfolioCustomerBuyAction(item = {}) {
   return hasPortfolioCustomerExecutableBuyIntent(text);
 }
 
+function isPortfolioCustomerExplicitBuyReviewAction(item = {}) {
+  return /买入复核|小仓试探复核|主力预热(?:买入复核|微型试探)|轮动启动复核|现金再部署|可小仓|启动仓|微型试探/.test(
+    [item.action, item.reason].filter(Boolean).join(" ")
+  );
+}
+
 function stripNegatedPortfolioCustomerRiskPhrases(text = "") {
   return String(text || "")
+    .replace(/(?:备选|其他候选|非首选|非主推)[^，。；]{0,16}(?:只观察|只能观察|0元观察|零元观察)[^，。；]{0,24}/g, "")
     .replace(/(?:没有|暂无|未见|未触发|不属于|不是)[^，。；]{0,18}(?:追涨|高位|拥挤|接盘|退潮|主力撤离|旧新闻|旧催化|数据阻塞|阻塞|过期)[^，。；]{0,14}/g, "")
     .replace(/(?:追涨|高位|拥挤|接盘|退潮|主力撤离|旧新闻|旧催化|数据阻塞|阻塞|过期)[^，。；]{0,14}(?:未触发|不成立|已排除)/g, "");
 }
 
 function hasPortfolioCustomerBuyBlocker(item = {}) {
-  return hasPortfolioCustomerBuyBlockerText(getPortfolioCustomerActionSearchText(item));
+  const actionReason = [item.action, item.reason].filter(Boolean).join(" ");
+  const searchText = getPortfolioCustomerActionSearchText(item);
+  if (/买入复核|小仓试探复核|主力预热复核|轮动启动复核|现金再部署|可小仓|启动仓|微型试探/.test(actionReason)) {
+    const blockerText = stripNegatedPortfolioCustomerRiskPhrases(searchText);
+    return hasPortfolioCustomerThemeEvidenceBlocker(item)
+      || isPortfolioCustomerHardDataBlocker(item)
+      || /卖出|减仓|止盈|止损|回吐|追涨|高位|拥挤|回避|接盘|退潮|主力(?:资金)?撤离|资金撤离|旧新闻|旧催化|旧题材|旧标签|历史热点|表面回调|缺回调完成|缺启动信号|缺费用\/份额关键证据|费用\/份额证据不足|买入前必须补齐|不得买入|不给买入|不给买入金额|0元观察|零元观察|blocked/i.test(blockerText);
+  }
+  return hasPortfolioCustomerBuyBlockerText(searchText);
 }
 
 function hasPortfolioCustomerThemeEvidenceBlocker(item = {}) {
@@ -14870,7 +14934,7 @@ function hasPortfolioCustomerThemeEvidenceBlocker(item = {}) {
 
 function hasPortfolioCustomerBuyBlockerText(text = "") {
   const blockerText = stripNegatedPortfolioCustomerRiskPhrases(text);
-  return /卖出|减仓|止盈|止损|回吐|追涨|高位|拥挤|回避|接盘|退潮|主力(?:资金)?撤离|资金撤离|旧新闻|旧催化|旧题材|旧标签|历史热点|低位轮动标签缺少当前题材雷达刷新|当前题材雷达.*(?:未确认|缺少刷新|刷新时间无法验证|过期)|重新刷新主力资金\/新闻催化|表面回调|数据阻塞|持仓数据阻塞|阻塞|过期|缺题材雷达|缺当前题材|缺少当前题材|缺新闻逻辑|缺主力|缺少主力|先补题材证据|补题材证据|题材证据|不能提交买入|不得买入|不给买入|不给买入金额|不买|暂不买|不能把|只观察|只能观察|0元观察|零元观察|blocked/i.test(blockerText);
+  return /卖出|减仓|止盈|止损|回吐|追涨|高位|拥挤|回避|接盘|退潮|主力(?:资金)?撤离|资金撤离|旧新闻|旧催化|旧题材|旧标签|历史热点|低位轮动标签缺少当前题材雷达刷新|当前题材雷达.*(?:未确认|缺少刷新|刷新时间无法验证|过期)|重新刷新主力资金\/新闻催化|表面回调|数据阻塞|持仓数据阻塞|阻塞|过期|缺题材雷达|缺当前题材|缺少当前题材|缺新闻逻辑|缺主力|缺少主力|缺回调完成|缺启动信号|缺费用\/份额关键证据|费用\/份额证据不足|买入前必须补齐|先补题材证据|补题材证据|题材证据|不能提交买入|不得买入|不给买入|不给买入金额|不买|暂不买|不能把|只观察|只能观察|0元观察|零元观察|blocked/i.test(blockerText);
 }
 
 function hasPortfolioCustomerExecutableBuyIntent(text = "") {
@@ -15239,24 +15303,58 @@ function comparePortfolioDecisionMatrixRefs(a = {}, b = {}) {
     || Number(groupWeight[b.group] || 0) - Number(groupWeight[a.group] || 0);
 }
 
+function formatPortfolioDecisionMatrixRefSearchText(ref = {}) {
+  if (!ref) return "";
+  return [
+    ref.listId,
+    ref.listTitle,
+    ref.action,
+    ref.reason,
+    ref.nextStep,
+    ...normalizeStringArray(ref.facts),
+    ...normalizeStringArray(ref.highlights),
+    ...normalizeStringArray(ref.risks),
+    ...normalizeStringArray(ref.gaps)
+  ].filter(Boolean).join(" ");
+}
+
 function finalizePortfolioRankingDecisionMatrixRow(row = {}) {
   const refs = Array.isArray(row.refs) ? row.refs : [];
-  const riskRef = row.cells?.risk || null;
-  const dataRef = row.cells?.data || null;
+  const refsByGroup = (group) => refs.filter((ref) => ref?.group === group);
+  const riskRefs = refsByGroup("risk");
+  const dataRefs = refsByGroup("data");
+  const sectorRefs = refsByGroup("sector");
+  const riskBlockPattern = /卖出|减仓|止损|止盈|回吐|追涨|回避|防线|风险|接盘|退潮|主力(?:资金)?撤离|资金撤离|旧新闻|旧催化|旧题材|表面回调/;
+  const hardDataPattern = /过期|无法核验|关键数据[^，。；]{0,18}缺(?:可验证净值|可验证走势|走势|份额|申购费|销售服务费|赎回规则)|缺(?:少)?(?:可验证净值|可验证走势|走势|份额|申购费|销售服务费|赎回规则)|费用\/份额关键证据仍不完整|低位轮动标签缺少当前题材雷达刷新|当前题材雷达.*(?:未确认|缺少刷新|刷新时间无法验证|过期)/;
+  const sectorBlockPattern = /先补题材证据|缺题材雷达|缺当前题材|缺少当前题材|低位轮动标签缺少当前题材雷达刷新|不能只凭旧标签和净值回调|缺新闻逻辑|缺主力|不给买入金额|只观察/;
+  const riskRef = riskRefs.find((ref) => riskBlockPattern.test(formatPortfolioDecisionMatrixRefSearchText(ref))) || row.cells?.risk || null;
+  const dataRef = dataRefs.find((ref) => hardDataPattern.test(formatPortfolioDecisionMatrixRefSearchText(ref))) || row.cells?.data || null;
   const buyRef = row.cells?.buy || null;
-  const sectorRef = row.cells?.sector || null;
-  const riskText = `${riskRef?.action || ""} ${riskRef?.reason || ""} ${riskRef?.gaps?.join(" ") || ""}`;
-  const dataText = `${dataRef?.action || ""} ${dataRef?.reason || ""} ${dataRef?.gaps?.join(" ") || ""}`;
+  const sectorRef = sectorRefs.find((ref) => sectorBlockPattern.test(formatPortfolioDecisionMatrixRefSearchText(ref))) || row.cells?.sector || null;
+  const riskText = (riskRefs.length ? riskRefs : [riskRef]).map(formatPortfolioDecisionMatrixRefSearchText).join(" ");
+  const dataText = (dataRefs.length ? dataRefs : [dataRef]).map(formatPortfolioDecisionMatrixRefSearchText).join(" ");
+  const dataBlockText = (dataRefs.length ? dataRefs : [dataRef]).map((ref) => [
+    ref?.listId,
+    ref?.listTitle,
+    ref?.action,
+    ...normalizeStringArray(ref?.facts),
+    ...normalizeStringArray(ref?.highlights),
+    ...normalizeStringArray(ref?.risks),
+    ...normalizeStringArray(ref?.gaps)
+  ].filter(Boolean).join(" ")).join(" ");
   const buyText = `${buyRef?.action || ""} ${buyRef?.reason || ""}`;
-  const sectorText = `${sectorRef?.action || ""} ${sectorRef?.reason || ""} ${sectorRef?.gaps?.join(" ") || ""} ${sectorRef?.nextStep || ""}`;
-  const hasHardRisk = /卖出|减仓|止损|止盈|回吐|追涨|回避|防线|风险|接盘|退潮|主力(?:资金)?撤离|资金撤离|旧新闻|旧催化|旧题材|表面回调/.test(riskText);
+  const sectorText = (sectorRefs.length ? sectorRefs : [sectorRef]).map(formatPortfolioDecisionMatrixRefSearchText).join(" ");
+  const sectorBlockText = stripNegatedPortfolioCustomerRiskPhrases(sectorText);
+  const hasHardRisk = riskBlockPattern.test(riskText);
   const hasFeeOnlyReview = /费率|费用|持有期|赎回|申购|销售服务费|A\/C|A\/C\/D\/I|份额|低费|替代/.test(dataText);
-  const hasHardDataSignal = /数据阻塞|过期|补数据|补证|不能提交买入|证据不足|无法核验|关键数据.*缺|净值.*缺|走势.*缺|来源.*缺|持仓.*缺|前十大.*缺/.test(dataText);
-  const hasDataBlock = hasHardDataSignal || (/缺(?:失|少|口)?/.test(dataText) && !hasFeeOnlyReview);
-  const hasSectorBlock = /先补题材证据|缺题材雷达|缺当前题材|缺少当前题材|缺新闻逻辑|缺主力|不给买入金额|只观察/.test(sectorText);
+  const hasHardDataSignal = hardDataPattern.test(dataBlockText);
+  const hasDataBlock = hasHardDataSignal;
+  const hasSectorBlock = sectorBlockPattern.test(sectorBlockText);
+  const hasOldLowRotationThemeBlock = hasSectorBlock && /低位轮动标签缺少当前题材雷达刷新|不能只凭旧标签和净值回调/.test(sectorBlockText);
+  const effectiveHardRisk = hasHardRisk && !hasOldLowRotationThemeBlock;
   const hasSoftDataConstraint = Boolean(dataRef && !hasDataBlock && (hasFeeOnlyReview || /缺(?:失|少|口)?/.test(dataText)));
   const hasBuyReview = /买入|试探|启动|再部署|复核/.test(buyText);
-  const action = hasHardRisk
+  const action = effectiveHardRisk
     ? "先处理风险"
     : hasDataBlock || hasSectorBlock
       ? "先补证据"
@@ -15265,7 +15363,7 @@ function finalizePortfolioRankingDecisionMatrixRow(row = {}) {
         : sectorRef
           ? "方向观察"
           : "继续观察";
-  const nextStep = hasHardRisk
+  const nextStep = effectiveHardRisk
     ? riskRef?.nextStep || "先处理风险项，再讨论是否买入或持有。"
     : hasDataBlock || hasSectorBlock
       ? hasSectorBlock
@@ -15274,7 +15372,7 @@ function finalizePortfolioRankingDecisionMatrixRow(row = {}) {
       : buyRef?.nextStep || sectorRef?.nextStep || "继续等待下一轮榜单复核。";
   const verdict = buildPortfolioRankingDecisionMatrixVerdict({
     action,
-    hasHardRisk,
+    hasHardRisk: effectiveHardRisk,
     hasDataBlock,
     hasSectorBlock,
     hasSoftDataConstraint,
@@ -21323,12 +21421,7 @@ function formatMarketDeepDiveThemeOpportunityPlaybook(deepDive = {}, options = {
     },
     {
       title: "低位轮动",
-      filter: (theme) => !hasThemeCapitalRetreatRisk(theme)
-        && (
-          theme.positionSignal === "low_position_rotation"
-          || theme.stage === "low_position_rotation"
-          || (Number(theme.rotationScore) >= 50 && Number(theme.lowPositionScore) >= 45)
-        ),
+      filter: (theme) => hasCurrentThemeLowRotationSupport(theme),
       nextStep: "只筛低位启动前夜的代表基金，不能把普通下跌误判成轮动。"
     },
     {
@@ -21539,7 +21632,7 @@ function requiresPullbackThemeOpportunityBacking(candidate = {}, options = {}) {
 
 function hasPullbackThemeOpportunityBacking(candidate = {}) {
   const actionableThemes = getCandidateThemeSignals(candidate).filter((theme) => {
-    if (!isActionableThemeSupport(theme)) return false;
+    if (!isActionableThemeSupport(theme) && !isFreshActionableThemeSupportForCandidate(candidate, theme)) return false;
     const lowRotation = hasUsableThemeLowRotationSupport(theme);
     return lowRotation
       ? hasFreshPullbackLowRotationThemeEvidence(candidate, theme)
@@ -21555,10 +21648,17 @@ function getPullbackThemeOpportunityBackingGap(candidate = {}, options = {}) {
   if (!themeSignals.length) {
     return "缺少当前题材雷达/新闻逻辑支撑，不能只凭走势做主推荐";
   }
-  if (!hasActionableThemeSupport(candidate)) {
+  const hasLowRotationSignal = themeSignals.some((theme) => hasUsableThemeLowRotationSupport(theme));
+  const hasFreshLowRotationSignal = themeSignals.some((theme) => hasFreshPullbackLowRotationThemeEvidence(candidate, theme));
+  if (hasLowRotationSignal && !hasFreshLowRotationSignal) {
+    return "低位轮动标签缺少当前题材雷达刷新，不能只凭旧标签和净值回调做主推荐";
+  }
+  if (!hasActionableThemeSupport(candidate) && !hasFreshActionableThemeSupport(candidate)) {
     return "缺少主力进场、题材预热或低位轮动支撑，暂不能把回调当启动";
   }
-  const actionableThemes = themeSignals.filter(isActionableThemeSupport);
+  const actionableThemes = themeSignals.filter((theme) =>
+    isActionableThemeSupport(theme) || isFreshActionableThemeSupportForCandidate(candidate, theme)
+  );
   const hasFreshOpportunityTheme = actionableThemes.some((theme) =>
     hasUsableThemeLowRotationSupport(theme)
       ? hasFreshPullbackLowRotationThemeEvidence(candidate, theme)
@@ -21576,10 +21676,60 @@ function getPullbackThemeOpportunityBackingGap(candidate = {}, options = {}) {
 function hasFreshPullbackLowRotationThemeEvidence(candidate = {}, theme = {}) {
   if (!hasUsableThemeLowRotationSupport(theme)) return false;
   if (hasTraceableFreshThemeCatalystContext(theme)) return true;
+  if (hasCurrentThemeLowRotationSupport(theme) && hasPositiveThemeMainCapitalEvidence(theme)) return true;
+  if (hasCandidateThemeRefreshSupportForLowRotationTheme(candidate, theme)) return true;
   return [
     candidate?.marketThemeRefresh,
     candidate?.seed?.marketThemeRefresh
   ].some((refresh) => isFreshPortfolioThemeRefreshSupportForTheme(refresh, theme));
+}
+
+function hasCandidateThemeRefreshSupportForLowRotationTheme(candidate = {}, theme = {}) {
+  if (!hasUsableThemeLowRotationSupport(theme)) return false;
+  const refreshes = [
+    candidate?.marketThemeRefresh,
+    candidate?.seed?.marketThemeRefresh,
+    candidate?.lastSnapshot?.marketThemeRefresh,
+    candidate?.lastSnapshot?.seed?.marketThemeRefresh
+  ].filter((refresh) => refresh && typeof refresh === "object");
+  return refreshes.some((refresh) => {
+    if (refresh.noCurrentThemeMatch) return false;
+    if (!isPortfolioThemeRefreshFreshEnough(refresh)) return false;
+    if (!hasPortfolioThemeRefreshEvidence(refresh)) return false;
+    const supportText = normalizeIntentText([
+      refresh.supportLabel,
+      refresh.summary,
+      refresh.evidence,
+      refresh.reason,
+      refresh.newsLogic,
+      ...normalizeStringArray(refresh.supportSignals),
+      ...normalizeStringArray(refresh.dataBasis)
+    ].filter(Boolean).join(" "));
+    if (!/(?:当前主力进场|主力进场|题材预热|低位轮动|资金回流|资金净流入|主力资金|新闻催化|产业催化)/.test(supportText)) return false;
+    const themeTerms = normalizePortfolioThemeRelationTerms([
+      theme.name,
+      theme.id,
+      ...normalizeStringArray(theme.themeKeywords),
+      ...normalizeStringArray(theme.boardNames),
+      ...normalizeStringArray(theme.leaderStocks)
+    ]);
+    const refreshTerms = normalizePortfolioThemeRelationTerms([
+      ...normalizeStringArray(refresh.matchedThemeNames),
+      supportText,
+      ...inferHoldingThemeTags(supportText)
+    ]);
+    if (!themeTerms.length) return true;
+    return themeTerms.some((left) =>
+      refreshTerms.some((right) => areThemeTermsRelated(left, right) || left.includes(right) || right.includes(left))
+    );
+  });
+}
+
+function normalizePortfolioThemeRelationTerms(values = []) {
+  return normalizeStringArray(values)
+    .flatMap((value) => normalizeIntentText(value).split(/[\/／、,，|｜\s]+/))
+    .map((value) => value.trim())
+    .filter((value) => value.length >= 2);
 }
 
 function isFreshPortfolioThemeRefreshSupportForTheme(refresh = {}, theme = {}) {
@@ -21750,16 +21900,54 @@ function hasActionableThemeSupport(candidate = {}) {
 }
 
 function hasFreshActionableThemeSupport(candidate = {}) {
-  return getCandidateThemeSignals(candidate).some((theme) =>
+  const themeSignals = getCandidateThemeSignals(candidate);
+  if (hasCandidateCurrentRadarSupportForLowRotationThemes(candidate, themeSignals)) return true;
+  return themeSignals.some((theme) =>
     isFreshActionableThemeSupportForCandidate(candidate, theme)
   );
 }
 
+function hasCandidateCurrentRadarSupportForLowRotationThemes(candidate = {}, themeSignals = getCandidateThemeSignals(candidate)) {
+  const lowRotationThemes = (themeSignals || []).filter((theme) => hasUsableThemeLowRotationSupport(theme));
+  if (!lowRotationThemes.length) return false;
+  const refreshes = [
+    candidate?.marketThemeRefresh,
+    candidate?.seed?.marketThemeRefresh,
+    candidate?.lastSnapshot?.marketThemeRefresh,
+    candidate?.lastSnapshot?.seed?.marketThemeRefresh
+  ].filter((refresh) => refresh && typeof refresh === "object");
+  return refreshes.some((refresh) => {
+    if (refresh.noCurrentThemeMatch) return false;
+    if (!isPortfolioThemeRefreshFreshEnough(refresh)) return false;
+    if (!hasPortfolioThemeRefreshEvidence(refresh)) return false;
+    const refreshText = normalizeIntentText([
+      ...normalizeStringArray(refresh.matchedThemeNames),
+      refresh.supportLabel,
+      refresh.summary,
+      refresh.evidence,
+      refresh.reason,
+      refresh.newsLogic,
+      ...normalizeStringArray(refresh.supportSignals),
+      ...normalizeStringArray(refresh.dataBasis)
+    ].filter(Boolean).join(" "));
+    if (!/(?:当前主力进场|主力进场|题材预热|低位轮动|资金回流|资金净流入|主力资金|新闻催化|产业催化)/.test(refreshText)) return false;
+    return lowRotationThemes.some((theme) =>
+      normalizePortfolioThemeRelationTerms([
+        theme.name,
+        theme.id,
+        ...normalizeStringArray(theme.themeKeywords),
+        ...normalizeStringArray(theme.boardNames),
+        ...normalizeStringArray(theme.leaderStocks)
+      ]).some((term) => refreshText.includes(term))
+    );
+  });
+}
+
 function isFreshActionableThemeSupportForCandidate(candidate = {}, theme = {}) {
-  if (!isActionableThemeSupport(theme)) return false;
   if (hasUsableThemeLowRotationSupport(theme)) {
     return hasFreshPullbackLowRotationThemeEvidence(candidate, theme);
   }
+  if (!isActionableThemeSupport(theme)) return false;
   return true;
 }
 
@@ -22134,7 +22322,7 @@ function isActionableThemeSupport(theme = {}) {
   const preheatCatalyst = theme.leaderSignal === "preheat_catalyst"
     || theme.positionSignal === "preheat_catalyst_watch"
     || (Number.isFinite(preheat) && preheat >= 56 && scoreThemeCatalystQuality(theme) >= 0);
-  const lowRotation = hasUsableThemeLowRotationSupport(theme, { rotation, lowPosition });
+  const lowRotation = hasCurrentThemeLowRotationSupport(theme, { rotation, lowPosition });
   const unresolvedLeaderHeat = hasThemeLeaderOrPreheatSignal(theme) && !traceableCatalystContext;
   return Boolean(mainCapital || (preheatCatalyst && traceableCatalystContext && !capitalFlowConflict) || (lowRotation && !unresolvedLeaderHeat));
 }
@@ -22150,6 +22338,14 @@ function hasUsableThemeLowRotationSupport(theme = {}, metrics = {}) {
   return theme.positionSignal === "low_position_rotation"
     || theme.stage === "low_position_rotation"
     || (Number.isFinite(rotation) && rotation >= minRotation && Number.isFinite(lowPosition) && lowPosition >= minLowPosition);
+}
+
+function hasCurrentThemeLowRotationSupport(theme = {}, metrics = {}) {
+  if (!hasUsableThemeLowRotationSupport(theme, metrics)) return false;
+  if (hasThemeCapitalRetreatRisk(theme) || isStaleThemeCatchdownRiskTheme(theme)) return false;
+  if (hasConflictingThemeCapitalOutflow(theme)) return false;
+  if (hasTraceableFreshThemeCatalystContext(theme)) return true;
+  return hasPositiveThemeMainCapitalEvidence(theme);
 }
 
 function hasThemeCatalystContext(theme = {}) {
@@ -22421,6 +22617,8 @@ function scorePullbackThemeRotation(candidate = {}) {
     const capitalFollow = Number(theme.capitalFollowScore);
     const preheat = Number(theme.preheatScore);
     const capitalFlowConflict = hasConflictingThemeCapitalOutflow(theme);
+    const currentLowRotationSupport = hasCurrentThemeLowRotationSupport(theme)
+      || hasCandidateThemeRefreshSupportForLowRotationTheme(candidate, theme);
     if (theme.positionSignal === "high_chase_risk") score -= 28;
     if (theme.stage === "crowded") score -= 20;
     if (hasThemeCapitalRetreatRisk(theme)) score -= 34;
@@ -22430,15 +22628,17 @@ function scorePullbackThemeRotation(candidate = {}) {
       if (crowding >= 55) score -= 18;
       else if (crowding >= 40) score -= 8;
     }
-    if (!capitalFlowConflict && theme.positionSignal === "low_position_rotation") score += 18;
+    if (currentLowRotationSupport && theme.positionSignal === "low_position_rotation") score += 18;
+    if (!currentLowRotationSupport && theme.positionSignal === "low_position_rotation") score -= 14;
     if (!capitalFlowConflict && theme.positionSignal === "acceptable_position") score += 10;
     if (theme.positionSignal === "main_capital_entering" || theme.leaderSignal === "capital_entering") score += 16;
     if (theme.positionSignal === "preheat_catalyst_watch" || theme.leaderSignal === "preheat_catalyst") score += 12;
-    if (!capitalFlowConflict && theme.stage === "low_position_rotation") score += 10;
+    if (currentLowRotationSupport && theme.stage === "low_position_rotation") score += 10;
+    if (!currentLowRotationSupport && theme.stage === "low_position_rotation") score -= 10;
     if (theme.stage === "capital_entering") score += 12;
     if (theme.stage === "preheat_catalyst") score += 8;
     catalystAdjustment += scoreThemeCatalystQuality(theme);
-    if (!capitalFlowConflict && Number.isFinite(rotation) && Number.isFinite(lowPosition)) {
+    if (currentLowRotationSupport && Number.isFinite(rotation) && Number.isFinite(lowPosition)) {
       if (rotation >= 45 && lowPosition >= 45) score += 14;
       else if (rotation >= 35 && lowPosition >= 35) score += 8;
     }
@@ -26506,7 +26706,7 @@ function isThemeRadarPreheatOpportunity(theme = {}) {
 }
 
 function isThemeRadarLowRotationOpportunity(theme = {}) {
-  return !isThemeRadarRiskLane(theme) && hasUsableThemeLowRotationSupport(theme, {
+  return !isThemeRadarRiskLane(theme) && hasCurrentThemeLowRotationSupport(theme, {
     minRotation: 45,
     minLowPosition: 45
   });
@@ -26564,7 +26764,7 @@ function buildThemeLeaderboards(themeRadar = []) {
       id: "low_rotation",
       title: "低位轮动榜",
       subtitle: "位置较低、轮动评分改善，适合进入小仓试探复核的方向。",
-      filter: (theme) => notRetreat(theme) && notCrowded(theme) && hasUsableThemeLowRotationSupport(theme, {
+      filter: (theme) => notRetreat(theme) && notCrowded(theme) && hasCurrentThemeLowRotationSupport(theme, {
         minRotation: 45,
         minLowPosition: 45
       }),
@@ -28922,13 +29122,16 @@ function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
   const explicit = inferFocusedFundSearchKeywords(userText);
   const allowPrecious = isPreciousMetalQuestion(userText);
   const text = normalizeIntentText(userText);
+  const genericPullbackSetupAsk = isGenericPullbackSetupSearchText(text);
   const radarKeywords = (themeRadar || [])
     .filter((theme) => allowPrecious || theme.id !== "precious_metals")
     .filter((theme) => !isStaleThemeCatchdownRiskTheme(theme))
     .filter((theme) => theme.positionSignal !== "high_chase_risk" && theme.stage !== "crowded" && Number(theme.crowdingScore || 0) < 55)
     .filter((theme) => {
-      const lowRotationCandidate = Number(theme.lowPositionScore || 0) >= 35
-        || ["low_position_rotation", "acceptable_position"].includes(theme.positionSignal);
+      const lowRotationCandidate = hasCurrentThemeLowRotationSupport(theme, {
+        minRotation: 45,
+        minLowPosition: 45
+      });
       const leaderCandidate = theme.dynamic
         || Number(theme.capitalFollowScore || 0) >= 45
         || Number(theme.preheatScore || 0) >= 45
@@ -28940,10 +29143,10 @@ function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
         || (lowRotationCandidate && !unresolvedLeaderHeat && !capitalFlowConflict)
         || (leaderCandidate && hasTraceableFreshThemeCatalystContext(theme) && !capitalFlowConflict);
     })
-    .filter((theme) => !explicit.length || themeMatchesSearchText(theme, text))
+    .filter((theme) => !explicit.length || genericPullbackSetupAsk || themeMatchesSearchText(theme, text))
     .flatMap((theme) => collectThemeOpportunitySearchKeywords(theme))
     .filter(Boolean);
-  const scopedRadarKeywords = explicit.length
+  const scopedRadarKeywords = explicit.length && !genericPullbackSetupAsk
     ? radarKeywords.filter((keyword) => {
         const value = normalizeIntentText(keyword);
         return value && (text.includes(value) || explicit.some((item) => normalizeIntentText(item) === value));
@@ -28959,6 +29162,12 @@ function inferPullbackSetupSearchKeywords(userText, themeRadar = []) {
   return [...new Set([...baseKeywords, ...scopedRadarKeywords])]
     .filter((keyword) => allowPrecious || !isPreciousMetalKeyword(keyword))
     .slice(0, Number(process.env.PULLBACK_SETUP_KEYWORD_LIMIT || 32));
+}
+
+function isGenericPullbackSetupSearchText(text = "") {
+  const value = normalizeIntentText(text);
+  return /回调|低位|启动|准备启动|启动前夜|刚转强|不追涨|不要追涨/.test(value)
+    && !/(黄金|贵金属|白银|医药|创新药|消费|新能源|半导体|芯片|通信|光模块|人工智能|ai|机器人|军工|港股|越南|日本|欧洲|qdii|红利|债券|货币)/i.test(value);
 }
 
 function inferPullbackSetupCandidateSearchKeywords(userText, themeRadar = [], marketSnapshot = null) {
@@ -29453,8 +29662,14 @@ function scorePullbackSetupSeedCandidate(item, themeRadar = [], userText = "") {
   const matchedThemes = currentThemeItem.matchedThemes?.length ? currentThemeItem.matchedThemes : matchCandidateThemes(item, currentThemeRadar);
   for (const theme of matchedThemes.slice(0, 2)) {
     const mainForceScore = scoreThemeMainForceOpportunity(theme);
-    score += Math.min(14, Number(theme.lowPositionScore || 0) / 6);
-    score += Math.min(12, Number(theme.rotationScore || 0) / 8);
+    const currentLowRotationSupport = hasCurrentThemeLowRotationSupport(theme)
+      || hasCandidateThemeRefreshSupportForLowRotationTheme(item, theme);
+    if (currentLowRotationSupport) {
+      score += Math.min(14, Number(theme.lowPositionScore || 0) / 6);
+      score += Math.min(12, Number(theme.rotationScore || 0) / 8);
+    } else if (theme.positionSignal === "low_position_rotation" || theme.stage === "low_position_rotation") {
+      score -= 18;
+    }
     score += Math.min(14, Number(theme.capitalFollowScore || 0) / 6);
     score += Math.min(10, Number(theme.preheatScore || 0) / 7);
     score += Math.max(-14, Math.min(18, mainForceScore / 4));
@@ -29517,6 +29732,8 @@ function scoreDeepDiveCandidate(item, themeRadar = []) {
   const matchedThemes = currentThemeItem.matchedThemes?.length ? currentThemeItem.matchedThemes : matchCandidateThemes(item, currentThemeRadar);
   for (const theme of matchedThemes.slice(0, 2)) {
     const mainForceScore = scoreThemeMainForceOpportunity(theme);
+    const currentLowRotationSupport = hasCurrentThemeLowRotationSupport(theme)
+      || hasCandidateThemeRefreshSupportForLowRotationTheme(item, theme);
     score += 8 + Math.min(16, Number(theme.forwardScore || 0) / 5);
     score += Math.min(12, Number(theme.capitalFollowScore || 0) / 6);
     score += Math.min(8, Number(theme.preheatScore || 0) / 8);
@@ -29528,7 +29745,8 @@ function scoreDeepDiveCandidate(item, themeRadar = []) {
     if (theme.positionSignal === "high_chase_risk") score -= 6;
     if (hasThemeCapitalRetreatRisk(theme)) score -= 18;
     if (isStaleThemeCatchdownRiskTheme(theme)) score -= 24;
-    if (["low_position_rotation", "acceptable_position"].includes(theme.positionSignal)) score += 5;
+    if (currentLowRotationSupport || theme.positionSignal === "acceptable_position") score += 5;
+    else if (theme.positionSignal === "low_position_rotation" || theme.stage === "low_position_rotation") score -= 12;
   }
   score += scoreCandidateReturnSetup(item);
   if (item.unitNav) score += 1;
