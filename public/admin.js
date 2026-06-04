@@ -534,6 +534,7 @@ async function loadDataSourceCoverage({ refresh = false } = {}) {
 
 function renderRuntimeTerminal(stats = {}, deployment = null, dataSourceCoverage = currentDataSourceCoverage) {
   const counters = stats.counters || {};
+  const last = stats.last || {};
   const diagnostics = stats.diagnostics || {};
   const release = stats.release || {};
   const diagnosticItems = Array.isArray(diagnostics.items) ? diagnostics.items : [];
@@ -641,6 +642,7 @@ function renderRuntimeTerminal(stats = {}, deployment = null, dataSourceCoverage
       title: "市场与贵金属",
       items: [
         { label: "市场快照", value: getRuntimeCounter(counters, "marketSnapshotCalls"), meta: "指数、板块、资金面" },
+        { label: "快照预热", value: getRuntimeCounter(counters, "marketSnapshotWarmerSuccesses"), meta: `运行 ${formatRuntimeCount(getRuntimeCounter(counters, "marketSnapshotWarmerRuns"))} · 失败 ${formatRuntimeCount(getRuntimeCounter(counters, "marketSnapshotWarmerFailures"))} · 最近 ${escapeHtml(last.lastMarketSnapshotWarmerQuality || "待预热")}` },
         { label: "公开GET重试", value: getRuntimeCounter(counters, "publicDataGetRetries"), meta: `请求 ${formatRuntimeCount(getRuntimeCounter(counters, "publicDataGetRequests"))} · 成功 ${formatRuntimeCount(getRuntimeCounter(counters, "publicDataGetRetrySuccesses"))} · 失败 ${formatRuntimeCount(getRuntimeCounter(counters, "publicDataGetFailures"))}` },
         { label: "贵金属行情", value: getRuntimeCounter(counters, "preciousMetalQuoteFetches"), meta: "黄金、白银等行情补证" },
         { label: "贵金属基金", value: getRuntimeCounter(counters, "preciousMetalFundSearches"), meta: "避免只凭叙事推荐黄金" }
@@ -756,8 +758,10 @@ function renderRuntimeDataSourceCoverage(coverage = null, error = null) {
     <div class="data-source-kpi-grid">
       ${renderDataSourceKpi("买入门槛", readiness.label || "待判断", readiness.actionText || "等待覆盖评分", readiness.tone || "snapshot")}
       ${renderDataSourceKpi("外部接口", `${totals.configuredSources || 0}/${totals.externalSources || 0}`, `已有样本 ${totals.sampledSources || 0}，待授权 ${totals.tokenRequiredSources || 0}`, "source")}
+      ${renderDataSourceKpi("本次实抓", `${totals.liveSources || 0} 个`, `可用 ${totals.usableSources || 0}，缓存回退 ${readiness.sourceHealth?.cachedSources || 0}`, "ok")}
       ${renderDataSourceKpi("实时接口", `${totals.realtimeUsableSources || 0}/${totals.realtimeSources || 0}`, `板块、指数、估值、新闻实时/准实时`, "realtime")}
       ${renderDataSourceKpi("板块维度", `${board.realtimeBoardFeeds || 0} 条`, `${board.configuredMarketTypes || 0} 类市场，每板块 ${board.metricFieldCount || 0} 项指标`, "board")}
+      ${renderDataSourceKpi("板块指标", `${board.observedMetricCells || 0} 个`, `${board.observedBoards || 0} 个板块 × ${board.metricFieldCount || 0} 项字段`, "board")}
       ${renderDataSourceKpi("指标引擎", `${totals.activeIndicatorEngines || 0}/${totals.indicatorEngines || 0}`, `固定代码先处理，再给模型判断`, "engine")}
       ${renderDataSourceKpi("最近快照", snapshot.ageText || "暂无", snapshot.fetchedAt ? formatDateTime(snapshot.fetchedAt) : "点击刷新覆盖抓取", "snapshot")}
     </div>
@@ -785,6 +789,7 @@ function renderRuntimeDataSourceCoverage(coverage = null, error = null) {
         meta: `${board.configuredMarketTypeLabels?.join("、") || "概念/行业"} · ${board.fetchModes?.join("、") || "四榜"}`,
         details: [
           `实时榜单维度 ${board.realtimeBoardFeeds || 0} 条`,
+          `板块指标单元 ${board.observedMetricCells || 0} 个`,
           `每个板块 ${board.metricFieldCount || 0} 个字段`,
           `衍生：${(board.derivedIndicators || []).join("、")}`
         ]

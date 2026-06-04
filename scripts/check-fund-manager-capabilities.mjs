@@ -20,6 +20,21 @@ assert(!serverSource.includes("uniqueCodes.slice(0, 6)"), "fund enrichment must 
 assert(serverSource.includes("FUND_ANALYSIS_ENRICHMENT_LIMIT") && serverSource.includes("PORTFOLIO_PROFILE_ENRICHMENT_LIMIT"), "fund enrichment limits must be configurable for analysis and portfolio-manager coverage");
 assert(/heldProfilesRaw[\s\S]{0,180}getPortfolioProfileEnrichmentLimit/.test(serverSource), "portfolio decisions must enrich held positions with the higher portfolio coverage limit");
 assert(/watchlistProfilesRaw[\s\S]{0,180}getPortfolioProfileEnrichmentLimit/.test(serverSource), "portfolio decisions must enrich watchlist candidates with the higher portfolio coverage limit");
+assert(serverSource.includes("startMarketSnapshotWarmer()") && serverSource.includes("marketSnapshotWarmerInFlight"), "server startup must proactively warm the market snapshot cache with an in-flight guard");
+assert(adminSource.includes("快照预热") && adminSource.includes("marketSnapshotWarmerSuccesses"), "admin runtime data page must expose market snapshot warmer status");
+assert(adminSource.includes("本次实抓") && adminSource.includes("liveSources") && adminSource.includes("板块指标") && adminSource.includes("observedMetricCells"), "admin data-source page must expose live fetch counts and board indicator cells");
+{
+  const previousWarmerFlag = process.env.MARKET_SNAPSHOT_WARMER_ENABLED;
+  process.env.MARKET_SNAPSHOT_WARMER_ENABLED = "false";
+  assert.equal(manager.isMarketSnapshotWarmerEnabled(), false, "market snapshot warmer must be configurable off for controlled environments");
+  process.env.MARKET_SNAPSHOT_WARMER_ENABLED = "true";
+  assert.equal(manager.isMarketSnapshotWarmerEnabled(), true, "market snapshot warmer should be enabled by default when interval is positive");
+  if (previousWarmerFlag === undefined) {
+    delete process.env.MARKET_SNAPSHOT_WARMER_ENABLED;
+  } else {
+    process.env.MARKET_SNAPSHOT_WARMER_ENABLED = previousWarmerFlag;
+  }
+}
 assert(
   serverSource.includes("DEFAULT_FUND_ANSWER_SORT_POLICY = \"风险收益质量优先：先看高夏普/低回撤")
     && /FUND_ANSWER_SHORT_LEADERBOARD_BY_DEFAULT,\s*true/.test(serverSource),

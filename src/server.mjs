@@ -53,6 +53,8 @@ const DEFAULT_PORTFOLIO_REPORT_IMAGE_MIN = 8;
 const DEFAULT_PORTFOLIO_REPORT_IMAGE_LIMIT = 8;
 const PUBLIC_DATA_TIMEOUT_MS = Number(process.env.PUBLIC_DATA_TIMEOUT_MS || 20000);
 const MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS = Number(process.env.MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS || 48);
+const MARKET_SNAPSHOT_WARMER_INTERVAL_MS = Number(process.env.MARKET_SNAPSHOT_WARMER_INTERVAL_MS || 10 * 60 * 1000);
+const MARKET_SNAPSHOT_WARMER_START_DELAY_MS = Number(process.env.MARKET_SNAPSHOT_WARMER_START_DELAY_MS || 15_000);
 const FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS || 72);
 const FUND_NAV_HISTORY_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_NAV_HISTORY_CACHE_MAX_AGE_HOURS || 168);
 const FUND_RANKING_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_RANKING_CACHE_MAX_AGE_HOURS || 48);
@@ -486,6 +488,8 @@ const PORTFOLIO_DB_REPAIRED = Symbol("portfolioDbRepaired");
 let tenantAccessTokenCache = null;
 const seenEventIds = new Map();
 let portfolioSchedulerTimer = null;
+let marketSnapshotWarmerTimer = null;
+let marketSnapshotWarmerInFlight = false;
 let portfolioRunInFlight = false;
 let activePortfolioRunId = "";
 const cancelledPortfolioRunIds = new Set();
@@ -569,6 +573,7 @@ if (process.env.FUNDAGENT_SKIP_SERVER_START !== "1") {
     console.log(`Feishu Fund Manager listening on http://${HOST}:${PORT}`);
     console.log(`Admin UI: http://127.0.0.1:${PORT}/admin`);
     startPortfolioScheduler();
+    startMarketSnapshotWarmer();
   });
 }
 
@@ -1311,6 +1316,89 @@ function startPortfolioScheduler() {
       recordError(error, { portfolioErrors: 1 });
     });
   }, 3000);
+}
+
+function startMarketSnapshotWarmer() {
+  if (marketSnapshotWarmerTimer || !isMarketSnapshotWarmerEnabled()) {
+    return;
+  }
+  const intervalMs = getMarketSnapshotWarmerIntervalMs();
+  marketSnapshotWarmerTimer = setInterval(() => {
+    warmMarketSnapshotCache({ reason: "interval" }).catch((error) => {
+      console.error("[market-snapshot-warmer-error]", error);
+    });
+  }, intervalMs);
+  marketSnapshotWarmerTimer.unref?.();
+
+  setTimeout(() => {
+    warmMarketSnapshotCache({ reason: "startup" }).catch((error) => {
+      console.error("[market-snapshot-warmer-error]", error);
+    });
+  }, getMarketSnapshotWarmerStartDelayMs()).unref?.();
+}
+
+function isMarketSnapshotWarmerEnabled() {
+  return parseBoolean(process.env.MARKET_SNAPSHOT_WARMER_ENABLED, true)
+    && getMarketSnapshotWarmerIntervalMs() > 0;
+}
+
+function getMarketSnapshotWarmerIntervalMs() {
+  const value = finiteNumberOr(process.env.MARKET_SNAPSHOT_WARMER_INTERVAL_MS, MARKET_SNAPSHOT_WARMER_INTERVAL_MS);
+  if (value <= 0) return 0;
+  return Math.max(60_000, value);
+}
+
+function getMarketSnapshotWarmerStartDelayMs() {
+  return Math.max(0, finiteNumberOr(process.env.MARKET_SNAPSHOT_WARMER_START_DELAY_MS, MARKET_SNAPSHOT_WARMER_START_DELAY_MS));
+}
+
+async function warmMarketSnapshotCache(options = {}) {
+  if (marketSnapshotWarmerInFlight) {
+    updateStats({
+      counters: { marketSnapshotWarmerSkipped: 1 },
+      last: {
+        lastMarketSnapshotWarmerSkippedAt: new Date().toISOString(),
+        lastMarketSnapshotWarmerSkippedReason: "in_flight"
+      }
+    });
+    return { ok: false, skipped: true, reason: "in_flight" };
+  }
+  marketSnapshotWarmerInFlight = true;
+  const reason = options.reason || "manual";
+  const startedAt = new Date().toISOString();
+  updateStats({
+    counters: { marketSnapshotWarmerRuns: 1 },
+    last: {
+      lastMarketSnapshotWarmerStartedAt: startedAt,
+      lastMarketSnapshotWarmerReason: reason
+    }
+  });
+  try {
+    const snapshot = await fetchMarketSnapshot({
+      reason: `warmer:${reason}`,
+      priorityFundSeeds: options.priorityFundSeeds || []
+    });
+    updateStats({
+      counters: { marketSnapshotWarmerSuccesses: 1 },
+      last: {
+        lastMarketSnapshotWarmAt: snapshot.fetchedAt || new Date().toISOString(),
+        lastMarketSnapshotWarmerQuality: snapshot.dataQuality?.level || "",
+        lastMarketSnapshotWarmerEvidenceGate: snapshot.dataSourceCoverage?.evidenceReadiness?.label || ""
+      }
+    });
+    return { ok: true, snapshot };
+  } catch (error) {
+    recordError(error, { marketSnapshotWarmerFailures: 1 });
+    updateStats({
+      last: {
+        lastMarketSnapshotWarmerFailureAt: new Date().toISOString(),
+        lastMarketSnapshotWarmerFailure: String(error.message || error).slice(0, 240)
+      }
+    });
+    return { ok: false, error: error.message || String(error) };
+  } finally {
+    marketSnapshotWarmerInFlight = false;
+  }
 }
 
 async function checkPortfolioSchedule() {
@@ -29740,8 +29828,8 @@ function formatDataSourceAge(minutes) {
 function buildDataSourceCoverageSummary({ totals = {}, boardCoverage = {}, fundCoverage = {}, newsCoverage = {}, snapshotMeta = {}, evidenceReadiness = null } = {}) {
   return [
     evidenceReadiness ? `证据门槛 ${evidenceReadiness.score} 分：${evidenceReadiness.label}。` : "",
-    `已接入 ${totals.externalSources || 0} 个外部数据接口，${totals.configuredSources || 0} 个无需额外授权或已配置。`,
-    `板块市场支持 ${boardCoverage.configuredMarketTypes || 0} 类市场、${boardCoverage.realtimeBoardFeeds || 0} 条实时榜单维度，每个板块沉淀 ${boardCoverage.metricFieldCount || 0} 类字段。`,
+    `已接入 ${totals.externalSources || 0} 个外部数据接口，${totals.configuredSources || 0} 个无需额外授权或已配置；当前报告识别 ${totals.liveSources || 0} 个最新实抓接口、${totals.sampledSources || 0} 个有样本接口。`,
+    `板块市场支持 ${boardCoverage.configuredMarketTypes || 0} 类市场、${boardCoverage.realtimeBoardFeeds || 0} 条实时榜单维度；最近样本形成 ${boardCoverage.observedBoards || 0} 个板块 × ${boardCoverage.metricFieldCount || 0} 类字段 = ${boardCoverage.observedMetricCells || 0} 个板块指标单元。`,
     `最近快照覆盖 ${boardCoverage.observedBoards || 0} 个板块、${totals.fundCandidates || 0} 只候选基金、${fundCoverage.realtimeValuationCount || 0} 条实时估值、${newsCoverage.fastNewsCount || 0} 条快讯。`,
     `固定代码指标引擎 ${totals.indicatorEngines || 0} 个，已有样本 ${totals.activeIndicatorEngines || 0} 个；快照时间 ${snapshotMeta.ageText || "暂无"}。`
   ].filter(Boolean).join(" ");
@@ -41305,6 +41393,10 @@ function getDefaultStats() {
       marketSnapshotFailures: 0,
       marketSnapshotPartialQuality: 0,
       marketSnapshotPoorQuality: 0,
+      marketSnapshotWarmerRuns: 0,
+      marketSnapshotWarmerSuccesses: 0,
+      marketSnapshotWarmerFailures: 0,
+      marketSnapshotWarmerSkipped: 0,
       marketBoardFetches: 0,
       preciousMetalQuoteFetches: 0,
       preciousMetalFundSearches: 0,
@@ -41466,6 +41558,14 @@ function buildRuntimeDiagnostics(stats = {}) {
       warningRate: 0.12,
       criticalRate: 0.25,
       note: "影响题材、贵金属和候选池判断，失败率高时推荐结论需要降级。"
+    }),
+    buildCounterRateDiagnostic({
+      label: "市场快照预热失败",
+      failures: counters.marketSnapshotWarmerFailures,
+      total: counters.marketSnapshotWarmerRuns,
+      warningRate: 0.1,
+      criticalRate: 0.25,
+      note: "后台预热失败会让用户请求重新依赖临时抓取和缓存回退，需要先修复公开数据源。"
     }),
     buildCounterRateDiagnostic({
       label: "公开数据GET失败",
@@ -43503,6 +43603,7 @@ export {
   buildDataSourceRepairQueue,
   buildMarketDataQuality,
   buildRealtimeFundValuationSignal,
+  warmMarketSnapshotCache,
   applyMarketSnapshotCacheFallback,
   buildCachedFundNavHistoryFallback,
   buildCachedFundRankingFallback,
@@ -43574,6 +43675,7 @@ export {
   getFeishuCardImageChunkSize,
   getFundReportChartLegendLines,
   isRetryablePublicDataGetError,
+  isMarketSnapshotWarmerEnabled,
   getFundReportChartLimit,
   getFundReportChartMinCount,
   getPortfolioTrendImageLimit,

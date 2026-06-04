@@ -213,8 +213,8 @@ const requiredPatterns = [
     message: "board market coverage must show concept/industry markets, four realtime board modes, and per-board metric fields."
   },
   {
-    pattern: /(?=[\s\S]*runtimeDataSourceCoverage)(?=[\s\S]*refreshDataSourcesBtn)(?=[\s\S]*renderRuntimeDataSourceCoverage)(?=[\s\S]*数据源覆盖)(?=[\s\S]*evidenceReadiness)(?=[\s\S]*repairQueue)(?=[\s\S]*买入门槛)(?=[\s\S]*证据门槛)(?=[\s\S]*修复队列)/,
-    message: "admin runtime data-source page must visibly show source coverage, evidence readiness, repair queue, and allow manual refresh."
+    pattern: /(?=[\s\S]*runtimeDataSourceCoverage)(?=[\s\S]*refreshDataSourcesBtn)(?=[\s\S]*renderRuntimeDataSourceCoverage)(?=[\s\S]*数据源覆盖)(?=[\s\S]*evidenceReadiness)(?=[\s\S]*repairQueue)(?=[\s\S]*买入门槛)(?=[\s\S]*证据门槛)(?=[\s\S]*本次实抓)(?=[\s\S]*liveSources)(?=[\s\S]*板块指标)(?=[\s\S]*observedMetricCells)(?=[\s\S]*修复队列)/,
+    message: "admin runtime data-source page must visibly show source coverage, live fetch counts, board indicator cells, evidence readiness, repair queue, and allow manual refresh."
   },
   {
     pattern: /(?=[\s\S]*公开GET重试)(?=[\s\S]*publicDataGetRequests)(?=[\s\S]*publicDataGetRetries)(?=[\s\S]*publicDataGetRetrySuccesses)(?=[\s\S]*publicDataGetFailures)/,
@@ -893,6 +893,31 @@ const requiredPatterns = [
         && source.includes("persistMarketSnapshotCache(cache)")
     },
     message: "market snapshot fetching must reuse cached successful components when live public sources fail."
+  },
+  {
+    pattern: {
+      test: (source) => {
+        const starter = getFunctionSource(source, "startMarketSnapshotWarmer");
+        const warmer = getFunctionSource(source, "warmMarketSnapshotCache");
+        const startIndex = source.indexOf("server.listen");
+        const endIndex = source.indexOf("let eventLoopLagExpectedAt");
+        const serverStart = source.slice(startIndex, endIndex > startIndex ? endIndex : startIndex + 900);
+        return serverStart.includes("startMarketSnapshotWarmer()")
+          && starter.includes("getMarketSnapshotWarmerIntervalMs")
+          && starter.includes("setInterval")
+          && starter.includes("warmMarketSnapshotCache")
+          && warmer.includes("marketSnapshotWarmerInFlight")
+          && warmer.includes("fetchMarketSnapshot")
+          && warmer.includes("marketSnapshotWarmerSuccesses")
+          && warmer.includes("marketSnapshotWarmerFailures")
+          && warmer.includes("marketSnapshotWarmerSkipped");
+      }
+    },
+    message: "market snapshot cache must be proactively warmed on a schedule instead of relying only on user-triggered live fetches."
+  },
+  {
+    pattern: /(?=[\s\S]*快照预热)(?=[\s\S]*marketSnapshotWarmerRuns)(?=[\s\S]*marketSnapshotWarmerSuccesses)(?=[\s\S]*marketSnapshotWarmerFailures)(?=[\s\S]*lastMarketSnapshotWarmerQuality)/,
+    message: "admin runtime data-source panel must expose market snapshot warmer runs, successes, failures, and latest quality."
   },
   {
     pattern: /function normalizeMarketDataQualityComponent[\s\S]{0,900}cacheFallback[\s\S]{0,520}status = "cached"/,
