@@ -13469,34 +13469,7 @@ function resolvePortfolioDataConfidenceEvidence(item = {}, options = {}) {
 function buildPortfolioHoldingsOutlookRanking(watchlist = []) {
   const items = normalizePortfolioWatchlist(watchlist)
     .filter((item) => item.code && ["ready", "waiting_pullback", "watch"].includes(item.status))
-    .map((item) => {
-      const outlook = resolvePortfolioWatchHoldingsOutlook(item);
-      if (!outlook.hasHoldings) return null;
-      const score = Number(item.readinessScore || 0) + Number(outlook.score || 0) * 2;
-      const concentration = outlook.concentration || {};
-      return buildPortfolioRankingItem({
-        code: item.code,
-        name: item.name,
-        source: "前十大持仓",
-        score: round(score, 1),
-        action: outlook.score >= 14 ? "持仓支撑复核" : outlook.score >= 7 ? "前景复核" : "持仓风险复核",
-        reason: `持仓前景：${outlook.label || "已补齐"}；${outlook.evidence || "前十大持仓已补齐，需要和买点一起复核。"}`,
-        facts: [
-          Number.isFinite(Number(concentration.top10Pct)) ? `前十大${formatFallbackPlainPct(concentration.top10Pct)}` : "",
-          outlook.holdingTags?.length ? `行业${outlook.holdingTags.slice(0, 3).join("/")}` : "",
-          outlook.matchedTags?.length ? `匹配${outlook.matchedTags.slice(0, 3).join("/")}` : ""
-        ].filter(Boolean),
-        decision: {
-          highlights: normalizeStringArray(outlook.positives).length
-            ? normalizeStringArray(outlook.positives).slice(0, 3)
-            : [outlook.evidence || "前十大持仓已补齐"],
-          risks: normalizeStringArray(outlook.risks).slice(0, 3),
-          gaps: Number(outlook.score || 0) >= 7 ? [] : ["持仓前景还不能单独支撑买入，需要继续补行业和走势证据。"],
-          nextStep: "把前十大持仓、行业前景、集中度和当前买点一起复核，通过后才进入主推荐。"
-        },
-        status: outlook.label || ""
-      });
-    })
+    .map(buildPortfolioHoldingsOutlookRankingItem)
     .filter(Boolean)
     .sort(compareRankingItems)
     .slice(0, 6);
@@ -13508,6 +13481,79 @@ function buildPortfolioHoldingsOutlookRanking(watchlist = []) {
     nextAction: "下一步补齐候选基金前十大持仓和行业前景，避免只凭净值走势推荐。",
     items
   });
+}
+
+function buildPortfolioHoldingsOutlookRankingItem(item = {}) {
+  const outlook = resolvePortfolioWatchHoldingsOutlook(item);
+  if (!outlook.hasHoldings) return null;
+  const riskGate = resolvePortfolioPositiveWatchRankingGate(item);
+  if (!riskGate.ok) {
+    return buildPortfolioHoldingsOutlookRiskGateItem(item, outlook, riskGate);
+  }
+  const score = Number(item.readinessScore || 0) + Number(outlook.score || 0) * 2;
+  const concentration = outlook.concentration || {};
+  return buildPortfolioRankingItem({
+    code: item.code,
+    name: item.name,
+    source: "前十大持仓",
+    score: round(score, 1),
+    action: outlook.score >= 14 ? "持仓支撑复核" : outlook.score >= 7 ? "前景复核" : "持仓风险复核",
+    reason: `持仓前景：${outlook.label || "已补齐"}；${outlook.evidence || "前十大持仓已补齐，需要和买点一起复核。"}`,
+    facts: buildPortfolioHoldingsOutlookFacts(outlook),
+    decision: {
+      highlights: normalizeStringArray(outlook.positives).length
+        ? normalizeStringArray(outlook.positives).slice(0, 3)
+        : [outlook.evidence || "前十大持仓已补齐"],
+      risks: normalizeStringArray(outlook.risks).slice(0, 3),
+      gaps: Number(outlook.score || 0) >= 7 ? [] : ["持仓前景还不能单独支撑买入，需要继续补行业和走势证据。"],
+      nextStep: "把前十大持仓、行业前景、集中度和当前买点一起复核，通过后才进入主推荐。"
+    },
+    status: outlook.label || ""
+  });
+}
+
+function buildPortfolioHoldingsOutlookRiskGateItem(item = {}, outlook = {}, riskGate = {}) {
+  const score = Math.min(49, Number(item.readinessScore || 0) + Number(outlook.score || 0));
+  const positives = normalizeStringArray(outlook.positives);
+  const outlookRisks = normalizeStringArray(outlook.risks);
+  return buildPortfolioRankingItem({
+    code: item.code,
+    name: item.name,
+    source: "前十大持仓",
+    score: round(score, 1),
+    action: riskGate.hardCatchdown ? "持仓前景不抵消接盘风险" : "持仓前景不抵消追涨风险",
+    reason: riskGate.hardCatchdown
+      ? "前十大持仓只能证明基金承载了什么，不能证明旧题材回调可以买；主力撤离、旧催化或底层走弱时先按接盘风险处理。"
+      : "前十大持仓只能证明基金承载了什么，不能覆盖当前位置偏热或追涨风险。",
+    facts: mergeStringLists(buildPortfolioHoldingsOutlookFacts(outlook), riskGate.facts || []).slice(0, 6),
+    decision: {
+      highlights: positives.length
+        ? positives.slice(0, 2).map((line) => `${line}；但只能作为风险门禁解除后的复核条件。`)
+        : [outlook.evidence || "前十大持仓已补齐，但当前风险门禁优先。"],
+      risks: mergeStringLists(
+        [riskGate.reason],
+        outlookRisks,
+        [riskGate.hardCatchdown ? "持仓前景再顺，也不能替代主力资金回流和新鲜催化。" : "持仓前景再顺，也不能替代追涨降温。"]
+      ).filter(Boolean).slice(0, 4),
+      gaps: mergeStringLists(
+        riskGate.hardCatchdown ? ["缺主力资金回流", "缺新鲜新闻/政策/产业催化", "缺代表持仓止跌"] : ["缺追涨降温证据", "缺健康回撤"],
+        Number(outlook.score || 0) >= 7 ? [] : ["持仓前景还不能单独支撑买入"]
+      ).slice(0, 4),
+      nextStep: riskGate.hardCatchdown
+        ? `先保持0元观察；${riskGate.nextStep || "等主力资金回流、新鲜催化和代表持仓止跌后，再恢复持仓前景复核。"}`
+        : (riskGate.nextStep || "先降级观察；追涨降温前，前十大持仓只能用于解释风险来源，不能用于买入复核。")
+    },
+    status: "warning"
+  });
+}
+
+function buildPortfolioHoldingsOutlookFacts(outlook = {}) {
+  const concentration = outlook.concentration || {};
+  return [
+    Number.isFinite(Number(concentration.top10Pct)) ? `前十大${formatFallbackPlainPct(concentration.top10Pct)}` : "",
+    outlook.holdingTags?.length ? `行业${outlook.holdingTags.slice(0, 3).join("/")}` : "",
+    outlook.matchedTags?.length ? `匹配${outlook.matchedTags.slice(0, 3).join("/")}` : ""
+  ].filter(Boolean);
 }
 
 function resolvePortfolioWatchHoldingsOutlook(item = {}) {
@@ -38765,6 +38811,7 @@ export {
   buildPortfolioChaseRiskRanking,
   buildPortfolioDrawdownDefenseRanking,
   buildPortfolioDataConfidenceRanking,
+  buildPortfolioHoldingsOutlookRanking,
   buildPortfolioRankingAlertCenter,
   buildPortfolioRankingDecisionMatrix,
   buildPortfolioRankingConsensusRadar,

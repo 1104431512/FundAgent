@@ -7870,6 +7870,24 @@ assert(
     && !/试探仓|启动仓/.test(`${holdingRealtimeWeakSizing?.action || ""} ${holdingRealtimeWeakSizing?.reason || ""} ${(holdingRealtimeWeakSizing?.facts || []).join(" ")}`),
   "position-sizing ranking must not turn realtime top-holding weakness back into a probe band even when readiness is high"
 );
+const holdingRealtimeWeakOutlookRanking = manager.buildPortfolioHoldingsOutlookRanking([{
+    code: "000050",
+    name: "持仓走弱低位基金C",
+    status: "ready",
+    readinessScore: 92,
+    lastSnapshot: {
+      ...holdingRealtimeWeakSetupDigest,
+      actionability: holdingRealtimeWeakActionability
+    }
+  }]);
+const holdingRealtimeWeakOutlookItem = holdingRealtimeWeakOutlookRanking.items.find((item) => item.code === "000050");
+assert(
+  holdingRealtimeWeakOutlookItem?.action === "持仓前景不抵消接盘风险"
+    && holdingRealtimeWeakOutlookItem?.status === "warning"
+    && /主力资金回流|新鲜催化|代表持仓止跌|0元观察/.test(holdingRealtimeWeakOutlookItem?.decision?.nextStep || "")
+    && !/持仓支撑复核|前景复核/.test(`${holdingRealtimeWeakOutlookItem?.action || ""} ${holdingRealtimeWeakOutlookItem?.reason || ""}`),
+  "holdings-outlook ranking must not repackage weakening top-ten holdings or stale catchdown blockers as supportive holdings opportunities"
+);
 const staleCatchdownOnlyTheme = {
   id: "old_compute_catchdown",
   name: "旧算力回调",

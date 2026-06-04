@@ -1513,6 +1513,10 @@ const requiredPatterns = [
     message: "positive portfolio rankings must use the stale-catchdown gate before surfacing buy-preparation, launch-setup, cash-redeployment, portfolio-fit, theme-allocation, theme-momentum, or rotation-opportunity candidates."
   },
   {
+    pattern: /function buildPortfolioHoldingsOutlookRankingItem[\s\S]{0,520}resolvePortfolioPositiveWatchRankingGate\(item\)[\s\S]{0,260}buildPortfolioHoldingsOutlookRiskGateItem[\s\S]*function buildPortfolioHoldingsOutlookRiskGateItem[\s\S]{0,900}持仓前景不抵消接盘风险/,
+    message: "holdings-outlook rankings must not repackage top-ten holdings as supportive opportunities when stale-catchdown or main-force withdrawal gates are active."
+  },
+  {
     pattern: /const lowSetupThemeSupportRisk = Boolean\(/,
     message: "low-position pullbacks without fresh main-force/catalyst confirmation must create a dedicated catchdown-risk flag."
   },
