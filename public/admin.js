@@ -643,6 +643,7 @@ function renderRuntimeTerminal(stats = {}, deployment = null, dataSourceCoverage
       items: [
         { label: "市场快照", value: getRuntimeCounter(counters, "marketSnapshotCalls"), meta: "指数、板块、资金面" },
         { label: "快照预热", value: getRuntimeCounter(counters, "marketSnapshotWarmerSuccesses"), meta: `运行 ${formatRuntimeCount(getRuntimeCounter(counters, "marketSnapshotWarmerRuns"))} · 失败 ${formatRuntimeCount(getRuntimeCounter(counters, "marketSnapshotWarmerFailures"))} · 最近 ${escapeHtml(last.lastMarketSnapshotWarmerQuality || "待预热")}` },
+        { label: "完整快照", value: getRuntimeCounter(counters, "latestMarketSnapshotWrites"), meta: `重启后可复用 · 失败 ${formatRuntimeCount(getRuntimeCounter(counters, "latestMarketSnapshotWriteFailures"))}` },
         { label: "公开GET重试", value: getRuntimeCounter(counters, "publicDataGetRetries"), meta: `请求 ${formatRuntimeCount(getRuntimeCounter(counters, "publicDataGetRequests"))} · 成功 ${formatRuntimeCount(getRuntimeCounter(counters, "publicDataGetRetrySuccesses"))} · 失败 ${formatRuntimeCount(getRuntimeCounter(counters, "publicDataGetFailures"))}` },
         { label: "贵金属行情", value: getRuntimeCounter(counters, "preciousMetalQuoteFetches"), meta: "黄金、白银等行情补证" },
         { label: "贵金属基金", value: getRuntimeCounter(counters, "preciousMetalFundSearches"), meta: "避免只凭叙事推荐黄金" }

@@ -894,8 +894,8 @@ const requiredPatterns = [
     message: "fund and portfolio prompts must force data-gap disclosure when public sources are partial or poor."
   },
   {
-    pattern: /MARKET_SNAPSHOT_CACHE_PATH[\s\S]{0,260}market-snapshot-cache\.json/,
-    message: "market snapshots must have a persistent component cache instead of relying only on one-off live skill fetches."
+    pattern: /MARKET_SNAPSHOT_CACHE_PATH[\s\S]{0,260}market-snapshot-cache\.json[\s\S]{0,260}MARKET_SNAPSHOT_LATEST_PATH[\s\S]{0,260}market-snapshot-latest\.json/,
+    message: "market snapshots must have persistent component and latest full-snapshot caches instead of relying only on one-off live skill fetches."
   },
   {
     pattern: {
@@ -903,8 +903,23 @@ const requiredPatterns = [
         && source.includes("readMarketSnapshotCache()")
         && source.includes("applyMarketSnapshotCacheFallback")
         && source.includes("persistMarketSnapshotCache(cache)")
+        && source.includes("persistLatestMarketSnapshot(snapshot)")
     },
-    message: "market snapshot fetching must reuse cached successful components when live public sources fail."
+    message: "market snapshot fetching must reuse cached successful components and persist complete snapshots when live public sources fail."
+  },
+  {
+    test: (source) => {
+      const report = getFunctionSource(source, "buildDataSourceCoverageReport");
+      const reader = getFunctionSource(source, "readLatestMarketSnapshot");
+      const sanitizer = getFunctionSource(source, "sanitizeLatestMarketSnapshot");
+      return report.includes("getLatestMarketSnapshotPersistedForCoverage")
+        && reader.includes("MARKET_SNAPSHOT_LATEST_PATH")
+        && sanitizer.includes("themeRadar")
+        && sanitizer.includes("themeLeaderboards")
+        && sanitizer.includes("themeMainForcePlaybook")
+        && sanitizer.includes("fundCandidates");
+    },
+    message: "data-source coverage must prefer the persisted full market snapshot before rebuilding from component cache."
   },
   {
     pattern: {
@@ -928,8 +943,8 @@ const requiredPatterns = [
     message: "market snapshot cache must be proactively warmed on a schedule instead of relying only on user-triggered live fetches."
   },
   {
-    pattern: /(?=[\s\S]*快照预热)(?=[\s\S]*marketSnapshotWarmerRuns)(?=[\s\S]*marketSnapshotWarmerSuccesses)(?=[\s\S]*marketSnapshotWarmerFailures)(?=[\s\S]*lastMarketSnapshotWarmerQuality)/,
-    message: "admin runtime data-source panel must expose market snapshot warmer runs, successes, failures, and latest quality."
+    pattern: /(?=[\s\S]*快照预热)(?=[\s\S]*marketSnapshotWarmerRuns)(?=[\s\S]*marketSnapshotWarmerSuccesses)(?=[\s\S]*marketSnapshotWarmerFailures)(?=[\s\S]*lastMarketSnapshotWarmerQuality)(?=[\s\S]*完整快照)(?=[\s\S]*latestMarketSnapshotWrites)(?=[\s\S]*latestMarketSnapshotWriteFailures)/,
+    message: "admin runtime data-source panel must expose market snapshot warmer and persisted full-snapshot status."
   },
   {
     test: (source) => {

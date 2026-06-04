@@ -15,6 +15,7 @@ const CONFIG_PATH = path.resolve(process.env.CONFIG_PATH || path.join(ROOT, "dat
 const STATS_PATH = path.resolve(process.env.STATS_PATH || path.join(ROOT, "data", "stats.json"));
 const PORTFOLIO_DB_PATH = path.resolve(process.env.PORTFOLIO_DB_PATH || path.join(ROOT, "data", "portfolio-db.json"));
 const MARKET_SNAPSHOT_CACHE_PATH = path.resolve(process.env.MARKET_SNAPSHOT_CACHE_PATH || path.join(ROOT, "data", "market-snapshot-cache.json"));
+const MARKET_SNAPSHOT_LATEST_PATH = path.resolve(process.env.MARKET_SNAPSHOT_LATEST_PATH || path.join(ROOT, "data", "market-snapshot-latest.json"));
 const FUND_RESEARCH_DIGEST_CACHE_PATH = path.resolve(process.env.FUND_RESEARCH_DIGEST_CACHE_PATH || path.join(ROOT, "data", "fund-research-digest-cache.json"));
 const FUND_NAV_HISTORY_CACHE_PATH = path.resolve(process.env.FUND_NAV_HISTORY_CACHE_PATH || path.join(ROOT, "data", "fund-nav-history-cache.json"));
 const FUND_RANKING_CACHE_PATH = path.resolve(process.env.FUND_RANKING_CACHE_PATH || path.join(ROOT, "data", "fund-ranking-cache.json"));
@@ -27694,6 +27695,7 @@ async function fetchMarketSnapshot(options = {}) {
     generatedAt: fetchedAt
   });
   latestMarketSnapshotMemory = snapshot;
+  persistLatestMarketSnapshot(snapshot);
   return snapshot;
 }
 
@@ -27720,6 +27722,75 @@ function persistMarketSnapshotCache(cache = {}, filePath = MARKET_SNAPSHOT_CACHE
     recordError(error, { marketSnapshotCacheWriteFailures: 1 });
     return cache;
   }
+}
+
+function readLatestMarketSnapshot(filePath = MARKET_SNAPSHOT_LATEST_PATH) {
+  const raw = safeReadJson(filePath);
+  if (!raw || typeof raw !== "object") return null;
+  const snapshot = raw.snapshot && typeof raw.snapshot === "object" ? raw.snapshot : raw;
+  return hasDataSourceCoverageSnapshotEvidence(snapshot) ? snapshot : null;
+}
+
+function persistLatestMarketSnapshot(snapshot = {}, filePath = MARKET_SNAPSHOT_LATEST_PATH) {
+  if (!hasDataSourceCoverageSnapshotEvidence(snapshot)) return null;
+  try {
+    const payload = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      snapshot: sanitizeLatestMarketSnapshot(snapshot)
+    };
+    ensureDir(path.dirname(filePath));
+    fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    updateStats({ counters: { latestMarketSnapshotWrites: 1 }, last: { lastLatestMarketSnapshotWriteAt: payload.updatedAt } });
+    return payload;
+  } catch (error) {
+    console.warn("[latest-market-snapshot-write-error]", error.message);
+    recordError(error, { latestMarketSnapshotWriteFailures: 1 });
+    return null;
+  }
+}
+
+function sanitizeLatestMarketSnapshot(snapshot = {}) {
+  const clone = JSON.parse(JSON.stringify({
+    ok: snapshot.ok !== false,
+    fetchedAt: snapshot.fetchedAt || snapshot.generatedAt || "",
+    generatedAt: snapshot.generatedAt || snapshot.fetchedAt || "",
+    sourceMode: "latest_snapshot_cache",
+    note: snapshot.note || "",
+    dataQuality: snapshot.dataQuality || null,
+    marketIndicators: {
+      chinaIndices: snapshot.marketIndicators?.chinaIndices || [],
+      marketBreadth: snapshot.marketIndicators?.marketBreadth || null,
+      boardRotation: snapshot.marketIndicators?.boardRotation || null,
+      newsPulse: snapshot.marketIndicators?.newsPulse || null,
+      preciousMetals: snapshot.marketIndicators?.preciousMetals || [],
+      globalMarkets: snapshot.marketIndicators?.globalMarkets || [],
+      realtimeFundValuations: snapshot.marketIndicators?.realtimeFundValuations || []
+    },
+    themes: {
+      conceptBoards: snapshot.themes?.conceptBoards || [],
+      industryBoards: snapshot.themes?.industryBoards || []
+    },
+    themeRadar: snapshot.themeRadar || [],
+    themeLeaderboards: snapshot.themeLeaderboards || null,
+    themeMainForcePlaybook: snapshot.themeMainForcePlaybook || null,
+    themeHistory: snapshot.themeHistory || null,
+    fastNews: snapshot.fastNews || [],
+    fundCandidates: snapshot.fundCandidates || {},
+    errors: snapshot.errors || [],
+    sources: snapshot.sources || []
+  }));
+  if (Array.isArray(clone.themeRadar)) clone.themeRadar = clone.themeRadar.slice(0, 24);
+  if (Array.isArray(clone.fastNews)) clone.fastNews = clone.fastNews.slice(0, 80);
+  if (Array.isArray(clone.marketIndicators?.realtimeFundValuations)) {
+    clone.marketIndicators.realtimeFundValuations = clone.marketIndicators.realtimeFundValuations.slice(0, 40);
+  }
+  if (Array.isArray(clone.themes?.conceptBoards)) clone.themes.conceptBoards = clone.themes.conceptBoards.slice(0, 120);
+  if (Array.isArray(clone.themes?.industryBoards)) clone.themes.industryBoards = clone.themes.industryBoards.slice(0, 120);
+  for (const key of ["stockFunds", "hybridFunds", "indexFunds", "qdiiFunds", "preciousMetalFunds"]) {
+    if (Array.isArray(clone.fundCandidates?.[key])) clone.fundCandidates[key] = clone.fundCandidates[key].slice(0, 80);
+  }
+  return clone;
 }
 
 function applyMarketSnapshotCacheFallback(components = [], cache = readMarketSnapshotCache(), options = {}) {
@@ -28971,6 +29042,7 @@ async function buildDataSourceCoverageReport(options = {}) {
   const portfolioDb = readPortfolioDbForDataSourceCoverage();
   const latestSnapshot = liveSnapshot
     || getLatestMarketSnapshotMemoryForCoverage(generatedAt)
+    || getLatestMarketSnapshotPersistedForCoverage(generatedAt)
     || findLatestPortfolioMarketSnapshotForCoverage(portfolioDb)
     || buildMarketSnapshotCoverageFromCache(cache, generatedAt);
   const coverage = buildDataSourceCoverageFromSnapshot(latestSnapshot, {
@@ -29473,6 +29545,15 @@ function getLatestMarketSnapshotMemoryForCoverage(nowIso = new Date().toISOStrin
   const ageMinutes = getDataSourceAgeMinutes(fetchedAt, nowIso);
   if (!Number.isFinite(ageMinutes)) return null;
   return ageMinutes <= MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS * 60 ? latestMarketSnapshotMemory : null;
+}
+
+function getLatestMarketSnapshotPersistedForCoverage(nowIso = new Date().toISOString()) {
+  const snapshot = readLatestMarketSnapshot();
+  if (!hasDataSourceCoverageSnapshotEvidence(snapshot)) return null;
+  const fetchedAt = snapshot.fetchedAt || snapshot.generatedAt || "";
+  const ageMinutes = getDataSourceAgeMinutes(fetchedAt, nowIso);
+  if (!Number.isFinite(ageMinutes)) return null;
+  return ageMinutes <= MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS * 60 ? snapshot : null;
 }
 
 function hasDataSourceCoverageSnapshotEvidence(snapshot = null) {
@@ -41661,6 +41742,8 @@ function getDefaultStats() {
       marketSnapshotCacheWrites: 0,
       marketSnapshotCacheLiveUpdates: 0,
       marketSnapshotCacheFallbacks: 0,
+      latestMarketSnapshotWrites: 0,
+      latestMarketSnapshotWriteFailures: 0,
       publicDataGetRequests: 0,
       publicDataGetRetries: 0,
       publicDataGetRetrySuccesses: 0,
@@ -43943,11 +44026,13 @@ export {
   readFundNavHistoryCache,
   readFundRankingCache,
   readMarketBoardHistory,
+  readLatestMarketSnapshot,
   readThemeRadarHistory,
   persistFundResearchDigestCache,
   persistFundNavHistoryCache,
   persistFundRankingCache,
   persistMarketBoardHistory,
+  persistLatestMarketSnapshot,
   persistThemeRadarHistory,
   getFundRecommendationSkillIds,
   getDeploymentFreshness,
