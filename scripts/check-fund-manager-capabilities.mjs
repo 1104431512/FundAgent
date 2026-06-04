@@ -5502,6 +5502,25 @@ assert.equal(
   "回调不买",
   "fund report charts must show no-buy entry when catchdown risk only appears in text fields"
 );
+const textOnlyCatchdownDecisionLines = manager.buildFundReportDecisionReasonLines(
+  { ...textOnlyCatchdownProfile, reportChartRole: "买入参考图" },
+  textOnlyCatchdownProfile.trendProfile
+);
+assert(
+  textOnlyCatchdownDecisionLines[0].includes("回调不买")
+    && !textOnlyCatchdownDecisionLines[0].includes("买入 可分批"),
+  "fund report decision panel must not let a stale buy-reference chart role override text-only catchdown no-buy evidence"
+);
+const textOnlyCatchdownSelectedCharts = manager.selectFundScreeningWatchlistProfiles(
+  [{ ...textOnlyCatchdownProfile, reportChartRole: "" }],
+  "直接结论：000014 文本退潮低位基金C 可以小仓买入。理由是回调完成。",
+  "推荐几个回调完成的基金"
+);
+assert.equal(
+  textOnlyCatchdownSelectedCharts[0]?.reportChartRole,
+  "备选观察图",
+  "answer-derived chart roles must downgrade hard-risk catchdown candidates to backup charts even if the draft answer sounds positive"
+);
 const enforcedTextOnlyCatchdownBuy = manager.enforcePortfolioBuyDiscipline([
   { action: "BUY", code: "000014", name: "文本退潮低位基金C", amount: 1000, reason: "模型仍想买入。" }
 ], [textOnlyCatchdownProfile]);

@@ -3994,8 +3994,9 @@ function extractAnswerWatchlistProfileContext(answerText = "", profile = {}) {
 }
 
 function inferAnswerWatchlistRole(profile = {}, context = "") {
-  if (profile.reportChartRole === "备选观察图") return "backup";
   const text = String(context || "");
+  if (isAnswerWatchlistRejectedContext(text) || getAnswerWatchlistHardRiskWarnings(profile).length) return "backup";
+  if (profile.reportChartRole === "备选观察图") return "backup";
   if (/(备选|观察|只观察|等待|等回撤|等回调|回踩|可关注|接近可买)/.test(text)) return "backup";
   return "buy_reference";
 }
@@ -31977,6 +31978,7 @@ function formatFundReportDecisionRole(profile = {}, trend = {}) {
   const explicitRole = String(profile.reportChartRole || "");
   const action = String(profile?.actionability?.action || "");
   const entryBias = String(trend.entryBias || "");
+  if (hasThemeRetreatNoBuyOverride(profile)) return "回调不买";
   if (explicitRole.includes("备选")) return "观察 等待";
   if (explicitRole.includes("买入")) return "买入 可分批";
   if (["buy", "BUY"].includes(action) || entryBias === "buyable_now") return "买入 可分批";
@@ -38505,6 +38507,7 @@ export {
   evaluateFundAnswerQuality,
   buildFundResultLeaderboardFallback,
   buildConciseFundResultAnswerFallback,
+  buildFundReportDecisionReasonLines,
   fetchChinaRealtimeIndexQuotes,
   fetchEastmoneyChinaIndexQuotes,
   fetchGlobalMarketQuotes,

@@ -1633,6 +1633,14 @@ const requiredPatterns = [
     message: "fund report chart no-buy override must use the full catchdown evidence gate, including text-only and market-refresh warnings."
   },
   {
+    pattern: /function formatFundReportDecisionRole[\s\S]{0,260}hasThemeRetreatNoBuyOverride\(profile\)[\s\S]{0,120}回调不买[\s\S]{0,260}explicitRole\.includes\("买入"\)/,
+    message: "fund report decision panels must apply catchdown no-buy before honoring buy-reference chart roles."
+  },
+  {
+    pattern: /function inferAnswerWatchlistRole[\s\S]{0,260}getAnswerWatchlistHardRiskWarnings\(profile\)\.length[\s\S]{0,160}backup/,
+    message: "answer-derived chart roles must downgrade hard-risk catchdown candidates to backup charts even when the answer sounds positive."
+  },
+  {
     pattern: /function inferPullbackSetupSearchKeywords[\s\S]{0,1200}isStaleThemeCatchdownRiskTheme\(theme\)/,
     message: "pullback setup discovery keywords must exclude stale outflow themes."
   },
