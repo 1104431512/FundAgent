@@ -3365,6 +3365,22 @@ const requiredPatterns = [
     message: "portfolio model watchlist summaries must use display status while preserving raw status for traceability."
   },
   {
+    pattern: /function getPortfolioPublicState[\s\S]{0,5200}watchlist:\s*normalizePortfolioWatchlistForDisplay\(getActivePortfolioWatchlist\(db\)\)/,
+    message: "portfolio public API state must send display-routed watchlist statuses so admin overview counters cannot inflate catchdown opportunities."
+  },
+  {
+    pattern: /function summarizePortfolioManagerBehavior[\s\S]{0,900}normalizePortfolioWatchlistForDisplay\(getActivePortfolioWatchlist\(db\)\)[\s\S]{0,900}readyWatchlistCount[\s\S]{0,260}waitingWatchlistCount/,
+    message: "portfolio behavior/profile summaries must count ready and waiting candidates after catchdown display-status routing."
+  },
+  {
+    pattern: /function buildPortfolioRankingBoard[\s\S]{0,520}applyPortfolioWatchDisplayStatusToItems\(applyPortfolioCatchdownLossMemoryToWatchlist/,
+    message: "portfolio ranking boards must apply display-status catchdown routing before positive ranking lanes are built."
+  },
+  {
+    pattern: /function buildPortfolioCapabilityDiagnostics[\s\S]*const watchlist = normalizePortfolioWatchlistForDisplay\(db\.watchlist \|\| \[\]\)[\s\S]*const waitingCount = watchlist\.filter\(\(item\) => item\.status === "waiting_pullback"\)\.length/,
+    message: "portfolio capability diagnostics must not count display-blocked catchdown candidates as waiting-pullback opportunities."
+  },
+  {
     pattern: /function selectFundWorkflowWatchlistCandidates[\s\S]{0,260}normalizePortfolioWatchlistForDisplay[\s\S]{0,320}\["ready",\s*"waiting_pullback",\s*"watch"\]\.includes\(item\.status\)/,
     message: "fund recommendation watchlist reuse must exclude catchdown candidates after display-status routing."
   },
@@ -3375,6 +3391,14 @@ const requiredPatterns = [
   {
     pattern: /function buildPortfolioWatchlistActionQueueLines[\s\S]{0,900}normalizePortfolioWatchlistForDisplay[\s\S]{0,900}item\.status === "ready"[\s\S]{0,900}normalizePortfolioWatchlistForDisplay[\s\S]{0,900}item\.status === "waiting_pullback"/,
     message: "portfolio buy-preparation queues must use display status so catchdown candidates cannot appear as ready or waiting."
+  },
+  {
+    pattern: /function formatPortfolioOutput[\s\S]*const ready = selectWatchlistDisplayStatusItems\(watchlist,\s*"ready"\)\.length[\s\S]*const catchdown = watchlist\.filter\(isWatchlistCatchdownRiskItem\)\.length[\s\S]*接盘风险/,
+    message: "admin raw portfolio output must summarize ready/waiting counts by display status and explicitly show catchdown risk counts."
+  },
+  {
+    pattern: /function renderPortfolioDashboard[\s\S]{0,1800}selectWatchlistDisplayStatusItems\(watchlist,\s*"ready"\)[\s\S]{0,900}selectLaunchEveDisplayItems\(watchlist\)[\s\S]{0,320}selectWatchlistDisplayStatusItems\(watchlist,\s*"blocked"\)/,
+    message: "admin dashboard opportunity counters must use display status so catchdown risks do not inflate ready/waiting/launch-eve totals."
   },
   {
     pattern: /buildPortfolioWatchlistLaunchEveLines/,

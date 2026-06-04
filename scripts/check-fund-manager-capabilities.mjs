@@ -3747,6 +3747,13 @@ assert(
     && /function selectWatchlistActionItems[\s\S]{0,260}getWatchlistDisplayStatus\(item\) === status/.test(adminSource),
   "admin watchlist must route catchdown risks into the blocked lane and keep them out of buy-preparation queues even if raw status says waiting"
 );
+assert(
+  adminSource.includes('const ready = selectWatchlistDisplayStatusItems(watchlist, "ready").length')
+    && adminSource.includes('const catchdown = watchlist.filter(isWatchlistCatchdownRiskItem).length')
+    && adminSource.includes('const ready = selectWatchlistDisplayStatusItems(watchlist, "ready");')
+    && adminSource.includes("const launchEve = selectLaunchEveDisplayItems(watchlist);"),
+  "admin overview and opportunity counters must use display status so catchdown candidates do not inflate ready/waiting totals"
+);
 assert(adminSource.includes("只做0元观察") && adminSource.includes("这不是低位启动"), "admin watchlist catchdown notice must translate stale pullbacks into zero-yuan observation language");
 assert(adminStyleSource.includes(".watchlist-catchdown-notice"), "admin stylesheet must style the watchlist catchdown notice as a first-scan warning strip");
 assert(adminSource.includes("旧催化") && adminSource.includes("stale_catalyst"), "admin watchlist hard-risk strip must separately highlight old-catalyst catchdown risk");
@@ -4337,6 +4344,27 @@ assert(manager.getPortfolioWatchCatchdownDisplayBlocker(catchdownWaitingWatchIte
 assert(catchdownWaitingWatchLines.includes("【暂不买入】") && catchdownWaitingWatchLines.includes("接盘风险"), "catchdown watchlist items must be shown in the no-buy lane with an explicit catchdown label");
 assert(!manager.buildPortfolioWatchlistLaunchEveLines([catchdownWaitingWatchItem]).join("\n").includes("000004"), "catchdown watchlist items must not enter launch-eve focus even when their raw role says launch setup");
 assert(!manager.buildPortfolioWatchlistActionQueueLines([catchdownWaitingWatchItem]).join("\n").includes("000004"), "catchdown watchlist items must not enter the buy-preparation queue as waiting-pullback candidates");
+const catchdownWaitingRankingBoard = manager.buildPortfolioRankingBoard(manager.normalizePortfolioDb({
+  account: { totalAsset: 100000, cash: 80000, positions: [] },
+  watchlist: [catchdownWaitingWatchItem]
+}));
+assert(
+  !catchdownWaitingRankingBoard.lists.find((item) => item.id === "buy_preparation")?.items.some((item) => item.code === "000004")
+    && !catchdownWaitingRankingBoard.lists.find((item) => item.id === "launch_setup")?.items.some((item) => item.code === "000004"),
+  "display-blocked catchdown candidates must not appear in buy-preparation or launch-setup ranking lanes"
+);
+assert(
+  catchdownWaitingRankingBoard.lists.find((item) => item.id === "stale_catchdown_risk")?.items.some((item) => item.code === "000004"),
+  "display-blocked catchdown candidates must still appear in the stale-catchdown risk lane"
+);
+const catchdownCapabilityDiagnostics = manager.buildPortfolioCapabilityDiagnostics(manager.normalizePortfolioDb({
+  account: { totalAsset: 100000, cash: 80000, positions: [] },
+  watchlist: [catchdownWaitingWatchItem]
+}));
+assert(
+  !catchdownCapabilityDiagnostics.items.some((item) => /等待回调候选/.test(`${item.value || ""} ${item.note || ""}`)),
+  "capability diagnostics must not count display-blocked catchdown candidates as waiting-pullback opportunities"
+);
 const rankingAwareWatchlistLines = manager.buildPortfolioWatchlistStatusLines([normalizedWatchDb.watchlist[0]], {
   managerRankings: {
     lists: [

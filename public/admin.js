@@ -856,10 +856,11 @@ function formatPortfolioOutput(portfolio) {
   }
   const watchlist = portfolio.watchlist || [];
   if (watchlist.length) {
-    const ready = watchlist.filter((item) => item.status === "ready").length;
-    const waiting = watchlist.filter((item) => item.status === "waiting_pullback").length;
+    const ready = selectWatchlistDisplayStatusItems(watchlist, "ready").length;
+    const waiting = selectWatchlistDisplayStatusItems(watchlist, "waiting_pullback").length;
+    const catchdown = watchlist.filter(isWatchlistCatchdownRiskItem).length;
     lines.push("");
-    lines.push(`自选基金池：${watchlist.length} 只，接近可买 ${ready} 只，等待回调 ${waiting} 只。`);
+    lines.push(`自选基金池：${watchlist.length} 只，接近可买 ${ready} 只，等待回调 ${waiting} 只${catchdown ? `，接盘风险 ${catchdown} 只` : ""}。`);
   }
   const userPortfolios = portfolio.userPortfolios || [];
   if (userPortfolios.length) {
@@ -873,6 +874,16 @@ function formatPortfolioOutput(portfolio) {
 
 function formatPortfolioPnl(account = {}) {
   return `${formatSigned(account.cumulativePnl)} (${formatSigned(account.cumulativePnlPct)}%)`;
+}
+
+function selectWatchlistDisplayStatusItems(items = [], status = "") {
+  return (items || []).filter((item) => getWatchlistDisplayStatus(item) === status);
+}
+
+function selectLaunchEveDisplayItems(items = []) {
+  return (items || [])
+    .filter(isWatchlistLaunchEveCandidate)
+    .filter((item) => !["blocked", "removed", "in_position"].includes(getWatchlistDisplayStatus(item)));
 }
 
 function renderPortfolioDashboard(portfolio = {}) {
@@ -895,10 +906,10 @@ function renderPortfolioDashboard(portfolio = {}) {
   const latestThemeMainForcePlaybook = getPortfolioLatestThemeMainForcePlaybook(portfolio);
   const themeLeaderboardItems = collectPortfolioThemeLeaderboardItems(latestThemeLeaderboards);
   const themePlaybookItems = collectPortfolioThemeMainForcePlaybookItems(latestThemeMainForcePlaybook);
-  const ready = watchlist.filter((item) => item.status === "ready");
-  const waiting = watchlist.filter((item) => item.status === "waiting_pullback");
-  const launchEve = watchlist.filter(isWatchlistLaunchEveCandidate);
-  const blocked = watchlist.filter((item) => item.status === "blocked");
+  const ready = selectWatchlistDisplayStatusItems(watchlist, "ready");
+  const waiting = selectWatchlistDisplayStatusItems(watchlist, "waiting_pullback");
+  const launchEve = selectLaunchEveDisplayItems(watchlist);
+  const blocked = selectWatchlistDisplayStatusItems(watchlist, "blocked");
   const diagnosticCounts = buildPortfolioDiagnosticCounts(portfolio);
   const diagnosticCount = diagnosticCounts.total;
   const managerPerformance = portfolio.managerPerformance || {};

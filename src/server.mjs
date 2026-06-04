@@ -7255,6 +7255,10 @@ function normalizePortfolioWatchlistForDisplay(watchlist = []) {
   return normalizePortfolioWatchlist(watchlist).map(applyPortfolioWatchDisplayStatus);
 }
 
+function applyPortfolioWatchDisplayStatusToItems(watchlist = []) {
+  return (Array.isArray(watchlist) ? watchlist : []).map(applyPortfolioWatchDisplayStatus);
+}
+
 function summarizePortfolioWatchlistForModel(watchlist = []) {
   return normalizePortfolioWatchlistForDisplay(watchlist)
     .filter((item) => item.status !== "removed")
@@ -10656,7 +10660,7 @@ function summarizePortfolioManagerBehavior(db) {
   const sells = transactions.filter((item) => item.side === "SELL");
   const recentRuns = (db.runs || []).slice(-20);
   const recentOrders = (db.orders || []).slice(-30);
-  const watchlist = getActivePortfolioWatchlist(db);
+  const watchlist = normalizePortfolioWatchlistForDisplay(getActivePortfolioWatchlist(db));
   return {
     currentPositionWeightPct: account.positionWeightPct,
     currentCash: account.cash,
@@ -11058,7 +11062,7 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
     managerPerformance: buildPortfolioManagerPerformanceStats(db),
     userPortfolios: summarizeUserPortfolios(db),
     positions: db.account.positions.map(summarizePosition),
-    watchlist: getActivePortfolioWatchlist(db).slice(0, lightweight ? 12 : 50).map(summarizeWatch),
+    watchlist: normalizePortfolioWatchlistForDisplay(getActivePortfolioWatchlist(db)).slice(0, lightweight ? 12 : 50).map(summarizeWatch),
     activeOrders: (db.orders || []).filter((order) => !["confirmed", "cancelled", "rejected", "settled"].includes(order.status)).map(summarizePortfolioOrder),
     recentRuns: (db.runs || []).slice(-recentRunLimit).reverse().map(summarizeRun),
     recentOrders: (db.orders || []).slice(-recentItemLimit).reverse().map(summarizePortfolioOrder),
@@ -11069,10 +11073,10 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
 }
 
 function buildPortfolioRankingBoard(db = {}) {
-  const watchlist = applyPortfolioCatchdownLossMemoryToWatchlist(
+  const watchlist = applyPortfolioWatchDisplayStatusToItems(applyPortfolioCatchdownLossMemoryToWatchlist(
     getActivePortfolioWatchlist(db).map(summarizePortfolioWatchItem).filter(Boolean),
     db
-  );
+  ));
   const positions = (db.account?.positions || []).map(summarizePortfolioPosition).filter(Boolean);
   const userPortfolios = summarizeUserPortfolios(db).filter(Boolean);
   const lists = [
@@ -17377,7 +17381,7 @@ function getPortfolioDiagnosticOrderKey(order = {}) {
 function buildPortfolioCapabilityDiagnostics(db = {}) {
   const account = db.account || {};
   const positions = Array.isArray(account.positions) ? account.positions : [];
-  const watchlist = normalizePortfolioWatchlist(db.watchlist || []);
+  const watchlist = normalizePortfolioWatchlistForDisplay(db.watchlist || []);
   const runs = Array.isArray(db.runs) ? db.runs : [];
   const transactions = getPortfolioDiagnosticTransactions(db);
   const orders = getPortfolioDiagnosticOrders(db);
