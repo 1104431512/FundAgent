@@ -105,6 +105,10 @@ const requiredPatterns = [
     message: "market snapshots must carry fixed-code market breadth and main-capital breadth indicators."
   },
   {
+    pattern: /marketIndicators\.newsPulse/,
+    message: "market snapshots must carry fixed-code news pulse indicators instead of only raw news headlines."
+  },
+  {
     pattern: /marketIndicators\.globalMarkets/,
     message: "market snapshots must carry overseas index and FX quotes for QDII decisions."
   },
@@ -916,7 +920,13 @@ const requiredPatterns = [
     message: "pullback main-candidate classification must not treat cached fund research as a fresh buy setup."
   },
   {
-    pattern: /function compactMarketSnapshotForModel[\s\S]{0,2200}compactRealtimeFundValuations[\s\S]{0,1200}compactMarketFundCandidates[\s\S]{0,1200}errors/,
+    pattern: {
+      test: (source) => source.includes("function compactMarketSnapshotForModel")
+        && source.includes("compactRealtimeFundValuations(summary.marketIndicators?.realtimeFundValuations")
+        && source.includes("compactNewsPulseForModel(summary.marketIndicators?.newsPulse)")
+        && source.includes("compactMarketFundCandidates(summary.fundCandidates?.stockFunds")
+        && /function compactMarketSnapshotForModel[\s\S]{0,2600}errors:\s*\(summary\.errors/.test(source)
+    },
     message: "model prompts must use a compact market snapshot that preserves key evidence without raw payload bloat."
   },
   {
@@ -1859,6 +1869,20 @@ const requiredPatterns = [
   {
     pattern: /fetchMarketSnapshot[\s\S]{0,2200}fetchMarketFastNews/,
     message: "market snapshots must use the aggregated fast-news feed instead of depending on a single news source."
+  },
+  {
+    pattern: /function buildNewsPulseIndicators[\s\S]{0,1200}collectNewsPulseTopicSeeds[\s\S]{0,2200}single_news_noise/,
+    message: "fast news must be clustered into fixed-code topic pulses and downgrade single unconfirmed news to noise."
+  },
+  {
+    pattern: {
+      test: (source) => /function fetchMarketSnapshot[\s\S]*const newsPulse = buildNewsPulseIndicators\(\{[\s\S]*fastNews: fastNews\.items \|\| \[\][\s\S]*themeRadar,[\s\S]*fetchedAt[\s\S]*marketIndicators:\s*\{[\s\S]*newsPulse/.test(source)
+    },
+    message: "market snapshots must attach news pulse indicators next to other market indicators."
+  },
+  {
+    pattern: /function compactNewsPulseForModel[\s\S]{0,900}新闻密度[\s\S]{0,420}代表新闻/,
+    message: "compact market snapshots must send customer-readable news pulse evidence to model prompts."
   },
   {
     pattern: /async function fetchMarketFastNews[\s\S]{0,1700}fetchEastmoneyFastNews[\s\S]{0,900}fetchSinaFastNews[\s\S]{0,900}fetchClsTelegraphNews[\s\S]{0,900}mergeFastNewsItems/,

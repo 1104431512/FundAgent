@@ -12190,6 +12190,45 @@ const compactThemeHistorySnapshot = manager.compactMarketSnapshotForModel({
 });
 assert(JSON.stringify(compactThemeHistorySnapshot).includes("题材历史"), "compact market snapshots must send theme history momentum to the model");
 assert(JSON.stringify(compactThemeHistorySnapshot).includes("历史连续性"), "compact theme radar items must include history continuity labels");
+const newsPulse = manager.buildNewsPulseIndicators({
+  fastNews: [
+    { title: "人形机器人产业订单超预期 主力资金净流入", showTime: "09:45", mediaName: "财联社", sourceKind: "cls_telegraph_news" },
+    { title: "人形机器人商业化落地 多家公司获得新订单", showTime: "10:12", mediaName: "东方财富", sourceKind: "eastmoney_fast_news" },
+    { title: "脑机接口概念午后拉升", showTime: "11:00", mediaName: "新浪财经", sourceKind: "sina_finance_7x24_news" }
+  ],
+  themeRadar: [{
+    id: "humanoid_robot",
+    name: "人形机器人",
+    keywords: ["人形机器人", "机器人", "具身智能"],
+    newsKeywords: ["人形机器人", "机器人", "具身智能"],
+    capitalFollowScore: 72,
+    preheatScore: 68,
+    forwardScore: 70,
+    crowdingScore: 24,
+    capitalRetreatScore: 0,
+    mainInflowRankScore: 34,
+    newsLogic: "订单超预期叠加主力资金净流入。"
+  }],
+  fetchedAt: "2026-05-22T10:20:00.000Z"
+});
+const robotNewsPulse = newsPulse.topTopics.find((item) => /机器人/.test(item.name));
+const bciNewsPulse = newsPulse.topTopics.find((item) => /脑机接口|BCI/.test(item.name));
+assert(robotNewsPulse, "news pulse must cluster repeated fresh news into a topic before model judgment");
+assert(["follow_main_find_carrier", "preheat_find_carrier"].includes(robotNewsPulse.actionBias), "repeated fresh news with theme/main-capital support must become a carrier-fund search signal");
+assert(robotNewsPulse.whyMove.includes("连续出现") || robotNewsPulse.whyMove.includes("主力资金"), "news pulse must explain why the theme is moving in Chinese");
+assert(bciNewsPulse && bciNewsPulse.actionBias === "single_news_noise", "single unconfirmed news must be downgraded to noise instead of a buy signal");
+const compactNewsPulseSnapshot = manager.compactMarketSnapshotForModel({
+  fetchedAt: "2026-05-22T10:20:00.000Z",
+  dataQuality: { ok: true, level: "good", notes: [] },
+  marketIndicators: { newsPulse },
+  themes: {},
+  themeRadar: [],
+  fundCandidates: {},
+  errors: [],
+  sources: []
+});
+assert(JSON.stringify(compactNewsPulseSnapshot).includes("新闻密度"), "compact market snapshots must expose fixed-code news pulse density to the model");
+assert(JSON.stringify(compactNewsPulseSnapshot).includes("单条新闻噪音"), "compact news pulse must preserve the no-buy downgrade for unconfirmed single news");
 const broadMarketBreadth = manager.buildMarketBreadthIndicators({
   conceptBoards: [
     { name: "机器人", changePct: 2.4, mainNetInflowPct: 3.2 },

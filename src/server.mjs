@@ -2133,6 +2133,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，marketView、team 和 actions.dataBasis 必须写清数据缺口；dataQuality.cached 非空时必须说明哪些模块来自缓存回退，只能用于连续性计算，不能当作实时买点确认；缺少关键板块、排行、新闻或贵金属模块时，只能 WATCH、HOLD 或小额试探，不能当作完整联网证据下重仓 BUY。",
     "必须使用 marketSnapshot.marketIndicators.realtimeFundValuations 复核候选当下温度、盘中走势和数据新鲜度；若盘中走势显示冲高回落或尾盘转弱，不能把最新估算涨幅当作追买理由；成交和盈亏仍以确认净值为准。",
     "必须使用 marketSnapshot.marketIndicators.marketBreadth 复核市场宽度和主力宽度；如果宽度显示窄幅追涨、主力流出或退潮压力高，新增买入只能降级为观察/小额复核。",
+    "必须使用 marketSnapshot.marketIndicators.newsPulse 复核新闻催化密度；密集新鲜新闻可作为题材预热和找代表基金的入口，单条无资金/板块验证的新闻只能观察，不能直接买。",
     "若操作或候选涉及 QDII/海外基金，必须使用 marketSnapshot.marketIndicators.globalMarkets 复核外盘和人民币汇率温度，并写清净值披露时差。",
     "若现金再部署纪律提示 pressureActive=true 且存在 verified_buy、starter_buy 或 theme_micro_starter 候选，actions 必须逐只给 BUY 或明确 WATCH 拦截理由；但候选 actionPermission 写着0元观察时，只能 WATCH，不能 BUY、小仓试探或写成可买。符合小仓启动条件时优先 0.5%-2.5% 试探，theme_micro_starter 只能 0.5%-1.2% 微型试探，不要继续空泛观望。",
     "给用户看的 summary、reason 和 riskControl 要先讲走势、轮动和操作边界，再放必要数字；不要把每个动作写成一长串指标。",
@@ -20742,6 +20743,7 @@ function summarizeMarketSnapshot(snapshot) {
     marketIndicators: {
       chinaIndices: (snapshot.marketIndicators?.chinaIndices || []).slice(0, 12),
       marketBreadth: snapshot.marketIndicators?.marketBreadth || null,
+      newsPulse: snapshot.marketIndicators?.newsPulse || null,
       preciousMetals: (snapshot.marketIndicators?.preciousMetals || []).slice(0, 10),
       globalMarkets: (snapshot.marketIndicators?.globalMarkets || []).slice(0, 12),
       realtimeFundValuations: (snapshot.marketIndicators?.realtimeFundValuations || []).slice(0, 24)
@@ -20778,6 +20780,8 @@ function compactMarketSnapshotForModel(snapshot = null) {
   };
   const compactMarketBreadth = compactMarketBreadthForModel(summary.marketIndicators?.marketBreadth);
   if (compactMarketBreadth) marketIndicators.marketBreadth = compactMarketBreadth;
+  const compactNewsPulse = compactNewsPulseForModel(summary.marketIndicators?.newsPulse);
+  if (compactNewsPulse) marketIndicators.newsPulse = compactNewsPulse;
   return {
     fetchedAt: summary.fetchedAt || "",
     note: summary.note || "",
@@ -20970,6 +20974,23 @@ function compactMarketBreadthForModel(breadth = null) {
     主力流入占比: finiteMetricNumber(breadth.mainInflowPct),
     追涨压力: finiteMetricNumber(breadth.chasePressureScore),
     退潮压力: finiteMetricNumber(breadth.retreatPressureScore)
+  };
+}
+
+function compactNewsPulseForModel(pulse = null) {
+  if (!pulse || typeof pulse !== "object" || !Array.isArray(pulse.topTopics) || !pulse.topTopics.length) return null;
+  return {
+    结论: pulse.summary || "",
+    题材数: Number(pulse.topicCount || pulse.topTopics.length || 0),
+    主线候选: (pulse.topTopics || []).slice(0, 5).map((item) => ({
+      name: item.name || "",
+      操作倾向: item.actionBiasText || "",
+      可信度: item.confidenceText || "",
+      新闻密度: item.newsDensityText || "",
+      催化: item.catalystSummary || "",
+      为什么动: item.whyMove || "",
+      代表新闻: item.latestTitle || ""
+    }))
   };
 }
 
@@ -21869,6 +21890,23 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
       Number.isFinite(Number(marketBreadth.retreatPressureScore)) ? `退潮压力${round(marketBreadth.retreatPressureScore, 0)}` : ""
     ].filter(Boolean).join("，"));
     lines.push(`质量要求：市场宽度是固定代码计算的全局风险过滤器；窄幅追涨或主力流出时，任何题材基金都必须先降级为等待/0元复核。`);
+  }
+  const newsPulse = marketSnapshot.marketIndicators?.newsPulse;
+  if (newsPulse?.ok && Array.isArray(newsPulse.topTopics) && newsPulse.topTopics.length) {
+    lines.push(`新闻题材脉冲：${newsPulse.summary || ""}`);
+    lines.push(...newsPulse.topTopics.slice(0, 5).map((item) => {
+      const fields = [
+        item.name || "未知题材",
+        item.actionBiasText || "",
+        item.confidenceText ? `可信度${item.confidenceText}` : "",
+        item.newsDensityText || "",
+        item.catalystSummary ? `催化${item.catalystSummary}` : "",
+        item.whyMove ? `为什么动${shortenPortfolioCustomerText(item.whyMove, 72)}` : "",
+        item.latestTitle ? `代表新闻${shortenPortfolioCustomerText(item.latestTitle, 64)}` : ""
+      ].filter(Boolean);
+      return `- ${fields.join("，")}`;
+    }));
+    lines.push("质量要求：新闻题材脉冲是固定代码降噪后的催化视图；密集新鲜新闻可进入预热/找代表基金，单条无资金无板块验证只能观察，不能直接买。");
   }
   const realtimeValuations = marketSnapshot.marketIndicators?.realtimeFundValuations || [];
   if (realtimeValuations.length) {
@@ -24034,6 +24072,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "必须优先使用传入的 marketSnapshot；涉及黄金、白银或贵金属时，优先使用 marketIndicators.preciousMetals 和 fundCandidates.preciousMetalFunds。不要声称自己额外联网。",
     "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度、盘中走势和数据新鲜度；若盘中冲高回落或尾盘转弱，只能降低买入把握度，成交和盈亏仍以确认净值为准。",
     "marketSnapshot.marketIndicators.marketBreadth 是固定代码算出的市场宽度和主力宽度；若显示窄幅追涨、主力流出或退潮压力高，任何局部题材热度都必须降级，不能包装成可买信号。",
+    "marketSnapshot.marketIndicators.newsPulse 是固定代码算出的新闻题材脉冲；优先把密集新鲜新闻作为预热/找代表基金线索，单条新闻或缺资金/板块确认时只能观察。",
     "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
     "如果提供了候选基金下钻摘要，必须使用走势画像、风险、费用、持仓和可操作性评估来筛掉不适合的候选；不要只复述市场快照。",
     "如果提供了经理自选候选池，必须先复核这些已经沉淀的 ready/waiting/启动前夜候选；ready 可以进入主推荐评估，waiting 或启动前夜只能写备选观察和触发条件，不能当成自动买入。",
@@ -24164,6 +24203,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "如果传入 marketSnapshot，可用它回答近期市场/题材问题；涉及黄金、白银或贵金属时，优先引用 marketIndicators.preciousMetals 和相关基金候选。",
     "marketSnapshot.marketIndicators.realtimeFundValuations 是实时/准实时估算净值层，可用来判断当下温度、盘中走势和数据新鲜度；若盘中冲高回落或尾盘转弱，只能降低买入把握度，成交和盈亏仍以确认净值为准。",
     "marketSnapshot.marketIndicators.marketBreadth 是固定代码算出的市场宽度和主力宽度；若显示窄幅追涨、主力流出或退潮压力高，任何局部题材热度都必须降级，不能包装成可买信号。",
+    "marketSnapshot.marketIndicators.newsPulse 是固定代码算出的新闻题材脉冲；用户问题材为什么动或找预热方向时，先看新闻密度、新鲜度和是否有资金/板块确认。",
     "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
     "如果市场快照或下钻摘要里有题材雷达，优先引用中文题材阶段、主力节奏、新闻逻辑、拥挤度和操作倾向，避免只按历史涨幅回答。",
     "候选下钻摘要若出现 themeOpportunityRequirement=require_current_theme_playbook，回答必须解释题材为什么动、主力是否跟进、基金是否真实承载该题材；纯走势合格但缺题材/新闻/持仓承载的候选只能观察。",
@@ -26921,6 +26961,11 @@ async function fetchMarketSnapshot(options = {}) {
   const themeLeaderboards = buildThemeLeaderboards(themeRadar);
   const themeMainForcePlaybook = buildThemeMainForcePlaybook(themeRadar, themeLeaderboards);
   const themeHistory = buildThemeRadarHistorySummary(themeRadar);
+  const newsPulse = buildNewsPulseIndicators({
+    fastNews: fastNews.items || [],
+    themeRadar,
+    fetchedAt
+  });
   const marketBreadth = buildMarketBreadthIndicators({
     conceptBoards: conceptBoards.items || [],
     industryBoards: industryBoards.items || [],
@@ -26953,6 +26998,7 @@ async function fetchMarketSnapshot(options = {}) {
     marketIndicators: {
       chinaIndices: yangjibaoIndices.items || [],
       marketBreadth,
+      newsPulse,
       preciousMetals: preciousMetals.items || [],
       globalMarkets: globalMarketQuotes.items || [],
       realtimeFundValuations: realtimeFundValuationsResolved.items || []
@@ -27319,6 +27365,346 @@ function buildThemeRadarHistorySummary(themeRadar = []) {
     cooling: items.filter((item) => item.continuity === "cooling" || item.continuity === "retreat_or_catchdown").slice(0, 5),
     newThemes: items.filter((item) => item.continuity === "new_preheat").slice(0, 5)
   };
+}
+
+function buildNewsPulseIndicators({ fastNews = [], themeRadar = [], fetchedAt = new Date().toISOString() } = {}) {
+  const news = (fastNews || [])
+    .filter((item) => item && String(item.title || "").trim())
+    .slice(0, Number(process.env.MARKET_NEWS_PULSE_INPUT_LIMIT || 80));
+  const seeds = collectNewsPulseTopicSeeds(news);
+  const candidates = seeds
+    .map((seed) => buildNewsPulseTopic(seed, themeRadar))
+    .filter(Boolean)
+    .filter((topic) =>
+      topic.newsCount >= 2
+      || topic.hasThemeSupport
+      || Number(topic.catalystScore || 0) >= 22
+      || topic.actionBias === "single_news_noise"
+    );
+  const topics = selectNewsPulseTopics(candidates, Number(process.env.MARKET_NEWS_PULSE_TOPIC_LIMIT || 10));
+  return {
+    ok: news.length > 0,
+    label: "实时新闻题材脉冲",
+    fetchedAt,
+    newsCount: news.length,
+    topicCount: topics.length,
+    topTopics: topics,
+    summary: buildNewsPulseSummary(topics)
+  };
+}
+
+function collectNewsPulseTopicSeeds(news = []) {
+  const seeds = [];
+  const seen = new Set();
+  const addSeed = ({ id = "", name = "", keywords = [], newsItems = [], sourceType = "" } = {}) => {
+    const normalized = normalizeIntentText(id || name);
+    if (!normalized || seen.has(normalized) || !newsItems.length) return;
+    seen.add(normalized);
+    seeds.push({
+      id: id || normalized,
+      name,
+      keywords: normalizeStringArray(keywords).slice(0, 24),
+      news: newsItems,
+      sourceType
+    });
+  };
+  for (const rule of [...THEME_RADAR_RULES, ...THEME_NEWS_DISCOVERY_RULES]) {
+    const keywords = expandThemeNewsKeywords(rule.newsKeywords || rule.keywords || [], { name: rule.name || "" });
+    const matched = (news || []).filter((item) =>
+      matchesThemeSpecificNews(item, rule, keywords)
+      || newsPulseItemMatchesKeywords(item, keywords)
+    );
+    addSeed({
+      id: rule.id || rule.name,
+      name: rule.name || rule.id || "",
+      keywords,
+      newsItems: matched,
+      sourceType: rule.id ? "catalog_theme" : "static_theme"
+    });
+  }
+  const emerging = new Map();
+  for (const item of news || []) {
+    for (const term of mergeStringLists(extractEmergingNewsTopicTerms(item), extractNewsPulseDirectTopicTerms(item))) {
+      const normalized = normalizeIntentText(term);
+      if (!normalized || GENERIC_THEME_NEWS_MATCH_TERMS.has(normalized)) continue;
+      const current = emerging.get(normalized) || { term, news: [], keywords: new Set([term]) };
+      current.news.push(item);
+      for (const keyword of expandThemeNewsKeywords([term], { name: term })) current.keywords.add(keyword);
+      emerging.set(normalized, current);
+    }
+  }
+  for (const entry of emerging.values()) {
+    addSeed({
+      id: `news_pulse_${entry.term}`,
+      name: entry.term,
+      keywords: [...entry.keywords],
+      newsItems: entry.news,
+      sourceType: "emerging_news"
+    });
+  }
+  return seeds;
+}
+
+function selectNewsPulseTopics(topics = [], limit = 10) {
+  const max = Math.max(1, Number(limit || 10));
+  const sorted = dedupeNewsPulseTopics(topics)
+    .sort((a, b) => scoreNewsPulseTopicRank(b) - scoreNewsPulseTopicRank(a));
+  const selected = [];
+  const seen = new Set();
+  const addLane = (filter, laneLimit) => {
+    let added = 0;
+    for (const topic of sorted.filter(filter)) {
+      const key = normalizeIntentText(topic.name || topic.id || "");
+      if (!key || seen.has(key)) continue;
+      selected.push(topic);
+      seen.add(key);
+      added += 1;
+      if (selected.length >= max || added >= laneLimit) break;
+    }
+  };
+  addLane((item) => ["follow_main_find_carrier", "preheat_find_carrier"].includes(item.actionBias), 4);
+  addLane((item) => item.actionBias === "single_news_noise", 2);
+  addLane((item) => item.actionBias === "avoid_news_chase", 2);
+  addLane(() => true, max);
+  return selected.slice(0, max);
+}
+
+function dedupeNewsPulseTopics(topics = []) {
+  const byKey = new Map();
+  for (const topic of topics || []) {
+    const key = buildNewsPulseTopicDedupeKey(topic);
+    if (!key) continue;
+    const current = byKey.get(key);
+    if (!current || scoreNewsPulseTopicSpecificity(topic) + Number(topic.pulseScore || 0) > scoreNewsPulseTopicSpecificity(current) + Number(current.pulseScore || 0)) {
+      byKey.set(key, topic);
+    }
+  }
+  return [...byKey.values()];
+}
+
+function buildNewsPulseTopicDedupeKey(topic = {}) {
+  const titles = normalizeStringArray(topic.representativeNews?.map((item) => item.title || ""))
+    .map(normalizeIntentText)
+    .filter(Boolean)
+    .sort()
+    .slice(0, 3);
+  if (titles.length) return titles.join("|");
+  return normalizeIntentText(topic.name || topic.id || "");
+}
+
+function scoreNewsPulseTopicRank(topic = {}) {
+  return Number(topic.pulseScore || 0) + scoreNewsPulseTopicSpecificity(topic) * 0.35;
+}
+
+function scoreNewsPulseTopicSpecificity(topic = {}) {
+  const name = String(topic.name || "");
+  let score = Math.min(18, name.length);
+  if (!/[\/／]/.test(name)) score += 10;
+  if (/AI\/算力|美股\/海外科技|新能源\/电池|半导体\/芯片/.test(name)) score -= 10;
+  if (topic.sourceType === "catalog_theme") score += 8;
+  if (topic.sourceType === "emerging_news") score += 2;
+  if (/多家公司|获得新|概念午后|午后|早盘|尾盘/.test(name)) score -= 16;
+  return score;
+}
+
+function newsPulseItemMatchesKeywords(item = {}, keywords = []) {
+  const text = normalizeIntentText(`${item.title || ""} ${item.mediaName || ""}`);
+  return normalizeStringArray(keywords)
+    .filter((keyword) => {
+      const value = normalizeIntentText(keyword);
+      return value.length >= 2 && !GENERIC_THEME_NEWS_MATCH_TERMS.has(value);
+    })
+    .some((keyword) => {
+      const needle = normalizeIntentText(keyword);
+      return text.includes(needle);
+    });
+}
+
+function extractNewsPulseDirectTopicTerms(item = {}) {
+  const title = String(item.title || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (!title) return [];
+  const terms = new Set();
+  for (const group of THEME_NEWS_KEYWORD_EXPANSIONS) {
+    const normalizedTitle = normalizeIntentText(title);
+    const needles = normalizeStringArray(group.needles).map(normalizeIntentText).filter(Boolean);
+    if (needles.some((needle) => needle.length >= 2 && normalizedTitle.includes(needle))) {
+      for (const alias of collectMatchedThemeNewsAliases(group, normalizedTitle).slice(0, 2)) terms.add(alias);
+    }
+  }
+  const patterns = [
+    /([\u4e00-\u9fffA-Za-z0-9]{2,14})(?:产业链|产业|板块|概念|行业|方向|主题)?(?:订单超预期|商业化落地|主力资金净流入|资金净流入|获资金净流入|走强|拉升|活跃|升温|爆发)/g,
+    /([\u4e00-\u9fffA-Za-z0-9]{2,14})(?:产业链|产业|板块|概念|行业|方向|主题)/g
+  ];
+  for (const pattern of patterns) {
+    for (const match of title.matchAll(pattern)) {
+      const term = normalizeEmergingNewsTopicTerm(match[1]);
+      if (term) terms.add(term);
+    }
+  }
+  return [...terms].slice(0, 5);
+}
+
+function buildNewsPulseTopic(seed = {}, themeRadar = []) {
+  const news = (seed.news || []).filter(Boolean);
+  if (!news.length) return null;
+  const keywords = normalizeStringArray(seed.keywords).length ? normalizeStringArray(seed.keywords) : [seed.name].filter(Boolean);
+  const catalystProfile = buildNewsCatalystProfile(news.slice(0, 5), { keywords });
+  const themeSupport = findNewsPulseThemeSupport(seed, themeRadar);
+  const freshNewsCount = catalystProfile.fresh === false ? 0 : news.length;
+  const sourceKinds = [...new Set(news.map((item) => item.sourceKind || item.mediaName || "").filter(Boolean))].slice(0, 5);
+  const latest = selectLatestNewsPulseItem(news);
+  const mainCapitalScore = clampScore(
+    scoreNewsMainCapitalConfirmation(catalystProfile, news)
+    + Number(themeSupport?.capitalFollowScore || 0) * 0.42
+    + Number(themeSupport?.mainInflowRankScore || 0) * 0.35
+  );
+  const retreatPenalty = Math.max(0, Number(themeSupport?.capitalRetreatScore || 0) - 35) * 0.8
+    + Math.max(0, Number(themeSupport?.crowdingScore || 0) - 55) * 0.65
+    + (catalystProfile.risk ? 18 : 0)
+    + (catalystProfile.fresh === false ? 18 : 0);
+  const densityScore = clampScore(freshNewsCount * 14 + Math.min(20, sourceKinds.length * 4));
+  const pulseScore = clampScore(
+    densityScore
+    + Number(catalystProfile.score || 0) * 0.9
+    + mainCapitalScore * 0.55
+    + Number(themeSupport?.preheatScore || 0) * 0.22
+    + Number(themeSupport?.lowPositionScore || 0) * 0.12
+    - retreatPenalty
+  );
+  const actionBias = inferNewsPulseActionBias({
+    newsCount: news.length,
+    freshNewsCount,
+    catalystProfile,
+    themeSupport,
+    mainCapitalScore,
+    pulseScore,
+    retreatPenalty
+  });
+  const confidence = inferNewsPulseConfidence({ newsCount: news.length, freshNewsCount, catalystProfile, themeSupport, mainCapitalScore, pulseScore });
+  return {
+    id: seed.id || seed.name || "",
+    name: seed.name || seed.id || "",
+    keywords: keywords.slice(0, 12),
+    sourceType: seed.sourceType || "",
+    newsCount: news.length,
+    freshNewsCount,
+    sourceKinds,
+    latestTitle: latest?.title || "",
+    latestTime: latest?.showTime || latest?.time || latest?.publishTime || "",
+    catalystScore: round(catalystProfile.score || 0, 1),
+    catalystSummary: catalystProfile.summary || "",
+    catalystFreshness: catalystProfile.freshnessLabel || "",
+    newsDensityText: formatNewsPulseDensityText(news.length, freshNewsCount),
+    mainCapitalScore: round(mainCapitalScore, 1),
+    pulseScore: round(pulseScore, 1),
+    actionBias,
+    actionBiasText: formatNewsPulseActionBias(actionBias),
+    confidence,
+    confidenceText: formatNewsPulseConfidence(confidence),
+    hasThemeSupport: Boolean(themeSupport),
+    matchedThemeName: themeSupport?.name || "",
+    whyMove: buildNewsPulseWhyMove({ name: seed.name || seed.id || "", news, catalystProfile, themeSupport, mainCapitalScore, actionBias }),
+    representativeNews: news.slice(0, 3).map((item) => ({
+      title: item.title || "",
+      showTime: item.showTime || item.time || "",
+      mediaName: item.mediaName || "",
+      sourceKind: item.sourceKind || ""
+    }))
+  };
+}
+
+function selectLatestNewsPulseItem(news = []) {
+  return [...(news || [])].sort((a, b) => {
+    const left = parseThemeNewsTimeMs(a?.showTime || a?.time || a?.publishTime || a?.createdAt || "") || 0;
+    const right = parseThemeNewsTimeMs(b?.showTime || b?.time || b?.publishTime || b?.createdAt || "") || 0;
+    return right - left;
+  })[0] || news[0] || null;
+}
+
+function findNewsPulseThemeSupport(seed = {}, themeRadar = []) {
+  const keywords = normalizeStringArray(seed.keywords).length ? normalizeStringArray(seed.keywords) : [seed.name].filter(Boolean);
+  return (themeRadar || [])
+    .filter((theme) => {
+      const themeText = normalizeIntentText([
+        theme.name,
+        theme.id,
+        ...(theme.keywords || []),
+        ...(theme.newsKeywords || []),
+        ...(theme.fundKeywords || []),
+        theme.newsLogic,
+        theme.primaryCatalyst
+      ].join(" "));
+      return themeText && (
+        textMatchesKeywords(themeText, keywords)
+        || keywords.some((keyword) => {
+          const normalized = normalizeIntentText(keyword);
+          return normalized.length >= 2 && themeText.includes(normalized);
+        })
+      );
+    })
+    .sort((a, b) =>
+      Number(b.capitalFollowScore || 0) + Number(b.preheatScore || 0) + Number(b.forwardScore || 0) * 0.25
+      - (Number(a.capitalFollowScore || 0) + Number(a.preheatScore || 0) + Number(a.forwardScore || 0) * 0.25)
+    )[0] || null;
+}
+
+function inferNewsPulseActionBias({ newsCount = 0, freshNewsCount = 0, catalystProfile = {}, themeSupport = null, mainCapitalScore = 0, pulseScore = 0, retreatPenalty = 0 } = {}) {
+  if (Number(retreatPenalty || 0) >= 28 || hasThemeCapitalRetreatRisk(themeSupport || {})) return "avoid_news_chase";
+  if (newsCount <= 1 && !themeSupport && Number(catalystProfile.score || 0) < 28) return "single_news_noise";
+  if (freshNewsCount >= 2 && Number(mainCapitalScore || 0) >= 52 && Number(pulseScore || 0) >= 60) return "follow_main_find_carrier";
+  if (freshNewsCount >= 2 && Number(pulseScore || 0) >= 42) return "preheat_find_carrier";
+  if (themeSupport && (Number(themeSupport.preheatScore || 0) >= 50 || Number(themeSupport.capitalFollowScore || 0) >= 50)) return "theme_support_watch";
+  return "news_monitor";
+}
+
+function formatNewsPulseActionBias(value = "") {
+  return {
+    follow_main_find_carrier: "主线发酵，立刻找承载基金复核",
+    preheat_find_carrier: "题材预热，先找代表基金入观察",
+    theme_support_watch: "题材有支撑，等待资金和买点确认",
+    single_news_noise: "单条新闻噪音，只观察",
+    avoid_news_chase: "新闻热但有退潮/追涨风险，回避追买",
+    news_monitor: "新闻监控，暂不转买点"
+  }[value] || "观察";
+}
+
+function inferNewsPulseConfidence({ newsCount = 0, freshNewsCount = 0, catalystProfile = {}, themeSupport = null, mainCapitalScore = 0, pulseScore = 0 } = {}) {
+  if (freshNewsCount >= 2 && themeSupport && Number(mainCapitalScore || 0) >= 50 && Number(pulseScore || 0) >= 58) return "high";
+  if (freshNewsCount >= 2 || themeSupport || Number(catalystProfile.score || 0) >= 24) return "medium";
+  return "low";
+}
+
+function formatNewsPulseConfidence(value = "") {
+  return { high: "高", medium: "中", low: "低" }[value] || "低";
+}
+
+function formatNewsPulseDensityText(newsCount = 0, freshNewsCount = 0) {
+  if (freshNewsCount >= 3) return `新鲜新闻${freshNewsCount}条，密集发酵`;
+  if (freshNewsCount >= 2) return `新鲜新闻${freshNewsCount}条，开始发酵`;
+  if (newsCount >= 2) return `新闻${newsCount}条，但时效需复核`;
+  return "单条新闻，先按噪音处理";
+}
+
+function buildNewsPulseWhyMove({ name = "", news = [], catalystProfile = {}, themeSupport = null, mainCapitalScore = 0, actionBias = "" } = {}) {
+  if (actionBias === "single_news_noise") return "只有单条新闻，缺少资金或板块共振，先不把它当买点。";
+  const parts = [
+    catalystProfile.summary ? `${name || "相关题材"}出现${catalystProfile.summary}` : "",
+    news.length >= 2 ? `同题材新闻连续出现${news.length}条` : "",
+    Number(mainCapitalScore || 0) >= 50 ? "新闻和主力资金线索互相印证" : "",
+    themeSupport?.name ? `当前题材雷达已命中${themeSupport.name}` : "",
+    catalystProfile.freshnessLabel || ""
+  ].filter(Boolean);
+  return parts.join("，") || (news[0]?.title ? shortenPortfolioCustomerText(news[0].title, 96) : "");
+}
+
+function buildNewsPulseSummary(topics = []) {
+  const actionable = (topics || []).filter((item) => ["follow_main_find_carrier", "preheat_find_carrier"].includes(item.actionBias)).length;
+  const noise = (topics || []).filter((item) => item.actionBias === "single_news_noise").length;
+  const avoid = (topics || []).filter((item) => item.actionBias === "avoid_news_chase").length;
+  if (actionable) return `发现${actionable}条新闻密集发酵线索，先找承载基金复核；${noise ? `${noise}条单新闻按噪音观察；` : ""}${avoid ? `${avoid}条新闻热但需回避追买。` : ""}`.trim();
+  if (avoid) return `新闻热度不足以买入，先回避${avoid}条退潮或追涨风险。`;
+  if (noise) return `主要是单条新闻噪音，不能直接作为买点。`;
+  return topics.length ? "新闻已有线索，但还没有形成可执行题材脉冲。" : "未形成可用新闻题材脉冲。";
 }
 
 function buildMarketBreadthIndicators({ conceptBoards = [], industryBoards = [], chinaIndices = [], fetchedAt = new Date().toISOString() } = {}) {
@@ -40980,6 +41366,8 @@ export {
   buildCachedFundRankingFallback,
   attachThemeRadarHistoryMomentum,
   buildMarketBreadthIndicators,
+  buildNewsPulseIndicators,
+  collectNewsPulseTopicSeeds,
   cacheFundResearchDigest,
   cacheFundNavHistory,
   cacheFundRankingResult,
