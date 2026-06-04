@@ -12321,7 +12321,8 @@ const portfolioSnapshots = manager.collectTrendSnapshotsForRun({
   ],
   watchlistUpdates: [
     { status: "ready", code: "000033", name: "自选可买基金C", lastSnapshot: { ...setupDigest, code: "000033", name: "自选可买基金C", trendProfile: { ...setupDigest.trendProfile, series: chartSeries } } },
-    { status: "waiting_pullback", code: "000034", name: "自选备选基金C", lastSnapshot: { ...setupDigestSecond, code: "000034", name: "自选备选基金C", trendProfile: { ...setupDigestSecond.trendProfile, series: chartSeries } } }
+    { status: "waiting_pullback", code: "000034", name: "自选备选基金C", lastSnapshot: { ...setupDigestSecond, code: "000034", name: "自选备选基金C", trendProfile: { ...setupDigestSecond.trendProfile, series: chartSeries } } },
+    { status: "ready", code: "000036", name: "退潮接盘误标可买基金C", lastSnapshot: { ...textOnlyCatchdownProfile, code: "000036", name: "退潮接盘误标可买基金C", trendProfile: { ...textOnlyCatchdownProfile.trendProfile, series: chartSeries } } }
   ],
   accountAfter: {
     positions: [
@@ -12331,6 +12332,14 @@ const portfolioSnapshots = manager.collectTrendSnapshotsForRun({
 });
 assert(portfolioSnapshots.some((item) => item.role === "买入准备图" && item.code === "000033"), "portfolio report images must include ready watchlist candidates as buy-preparation charts");
 assert(portfolioSnapshots.some((item) => item.role === "备选观察图" && item.code === "000034"), "portfolio report images must include waiting watchlist candidates as backup charts");
+assert(!portfolioSnapshots.some((item) => item.role === "买入准备图" && item.code === "000036"), "portfolio report images must not turn catchdown-blocked raw-ready watchlist candidates into buy-preparation charts");
+const blockedReadyChart = portfolioSnapshots.find((item) => item.code === "000036");
+assert.equal(blockedReadyChart?.role, "风险排除图", "catchdown-blocked raw-ready watchlist candidates must be shown as risk-exclusion charts");
+assert(
+  blockedReadyChart?.snapshot?.actionability?.allocationBand === "0元观察"
+    && /正向买入门禁拦截|接盘风险|主力资金撤离/.test(blockedReadyChart.snapshot.decisionBlocker || ""),
+  "risk-exclusion charts must carry the positive-gate blocker into the rendered chart profile"
+);
 assert(portfolioSnapshots.some((item) => item.role === "持仓跟踪图" && item.code === "000035"), "portfolio report images must include current positions after buy/backup evidence");
 assert.equal(portfolioSnapshots[0].role, "买入执行图", "portfolio report images should put executed buys before lower-priority reference charts");
 

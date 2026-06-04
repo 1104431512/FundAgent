@@ -953,8 +953,12 @@ const requiredPatterns = [
     message: "portfolio status conversations must attach chart evidence instead of text-only status replies."
   },
   {
-    pattern: /watchlistUpdates[\s\S]{0,260}买入准备图[\s\S]{0,260}备选观察图/,
+    pattern: /function resolvePortfolioWatchTrendSnapshotChartDecision[\s\S]{0,620}买入准备图[\s\S]{0,260}备选观察图/,
     message: "portfolio chart selection must include ready buy-preparation and backup watchlist candidates."
+  },
+  {
+    pattern: /function collectTrendSnapshotsForRun[\s\S]{0,1400}resolvePortfolioWatchTrendSnapshotChartDecision\(item\)[\s\S]*function resolvePortfolioWatchTrendSnapshotChartDecision[\s\S]{0,1400}resolvePortfolioPositiveWatchRankingGate[\s\S]{0,900}风险排除图/,
+    message: "portfolio chart selection must downgrade raw-ready watchlist candidates to risk-exclusion charts when the positive catchdown gate blocks them."
   },
   {
     pattern: /buildPortfolioTrendCardImages[\s\S]{0,520}renderFundReportSummaryPng/,

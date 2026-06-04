@@ -21370,19 +21370,13 @@ function collectTrendSnapshotsForRun(run) {
     });
   }
   for (const item of run.watchlistUpdates || []) {
-    const role = item.status === "ready"
-      ? "买入准备图"
-      : item.status === "waiting_pullback" || item.status === "watch"
-        ? "备选观察图"
-        : item.status === "blocked"
-          ? "风险排除图"
-          : "自选复核图";
+    const chartDecision = resolvePortfolioWatchTrendSnapshotChartDecision(item);
     add({
       code: item.code,
       name: item.name,
-      snapshot: item.lastSnapshot,
-      role,
-      priority: item.status === "ready" ? 4 : item.status === "waiting_pullback" ? 12 : item.status === "watch" ? 20 : 40
+      snapshot: chartDecision.snapshot,
+      role: chartDecision.role,
+      priority: chartDecision.priority
     });
   }
   for (const position of run.accountAfter?.positions || []) {
@@ -21395,6 +21389,64 @@ function collectTrendSnapshotsForRun(run) {
     });
   }
   return [...byCode.values()].sort((a, b) => Number(a.priority ?? 50) - Number(b.priority ?? 50));
+}
+
+function resolvePortfolioWatchTrendSnapshotChartDecision(item = {}) {
+  const displayItem = applyPortfolioWatchDisplayStatus(item);
+  const status = displayItem.status || item.status || "watch";
+  const positiveGate = resolvePortfolioPositiveWatchRankingGate({
+    ...item,
+    ...displayItem,
+    status,
+    lastSnapshot: item.lastSnapshot || displayItem.lastSnapshot
+  });
+  const blockedByGate = !positiveGate.ok;
+  const role = status === "ready" && !blockedByGate
+    ? "买入准备图"
+    : status === "waiting_pullback" || status === "watch"
+      ? blockedByGate && positiveGate.hardCatchdown ? "风险排除图" : "备选观察图"
+      : status === "blocked" || blockedByGate
+        ? "风险排除图"
+        : "自选复核图";
+  const priority = role === "买入准备图"
+    ? 4
+    : role === "备选观察图"
+      ? status === "waiting_pullback" ? 12 : 20
+      : role === "风险排除图"
+        ? 24
+        : 40;
+  return {
+    role,
+    priority,
+    positiveGate,
+    snapshot: buildPortfolioWatchTrendSnapshotChartProfile(item, { role, positiveGate })
+  };
+}
+
+function buildPortfolioWatchTrendSnapshotChartProfile(item = {}, { role = "", positiveGate = {} } = {}) {
+  const snapshot = item.lastSnapshot || {};
+  if (positiveGate?.ok !== false) return snapshot;
+  const notes = mergeStringLists(
+    [positiveGate.reason, positiveGate.nextStep],
+    positiveGate.facts,
+    item.riskNotes,
+    snapshot.riskNotes,
+    snapshot.actionability?.decisionBlocker,
+    snapshot.decisionBlocker
+  ).slice(0, 8);
+  return {
+    ...snapshot,
+    reportChartRole: role || snapshot.reportChartRole || "",
+    riskNotes: notes,
+    decisionBlocker: positiveGate.reason || snapshot.decisionBlocker || "",
+    actionability: {
+      ...(snapshot.actionability || {}),
+      action: "avoid",
+      actionText: "回避",
+      allocationBand: "0元观察",
+      decisionBlocker: positiveGate.reason || snapshot.actionability?.decisionBlocker || ""
+    }
+  };
 }
 
 function isPreciousMetalQuestion(text) {
