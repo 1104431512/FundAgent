@@ -4121,6 +4121,14 @@ const requiredPatterns = [
     message: "admin portfolio UI must show customer action leaderboards in both the overview radar and full ranking terminal."
   },
   {
+    pattern: /function renderManagerCatchdownRiskStrip[\s\S]{0,1600}接盘拦截[\s\S]{0,1600}isManagerCatchdownRiskActionItem[\s\S]{0,1200}主力\(\?:资金\)\?撤离/,
+    message: "admin manager ranking UI must show a compact catchdown-risk strip so stale-theme blockers are visible without opening long lists."
+  },
+  {
+    pattern: /(?=[\s\S]*\.ranking-catchdown-strip[\s\S]{0,1000}border-left:\s*4px solid #d97706)(?=[\s\S]*@media \(max-width: 860px\)[\s\S]{0,2600}\.ranking-catchdown-strip)/,
+    message: "admin catchdown-risk strip must be visually distinct and collapse safely on mobile."
+  },
+  {
     pattern: /(?=[\s\S]*function renderPortfolioConsensusRadar)(?=[\s\S]*consensusRadar)(?=[\s\S]*consensus-radar-grid)/,
     message: "admin portfolio UI must show consensus radar lanes in compact manager ranking workspaces."
   },

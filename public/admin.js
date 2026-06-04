@@ -2980,11 +2980,52 @@ function renderManagerCustomerActionLeaderboard(board = {}) {
           <small>${escapeHtml(board.summary || "按买入、等待、回避、卖出和补证据拆开排序。")}</small>
         </div>
       </div>
+      ${renderManagerCatchdownRiskStrip(board)}
       <div class="ranking-action-leaderboard-grid">
         ${lanes.map(renderManagerCustomerActionLeaderboardLane).join("")}
       </div>
     </section>
   `;
+}
+
+function renderManagerCatchdownRiskStrip(board = {}) {
+  const lanes = Array.isArray(board.lanes) ? board.lanes : [];
+  const riskItems = lanes
+    .flatMap((lane) => (Array.isArray(lane.items) ? lane.items : []).map((item) => ({ ...item, laneId: lane.id || "" })))
+    .filter(isManagerCatchdownRiskActionItem)
+    .slice(0, 3);
+  if (!riskItems.length) return "";
+  return `
+    <section class="ranking-catchdown-strip" aria-label="接盘风险拦截摘要">
+      <div>
+        <span>接盘拦截</span>
+        <strong>${escapeHtml(`已挡下 ${riskItems.length} 个表面低位候选`)}</strong>
+        <small>旧题材、主力撤离或旧催化未解除前，不给买入金额。</small>
+      </div>
+      <div class="ranking-catchdown-strip-items">
+        ${riskItems.map((item) => `
+          <button type="button" data-focus-watchlist-code="${escapeHtml(item.code || "")}">
+            <b>${escapeHtml(item.code || "待复核")}</b>
+            <span>${escapeHtml(compactRunnerConsoleText(item.reason || item.nextStep || item.action || "等待资金回流后再复核", 54))}</span>
+          </button>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function isManagerCatchdownRiskActionItem(item = {}) {
+  const text = [
+    item.action,
+    item.reason,
+    item.nextStep,
+    item.trigger,
+    item.invalidation,
+    item.crossCheckSummary,
+    ...(Array.isArray(item.badges) ? item.badges : []),
+    ...(Array.isArray(item.constraintEvidence) ? item.constraintEvidence : [])
+  ].filter(Boolean).join(" ");
+  return /接盘|退潮|主力(?:资金)?撤离|资金撤离|旧题材|旧催化|旧新闻|历史热点|当前题材雷达.*(?:未确认|过期|缺少刷新)|0元观察/.test(text);
 }
 
 function renderManagerCustomerActionLeaderboardLane(lane = {}) {
