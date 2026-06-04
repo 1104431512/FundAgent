@@ -12,6 +12,14 @@ const dockerfile = fs.readFileSync(path.join(root, "Dockerfile"), "utf8");
 const dockerPublishWorkflow = fs.readFileSync(path.join(root, ".github", "workflows", "docker-publish.yml"), "utf8");
 const allSource = [server, admin, adminHtml, adminCss, packageJson, deploymentCheck, dockerfile, dockerPublishWorkflow].join("\n");
 
+function getFunctionSource(source, name) {
+  const match = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(source);
+  if (!match) return "";
+  const rest = source.slice(match.index + match[0].length);
+  const nextMatch = /\n(?:async\s+)?function\s+[A-Za-z0-9_$]+\s*\(/.exec(rest);
+  return source.slice(match.index, nextMatch ? match.index + match[0].length + nextMatch.index : source.length);
+}
+
 const forbiddenPatterns = [
   {
     pattern: /reboundFromRecentLowPct,\s*\n/,
@@ -105,8 +113,41 @@ const requiredPatterns = [
     message: "share-class inference must not misread QDII/ETF/FOF product suffixes as A/C/I share classes."
   },
   {
-    pattern: /function fetchRealtimeFundValuationSnapshot[\s\S]{0,2200}fetchFundValuation\(code\)[\s\S]{0,3600}function normalizeRealtimeFundValuation[\s\S]{0,2600}source: valuation\.source \|\| `https:\/\/fundgz\.1234567\.com\.cn\/js\/\$\{valuation\.fundcode/,
+    test: (source) => {
+      const fetcher = getFunctionSource(source, "fetchRealtimeFundValuationSnapshot");
+      const normalizer = getFunctionSource(source, "normalizeRealtimeFundValuation");
+      return fetcher.includes("fetchFundValuation(code)")
+        && normalizer.includes("source: valuation.source || `https://fundgz.1234567.com.cn/js/${valuation.fundcode");
+    },
     message: "real-time fund valuation snapshots must use the existing Tiantian/FundGZ estimate endpoint with source traceability."
+  },
+  {
+    test: (source) => {
+      const normalizer = getFunctionSource(source, "normalizeRealtimeFundValuation");
+      const signalBuilder = getFunctionSource(source, "buildRealtimeFundValuationSignal");
+      return normalizer.includes("buildRealtimeFundValuationSignal")
+        && normalizer.includes("realtimeSignal")
+        && signalBuilder.includes("temperature")
+        && signalBuilder.includes("actionHint")
+        && signalBuilder.includes("sourceConfidence");
+    },
+    message: "realtime fund valuations must be converted into deterministic temperature/action signals before model judgment."
+  },
+  {
+    pattern: /function compactRealtimeFundValuations[\s\S]{0,900}实时信号[\s\S]{0,420}操作提示[\s\S]{0,420}信号温度/,
+    message: "compact market snapshots must preserve deterministic realtime valuation signals for the model."
+  },
+  {
+    test: (source) => {
+      const actionability = getFunctionSource(source, "buildFundActionabilitySignals");
+      const realtimeDiscipline = getFunctionSource(source, "getActionabilityRealtimeSignalDiscipline");
+      return actionability.includes("realtimeSignal")
+        && actionability.includes("getActionabilityRealtimeSignalDiscipline")
+        && actionability.includes("realtimeSignalDiscipline.scoreCap")
+        && actionability.includes("realtimeSignalDiscipline.blocker")
+        && realtimeDiscipline.includes("系统实时估值信号降级");
+    },
+    message: "fund actionability must turn realtime valuation signals into deterministic buy/wait downgrades."
   },
   {
     pattern: /async function fetchFundValuation\([\s\S]{0,7000}fetchFundValuationFromPingzhongData[\s\S]{0,65000}function parseFundPingzhongLatestNav[\s\S]{0,700}Data_netWorthTrend/,
@@ -3765,7 +3806,7 @@ const requiredPatterns = [
   {
     pattern: {
       test: (source) => source.includes("function buildFundPriorityPreferenceAnswer")
-        && source.includes("已生效：以后多基金推荐先给结果")
+        && source.includes("直接结论：已生效，以后多基金推荐先给结果")
         && source.includes("handleFundQaWorkflow")
         && source.includes("answer_priority_preference")
         && source.includes("buildFundPriorityPreferenceAnswer(userText)")
@@ -4027,7 +4068,16 @@ const requiredPatterns = [
     message: "fund actionability must incorporate structured top-ten holdings outlook."
   },
   {
-    pattern: /buildFundActionabilitySignals[\s\S]{0,3200}let leaderThemeSupport = hasActionabilityLeaderThemeSupport\(digest,\s*holdingsOutlook\)[\s\S]{0,3200}isActionabilityHoldingsCarrierHardBlocker\(holdingsDiscipline\.blocker\)[\s\S]{0,320}leaderThemeSupport = false/,
+    test: (source) => {
+      const actionability = getFunctionSource(source, "buildFundActionabilitySignals");
+      const themeGap = getFunctionSource(source, "hasActionabilityThemeExecutionHardGap");
+      return actionability.includes("let leaderThemeSupport = hasActionabilityLeaderThemeSupport(digest, holdingsOutlook)")
+        && actionability.includes("const holdingsCarrierHardBlocker = isActionabilityHoldingsCarrierHardBlocker(holdingsDiscipline.blocker)")
+        && actionability.includes("leaderThemeSupport = false")
+        && themeGap.includes("hasStaleThemeCatchdownRisk(digest)")
+        && themeGap.includes("getUnrefreshedMarketThemeWarnings(digest)")
+        && themeGap.includes("前十大持仓未命中题材龙头");
+    },
     message: "fund actionability must not award or display main-force theme support when catchdown, stale radar, or holdings-carrier hard gaps exist."
   },
   {
@@ -4051,7 +4101,14 @@ const requiredPatterns = [
     message: "fund actionability must cap buy/staged-buy scores when the trend says wait for pullback."
   },
   {
-    pattern: /buildFundActionabilitySignals[\s\S]{0,6200}getActionabilityFreshnessDiscipline\(digest[\s\S]{0,1600}boundedScore = Math\.min\(boundedScore, freshnessDiscipline\.scoreCap\)/,
+    test: (source) => {
+      const actionability = getFunctionSource(source, "buildFundActionabilitySignals");
+      const freshness = getFunctionSource(source, "getActionabilityFreshnessDiscipline");
+      return actionability.includes("const freshnessDiscipline = getActionabilityFreshnessDiscipline(digest")
+        && actionability.includes("boundedScore = Math.min(boundedScore, freshnessDiscipline.scoreCap)")
+        && freshness.includes("系统数据时效降级")
+        && freshness.includes("不能给买入或分批买入动作");
+    },
     message: "fund actionability must cap buy/staged-buy scores when NAV or trend evidence is stale."
   },
   {
@@ -4811,7 +4868,7 @@ for (const item of forbiddenPatterns) {
   if (traceGuards) console.error(`[forbidden] ${item.message}`);
   if (profileGuards) console.error(`[forbidden start] ${item.message}`);
   const startedAt = Date.now();
-  const matched = item.pattern.test(server);
+  const matched = typeof item.test === "function" ? item.test(server) : item.pattern.test(server);
   const elapsedMs = Date.now() - startedAt;
   if (profileGuards && elapsedMs > 20) console.error(`[forbidden ${elapsedMs}ms] ${item.message}`);
   if (matched) failures.push(item.message);
@@ -4820,7 +4877,7 @@ for (const item of requiredPatterns) {
   if (traceGuards) console.error(`[required] ${item.message}`);
   if (profileGuards) console.error(`[required start] ${item.message}`);
   const startedAt = Date.now();
-  const matched = item.pattern.test(allSource);
+  const matched = typeof item.test === "function" ? item.test(allSource) : item.pattern.test(allSource);
   const elapsedMs = Date.now() - startedAt;
   if (profileGuards && elapsedMs > 20) console.error(`[required ${elapsedMs}ms] ${item.message}`);
   if (!matched) failures.push(item.message);

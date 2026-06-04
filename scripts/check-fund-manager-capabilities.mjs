@@ -71,7 +71,8 @@ await assertIntent({
   requiredSkills: ["fund-recommendation", "fund-answer-quality"]
 });
 const priorityPreferenceAnswer = manager.buildFundPriorityPreferenceAnswer("现在经理太啰嗦了，干巴巴的讲数据。我更想看到直接结果，按高夏普优先排");
-assert(priorityPreferenceAnswer.includes("已生效：以后多基金推荐先给结果"), "priority preference request must receive a deterministic result-first acknowledgement");
+assert(priorityPreferenceAnswer.startsWith("直接结论：已生效"), "priority preference acknowledgement must itself be result-first");
+assert(priorityPreferenceAnswer.includes("已生效，以后多基金推荐先给结果"), "priority preference request must receive a deterministic result-first acknowledgement");
 assert(priorityPreferenceAnswer.includes("排序口径：高夏普/低回撤优先"), "priority preference acknowledgement must echo the requested high-Sharpe priority");
 assert(priorityPreferenceAnswer.includes("结果榜：只写第1/2/3优先") && priorityPreferenceAnswer.includes("硬纪律：旧题材"), "priority preference acknowledgement must define short leaderboard output and stale-theme discipline");
 assert(priorityPreferenceAnswer.split(/\r?\n/).filter(Boolean).length <= 5, "priority preference acknowledgement must stay short and not become another verbose answer");
@@ -2379,6 +2380,47 @@ assert.equal(mergedPrimaryValuation.gsz, 4.8258, "Sina intraday supplement must 
 assert.equal(mergedPrimaryValuation.sourceKind, "tiantian_intraday_estimate", "Sina intraday supplement must preserve the primary valuation source kind");
 assert(mergedPrimaryValuation.intradayTrend.label.includes("盘中回落"), "primary realtime valuation must carry supplemental minute-level trend evidence");
 assert.equal(mergedPrimaryValuation.supplementalIntradaySourceKind, "sina_intraday_estimate", "merged valuation must disclose the supplemental intraday source");
+const fadingRealtimeSignal = manager.buildRealtimeFundValuationSignal({
+  sourceKind: "tiantian_intraday_estimate",
+  supplementalIntradaySourceKind: "sina_intraday_estimate",
+  estimatedChangePct: 0.8,
+  estimateFreshnessMinutes: 12,
+  isFresh: true,
+  intradayTrend: manualIntradayTrend,
+  valuationSourceAgreement: {
+    status: "aligned",
+    label: "实时估值源基本一致",
+    divergencePct: 0.1
+  }
+});
+assert.equal(fadingRealtimeSignal.temperature, "fading", "realtime valuation signal must classify intraday giveback as fading instead of a buy confirmation");
+assert(fadingRealtimeSignal.label.includes("防追高") && fadingRealtimeSignal.actionHint.includes("降低买入把握度"), "fading realtime valuation signal must translate into a Chinese anti-chase action hint");
+const compactRealtimeSignal = manager.compactRealtimeFundValuations([{
+  code: "008327",
+  name: "东财通信C",
+  estimatedChangePct: 0.8,
+  estimateTime: "2026-05-26 15:00",
+  freshnessLabel: "半小时内更新",
+  sourceKind: "tiantian_intraday_estimate",
+  realtimeSignal: fadingRealtimeSignal,
+  intradayTrend: manualIntradayTrend
+}])[0];
+assert.equal(compactRealtimeSignal["实时信号"], fadingRealtimeSignal.label, "compact model snapshots must preserve deterministic realtime valuation signals");
+assert.equal(compactRealtimeSignal["操作提示"], fadingRealtimeSignal.actionHint, "compact model snapshots must preserve realtime valuation action hints");
+const realtimeSignalActionability = manager.buildFundActionabilitySignals({
+  name: "实时信号测试基金C",
+  trendProfile: {
+    ok: true,
+    entryBias: "staged_buy",
+    pullbackSetup: { signal: "pullback_complete", signalText: "回调完成", score: 78 }
+  },
+  risk: { oneYear: { ok: true, sharpe: 1.1, annualizedReturnPct: 10, maxDrawdownPct: -12 } },
+  fees: { shareClassFeeModel: { type: "c_no_front_load", label: "C类" }, feeImpact: { oneYearCostPer10000: 40 } },
+  holdings: { ok: true, equityTopHoldings: [{ name: "测试持仓", pct: 5 }] },
+  realtimeSignal: fadingRealtimeSignal
+});
+assert(realtimeSignalActionability.decisionBlocker.some((item) => item.includes("系统实时估值信号降级")), "actionability must turn realtime fading signals into deterministic buy downgrades");
+assert.equal(realtimeSignalActionability.allocationBand, "0元观察", "fading realtime valuation must block immediate buy sizing even when the pullback setup looks good");
 const originalStaleEstimateMinutes = process.env.FUND_VALUATION_STALE_ESTIMATE_MINUTES;
 process.env.FUND_VALUATION_STALE_ESTIMATE_MINUTES = "30";
 assert.equal(

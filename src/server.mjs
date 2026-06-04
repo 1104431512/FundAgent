@@ -20869,24 +20869,35 @@ function compactMarketQuoteItems(items = [], limit = 6) {
 }
 
 function compactRealtimeFundValuations(items = [], limit = 12) {
-  return (items || []).slice(0, limit).map((item) => ({
-    code: item.code || "",
-    name: item.name || "",
-    shareClass: item.shareClass || "",
-    type: item.type || "",
-    estimatedChangePct: finiteMetricNumber(item.estimatedChangePct),
-    estimateTime: item.estimateTime || "",
-    freshness: item.freshnessLabel || "",
-    sourceKind: item.sourceKind || "",
-    估值依据: item.valuationBasis || "",
-    实时溢价: finiteMetricNumber(item.realtimePremiumPct),
-    申购限制: item.subscriptionLimit || "",
-    基准: item.benchmarkName || "",
-    盘中走势: item.intradayTrend?.label || item.intradayTrendLabel || "",
-    盘中变化: finiteMetricNumber(item.intradayTrend?.changeFromOpenPct),
-    尾盘变化: finiteMetricNumber(item.intradayTrend?.recentSlopePct),
-    isFresh: item.isFresh
-  }));
+  return (items || []).slice(0, limit).map((item) => {
+    const compact = {
+      code: item.code || "",
+      name: item.name || "",
+      shareClass: item.shareClass || "",
+      type: item.type || "",
+      estimatedChangePct: finiteMetricNumber(item.estimatedChangePct),
+      estimateTime: item.estimateTime || "",
+      freshness: item.freshnessLabel || "",
+      sourceKind: item.sourceKind || "",
+      估值依据: item.valuationBasis || "",
+      实时溢价: finiteMetricNumber(item.realtimePremiumPct),
+      申购限制: item.subscriptionLimit || "",
+      基准: item.benchmarkName || "",
+      盘中走势: item.intradayTrend?.label || item.intradayTrendLabel || "",
+      盘中变化: finiteMetricNumber(item.intradayTrend?.changeFromOpenPct),
+      尾盘变化: finiteMetricNumber(item.intradayTrend?.recentSlopePct),
+      isFresh: item.isFresh
+    };
+    if (item.realtimeSignal) {
+      compact.实时信号 = item.realtimeSignal.label || "";
+      compact.操作提示 = item.realtimeSignal.actionHint || "";
+      compact.可信度 = item.realtimeSignal.sourceConfidence || "";
+      compact.信号温度 = item.realtimeSignal.temperature || "";
+      const signalRisks = normalizeStringArray(item.realtimeSignal.risks).slice(0, 3);
+      if (signalRisks.length) compact.信号风险 = signalRisks;
+    }
+    return compact;
+  });
 }
 
 function compactMarketBoardItems(items = [], limit = 6) {
@@ -27194,6 +27205,14 @@ function normalizeRealtimeFundValuation(valuation = {}, seed = {}, fetchedAt = n
     : null;
   const intradayTrend = valuation.intradayTrend || summarizeFundIntradayValuationTrend(valuation.intradaySeries || []);
   const valuationSourceAgreement = buildFundValuationSourceAgreement(valuation);
+  const realtimeSignal = buildRealtimeFundValuationSignal({
+    ...valuation,
+    intradayTrend,
+    valuationSourceAgreement,
+    estimateFreshnessMinutes: Number.isFinite(freshnessMinutes) ? freshnessMinutes : null,
+    isFresh,
+    seed
+  });
   return {
     ok: true,
     code: valuation.fundcode || seed.code || "",
@@ -27218,6 +27237,7 @@ function normalizeRealtimeFundValuation(valuation = {}, seed = {}, fetchedAt = n
     sourceKind: valuation.sourceKind || "tiantian_intraday_estimate",
     valuationBasis: valuation.valuationBasis || "盘中估算",
     valuationSourceAgreement,
+    realtimeSignal,
     supplementalIntradaySource: valuation.supplementalIntradaySource || "",
     supplementalIntradaySourceKind: valuation.supplementalIntradaySourceKind || "",
     yangjibaoEstimatedNav: toNumber(valuation.yangjibaoEstimatedNav),
@@ -27238,6 +27258,148 @@ function estimateFreshnessMinutes(estimateTime, fetchedAt = new Date().toISOStri
   const fetchedMs = Date.parse(fetchedAt);
   if (!Number.isFinite(estimateMs) || !Number.isFinite(fetchedMs)) return null;
   return Math.max(0, Math.round((fetchedMs - estimateMs) / 60000));
+}
+
+function buildRealtimeFundValuationSignal(valuation = {}) {
+  if (valuation?.ok === false) {
+    return {
+      ok: false,
+      sourceConfidence: "low",
+      confidenceScore: 0,
+      temperature: "stale",
+      label: "实时估值抓取失败，只能待复核",
+      actionHint: "重新抓取或等下一次估值刷新后再判断",
+      risks: ["实时估值源失败"],
+      positives: [],
+      evidence: String(valuation.error || "实时估值抓取失败").slice(0, 120)
+    };
+  }
+  const sourceKind = valuation.sourceKind || valuation.valuationSourceKind || "tiantian_intraday_estimate";
+  const supplementalSourceKind = valuation.supplementalIntradaySourceKind || valuation.supplementalSourceKind || "";
+  const agreement = valuation.valuationSourceAgreement || buildFundValuationSourceAgreement(valuation);
+  const intradayTrend = valuation.intradayTrend || null;
+  const estimatedChangePct = toNumber(valuation.estimatedChangePct ?? valuation.gszzl);
+  const freshnessMinutes = Number.isFinite(Number(valuation.estimateFreshnessMinutes))
+    ? Number(valuation.estimateFreshnessMinutes)
+    : estimateFreshnessMinutes(valuation.estimateTime || valuation.gztime || "");
+  const isFresh = valuation.isFresh === false
+    ? false
+    : valuation.isFresh === true
+      ? true
+      : Number.isFinite(freshnessMinutes)
+        ? freshnessMinutes <= Number(process.env.MARKET_REALTIME_VALUATION_FRESH_MINUTES || 1440)
+        : null;
+  const sourceScore = scoreRealtimeValuationSourceConfidence({ sourceKind, supplementalSourceKind, agreement, isFresh, intradayTrend });
+  const fading = isRealtimeValuationFading(intradayTrend);
+  const sourceConflict = agreement?.status === "conflict";
+  const stale = isFresh === false;
+  const temperature = stale
+    ? "stale"
+    : sourceConflict
+      ? "source_conflict"
+      : fading
+        ? "fading"
+        : Number.isFinite(estimatedChangePct) && estimatedChangePct >= 1
+          ? "hot_strength"
+          : Number.isFinite(estimatedChangePct) && estimatedChangePct > 0.15
+            ? "fresh_strength"
+            : Number.isFinite(estimatedChangePct) && estimatedChangePct <= -0.5
+              ? "weak"
+              : "neutral";
+  const risks = [];
+  const positives = [];
+  if (stale) risks.push("估值时间偏旧");
+  if (sourceConflict) risks.push("实时估值源明显分歧");
+  if (fading) risks.push("盘中冲高回落或尾盘转弱");
+  if (sourceKind === "eastmoney_latest_nav_fallback") risks.push("只有官方净值回退，不是盘中实时估算");
+  if (Number.isFinite(Number(valuation.realtimePremiumPct)) && Math.abs(Number(valuation.realtimePremiumPct)) >= 1.5) {
+    risks.push(`场内溢价/折价${formatFallbackPct(valuation.realtimePremiumPct)}，QDII或ETF需先看溢价`);
+  }
+  if (isFresh === true) positives.push("估值时间较新");
+  if (/yangjibao|tiantian|sina|haoetf/.test(sourceKind)) positives.push(formatRealtimeValuationSourceKind(sourceKind));
+  if (supplementalSourceKind) positives.push(`备源${formatRealtimeValuationSourceKind(supplementalSourceKind)}`);
+  if (agreement?.status === "aligned") positives.push("主备估值基本一致");
+  if (intradayTrend?.label && /盘中走强|低位回升|尾盘转强/.test(String(intradayTrend.label))) positives.push("盘中估值走强");
+  return {
+    ok: true,
+    sourceConfidence: sourceScore >= 75 ? "high" : sourceScore >= 55 ? "medium" : "low",
+    confidenceScore: sourceScore,
+    temperature,
+    label: formatRealtimeValuationSignalLabel({ temperature, estimatedChangePct, intradayTrend, agreement, isFresh }),
+    actionHint: formatRealtimeValuationSignalActionHint(temperature),
+    risks: risks.slice(0, 4),
+    positives: positives.slice(0, 4),
+    evidence: formatRealtimeValuationSignalEvidence({ sourceKind, supplementalSourceKind, agreement, intradayTrend, freshnessMinutes, isFresh })
+  };
+}
+
+function scoreRealtimeValuationSourceConfidence({ sourceKind = "", supplementalSourceKind = "", agreement = null, isFresh = null, intradayTrend = null } = {}) {
+  let score = 48;
+  if (/yangjibao/.test(sourceKind)) score += 18;
+  else if (/tiantian|fundgz/.test(sourceKind)) score += 14;
+  else if (/sina/.test(sourceKind)) score += 12;
+  else if (/haoetf/.test(sourceKind)) score += 12;
+  else if (sourceKind === "eastmoney_latest_nav_fallback") score -= 16;
+  if (supplementalSourceKind) score += 8;
+  if (agreement?.status === "aligned") score += 10;
+  if (agreement?.status === "mild_divergence") score -= 6;
+  if (agreement?.status === "conflict") score -= 24;
+  if (isFresh === true) score += 10;
+  if (isFresh === false) score -= 24;
+  if (intradayTrend?.label && !/不足/.test(String(intradayTrend.label))) score += 4;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function isRealtimeValuationFading(intradayTrend = null) {
+  if (!intradayTrend || typeof intradayTrend !== "object") return false;
+  const label = String(intradayTrend.label || "");
+  const pullbackFromHighPct = Number(intradayTrend.pullbackFromHighPct);
+  const recentSlopePct = Number(intradayTrend.recentSlopePct);
+  return /冲高回落|尾盘转弱|盘中回落/.test(label)
+    || (Number.isFinite(pullbackFromHighPct) && pullbackFromHighPct <= -0.6)
+    || (Number.isFinite(recentSlopePct) && recentSlopePct <= -0.3);
+}
+
+function formatRealtimeValuationSignalLabel({ temperature = "", estimatedChangePct = null, intradayTrend = null, agreement = null, isFresh = null } = {}) {
+  if (temperature === "stale") return "估值偏旧，只能当连续性线索";
+  if (temperature === "source_conflict") return "估值源分歧，先等复核";
+  if (temperature === "fading") return "盘中热度转弱，防追高";
+  if (temperature === "hot_strength") return `估值偏强${Number.isFinite(estimatedChangePct) ? `（${formatFallbackPct(estimatedChangePct)}）` : ""}，先看是否追涨`;
+  if (temperature === "fresh_strength") return "新鲜估值走强，可作温度参考";
+  if (temperature === "weak") return "估值走弱，先看支撑和止跌";
+  if (agreement?.status === "aligned" && isFresh === true) return "实时估值平稳且来源较一致";
+  if (intradayTrend?.label) return String(intradayTrend.label);
+  return "实时估值中性，等待走势确认";
+}
+
+function formatRealtimeValuationSignalActionHint(temperature = "") {
+  if (temperature === "stale") return "重新抓取或等下一次估值刷新后再判断";
+  if (temperature === "source_conflict") return "不能用单一估值源确认买点";
+  if (temperature === "fading") return "降低买入把握度，避免把盘中冲高当启动";
+  if (temperature === "hot_strength") return "只允许结合低位/题材证据小仓复核，不能追涨";
+  if (temperature === "fresh_strength") return "可作为加分证据，但仍要看买点和题材承载";
+  if (temperature === "weak") return "先等止跌或底层持仓转强";
+  return "作为盘中温度参考，不替代确认净值";
+}
+
+function formatRealtimeValuationSignalEvidence({ sourceKind = "", supplementalSourceKind = "", agreement = null, intradayTrend = null, freshnessMinutes = null, isFresh = null } = {}) {
+  return [
+    sourceKind ? `主源=${formatRealtimeValuationSourceKind(sourceKind)}` : "",
+    supplementalSourceKind ? `备源=${formatRealtimeValuationSourceKind(supplementalSourceKind)}` : "",
+    Number.isFinite(freshnessMinutes) ? `时效=${formatEstimateFreshnessLabel(freshnessMinutes)}` : isFresh === false ? "时效=偏旧" : "",
+    agreement?.label ? `一致性=${agreement.label}` : "",
+    intradayTrend?.label ? `盘中=${intradayTrend.label}` : ""
+  ].filter(Boolean).join("，");
+}
+
+function formatRealtimeValuationSourceKind(sourceKind = "") {
+  const key = String(sourceKind || "");
+  if (/yangjibao/.test(key)) return "养基宝实时源";
+  if (/tiantian|fundgz/.test(key)) return "天天基金估算";
+  if (/sina/.test(key)) return "新浪估算备源";
+  if (/haoetf/.test(key)) return "HaoETF/QDII估算";
+  if (/eastmoney_latest_nav_fallback/.test(key)) return "东财官方净值回退";
+  return key || "未知实时源";
 }
 
 function parseChinaDateTimeMs(value) {
@@ -31140,6 +31302,7 @@ function sanitizeFundResearchDigestForCache(digest = {}) {
     intradayTrend: digest.intradayTrend || null,
     intradayTrendLabel: digest.intradayTrendLabel || "",
     valuationSourceAgreement: digest.valuationSourceAgreement || null,
+    realtimeSignal: digest.realtimeSignal || null,
     valuationSourceKind: digest.valuationSourceKind || "",
     supplementalIntradaySourceKind: digest.supplementalIntradaySourceKind || "",
     returns: digest.returns || {},
@@ -31677,6 +31840,11 @@ async function fetchFundResearchDigestLive(code, seed = {}) {
   const profile = profileText ? parseFundPingzhongData(profileText) : {};
   const name = profile.name || valuation.name || seed.name || "";
   const valuationSourceAgreement = buildFundValuationSourceAgreement(valuation);
+  const realtimeSignal = buildRealtimeFundValuationSignal({
+    ...valuation,
+    valuationSourceAgreement,
+    intradayTrend: valuation.intradayTrend || null
+  });
   const feeProfile = buildFundFeeProfile({
     code,
     name,
@@ -31723,11 +31891,13 @@ async function fetchFundResearchDigestLive(code, seed = {}) {
       estimatedNav: valuation.gsz || "",
       estimatedChangePct: valuation.gszzl || "",
       navDate: valuation.jzrq || seed.navDate || "",
-      estimateTime: valuation.gztime || ""
+      estimateTime: valuation.gztime || "",
+      realtimeSignal
     },
     intradayTrend: valuation.intradayTrend || null,
     intradayTrendLabel: valuation.intradayTrend?.label || valuation.intradayTrendLabel || "",
     valuationSourceAgreement,
+    realtimeSignal,
     valuationSourceKind: valuation.sourceKind || "",
     supplementalIntradaySourceKind: valuation.supplementalIntradaySourceKind || "",
     returns: {
@@ -34027,6 +34197,7 @@ function buildFundActionabilitySignals(digest) {
   const fees = digest.fees || {};
   const intradayTrend = digest.intradayTrend || digest.valuation?.intradayTrend || digest.nav?.intradayTrend || null;
   const valuationSourceAgreement = digest.valuationSourceAgreement || digest.nav?.valuationSourceAgreement || null;
+  const realtimeSignal = digest.realtimeSignal || digest.valuation?.realtimeSignal || digest.nav?.realtimeSignal || null;
   const isMoneyMarket = Boolean(digest.moneyMarket?.ok) || /货币/.test(`${digest.name || ""} ${digest.seed?.type || ""}`);
   const feeType = fees.shareClassFeeModel?.type || "unknown";
   const feeImpact = fees.feeImpact || null;
@@ -34091,6 +34262,9 @@ function buildFundActionabilitySignals(digest) {
   let leaderThemeSupport = hasActionabilityLeaderThemeSupport(digest, holdingsOutlook);
   const hasBuySetup = ["pullback_complete", "launch_setup"].includes(trend.pullbackSetup?.signal || "")
     && ["buyable_now", "staged_buy"].includes(trend.entryBias);
+  if (realtimeSignal?.temperature === "fresh_strength" && hasBuySetup) score += 3;
+  if (realtimeSignal?.temperature === "hot_strength" && trend.entryBias === "wait_pullback") score -= 4;
+  if (["stale", "source_conflict", "fading"].includes(realtimeSignal?.temperature)) score -= 6;
   const microStarterSupport = hasActionabilityMicroStarterSupport(digest, trend);
   const microStarterOnly = microStarterSupport && !hasBuySetup;
   if (microStarterOnly) score += 12;
@@ -34099,6 +34273,7 @@ function buildFundActionabilitySignals(digest) {
   const freshnessDiscipline = getActionabilityFreshnessDiscipline(digest, { isMoneyMarket });
   const intradayDiscipline = getActionabilityIntradayDiscipline(digest, { isMoneyMarket });
   const valuationSourceDiscipline = getActionabilityValuationSourceDiscipline(digest, { isMoneyMarket });
+  const realtimeSignalDiscipline = getActionabilityRealtimeSignalDiscipline(digest, { isMoneyMarket });
   const themeRetreatDiscipline = getActionabilityThemeRetreatDiscipline(digest, { isMoneyMarket });
   const holdingsDiscipline = getActionabilityHoldingsOutlookDiscipline(holdingsOutlook, { isMoneyMarket });
   const holdingsCarrierHardBlocker = isActionabilityHoldingsCarrierHardBlocker(holdingsDiscipline.blocker);
@@ -34111,6 +34286,9 @@ function buildFundActionabilitySignals(digest) {
   }
   if (Number.isFinite(valuationSourceDiscipline.scorePenalty)) {
     score -= valuationSourceDiscipline.scorePenalty;
+  }
+  if (Number.isFinite(realtimeSignalDiscipline.scorePenalty)) {
+    score -= realtimeSignalDiscipline.scorePenalty;
   }
   if (Number.isFinite(themeRetreatDiscipline.scorePenalty)) {
     score -= themeRetreatDiscipline.scorePenalty;
@@ -34130,6 +34308,9 @@ function buildFundActionabilitySignals(digest) {
   }
   if (Number.isFinite(valuationSourceDiscipline.scoreCap)) {
     boundedScore = Math.min(boundedScore, valuationSourceDiscipline.scoreCap);
+  }
+  if (Number.isFinite(realtimeSignalDiscipline.scoreCap)) {
+    boundedScore = Math.min(boundedScore, realtimeSignalDiscipline.scoreCap);
   }
   if (Number.isFinite(themeRetreatDiscipline.scoreCap)) {
     boundedScore = Math.min(boundedScore, themeRetreatDiscipline.scoreCap);
@@ -34154,6 +34335,7 @@ function buildFundActionabilitySignals(digest) {
   const highDrawdown = Number.isFinite(risk.maxDrawdownPct) && risk.maxDrawdownPct <= -25;
   const hardNoBuyBlocker = hasActionabilityHardNoBuyBlocker({
     freshnessDiscipline,
+    realtimeSignalDiscipline,
     themeRetreatDiscipline,
     holdingsDiscipline,
     holdingsCarrierHardBlocker
@@ -34186,6 +34368,7 @@ function buildFundActionabilitySignals(digest) {
     trend.pullbackSetup?.signal && trend.pullbackSetup.signal !== "none" ? `回调启动信号=${trend.pullbackSetup.signalText}，评分=${trend.pullbackSetup.score}` : "",
     formatIntradayTrendActionabilityEvidence(intradayTrend),
     formatValuationSourceAgreementEvidence(valuationSourceAgreement),
+    formatRealtimeSignalActionabilityEvidence(realtimeSignal),
     shouldShowThemeEvidence ? themeEvidence : "",
     microStarterOnly ? formatThemeMicroStarterActionabilityEvidence(digest, trend) : "",
     risk.ok ? `近一年收益${risk.totalReturnPct}%，最大回撤${risk.maxDrawdownPct}%，夏普${risk.sharpe}` : "",
@@ -34199,6 +34382,7 @@ function buildFundActionabilitySignals(digest) {
     freshnessDiscipline.blocker || "",
     intradayDiscipline.blocker || "",
     valuationSourceDiscipline.blocker || "",
+    realtimeSignalDiscipline.blocker || "",
     themeRetreatDiscipline.blocker || "",
     holdingsDiscipline.blocker || "",
     trend.invalidationHint || "",
@@ -34228,15 +34412,16 @@ function buildFundActionabilitySignals(digest) {
   };
 }
 
-function hasActionabilityHardNoBuyBlocker({ freshnessDiscipline = {}, themeRetreatDiscipline = {}, holdingsDiscipline = {}, holdingsCarrierHardBlocker = false } = {}) {
+function hasActionabilityHardNoBuyBlocker({ freshnessDiscipline = {}, realtimeSignalDiscipline = {}, themeRetreatDiscipline = {}, holdingsDiscipline = {}, holdingsCarrierHardBlocker = false } = {}) {
   const blockerText = [
     freshnessDiscipline.blocker,
+    realtimeSignalDiscipline.blocker,
     themeRetreatDiscipline.blocker,
     holdingsDiscipline.blocker
   ].filter(Boolean).join(" ");
   return Boolean(
     holdingsCarrierHardBlocker
-    || /系统(?:文本接盘风险拦截|当前题材支撑拦截|接盘风险拦截|当前题材雷达未确认|旧催化降级|题材退潮拦截|数据时效降级)|净值\/走势已过期|重新下钻复核|题材退潮|主力资金撤离|接盘风险|旧题材|历史热点|底层持仓|表面回调可能继续下探/.test(blockerText)
+    || /系统(?:文本接盘风险拦截|当前题材支撑拦截|接盘风险拦截|当前题材雷达未确认|旧催化降级|题材退潮拦截|数据时效降级|实时估值信号降级)|净值\/走势已过期|重新下钻复核|估值偏旧|来源分歧|冲高回落|题材退潮|主力资金撤离|接盘风险|旧题材|历史热点|底层持仓|表面回调可能继续下探/.test(blockerText)
   );
 }
 
@@ -34488,6 +34673,45 @@ function getActionabilityValuationSourceDiscipline(digest = {}, { isMoneyMarket 
   };
 }
 
+function getActionabilityRealtimeSignalDiscipline(digest = {}, { isMoneyMarket = false } = {}) {
+  if (isMoneyMarket || !digest || typeof digest !== "object") {
+    return { scoreCap: null, scorePenalty: 0, blocker: "" };
+  }
+  const signal = digest.realtimeSignal || digest.valuation?.realtimeSignal || digest.nav?.realtimeSignal || null;
+  if (!signal || typeof signal !== "object") {
+    return { scoreCap: null, scorePenalty: 0, blocker: "" };
+  }
+  if (signal.temperature === "stale") {
+    return {
+      scoreCap: 58,
+      scorePenalty: 8,
+      blocker: `系统实时估值信号降级：${signal.label || "估值偏旧"}，${signal.actionHint || "需要重新抓取后再判断"}。`
+    };
+  }
+  if (signal.temperature === "source_conflict") {
+    return {
+      scoreCap: 58,
+      scorePenalty: 8,
+      blocker: `系统实时估值信号降级：${signal.label || "来源分歧"}，${signal.actionHint || "不能用单一估值源确认买点"}。`
+    };
+  }
+  if (signal.temperature === "fading") {
+    return {
+      scoreCap: 58,
+      scorePenalty: 8,
+      blocker: `系统实时估值信号降级：${signal.label || "盘中冲高回落"}，${signal.actionHint || "降低买入把握度"}。`
+    };
+  }
+  if (signal.sourceConfidence === "low" && Number(signal.confidenceScore || 0) < 45) {
+    return {
+      scoreCap: 62,
+      scorePenalty: 4,
+      blocker: `系统实时估值信号降级：${signal.evidence || "实时源可信度偏低"}，只能作为待复核温度线索。`
+    };
+  }
+  return { scoreCap: null, scorePenalty: 0, blocker: "" };
+}
+
 function getActionabilityThemeRetreatDiscipline(digest = {}, { isMoneyMarket = false } = {}) {
   if (isMoneyMarket || !digest || typeof digest !== "object") {
     return { scoreCap: null, scorePenalty: 0, blocker: "" };
@@ -34628,6 +34852,18 @@ function formatValuationSourceAgreementEvidence(agreement = null) {
     Number.isFinite(Number(agreement.primaryChangePct)) ? `主源${formatFallbackPct(agreement.primaryChangePct)}` : "",
     Number.isFinite(Number(agreement.supplementalChangePct)) ? `备源${formatFallbackPct(agreement.supplementalChangePct)}` : "",
     `差异${round(Number(agreement.divergencePct), 2)}个百分点`
+  ].filter(Boolean).join("，");
+}
+
+function formatRealtimeSignalActionabilityEvidence(signal = null) {
+  if (!signal || typeof signal !== "object") return "";
+  const label = String(signal.label || "").trim();
+  if (!label) return "";
+  return [
+    `实时估值信号=${label}`,
+    signal.actionHint ? `提示=${signal.actionHint}` : "",
+    signal.sourceConfidence ? `可信度=${signal.sourceConfidence}` : "",
+    normalizeStringArray(signal.risks).length ? `风险=${normalizeStringArray(signal.risks).slice(0, 2).join("/")}` : ""
   ].filter(Boolean).join("，");
 }
 
@@ -34900,6 +35136,11 @@ async function fetchFundProfile(code) {
   const profile = parseFundPingzhongData(profileText);
   const name = profile.name || valuation.name || "";
   const valuationSourceAgreement = buildFundValuationSourceAgreement(valuation);
+  const realtimeSignal = buildRealtimeFundValuationSignal({
+    ...valuation,
+    valuationSourceAgreement,
+    intradayTrend: valuation.intradayTrend || null
+  });
   const feeProfile = buildFundFeeProfile({
     code,
     name,
@@ -34929,7 +35170,8 @@ async function fetchFundProfile(code) {
     holdings: holdingsSummary,
     holdingRealtimePulse,
     intradayTrend: valuation.intradayTrend || null,
-    valuationSourceAgreement
+    valuationSourceAgreement,
+    realtimeSignal
   });
   return {
     ok: true,
@@ -34945,6 +35187,7 @@ async function fetchFundProfile(code) {
     intradayTrend: valuation.intradayTrend || null,
     intradayTrendLabel: valuation.intradayTrend?.label || valuation.intradayTrendLabel || "",
     valuationSourceAgreement,
+    realtimeSignal,
     valuationSourceKind: valuation.sourceKind || "",
     supplementalIntradaySourceKind: valuation.supplementalIntradaySourceKind || "",
     fees: feeProfile,
@@ -38760,7 +39003,7 @@ function persistFundPriorityPreference(userText = "") {
 function buildFundPriorityPreferenceAnswer(userText = "") {
   const sortPolicy = buildFundPriorityPreferenceConfigPatch(userText).fundAnswerDefaultSortPolicy;
   return normalizeUserFacingFundAnswer([
-    "已生效：以后多基金推荐先给结果，不先铺数据；这个偏好已写入配置。",
+    "直接结论：已生效，以后多基金推荐先给结果，不先铺数据；这个偏好已写入配置。",
     `排序口径：${sortPolicy}`,
     "固定结构：直接结论 -> 排序口径 -> 结果榜 -> 为什么这样排 -> 执行 -> 边界。",
     "结果榜：只写第1/2/3优先和一句人话理由；夏普、回撤、规模这类数字只在会改变动作时出现。",
@@ -39929,6 +40172,7 @@ export {
   buildFundComputedOpportunityScorecard,
   buildCachedFundResearchDigestFallback,
   buildMarketDataQuality,
+  buildRealtimeFundValuationSignal,
   applyMarketSnapshotCacheFallback,
   cacheFundResearchDigest,
   buildThemeRadar,
@@ -39942,6 +40186,7 @@ export {
   compactPortfolioDbForStorage,
   compactModelInputForContext,
   compactMarketSnapshotForModel,
+  compactRealtimeFundValuations,
   compactMarketDataQuality,
   compactFundHoldingRealtimePulse,
   compactPublicFundSnapshot,
