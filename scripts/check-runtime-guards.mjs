@@ -4217,6 +4217,10 @@ const requiredPatterns = [
     message: "admin opportunity workspace must lift the first actionable opportunity and shortcut counts above the lane grid."
   },
   {
+    pattern: /function getOpportunityBlockedRiskContext[\s\S]{0,500}filter\(isWatchlistCatchdownRiskItem\)[\s\S]{0,500}stale_catchdown_risk/,
+    message: "admin opportunity workspace must route catchdown-blocked candidates to the dedicated catchdown-risk ranking, not generic chase risk."
+  },
+  {
     pattern: /(?=[\s\S]*PORTFOLIO_DATA_LANES[\s\S]{0,900}净值\/走势[\s\S]{0,900}份额\/费率[\s\S]{0,900}持仓\/前景[\s\S]{0,900}来源\/补证)(?=[\s\S]*function renderPortfolioDataBoard)/,
     message: "admin portfolio UI must split data confidence into NAV, fee, holdings, and source lanes."
   },

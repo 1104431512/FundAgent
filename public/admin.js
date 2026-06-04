@@ -2696,6 +2696,7 @@ function renderPortfolioOpportunityBoard(context = {}) {
   const waiting = context.waiting || [];
   const launchEve = context.launchEve || [];
   const blocked = context.blocked || [];
+  const blockedRisk = getOpportunityBlockedRiskContext(blocked);
   const total = ready.length + waiting.length + launchEve.length;
   setText("#portfolioOpportunityState", total ? `${total} 个观察入口` : "暂无机会");
   root.innerHTML = `
@@ -2704,7 +2705,7 @@ function renderPortfolioOpportunityBoard(context = {}) {
       ${renderOpportunityLane("接近可买", ready, "buy", "暂无可买复核候选。")}
       ${renderOpportunityLane("等待回调", waiting, "watch", "暂无等待回调候选。")}
       ${renderOpportunityLane("启动前夜", launchEve, "launch", "暂无低位启动前夜候选。")}
-      ${renderOpportunityLane("暂不买", blocked, "risk", "暂无被拦截候选。", 4)}
+      ${renderOpportunityLane(blockedRisk.laneTitle, blocked, "risk", "暂无被拦截候选。", 4)}
     </div>
   `;
 }
@@ -2712,6 +2713,7 @@ function renderPortfolioOpportunityBoard(context = {}) {
 function renderPortfolioOpportunityCommand({ ready = [], waiting = [], launchEve = [], blocked = [] } = {}) {
   const lead = selectPortfolioOpportunityLead({ ready, waiting, launchEve, blocked });
   const code = String(lead.item?.code || "").trim();
+  const blockedRisk = getOpportunityBlockedRiskContext(blocked);
   return `
     <section class="opportunity-command-row" aria-label="机会指挥条">
       <article class="opportunity-command-primary opportunity-command-${escapeHtml(lead.tone || "watch")}">
@@ -2723,7 +2725,7 @@ function renderPortfolioOpportunityCommand({ ready = [], waiting = [], launchEve
         ${renderOpportunityCommandCount("接近可买", ready.length, "buy_preparation")}
         ${renderOpportunityCommandCount("启动前夜", launchEve.length, "launch_setup")}
         ${renderOpportunityCommandCount("等待回调", waiting.length, "launch_setup")}
-        ${renderOpportunityCommandCount("暂不买", blocked.length, "chase_risk")}
+        ${renderOpportunityCommandCount(blockedRisk.label, blocked.length, blockedRisk.rankingFilter)}
       </div>
       <div class="opportunity-command-actions">
         <em class="ranking-action ${getManagerRankingActionClass(lead.action || lead.label || "")}">${escapeHtml(lead.action || "等待信号")}</em>
@@ -2735,10 +2737,12 @@ function renderPortfolioOpportunityCommand({ ready = [], waiting = [], launchEve
 }
 
 function selectPortfolioOpportunityLead({ ready = [], waiting = [], launchEve = [], blocked = [] } = {}) {
+  const catchdownBlocked = (blocked || []).find(isWatchlistCatchdownRiskItem);
   const candidates = [
     { item: ready[0], tone: "buy", label: "先看可买", action: "买入复核", rankingFilter: "buy_preparation" },
     { item: launchEve[0], tone: "launch", label: "盯启动前夜", action: "启动确认", rankingFilter: "launch_setup" },
     { item: waiting[0], tone: "watch", label: "等待回调", action: "等触发", rankingFilter: "launch_setup" },
+    { item: catchdownBlocked, tone: "risk", label: "先排接盘", action: "0元观察", rankingFilter: "stale_catchdown_risk" },
     { item: blocked[0], tone: "risk", label: "先排风险", action: "暂不买", rankingFilter: "chase_risk" }
   ];
   const selected = candidates.find((candidate) => candidate.item) || candidates[0];
@@ -2747,8 +2751,26 @@ function selectPortfolioOpportunityLead({ ready = [], waiting = [], launchEve = 
     ...selected,
     item,
     reason: item
-      ? item.buyTriggers?.[0] || item.positionPlan || item.reason || selectWatchlistPrimaryGap(item)
+      ? selected.rankingFilter === "stale_catchdown_risk"
+        ? item.positionPlan || selectWatchlistPrimaryGap(item) || "这不是低位启动；等主力资金回流、新鲜催化和代表持仓止跌后再复核。"
+        : item.buyTriggers?.[0] || item.positionPlan || item.reason || selectWatchlistPrimaryGap(item)
       : "暂无通过机会池筛选的候选；先运行盘前观察或补充自选池。"
+  };
+}
+
+function getOpportunityBlockedRiskContext(blocked = []) {
+  const catchdownCount = (blocked || []).filter(isWatchlistCatchdownRiskItem).length;
+  if (catchdownCount) {
+    return {
+      label: "接盘风险",
+      laneTitle: "接盘风险",
+      rankingFilter: "stale_catchdown_risk"
+    };
+  }
+  return {
+    label: "暂不买",
+    laneTitle: "暂不买",
+    rankingFilter: "chase_risk"
   };
 }
 

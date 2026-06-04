@@ -3602,6 +3602,13 @@ assert(adminSource.includes("matrix-verdict-") && adminSource.includes("阻断�
 assert(adminSource.includes("renderPortfolioActionDesk"), "admin portfolio UI must render a compact action desk outside the long run timeline");
 assert(adminSource.includes("renderPortfolioAlertBoard"), "admin portfolio UI must render a compact alert desk outside the long run timeline");
 assert(adminSource.includes("renderPortfolioOpportunityCommand") && adminSource.includes("selectPortfolioOpportunityLead"), "admin opportunity workspace must surface the first actionable opportunity before lane details");
+assert(
+  adminSource.includes("getOpportunityBlockedRiskContext")
+    && adminSource.includes('rankingFilter: "stale_catchdown_risk"')
+    && adminSource.includes('label: "接盘风险"')
+    && adminSource.includes("filter(isWatchlistCatchdownRiskItem)"),
+  "admin opportunity workspace must route blocked catchdown candidates to the dedicated catchdown-risk ranking instead of generic chase risk"
+);
 assert(adminSource.includes("PORTFOLIO_POSITION_LANES"), "admin portfolio positions view must split holdings into risk, profit, core, and watch lanes");
 assert(adminStyleSource.includes("portfolio-ranking-radar-grid") && adminStyleSource.includes("portfolio-ranking-radar-data"), "admin portfolio ranking radar must be styled as a scannable five-action-card board");
 assert(/portfolio-ranking-radar-grid\s*\{[\s\S]{0,220}display:\s*grid[\s\S]{0,220}repeat\(auto-fit,\s*minmax\(158px,\s*1fr\)\)/.test(adminStyleSource), "admin portfolio action cards must wrap adaptively instead of adding a horizontal scrollbar");
