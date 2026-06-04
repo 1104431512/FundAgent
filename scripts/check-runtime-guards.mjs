@@ -741,6 +741,10 @@ const requiredPatterns = [
     message: "fund answer quality must require the sort policy to follow user-specified priorities such as high-Sharpe or low-drawdown first."
   },
   {
+    pattern: /(?=[\s\S]*function getRequestedFundAnswerSortPriorities[\s\S]*long_term_return)(?=[\s\S]*function getRequestedFundAnswerSortPriorities[\s\S]*size_liquidity)(?=[\s\S]*function getRequestedFundAnswerSortPriorities[\s\S]*holdings_outlook)(?=[\s\S]*function getFundAnswerPriorityScore[\s\S]*manager_stability)(?=[\s\S]*function buildFundAnswerHoldingsOutlookLeaderboardReason)/,
+    message: "fund answer quality must support more customer ranking priorities than high-Sharpe, including return, size/liquidity, manager stability, and holdings outlook."
+  },
+  {
     pattern: /function evaluateFundAnswerQuality[\s\S]{0,3600}hasFundAnswerRequestedSortOrderMismatch\(\{ text: rawText, userText, evidence \}\)[\s\S]{0,180}requested_result_sort_order_mismatch/,
     message: "fund answer quality must reject answers that state the requested priority but list candidates in the wrong evidence-backed order."
   },
@@ -771,6 +775,10 @@ const requiredPatterns = [
   {
     pattern: /推荐清单必须先写排序口径[\s\S]{0,900}高夏普[\s\S]{0,520}低回撤/,
     message: "fund recommendation prompts must mention high-Sharpe and low-drawdown ranking priorities."
+  },
+  {
+    pattern: /系统识别的本次排序口径[\s\S]{0,260}系统识别的输出形态/,
+    message: "fund recommendation prompts must inject the detected sort policy and short-leaderboard mode before the model writes the answer."
   },
   {
     pattern: /多候选回答的前三行必须固定为[\s\S]{0,160}直接结论[\s\S]{0,160}排序口径[\s\S]{0,160}结果榜/,
@@ -833,7 +841,7 @@ const requiredPatterns = [
     message: "fund answer quality must rebuild short result leaderboards for verbosity complaints instead of only compressing the model draft."
   },
   {
-    pattern: /function buildFundAnswerRiskQualityLeaderboardReason[\s\S]{0,1400}夏普[\s\S]{0,900}回撤[\s\S]{0,2200}function buildFundAnswerThemeLeaderboardReason[\s\S]{0,1200}新闻催化[\s\S]{0,700}主力/,
+    pattern: /(?=[\s\S]*function buildFundAnswerRiskQualityLeaderboardReason[\s\S]{0,1400}夏普[\s\S]{0,900}回撤)(?=[\s\S]*function buildFundAnswerThemeLeaderboardReason[\s\S]{0,1200}新闻催化[\s\S]{0,700}主力)(?=[\s\S]*function buildFundAnswerHoldingsOutlookLeaderboardReason[\s\S]{0,900}前十大持仓)/,
     message: "fund result leaderboard reasons must explain priority in plain Chinese such as Sharpe, drawdown, news catalyst, and main-capital evidence instead of generic labels."
   },
   {

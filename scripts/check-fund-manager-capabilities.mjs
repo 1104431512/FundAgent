@@ -11958,6 +11958,85 @@ assert(
   highSharpeEnforcedResultLine.indexOf("000072") >= 0 && highSharpeEnforcedResultLine.indexOf("000072") < highSharpeEnforcedResultLine.indexOf("000071"),
   "quality enforcement must rewrite wrong high-Sharpe ordering into a result board where the high-Sharpe candidate comes first"
 );
+const sizeLiquidityPriorityFallback = manager.buildPullbackQualityFallbackAnswer({
+  userText: "我想找回调完成低位启动的基金，按规模流动性优先",
+  issues: promotedWatchQuality.issues,
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      candidates: [
+        {
+          ...setupDigest,
+          code: "000081",
+          name: "小规模低位基金C",
+          scaleYi: 0.32
+        },
+        {
+          ...setupDigestSecond,
+          code: "000082",
+          name: "规模稳健基金C",
+          scaleYi: 18.5
+        }
+      ]
+    }
+  }
+});
+const sizeLiquidityResultLine = sizeLiquidityPriorityFallback.split("\n").find((line) => line.startsWith("结果榜：")) || "";
+assert(
+  sizeLiquidityPriorityFallback.includes("排序口径：规模和流动性优先"),
+  "deterministic fallback must restate size/liquidity priority when the user asks for it"
+);
+assert(
+  sizeLiquidityResultLine.indexOf("000082") >= 0 && sizeLiquidityResultLine.indexOf("000082") < sizeLiquidityResultLine.indexOf("000081"),
+  "size/liquidity priority fallback must rank the larger liquid candidate before the tiny fund"
+);
+assert(
+  !sizeLiquidityPriorityFallback.includes("推荐清单：") && sizeLiquidityPriorityFallback.split(/\r?\n/).filter(Boolean).length <= 6,
+  "size/liquidity priority fallback must stay in concise result-board mode"
+);
+const holdingsOutlookPriorityFallback = manager.buildPullbackQualityFallbackAnswer({
+  userText: "我想找回调完成低位启动的基金，按持仓前景优先",
+  issues: promotedWatchQuality.issues,
+  evidence: {
+    marketDeepDive: {
+      ok: true,
+      selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+      candidates: [
+        {
+          ...setupDigest,
+          code: "000083",
+          name: "持仓缺口基金C",
+          holdingsOutlook: {
+            score: 2,
+            risks: ["前十大持仓和目标题材承载不足"],
+            topHoldings: ["600519 贵州茅台", "000858 五粮液"]
+          }
+        },
+        {
+          ...setupDigestSecond,
+          code: "000084",
+          name: "持仓前景基金C",
+          holdingsOutlook: {
+            score: 8,
+            positives: ["前十大持仓能承载主线题材", "行业前景和基金方向一致"],
+            risks: [],
+            topHoldings: ["601138 工业富联", "300502 新易盛", "300308 中际旭创"]
+          }
+        }
+      ]
+    }
+  }
+});
+const holdingsOutlookResultLine = holdingsOutlookPriorityFallback.split("\n").find((line) => line.startsWith("结果榜：")) || "";
+assert(
+  holdingsOutlookPriorityFallback.includes("排序口径：持仓前景和行业承载优先"),
+  "deterministic fallback must restate holdings-outlook priority when the user asks for it"
+);
+assert(
+  holdingsOutlookResultLine.indexOf("000084") >= 0 && holdingsOutlookResultLine.indexOf("000084") < holdingsOutlookResultLine.indexOf("000083"),
+  "holdings-outlook priority fallback must rank the better carrier fund before the weak holding fit"
+);
 
 const deterministicNoMainFallback = manager.buildPullbackQualityFallbackAnswer({
   userText: setupQuery,

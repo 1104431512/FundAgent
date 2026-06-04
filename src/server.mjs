@@ -23099,6 +23099,8 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
   const skillContext = buildSkillContextForIntent(intent, getFundRecommendationSkillIds(), { userText });
   const marketEvidence = buildMarketEvidenceSummary(userText, marketSnapshot);
   const marketSnapshotForModel = compactMarketSnapshotForModel(marketSnapshot);
+  const requestedResultSortPolicy = formatFundAnswerSortPolicy(userText);
+  const priorityLeaderboardMode = isFundAnswerPriorityLeaderboardRequest(userText);
   const portfolioWatchlistContext = await getFundWorkflowWatchlistContext(userText);
   const marketDeepDive = mergeFundWorkflowWatchlistIntoDeepDive(
     await fetchMarketDeepDive(userText, marketSnapshot, { forRecommendation: true }),
@@ -23123,7 +23125,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "必须检查 marketSnapshot.dataQuality：level 为 partial/poor 时，最终回答要用自然中文说明数据缺口、降低把握度；缺少贵金属/板块/排行/新闻模块时，不得声称已完整联网或给重仓买入。",
     "marketDeepDive 中的 trendProfile、actionability、entryBias、fitLabel 等是内部字段；最终回答必须翻译成中文用户话术，不要原样输出字段名或 extended_uptrend/staged_buy/wait_pullback 这类枚举。",
     "如果用户要求找“回调完成、准备启动、低位启动、不要追涨”的基金，必须优先选择 pullbackSetup.signal 为 pullback_complete 或 launch_setup 的候选；同时检查5日/10日是否刚转强、120日区间位置是否偏低。短期涨幅偏热、20日/60日大涨且 entryBias 为 wait_pullback 的候选只能列入观察，不得作为主推荐。",
-    "推荐清单必须先写排序口径。用户指定“高夏普优先、低回撤优先、主力题材优先、费用优先”等偏好时必须照这个偏好排序；用户未指定时，默认按买点成立度、主力资金/新闻逻辑、风险收益质量（高夏普/低回撤）、费用和持仓承载排序。",
+    "推荐清单必须先写排序口径。用户指定“高夏普优先、低回撤优先、高收益优先、同类排名优先、规模流动性优先、经理稳定优先、持仓前景优先、主力题材优先、费用优先”等偏好时必须照这个偏好排序；用户未指定时，默认按买点成立度、主力资金/新闻逻辑、风险收益质量（高夏普/低回撤）、费用和持仓承载排序。",
     "如果用户明确说“按xx优先、xx排序、xx排行”，进入短榜单模式：只写直接结论、排序口径、结果榜、为什么这样排、执行、边界，不要再追加推荐清单、长风险清单、缺失数据清单或日报式分析。",
     "多候选回答的前三行必须固定为：直接结论、排序口径、结果榜。结果榜用“1. 代码 名称：一句话原因；2. ...”直接给首选顺序，后面再展开，不要先铺指标。结果榜只能写人话理由，不能把近5日、近20日、夏普、回撤、规模等数字堆在第一屏。",
     "榜单型回答必须短：先给排出来的结果，再给最多3条为什么这样排、1条执行方案、最多2条决策边界。不要把推荐清单、题材雷达、自评估、风险清单都写成完整长报告。",
@@ -23159,6 +23161,12 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
     "",
     "经理自选候选池：",
     portfolioWatchlistContext.summary,
+    "",
+    "系统识别的本次排序口径：",
+    requestedResultSortPolicy,
+    "",
+    "系统识别的输出形态：",
+    priorityLeaderboardMode ? "短榜单模式；只输出直接结论、排序口径、结果榜、为什么这样排、执行、边界。" : "普通推荐模式；仍需前三行先给直接结论、排序口径和结果榜。",
     "",
     "请输出：",
     "0. 如果这是排序/优先级类请求，或用户要求别啰嗦、直接给结果、少报数据，例如“按高夏普优先”，严格只输出 6 行：直接结论、排序口径、结果榜、为什么这样排、执行、边界；结果榜就是主体，不要再写“推荐清单”重复展开。",
@@ -23210,6 +23218,8 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
   const skillContext = buildSkillContextForIntent(intent, getFundQaSkillIds(), { userText });
   const marketEvidence = buildMarketEvidenceSummary(userText, marketSnapshot);
   const marketSnapshotForModel = compactMarketSnapshotForModel(marketSnapshot);
+  const requestedResultSortPolicy = formatFundAnswerSortPolicy(userText);
+  const priorityLeaderboardMode = isFundAnswerPriorityLeaderboardRequest(userText);
   const portfolioWatchlistContext = await getFundWorkflowWatchlistContext(userText);
   const marketDeepDive = mergeFundWorkflowWatchlistIntoDeepDive(
     await fetchMarketDeepDive(userText, marketSnapshot, { forRecommendation: false }),
@@ -23227,7 +23237,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "涉及 QDII/海外基金时，必须使用 marketIndicators.globalMarkets 里的海外指数和汇率温度，并说明净值披露时差，不要只看基金滞后净值。",
     "如果市场快照或下钻摘要里有题材雷达，优先引用中文题材阶段、主力节奏、新闻逻辑、拥挤度和操作倾向，避免只按历史涨幅回答。",
     "候选下钻摘要若出现 themeOpportunityRequirement=require_current_theme_playbook，回答必须解释题材为什么动、主力是否跟进、基金是否真实承载该题材；纯走势合格但缺题材/新闻/持仓承载的候选只能观察。",
-    "涉及买入、卖出、推荐、备选或多只基金比较时，前两段必须包含排序口径。用户指定高夏普、低回撤、主力题材、费用等偏好时必须按偏好；未指定时按动作影响、买点成立、主力/新闻、风险收益质量和费用持仓承载排序。",
+    "涉及买入、卖出、推荐、备选或多只基金比较时，前两段必须包含排序口径。用户指定高夏普、低回撤、高收益、同类排名、规模流动性、经理稳定、持仓前景、主力题材、费用等偏好时必须按偏好；未指定时按动作影响、买点成立、主力/新闻、风险收益质量和费用持仓承载排序。",
     "如果用户明确说“按xx优先、xx排序、xx排行”，或要求别啰嗦、直接给结果、少报数据，进入短榜单模式：只写直接结论、排序口径、结果榜、为什么这样排、执行、边界，不要再追加推荐清单、长风险清单、缺失数据清单或日报式分析。",
     "多候选回答前三行必须像榜单摘要：直接结论、排序口径、结果榜。结果榜直接给 1/2/3 的首选顺序和一句话原因，后面再展开少量证据；结果榜不要堆近5日、近20日、夏普、回撤、规模等指标明细。",
     "榜单型回答必须短：先给排出来的结果，再给最多3条为什么这样排、1条执行方案、最多2条决策边界；不要把问答写成日报或指标长报告。",
@@ -23264,6 +23274,12 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
     "",
     "经理自选候选池：",
     portfolioWatchlistContext.summary,
+    "",
+    "系统识别的本次排序口径：",
+    requestedResultSortPolicy,
+    "",
+    "系统识别的输出形态：",
+    priorityLeaderboardMode ? "短榜单模式；只输出直接结论、排序口径、结果榜、为什么这样排、执行、边界。" : "普通问答模式；多候选时前三行先给直接结论、排序口径和结果榜。",
     "",
     "请直接回答用户问题。若用户问“值得买吗”，必须给中文动作“买入 / 分批买入 / 等待 / 回避”之一，并给新资金和已有持仓分别怎么做。若涉及多个候选或比较，前三行固定为“直接结论：...”“排序口径：...”“结果榜：1. ...；2. ...”，例如高夏普/低回撤优先、主力资金和新闻逻辑优先、接盘风险优先；再给排序后的结果，不要先铺数字。如果用户明确说按某项优先排序，或抱怨太啰嗦、干巴巴、只想看结果，结果榜就是主体，全文严格压成直接结论、排序口径、结果榜、为什么这样排、执行、边界 6 行，不要再写推荐清单。后文最多写3条为什么这样排、1条执行、2条边界。如回答里给出具体基金候选，主买入和备选观察都要写代码、中文走势证据、触发条件和配图看点；偏热回避对象不要和备选混写。若用户实际是在要推荐基金，请提示他可以说“按最近题材推荐几个基金”，系统会进入基金发现工作流。"
   ].join("\n");
@@ -23592,7 +23608,7 @@ function shouldRequireFundAnswerSortPolicy({ text = "", workflow = "", userText 
   if (workflow === "conversation") return false;
   const prompt = String(userText || "");
   const body = String(text || "");
-  const explicitRankingAsk = /排序|排行|优先|首选|备选|选哪个|比较|推荐|高夏普|低回撤|低波动|费用优先|主力题材/.test(prompt);
+  const explicitRankingAsk = /排序|排行|优先|首选|备选|选哪个|比较|推荐|高夏普|高收益|同类排名|低回撤|低波动|费用优先|规模|流动性|基金经理|持仓前景|主力题材/.test(prompt);
   const fundCodes = new Set((body.match(/\b\d{6}\b/g) || []));
   const candidateCount = getEvidenceFundCandidateCount(evidence);
   return workflow === "fund_recommendation"
@@ -23603,7 +23619,7 @@ function shouldRequireFundAnswerSortPolicy({ text = "", workflow = "", userText 
 
 function hasFundAnswerSortPolicy(text = "") {
   const body = String(text || "");
-  return /排序口径|排序规则|优先级|按.{0,24}优先|高夏普优先|低回撤优先|低波动优先|费用优先|主力.{0,12}优先|接盘风险优先|第[一二三四五12345]优先/.test(body);
+  return /排序口径|排序规则|优先级|按.{0,24}优先|高夏普优先|高收益优先|同类排名优先|低回撤优先|低波动优先|费用优先|规模.{0,8}优先|流动性.{0,8}优先|基金经理.{0,8}优先|经理稳定.{0,8}优先|持仓前景.{0,8}优先|主力.{0,12}优先|接盘风险优先|第[一二三四五12345]优先/.test(body);
 }
 
 function getRequestedFundAnswerSortPriorities(userText = "") {
@@ -23615,6 +23631,12 @@ function getRequestedFundAnswerSortPriorities(userText = "") {
   if (/高夏普|夏普(?:率)?(?:高|好|优先)|风险收益|收益风险|质量(?:好|高|优先)|质量好一点/.test(prompt)) {
     add("risk_adjusted_quality", /高夏普|夏普|风险收益|收益风险|质量/);
   }
+  if (/高收益|收益(?:高|好|优先)|长期收益|年化(?:收益)?|历史业绩|业绩(?:好|优先)|回报(?:高|优先)/.test(prompt)) {
+    add("long_term_return", /高收益|长期收益|年化|历史业绩|业绩|回报/);
+  }
+  if (/同类排名|同类(?:排行|排名)|排名(?:靠前|优先)|排行(?:靠前|优先)|业绩排名|同类表现/.test(prompt)) {
+    add("peer_rank", /同类排名|同类排行|排名|排行|同类表现/);
+  }
   if (/低回撤|回撤(?:低|小|少|优先|可控)|控制回撤|抗跌/.test(prompt)) {
     add("drawdown_control", /低回撤|回撤.{0,8}(?:低|小|少|可控)|控制回撤|抗跌|风险收益|质量/);
   }
@@ -23623,6 +23645,15 @@ function getRequestedFundAnswerSortPriorities(userText = "") {
   }
   if (/费用优先|费率优先|低费率|低费用|成本优先|申购费|销售服务费|A类|C类|D类|I类/i.test(prompt)) {
     add("fee_cost", /费用|费率|成本|申购费|销售服务费|份额|A\/C|A类|C类|D类|I类/i);
+  }
+  if (/规模|流动性|大基金|大规模|清盘风险|不想买小基金|不要小基金/.test(prompt)) {
+    add("size_liquidity", /规模|流动性|大基金|大规模|清盘|小基金/);
+  }
+  if (/基金经理|经理(?:稳定|任期|经验)|管理人|任期|从业|稳定性/.test(prompt)) {
+    add("manager_stability", /基金经理|经理|管理人|任期|从业|稳定/);
+  }
+  if (/持仓前景|前十大|十大持仓|持仓(?:好|优先|前景|承载)|行业前景|成分|底层持仓|重仓股/.test(prompt)) {
+    add("holdings_outlook", /持仓|前十大|十大持仓|行业前景|成分|底层|重仓/);
   }
   if (/主力|资金|题材|新闻|时事|催化|预热|板块轮动/.test(prompt)) {
     add("theme_capital", /主力|资金|题材|新闻|时事|催化|预热|板块|轮动|逻辑/);
@@ -23635,7 +23666,7 @@ function getRequestedFundAnswerSortPriorities(userText = "") {
 
 function isFundAnswerPriorityLeaderboardRequest(userText = "") {
   const prompt = String(userText || "");
-  return /(?:按|以).{0,18}(?:优先|排序|排行|排名|口径)|(?:排序|排行|排名|优先级|首选顺序|结果榜)|(?:高夏普|低回撤|低波动|费用|费率|主力题材|主力资金|新闻逻辑).{0,10}优先|优先.{0,10}(?:高夏普|低回撤|低波动|费用|费率|主力题材|主力资金|新闻逻辑)|(?:高夏普|低回撤|低波动).{0,10}(?:排前|排在前|先排)|(?:太啰嗦|啰嗦|干巴巴|直接给(?:我)?结果|先给(?:我)?结果|结果优先|少报数据|少讲数据|不要(?:再)?报数|不要(?:再)?堆数据|别(?:再)?报数据)/.test(prompt);
+  return /(?:按|以).{0,18}(?:优先|排序|排行|排名|口径)|(?:排序|排行|排名|优先级|首选顺序|结果榜)|(?:高夏普|高收益|长期收益|同类排名|低回撤|低波动|费用|费率|规模|流动性|基金经理|经理稳定|持仓前景|主力题材|主力资金|新闻逻辑).{0,10}优先|优先.{0,10}(?:高夏普|高收益|长期收益|同类排名|低回撤|低波动|费用|费率|规模|流动性|基金经理|经理稳定|持仓前景|主力题材|主力资金|新闻逻辑)|(?:高夏普|高收益|长期收益|同类排名|低回撤|低波动|规模|流动性|持仓前景).{0,10}(?:排前|排在前|先排)|(?:太啰嗦|啰嗦|干巴巴|直接给(?:我)?结果|先给(?:我)?结果|结果优先|少报数据|少讲数据|不要(?:再)?报数|不要(?:再)?堆数据|别(?:再)?报数据)/.test(prompt);
 }
 
 function formatFundAnswerSortPolicy(userText = "", fallback = "买点成立度优先，其次看题材/主力支撑、风险收益质量和份额费用。") {
@@ -23643,9 +23674,14 @@ function formatFundAnswerSortPolicy(userText = "", fallback = "买点成立度�
   if (!priorities.length) return fallback;
   const labels = priorities.map((priority) => ({
     risk_adjusted_quality: "高夏普/低回撤优先",
+    long_term_return: "长期收益和历史业绩优先",
+    peer_rank: "同类排名优先",
     drawdown_control: "低回撤和回撤控制优先",
     low_volatility: "低波动优先",
     fee_cost: "费用和份额成本优先",
+    size_liquidity: "规模和流动性优先",
+    manager_stability: "基金经理稳定性优先",
+    holdings_outlook: "持仓前景和行业承载优先",
     theme_capital: "主力资金和新闻逻辑优先",
     entry_timing: "回调完成和低位启动优先"
   }[priority.id])).filter(Boolean);
@@ -23658,7 +23694,7 @@ function getFundAnswerSortPolicyText(text = "") {
     .map((line) => line.trim())
     .filter(Boolean);
   const policyLines = lines.filter((line) =>
-    /排序口径|排序规则|优先级|按.{0,28}优先|高夏普优先|低回撤优先|低波动优先|费用优先|主力.{0,12}优先|接盘风险优先/.test(line)
+    /排序口径|排序规则|优先级|按.{0,28}优先|高夏普优先|高收益优先|同类排名优先|低回撤优先|低波动优先|费用优先|规模.{0,8}优先|流动性.{0,8}优先|基金经理.{0,8}优先|经理稳定.{0,8}优先|持仓前景.{0,8}优先|主力.{0,12}优先|接盘风险优先/.test(line)
   );
   if (policyLines.length) return policyLines.slice(0, 2).join(" ");
   return lines.slice(0, 4).join(" ");
@@ -23708,6 +23744,21 @@ function getFundAnswerPriorityScore(candidate = {}, priorityId = "") {
       + (Number.isFinite(maxDrawdown) ? 40 + Math.max(-50, maxDrawdown) : -12)
       + (Number.isFinite(annualizedReturn) ? annualizedReturn * 0.45 : 0);
   }
+  if (priorityId === "long_term_return") {
+    const totalReturn = finiteMetricNumber(
+      risk?.totalReturnPct
+      ?? risk?.returnPct
+      ?? candidate.totalReturnPct
+      ?? candidate.seed?.totalReturnPct
+    );
+    return (Number.isFinite(annualizedReturn) ? annualizedReturn * 2.2 : -12)
+      + (Number.isFinite(totalReturn) ? totalReturn * 0.55 : 0)
+      + (Number.isFinite(sharpe) ? sharpe * 8 : 0)
+      + (Number.isFinite(maxDrawdown) ? Math.max(-45, maxDrawdown) * 0.35 : -6);
+  }
+  if (priorityId === "peer_rank") {
+    return getFundAnswerPeerRankPriorityScore(candidate);
+  }
   if (priorityId === "drawdown_control") {
     return (Number.isFinite(maxDrawdown) ? 60 + Math.max(-60, maxDrawdown) : -20)
       + (Number.isFinite(sharpe) ? sharpe * 12 : 0);
@@ -23725,6 +23776,20 @@ function getFundAnswerPriorityScore(candidate = {}, priorityId = "") {
     );
     return Number.isFinite(feeCost) ? 120 - feeCost : 0;
   }
+  if (priorityId === "size_liquidity") {
+    const scaleYi = getFundAnswerScaleYi(candidate);
+    if (!Number.isFinite(scaleYi)) return -10;
+    if (scaleYi < 0.5) return -45;
+    if (scaleYi < 1) return -14 + scaleYi * 12;
+    if (scaleYi <= 80) return Math.min(75, 18 + scaleYi * 2.2);
+    return 70 - Math.min(18, (scaleYi - 80) * 0.12);
+  }
+  if (priorityId === "manager_stability") {
+    return getFundAnswerManagerStabilityPriorityScore(candidate);
+  }
+  if (priorityId === "holdings_outlook") {
+    return getFundAnswerHoldingsOutlookPriorityScore(candidate);
+  }
   if (priorityId === "theme_capital") {
     return Math.max(0, ...getCandidateThemeSignals(candidate).map((theme) => Number(theme.capitalFollowScore || 0)
       + Number(theme.preheatScore || 0) * 0.8
@@ -23737,11 +23802,122 @@ function getFundAnswerPriorityScore(candidate = {}, priorityId = "") {
   return 0;
 }
 
+function getFundAnswerPeerRankPriorityScore(candidate = {}) {
+  const risk = selectPortfolioQualityRiskPeriod(candidate.lastSnapshot || candidate);
+  const rankPercent = finiteMetricNumber(
+    risk?.peerRankPercentile
+    ?? risk?.sameCategoryRankPercentile
+    ?? risk?.categoryRankPercentile
+    ?? candidate.peerRankPercentile
+    ?? candidate.sameCategoryRankPercentile
+    ?? candidate.seed?.peerRankPercentile
+  );
+  if (Number.isFinite(rankPercent)) return 100 - Math.max(0, Math.min(100, rankPercent));
+  const rank = finiteMetricNumber(
+    risk?.sameCategoryRank
+    ?? risk?.peerRank
+    ?? candidate.sameCategoryRank
+    ?? candidate.peerRank
+    ?? candidate.seed?.sameCategoryRank
+  );
+  const total = finiteMetricNumber(
+    risk?.sameCategoryTotal
+    ?? risk?.peerTotal
+    ?? candidate.sameCategoryTotal
+    ?? candidate.peerTotal
+    ?? candidate.seed?.sameCategoryTotal
+  );
+  if (Number.isFinite(rank) && Number.isFinite(total) && total > 0) {
+    return 100 - Math.max(0, Math.min(100, (rank / total) * 100));
+  }
+  const rankText = [
+    risk?.rankText,
+    candidate.rankText,
+    candidate.seed?.rankText,
+    candidate.sameCategoryRankText,
+    candidate.seed?.sameCategoryRankText
+  ].filter(Boolean).join(" ");
+  const textMatch = rankText.match(/(\d+)\s*[\/／]\s*(\d+)/);
+  if (textMatch) {
+    const numerator = Number(textMatch[1]);
+    const denominator = Number(textMatch[2]);
+    if (Number.isFinite(numerator) && Number.isFinite(denominator) && denominator > 0) {
+      return 100 - Math.max(0, Math.min(100, (numerator / denominator) * 100));
+    }
+  }
+  return -10;
+}
+
+function getFundAnswerScaleYi(candidate = {}) {
+  const direct = finiteMetricNumber(
+    candidate.scaleYi
+    ?? candidate.fundSizeYi
+    ?? candidate.fundScaleYi
+    ?? candidate.lastSnapshot?.scaleYi
+    ?? candidate.lastSnapshot?.fundSizeYi
+    ?? candidate.seed?.scaleYi
+  );
+  if (Number.isFinite(direct)) return direct;
+  return getPortfolioWatchFundScaleYi(candidate, candidate.lastSnapshot || candidate);
+}
+
+function getFundAnswerManagerStabilityPriorityScore(candidate = {}) {
+  const snapshot = candidate.lastSnapshot || candidate;
+  const managers = extractPortfolioManagerEvidence(candidate, snapshot);
+  const tenureYears = Math.max(
+    0,
+    ...managers
+      .map(parsePortfolioManagerTenureYears)
+      .filter((value) => Number.isFinite(value))
+  );
+  const fundAgeYears = resolvePortfolioFundAgeYears(candidate, snapshot);
+  const scaleYi = getFundAnswerScaleYi(candidate);
+  const managerReturn = Math.max(
+    -40,
+    ...managers
+      .map((manager) => finiteMetricNumber(manager.returnPct ?? manager.profitPct ?? manager.performancePct))
+      .filter((value) => Number.isFinite(value))
+  );
+  return (tenureYears ? Math.min(72, tenureYears * 16) : -16)
+    + (Number.isFinite(fundAgeYears) ? Math.min(18, fundAgeYears * 3) : -6)
+    + (Number.isFinite(scaleYi) ? scaleYi >= 1 ? 8 : -12 : -4)
+    + (Number.isFinite(managerReturn) ? Math.max(-12, Math.min(18, managerReturn * 0.35)) : 0);
+}
+
+function getFundAnswerHoldingsOutlookPriorityScore(candidate = {}) {
+  const snapshot = candidate.lastSnapshot || candidate;
+  const outlook = candidate.holdingsOutlook
+    || candidate.actionability?.holdingsOutlook
+    || snapshot.holdingsOutlook
+    || snapshot.actionability?.holdingsOutlook
+    || {};
+  const outlookScore = finiteMetricNumber(outlook.score);
+  const concentration = finiteMetricNumber(
+    outlook.concentration?.top10Pct
+    ?? candidate.concentration?.top10Pct
+    ?? snapshot.concentration?.top10Pct
+  );
+  const positives = normalizeStringArray(outlook.positives).length;
+  const risks = normalizeStringArray(outlook.risks).length;
+  const holdings = [
+    ...(Array.isArray(candidate.topHoldings) ? candidate.topHoldings : []),
+    ...(Array.isArray(snapshot.topHoldings) ? snapshot.topHoldings : []),
+    ...(Array.isArray(candidate.holdings?.equityTopHoldings) ? candidate.holdings.equityTopHoldings : []),
+    ...(Array.isArray(snapshot.holdings?.equityTopHoldings) ? snapshot.holdings.equityTopHoldings : []),
+    ...(Array.isArray(outlook.topHoldings) ? outlook.topHoldings : [])
+  ].filter(Boolean);
+  return (Number.isFinite(outlookScore) ? outlookScore * 10 : holdings.length ? 18 : -12)
+    + Math.min(28, positives * 8)
+    - Math.min(28, risks * 9)
+    + (holdings.length ? Math.min(18, holdings.length * 2) : -8)
+    + (Number.isFinite(concentration) ? concentration <= 45 ? 12 : concentration <= 65 ? 2 : -16 : 0);
+}
+
 function shouldRequireFundAnswerResultFirstRankingSummary({ text = "", workflow = "", userText = "", evidence = null } = {}) {
   if (workflow === "conversation") return false;
   if (!shouldRequireFundAnswerSortPolicy({ text, workflow, userText, evidence })) return false;
   return workflow === "fund_recommendation"
-    || /排序|排行|优先|首选|备选|选哪个|比较|推荐|高夏普|低回撤|低波动|费用优先|主力题材/.test(String(userText || ""))
+    || /排序|排行|优先|首选|备选|选哪个|比较|推荐|高夏普|高收益|同类排名|低回撤|低波动|费用优先|规模|流动性|基金经理|持仓前景|主力题材/.test(String(userText || ""))
     || getEvidenceFundCandidateCount(evidence) >= 2
     || new Set((String(text || "").match(/\b\d{6}\b/g) || [])).size >= 2;
 }
@@ -23790,7 +23966,7 @@ function shouldRequireConciseFundResultAnswer({ text = "", workflow = "", userTe
   const prompt = String(userText || "");
   return workflow === "fund_recommendation"
     || isFundAnswerPriorityLeaderboardRequest(prompt)
-    || /排序|排行|优先|首选|备选|选哪个|比较|推荐|高夏普|低回撤|低波动|费用优先|主力题材/.test(prompt)
+    || /排序|排行|优先|首选|备选|选哪个|比较|推荐|高夏普|高收益|同类排名|低回撤|低波动|费用优先|规模|流动性|基金经理|持仓前景|主力题材/.test(prompt)
     || getEvidenceFundCandidateCount(evidence) >= 2;
 }
 
@@ -24242,8 +24418,13 @@ function buildFundAnswerLeaderboardReason(candidate = {}, { sortPolicy = "", use
   const trend = candidate.trendProfile || candidate.lastSnapshot?.trendProfile || {};
   if (blocked) return buildFundAnswerBlockedLeaderboardReason(candidate);
   if (/高夏普|低回撤|风险收益|质量/.test(sortPolicy)) return buildFundAnswerRiskQualityLeaderboardReason(candidate);
+  if (/长期收益|历史业绩|高收益|年化/.test(sortPolicy)) return buildFundAnswerLongReturnLeaderboardReason(candidate);
+  if (/同类排名|同类表现/.test(sortPolicy)) return buildFundAnswerPeerRankLeaderboardReason(candidate);
   if (/低波动/.test(sortPolicy)) return buildFundAnswerLowVolatilityLeaderboardReason(candidate);
   if (/费用|份额/.test(sortPolicy)) return buildFundAnswerFeeLeaderboardReason(candidate);
+  if (/规模|流动性/.test(sortPolicy)) return buildFundAnswerSizeLiquidityLeaderboardReason(candidate);
+  if (/基金经理|经理稳定/.test(sortPolicy)) return buildFundAnswerManagerStabilityLeaderboardReason(candidate);
+  if (/持仓前景|行业承载/.test(sortPolicy)) return buildFundAnswerHoldingsOutlookLeaderboardReason(candidate);
   if (/主力|新闻|题材/.test(sortPolicy)) return buildFundAnswerThemeLeaderboardReason(candidate);
   if (/回调|低位|启动|追涨|接盘/.test(sortPolicy) || isPullbackSetupRequest(userText)) {
     return trend.pullbackSetup?.signalText ? "更接近回调后的启动点" : "买点证据相对更完整";
@@ -24289,6 +24470,25 @@ function buildFundAnswerRiskQualityLeaderboardReason(candidate = {}) {
   return "风险收益证据更完整，先排前面复核";
 }
 
+function buildFundAnswerLongReturnLeaderboardReason(candidate = {}) {
+  const risk = selectPortfolioQualityRiskPeriod(candidate.lastSnapshot || candidate);
+  const annualizedReturn = finiteMetricNumber(risk?.annualizedReturnPct);
+  const sharpe = finiteMetricNumber(risk?.sharpe);
+  if (Number.isFinite(annualizedReturn) && annualizedReturn >= 12 && Number.isFinite(sharpe) && sharpe >= 0.8) {
+    return "长期收益更强，且不是纯靠高波动冲出来";
+  }
+  if (Number.isFinite(annualizedReturn) && annualizedReturn >= 8) return "长期收益更靠前，先排前面复核";
+  if (Number.isFinite(sharpe) && sharpe >= 1) return "收益质量更稳，适合排前看";
+  return "长期业绩证据相对更完整";
+}
+
+function buildFundAnswerPeerRankLeaderboardReason(candidate = {}) {
+  const score = getFundAnswerPeerRankPriorityScore(candidate);
+  if (score >= 80) return "同类表现靠前，优先进入复核";
+  if (score >= 60) return "同类排名相对更好，先放前面";
+  return "同类排名证据更完整，先按证据排前";
+}
+
 function buildFundAnswerLowVolatilityLeaderboardReason(candidate = {}) {
   const risk = selectPortfolioQualityRiskPeriod(candidate.lastSnapshot || candidate);
   const volatility = finiteMetricNumber(risk?.annualizedVolatilityPct);
@@ -24310,6 +24510,44 @@ function buildFundAnswerFeeLeaderboardReason(candidate = {}) {
   if (Number.isFinite(feeCost) && feeCost <= 30) return "费用负担更轻，适合排前复核";
   if (candidate.shareClass || candidate.fees?.shareClass || candidate.seed?.shareClass) return "份额类别更清楚，成本更好判断";
   return "费用证据相对更完整";
+}
+
+function buildFundAnswerSizeLiquidityLeaderboardReason(candidate = {}) {
+  const scaleYi = getFundAnswerScaleYi(candidate);
+  if (Number.isFinite(scaleYi) && scaleYi >= 5) return "规模和流动性更稳，清盘风险更低";
+  if (Number.isFinite(scaleYi) && scaleYi >= 1) return "规模不算太小，适合优先复核";
+  if (Number.isFinite(scaleYi)) return "规模偏小，排名靠前也只能谨慎复核";
+  return "规模证据相对更完整，先排前面复核";
+}
+
+function buildFundAnswerManagerStabilityLeaderboardReason(candidate = {}) {
+  const managers = extractPortfolioManagerEvidence(candidate, candidate.lastSnapshot || candidate);
+  const tenureYears = Math.max(
+    0,
+    ...managers
+      .map(parsePortfolioManagerTenureYears)
+      .filter((value) => Number.isFinite(value))
+  );
+  if (tenureYears >= 3) return "基金经理任期更长，历史业绩更有参考性";
+  if (tenureYears >= 1) return "经理稳定性尚可，先排前面复核";
+  return "经理和产品稳定性证据更完整";
+}
+
+function buildFundAnswerHoldingsOutlookLeaderboardReason(candidate = {}) {
+  const snapshot = candidate.lastSnapshot || candidate;
+  const outlook = candidate.holdingsOutlook
+    || candidate.actionability?.holdingsOutlook
+    || snapshot.holdingsOutlook
+    || snapshot.actionability?.holdingsOutlook
+    || {};
+  const positives = normalizeStringArray(outlook.positives);
+  const risks = normalizeStringArray(outlook.risks);
+  if (positives.length && !risks.length) return "前十大持仓和行业前景更顺，适合优先看";
+  if (positives.length) return "持仓承载更清楚，但仍要复核风险";
+  if (normalizeStringArray(outlook.topHoldings).length || normalizeStringArray(candidate.topHoldings).length) {
+    return "前十大持仓证据更完整，先排前面复核";
+  }
+  return "持仓前景证据相对更完整";
 }
 
 function buildFundAnswerThemeLeaderboardReason(candidate = {}) {
