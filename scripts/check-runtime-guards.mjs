@@ -136,6 +136,10 @@ const requiredPatterns = [
     message: "data source coverage must keep a fixed registry of market, fund, valuation, and news interfaces."
   },
   {
+    pattern: /(?=[\s\S]*holding_realtime_quotes)(?=[\s\S]*fundHoldingRealtimePulse)(?=[\s\S]*holdingRealtimeQuoteFetches)(?=[\s\S]*holdingTencentRealtimeQuoteFetches)(?=[\s\S]*前十大持仓实时行情)/,
+    message: "data-source registry must expose fund top-holding realtime quotes as an independent realtime evidence source."
+  },
+  {
     pattern: /\/api\/data-sources[\s\S]{0,260}buildDataSourceCoverageReport/,
     message: "admin APIs must expose structured data-source coverage instead of only runtime counters."
   },
@@ -977,8 +981,22 @@ const requiredPatterns = [
     message: "data-source coverage must count warmed fund research cache for risk, holdings, and fee indicator readiness."
   },
   {
-    pattern: /(?=[\s\S]*资料预热)(?=[\s\S]*fundResearchWarmerRuns)(?=[\s\S]*fundResearchWarmerCandidates)(?=[\s\S]*fundResearchWarmerFailures)(?=[\s\S]*研究缓存)(?=[\s\S]*researchDigestCacheFunds)/,
-    message: "admin runtime pages must expose fund research warmer and warmed research cache coverage."
+    test: (source) => {
+      const statusMap = getFunctionSource(source, "buildDataSourceComponentStatusMap");
+      const pulseStatus = getFunctionSource(source, "buildFundHoldingRealtimePulseComponentStatus");
+      const cacheStats = getFunctionSource(source, "buildFundResearchDigestCacheStats");
+      return statusMap.includes("buildFundHoldingRealtimePulseComponentStatus")
+        && pulseStatus.includes("fundHoldingRealtimePulse")
+        && pulseStatus.includes("holdingRealtimePulseItems")
+        && pulseStatus.includes("holdingRealtimePulseSourceKinds")
+        && cacheStats.includes("holdingRealtimePulseFunds")
+        && cacheStats.includes("freshHoldingRealtimePulseFunds");
+    },
+    message: "data-source coverage must synthesize top-holding realtime pulse samples from warmed fund research digests."
+  },
+  {
+    pattern: /(?=[\s\S]*资料预热)(?=[\s\S]*fundResearchWarmerRuns)(?=[\s\S]*fundResearchWarmerCandidates)(?=[\s\S]*fundResearchWarmerFailures)(?=[\s\S]*研究缓存)(?=[\s\S]*researchDigestCacheFunds)(?=[\s\S]*持仓脉冲)(?=[\s\S]*holdingRealtimePulseFunds)(?=[\s\S]*持仓行情)(?=[\s\S]*holdingRealtimeQuoteFetches)/,
+    message: "admin runtime pages must expose fund research warmer, top-holding realtime pulse, and warmed research cache coverage."
   },
   {
     pattern: /function normalizeMarketDataQualityComponent[\s\S]{0,900}cacheFallback[\s\S]{0,520}status = "cached"/,

@@ -418,6 +418,20 @@ const DATA_SOURCE_REGISTRY = [
     outputs: ["前十大股票", "前十大债券", "集中度", "题材承载"]
   },
   {
+    id: "holding_realtime_quotes",
+    category: "持仓实时",
+    provider: "东方财富/腾讯",
+    label: "前十大持仓实时行情",
+    endpoint: "https://push2.eastmoney.com/api/qt/ulist.np/get + https://qt.gtimg.cn/q={codes}",
+    realtime: true,
+    realtimeText: "盘中实时",
+    componentKeys: ["fundHoldingRealtimePulse"],
+    counterKeys: ["holdingRealtimeQuoteFetches", "holdingTencentRealtimeQuoteFetches"],
+    sourceKindPatterns: ["eastmoney_realtime_quote", "tencent_realtime_quote"],
+    capability: "穿透基金前十大持仓的盘中强弱，避免只看基金净值滞后判断题材承载。",
+    outputs: ["持仓涨跌幅", "加权持仓脉冲", "覆盖持仓比例", "冲高/回落风险"]
+  },
+  {
     id: "eastmoney_fee",
     category: "基金画像",
     provider: "东方财富",
@@ -29718,6 +29732,9 @@ function buildDataSourceComponentStatusMap(snapshot = null, cache = readMarketSn
     }
   }
 
+  const holdingPulseStatus = buildFundHoldingRealtimePulseComponentStatus(nowIso);
+  if (holdingPulseStatus.count) add(holdingPulseStatus, holdingPulseStatus.status);
+
   for (const component of Object.values(cache.components || {})) {
     if (!component?.key || map.has(component.key)) continue;
     const result = component.result || {};
@@ -29741,6 +29758,25 @@ function buildDataSourceComponentStatusMap(snapshot = null, cache = readMarketSn
 
 function getDataSourceComponentKeys() {
   return [...new Set(DATA_SOURCE_REGISTRY.flatMap((source) => source.componentKeys || []))];
+}
+
+function buildFundHoldingRealtimePulseComponentStatus(nowIso = new Date().toISOString()) {
+  const stats = buildFundResearchDigestCacheStats(readFundResearchDigestCache(), nowIso);
+  if (!stats.holdingRealtimePulseFunds) {
+    return { key: "fundHoldingRealtimePulse", label: "前十大持仓实时行情", status: "missing", count: 0 };
+  }
+  return {
+    key: "fundHoldingRealtimePulse",
+    label: "前十大持仓实时行情",
+    status: stats.freshHoldingRealtimePulseFunds ? "available" : "cached",
+    count: stats.holdingRealtimePulseItems,
+    freshCount: stats.freshHoldingRealtimePulseFunds,
+    staleCount: Math.max(0, stats.holdingRealtimePulseFunds - stats.freshHoldingRealtimePulseFunds),
+    sourceKinds: stats.holdingRealtimePulseSourceKinds,
+    sourceMode: stats.freshHoldingRealtimePulseFunds ? "fund_research_cache" : "cache_fallback",
+    cacheFetchedAt: stats.holdingRealtimePulseLatestAt || stats.updatedAt || "",
+    cacheAgeHours: Number.isFinite(Number(stats.holdingRealtimePulseLatestAgeHours)) ? stats.holdingRealtimePulseLatestAgeHours : null
+  };
 }
 
 function getDataSourceCoverageComponentItems(snapshot = null, key = "") {
@@ -29788,6 +29824,7 @@ function formatDataSourceComponentLabel(key = "") {
     globalMarketQuotes: "海外指数与汇率",
     chinaRealtimeIndices: "A股指数实时源",
     realtimeFundValuations: "实时估算净值",
+    fundHoldingRealtimePulse: "前十大持仓实时行情",
     fastNews: "实时财经新闻"
   }[key] || key || "未知组件";
 }
@@ -29932,6 +29969,10 @@ function buildFundDataCoverage(snapshot = null, componentStatusMap = new Map()) 
     researchDigestRiskMetricFunds: researchCache.riskMetricFunds,
     researchDigestHoldingFunds: researchCache.holdingFunds,
     researchDigestFeeFunds: researchCache.feeFunds,
+    holdingRealtimePulseFunds: researchCache.holdingRealtimePulseFunds,
+    freshHoldingRealtimePulseFunds: researchCache.freshHoldingRealtimePulseFunds,
+    holdingRealtimePulseItems: researchCache.holdingRealtimePulseItems,
+    holdingRealtimePulseSourceKinds: researchCache.holdingRealtimePulseSourceKinds,
     researchDigestUpdatedAt: researchCache.updatedAt
   };
 }
@@ -30012,8 +30053,16 @@ function buildFundResearchDigestCacheStats(cache = readFundResearchDigestCache()
     riskMetricFunds: 0,
     holdingFunds: 0,
     feeFunds: 0,
+    holdingRealtimePulseFunds: 0,
+    freshHoldingRealtimePulseFunds: 0,
+    holdingRealtimePulseItems: 0,
+    holdingRealtimePulseSourceKinds: [],
+    holdingRealtimePulseLatestAt: "",
+    holdingRealtimePulseLatestAgeHours: null,
     updatedAt: cache?.updatedAt || ""
   };
+  const holdingPulseSourceKinds = new Set();
+  let latestPulseMs = 0;
   for (const entry of entries) {
     const digest = entry.digest || {};
     const ageHours = getMarketSnapshotCacheAgeHours(entry.cachedAt, nowIso);
@@ -30024,6 +30073,31 @@ function buildFundResearchDigestCacheStats(cache = readFundResearchDigestCache()
     if (risk?.ok) stats.riskMetricFunds += 1;
     if (digest.holdings?.ok || digest.actionability?.holdingsOutlook?.hasHoldings) stats.holdingFunds += 1;
     if (digest.fees?.shareClassFeeModel?.type) stats.feeFunds += 1;
+    const pulse = digest.holdingRealtimePulse || digest.actionability?.holdingsOutlook?.realtimePulse || null;
+    if (pulse?.ok || Array.isArray(pulse?.items) && pulse.items.length) {
+      stats.holdingRealtimePulseFunds += 1;
+      const items = Array.isArray(pulse.items) ? pulse.items : [];
+      stats.holdingRealtimePulseItems += items.length || Number(pulse.quoteCount || 0);
+      const pulseAt = pulse.fetchedAt || entry.cachedAt || "";
+      const pulseAgeHours = getMarketSnapshotCacheAgeHours(pulseAt, nowIso);
+      if (Number.isFinite(pulseAgeHours) && pulseAgeHours <= FUND_RESEARCH_WARMER_MAX_CACHE_AGE_HOURS) stats.freshHoldingRealtimePulseFunds += 1;
+      const pulseMs = Date.parse(pulseAt || "");
+      if (Number.isFinite(pulseMs) && pulseMs > latestPulseMs) latestPulseMs = pulseMs;
+      for (const item of items) {
+        for (const kind of normalizeStringArray([item.sourceKind, item.supplementalSourceKind])) {
+          holdingPulseSourceKinds.add(kind);
+        }
+      }
+      if (/腾讯/.test(String(pulse.sourceLabel || ""))) holdingPulseSourceKinds.add("tencent_realtime_quote");
+      if (/东方财富/.test(String(pulse.sourceLabel || "")) && !/失败/.test(String(pulse.sourceLabel || ""))) {
+        holdingPulseSourceKinds.add("eastmoney_realtime_quote");
+      }
+    }
+  }
+  stats.holdingRealtimePulseSourceKinds = [...holdingPulseSourceKinds].slice(0, 8);
+  if (latestPulseMs) {
+    stats.holdingRealtimePulseLatestAt = new Date(latestPulseMs).toISOString();
+    stats.holdingRealtimePulseLatestAgeHours = round(getMarketSnapshotCacheAgeHours(stats.holdingRealtimePulseLatestAt, nowIso), 2);
   }
   return stats;
 }
@@ -30101,6 +30175,8 @@ function buildDataSourceCoverageTotals({ sources = [], boardCoverage = {}, fundC
     researchDigestCacheFunds: Number(fundCoverage.researchDigestCacheFunds || 0),
     freshResearchDigestCacheFunds: Number(fundCoverage.freshResearchDigestCacheFunds || 0),
     sufficientResearchDigestFunds: Number(fundCoverage.sufficientResearchDigestFunds || 0),
+    holdingRealtimePulseFunds: Number(fundCoverage.holdingRealtimePulseFunds || 0),
+    holdingRealtimePulseItems: Number(fundCoverage.holdingRealtimePulseItems || 0),
     fastNews: Number(newsCoverage.fastNewsCount || 0)
   };
 }
@@ -30150,7 +30226,7 @@ function buildDataSourceCoverageSummary({ totals = {}, boardCoverage = {}, fundC
     evidenceReadiness ? `证据门槛 ${evidenceReadiness.score} 分：${evidenceReadiness.label}。` : "",
     `已接入 ${totals.externalSources || 0} 个外部数据接口，${totals.configuredSources || 0} 个无需额外授权或已配置；当前报告识别 ${totals.liveSources || 0} 个最新实抓接口、${totals.sampledSources || 0} 个有样本接口。`,
     `板块市场支持 ${boardCoverage.configuredMarketTypes || 0} 类市场、${boardCoverage.realtimeBoardFeeds || 0} 条实时榜单维度；最近样本形成 ${boardCoverage.observedBoards || 0} 个板块 × ${boardCoverage.metricFieldCount || 0} 类字段 = ${boardCoverage.observedMetricCells || 0} 个板块指标单元。`,
-    `最近快照覆盖 ${boardCoverage.observedBoards || 0} 个板块、${totals.fundCandidates || 0} 只候选基金、${fundCoverage.realtimeValuationCount || 0} 条实时估值、${newsCoverage.fastNewsCount || 0} 条快讯；基金研究缓存 ${fundCoverage.researchDigestCacheFunds || 0} 只，其中新鲜 ${fundCoverage.freshResearchDigestCacheFunds || 0} 只。`,
+    `最近快照覆盖 ${boardCoverage.observedBoards || 0} 个板块、${totals.fundCandidates || 0} 只候选基金、${fundCoverage.realtimeValuationCount || 0} 条实时估值、${newsCoverage.fastNewsCount || 0} 条快讯；基金研究缓存 ${fundCoverage.researchDigestCacheFunds || 0} 只，其中新鲜 ${fundCoverage.freshResearchDigestCacheFunds || 0} 只，持仓实时脉冲 ${fundCoverage.holdingRealtimePulseFunds || 0} 只。`,
     `固定代码指标引擎 ${totals.indicatorEngines || 0} 个，已有样本 ${totals.activeIndicatorEngines || 0} 个；快照时间 ${snapshotMeta.ageText || "暂无"}。`
   ].filter(Boolean).join(" ");
 }
@@ -35225,9 +35301,15 @@ async function fetchFundHoldingRealtimePulse(holdings = {}) {
   if (!normalized.length) {
     return { ok: false, label: "前十大持仓实时脉冲不可用", note: "前十大持仓缺少可映射的市场代码。", items: [], sources: [] };
   }
-  const quotes = await fetchEastmoneyRealtimeQuotes(normalized.map((item) => item.secid));
+  const quotes = await fetchEastmoneyRealtimeQuotes(normalized.map((item) => item.secid)).catch((error) => ({
+    ok: false,
+    label: "东方财富前十大持仓实时行情",
+    error: error.message || String(error),
+    fetchedAt: new Date().toISOString(),
+    items: []
+  }));
   let quoteItems = quotes.items || [];
-  let sourceLabel = quotes.label;
+  let sourceLabel = quotes.ok === false ? "东方财富实时行情失败，改用腾讯实时行情" : quotes.label;
   const coveredKeys = new Set(quoteItems.flatMap((item) => [item.secid, item.code].filter(Boolean).map((key) => String(key).toUpperCase())));
   const missingTencentCodes = normalized
     .filter((item) =>
@@ -35240,9 +35322,11 @@ async function fetchFundHoldingRealtimePulse(holdings = {}) {
     const supplemental = await fetchTencentRealtimeQuotes(missingTencentCodes).catch(() => null);
     if (supplemental?.items?.length) {
       quoteItems = [...quoteItems, ...supplemental.items];
-      sourceLabel = quoteItems.length > (quotes.items || []).length
-        ? `${quotes.label || "东方财富实时行情"} + 腾讯实时行情`
-        : sourceLabel;
+      if (quotes.ok === false) {
+        sourceLabel = "腾讯实时行情（东方财富失败后兜底）";
+      } else if (quoteItems.length > (quotes.items || []).length) {
+        sourceLabel = `${quotes.label || "东方财富实时行情"} + 腾讯实时行情`;
+      }
     }
   }
   return buildFundHoldingRealtimePulseFromQuotes(normalized, quoteItems, {
@@ -35295,7 +35379,8 @@ function normalizeEastmoneyRealtimeQuote(item = {}) {
     fiveDayPct: toNumber(item.f24),
     yearToDatePct: toNumber(item.f25),
     quoteTime: formatEpochSeconds(item.f124),
-    source: secid ? `https://quote.eastmoney.com/unify/r/${secid}` : "https://push2.eastmoney.com/api/qt/ulist.np/get"
+    source: secid ? `https://quote.eastmoney.com/unify/r/${secid}` : "https://push2.eastmoney.com/api/qt/ulist.np/get",
+    sourceKind: "eastmoney_realtime_quote"
   };
 }
 
@@ -35443,7 +35528,8 @@ function buildFundHoldingRealtimePulseFromQuotes(holdings = [], quotes = [], opt
       changePct: finiteMetricNumber(quote.changePct),
       latest: finiteMetricNumber(quote.latest),
       quoteTime: quote.quoteTime || "",
-      source: quote.source || ""
+      source: quote.source || "",
+      sourceKind: quote.sourceKind || ""
     };
   }).filter(Boolean);
   const weightedItems = items.filter((item) => Number.isFinite(item.pct) && Number.isFinite(item.changePct));
@@ -35491,7 +35577,8 @@ function normalizeEastmoneyRealtimeQuoteLike(quote = {}) {
     change: finiteMetricNumber(quote.change),
     changePct: finiteMetricNumber(quote.changePct),
     quoteTime: quote.quoteTime || "",
-    source: quote.source || (secid ? `https://quote.eastmoney.com/unify/r/${secid}` : "")
+    source: quote.source || (secid ? `https://quote.eastmoney.com/unify/r/${secid}` : ""),
+    sourceKind: quote.sourceKind || "eastmoney_realtime_quote"
   };
 }
 
@@ -41709,6 +41796,10 @@ function getDefaultStats() {
       fundFeePageFetches: 0,
       fundHoldingsFetches: 0,
       fundHoldingsFailures: 0,
+      holdingRealtimeQuoteFetches: 0,
+      holdingRealtimeQuoteCodes: 0,
+      holdingTencentRealtimeQuoteFetches: 0,
+      holdingTencentRealtimeQuoteCodes: 0,
       marketSnapshotCalls: 0,
       marketSnapshotFailures: 0,
       marketSnapshotPartialQuality: 0,
