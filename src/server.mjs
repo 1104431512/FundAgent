@@ -6515,7 +6515,17 @@ function collectPortfolioCatchdownTextSegments(value, seen = new Set()) {
     "blockers",
     "facts"
   ];
-  const nestedKeys = ["actionability", "holdingsOutlook", "marketThemeRefresh", "holdingThemeRefresh", "trendProfile", "seed"];
+  const nestedKeys = [
+    "actionability",
+    "holdingsOutlook",
+    "marketThemeRefresh",
+    "holdingThemeRefresh",
+    "trendProfile",
+    "seed",
+    "lastSnapshot",
+    "fundSnapshot",
+    "snapshot"
+  ];
   const objectArrayKeys = ["matchedThemes", "themeSignals", "themes", "relatedThemes"];
   const segments = [];
   for (const key of keys) {
@@ -21934,7 +21944,15 @@ function getCandidateThemeSignals(candidate = {}) {
   const value = candidate && typeof candidate === "object" ? candidate : {};
   const raw = [
     ...(Array.isArray(value.matchedThemes) ? value.matchedThemes : []),
-    ...(Array.isArray(value.seed?.matchedThemes) ? value.seed.matchedThemes : [])
+    ...(Array.isArray(value.themeSignals) ? value.themeSignals : []),
+    ...(Array.isArray(value.seed?.matchedThemes) ? value.seed.matchedThemes : []),
+    ...(Array.isArray(value.seed?.themeSignals) ? value.seed.themeSignals : []),
+    ...(Array.isArray(value.lastSnapshot?.matchedThemes) ? value.lastSnapshot.matchedThemes : []),
+    ...(Array.isArray(value.lastSnapshot?.themeSignals) ? value.lastSnapshot.themeSignals : []),
+    ...(Array.isArray(value.fundSnapshot?.matchedThemes) ? value.fundSnapshot.matchedThemes : []),
+    ...(Array.isArray(value.fundSnapshot?.themeSignals) ? value.fundSnapshot.themeSignals : []),
+    ...(Array.isArray(value.snapshot?.matchedThemes) ? value.snapshot.matchedThemes : []),
+    ...(Array.isArray(value.snapshot?.themeSignals) ? value.snapshot.themeSignals : [])
   ];
   const seen = new Set();
   return raw

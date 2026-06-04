@@ -313,6 +313,14 @@ const requiredPatterns = [
     message: "text-only catchdown scanning must inspect market refresh support/retreat warnings and matched theme news logic, not only top-level risk notes."
   },
   {
+    pattern: /const nestedKeys = \[[\s\S]{0,260}"lastSnapshot"[\s\S]{0,80}"fundSnapshot"[\s\S]{0,80}"snapshot"/,
+    message: "text-only catchdown scanning must recurse into nested lastSnapshot/fundSnapshot records."
+  },
+  {
+    pattern: /function getCandidateThemeSignals[\s\S]{0,900}lastSnapshot\?\.matchedThemes[\s\S]{0,520}fundSnapshot\?\.matchedThemes[\s\S]{0,420}snapshot\?\.matchedThemes/,
+    message: "catchdown guards must read theme retreat evidence from nested lastSnapshot/fundSnapshot records, not only top-level candidates."
+  },
+  {
     pattern: /function hasStaleThemeCatchdownEvidence[\s\S]{0,500}getUnrefreshedMarketThemeWarnings\(candidate\)\.length/,
     message: "stale-theme answer quality must reject buy wording when old theme labels are not confirmed by the current radar."
   },

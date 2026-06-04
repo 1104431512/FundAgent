@@ -5678,6 +5678,60 @@ assert(
     && refreshRetreatWarningsBuyGuard.evidence.includes("来源：portfolio_text_catchdown_guard"),
   "market refresh retreat warnings must be translated into a current-radar old-theme no-buy reason"
 );
+const snapshotOnlyCatchdownProfile = {
+  ...verifiedSeedProfile,
+  code: "000021",
+  name: "快照退潮低位基金C",
+  matchedThemes: [],
+  seed: {
+    ...(verifiedSeedProfile.seed || {}),
+    matchedThemes: []
+  },
+  lastSnapshot: {
+    ...(verifiedSeedProfile.lastSnapshot || {}),
+    matchedThemes: [{
+      id: "snapshot_cpo_retreat",
+      name: "CPO/光模块",
+      stage: "capital_outflow",
+      positionSignal: "capital_outflow_watch",
+      leaderSignal: "capital_outflow",
+      capitalRetreatScore: 82,
+      capitalFollowScore: 18,
+      preheatScore: 12,
+      forwardScore: 24,
+      rotationScore: 20,
+      avgMainNetInflowPct: -2.4,
+      minMainNetInflowPct: -4.8,
+      newsLogic: "历史快照显示CPO/光模块主力资金撤离，题材退潮，回调不是买点。"
+    }]
+  }
+};
+const snapshotOnlyCatchdownBuyGuard = manager.evaluatePortfolioBuyDiscipline(
+  { action: "BUY", code: "000021", name: "快照退潮低位基金C", amount: 1000 },
+  snapshotOnlyCatchdownProfile
+);
+assert.equal(snapshotOnlyCatchdownBuyGuard.ok, false, "portfolio buy discipline must scan lastSnapshot matched themes before allowing BUY");
+assert(
+  /题材退潮|主力/.test(snapshotOnlyCatchdownBuyGuard.reason)
+    && (
+      snapshotOnlyCatchdownBuyGuard.evidence.includes("来源：portfolio_text_catchdown_guard")
+      || snapshotOnlyCatchdownBuyGuard.evidence.includes("来源：portfolio_theme_support_guard")
+    ),
+  "snapshot-only catchdown risks must leave a traceable no-buy guard instead of being treated as a clean low-position setup"
+);
+const snapshotOnlyCatchdownActionability = manager.buildFundActionabilitySignals(snapshotOnlyCatchdownProfile);
+assert.equal(snapshotOnlyCatchdownActionability.action, "avoid", "actionability must read lastSnapshot theme retreat and avoid snapshot-only catchdown candidates");
+const snapshotOnlyCatchdownAnswerQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：000021 快照退潮低位基金C 可以小仓买入1000元。理由是回调完成、低位修复。",
+  workflow: "fund_qa",
+  userText: "000021 现在能买吗",
+  evidence: { marketDeepDive: { candidates: [snapshotOnlyCatchdownProfile] } }
+});
+assert(
+  snapshotOnlyCatchdownAnswerQuality.issues.includes("stale_theme_candidate_given_buy_execution")
+    && snapshotOnlyCatchdownAnswerQuality.issues.includes("stale_theme_candidate_given_buy_signal"),
+  "quality gate must reject buy wording when stale retreat evidence only appears inside lastSnapshot"
+);
 const textualRiskNegationProfile = {
   ...verifiedSeedProfile,
   code: "000015",
