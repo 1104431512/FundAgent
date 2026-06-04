@@ -805,6 +805,16 @@ const requiredPatterns = [
   },
   {
     pattern: {
+      test: (source) => source.includes("const resultLeaderboardLines = buildPortfolioDecisionResultLeaderboardLines")
+        && source.includes("...resultLeaderboardLines")
+        && source.includes("function buildPortfolioDecisionResultLeaderboardLines")
+        && source.includes("formatPortfolioDecisionResultLeaderboardItem")
+        && source.includes("buildPortfolioDecisionResultLeaderboardWhyLine")
+    },
+    message: "portfolio daily decision cards must open with a concise ranked result board and customer-readable sort policy."
+  },
+  {
+    pattern: {
       test: (source) => source.includes('DEFAULT_FUND_ANSWER_SORT_POLICY = "风险收益质量优先：先看高夏普/低回撤')
         && /FUND_ANSWER_SHORT_LEADERBOARD_BY_DEFAULT,\s*true/.test(source)
         && /fundAnswerShortLeaderboardByDefault,\s*true\)/.test(source)

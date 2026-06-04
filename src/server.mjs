@@ -2635,7 +2635,7 @@ function normalizePortfolioUserFacingText(text, account = {}) {
   return formatReadablePortfolioUserFacingText(normalizeUserFacingFundAnswer(investedCostText)).trim();
 }
 
-const PORTFOLIO_USER_FACING_SECTION_PATTERN = /^(?:虚拟基金经理日报|直接结论|本次重点|今日手法|市场判断|投委会意见|经理判断|今日操作|申购\/赎回申请|已确认成交|自选基金池|当前资产|回撤预算|风险控制|回溯学习点|数据来源|下一步|持仓复盘|买入准备|备选观察|决策边界|执行方案|风控检查|学习点)\s*[：:]?/;
+const PORTFOLIO_USER_FACING_SECTION_PATTERN = /^(?:虚拟基金经理日报|直接结论|排序口径|结果榜|为什么这样排|本次重点|今日手法|市场判断|投委会意见|经理判断|今日操作|申购\/赎回申请|已确认成交|自选基金池|当前资产|回撤预算|风险控制|回溯学习点|数据来源|下一步|持仓复盘|买入准备|备选观察|决策边界|执行方案|风控检查|学习点)\s*[：:]?/;
 
 function formatReadablePortfolioUserFacingText(text = "") {
   const lines = String(text || "")
@@ -9546,6 +9546,7 @@ function buildPortfolioDecisionCard({ decision, watchlistUpdates = [], account, 
     ? interspersePortfolioBlocks(decision.actions.map(formatPortfolioCustomerActionLine))
     : ["今日没有生成买卖动作。"];
   const digestLines = formatPortfolioCustomerDecisionDigest(decision, account);
+  const resultLeaderboardLines = buildPortfolioDecisionResultLeaderboardLines(decision, { watchlistUpdates });
   const nextStepLines = formatPortfolioCustomerNextStepLines({ decision, orders, watchlistUpdates });
   const teamLines = decision.team.map(formatPortfolioCustomerTeamLine);
   const transactionLines = transactions.length
@@ -9570,6 +9571,7 @@ function buildPortfolioDecisionCard({ decision, watchlistUpdates = [], account, 
     `虚拟基金经理日报 ${run.date}`,
     "",
     ...digestLines,
+    ...resultLeaderboardLines,
     "",
     `今日手法：${shortenPortfolioCustomerText(decision.summary, 110) || decision.summary}`,
     decision.marketView ? `市场判断：${shortenPortfolioCustomerText(decision.marketView, 140)}` : "",
@@ -9608,6 +9610,95 @@ function buildPortfolioDecisionCard({ decision, watchlistUpdates = [], account, 
     .filter(Boolean)
     .join("\n");
   return normalizePortfolioUserFacingText(card, account);
+}
+
+function buildPortfolioDecisionResultLeaderboardLines(decision = {}, { watchlistUpdates = [] } = {}) {
+  const actions = Array.isArray(decision.actions) ? decision.actions : [];
+  const watchItems = (watchlistUpdates || [])
+    .filter((item) => item?.code || item?.name)
+    .slice(0, 3)
+    .map((item) => ({
+      action: "WATCH",
+      code: item.code,
+      name: item.name,
+      reason: item.reason,
+      positionCheck: item.buyTriggers?.[0],
+      riskControl: item.riskNotes?.[0],
+      rankingBasis: item.rankingBasis
+    }));
+  const ranked = (actions.length ? actions : watchItems)
+    .map((item, index) => ({ item, index }))
+    .sort(comparePortfolioDecisionResultLeaderboardItems)
+    .slice(0, 3);
+  const policy = "今日结果按动作影响排序：先处理卖出/减仓风控，再看可执行买点；买入候选再按高夏普/低回撤、题材/新闻承载和费用排序。";
+  if (!ranked.length) {
+    return [
+      `排序口径：${policy}`,
+      "结果榜：暂无买卖结果；今天只维护风险边界和观察触发，不硬凑基金。"
+    ];
+  }
+  const results = ranked
+    .map(({ item }, index) => formatPortfolioDecisionResultLeaderboardItem(item, index))
+    .join("；");
+  const why = buildPortfolioDecisionResultLeaderboardWhyLine(ranked.map(({ item }) => item));
+  return [
+    `排序口径：${policy}`,
+    `结果榜：${results}`,
+    why
+  ].filter(Boolean);
+}
+
+function comparePortfolioDecisionResultLeaderboardItems(a = {}, b = {}) {
+  const aScore = getPortfolioDecisionResultLeaderboardScore(a.item, a.index);
+  const bScore = getPortfolioDecisionResultLeaderboardScore(b.item, b.index);
+  return aScore - bScore;
+}
+
+function getPortfolioDecisionResultLeaderboardScore(item = {}, index = 0) {
+  const action = String(item.action || "").toUpperCase();
+  const actionRank = {
+    SELL: 0,
+    REDUCE: 0,
+    SWITCH: 1,
+    BUY: 2,
+    HOLD: 3,
+    WATCH: 4,
+    SKIP: 5
+  }[action] ?? 4;
+  const amount = Math.min(999999, Math.max(0, Number(item.amount || 0)));
+  return actionRank * 1000000 - amount + index * 0.01;
+}
+
+function formatPortfolioDecisionResultLeaderboardItem(item = {}, index = 0) {
+  const label = [item.code, item.name].filter(Boolean).join(" ") || "组合动作";
+  const action = formatPortfolioActionLabel(item.action);
+  const outcome = getPortfolioDecisionResultOutcome(item);
+  const reason = shortenPortfolioCustomerText(
+    item.rankingBasis || item.reason || item.rotationCheck || item.positionCheck || item.riskControl || "",
+    48
+  );
+  return `${index + 1}. ${action} ${label}：${outcome}${reason ? `，${reason}` : ""}`;
+}
+
+function getPortfolioDecisionResultOutcome(item = {}) {
+  const action = String(item.action || "").toUpperCase();
+  if (action === "SELL" || action === "REDUCE") return "先降风险";
+  if (action === "BUY") return "只给小仓验证资格";
+  if (action === "WATCH") return "先备选等触发";
+  if (action === "HOLD") return "继续持有复核";
+  if (action === "SWITCH") return "换到更合适暴露";
+  return "先复核";
+}
+
+function buildPortfolioDecisionResultLeaderboardWhyLine(items = []) {
+  const actions = new Set((items || []).map((item) => String(item.action || "").toUpperCase()));
+  if (actions.has("SELL") || actions.has("REDUCE")) {
+    return "为什么这样排：先保护利润和回撤，再谈新增买入；避免卖出资金马上追进同一热门方向。";
+  }
+  if (actions.has("BUY")) {
+    return "为什么这样排：只有买点、题材承载和风险收益质量同时过关的对象，才排到可小仓验证。";
+  }
+  return "为什么这样排：观察对象只按触发条件排序，没触发前不给买入金额。";
 }
 
 function formatPortfolioCustomerDecisionDigest(decision = {}, account = {}) {

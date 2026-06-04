@@ -11714,6 +11714,10 @@ const readableDecisionCard = manager.buildPortfolioDecisionCard({
   run: { date: "2026-05-25", sources: [] }
 });
 assert(readableDecisionCard.includes("直接结论："), "portfolio decision card must start with a customer-readable conclusion");
+assert(readableDecisionCard.includes("排序口径：今日结果按动作影响排序"), "portfolio decision card must state the result-ranking policy before detailed report sections");
+assert(readableDecisionCard.includes("结果榜：1. 卖出 008327 东财通信C"), "portfolio decision card must lead with a ranked action result board instead of a metric-heavy action dump");
+assert(readableDecisionCard.includes("为什么这样排：先保护利润和回撤"), "portfolio decision card must explain the leaderboard order in plain Chinese");
+assert(readableDecisionCard.indexOf("结果榜：") < readableDecisionCard.indexOf("今日手法："), "portfolio decision cards must show the result board before the long daily-report narrative");
 assert(readableDecisionCard.includes("下一步："), "portfolio decision card must state the next validation step instead of only listing metrics");
 assert(readableDecisionCard.includes("不急着追进同一热门方向"), "portfolio next-step copy must explain the manager's operating logic in plain Chinese");
 assert(readableDecisionCard.includes("走势：") && readableDecisionCard.includes("为什么：") && readableDecisionCard.includes("边界："), "portfolio action cards must explain trend, reason, and operating boundary in separate readable lines");
