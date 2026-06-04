@@ -3341,6 +3341,14 @@ const requiredPatterns = [
     message: "admin watchlist categories must surface stale-catchdown candidates as zero-yuan observation before the detailed fund cards."
   },
   {
+    pattern: /function groupWatchlistItems[\s\S]{0,360}getWatchlistDisplayStatus\(item\)[\s\S]{0,900}function getWatchlistDisplayStatus[\s\S]{0,320}isWatchlistCatchdownRiskItem\(item\)\s*\?\s*"blocked"/,
+    message: "admin watchlist grouping must route catchdown-risk candidates into blocked instead of ordinary waiting-pullback lanes."
+  },
+  {
+    pattern: /function selectWatchlistActionItems[\s\S]{0,260}getWatchlistDisplayStatus\(item\) === status/,
+    message: "admin buy-preparation queues must use display status so catchdown risks cannot appear as ready or waiting-pullback actions."
+  },
+  {
     pattern: /购买准备队列/,
     message: "manager-facing watchlist replies and admin UI must expose a Chinese buy-preparation queue."
   },

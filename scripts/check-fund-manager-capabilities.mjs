@@ -3741,6 +3741,12 @@ assert(adminStyleSource.includes("ranking-action-boundary"), "admin UI must styl
 assert(adminStyleSource.includes("ranking-action-crosscheck"), "admin UI must style action leaderboard cross-check evidence clearly");
 assert(adminSource.includes("接盘风险") && adminSource.includes("退潮接盘") && adminSource.includes("表面回调可能继续下探"), "admin watchlist hard-risk strip must surface stale catchdown risk as a first-class danger chip");
 assert(adminSource.includes("renderWatchlistCatchdownNotice") && adminSource.includes("isWatchlistCatchdownRiskItem"), "admin watchlist must render a category-level catchdown notice before long fund cards");
+assert(
+  /function getWatchlistDisplayStatus[\s\S]{0,320}isWatchlistCatchdownRiskItem\(item\)\s*\?\s*"blocked"/.test(adminSource)
+    && /function groupWatchlistItems[\s\S]{0,360}getWatchlistDisplayStatus\(item\)/.test(adminSource)
+    && /function selectWatchlistActionItems[\s\S]{0,260}getWatchlistDisplayStatus\(item\) === status/.test(adminSource),
+  "admin watchlist must route catchdown risks into the blocked lane and keep them out of buy-preparation queues even if raw status says waiting"
+);
 assert(adminSource.includes("只做0元观察") && adminSource.includes("这不是低位启动"), "admin watchlist catchdown notice must translate stale pullbacks into zero-yuan observation language");
 assert(adminStyleSource.includes(".watchlist-catchdown-notice"), "admin stylesheet must style the watchlist catchdown notice as a first-scan warning strip");
 assert(adminSource.includes("旧催化") && adminSource.includes("stale_catalyst"), "admin watchlist hard-risk strip must separately highlight old-catalyst catchdown risk");

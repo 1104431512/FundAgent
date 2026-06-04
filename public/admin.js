@@ -4754,7 +4754,7 @@ function renderWatchlistEmptyCategory(category = {}, text = "暂无自选基金�
 function groupWatchlistItems(items) {
   const groups = new Map(WATCHLIST_STATUS_ORDER.map((status) => [status, []]));
   for (const item of items || []) {
-    const status = WATCHLIST_STATUS_ORDER.includes(item.status) ? item.status : "watch";
+    const status = getWatchlistDisplayStatus(item);
     groups.get(status).push(item);
   }
   for (const group of groups.values()) {
@@ -4764,11 +4764,22 @@ function groupWatchlistItems(items) {
   return groups;
 }
 
+function getWatchlistDisplayStatus(item = {}) {
+  const rawStatus = WATCHLIST_STATUS_ORDER.includes(item.status) ? item.status : "watch";
+  if (["removed", "in_position"].includes(rawStatus)) return rawStatus;
+  return isWatchlistCatchdownRiskItem(item) ? "blocked" : rawStatus;
+}
+
+function formatWatchlistDisplayStatusText(item = {}) {
+  if (isWatchlistCatchdownRiskItem(item)) return "接盘风险";
+  return item.statusText || formatWatchlistStatus(item.status);
+}
+
 function renderWatchlistSummary(items) {
   const counts = WATCHLIST_STATUS_ORDER
     .map((status) => ({
       status,
-      count: (items || []).filter((item) => (WATCHLIST_STATUS_ORDER.includes(item.status) ? item.status : "watch") === status).length
+      count: (items || []).filter((item) => getWatchlistDisplayStatus(item) === status).length
     }))
     .filter((item) => item.count);
   if (!counts.length) return "";
@@ -4798,7 +4809,7 @@ function renderWatchlistSetupFocus(items = []) {
 function selectWatchlistSetupFocusItems(items = []) {
   return (items || [])
     .filter(isWatchlistLaunchEveCandidate)
-    .filter((item) => !["blocked", "removed", "in_position"].includes(item.status))
+    .filter((item) => !["blocked", "removed", "in_position"].includes(getWatchlistDisplayStatus(item)))
     .sort((a, b) => Number(b.readinessScore || 0) - Number(a.readinessScore || 0)
       || Number(a.priority || 3) - Number(b.priority || 3)
       || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
@@ -4852,7 +4863,7 @@ function renderWatchlistActionQueue(items = []) {
 
 function selectWatchlistActionItems(items = [], status, limit) {
   return (items || [])
-    .filter((item) => item.status === status)
+    .filter((item) => getWatchlistDisplayStatus(item) === status)
     .sort((a, b) => Number(b.readinessScore || 0) - Number(a.readinessScore || 0)
       || Number(a.priority || 3) - Number(b.priority || 3)
       || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
@@ -4860,7 +4871,8 @@ function selectWatchlistActionItems(items = [], status, limit) {
 }
 
 function renderWatchlistActionCard(item) {
-  const statusClass = getWatchlistStatusClass(item.status);
+  const displayStatus = getWatchlistDisplayStatus(item);
+  const statusClass = getWatchlistStatusClass(displayStatus);
   const snapshot = item.lastSnapshot || {};
   const trigger = item.buyTriggers?.[0] || item.positionPlan || "等待下一次复查";
   const gap = selectWatchlistPrimaryGap(item);
@@ -4876,7 +4888,7 @@ function renderWatchlistActionCard(item) {
     <article class="watchlist-action-card">
       <div class="watchlist-action-title">
         <strong>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</strong>
-        <span class="${statusClass}">${escapeHtml(item.statusText || formatWatchlistStatus(item.status))}</span>
+        <span class="${statusClass}">${escapeHtml(formatWatchlistDisplayStatusText(item))}</span>
       </div>
       ${setupBadge}
       ${readiness ? `<div class="watchlist-readiness">${readiness}</div>` : ""}
@@ -4910,7 +4922,8 @@ function renderWatchlistItem(item) {
   const snapshot = item.lastSnapshot || {};
   const trend = getFundSnapshotTrendText(snapshot);
   const trendChart = renderTrendChart(snapshot);
-  const statusClass = getWatchlistStatusClass(item.status);
+  const displayStatus = getWatchlistDisplayStatus(item);
+  const statusClass = getWatchlistStatusClass(displayStatus);
   const snapshotEvidence = formatWatchlistSnapshotEvidence(snapshot);
   const source = item.source || snapshot.sources?.[0] || "";
   const observationGaps = selectWatchlistObservationGaps(item);
@@ -4924,7 +4937,7 @@ function renderWatchlistItem(item) {
       <summary class="fund-card-summary">
         <div class="fund-card-title">
           <strong>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</strong>
-          <span class="${statusClass}">${escapeHtml(item.statusText || formatWatchlistStatus(item.status))}</span>
+          <span class="${statusClass}">${escapeHtml(formatWatchlistDisplayStatusText(item))}</span>
         </div>
         <div class="fund-card-kpis">
           ${formatWatchlistReadiness(item) ? `<span>${formatWatchlistReadiness(item)}</span>` : `<span>优先级 ${escapeHtml(item.priority || 3)}</span>`}
