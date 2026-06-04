@@ -738,6 +738,52 @@ const requiredPatterns = [
     message: "compact model snapshots must expose cached data age so the model cannot treat fallback data as live."
   },
   {
+    pattern: {
+      test: (source) => source.includes("FUND_RESEARCH_DIGEST_CACHE_PATH")
+        && source.includes("fund-research-digest-cache.json")
+        && source.includes("FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS")
+    },
+    message: "fund research deep dives must have a persistent cache path and max age for source outages."
+  },
+  {
+    pattern: /function readFundResearchDigestCache[\s\S]{0,520}digests[\s\S]{0,900}function persistFundResearchDigestCache[\s\S]{0,760}fundResearchDigestCacheWrites/,
+    message: "fund research digest cache must have deterministic read and persist helpers."
+  },
+  {
+    pattern: {
+      test: (source) => source.includes("function fetchMarketResearchDigests")
+        && source.includes("const cache = readFundResearchDigestCache()")
+        && source.includes("fetchFundResearchDigest(candidate.code, candidate, {")
+        && source.includes("persistCache: false")
+        && source.includes("persistFundResearchDigestCache(cache)")
+    },
+    message: "market deep dives must share one fund research cache and persist successful live digest updates."
+  },
+  {
+    pattern: /async function fetchFundResearchDigest\(code,\s*seed = \{\},\s*options = \{\}\)[\s\S]{0,900}isSufficientFundResearchDigestForDecision[\s\S]{0,900}buildCachedFundResearchDigestFallback/,
+    message: "fund research digest fetches must fall back to cached structured digests when live evidence is insufficient."
+  },
+  {
+    pattern: /function buildCachedFundResearchDigestFallback[\s\S]{0,1200}researchDigestCacheFallback[\s\S]{0,300}sourceMode = "cache_fallback"|function buildCachedFundResearchDigestFallback[\s\S]{0,1200}researchDigestCacheFallback[\s\S]{0,520}sourceMode:\s*"cache_fallback"/,
+    message: "fund research digest fallback must expose cache fallback markers and source mode."
+  },
+  {
+    pattern: /function scoreComputedFundDataQuality[\s\S]{0,900}researchDigestCacheFallback[\s\S]{0,520}基金下钻使用缓存回退/,
+    message: "computed fund scorecards must downgrade cache-fallback fund research data quality."
+  },
+  {
+    pattern: /function collectComputedFundOpportunityBlockers[\s\S]{0,360}researchDigestCacheFallback[\s\S]{0,260}不能当作实时买点确认/,
+    message: "computed fund scorecards must block cached fund research from becoming fresh buy confirmation."
+  },
+  {
+    pattern: /function buildMarketDeepDiveSummary[\s\S]{0,1600}fundResearchDigestCacheFallback[\s\S]{0,900}cacheFallbackInstruction/,
+    message: "deep-dive summaries must tell the model that fund research cache fallback is continuity evidence only."
+  },
+  {
+    pattern: /function classifyPullbackSetupCandidateForSummary[\s\S]{0,260}researchDigestCacheFallback[\s\S]{0,120}watch_or_reject/,
+    message: "pullback main-candidate classification must not treat cached fund research as a fresh buy setup."
+  },
+  {
     pattern: /function compactMarketSnapshotForModel[\s\S]{0,2200}compactRealtimeFundValuations[\s\S]{0,1200}compactMarketFundCandidates[\s\S]{0,1200}errors/,
     message: "model prompts must use a compact market snapshot that preserves key evidence without raw payload bloat."
   },
@@ -3939,7 +3985,7 @@ const requiredPatterns = [
     message: "computed fund opportunity scorecards must combine risk, entry, theme, holdings, fee, scale, and data-quality dimensions."
   },
   {
-    pattern: /scoreResearchDigestForPullbackSetup[\s\S]{0,2200}getPortfolioActionableThemeSupportGap\(digest\)[\s\S]{0,900}score -= 54/,
+    pattern: /scoreResearchDigestForPullbackSetup[\s\S]{0,3200}getPortfolioActionableThemeSupportGap\(digest\)[\s\S]{0,900}score -= 54/,
     message: "pullback/setup deep-dive ranking must demote unsupported holding-derived theme exposure before recommendation ordering."
   },
   {

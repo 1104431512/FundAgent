@@ -15,6 +15,7 @@ const CONFIG_PATH = path.resolve(process.env.CONFIG_PATH || path.join(ROOT, "dat
 const STATS_PATH = path.resolve(process.env.STATS_PATH || path.join(ROOT, "data", "stats.json"));
 const PORTFOLIO_DB_PATH = path.resolve(process.env.PORTFOLIO_DB_PATH || path.join(ROOT, "data", "portfolio-db.json"));
 const MARKET_SNAPSHOT_CACHE_PATH = path.resolve(process.env.MARKET_SNAPSHOT_CACHE_PATH || path.join(ROOT, "data", "market-snapshot-cache.json"));
+const FUND_RESEARCH_DIGEST_CACHE_PATH = path.resolve(process.env.FUND_RESEARCH_DIGEST_CACHE_PATH || path.join(ROOT, "data", "fund-research-digest-cache.json"));
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
 const PUBLIC_DIR = path.join(ROOT, "public");
 const SKILLS_DIR = path.join(ROOT, "skills");
@@ -47,6 +48,7 @@ const DEFAULT_PORTFOLIO_REPORT_IMAGE_MIN = 8;
 const DEFAULT_PORTFOLIO_REPORT_IMAGE_LIMIT = 8;
 const PUBLIC_DATA_TIMEOUT_MS = Number(process.env.PUBLIC_DATA_TIMEOUT_MS || 20000);
 const MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS = Number(process.env.MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS || 48);
+const FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS || 72);
 const pendingImageMessages = new Map();
 const pendingUserPortfolioImportRequests = new Map();
 const DEFAULT_PULLBACK_SETUP_FUND_KEYWORDS = [
@@ -21860,6 +21862,13 @@ function buildMarketDeepDiveSummary(deepDive) {
   ].filter(Boolean);
 
   lines.push(...formatMarketDeepDiveThemeOpportunityPlaybook(deepDive, { requireThemeOpportunityBacking }));
+  const cacheFallbackCandidates = (deepDive.candidates || []).filter((candidate) => candidate?.researchDigestCacheFallback);
+  if (cacheFallbackCandidates.length) {
+    lines.push(`fundResearchDigestCacheFallback=${cacheFallbackCandidates.slice(0, 8).map((candidate) =>
+      `${candidate.code || candidate.seed?.code || "unknown"}约${round(Number(candidate.cacheAgeHours || 0), 1)}小时前`
+    ).join("/")}`);
+    lines.push("cacheFallbackInstruction=基金下钻使用缓存回退时，只能作为连续性观察证据，不能当作实时买点确认或重仓依据。");
+  }
 
   if (deepDive.selectionDiscipline === "prefer_pullback_complete_launch_setup_not_chase") {
     const ranked = (deepDive.candidates || [])
@@ -21976,6 +21985,7 @@ function formatThemeOpportunityPlaybookItem(theme = {}) {
 
 function classifyPullbackSetupCandidateForSummary(candidate = {}, options = {}) {
   if (!candidate?.ok) return "watch_or_reject";
+  if (candidate.researchDigestCacheFallback) return "watch_or_reject";
   const trend = candidate.trendProfile || {};
   const signal = trend.pullbackSetup?.signal || "";
   if (getPortfolioWatchlistMainCandidateBlocker(candidate)) return "watch_or_reject";
@@ -22028,6 +22038,8 @@ function formatPullbackSetupCandidateLine(candidate = {}, ranked = {}) {
     `${candidate.code || "unknown"} ${candidate.name || candidate.seed?.name || ""}`.trim(),
     `bucket=${ranked.bucket || classifyPullbackSetupCandidateForSummary(candidate)}`,
     `setupRankScore=${round(Number(ranked.setupRankScore ?? scoreResearchDigestForPullbackSetup(candidate)), 1)}`,
+    candidate.researchDigestCacheFallback ? `下钻来源=缓存回退约${round(Number(candidate.cacheAgeHours || 0), 1)}小时前` : "",
+    candidate.liveError ? `实时源缺口=${shortenPortfolioCustomerText(candidate.liveError, 48)}` : "",
     formatComputedOpportunityScorecardEvidence(scorecard),
     trend.pullbackSetup?.signalText ? `signal=${trend.pullbackSetup.signalText}` : "",
     Number.isFinite(Number(trend.pullbackSetup?.score)) ? `setupScore=${trend.pullbackSetup.score}` : "",
@@ -25107,6 +25119,7 @@ function collectFundEvidenceCandidates(evidence = {}) {
 }
 
 function hasStaleFundEvidence(candidate = {}) {
+  if (candidate.researchDigestCacheFallback) return true;
   const actionability = candidate.actionability || {};
   const blockers = [
     candidate.decisionBlocker,
@@ -30929,11 +30942,28 @@ function selectPullbackBackfillCandidates(merged = [], selectedForDive = [], lim
 }
 
 async function fetchMarketResearchDigests(candidates = []) {
-  return Promise.all((candidates || []).map(async (candidate) => {
+  const cache = readFundResearchDigestCache();
+  const fetchedAt = new Date().toISOString();
+  let cacheDirty = false;
+  const results = await Promise.all((candidates || []).map(async (candidate) => {
     try {
-      return await fetchFundResearchDigest(candidate.code, candidate);
+      return await fetchFundResearchDigest(candidate.code, candidate, {
+        cache,
+        fetchedAt,
+        persistCache: false,
+        onCacheUpdate: () => {
+          cacheDirty = true;
+        }
+      });
     } catch (error) {
       recordError(error, { marketDeepDiveFailures: 1 });
+      const fallback = buildCachedFundResearchDigestFallback(candidate.code, candidate, cache, {
+        fetchedAt,
+        liveError: error.message
+      });
+      if (fallback) {
+        return fallback;
+      }
       return {
         ok: false,
         code: candidate.code,
@@ -30944,6 +30974,138 @@ async function fetchMarketResearchDigests(candidates = []) {
       };
     }
   }));
+  if (cacheDirty) persistFundResearchDigestCache(cache);
+  return results;
+}
+
+function readFundResearchDigestCache(filePath = FUND_RESEARCH_DIGEST_CACHE_PATH) {
+  const raw = safeReadJson(filePath);
+  return raw && typeof raw === "object" && raw.digests && typeof raw.digests === "object"
+    ? { ...raw, digests: raw.digests }
+    : { version: 1, updatedAt: "", digests: {} };
+}
+
+function persistFundResearchDigestCache(cache = {}, filePath = FUND_RESEARCH_DIGEST_CACHE_PATH) {
+  try {
+    const payload = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      digests: cache.digests || {}
+    };
+    ensureDir(path.dirname(filePath));
+    fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    updateStats({ counters: { fundResearchDigestCacheWrites: 1 }, last: { lastFundResearchDigestCacheWriteAt: payload.updatedAt } });
+    return payload;
+  } catch (error) {
+    console.warn("[fund-research-digest-cache-write-error]", error.message);
+    recordError(error, { fundResearchDigestCacheWriteFailures: 1 });
+    return cache;
+  }
+}
+
+function cacheFundResearchDigest(cache = {}, digest = {}, fetchedAt = new Date().toISOString()) {
+  if (!isUsableFundResearchDigestForCache(digest)) return null;
+  const code = String(digest.code || digest.seed?.code || "").trim();
+  if (!/^\d{6}$/.test(code)) return null;
+  cache.digests = cache.digests && typeof cache.digests === "object" ? cache.digests : {};
+  cache.digests[code] = {
+    code,
+    name: digest.name || digest.seed?.name || "",
+    cachedAt: fetchedAt,
+    digest: sanitizeFundResearchDigestForCache(digest)
+  };
+  return cache.digests[code];
+}
+
+function isUsableFundResearchDigestForCache(digest = {}) {
+  if (!digest || typeof digest !== "object" || digest.ok === false) return false;
+  const code = String(digest.code || digest.seed?.code || "").trim();
+  if (!/^\d{6}$/.test(code)) return false;
+  const risk = selectPortfolioQualityRiskPeriod(digest);
+  return Boolean(
+    digest.trendProfile?.ok
+    || risk?.ok
+    || digest.holdings?.ok
+    || digest.fees?.shareClassFeeModel?.type
+    || Array.isArray(digest.managers) && digest.managers.length
+  );
+}
+
+function isSufficientFundResearchDigestForDecision(digest = {}) {
+  if (!digest || typeof digest !== "object" || digest.ok === false) return false;
+  if (digest.trendProfile?.ok) return true;
+  const risk = selectPortfolioQualityRiskPeriod(digest);
+  return Boolean(risk?.ok && (digest.holdings?.ok || digest.fees?.shareClassFeeModel?.type));
+}
+
+function sanitizeFundResearchDigestForCache(digest = {}) {
+  const clone = JSON.parse(JSON.stringify({
+    ok: digest.ok !== false,
+    code: digest.code || digest.seed?.code || "",
+    name: digest.name || digest.seed?.name || "",
+    seed: digest.seed || {},
+    themeOpportunityRequirement: digest.themeOpportunityRequirement || "",
+    nav: digest.nav || {},
+    intradayTrend: digest.intradayTrend || null,
+    intradayTrendLabel: digest.intradayTrendLabel || "",
+    valuationSourceAgreement: digest.valuationSourceAgreement || null,
+    valuationSourceKind: digest.valuationSourceKind || "",
+    supplementalIntradaySourceKind: digest.supplementalIntradaySourceKind || "",
+    returns: digest.returns || {},
+    trendProfile: digest.trendProfile || {},
+    risk: digest.risk || {},
+    fees: digest.fees || {},
+    moneyMarket: digest.moneyMarket || null,
+    scale: digest.scale || "",
+    managers: Array.isArray(digest.managers) ? digest.managers.slice(0, 3) : [],
+    holdings: digest.holdings || {},
+    holdingRealtimePulse: digest.holdingRealtimePulse || null,
+    actionability: digest.actionability || null,
+    computedOpportunityScorecard: digest.computedOpportunityScorecard || null,
+    sources: Array.isArray(digest.sources) ? digest.sources.slice(0, 24) : []
+  }));
+  if (Array.isArray(clone.seed?.matchedThemes)) clone.seed.matchedThemes = clone.seed.matchedThemes.slice(0, 3);
+  if (Array.isArray(clone.seed?.alternativeShareClasses)) clone.seed.alternativeShareClasses = clone.seed.alternativeShareClasses.slice(0, 6);
+  if (Array.isArray(clone.seed?.sameExposureAlternatives)) clone.seed.sameExposureAlternatives = clone.seed.sameExposureAlternatives.slice(0, 6);
+  if (Array.isArray(clone.holdings?.equityTopHoldings)) clone.holdings.equityTopHoldings = clone.holdings.equityTopHoldings.slice(0, 10);
+  if (Array.isArray(clone.holdings?.bondTopHoldings)) clone.holdings.bondTopHoldings = clone.holdings.bondTopHoldings.slice(0, 10);
+  if (Array.isArray(clone.holdingRealtimePulse?.items)) clone.holdingRealtimePulse.items = clone.holdingRealtimePulse.items.slice(0, 10);
+  return clone;
+}
+
+function buildCachedFundResearchDigestFallback(code = "", seed = {}, cache = {}, options = {}) {
+  const fundCode = String(code || seed?.code || "").trim();
+  const cached = fundCode ? cache?.digests?.[fundCode] : null;
+  if (!cached?.digest) return null;
+  const fetchedAt = options.fetchedAt || new Date().toISOString();
+  const ageHours = getMarketSnapshotCacheAgeHours(cached.cachedAt, fetchedAt);
+  if (!Number.isFinite(ageHours) || ageHours > FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS) return null;
+  const liveError = String(options.liveError || "基金下钻实时源失败或返回不足").slice(0, 240);
+  const digest = JSON.parse(JSON.stringify(cached.digest || {}));
+  digest.ok = true;
+  digest.code = fundCode;
+  digest.name = digest.name || seed.name || cached.name || "";
+  digest.seed = {
+    ...(digest.seed || {}),
+    ...seed,
+    matchedThemes: seed.matchedThemes || digest.seed?.matchedThemes || [],
+    alternativeShareClasses: seed.alternativeShareClasses || digest.seed?.alternativeShareClasses || [],
+    sameExposureAlternatives: seed.sameExposureAlternatives || digest.seed?.sameExposureAlternatives || []
+  };
+  digest.themeOpportunityRequirement = seed.themeOpportunityRequirement || digest.themeOpportunityRequirement || "";
+  digest.researchDigestCacheFallback = true;
+  digest.sourceMode = "cache_fallback";
+  digest.cacheFetchedAt = cached.cachedAt || "";
+  digest.cacheAgeHours = round(ageHours, 2);
+  digest.liveError = liveError;
+  digest.sources = [...new Set([...(digest.sources || []), `cache:${FUND_RESEARCH_DIGEST_CACHE_PATH}`])].slice(0, 24);
+  digest.actionability = buildFundActionabilitySignals(digest);
+  digest.computedOpportunityScorecard = buildFundComputedOpportunityScorecard(digest);
+  updateStats({
+    counters: { fundResearchDigestCacheFallbacks: 1 },
+    last: { lastFundResearchDigestCacheFallbackAt: fetchedAt }
+  });
+  return digest;
 }
 
 function hasQualifiedPullbackMainCandidate(candidates = [], options = {}) {
@@ -31038,6 +31200,7 @@ function scoreResearchDigestForPullbackSetup(digest = {}) {
   const actionability = digest.actionability || {};
   const seedThisYear = getCandidateSeedThisYearPct(digest);
   let score = Number(actionability.score || 0) * 0.35;
+  if (digest.researchDigestCacheFallback) score -= 30;
   const setupScore = Number(trend.pullbackSetup?.score || 0);
   const lowPosition = finiteMetricNumber(trend.lowPositionPct120);
   const earlyTurn = isEarlyTurnSetupTrend(trend);
@@ -31115,7 +31278,7 @@ function buildFundComputedOpportunityScorecard(candidate = {}) {
   );
   const blockers = collectComputedFundOpportunityBlockers(candidate, dimensions);
   const managerPriorityScore = round(clampScore(weightedScore - Math.min(28, blockers.length * 5)), 1);
-  const noBuy = blockers.some((item) => /硬阻断|接盘|退潮|过期|数据不足|费用缺口|规模过小|追涨/.test(item));
+  const noBuy = blockers.some((item) => /硬阻断|接盘|退潮|过期|数据不足|缓存回退|费用缺口|规模过小|追涨/.test(item));
   const recommendationGate = noBuy
     ? "observe_only"
     : managerPriorityScore >= 78
@@ -31319,11 +31482,16 @@ function scoreComputedFundDataQuality(candidate = {}) {
   if (holdings.hasHoldings) score += 12;
   if (fees.shareClassFeeModel?.type && fees.shareClassFeeModel.type !== "unknown") score += 8;
   if (candidate.valuationSourceAgreement?.status === "conflict") score -= 18;
+  if (candidate.researchDigestCacheFallback) score -= 32;
   if (!isPullbackTrendFreshEnough(candidate)) score -= 22;
+  const boundedScore = round(clampScore(score), 1);
   return {
-    score: round(clampScore(score), 1),
-    label: score >= 70 ? "数据完整度较好" : score >= 45 ? "数据可用但需复核" : "数据不足",
+    score: boundedScore,
+    label: candidate.researchDigestCacheFallback
+      ? "基金下钻使用缓存回退"
+      : boundedScore >= 70 ? "数据完整度较好" : boundedScore >= 45 ? "数据可用但需复核" : "数据不足",
     evidence: [
+      candidate.researchDigestCacheFallback ? `基金下钻使用缓存回退约${round(Number(candidate.cacheAgeHours || 0), 1)}小时前` : "",
       trend.ok ? "净值走势已下钻" : "缺走势下钻",
       holdings.hasHoldings ? "前十大持仓已下钻" : "缺前十大持仓",
       fees.shareClassFeeModel?.type ? "费用份额已识别" : "缺费用份额"
@@ -31334,6 +31502,7 @@ function scoreComputedFundDataQuality(candidate = {}) {
 function collectComputedFundOpportunityBlockers(candidate = {}, dimensions = {}) {
   const blockers = [];
   if (candidate.ok === false) blockers.push("数据不足硬阻断");
+  if (candidate.researchDigestCacheFallback) blockers.push("基金下钻使用缓存回退，不能当作实时买点确认");
   if (!isPullbackTrendFreshEnough(candidate)) blockers.push("净值/走势过期");
   if (hasThemeRetreatRisk(candidate) || hasStaleThemeCatchdownRisk(candidate) || getThemeMainForcePlaybookRiskWarnings(candidate).length) blockers.push("题材退潮或接盘风险");
   if (candidate.trendProfile?.trendLabel === "extended_uptrend" || candidate.trendProfile?.entryBias === "wait_pullback") blockers.push("追涨或等待回撤");
@@ -31369,7 +31538,44 @@ function isEarlyTurnSetupTrend(trend = {}) {
     && (!Number.isFinite(r20) || (r20 >= -4 && r20 <= 6));
 }
 
-async function fetchFundResearchDigest(code, seed = {}) {
+async function fetchFundResearchDigest(code, seed = {}, options = {}) {
+  const fetchedAt = options.fetchedAt || new Date().toISOString();
+  const cache = options.cache || readFundResearchDigestCache();
+  try {
+    const digest = await fetchFundResearchDigestLive(code, seed);
+    const usableForCache = isUsableFundResearchDigestForCache(digest);
+    if (usableForCache && isSufficientFundResearchDigestForDecision(digest)) {
+      cacheFundResearchDigest(cache, digest, fetchedAt);
+      if (typeof options.onCacheUpdate === "function") options.onCacheUpdate(digest);
+      if (options.persistCache !== false && !options.cache) persistFundResearchDigestCache(cache);
+      return digest;
+    }
+    const fallback = options.allowCacheFallback === false
+      ? null
+      : buildCachedFundResearchDigestFallback(code, seed, cache, {
+          fetchedAt,
+          liveError: digest?.error || digest?.trendProfile?.note || "基金下钻实时结果不足"
+        });
+    if (fallback) return fallback;
+    if (usableForCache) {
+      cacheFundResearchDigest(cache, digest, fetchedAt);
+      if (typeof options.onCacheUpdate === "function") options.onCacheUpdate(digest);
+      if (options.persistCache !== false && !options.cache) persistFundResearchDigestCache(cache);
+    }
+    return digest;
+  } catch (error) {
+    const fallback = options.allowCacheFallback === false
+      ? null
+      : buildCachedFundResearchDigestFallback(code, seed, cache, {
+          fetchedAt,
+          liveError: error.message
+        });
+    if (fallback) return fallback;
+    throw error;
+  }
+}
+
+async function fetchFundResearchDigestLive(code, seed = {}) {
   const [valuation, profileText, navHistory, holdings, feePageText] = await Promise.all([
     fetchFundValuation(code).catch((error) => ({ ok: false, error: error.message })),
     fetchFundPingzhongData(code).catch(() => ""),
@@ -34127,7 +34333,16 @@ function getActionabilityEntryDiscipline(trend = {}, { isMoneyMarket = false, mi
 }
 
 function getActionabilityFreshnessDiscipline(digest = {}, { isMoneyMarket = false } = {}) {
-  if (isMoneyMarket || !digest || typeof digest !== "object") {
+  if (!digest || typeof digest !== "object") {
+    return { scoreCap: null, blocker: "" };
+  }
+  if (digest.researchDigestCacheFallback) {
+    return {
+      scoreCap: 58,
+      blocker: `系统缓存回退降级：基金下钻使用缓存回退${Number.isFinite(Number(digest.cacheAgeHours)) ? `约${round(Number(digest.cacheAgeHours), 1)}小时前` : ""}，只能用于连续性观察，不能当作实时买点确认。`
+    };
+  }
+  if (isMoneyMarket) {
     return { scoreCap: null, blocker: "" };
   }
   const evidenceDate = getPullbackTrendEvidenceDate(digest);
@@ -39621,8 +39836,10 @@ export {
   buildFundPriorityPreferenceConfigPatch,
   buildFundPriorityPreferenceAnswer,
   buildFundComputedOpportunityScorecard,
+  buildCachedFundResearchDigestFallback,
   buildMarketDataQuality,
   applyMarketSnapshotCacheFallback,
+  cacheFundResearchDigest,
   buildThemeRadar,
   buildThemeLeaderboards,
   buildThemeMainForcePlaybook,
@@ -39658,6 +39875,7 @@ export {
   buildFundReportDecisionReasonLines,
   fetchChinaRealtimeIndexQuotes,
   fetchEastmoneyChinaIndexQuotes,
+  fetchFundResearchDigest,
   fetchGlobalMarketQuotes,
   buildRealtimeFundValuationSeedItems,
   fetchRealtimeFundValuationSnapshot,
@@ -39677,6 +39895,9 @@ export {
   getThemeMainForcePlaybookRiskWarnings,
   getFundAnalysisSkillIds,
   getFundQaSkillIds,
+  isSufficientFundResearchDigestForDecision,
+  readFundResearchDigestCache,
+  persistFundResearchDigestCache,
   getFundRecommendationSkillIds,
   getDeploymentFreshness,
   getPortfolioDecisionSkillIds,

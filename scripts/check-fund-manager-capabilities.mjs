@@ -12000,6 +12000,92 @@ assert(cachedFallbackQuality.cached.some((item) => item.key === "industryBoards"
 assert(cachedFallbackQuality.notes.some((item) => item.includes("使用缓存回退") && item.includes("行业板块")), "market data quality must explain cache fallback in Chinese");
 const compactCachedQuality = manager.compactMarketDataQuality(cachedFallbackQuality);
 assert.equal(compactCachedQuality.cached[0].key, "industryBoards", "compact model snapshot must preserve cached component metadata");
+const cachedFundDigestSeed = {
+  ok: true,
+  code: "000777",
+  name: "缓存回退低位基金C",
+  trendProfile: {
+    ok: true,
+    pullbackSetup: { signal: "pullback_complete", signalText: "回调完成", score: 82 },
+    return5dPct: 1.1,
+    return10dPct: 2.2,
+    return20dPct: 3.5,
+    return60dPct: 6.8,
+    lowPositionPct120: 34,
+    lowPositionPct250: 42,
+    drawdownFromRecentHighPct: -9.4,
+    trendLabel: "pullback_repair",
+    trendLabelText: "回调修复",
+    entryBias: "buyable_now",
+    entryBiasText: "可小仓复核",
+    latestDate: todayIso
+  },
+  risk: {
+    oneYear: { ok: true, sharpe: 1.22, maxDrawdownPct: -10.6, annualizedReturnPct: 11.4, annualizedVolatilityPct: 12.1 }
+  },
+  fees: {
+    shareClass: "C",
+    shareClassFeeModel: { type: "c_share", label: "C类：无前端申购费，有销售服务费" },
+    feeImpact: { oneYearCostPer10000: 38, holdingPeriodFit: "适合战术观察" }
+  },
+  holdings: {
+    ok: true,
+    equityTopHoldings: ["300502 新易盛", "300308 中际旭创", "601138 工业富联"]
+  },
+  holdingsOutlook: {
+    hasHoldings: true,
+    score: 7,
+    positives: ["前十大持仓能承载当前主线"],
+    risks: []
+  }
+};
+const fundDigestCache = manager.readFundResearchDigestCache("__missing_fund_digest_cache__.json");
+manager.cacheFundResearchDigest(fundDigestCache, cachedFundDigestSeed, "2026-05-23T06:00:00.000Z");
+const cachedFundDigestFallback = manager.buildCachedFundResearchDigestFallback("000777", {
+  code: "000777",
+  name: "缓存回退低位基金C",
+  themeOpportunityRequirement: "require_current_theme_playbook"
+}, fundDigestCache, {
+  fetchedAt: "2026-05-23T18:00:00.000Z",
+  liveError: "live timeout"
+});
+assert(cachedFundDigestFallback?.researchDigestCacheFallback, "fund research digest cache must mark fallback digests");
+assert.equal(cachedFundDigestFallback.sourceMode, "cache_fallback", "fund research digest fallback must expose source mode");
+assert.equal(cachedFundDigestFallback.cacheAgeHours, 12, "fund research digest fallback must expose cache age");
+assert(cachedFundDigestFallback.liveError.includes("live timeout"), "fund research digest fallback must preserve live error");
+const liveFundScorecard = manager.buildFundComputedOpportunityScorecard(cachedFundDigestSeed);
+const cachedFundScorecard = cachedFundDigestFallback.computedOpportunityScorecard;
+assert(
+  cachedFundScorecard.dimensions.dataQuality.score < liveFundScorecard.dimensions.dataQuality.score,
+  "cached fund digest fallback must lower computed data-quality score"
+);
+assert(
+  cachedFundScorecard.blockers.some((item) => item.includes("缓存回退")),
+  "cached fund digest fallback must add a cache-fallback blocker"
+);
+assert.equal(cachedFundScorecard.recommendationGate, "observe_only", "cached fund digest fallback must not enter primary buy review");
+assert.equal(
+  manager.classifyPullbackSetupCandidateForSummary(cachedFundDigestFallback, { requireThemeOpportunityBacking: true }),
+  "watch_or_reject",
+  "cached fund digest fallback must not be treated as a fresh pullback main candidate"
+);
+const cachedFundDeepDiveSummary = manager.buildMarketDeepDiveSummary({
+  ok: true,
+  selectionDiscipline: "prefer_pullback_complete_launch_setup_not_chase",
+  candidates: [cachedFundDigestFallback]
+});
+assert(cachedFundDeepDiveSummary.includes("fundResearchDigestCacheFallback=000777约12小时前"), "deep-dive summary must expose fund digest cache fallback age");
+assert(cachedFundDeepDiveSummary.includes("不能当作实时买点确认"), "deep-dive summary must warn that cached fund digest is not fresh buy confirmation");
+const cachedFundBuyLeakQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：可以买入。\n排序口径：高夏普/低回撤优先，再看买点。\n结果榜：1. 000777 缓存回退低位基金C：风险收益更稳。\n执行：1万元买入1000元。",
+  workflow: "fund_recommendation",
+  userText: "推荐几个基金，按高夏普优先",
+  evidence: { marketDeepDive: { candidates: [cachedFundDigestFallback] } }
+});
+assert(
+  cachedFundBuyLeakQuality.issues.includes("stale_data_candidate_given_buy_execution"),
+  "answer quality must reject buy execution based on cached fund digest fallback"
+);
 const staleRealtimeMarketQuality = manager.buildMarketDataQuality([
   { key: "conceptBoards", label: "概念板块", critical: true, result: { ok: true, items: [{ name: "机器人" }] } },
   { key: "industryBoards", label: "行业板块", critical: true, result: { ok: true, items: [{ name: "医药" }] } },
