@@ -2162,7 +2162,7 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "",
     "主力/预热题材机会纪律（系统计算；不能把新闻热度直接当买点，也不能看见主力线索后空泛等待）：",
     JSON.stringify(themeOpportunityPlan, null, 2),
-    "要求：若 candidates 非空，前3只必须进入 actions；opportunityAction 为 verified_theme_buy/theme_starter_buy/theme_micro_starter 且 executable=true 时，给 BUY 小仓或写清风控拦截；theme_watch 只能写观察触发、新闻逻辑、主力延续条件和基金买点缺口。",
+    "要求：若 candidates 非空，前3只必须进入 actions；opportunityAction 为 verified_theme_buy/theme_starter_buy/theme_micro_starter 且 executable=true 且 actionPermission 允许买入时，给 BUY 小仓或写清风控拦截；status=blocked、actionPermission 写0元观察或 positiveRankingGate 拦截的候选只能 WATCH，不能 BUY、小仓、微型试探或写成可买；theme_watch 只能写观察触发、新闻逻辑、主力延续条件和基金买点缺口。",
     "",
     "今日公开市场/基金候选快照：",
     JSON.stringify(compactMarketSnapshotForModel(marketSnapshot), null, 2),
@@ -4438,6 +4438,21 @@ function buildPortfolioThemeOpportunityPlan(account = {}, watchlist = [], profil
       }, marketSnapshot);
       const theme = selectPortfolioActionableThemeSignal(themeEvidenceSource);
       if (!theme) return null;
+      const displayItem = applyPortfolioWatchDisplayStatus({
+        ...item,
+        lastSnapshot: themeEvidenceSource || profile || item.lastSnapshot
+      });
+      const positiveGate = resolvePortfolioPositiveWatchRankingGate({
+        ...item,
+        ...displayItem,
+        lastSnapshot: themeEvidenceSource || profile || item.lastSnapshot,
+        matchedThemes: themeEvidenceSource?.matchedThemes || item.matchedThemes || [],
+        seed: {
+          ...(themeEvidenceSource?.seed || item.seed || {}),
+          matchedThemes: themeEvidenceSource?.seed?.matchedThemes || themeEvidenceSource?.matchedThemes || item.matchedThemes || []
+        }
+      });
+      const noBuyBlocked = Boolean(!positiveGate.ok && positiveGate.hardCatchdown);
       const lane = findPortfolioThemeOpportunityLaneForTheme(theme, themeLaneItems);
       const readiness = evaluatePortfolioWatchReadiness(item, profile);
       const verifiedBuy = Boolean(profile && hasVerifiedPortfolioBuySetup(profile));
@@ -4453,9 +4468,18 @@ function buildPortfolioThemeOpportunityPlan(account = {}, watchlist = [], profil
         && !hasPositiveThemeMainCapitalEvidence(theme)
         ? "缺少正向主力资金或主力流入榜确认，不能把新闻预热直接写成微型试探。"
         : "";
-      const hardGap = catalystGap || capitalFlowGap || readiness.gaps.find(isPortfolioRedeploymentHardGap);
+      const noBuyGap = noBuyBlocked
+        ? positiveGate.reason || "接盘/追涨风险未解除，主力/预热题材机会禁止买入。"
+        : "";
+      const hardGap = noBuyGap || catalystGap || capitalFlowGap || readiness.gaps.find(isPortfolioRedeploymentHardGap);
       const feeVerified = Boolean(profile && hasVerifiedPortfolioFeeEvidence(profile));
-      const buyGuard = targetWeightPct > 0
+      const buyGuard = noBuyBlocked
+        ? {
+            ok: false,
+            reason: hardGap,
+            evidence: mergeStringLists(positiveGate.facts, [positiveGate.nextStep]).slice(0, 4)
+          }
+        : targetWeightPct > 0
         ? evaluatePortfolioBuyDiscipline(
             { action: "BUY", code: item.code, name: item.name || profile?.name || "", targetWeightPct },
             profile,
@@ -4463,7 +4487,7 @@ function buildPortfolioThemeOpportunityPlan(account = {}, watchlist = [], profil
             account
           )
         : { ok: false, reason: readiness.gaps?.[0] || "题材有线索，但基金买点还没有形成。", evidence: [] };
-      const executable = Boolean(targetWeightPct > 0 && buyGuard.ok && feeVerified && !hardGap && !accountBudget.blockNewBuys);
+      const executable = Boolean(!noBuyBlocked && targetWeightPct > 0 && buyGuard.ok && feeVerified && !hardGap && !accountBudget.blockNewBuys);
       const opportunityAction = executable
         ? verifiedBuy
           ? "verified_theme_buy"
@@ -4487,7 +4511,14 @@ function buildPortfolioThemeOpportunityPlan(account = {}, watchlist = [], profil
         code: item.code,
         name: item.name || profile?.name || "",
         shareClass: item.shareClass || profile?.shareClass || profile?.fees?.shareClass || "",
-        status: normalizePortfolioWatchStatus(item.status || "watch"),
+        status: noBuyBlocked ? "blocked" : normalizePortfolioWatchStatus(item.status || "watch"),
+        rawStatus: item.status || "watch",
+        statusText: noBuyBlocked ? "暂不买入" : formatPortfolioWatchStatus(item.status || "watch"),
+        actionPermission: noBuyBlocked
+          ? "0元观察；主力/预热题材机会不得BUY，不得小仓或微型试探。"
+          : executable
+            ? "可进入BUY小仓题材机会复核。"
+            : "只能WATCH等待触发，不能直接BUY。",
         priority: Number(item.priority || 3),
         score,
         themeName: theme.name || theme.id || "",
@@ -4500,6 +4531,9 @@ function buildPortfolioThemeOpportunityPlan(account = {}, watchlist = [], profil
         firstGap: executable
           ? "主力/预热题材与基金买点同时成立，只允许小仓验证。"
           : hardGap || buyGuard.reason || readiness.gaps?.[0] || "等待基金买点、费用或持仓前景补齐。",
+        positiveRankingGate: noBuyBlocked
+          ? `接盘/追涨风险未解除，主力/预热题材机会禁止买入。${positiveGate.reason || ""}`.trim()
+          : "通过",
         themeEvidence,
         trendEvidence,
         catalyst: theme.catalystProfile?.summary || "",
@@ -4517,6 +4551,8 @@ function buildPortfolioThemeOpportunityPlan(account = {}, watchlist = [], profil
           capitalFlowGap,
           theme.newsLogic ? `题材逻辑：${theme.newsLogic}` : "",
           theme.catalystProfile?.summary ? `催化性质：${theme.catalystProfile.summary}` : "",
+          noBuyBlocked ? positiveGate.reason : "",
+          ...normalizeStringArray(positiveGate.facts).slice(0, 3),
           profile?.sources?.[0] || ""
         ])
       };
@@ -4560,7 +4596,9 @@ function ensurePortfolioThemeOpportunityReviewed(decision = {}, account = {}, wa
     if (existingKeys.has(`BUY:${candidate.code}`) || existingKeys.has(`WATCH:${candidate.code}`) || existingKeys.has(`HOLD:${candidate.code}`)) {
       continue;
     }
-    const canBuy = Boolean(candidate.executable);
+    const canBuy = Boolean(candidate.executable)
+      && candidate.status !== "blocked"
+      && !String(candidate.actionPermission || "").includes("0元观察");
     const action = canBuy ? "BUY" : "WATCH";
     const themeLogicBrief = formatPortfolioThemeOpportunityCustomerLogic(candidate);
     nextActions.push({

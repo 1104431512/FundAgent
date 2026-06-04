@@ -1445,7 +1445,12 @@ const requiredPatterns = [
     message: "theme opportunity plan must drop untraceable preheat heat instead of turning it into a watch candidate."
   },
   {
-    pattern: /function buildPortfolioThemeOpportunityPlan[\s\S]{0,3600}capitalFlowGap[\s\S]{0,500}hasPositiveThemeMainCapitalEvidence\(theme\)[\s\S]{0,700}缺少正向主力资金或主力流入榜确认/,
+    pattern: {
+      test: (source) => source.includes("function buildPortfolioThemeOpportunityPlan")
+        && source.includes("const capitalFlowGap")
+        && source.includes("!hasPositiveThemeMainCapitalEvidence(theme)")
+        && source.includes("缺少正向主力资金或主力流入榜确认，不能把新闻预热直接写成微型试探。")
+    },
     message: "theme opportunity plans must downgrade traceable news/preheat candidates that lack positive main-capital confirmation."
   },
   {
@@ -1567,6 +1572,28 @@ const requiredPatterns = [
   {
     pattern: /function buildPortfolioDecisionReadinessQueue[\s\S]{0,1600}rawStatus[\s\S]{0,260}actionPermission[\s\S]{0,180}0元观察[\s\S]{0,520}不触发买入/,
     message: "model readiness queues must expose blocked raw-ready catchdown candidates as zero-yuan/no-buy items instead of buy triggers."
+  },
+  {
+    pattern: {
+      test: (source) => source.includes("function buildPortfolioThemeOpportunityPlan")
+        && source.includes("resolvePortfolioPositiveWatchRankingGate")
+        && source.includes("主力/预热题材机会不得BUY")
+        && source.includes("positiveRankingGate")
+    },
+    message: "theme opportunity plans must carry the same no-buy positive-ranking gate so stale catchdown setups are not repackaged as micro-starters."
+  },
+  {
+    pattern: {
+      test: (source) => source.includes("function ensurePortfolioThemeOpportunityReviewed")
+        && source.includes("Boolean(candidate.executable)")
+        && source.includes("candidate.actionPermission")
+        && source.includes("0元观察")
+    },
+    message: "theme opportunity fallback actions must not BUY candidates whose action permission is zero-yuan observation."
+  },
+  {
+    pattern: /主力\/预热题材机会纪律[\s\S]{0,700}actionPermission[\s\S]{0,260}0元观察[\s\S]{0,260}不能 BUY/,
+    message: "portfolio decision prompts must tell the model that blocked theme-opportunity candidates can only be WATCH actions."
   },
   {
     pattern: /(?=[\s\S]*function buildPortfolioRankingCustomerActionDeck[\s\S]*hasMainForceBuy)(?=[\s\S]*主力预热复核优先)(?=[\s\S]*新闻来源\/时间[\s\S]{0,180}主力资金延续[\s\S]{0,180}0\.5%-1\.2%)/,

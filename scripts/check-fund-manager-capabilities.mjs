@@ -8441,7 +8441,7 @@ const themeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
   }],
   [executableMicroStarterDigest],
   {
-    fetchedAt: "2026-05-20T06:30:00.000Z",
+    fetchedAt: freshThemeRefreshAt,
     themeRadar: executableMicroStarterDigest.seed.matchedThemes,
     themeLeaderboards: manager.buildThemeLeaderboards(executableMicroStarterDigest.seed.matchedThemes)
   }
@@ -8449,6 +8449,65 @@ const themeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
 assert.equal(themeOpportunityPlan.candidates[0].opportunityAction, "theme_micro_starter", "theme opportunity plan must convert actionable main-capital/preheat setups into micro-starter candidates");
 assert.equal(themeOpportunityPlan.candidates[0].executable, true, "theme opportunity candidates should be executable only after buy discipline and fee checks pass");
 assert(themeOpportunityPlan.candidates[0].newsLogic.includes("新闻催化"), "theme opportunity plan must preserve the news/current-event logic behind the move");
+const holdingWeakThemeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
+  redeploymentAccount,
+  [{
+    code: "000050",
+    name: "持仓走弱低位基金C",
+    status: "ready",
+    readinessScore: 88,
+    lastSnapshot: holdingRealtimeWeakExecutableDigest
+  }],
+  [holdingRealtimeWeakExecutableDigest],
+  {
+    fetchedAt: freshThemeRefreshAt,
+    themeRadar: executableMicroStarterDigest.seed.matchedThemes,
+    themeLeaderboards: manager.buildThemeLeaderboards(executableMicroStarterDigest.seed.matchedThemes)
+  }
+);
+const holdingWeakThemeOpportunity = holdingWeakThemeOpportunityPlan.candidates.find((item) => item.code === "000050");
+assert(
+  holdingWeakThemeOpportunity?.status === "blocked"
+    && holdingWeakThemeOpportunity?.opportunityAction === "theme_watch"
+    && holdingWeakThemeOpportunity?.executable === false
+    && holdingWeakThemeOpportunity?.actionPermission.includes("0元观察")
+    && holdingWeakThemeOpportunity?.positiveRankingGate.includes("主力/预热题材机会禁止买入")
+    && Number(holdingWeakThemeOpportunity?.suggestedTargetWeightPct || 0) === 0,
+  "theme opportunity plan must expose catchdown-gated current-theme candidates as blocked zero-yuan WATCH items instead of micro-starters"
+);
+assert(
+  /表面回调|接盘|底层持仓/.test(`${holdingWeakThemeOpportunity?.firstGap || ""} ${holdingWeakThemeOpportunity?.positiveRankingGate || ""}`),
+  "blocked theme opportunity candidates must explain the customer-readable catchdown reason"
+);
+const holdingWeakThemeOpportunityDecision = manager.ensurePortfolioThemeOpportunityReviewed(
+  { actions: [], learningNotes: [] },
+  redeploymentAccount,
+  [{
+    code: "000050",
+    name: "持仓走弱低位基金C",
+    status: "ready",
+    readinessScore: 88,
+    lastSnapshot: holdingRealtimeWeakExecutableDigest
+  }],
+  {
+    profiles: [holdingRealtimeWeakExecutableDigest],
+    marketSnapshot: {
+      fetchedAt: freshThemeRefreshAt,
+      themeRadar: executableMicroStarterDigest.seed.matchedThemes,
+      themeLeaderboards: manager.buildThemeLeaderboards(executableMicroStarterDigest.seed.matchedThemes)
+    }
+  }
+);
+assert.equal(
+  holdingWeakThemeOpportunityDecision.actions[0]?.action,
+  "WATCH",
+  "theme opportunity guard must keep catchdown-gated candidates as WATCH even when theme evidence looks actionable"
+);
+assert.equal(holdingWeakThemeOpportunityDecision.actions[0]?.targetWeightPct, 0, "blocked theme opportunities must not keep a micro-starter target weight");
+assert(
+  /表面回调|接盘|底层持仓/.test(`${holdingWeakThemeOpportunityDecision.actions[0]?.reason || ""} ${holdingWeakThemeOpportunityDecision.actions[0]?.chaseRisk || ""}`),
+  "theme opportunity WATCH action must explain why the apparent setup is not buyable"
+);
 const staleSelfSelectedThemeOpportunityDigest = {
   ...executableMicroStarterDigest,
   code: "000059",
@@ -8479,7 +8538,7 @@ const staleSelfSelectedThemeOpportunityPlan = manager.buildPortfolioThemeOpportu
   }],
   [staleSelfSelectedThemeOpportunityDigest],
   {
-    fetchedAt: "2026-05-20T06:30:00.000Z",
+    fetchedAt: freshThemeRefreshAt,
     themeRadar: currentRobotRadarForOpportunity,
     themeLeaderboards: manager.buildThemeLeaderboards(currentRobotRadarForOpportunity)
   }
@@ -8501,7 +8560,7 @@ const staleSelfSelectedThemeOpportunityDecision = manager.ensurePortfolioThemeOp
   {
     profiles: [staleSelfSelectedThemeOpportunityDigest],
     marketSnapshot: {
-      fetchedAt: "2026-05-20T06:30:00.000Z",
+      fetchedAt: freshThemeRefreshAt,
       themeRadar: currentRobotRadarForOpportunity,
       themeLeaderboards: manager.buildThemeLeaderboards(currentRobotRadarForOpportunity)
     }
@@ -8526,7 +8585,7 @@ const noCapitalFlowThemeOpportunityPlan = manager.buildPortfolioThemeOpportunity
   }],
   [{ ...noCapitalFlowMicroStarterDigest, actionability: noCapitalFlowActionability }],
   {
-    fetchedAt: "2026-05-20T06:30:00.000Z",
+    fetchedAt: freshThemeRefreshAt,
     themeRadar: noCapitalFlowMicroStarterDigest.seed.matchedThemes,
     themeLeaderboards: manager.buildThemeLeaderboards(noCapitalFlowMicroStarterDigest.seed.matchedThemes)
   }
@@ -8549,7 +8608,7 @@ const noLogicThemeOpportunityPlan = manager.buildPortfolioThemeOpportunityPlan(
   }],
   [noLogicMicroStarterDigest],
   {
-    fetchedAt: "2026-05-20T06:30:00.000Z",
+    fetchedAt: freshThemeRefreshAt,
     themeRadar: [preheatWithoutNewsTheme],
     themeLeaderboards: manager.buildThemeLeaderboards([preheatWithoutNewsTheme])
   }
@@ -8571,7 +8630,7 @@ const themeOpportunityDecision = manager.ensurePortfolioThemeOpportunityReviewed
   {
     profiles: [executableMicroStarterDigest],
     marketSnapshot: {
-      fetchedAt: "2026-05-20T06:30:00.000Z",
+      fetchedAt: freshThemeRefreshAt,
       themeRadar: executableMicroStarterDigest.seed.matchedThemes,
       themeLeaderboards: manager.buildThemeLeaderboards(executableMicroStarterDigest.seed.matchedThemes)
     }
