@@ -24152,7 +24152,8 @@ function buildFundResultLeaderboardFallback({ text = "", workflow = "", userText
     "requested_result_sort_order_mismatch",
     "missing_result_first_ranking_summary",
     "opening_metric_dump_before_result",
-    "result_ranking_metric_dump"
+    "result_ranking_metric_dump",
+    "verbose_result_answer_detail"
   ].some((issue) => issueSet.has(issue));
   if (!needsLeaderboard) return "";
   if (!shouldRequireFundAnswerResultFirstRankingSummary({ text, workflow, userText, evidence })) return "";
@@ -24239,15 +24240,97 @@ function getFundAnswerCandidateLabel(candidate = {}) {
 
 function buildFundAnswerLeaderboardReason(candidate = {}, { sortPolicy = "", userText = "", blocked = false } = {}) {
   const trend = candidate.trendProfile || candidate.lastSnapshot?.trendProfile || {};
-  if (blocked) return "存在买入前置缺口，不能只因排序靠前就动手";
-  if (/高夏普|低回撤|风险收益|质量/.test(sortPolicy)) return "风险收益更稳，适合排在前面";
-  if (/低波动/.test(sortPolicy)) return "波动更低，适合稳一点的排序";
-  if (/费用|份额/.test(sortPolicy)) return "份额和费用负担更友好";
-  if (/主力|新闻|题材/.test(sortPolicy)) return "题材和资金线索更清楚";
+  if (blocked) return buildFundAnswerBlockedLeaderboardReason(candidate);
+  if (/高夏普|低回撤|风险收益|质量/.test(sortPolicy)) return buildFundAnswerRiskQualityLeaderboardReason(candidate);
+  if (/低波动/.test(sortPolicy)) return buildFundAnswerLowVolatilityLeaderboardReason(candidate);
+  if (/费用|份额/.test(sortPolicy)) return buildFundAnswerFeeLeaderboardReason(candidate);
+  if (/主力|新闻|题材/.test(sortPolicy)) return buildFundAnswerThemeLeaderboardReason(candidate);
   if (/回调|低位|启动|追涨|接盘/.test(sortPolicy) || isPullbackSetupRequest(userText)) {
     return trend.pullbackSetup?.signalText ? "更接近回调后的启动点" : "买点证据相对更完整";
   }
   return "综合质量、买点和费用后更靠前";
+}
+
+function buildFundAnswerBlockedLeaderboardReason(candidate = {}) {
+  const text = [
+    candidate.decisionBlocker,
+    candidate.blocker,
+    candidate.reason,
+    candidate.riskNotes,
+    candidate.readinessGaps,
+    candidate.gaps,
+    candidate.actionability?.decisionBlocker,
+    candidate.actionability?.blocker,
+    candidate.actionability?.gaps
+  ].flat().filter(Boolean).join(" ");
+  if (/接盘|退潮|主力撤离|旧题材|缺题材|缺少当前题材|缺新闻逻辑|缺主力/.test(text) || hasStaleThemeCatchdownEvidence(candidate)) {
+    return "接盘和旧题材风险没解除，不能只看排序";
+  }
+  if (/过期|重新下钻|净值|走势|数据/.test(text) || hasStaleFundEvidence(candidate)) {
+    return "走势或数据要先重刷，不能直接下单";
+  }
+  if (/费用|份额|A类|C类|D类|I类|申购费|销售服务费/.test(text)) {
+    return "份额和费用证据没补齐，先不动钱";
+  }
+  return "买入前置缺口没补齐，不能只因排序靠前就动手";
+}
+
+function buildFundAnswerRiskQualityLeaderboardReason(candidate = {}) {
+  const risk = selectPortfolioQualityRiskPeriod(candidate.lastSnapshot || candidate);
+  const sharpe = finiteMetricNumber(risk?.sharpe);
+  const maxDrawdown = finiteMetricNumber(risk?.maxDrawdownPct);
+  const annualizedReturn = finiteMetricNumber(risk?.annualizedReturnPct);
+  if (Number.isFinite(sharpe) && sharpe >= 1 && Number.isFinite(maxDrawdown) && maxDrawdown >= -12) {
+    return "夏普更高、回撤更浅，排在前面";
+  }
+  if (Number.isFinite(sharpe) && sharpe >= 1) return "夏普质量更突出，适合优先看";
+  if (Number.isFinite(maxDrawdown) && maxDrawdown >= -12) return "回撤更浅，风险收益更稳";
+  if (Number.isFinite(annualizedReturn) && annualizedReturn > 0) return "收益质量有支撑，但还要看买点";
+  return "风险收益证据更完整，先排前面复核";
+}
+
+function buildFundAnswerLowVolatilityLeaderboardReason(candidate = {}) {
+  const risk = selectPortfolioQualityRiskPeriod(candidate.lastSnapshot || candidate);
+  const volatility = finiteMetricNumber(risk?.annualizedVolatilityPct);
+  const maxDrawdown = finiteMetricNumber(risk?.maxDrawdownPct);
+  if (Number.isFinite(volatility) && volatility <= 14 && Number.isFinite(maxDrawdown) && maxDrawdown >= -15) {
+    return "波动和回撤都更温和，适合稳一点排前";
+  }
+  if (Number.isFinite(volatility) && volatility <= 14) return "波动更低，适合优先看";
+  if (Number.isFinite(maxDrawdown) && maxDrawdown >= -15) return "回撤压力更小，先放前面";
+  return "稳健性证据相对更完整";
+}
+
+function buildFundAnswerFeeLeaderboardReason(candidate = {}) {
+  const feeCost = finiteMetricNumber(
+    candidate.fees?.feeImpact?.oneYearCostPer10000
+    ?? candidate.feeImpact?.oneYearCostPer10000
+    ?? candidate.seed?.feeImpact?.oneYearCostPer10000
+  );
+  if (Number.isFinite(feeCost) && feeCost <= 30) return "费用负担更轻，适合排前复核";
+  if (candidate.shareClass || candidate.fees?.shareClass || candidate.seed?.shareClass) return "份额类别更清楚，成本更好判断";
+  return "费用证据相对更完整";
+}
+
+function buildFundAnswerThemeLeaderboardReason(candidate = {}) {
+  const themes = getCandidateThemeSignals(candidate);
+  const theme = themes.find((item) =>
+    String(item?.newsLogic || item?.primaryCatalyst || item?.catalystProfile?.summary || "").trim()
+      || Number(item?.capitalFollowScore || 0) >= 58
+      || Number(item?.preheatScore || 0) >= 56
+  ) || themes[0] || null;
+  if (!theme) return "题材承载线索相对更清楚";
+  if (String(theme.newsLogic || theme.primaryCatalyst || theme.catalystProfile?.summary || "").trim()
+    && (Number(theme.capitalFollowScore || 0) >= 58 || Number(theme.preheatScore || 0) >= 56)) {
+    return "新闻催化和资金线索同时更清楚";
+  }
+  if (String(theme.newsLogic || theme.primaryCatalyst || theme.catalystProfile?.summary || "").trim()) {
+    return "新闻催化更清楚，适合优先复核";
+  }
+  if (Number(theme.capitalFollowScore || 0) >= 58 || Number(theme.preheatScore || 0) >= 56) {
+    return "主力或预热线索更清楚";
+  }
+  return "题材承载线索相对更清楚";
 }
 
 function isFundAnswerLeaderboardNoBuyCandidate(candidate = {}) {

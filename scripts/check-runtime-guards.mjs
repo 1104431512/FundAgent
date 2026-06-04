@@ -825,6 +825,14 @@ const requiredPatterns = [
     message: "fund answer quality must have a deterministic result leaderboard fallback when ranked answers omit the first-screen result board."
   },
   {
+    pattern: /function buildFundResultLeaderboardFallback[\s\S]{0,900}verbose_result_answer_detail[\s\S]{0,1600}sortFundAnswerRankedCandidatesByRequestedPriority[\s\S]{0,1300}结果榜/,
+    message: "fund answer quality must rebuild short result leaderboards for verbosity complaints instead of only compressing the model draft."
+  },
+  {
+    pattern: /function buildFundAnswerRiskQualityLeaderboardReason[\s\S]{0,1400}夏普[\s\S]{0,900}回撤[\s\S]{0,2200}function buildFundAnswerThemeLeaderboardReason[\s\S]{0,1200}新闻催化[\s\S]{0,700}主力/,
+    message: "fund result leaderboard reasons must explain priority in plain Chinese such as Sharpe, drawdown, news catalyst, and main-capital evidence instead of generic labels."
+  },
+  {
     pattern: /const resultLeaderboardFallback = buildFundResultLeaderboardFallback[\s\S]{0,520}evaluateFundAnswerQuality[\s\S]{0,260}fundAnswerQualityDeterministicFallbacks/,
     message: "fund answer enforcement must try deterministic result leaderboards before relying on model rewrite for ordinary ranking failures."
   },

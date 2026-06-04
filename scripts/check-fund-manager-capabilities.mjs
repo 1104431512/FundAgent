@@ -1642,6 +1642,40 @@ assert(
   genericLeaderboardFallbackQuality.ok,
   `generic result fallback must pass answer quality checks, got ${genericLeaderboardFallbackQuality.issues.join(",")}`
 );
+const verboseOnlyLeaderboardFallback = manager.buildFundResultLeaderboardFallback({
+  text: verboseRankedAnswer,
+  workflow: "fund_recommendation",
+  userText: "经理太啰嗦了，干巴巴的讲数据，直接给我结果，少报数据",
+  evidence: genericLeaderboardFallbackEvidence,
+  issues: ["verbose_result_answer_detail"]
+});
+const verboseOnlyResultLine = verboseOnlyLeaderboardFallback.split(/\r?\n/).find((line) => line.startsWith("结果榜：")) || "";
+assert(
+  verboseOnlyLeaderboardFallback.includes("直接结论：") && verboseOnlyLeaderboardFallback.includes("排序口径：") && verboseOnlyLeaderboardFallback.includes("结果榜："),
+  "verbose-result fallback must rebuild a direct result board even when the draft already rambled after the first-screen result"
+);
+assert(
+  verboseOnlyLeaderboardFallback.split(/\r?\n/).filter(Boolean).length <= 6 && !verboseOnlyLeaderboardFallback.includes("推荐清单："),
+  "verbose-result fallback must stay in a short leaderboard shape instead of keeping the long metric report"
+);
+assert(
+  verboseOnlyResultLine.indexOf("000082") >= 0 && verboseOnlyResultLine.indexOf("000082") < verboseOnlyResultLine.indexOf("000081"),
+  "verbosity complaints without an explicit metric must still use the default risk-quality priority instead of preserving draft order"
+);
+assert(
+  /夏普|回撤|风险收益/.test(verboseOnlyResultLine) && !/(?:夏普\s*\d|回撤-?\d|近20日|近60日)/.test(verboseOnlyResultLine),
+  "short leaderboard reasons must name the priority in plain language without dumping metric values"
+);
+const verboseOnlyLeaderboardQuality = manager.evaluateFundAnswerQuality({
+  text: verboseOnlyLeaderboardFallback,
+  workflow: "fund_recommendation",
+  userText: "经理太啰嗦了，干巴巴的讲数据，直接给我结果，少报数据",
+  evidence: genericLeaderboardFallbackEvidence
+});
+assert(
+  verboseOnlyLeaderboardQuality.ok,
+  `verbose-result fallback must pass answer quality checks, got ${verboseOnlyLeaderboardQuality.issues.join(",")}`
+);
 const highSharpeBlockedPriorityEvidence = {
   marketDeepDive: {
     candidates: [
