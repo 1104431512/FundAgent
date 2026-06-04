@@ -21363,12 +21363,19 @@ function compactDataSourceCoverageForModel(coverage = null) {
     .filter(Boolean)
     .slice(0, 4);
   const candidateCounts = fund.candidateCounts || {};
+  const fundCoverageParts = [
+    `${Object.values(candidateCounts).reduce((sum, value) => sum + Number(value || 0), 0)}只候选`,
+    `实时估值${fund.realtimeValuationCount || 0}条`,
+    `研究缓存${fund.researchDigestCacheFunds || 0}只`,
+    `画像${fund.researchDigestProfileFunds || 0}/风险${fund.researchDigestRiskMetricFunds || 0}/持仓${fund.researchDigestHoldingFunds || 0}/费率${fund.researchDigestFeeFunds || 0}`,
+    `持仓脉冲${fund.holdingRealtimePulseFunds || 0}只/底层${fund.holdingRealtimePulseItems || 0}条`
+  ];
   return {
     快照时效: snapshot.ageText || "",
     外部接口: `${totals.configuredSources ?? 0}/${totals.externalSources ?? 0} 已配置`,
     实时接口: `${totals.realtimeUsableSources ?? 0}/${totals.realtimeSources ?? 0}`,
     板块覆盖: `${board.observedBoards || 0}个板块；${board.configuredMarketTypes || 0}类；${board.realtimeBoardFeeds || 0}实时榜；${board.metricFieldCount || 0}字段`,
-    基金覆盖: `${Object.values(candidateCounts).reduce((sum, value) => sum + Number(value || 0), 0)}只候选；排行${fund.rankingCount || 0}；实时估值${fund.realtimeValuationCount || 0}条；历史${fund.rankingHistoryFunds || 0}`,
+    基金覆盖: fundCoverageParts.join("；"),
     新闻覆盖: `${news.fastNewsCount || 0}条快讯；${news.topTopicCount || 0}个题材脉冲`,
     指标引擎: `${totals.activeIndicatorEngines ?? activeEngines.length}/${totals.indicatorEngines ?? DATA_PROCESSING_ENGINE_REGISTRY.length} 已有样本`,
     证据门槛: coverage.evidenceReadiness ? `${coverage.evidenceReadiness.score}分 ${coverage.evidenceReadiness.label}` : "",

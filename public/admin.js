@@ -761,6 +761,7 @@ function renderRuntimeDataSourceCoverage(coverage = null, error = null) {
     <div class="data-source-kpi-grid">
       ${renderDataSourceKpi("买入门槛", readiness.label || "待判断", readiness.actionText || "等待覆盖评分", readiness.tone || "snapshot")}
       ${renderDataSourceKpi("外部接口", `${totals.configuredSources || 0}/${totals.externalSources || 0}`, `已有样本 ${totals.sampledSources || 0}，待授权 ${totals.tokenRequiredSources || 0}`, "source")}
+      ${renderDataSourceKpi("代码抓取能力", `${totals.liveSources || 0} 实抓`, `${board.observedMetricCells || 0} 板块指标，基金研究 ${fund.researchDigestCacheFunds || 0} 只`, "engine")}
       ${renderDataSourceKpi("本次实抓", `${totals.liveSources || 0} 个`, `可用 ${totals.usableSources || 0}，缓存回退 ${readiness.sourceHealth?.cachedSources || 0}`, "ok")}
       ${renderDataSourceKpi("实时接口", `${totals.realtimeUsableSources || 0}/${totals.realtimeSources || 0}`, `板块、指数、估值、新闻实时/准实时`, "realtime")}
       ${renderDataSourceKpi("板块维度", `${board.realtimeBoardFeeds || 0} 条`, `${board.configuredMarketTypes || 0} 类市场，每板块 ${board.metricFieldCount || 0} 项指标`, "board")}
@@ -770,6 +771,17 @@ function renderRuntimeDataSourceCoverage(coverage = null, error = null) {
     </div>
 
     <div class="data-source-focus-grid">
+      ${renderDataSourceFocusCard({
+        title: "代码抓取能力",
+        value: `${totals.externalSources || 0} 个来源`,
+        meta: `${totals.realtimeSources || 0} 个实时/准实时接口 · ${totals.activeIndicatorEngines || 0} 个固定指标引擎`,
+        details: [
+          `当前可实抓 ${totals.liveSources || 0} 个接口，已配置 ${totals.configuredSources || 0}/${totals.externalSources || 0}`,
+          `板块市场 ${board.configuredMarketTypes || 0} 类，实时榜单 ${board.realtimeBoardFeeds || 0} 条`,
+          `板块指标 ${board.observedBoards || 0} 个板块 × ${board.metricFieldCount || 0} 字段 = ${board.observedMetricCells || 0} 个`,
+          `基金研究 ${fund.researchDigestCacheFunds || 0} 只，持仓行情脉冲 ${fund.holdingRealtimePulseItems || 0} 条`
+        ]
+      })}
       ${renderDataSourceFocusCard({
         title: "证据门槛",
         value: readiness.score !== undefined ? `${readiness.score} 分` : "待评分",

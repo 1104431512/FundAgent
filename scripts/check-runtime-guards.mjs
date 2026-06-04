@@ -203,6 +203,11 @@ const requiredPatterns = [
         && compactCoverage.includes("实时接口")
         && compactCoverage.includes("板块覆盖")
         && compactCoverage.includes("基金覆盖")
+        && compactCoverage.includes("researchDigestCacheFunds")
+        && compactCoverage.includes("researchDigestRiskMetricFunds")
+        && compactCoverage.includes("holdingRealtimePulseFunds")
+        && compactCoverage.includes("研究缓存")
+        && compactCoverage.includes("持仓脉冲")
         && compactCoverage.includes("新闻覆盖")
         && compactCoverage.includes("指标引擎")
         && compactCoverage.includes("证据门槛")
@@ -229,7 +234,7 @@ const requiredPatterns = [
     message: "board market coverage must show concept/industry markets, four realtime board modes, and per-board metric fields."
   },
   {
-    pattern: /(?=[\s\S]*runtimeDataSourceCoverage)(?=[\s\S]*refreshDataSourcesBtn)(?=[\s\S]*renderRuntimeDataSourceCoverage)(?=[\s\S]*数据源覆盖)(?=[\s\S]*evidenceReadiness)(?=[\s\S]*repairQueue)(?=[\s\S]*买入门槛)(?=[\s\S]*证据门槛)(?=[\s\S]*本次实抓)(?=[\s\S]*liveSources)(?=[\s\S]*板块指标)(?=[\s\S]*observedMetricCells)(?=[\s\S]*修复队列)/,
+    pattern: /(?=[\s\S]*runtimeDataSourceCoverage)(?=[\s\S]*refreshDataSourcesBtn)(?=[\s\S]*renderRuntimeDataSourceCoverage)(?=[\s\S]*数据源覆盖)(?=[\s\S]*evidenceReadiness)(?=[\s\S]*repairQueue)(?=[\s\S]*买入门槛)(?=[\s\S]*证据门槛)(?=[\s\S]*代码抓取能力)(?=[\s\S]*externalSources)(?=[\s\S]*realtimeSources)(?=[\s\S]*本次实抓)(?=[\s\S]*liveSources)(?=[\s\S]*板块指标)(?=[\s\S]*observedMetricCells)(?=[\s\S]*修复队列)/,
     message: "admin runtime data-source page must visibly show source coverage, live fetch counts, board indicator cells, evidence readiness, repair queue, and allow manual refresh."
   },
   {

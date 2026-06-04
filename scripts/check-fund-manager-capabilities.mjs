@@ -29,6 +29,7 @@ assert(serverSource.includes("holding_realtime_quotes") && serverSource.includes
 assert(adminSource.includes("快照预热") && adminSource.includes("marketSnapshotWarmerSuccesses"), "admin runtime data page must expose market snapshot warmer status");
 assert(adminSource.includes("完整快照") && adminSource.includes("latestMarketSnapshotWrites"), "admin runtime data page must expose persisted full market snapshot status");
 assert(adminSource.includes("本次实抓") && adminSource.includes("liveSources") && adminSource.includes("板块指标") && adminSource.includes("observedMetricCells"), "admin data-source page must expose live fetch counts and board indicator cells");
+assert(adminSource.includes("代码抓取能力") && adminSource.includes("externalSources") && adminSource.includes("realtimeSources"), "admin data-source page must expose the fixed-code data collection capability summary");
 assert(adminSource.includes("资料预热") && adminSource.includes("fundResearchWarmerCandidates") && adminSource.includes("研究缓存") && adminSource.includes("researchDigestCacheFunds"), "admin data-source page must expose fund research warmer and research cache counts");
 assert(adminSource.includes("画像样本") && adminSource.includes("researchDigestRiskMetricFunds") && adminSource.includes("researchDigestFeeFunds"), "admin data-source page must expose risk, holdings, and fee profile sample counts");
 assert(adminSource.includes("持仓脉冲") && adminSource.includes("holdingRealtimePulseItems") && adminSource.includes("持仓行情"), "admin data-source page must expose top-holding realtime pulse coverage");
@@ -12699,7 +12700,15 @@ const noisyMarketSnapshot = {
       },
       rankingCount: 108,
       realtimeValuationCount: 24,
-      rankingHistoryFunds: 27
+      rankingHistoryFunds: 27,
+      researchDigestCacheFunds: 2,
+      freshResearchDigestCacheFunds: 2,
+      researchDigestProfileFunds: 2,
+      researchDigestRiskMetricFunds: 2,
+      researchDigestHoldingFunds: 2,
+      researchDigestFeeFunds: 2,
+      holdingRealtimePulseFunds: 1,
+      holdingRealtimePulseItems: 8
     },
     newsCoverage: {
       fastNewsCount: 28,
@@ -12762,6 +12771,8 @@ assert.equal(compactMarketSnapshot["数据源覆盖"].外部接口, "15/16 已�
 assert.equal(compactMarketSnapshot["数据源覆盖"].实时接口, "9/10", "compact data-source coverage must tell the model how many realtime interfaces are usable");
 assert(compactMarketSnapshot["数据源覆盖"].板块覆盖.includes("88个板块"), "compact data-source coverage must preserve realtime board coverage");
 assert(compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("18只候选") && compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("实时估值24条"), "compact data-source coverage must preserve fund candidate and valuation coverage");
+assert(compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("研究缓存2只") && compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("风险2") && compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("持仓2") && compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("费率2"), "compact data-source coverage must carry warmed fund research profile, risk, holdings, and fee sample counts");
+assert(compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("持仓脉冲1只") && compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("底层8条"), "compact data-source coverage must carry top-holding realtime pulse coverage into model evidence");
 assert(compactMarketSnapshot["数据源覆盖"].新闻覆盖.includes("28条快讯") && compactMarketSnapshot["数据源覆盖"].新闻覆盖.includes("6个题材脉冲"), "compact data-source coverage must preserve news pulse coverage");
 assert(compactMarketSnapshot["数据源覆盖"].已激活指标.includes("市场宽度") && compactMarketSnapshot["数据源覆盖"].已激活指标.includes("板块轮动"), "compact data-source coverage must preserve active fixed-code indicator engines");
 assert.equal(compactMarketSnapshot["数据源覆盖"].证据门槛, "84分 可支撑买入复核", "compact data-source coverage must preserve deterministic evidence-readiness score");
