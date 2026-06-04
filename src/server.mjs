@@ -21002,6 +21002,7 @@ function summarizeMarketSnapshot(snapshot) {
     themeLeaderboards: snapshot.themeLeaderboards || buildThemeLeaderboards(snapshot.themeRadar || []),
     themeMainForcePlaybook: snapshot.themeMainForcePlaybook || null,
     themeHistory: snapshot.themeHistory || buildThemeRadarHistorySummary(snapshot.themeRadar || []),
+    dataSourceCoverage: snapshot.dataSourceCoverage || null,
     fundCandidates: {
       stockFunds: (snapshot.fundCandidates?.stockFunds || []).slice(0, 8),
       hybridFunds: (snapshot.fundCandidates?.hybridFunds || []).slice(0, 8),
@@ -21033,6 +21034,7 @@ function compactMarketSnapshotForModel(snapshot = null) {
     fetchedAt: summary.fetchedAt || "",
     note: summary.note || "",
     dataQuality: summary.dataQuality,
+    数据源覆盖: compactDataSourceCoverageForModel(summary.dataSourceCoverage),
     marketIndicators,
     themes: {
       conceptBoards: compactMarketBoardItems(summary.themes?.conceptBoards || [], 6),
@@ -21052,6 +21054,43 @@ function compactMarketSnapshotForModel(snapshot = null) {
     },
     errors: (summary.errors || []).slice(0, 6),
     sources: (summary.sources || []).slice(0, 8)
+  };
+}
+
+function compactDataSourceCoverageForModel(coverage = null) {
+  if (!coverage || typeof coverage !== "object") return null;
+  const totals = coverage.totals || {};
+  const board = coverage.boardCoverage || {};
+  const fund = coverage.fundCoverage || {};
+  const news = coverage.newsCoverage || {};
+  const snapshot = coverage.snapshot || {};
+  const activeEngines = (coverage.indicatorEngines || [])
+    .filter((item) => item.status === "active")
+    .map((item) => item.label || item.id)
+    .filter(Boolean)
+    .slice(0, 2);
+  const cachedSources = (coverage.sources || [])
+    .filter((item) => item.status === "cached")
+    .map((item) => `${item.provider || ""}${item.label ? `/${item.label}` : ""}`.trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  const missingSources = (coverage.sources || [])
+    .filter((item) => ["missing", "needs_config"].includes(item.status))
+    .map((item) => `${item.provider || ""}${item.label ? `/${item.label}` : ""}${item.status === "needs_config" ? "（待授权）" : ""}`.trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  const candidateCounts = fund.candidateCounts || {};
+  return {
+    快照时效: snapshot.ageText || "",
+    外部接口: `${totals.configuredSources ?? 0}/${totals.externalSources ?? 0} 已配置`,
+    实时接口: `${totals.realtimeUsableSources ?? 0}/${totals.realtimeSources ?? 0}`,
+    板块覆盖: `${board.observedBoards || 0}个板块；${board.configuredMarketTypes || 0}类；${board.realtimeBoardFeeds || 0}实时榜；${board.metricFieldCount || 0}字段`,
+    基金覆盖: `${Object.values(candidateCounts).reduce((sum, value) => sum + Number(value || 0), 0)}只候选；排行${fund.rankingCount || 0}；实时估值${fund.realtimeValuationCount || 0}条；历史${fund.rankingHistoryFunds || 0}`,
+    新闻覆盖: `${news.fastNewsCount || 0}条快讯；${news.topTopicCount || 0}个题材脉冲`,
+    指标引擎: `${totals.activeIndicatorEngines ?? activeEngines.length}/${totals.indicatorEngines ?? DATA_PROCESSING_ENGINE_REGISTRY.length} 已有样本`,
+    已激活指标: activeEngines,
+    缓存源: cachedSources,
+    缺口源: missingSources
   };
 }
 
@@ -22140,6 +22179,28 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
     }
     if (quality.level !== "good") {
       lines.push("质量要求：必须主动披露数据缺口，涉及缺失模块的结论只能写观察、待复核或降低把握度，不能装作已经完整联网验证。");
+    }
+  }
+  const sourceCoverage = compactDataSourceCoverageForModel(
+    marketSnapshot.dataSourceCoverage
+    || buildDataSourceCoverageFromSnapshot(marketSnapshot, { generatedAt: marketSnapshot.fetchedAt || new Date().toISOString() })
+  );
+  if (sourceCoverage) {
+    lines.push([
+      "数据源覆盖：",
+      `外部接口${sourceCoverage.外部接口}`,
+      `实时接口${sourceCoverage.实时接口}`,
+      sourceCoverage.快照时效 ? `快照${sourceCoverage.快照时效}` : "",
+      sourceCoverage.板块覆盖 || "",
+      sourceCoverage.基金覆盖 || "",
+      sourceCoverage.新闻覆盖 || "",
+      `指标引擎${sourceCoverage.指标引擎}`
+    ].filter(Boolean).join("；"));
+    if (sourceCoverage.缓存源?.length) {
+      lines.push(`- 缓存回退源：${sourceCoverage.缓存源.slice(0, 4).join("、")}；只能用于连续性计算，不能当作实时买点确认。`);
+    }
+    if (sourceCoverage.缺口源?.length) {
+      lines.push(`- 数据源缺口：${sourceCoverage.缺口源.slice(0, 4).join("、")}。`);
     }
   }
   const chinaIndices = marketSnapshot.marketIndicators?.chinaIndices || [];
@@ -27304,7 +27365,7 @@ async function fetchMarketSnapshot(options = {}) {
     last: { lastMarketSnapshotAt: fetchedAt }
   });
 
-  return {
+  const snapshot = {
     ok: dataQuality.ok,
     fetchedAt,
     note: "公开数据快照可能有延迟；贵金属行情为公开报价，基金排行更偏近期动量，不等于长期质量。",
@@ -27347,6 +27408,11 @@ async function fetchMarketSnapshot(options = {}) {
       "https://m.cls.cn/telegraph"
     ].filter(Boolean)
   };
+  snapshot.dataSourceCoverage = buildDataSourceCoverageFromSnapshot(snapshot, {
+    cache,
+    generatedAt: fetchedAt
+  });
+  return snapshot;
 }
 
 function readMarketSnapshotCache(filePath = MARKET_SNAPSHOT_CACHE_PATH) {
@@ -28624,25 +28690,8 @@ async function buildDataSourceCoverageReport(options = {}) {
   const latestSnapshot = liveSnapshot
     || findLatestPortfolioMarketSnapshotForCoverage(portfolioDb)
     || buildMarketSnapshotCoverageFromCache(cache, generatedAt);
-  const stats = getRuntimeStats();
-  const componentStatusMap = buildDataSourceComponentStatusMap(latestSnapshot, cache, generatedAt);
-  const sources = DATA_SOURCE_REGISTRY.map((source) =>
-    buildDataSourceCoverageItem(source, { componentStatusMap, stats })
-  );
-  const boardCoverage = buildBoardMarketCoverage(latestSnapshot, componentStatusMap);
-  const fundCoverage = buildFundDataCoverage(latestSnapshot, componentStatusMap);
-  const newsCoverage = buildNewsDataCoverage(latestSnapshot, componentStatusMap);
-  const indicatorEngines = buildDataProcessingEngineCoverage(latestSnapshot, stats);
-  const historyStores = buildDataSourceHistoryStores();
-  const totals = buildDataSourceCoverageTotals({
-    sources,
-    boardCoverage,
-    fundCoverage,
-    newsCoverage,
-    indicatorEngines,
-    historyStores
-  });
-  const snapshotMeta = buildDataSourceSnapshotMeta(latestSnapshot, cache, {
+  const coverage = buildDataSourceCoverageFromSnapshot(latestSnapshot, {
+    cache,
     generatedAt,
     refresh: Boolean(options.refresh),
     refreshError
@@ -28657,10 +28706,42 @@ async function buildDataSourceCoverageReport(options = {}) {
   });
 
   return {
+    ...coverage,
     generatedAt,
     refreshed: Boolean(liveSnapshot),
     refreshRequested: Boolean(options.refresh),
-    refreshError,
+    refreshError
+  };
+}
+
+function buildDataSourceCoverageFromSnapshot(snapshot = null, options = {}) {
+  const generatedAt = options.generatedAt || new Date().toISOString();
+  const cache = options.cache || readMarketSnapshotCache();
+  const stats = options.stats || getRuntimeStats();
+  const componentStatusMap = buildDataSourceComponentStatusMap(snapshot, cache, generatedAt);
+  const sources = DATA_SOURCE_REGISTRY.map((source) =>
+    buildDataSourceCoverageItem(source, { componentStatusMap, stats })
+  );
+  const boardCoverage = buildBoardMarketCoverage(snapshot, componentStatusMap);
+  const fundCoverage = buildFundDataCoverage(snapshot, componentStatusMap);
+  const newsCoverage = buildNewsDataCoverage(snapshot, componentStatusMap);
+  const indicatorEngines = buildDataProcessingEngineCoverage(snapshot, stats);
+  const historyStores = buildDataSourceHistoryStores();
+  const totals = buildDataSourceCoverageTotals({
+    sources,
+    boardCoverage,
+    fundCoverage,
+    newsCoverage,
+    indicatorEngines,
+    historyStores
+  });
+  const snapshotMeta = buildDataSourceSnapshotMeta(snapshot, cache, {
+    generatedAt,
+    refresh: Boolean(options.refresh),
+    refreshError: options.refreshError || ""
+  });
+  return {
+    generatedAt,
     summary: buildDataSourceCoverageSummary({ totals, boardCoverage, fundCoverage, newsCoverage, snapshotMeta }),
     totals,
     snapshot: snapshotMeta,
@@ -42940,6 +43021,7 @@ export {
   classifyMessageIntent,
   compactPortfolioDbForStorage,
   compactModelInputForContext,
+  compactDataSourceCoverageForModel,
   compactMarketSnapshotForModel,
   compactRealtimeFundValuations,
   compactMarketDataQuality,

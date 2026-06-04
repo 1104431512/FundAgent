@@ -12606,6 +12606,58 @@ const noisyMarketSnapshot = {
     qdiiFunds: [],
     preciousMetalFunds: []
   },
+  dataSourceCoverage: {
+    summary: "已配置16个外部接口，9个实时接口可用，覆盖板块、基金、新闻和指标引擎。",
+    totals: {
+      externalSources: 16,
+      configuredSources: 15,
+      sampledSources: 10,
+      realtimeSources: 10,
+      realtimeUsableSources: 9,
+      indicatorEngines: 12,
+      activeIndicatorEngines: 8
+    },
+    snapshot: {
+      ageText: "刚刚",
+      sourceMode: "live",
+      dataQualitySummary: "部分可用"
+    },
+    boardCoverage: {
+      observedBoards: 88,
+      configuredMarketTypes: 2,
+      realtimeBoardFeeds: 8,
+      metricFieldCount: 11
+    },
+    fundCoverage: {
+      candidateCounts: {
+        stockFunds: 18,
+        hybridFunds: 0,
+        indexFunds: 0,
+        qdiiFunds: 0,
+        preciousMetalFunds: 0
+      },
+      rankingCount: 108,
+      realtimeValuationCount: 24,
+      rankingHistoryFunds: 27
+    },
+    newsCoverage: {
+      fastNewsCount: 28,
+      topTopicCount: 6,
+      sourceKinds: ["eastmoney_fast_news", "cls_telegraph"]
+    },
+    indicatorEngines: [
+      { id: "marketBreadth", label: "市场宽度", status: "active" },
+      { id: "boardRotation", label: "板块轮动", status: "active" },
+      { id: "newsPulse", label: "新闻脉冲", status: "active" },
+      { id: "themeLeaderboards", label: "题材榜单", status: "active" }
+    ],
+    sources: [
+      { provider: "天天基金", label: "盘中估算净值", status: "available" },
+      { provider: "新浪财经", label: "基金估值备源", status: "cached" },
+      { provider: "养基宝", label: "基金搜索/实时估值", status: "needs_config" },
+      { provider: "财联社", label: "电报快讯", status: "available" }
+    ]
+  },
   errors: ["timeout"],
   sources: ["https://example.com/noisy"]
 };
@@ -12619,6 +12671,15 @@ assert.equal(compactMarketSnapshot.marketIndicators.globalMarkets[0].name, "纳�
 assert.equal(compactMarketSnapshot.marketIndicators.realtimeFundValuations.length, 12, "compact market snapshot must include capped real-time valuation candidates");
 assert(compactMarketSnapshot.marketIndicators.realtimeFundValuations[0].freshness === "半小时内更新", "compact market snapshot must preserve real-time valuation freshness labels");
 assert.equal(compactMarketSnapshot.marketIndicators.realtimeFundValuations[0]["盘中走势"], "盘中回落，冲高回落", "compact market snapshot must preserve intraday valuation direction for timing decisions");
+assert(compactMarketSnapshot["数据源覆盖"], "compact market snapshot must include data-source coverage for model evidence");
+assert.equal(compactMarketSnapshot["数据源覆盖"].外部接口, "15/16 已配置", "compact data-source coverage must tell the model how many external interfaces are configured");
+assert.equal(compactMarketSnapshot["数据源覆盖"].实时接口, "9/10", "compact data-source coverage must tell the model how many realtime interfaces are usable");
+assert(compactMarketSnapshot["数据源覆盖"].板块覆盖.includes("88个板块"), "compact data-source coverage must preserve realtime board coverage");
+assert(compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("18只候选") && compactMarketSnapshot["数据源覆盖"].基金覆盖.includes("实时估值24条"), "compact data-source coverage must preserve fund candidate and valuation coverage");
+assert(compactMarketSnapshot["数据源覆盖"].新闻覆盖.includes("28条快讯") && compactMarketSnapshot["数据源覆盖"].新闻覆盖.includes("6个题材脉冲"), "compact data-source coverage must preserve news pulse coverage");
+assert(compactMarketSnapshot["数据源覆盖"].已激活指标.includes("市场宽度") && compactMarketSnapshot["数据源覆盖"].已激活指标.includes("板块轮动"), "compact data-source coverage must preserve active fixed-code indicator engines");
+assert(compactMarketSnapshot["数据源覆盖"].缓存源.includes("新浪财经/基金估值备源"), "compact data-source coverage must show cache fallback sources");
+assert(compactMarketSnapshot["数据源覆盖"].缺口源.includes("养基宝/基金搜索/实时估值（待授权）"), "compact data-source coverage must show missing or authorization-gated sources");
 assert(compactMarketSnapshot.themeRadar[0]["板块位置"] === "交易拥挤", "compact market snapshot must carry Chinese theme-stage labels");
 assert(compactMarketSnapshot.themeRadar[0]["主力节奏"] === "交易拥挤", "compact market snapshot must carry Chinese leader-signal labels");
 assert.equal(compactMarketSnapshot.themeRadar[0]["题材逻辑"], "题材拥挤：新闻催化：金价波动；板块验证：贵金属+1.2%", "compact market snapshot must carry readable news/theme logic");
@@ -12626,8 +12687,9 @@ assert.equal(compactMarketSnapshot.themeRadar[0]["主力跟随"], 34, "compact m
 assert.equal(compactMarketSnapshot.themeRadar[0]["预热评分"], 28, "compact market snapshot must carry preheat score under a Chinese label");
 assert(compactMarketSnapshot.themeRadar[0]["操作倾向"] === "等待或小额试探", "compact market snapshot must carry Chinese action-bias labels");
 assert(!/"(?:stage|positionSignal|actionBias|stageText|positionSignalText|actionBiasText|leaderSignal|capitalFollowScore|preheatScore|newsLogic)"\s*:/.test(compactMarketSnapshotJson), "compact market snapshot must not expose raw theme-radar field names to the model");
+assert(compactMarketSnapshotJson.includes("数据源覆盖") && compactMarketSnapshotJson.includes("外部接口") && compactMarketSnapshotJson.includes("指标引擎"), "compact market snapshot must expose source coverage with Chinese labels");
 assert(!compactMarketSnapshotJson.includes("NOISY_"), "compact market snapshot must strip raw payloads that cause context-window failures");
-assert(compactMarketSnapshotJson.length < 9000, "compact market snapshot must stay small enough for recommendation and QA prompts");
+assert(compactMarketSnapshotJson.length < 9300, `compact market snapshot with data-source coverage must stay small enough for recommendation and QA prompts, got ${compactMarketSnapshotJson.length}`);
 assert(serverSource.includes("compactMarketSnapshotForModel(marketSnapshot)"), "fund recommendation, QA, and portfolio prompts must use compact market snapshots");
 assert(!serverSource.includes("JSON.stringify(marketSnapshot || {}, null, 2)"), "fund recommendation prompt must not send the raw market snapshot");
 assert(!serverSource.includes("JSON.stringify(marketSnapshot, null, 2)"), "fund QA prompt must not send the raw market snapshot");

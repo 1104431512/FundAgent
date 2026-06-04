@@ -125,6 +125,43 @@ const requiredPatterns = [
     message: "admin APIs must expose structured data-source coverage instead of only runtime counters."
   },
   {
+    test: (source) => {
+      const fetcher = getFunctionSource(source, "fetchMarketSnapshot");
+      const builder = getFunctionSource(source, "buildDataSourceCoverageFromSnapshot");
+      return fetcher.includes("snapshot.dataSourceCoverage = buildDataSourceCoverageFromSnapshot")
+        && builder.includes("DATA_SOURCE_REGISTRY.map")
+        && builder.includes("buildBoardMarketCoverage")
+        && builder.includes("buildFundDataCoverage")
+        && builder.includes("buildNewsDataCoverage")
+        && builder.includes("buildDataProcessingEngineCoverage");
+    },
+    message: "market snapshots must attach deterministic data-source coverage covering source, board, fund, news, and indicator layers."
+  },
+  {
+    test: (source) => {
+      const compact = getFunctionSource(source, "compactMarketSnapshotForModel");
+      const compactCoverage = getFunctionSource(source, "compactDataSourceCoverageForModel");
+      return compact.includes("数据源覆盖: compactDataSourceCoverageForModel")
+        && compactCoverage.includes("外部接口")
+        && compactCoverage.includes("实时接口")
+        && compactCoverage.includes("板块覆盖")
+        && compactCoverage.includes("基金覆盖")
+        && compactCoverage.includes("新闻覆盖")
+        && compactCoverage.includes("指标引擎");
+    },
+    message: "compact model snapshots must carry Chinese data-source coverage instead of hiding interface health from the manager."
+  },
+  {
+    test: (source) => {
+      const evidence = getFunctionSource(source, "buildMarketEvidenceSummary");
+      return evidence.includes("compactDataSourceCoverageForModel")
+        && evidence.includes("数据源覆盖：")
+        && evidence.includes("缓存回退源")
+        && evidence.includes("数据源缺口");
+    },
+    message: "market evidence summaries must tell the model which data sources are available, cached, or missing."
+  },
+  {
     pattern: /function buildBoardMarketCoverage[\s\S]{0,1600}configuredMarketTypes:\s*2[\s\S]{0,600}realtimeBoardFeeds:\s*2 \* fetchModes\.length[\s\S]{0,600}metricFieldCount/,
     message: "board market coverage must show concept/industry markets, four realtime board modes, and per-board metric fields."
   },
