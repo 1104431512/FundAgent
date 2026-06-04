@@ -652,6 +652,7 @@ function renderRuntimeTerminal(stats = {}, deployment = null, dataSourceCoverage
       title: "基金资料",
       items: [
         { label: "联网补全", value: getRuntimeCounter(counters, "fundEnrichmentSuccess"), meta: "净值、规模、经理、风险" },
+        { label: "资料预热", value: getRuntimeCounter(counters, "fundResearchWarmerDigests"), meta: `运行 ${formatRuntimeCount(getRuntimeCounter(counters, "fundResearchWarmerRuns"))} · 候选 ${formatRuntimeCount(getRuntimeCounter(counters, "fundResearchWarmerCandidates"))} · 失败 ${formatRuntimeCount(getRuntimeCounter(counters, "fundResearchWarmerFailures"))}` },
         { label: "费率页", value: getRuntimeCounter(counters, "fundFeePageFetches"), meta: "A/C/D/I 份额费用" },
         { label: "持仓补全", value: getRuntimeCounter(counters, "fundHoldingsFetches"), meta: "前十大持仓与行业前景" }
       ]
@@ -801,6 +802,7 @@ function renderRuntimeDataSourceCoverage(coverage = null, error = null) {
         details: [
           `实时估值 ${fund.realtimeValuationCount || 0} 条`,
           `新鲜估值 ${fund.freshRealtimeValuationCount || 0} 条`,
+          `研究缓存 ${fund.researchDigestCacheFunds || 0} 只，新鲜 ${fund.freshResearchDigestCacheFunds || 0} 只`,
           `榜单历史 ${fund.rankingHistoryFunds || 0} 只`
         ]
       })}

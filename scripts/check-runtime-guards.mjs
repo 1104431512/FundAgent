@@ -932,6 +932,40 @@ const requiredPatterns = [
     message: "admin runtime data-source panel must expose market snapshot warmer runs, successes, failures, and latest quality."
   },
   {
+    test: (source) => {
+      const marketWarmer = getFunctionSource(source, "warmMarketSnapshotCache");
+      const fundWarmer = getFunctionSource(source, "warmFundResearchDigestCacheFromSnapshot");
+      const selector = getFunctionSource(source, "selectFundResearchWarmupCandidates");
+      return marketWarmer.includes("warmFundResearchDigestCacheFromSnapshot")
+        && fundWarmer.includes("fundResearchWarmerInFlight")
+        && fundWarmer.includes("fetchFundResearchDigest")
+        && fundWarmer.includes("allowCacheFallback: false")
+        && fundWarmer.includes("fundResearchWarmerDigests")
+        && selector.includes("selectLowBaseTurnRankCandidates")
+        && selector.includes("selectWeeklyReversalRankCandidates")
+        && selector.includes("scorePullbackSetupSeedCandidate");
+    },
+    message: "market snapshot warming must also prewarm deterministic fund research digests for low-base and reversal candidates."
+  },
+  {
+    test: (source) => {
+      const fundCoverage = getFunctionSource(source, "buildFundDataCoverage");
+      const engineCoverage = getFunctionSource(source, "buildDataProcessingEngineCoverage");
+      const cacheStats = getFunctionSource(source, "buildFundResearchDigestCacheStats");
+      return fundCoverage.includes("researchDigestCacheFunds")
+        && fundCoverage.includes("freshResearchDigestCacheFunds")
+        && engineCoverage.includes("buildFundResearchDigestCacheStats")
+        && cacheStats.includes("riskMetricFunds")
+        && cacheStats.includes("holdingFunds")
+        && cacheStats.includes("feeFunds");
+    },
+    message: "data-source coverage must count warmed fund research cache for risk, holdings, and fee indicator readiness."
+  },
+  {
+    pattern: /(?=[\s\S]*资料预热)(?=[\s\S]*fundResearchWarmerRuns)(?=[\s\S]*fundResearchWarmerCandidates)(?=[\s\S]*fundResearchWarmerFailures)(?=[\s\S]*研究缓存)(?=[\s\S]*researchDigestCacheFunds)/,
+    message: "admin runtime pages must expose fund research warmer and warmed research cache coverage."
+  },
+  {
     pattern: /function normalizeMarketDataQualityComponent[\s\S]{0,900}cacheFallback[\s\S]{0,520}status = "cached"/,
     message: "market data quality must distinguish cache fallback from live realtime evidence."
   },

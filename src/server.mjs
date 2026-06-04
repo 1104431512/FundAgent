@@ -56,6 +56,8 @@ const MARKET_SNAPSHOT_CACHE_MAX_AGE_HOURS = Number(process.env.MARKET_SNAPSHOT_C
 const MARKET_SNAPSHOT_WARMER_INTERVAL_MS = Number(process.env.MARKET_SNAPSHOT_WARMER_INTERVAL_MS || 10 * 60 * 1000);
 const MARKET_SNAPSHOT_WARMER_START_DELAY_MS = Number(process.env.MARKET_SNAPSHOT_WARMER_START_DELAY_MS || 15_000);
 const FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_RESEARCH_DIGEST_CACHE_MAX_AGE_HOURS || 72);
+const FUND_RESEARCH_WARMER_LIMIT = Number(process.env.FUND_RESEARCH_WARMER_LIMIT || 6);
+const FUND_RESEARCH_WARMER_MAX_CACHE_AGE_HOURS = Number(process.env.FUND_RESEARCH_WARMER_MAX_CACHE_AGE_HOURS || 12);
 const FUND_NAV_HISTORY_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_NAV_HISTORY_CACHE_MAX_AGE_HOURS || 168);
 const FUND_RANKING_CACHE_MAX_AGE_HOURS = Number(process.env.FUND_RANKING_CACHE_MAX_AGE_HOURS || 48);
 const FUND_RANKING_HISTORY_MAX_AGE_DAYS = Number(process.env.FUND_RANKING_HISTORY_MAX_AGE_DAYS || 21);
@@ -490,6 +492,7 @@ const seenEventIds = new Map();
 let portfolioSchedulerTimer = null;
 let marketSnapshotWarmerTimer = null;
 let marketSnapshotWarmerInFlight = false;
+let fundResearchWarmerInFlight = false;
 let latestMarketSnapshotMemory = null;
 let portfolioRunInFlight = false;
 let activePortfolioRunId = "";
@@ -1379,15 +1382,29 @@ async function warmMarketSnapshotCache(options = {}) {
       reason: `warmer:${reason}`,
       priorityFundSeeds: options.priorityFundSeeds || []
     });
+    const fundResearchWarmup = await warmFundResearchDigestCacheFromSnapshot(snapshot, {
+      reason,
+      limit: options.fundResearchLimit
+    }).catch((error) => {
+      recordError(error, { fundResearchWarmerFailures: 1 });
+      updateStats({
+        last: {
+          lastFundResearchWarmerFailureAt: new Date().toISOString(),
+          lastFundResearchWarmerFailure: String(error.message || error).slice(0, 240)
+        }
+      });
+      return { ok: false, error: error.message || String(error), digestCount: 0 };
+    });
     updateStats({
       counters: { marketSnapshotWarmerSuccesses: 1 },
       last: {
         lastMarketSnapshotWarmAt: snapshot.fetchedAt || new Date().toISOString(),
         lastMarketSnapshotWarmerQuality: snapshot.dataQuality?.level || "",
-        lastMarketSnapshotWarmerEvidenceGate: snapshot.dataSourceCoverage?.evidenceReadiness?.label || ""
+        lastMarketSnapshotWarmerEvidenceGate: snapshot.dataSourceCoverage?.evidenceReadiness?.label || "",
+        lastMarketSnapshotWarmerFundResearchDigests: fundResearchWarmup.digestCount || 0
       }
     });
-    return { ok: true, snapshot };
+    return { ok: true, snapshot, fundResearchWarmup };
   } catch (error) {
     recordError(error, { marketSnapshotWarmerFailures: 1 });
     updateStats({
@@ -1400,6 +1417,164 @@ async function warmMarketSnapshotCache(options = {}) {
   } finally {
     marketSnapshotWarmerInFlight = false;
   }
+}
+
+async function warmFundResearchDigestCacheFromSnapshot(snapshot = null, options = {}) {
+  const limit = getFundResearchWarmerLimit(options.limit);
+  if (!limit || !hasDataSourceCoverageSnapshotEvidence(snapshot)) {
+    updateStats({
+      counters: { fundResearchWarmerSkipped: 1 },
+      last: {
+        lastFundResearchWarmerSkippedAt: new Date().toISOString(),
+        lastFundResearchWarmerSkippedReason: limit ? "no_market_snapshot" : "limit_zero"
+      }
+    });
+    return { ok: false, skipped: true, reason: limit ? "no_market_snapshot" : "limit_zero", digestCount: 0 };
+  }
+  if (fundResearchWarmerInFlight) {
+    updateStats({
+      counters: { fundResearchWarmerSkipped: 1 },
+      last: {
+        lastFundResearchWarmerSkippedAt: new Date().toISOString(),
+        lastFundResearchWarmerSkippedReason: "in_flight"
+      }
+    });
+    return { ok: false, skipped: true, reason: "in_flight", digestCount: 0 };
+  }
+
+  fundResearchWarmerInFlight = true;
+  try {
+    const fetchedAt = new Date().toISOString();
+    const reason = options.reason || "manual";
+    const cache = readFundResearchDigestCache();
+    const candidates = selectFundResearchWarmupCandidates(snapshot, {
+      cache,
+      limit,
+      nowIso: fetchedAt
+    });
+    updateStats({
+      counters: {
+        fundResearchWarmerRuns: 1,
+        fundResearchWarmerCandidates: candidates.length
+      },
+      last: {
+        lastFundResearchWarmerStartedAt: fetchedAt,
+        lastFundResearchWarmerReason: reason,
+        lastFundResearchWarmerCandidateCodes: candidates.map((item) => item.code).join(",")
+      }
+    });
+
+    if (!candidates.length) {
+      updateStats({
+        counters: { fundResearchWarmerSkipped: 1 },
+        last: {
+          lastFundResearchWarmerSkippedAt: new Date().toISOString(),
+          lastFundResearchWarmerSkippedReason: "fresh_cache"
+        }
+      });
+      return { ok: true, skipped: true, reason: "fresh_cache", digestCount: 0 };
+    }
+
+    let cacheDirty = false;
+    let successCount = 0;
+    let failureCount = 0;
+    const digests = await Promise.all(candidates.map(async (candidate) => {
+      try {
+        const digest = await fetchFundResearchDigest(candidate.code, candidate, {
+          cache,
+          fetchedAt,
+          persistCache: false,
+          allowCacheFallback: false,
+          onCacheUpdate: () => {
+            cacheDirty = true;
+          }
+        });
+        if (isSufficientFundResearchDigestForDecision(digest)) successCount += 1;
+        return digest;
+      } catch (error) {
+        failureCount += 1;
+        recordError(error);
+        return {
+          ok: false,
+          code: candidate.code,
+          name: candidate.name || "",
+          error: error.message || String(error)
+        };
+      }
+    }));
+    if (cacheDirty) persistFundResearchDigestCache(cache);
+    const cacheStats = buildFundResearchDigestCacheStats(cache, fetchedAt);
+    updateStats({
+      counters: {
+        fundResearchWarmerSuccesses: successCount,
+        fundResearchWarmerFailures: failureCount,
+        fundResearchWarmerDigests: digests.filter((item) => item?.ok !== false).length
+      },
+      last: {
+        lastFundResearchWarmerAt: new Date().toISOString(),
+        lastFundResearchWarmerSuccessCount: successCount,
+        lastFundResearchWarmerFailureCount: failureCount,
+        lastFundResearchWarmerFreshCacheFunds: cacheStats.freshFunds
+      }
+    });
+    return {
+      ok: failureCount === 0 || successCount > 0,
+      digestCount: digests.filter((item) => item?.ok !== false).length,
+      successCount,
+      failureCount,
+      candidates: candidates.map((item) => ({ code: item.code, name: item.name || "" })),
+      cacheStats
+    };
+  } finally {
+    fundResearchWarmerInFlight = false;
+  }
+}
+
+function getFundResearchWarmerLimit(value = FUND_RESEARCH_WARMER_LIMIT) {
+  const limit = finiteNumberOr(value, FUND_RESEARCH_WARMER_LIMIT);
+  if (limit <= 0) return 0;
+  return Math.max(1, Math.min(24, Math.round(limit)));
+}
+
+function selectFundResearchWarmupCandidates(snapshot = null, options = {}) {
+  const limit = getFundResearchWarmerLimit(options.limit);
+  if (!limit) return [];
+  const fundCandidates = snapshot?.fundCandidates || {};
+  const all = mergeCandidateFunds(
+    fundCandidates.stockFunds || [],
+    fundCandidates.hybridFunds || [],
+    fundCandidates.indexFunds || [],
+    fundCandidates.qdiiFunds || []
+  ).filter((item) => item?.code && !isPreciousMetalCandidate(item));
+  const lowBase = selectLowBaseTurnRankCandidates(all)
+    .map((item) => ({ ...item, keywords: mergeStringLists(item.keywords, ["低位启动前夜候选"]), setupDiscoverySource: "fund_research_warmer_low_base" }));
+  const weekly = selectWeeklyReversalRankCandidates(all)
+    .map((item) => ({ ...item, keywords: mergeStringLists(item.keywords, ["周内温和转强候选"]), setupDiscoverySource: "fund_research_warmer_weekly_reversal" }));
+  const marketContext = {
+    ...snapshot,
+    themeRadar: Array.isArray(snapshot?.themeRadar) ? snapshot.themeRadar : []
+  };
+  const cache = options.cache || readFundResearchDigestCache();
+  const nowIso = options.nowIso || new Date().toISOString();
+  const pool = mergeCandidateFunds(lowBase, weekly, all)
+    .map((item) => refreshPortfolioCandidateThemesWithMarketRadar({
+      ...item,
+      themeOpportunityRequirement: "require_current_theme_playbook"
+    }, marketContext))
+    .filter((item) => isFundResearchDigestWarmupNeeded(item, cache, nowIso))
+    .sort((a, b) => scorePullbackSetupSeedCandidate(b, marketContext, "回调完成 低位 准备启动") - scorePullbackSetupSeedCandidate(a, marketContext, "回调完成 低位 准备启动"));
+  return selectDiversifiedDeepDiveCandidates(pool, limit, { diversifyExposure: true });
+}
+
+function isFundResearchDigestWarmupNeeded(candidate = {}, cache = readFundResearchDigestCache(), nowIso = new Date().toISOString()) {
+  const code = String(candidate.code || "").trim();
+  if (!/^\d{6}$/.test(code)) return false;
+  const cached = cache?.digests?.[code];
+  if (!cached?.digest) return true;
+  const ageHours = getMarketSnapshotCacheAgeHours(cached.cachedAt, nowIso);
+  if (!Number.isFinite(ageHours)) return true;
+  if (ageHours > FUND_RESEARCH_WARMER_MAX_CACHE_AGE_HOURS) return true;
+  return !isSufficientFundResearchDigestForDecision(cached.digest);
 }
 
 async function checkPortfolioSchedule() {
@@ -29660,6 +29835,7 @@ function buildFundDataCoverage(snapshot = null, componentStatusMap = new Map()) 
   const realtimeItems = getDataSourceCoverageComponentItems(snapshot, "realtimeFundValuations");
   const realtimeStatus = componentStatusMap.get("realtimeFundValuations") || {};
   const history = readFundRankingHistory();
+  const researchCache = buildFundResearchDigestCacheStats();
   return {
     candidateCounts,
     rankingCount,
@@ -29668,7 +29844,14 @@ function buildFundDataCoverage(snapshot = null, componentStatusMap = new Map()) 
     freshRealtimeValuationCount: Number.isFinite(Number(realtimeStatus.freshCount)) ? Number(realtimeStatus.freshCount) : realtimeItems.filter((item) => item?.isFresh !== false).length,
     staleRealtimeValuationCount: Number.isFinite(Number(realtimeStatus.staleCount)) ? Number(realtimeStatus.staleCount) : realtimeItems.filter((item) => item?.isFresh === false).length,
     rankingHistoryFunds: Object.keys(history.funds || {}).length,
-    rankingHistoryUpdatedAt: history.updatedAt || ""
+    rankingHistoryUpdatedAt: history.updatedAt || "",
+    researchDigestCacheFunds: researchCache.totalFunds,
+    freshResearchDigestCacheFunds: researchCache.freshFunds,
+    sufficientResearchDigestFunds: researchCache.sufficientFunds,
+    researchDigestRiskMetricFunds: researchCache.riskMetricFunds,
+    researchDigestHoldingFunds: researchCache.holdingFunds,
+    researchDigestFeeFunds: researchCache.feeFunds,
+    researchDigestUpdatedAt: researchCache.updatedAt
   };
 }
 
@@ -29690,8 +29873,9 @@ function buildNewsDataCoverage(snapshot = null, componentStatusMap = new Map()) 
 
 function buildDataProcessingEngineCoverage(snapshot = null, stats = getRuntimeStats()) {
   const counters = stats.counters || {};
+  const fundResearchCache = buildFundResearchDigestCacheStats();
   return DATA_PROCESSING_ENGINE_REGISTRY.map((engine) => {
-    const active = hasDataProcessingEngineEvidence(engine, snapshot, counters);
+    const active = hasDataProcessingEngineEvidence(engine, snapshot, counters, { fundResearchCache });
     return {
       ...engine,
       status: active ? "active" : "ready",
@@ -29701,7 +29885,8 @@ function buildDataProcessingEngineCoverage(snapshot = null, stats = getRuntimeSt
   });
 }
 
-function hasDataProcessingEngineEvidence(engine = {}, snapshot = null, counters = {}) {
+function hasDataProcessingEngineEvidence(engine = {}, snapshot = null, counters = {}, context = {}) {
+  const fundResearchCache = context.fundResearchCache || {};
   switch (engine.id) {
     case "marketBreadth":
       return Boolean(snapshot?.marketIndicators?.marketBreadth);
@@ -29719,11 +29904,16 @@ function hasDataProcessingEngineEvidence(engine = {}, snapshot = null, counters 
       return getDataSourceCoverageComponentItems(snapshot, "realtimeFundValuations").length > 0;
     case "riskMetrics":
     case "trendProfile":
-      return Number(counters.navHistoryFetches || 0) > 0 || Number(counters.fundEnrichmentSuccess || 0) > 0;
+      return Number(counters.navHistoryFetches || 0) > 0
+        || Number(counters.fundEnrichmentSuccess || 0) > 0
+        || Number(fundResearchCache.riskMetricFunds || 0) > 0
+        || Number(fundResearchCache.trendProfileFunds || 0) > 0;
     case "holdingsOutlook":
-      return Number(counters.fundHoldingsFetches || 0) > 0;
+      return Number(counters.fundHoldingsFetches || 0) > 0
+        || Number(fundResearchCache.holdingFunds || 0) > 0;
     case "feeSuitability":
-      return Number(counters.fundFeePageFetches || 0) > 0;
+      return Number(counters.fundFeePageFetches || 0) > 0
+        || Number(fundResearchCache.feeFunds || 0) > 0;
     case "rankingHistoryMomentum":
       return Object.keys(readFundRankingHistory().funds || {}).length > 0;
     default:
@@ -29731,10 +29921,37 @@ function hasDataProcessingEngineEvidence(engine = {}, snapshot = null, counters 
   }
 }
 
+function buildFundResearchDigestCacheStats(cache = readFundResearchDigestCache(), nowIso = new Date().toISOString()) {
+  const entries = Object.values(cache?.digests || {}).filter((entry) => entry?.digest);
+  const stats = {
+    totalFunds: entries.length,
+    freshFunds: 0,
+    sufficientFunds: 0,
+    trendProfileFunds: 0,
+    riskMetricFunds: 0,
+    holdingFunds: 0,
+    feeFunds: 0,
+    updatedAt: cache?.updatedAt || ""
+  };
+  for (const entry of entries) {
+    const digest = entry.digest || {};
+    const ageHours = getMarketSnapshotCacheAgeHours(entry.cachedAt, nowIso);
+    if (Number.isFinite(ageHours) && ageHours <= FUND_RESEARCH_WARMER_MAX_CACHE_AGE_HOURS) stats.freshFunds += 1;
+    if (isSufficientFundResearchDigestForDecision(digest)) stats.sufficientFunds += 1;
+    if (digest.trendProfile?.ok) stats.trendProfileFunds += 1;
+    const risk = selectPortfolioQualityRiskPeriod(digest);
+    if (risk?.ok) stats.riskMetricFunds += 1;
+    if (digest.holdings?.ok || digest.actionability?.holdingsOutlook?.hasHoldings) stats.holdingFunds += 1;
+    if (digest.fees?.shareClassFeeModel?.type) stats.feeFunds += 1;
+  }
+  return stats;
+}
+
 function buildDataSourceHistoryStores() {
   const themeHistory = readThemeRadarHistory();
   const boardHistory = readMarketBoardHistory();
   const rankingHistory = readFundRankingHistory();
+  const researchCache = buildFundResearchDigestCacheStats();
   return [
     {
       id: "theme-radar-history",
@@ -29759,6 +29976,14 @@ function buildDataSourceHistoryStores() {
       count: Object.keys(rankingHistory.funds || {}).length,
       updatedAt: rankingHistory.updatedAt || "",
       capability: "追踪基金从低位榜到周内转强榜的路径。"
+    },
+    {
+      id: "fund-research-digest-cache",
+      label: "基金研究缓存",
+      path: FUND_RESEARCH_DIGEST_CACHE_PATH,
+      count: researchCache.totalFunds,
+      updatedAt: researchCache.updatedAt || "",
+      capability: "缓存净值风险、走势、前十大持仓和费率画像，供模型判断前复用。"
     }
   ];
 }
@@ -29792,6 +30017,9 @@ function buildDataSourceCoverageTotals({ sources = [], boardCoverage = {}, fundC
     observedBoards: Number(boardCoverage.observedBoards || 0),
     fundCandidates: Object.values(fundCoverage.candidateCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0),
     realtimeFundValuations: Number(fundCoverage.realtimeValuationCount || 0),
+    researchDigestCacheFunds: Number(fundCoverage.researchDigestCacheFunds || 0),
+    freshResearchDigestCacheFunds: Number(fundCoverage.freshResearchDigestCacheFunds || 0),
+    sufficientResearchDigestFunds: Number(fundCoverage.sufficientResearchDigestFunds || 0),
     fastNews: Number(newsCoverage.fastNewsCount || 0)
   };
 }
@@ -29841,7 +30069,7 @@ function buildDataSourceCoverageSummary({ totals = {}, boardCoverage = {}, fundC
     evidenceReadiness ? `证据门槛 ${evidenceReadiness.score} 分：${evidenceReadiness.label}。` : "",
     `已接入 ${totals.externalSources || 0} 个外部数据接口，${totals.configuredSources || 0} 个无需额外授权或已配置；当前报告识别 ${totals.liveSources || 0} 个最新实抓接口、${totals.sampledSources || 0} 个有样本接口。`,
     `板块市场支持 ${boardCoverage.configuredMarketTypes || 0} 类市场、${boardCoverage.realtimeBoardFeeds || 0} 条实时榜单维度；最近样本形成 ${boardCoverage.observedBoards || 0} 个板块 × ${boardCoverage.metricFieldCount || 0} 类字段 = ${boardCoverage.observedMetricCells || 0} 个板块指标单元。`,
-    `最近快照覆盖 ${boardCoverage.observedBoards || 0} 个板块、${totals.fundCandidates || 0} 只候选基金、${fundCoverage.realtimeValuationCount || 0} 条实时估值、${newsCoverage.fastNewsCount || 0} 条快讯。`,
+    `最近快照覆盖 ${boardCoverage.observedBoards || 0} 个板块、${totals.fundCandidates || 0} 只候选基金、${fundCoverage.realtimeValuationCount || 0} 条实时估值、${newsCoverage.fastNewsCount || 0} 条快讯；基金研究缓存 ${fundCoverage.researchDigestCacheFunds || 0} 只，其中新鲜 ${fundCoverage.freshResearchDigestCacheFunds || 0} 只。`,
     `固定代码指标引擎 ${totals.indicatorEngines || 0} 个，已有样本 ${totals.activeIndicatorEngines || 0} 个；快照时间 ${snapshotMeta.ageText || "暂无"}。`
   ].filter(Boolean).join(" ");
 }
@@ -41408,6 +41636,12 @@ function getDefaultStats() {
       marketSnapshotWarmerSuccesses: 0,
       marketSnapshotWarmerFailures: 0,
       marketSnapshotWarmerSkipped: 0,
+      fundResearchWarmerRuns: 0,
+      fundResearchWarmerSuccesses: 0,
+      fundResearchWarmerFailures: 0,
+      fundResearchWarmerSkipped: 0,
+      fundResearchWarmerCandidates: 0,
+      fundResearchWarmerDigests: 0,
       marketBoardFetches: 0,
       preciousMetalQuoteFetches: 0,
       preciousMetalFundSearches: 0,
@@ -41577,6 +41811,14 @@ function buildRuntimeDiagnostics(stats = {}) {
       warningRate: 0.1,
       criticalRate: 0.25,
       note: "后台预热失败会让用户请求重新依赖临时抓取和缓存回退，需要先修复公开数据源。"
+    }),
+    buildCounterRateDiagnostic({
+      label: "基金资料预热失败",
+      failures: counters.fundResearchWarmerFailures,
+      total: counters.fundResearchWarmerCandidates,
+      warningRate: 0.2,
+      criticalRate: 0.4,
+      note: "基金画像预热失败会让净值风险、前十大持仓和费率证据退回用户提问时临时抓取。"
     }),
     buildCounterRateDiagnostic({
       label: "公开数据GET失败",
@@ -43615,6 +43857,9 @@ export {
   buildMarketDataQuality,
   buildRealtimeFundValuationSignal,
   warmMarketSnapshotCache,
+  warmFundResearchDigestCacheFromSnapshot,
+  selectFundResearchWarmupCandidates,
+  buildFundResearchDigestCacheStats,
   applyMarketSnapshotCacheFallback,
   buildCachedFundNavHistoryFallback,
   buildCachedFundRankingFallback,

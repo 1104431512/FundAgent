@@ -22,8 +22,10 @@ assert(/heldProfilesRaw[\s\S]{0,180}getPortfolioProfileEnrichmentLimit/.test(ser
 assert(/watchlistProfilesRaw[\s\S]{0,180}getPortfolioProfileEnrichmentLimit/.test(serverSource), "portfolio decisions must enrich watchlist candidates with the higher portfolio coverage limit");
 assert(serverSource.includes("startMarketSnapshotWarmer()") && serverSource.includes("marketSnapshotWarmerInFlight"), "server startup must proactively warm the market snapshot cache with an in-flight guard");
 assert(serverSource.includes("latestMarketSnapshotMemory = snapshot") && serverSource.includes("getLatestMarketSnapshotMemoryForCoverage"), "data-source coverage must reuse the latest warmed market snapshot before cache fallback");
+assert(serverSource.includes("warmFundResearchDigestCacheFromSnapshot") && serverSource.includes("selectFundResearchWarmupCandidates") && serverSource.includes("fundResearchWarmerDigests"), "market warming must also prewarm fund research digests for fixed-code risk, holdings, and fee evidence");
 assert(adminSource.includes("快照预热") && adminSource.includes("marketSnapshotWarmerSuccesses"), "admin runtime data page must expose market snapshot warmer status");
 assert(adminSource.includes("本次实抓") && adminSource.includes("liveSources") && adminSource.includes("板块指标") && adminSource.includes("observedMetricCells"), "admin data-source page must expose live fetch counts and board indicator cells");
+assert(adminSource.includes("资料预热") && adminSource.includes("fundResearchWarmerCandidates") && adminSource.includes("研究缓存") && adminSource.includes("researchDigestCacheFunds"), "admin data-source page must expose fund research warmer and research cache counts");
 {
   const previousWarmerFlag = process.env.MARKET_SNAPSHOT_WARMER_ENABLED;
   process.env.MARKET_SNAPSHOT_WARMER_ENABLED = "false";
