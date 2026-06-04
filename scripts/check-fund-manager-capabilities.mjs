@@ -12234,6 +12234,39 @@ assert(
     && highSharpeStrictResultLine.indexOf("000072") < highSharpeStrictResultLine.indexOf("000071"),
   "priority leaderboard enforcement must compress even almost-valid high-Sharpe answers into a strict six-line result board"
 );
+const highSharpeComparisonEvidence = {
+  enrichments: [
+    {
+      code: "000091",
+      name: "截图低夏普基金A",
+      risk: { oneYear: { ok: true, sharpe: 0.12, maxDrawdownPct: -29, annualizedReturnPct: 2.8, annualizedVolatilityPct: 25 } }
+    },
+    {
+      code: "000092",
+      name: "截图高夏普基金C",
+      risk: { oneYear: { ok: true, sharpe: 1.28, maxDrawdownPct: -10.2, annualizedReturnPct: 11.8, annualizedVolatilityPct: 12 } }
+    }
+  ]
+};
+const highSharpeComparisonEnforced = await manager.enforceFundAnswerQuality({
+  text: [
+    "直接结论：先看第一只。",
+    "排序口径：高夏普/低回撤优先，再看买点和费用。",
+    "结果榜：1. 000091 截图低夏普基金A：截图里排在前面；2. 000092 截图高夏普基金C：风险收益更稳。",
+    "为什么这样排：模型原始顺序来自截图。",
+    "执行：1万元先0元复核。",
+    "边界：数据过期就不买。"
+  ].join("\n"),
+  workflow: "fund_comparison",
+  userText: "这几只基金按高夏普优先排一下",
+  intent: { workflow: "fund_screening", mode: "comparison" },
+  evidence: highSharpeComparisonEvidence
+});
+const highSharpeComparisonResultLine = highSharpeComparisonEnforced.split(/\r?\n/).find((line) => line.startsWith("结果榜：")) || "";
+assert(
+  highSharpeComparisonResultLine.indexOf("000092") >= 0 && highSharpeComparisonResultLine.indexOf("000092") < highSharpeComparisonResultLine.indexOf("000091"),
+  "priority leaderboard enforcement must use enrichment evidence for screenshot/comparison high-Sharpe ordering"
+);
 const sizeLiquidityPriorityFallback = manager.buildPullbackQualityFallbackAnswer({
   userText: "我想找回调完成低位启动的基金，按规模流动性优先",
   issues: promotedWatchQuality.issues,

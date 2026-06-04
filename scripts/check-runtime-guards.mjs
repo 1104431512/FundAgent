@@ -753,6 +753,10 @@ const requiredPatterns = [
     message: "fund answer quality must compare the answer's recommendation order against evidence-backed requested-priority scores."
   },
   {
+    pattern: /function getEvidenceFundCandidatesForRanking[\s\S]{0,420}collectFundEvidenceCandidates\(evidence\)[\s\S]*function collectFundEvidenceCandidates[\s\S]{0,500}evidence\?\.enrichments[\s\S]{0,220}evidence\?\.extracted\?\.screenshotHoldings/,
+    message: "fund priority leaderboards must use enrichment and screenshot/comparison candidates, not only market recommendation candidates."
+  },
+  {
     pattern: /(?=[\s\S]*function sortFundAnswerRankedCandidatesByRequestedPriority)(?=[\s\S]*function getFundAnswerPriorityScore[\s\S]{0,1200}risk_adjusted_quality[\s\S]{0,700}sharpe)(?=[\s\S]*function buildPullbackQualityFallbackAnswer[\s\S]{0,1800}sortFundAnswerRankedCandidatesByRequestedPriority)/,
     message: "deterministic fund fallbacks must actually reorder candidates by requested priorities such as high-Sharpe, not only state the policy."
   },

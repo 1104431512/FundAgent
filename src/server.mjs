@@ -24345,28 +24345,16 @@ function searchFirstIndex(text = "", needles = []) {
 }
 
 function getEvidenceFundCandidateCount(evidence = null) {
-  const candidates = [
-    ...(Array.isArray(evidence?.marketDeepDive?.candidates) ? evidence.marketDeepDive.candidates : []),
-    ...(Array.isArray(evidence?.portfolioWatchlist) ? evidence.portfolioWatchlist : []),
-    ...(Array.isArray(evidence?.marketSnapshot?.fundCandidates?.stockFunds) ? evidence.marketSnapshot.fundCandidates.stockFunds : []),
-    ...(Array.isArray(evidence?.marketSnapshot?.fundCandidates?.preciousMetalFunds) ? evidence.marketSnapshot.fundCandidates.preciousMetalFunds : [])
-  ];
-  return new Set(candidates.map((item) => item?.code || item?.fundCode).filter(Boolean)).size;
+  return new Set(
+    collectFundEvidenceCandidates(evidence)
+      .map((item) => item?.code || item?.fundCode || item?.seed?.code || item?.lastSnapshot?.code)
+      .filter(Boolean)
+  ).size;
 }
 
 function getEvidenceFundCandidatesForRanking(evidence = null) {
-  const fundCandidates = evidence?.marketSnapshot?.fundCandidates || {};
-  const groups = [
-    ...(Array.isArray(evidence?.marketDeepDive?.candidates) ? evidence.marketDeepDive.candidates : []),
-    ...(Array.isArray(evidence?.portfolioWatchlist) ? evidence.portfolioWatchlist : []),
-    ...(Array.isArray(fundCandidates.stockFunds) ? fundCandidates.stockFunds : []),
-    ...(Array.isArray(fundCandidates.hybridFunds) ? fundCandidates.hybridFunds : []),
-    ...(Array.isArray(fundCandidates.indexFunds) ? fundCandidates.indexFunds : []),
-    ...(Array.isArray(fundCandidates.qdiiFunds) ? fundCandidates.qdiiFunds : []),
-    ...(Array.isArray(fundCandidates.preciousMetalFunds) ? fundCandidates.preciousMetalFunds : [])
-  ];
   const byCode = new Map();
-  for (const item of groups) {
+  for (const item of collectFundEvidenceCandidates(evidence)) {
     const code = String(item?.code || item?.fundCode || item?.seed?.code || item?.lastSnapshot?.code || "").match(/^\d{6}$/)?.[0] || "";
     if (!code || byCode.has(code)) continue;
     byCode.set(code, item);
@@ -24542,7 +24530,11 @@ function collectFundEvidenceCandidates(evidence = {}) {
   const groups = [
     evidence?.marketDeepDive?.candidates,
     evidence?.enrichments,
+    evidence?.extracted?.funds,
+    evidence?.extracted?.screenshotHoldings,
+    evidence?.extracted?.textResolvedFunds,
     evidence?.candidates,
+    evidence?.portfolioWatchlist,
     evidence?.fundCandidates,
     evidence?.marketSnapshot?.fundCandidates
   ];
