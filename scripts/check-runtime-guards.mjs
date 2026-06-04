@@ -3913,6 +3913,32 @@ const requiredPatterns = [
     message: "pullback/setup deep-dive ranking must score top-ten holdings outlook, not only NAV trend."
   },
   {
+    pattern: {
+      test: (source) => source.includes("function buildFundComputedOpportunityScorecard")
+        && source.includes("computed_from_fixed_code_indicators")
+        && source.includes("digest.computedOpportunityScorecard = buildFundComputedOpportunityScorecard(digest)")
+        && source.includes("formatComputedOpportunityScorecardEvidence(scorecard)")
+        && source.includes("固定代码评分=")
+    },
+    message: "fund deep-dive candidates must carry deterministic computed opportunity scorecards into model prompts before final judgment."
+  },
+  {
+    pattern: /const orderedCandidates = preferPullbackSetup[\s\S]{0,260}scoreResearchDigestForPullbackSetup\(b\)[\s\S]{0,420}computedOpportunityScorecard\?\.managerPriorityScore/,
+    message: "general market deep-dive candidates must be sorted by deterministic computed opportunity scorecards, not raw fetch order."
+  },
+  {
+    pattern: {
+      test: (source) => source.includes("riskQuality")
+        && source.includes("entryTiming")
+        && source.includes("themeSupport")
+        && source.includes("holdingsOutlook")
+        && source.includes("feeFit")
+        && source.includes("scaleStability")
+        && source.includes("dataQuality")
+    },
+    message: "computed fund opportunity scorecards must combine risk, entry, theme, holdings, fee, scale, and data-quality dimensions."
+  },
+  {
     pattern: /scoreResearchDigestForPullbackSetup[\s\S]{0,2200}getPortfolioActionableThemeSupportGap\(digest\)[\s\S]{0,900}score -= 54/,
     message: "pullback/setup deep-dive ranking must demote unsupported holding-derived theme exposure before recommendation ordering."
   },
@@ -4025,7 +4051,11 @@ const requiredPatterns = [
     message: "fund selection prompts and gaps must require top-ten holdings and outlook checks."
   },
   {
-    pattern: /scoreResearchDigestForPullbackSetup[\s\S]{0,900}lowPositionPct250/,
+    pattern: {
+      test: (source) => source.includes("function scoreResearchDigestForPullbackSetup")
+        && source.includes("const longPosition = finiteMetricNumber(trend.lowPositionPct250)")
+        && source.includes("longPosition > 85")
+    },
     message: "pullback/setup deep-dive ranking must score longer-window low-position evidence, not only 120-day position."
   },
   {

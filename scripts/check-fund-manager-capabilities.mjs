@@ -7130,6 +7130,20 @@ assert(
     manager.scoreResearchDigestForPullbackSetup(stalePullbackDigest),
   "deep-dive scoring must downgrade stale NAV/trend evidence before treating a setup as actionable"
 );
+const setupOpportunityScorecard = manager.buildFundComputedOpportunityScorecard({
+  ...setupDigest,
+  code: "000001",
+  name: "低位修复基金A"
+});
+const hotOpportunityScorecard = manager.buildFundComputedOpportunityScorecard({
+  ...hotDigest,
+  code: "000002",
+  name: "追涨基金C"
+});
+assert.equal(setupOpportunityScorecard.sourceKind, "computed_from_fixed_code_indicators", "fund opportunity scorecards must come from deterministic code indicators, not model prose");
+assert(setupOpportunityScorecard.managerPriorityScore > hotOpportunityScorecard.managerPriorityScore, "computed opportunity scorecards must rank low-position pullback setups above chase-looking extended uptrends");
+assert(setupOpportunityScorecard.dimensions.riskQuality && setupOpportunityScorecard.dimensions.entryTiming && setupOpportunityScorecard.dimensions.themeSupport && setupOpportunityScorecard.dimensions.holdingsOutlook && setupOpportunityScorecard.dimensions.feeFit, "computed opportunity scorecards must expose risk, entry, theme, holdings, and fee dimensions for the model");
+assert(hotOpportunityScorecard.blockers.some((item) => item.includes("追涨") || item.includes("等待回撤")), "computed opportunity scorecards must expose chase/wait-pullback blockers before model judgment");
 const unconfirmedOldRadarTheme = {
   id: "ai_compute",
   name: "AI/算力",
@@ -7174,6 +7188,8 @@ const highPositionSummary = manager.buildMarketDeepDiveSummary({
   ]
 });
 assert(highPositionSummary.includes("mainCandidateCodes=000001"), "genuinely low-position setup should remain a main candidate");
+assert(highPositionSummary.includes("固定代码评分="), "deep-dive summaries must feed deterministic computed opportunity scorecards into model prompts");
+assert(highPositionSummary.includes("风险收益") && highPositionSummary.includes("买点") && highPositionSummary.includes("费用"), "deep-dive summaries must expose computed scorecard dimensions instead of leaving ranking to skill prose");
 assert(/watchOrRejectCodes=.*000004/.test(highPositionSummary), "pullback-looking but high-position fund must be demoted to watch/reject");
 assert(/watchOrRejectCodes=.*000005/.test(highPositionSummary), "pullback-looking fund with missing low-position evidence must be visible only as watch/reject");
 assert(/watchOrRejectCodes=.*000006/.test(highPositionSummary), "pullback-looking fund without 5/10-day early turn must be visible only as watch/reject");

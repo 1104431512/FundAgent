@@ -22021,12 +22021,14 @@ function finiteMetricNumber(value) {
 function formatPullbackSetupCandidateLine(candidate = {}, ranked = {}) {
   const trend = candidate.trendProfile || {};
   const actionability = candidate.actionability || {};
+  const scorecard = candidate.computedOpportunityScorecard || buildFundComputedOpportunityScorecard(candidate);
   const seedThisYear = getCandidateSeedThisYearPct(candidate);
   const trendDate = getPullbackTrendEvidenceDate(candidate);
   const fields = [
     `${candidate.code || "unknown"} ${candidate.name || candidate.seed?.name || ""}`.trim(),
     `bucket=${ranked.bucket || classifyPullbackSetupCandidateForSummary(candidate)}`,
     `setupRankScore=${round(Number(ranked.setupRankScore ?? scoreResearchDigestForPullbackSetup(candidate)), 1)}`,
+    formatComputedOpportunityScorecardEvidence(scorecard),
     trend.pullbackSetup?.signalText ? `signal=${trend.pullbackSetup.signalText}` : "",
     Number.isFinite(Number(trend.pullbackSetup?.score)) ? `setupScore=${trend.pullbackSetup.score}` : "",
     Number.isFinite(Number(trend.return5dPct)) ? `5日=${trend.return5dPct}%` : "",
@@ -24583,8 +24585,11 @@ function getFundAnswerPriorityScore(candidate = {}, priorityId = "") {
   const maxDrawdown = finiteMetricNumber(risk?.maxDrawdownPct);
   const volatility = finiteMetricNumber(risk?.annualizedVolatilityPct);
   const annualizedReturn = finiteMetricNumber(risk?.annualizedReturnPct);
+  const scorecard = candidate.computedOpportunityScorecard || candidate.lastSnapshot?.computedOpportunityScorecard || null;
+  const dimensionScore = (key) => finiteMetricNumber(scorecard?.dimensions?.[key]?.score);
   if (priorityId === "risk_adjusted_quality") {
-    return (Number.isFinite(sharpe) ? sharpe * 45 : -20)
+    const computed = dimensionScore("riskQuality");
+    return Number.isFinite(computed) ? computed : (Number.isFinite(sharpe) ? sharpe * 45 : -20)
       + (Number.isFinite(maxDrawdown) ? 40 + Math.max(-50, maxDrawdown) : -12)
       + (Number.isFinite(annualizedReturn) ? annualizedReturn * 0.45 : 0);
   }
@@ -24604,7 +24609,8 @@ function getFundAnswerPriorityScore(candidate = {}, priorityId = "") {
     return getFundAnswerPeerRankPriorityScore(candidate);
   }
   if (priorityId === "drawdown_control") {
-    return (Number.isFinite(maxDrawdown) ? 60 + Math.max(-60, maxDrawdown) : -20)
+    const computed = dimensionScore("riskQuality");
+    return Number.isFinite(computed) ? computed : (Number.isFinite(maxDrawdown) ? 60 + Math.max(-60, maxDrawdown) : -20)
       + (Number.isFinite(sharpe) ? sharpe * 12 : 0);
   }
   if (priorityId === "low_volatility") {
@@ -24613,6 +24619,8 @@ function getFundAnswerPriorityScore(candidate = {}, priorityId = "") {
       + (Number.isFinite(sharpe) ? sharpe * 8 : 0);
   }
   if (priorityId === "fee_cost") {
+    const computed = dimensionScore("feeFit");
+    if (Number.isFinite(computed)) return computed;
     const feeCost = finiteMetricNumber(
       candidate.fees?.feeImpact?.oneYearCostPer10000
       ?? candidate.feeImpact?.oneYearCostPer10000
@@ -24621,6 +24629,8 @@ function getFundAnswerPriorityScore(candidate = {}, priorityId = "") {
     return Number.isFinite(feeCost) ? 120 - feeCost : 0;
   }
   if (priorityId === "size_liquidity") {
+    const computed = dimensionScore("scaleStability");
+    if (Number.isFinite(computed)) return computed;
     const scaleYi = getFundAnswerScaleYi(candidate);
     if (!Number.isFinite(scaleYi)) return -10;
     if (scaleYi < 0.5) return -45;
@@ -24632,15 +24642,21 @@ function getFundAnswerPriorityScore(candidate = {}, priorityId = "") {
     return getFundAnswerManagerStabilityPriorityScore(candidate);
   }
   if (priorityId === "holdings_outlook") {
+    const computed = dimensionScore("holdingsOutlook");
+    if (Number.isFinite(computed)) return computed;
     return getFundAnswerHoldingsOutlookPriorityScore(candidate);
   }
   if (priorityId === "theme_capital") {
+    const computed = dimensionScore("themeSupport");
+    if (Number.isFinite(computed)) return computed;
     return Math.max(0, ...getCandidateThemeSignals(candidate).map((theme) => Number(theme.capitalFollowScore || 0)
       + Number(theme.preheatScore || 0) * 0.8
       + Number(theme.rotationScore || 0) * 0.5
       + Number(theme.lowPositionScore || 0) * 0.35));
   }
   if (priorityId === "entry_timing") {
+    const computed = dimensionScore("entryTiming");
+    if (Number.isFinite(computed)) return computed;
     return scoreResearchDigestForPullbackSetup(candidate);
   }
   return 0;
@@ -25247,7 +25263,9 @@ function getFundAnswerFallbackBaseScore(candidate = {}) {
   const maxDrawdown = finiteMetricNumber(risk?.maxDrawdownPct);
   const riskFallback = (Number.isFinite(sharpe) ? sharpe * 20 : 0)
     + (Number.isFinite(maxDrawdown) ? Math.max(-60, maxDrawdown) : 0);
+  const computedScore = finiteMetricNumber(candidate.computedOpportunityScorecard?.managerPriorityScore);
   return finiteMetricNumber(candidate.actionability?.readinessScore)
+    ?? computedScore
     ?? finiteMetricNumber(candidate.readinessScore)
     ?? finiteMetricNumber(candidate.score)
     ?? finiteMetricNumber(candidate.setupRankScore)
@@ -30844,7 +30862,10 @@ async function fetchMarketDeepDive(userText, marketSnapshot, options = {}) {
   }
   const orderedCandidates = preferPullbackSetup
     ? [...candidates].sort((a, b) => scoreResearchDigestForPullbackSetup(b) - scoreResearchDigestForPullbackSetup(a))
-    : candidates;
+    : [...candidates].sort((a, b) =>
+        Number(b.computedOpportunityScorecard?.managerPriorityScore || 0)
+        - Number(a.computedOpportunityScorecard?.managerPriorityScore || 0)
+      );
 
   updateStats({
     counters: { marketDeepDiveCalls: 1, marketDeepDiveCandidates: orderedCandidates.length },
@@ -31066,6 +31087,275 @@ function scoreResearchDigestForPullbackSetup(digest = {}) {
   return score;
 }
 
+function buildFundComputedOpportunityScorecard(candidate = {}) {
+  const riskQuality = scoreComputedFundRiskQuality(candidate);
+  const entryTiming = scoreComputedFundEntryTiming(candidate);
+  const themeSupport = scoreComputedFundThemeSupport(candidate);
+  const holdingsOutlook = scoreComputedFundHoldingsOutlook(candidate);
+  const feeFit = scoreComputedFundFeeFit(candidate);
+  const scaleStability = scoreComputedFundScaleStability(candidate);
+  const dataQuality = scoreComputedFundDataQuality(candidate);
+  const dimensions = {
+    riskQuality,
+    entryTiming,
+    themeSupport,
+    holdingsOutlook,
+    feeFit,
+    scaleStability,
+    dataQuality
+  };
+  const weightedScore = (
+    riskQuality.score * 0.2
+    + entryTiming.score * 0.24
+    + themeSupport.score * 0.18
+    + holdingsOutlook.score * 0.13
+    + feeFit.score * 0.1
+    + scaleStability.score * 0.08
+    + dataQuality.score * 0.07
+  );
+  const blockers = collectComputedFundOpportunityBlockers(candidate, dimensions);
+  const managerPriorityScore = round(clampScore(weightedScore - Math.min(28, blockers.length * 5)), 1);
+  const noBuy = blockers.some((item) => /硬阻断|接盘|退潮|过期|数据不足|费用缺口|规模过小|追涨/.test(item));
+  const recommendationGate = noBuy
+    ? "observe_only"
+    : managerPriorityScore >= 78
+      ? "primary_review"
+      : managerPriorityScore >= 62
+        ? "backup_review"
+        : "observe_only";
+  return {
+    version: 1,
+    sourceKind: "computed_from_fixed_code_indicators",
+    label: formatComputedFundOpportunityLabel(recommendationGate),
+    recommendationGate,
+    managerPriorityScore,
+    dimensions,
+    keyEvidence: buildComputedFundOpportunityKeyEvidence(candidate, dimensions).slice(0, 8),
+    blockers: blockers.slice(0, 6),
+    nextStep: buildComputedFundOpportunityNextStep(recommendationGate, blockers)
+  };
+}
+
+function formatComputedFundOpportunityLabel(gate = "") {
+  if (gate === "primary_review") return "固定代码评分：可进主推荐复核";
+  if (gate === "backup_review") return "固定代码评分：备选复核";
+  return "固定代码评分：只观察";
+}
+
+function formatComputedOpportunityScorecardEvidence(scorecard = {}) {
+  if (!scorecard || typeof scorecard !== "object") return "";
+  const d = scorecard.dimensions || {};
+  const pieces = [
+    Number.isFinite(Number(scorecard.managerPriorityScore)) ? `固定代码评分=${round(Number(scorecard.managerPriorityScore), 1)}` : "",
+    scorecard.label || "",
+    d.riskQuality ? `风险收益${round(Number(d.riskQuality.score || 0), 0)}` : "",
+    d.entryTiming ? `买点${round(Number(d.entryTiming.score || 0), 0)}` : "",
+    d.themeSupport ? `题材${round(Number(d.themeSupport.score || 0), 0)}` : "",
+    d.holdingsOutlook ? `持仓${round(Number(d.holdingsOutlook.score || 0), 0)}` : "",
+    d.feeFit ? `费用${round(Number(d.feeFit.score || 0), 0)}` : ""
+  ].filter(Boolean);
+  return pieces.length ? pieces.join("/") : "";
+}
+
+function scoreComputedFundRiskQuality(candidate = {}) {
+  const risk = selectPortfolioQualityRiskPeriod(candidate);
+  const sharpe = finiteMetricNumber(risk?.sharpe);
+  const maxDrawdown = finiteMetricNumber(risk?.maxDrawdownPct);
+  const annualizedReturn = finiteMetricNumber(risk?.annualizedReturnPct);
+  let score = risk?.ok ? 52 : 36;
+  if (Number.isFinite(sharpe)) {
+    score += sharpe >= 1.2 ? 24 : sharpe >= 0.8 ? 18 : sharpe >= 0.4 ? 10 : sharpe < 0 ? -18 : 0;
+  }
+  if (Number.isFinite(maxDrawdown)) {
+    score += maxDrawdown >= -12 ? 22 : maxDrawdown >= -18 ? 14 : maxDrawdown >= -25 ? 3 : maxDrawdown <= -35 ? -24 : -10;
+  }
+  if (Number.isFinite(annualizedReturn)) {
+    score += annualizedReturn >= 12 ? 12 : annualizedReturn >= 6 ? 7 : annualizedReturn < 0 ? -10 : 0;
+  }
+  const evidence = [
+    Number.isFinite(sharpe) ? `夏普${round(sharpe, 2)}` : "",
+    Number.isFinite(maxDrawdown) ? `最大回撤${round(maxDrawdown, 1)}%` : "",
+    Number.isFinite(annualizedReturn) ? `年化${round(annualizedReturn, 1)}%` : ""
+  ].filter(Boolean);
+  return {
+    score: round(clampScore(score), 1),
+    label: evidence.length ? "风险收益已计算" : "缺风险收益指标",
+    evidence
+  };
+}
+
+function scoreComputedFundEntryTiming(candidate = {}) {
+  const trend = candidate.trendProfile || {};
+  const actionabilityScore = finiteMetricNumber(candidate.actionability?.score);
+  let score = Number.isFinite(actionabilityScore) ? actionabilityScore : 48;
+  if (trend.pullbackSetup?.signal === "pullback_complete") score += 15;
+  if (trend.pullbackSetup?.signal === "launch_setup") score += 10;
+  if (isEarlyTurnSetupTrend(trend)) score += 12;
+  if (hasPullbackLowPositionEvidence(trend)) score += 9;
+  if (trend.entryBias === "buyable_now") score += 8;
+  if (trend.entryBias === "staged_buy") score += 5;
+  if (trend.entryBias === "wait_pullback") score -= 18;
+  if (trend.trendLabel === "extended_uptrend") score -= 28;
+  if (Number(trend.return20dPct) > 10) score -= 12;
+  if (Number(trend.return60dPct) > 24) score -= 12;
+  if (!isPullbackTrendFreshEnough(candidate)) score -= 24;
+  const evidence = [
+    trend.pullbackSetup?.signalText || "",
+    Number.isFinite(Number(trend.return5dPct)) ? `近5日${formatFallbackPct(trend.return5dPct)}` : "",
+    Number.isFinite(Number(trend.return10dPct)) ? `近10日${formatFallbackPct(trend.return10dPct)}` : "",
+    Number.isFinite(Number(trend.lowPositionPct120)) ? `120日位置${round(Number(trend.lowPositionPct120), 1)}%` : "",
+    trend.entryBiasText || formatEntryBias(trend.entryBias)
+  ].filter(Boolean);
+  return {
+    score: round(clampScore(score), 1),
+    label: trend.trendLabel === "extended_uptrend" ? "追涨风险" : evidence.length ? "买点已计算" : "缺买点证据",
+    evidence
+  };
+}
+
+function scoreComputedFundThemeSupport(candidate = {}) {
+  const themes = getCandidateThemeSignals(candidate);
+  const supportGap = getPortfolioActionableThemeSupportGap(candidate) || getPullbackThemeOpportunityBackingGap(candidate, {
+    requireThemeOpportunityBacking: requiresPullbackThemeOpportunityBacking(candidate)
+  });
+  let score = themes.length ? 48 : 38;
+  const themeScores = themes.map((theme) =>
+    Number(theme.capitalFollowScore || 0) * 0.38
+    + Number(theme.preheatScore || 0) * 0.28
+    + Number(theme.rotationScore || 0) * 0.2
+    + Number(theme.lowPositionScore || 0) * 0.14
+  );
+  if (themeScores.length) score += Math.min(38, Math.max(...themeScores));
+  if (themes.some((theme) => hasTraceableFreshThemeCatalystContext(theme))) score += 8;
+  if (themes.some((theme) => hasCurrentThemeLowRotationSupport(theme))) score += 8;
+  if (supportGap) score -= 28;
+  if (hasThemeRetreatRisk(candidate) || hasStaleThemeCatchdownRisk(candidate) || getThemeMainForcePlaybookRiskWarnings(candidate).length) score -= 38;
+  const primaryTheme = themes[0] || {};
+  const evidence = [
+    primaryTheme.name ? `题材${primaryTheme.name}` : "",
+    primaryTheme.newsLogic ? `逻辑=${shortenPortfolioCustomerText(primaryTheme.newsLogic, 48)}` : "",
+    Number.isFinite(Number(primaryTheme.capitalFollowScore)) ? `主力${round(Number(primaryTheme.capitalFollowScore), 0)}` : "",
+    Number.isFinite(Number(primaryTheme.rotationScore)) ? `轮动${round(Number(primaryTheme.rotationScore), 0)}` : "",
+    supportGap ? `缺口=${supportGap}` : ""
+  ].filter(Boolean);
+  return {
+    score: round(clampScore(score), 1),
+    label: supportGap ? "题材支撑不足" : themes.length ? "题材支撑已计算" : "缺题材证据",
+    evidence
+  };
+}
+
+function scoreComputedFundHoldingsOutlook(candidate = {}) {
+  const profile = candidate.holdingsOutlook || candidate.actionability?.holdingsOutlook || buildHoldingsOutlookProfile(candidate);
+  const rawScore = finiteMetricNumber(profile.score);
+  const score = profile.hasHoldings === false
+    ? 30
+    : Number.isFinite(rawScore)
+      ? 52 + rawScore * 2.2
+      : 44;
+  return {
+    score: round(clampScore(score), 1),
+    label: profile.label || (profile.hasHoldings === false ? "缺前十大持仓" : "持仓前景已计算"),
+    evidence: [
+      profile.evidence || "",
+      ...normalizeStringArray(profile.positives).slice(0, 2),
+      ...normalizeStringArray(profile.risks).slice(0, 2)
+    ].filter(Boolean)
+  };
+}
+
+function scoreComputedFundFeeFit(candidate = {}) {
+  const fees = candidate.fees || {};
+  const feeImpact = fees.feeImpact || candidate.feeImpact || {};
+  const feeType = fees.shareClassFeeModel?.type || candidate.shareClassFeeModel?.type || "";
+  const oneYearCost = finiteMetricNumber(feeImpact.oneYearCostPer10000);
+  const missing = normalizeStringArray(fees.missingFeeData || feeImpact.missingFeeData);
+  let score = feeType ? 62 : 42;
+  if (Number.isFinite(oneYearCost)) {
+    score += oneYearCost <= 30 ? 18 : oneYearCost <= 60 ? 10 : oneYearCost <= 100 ? -4 : -18;
+  }
+  if (feeImpact.feeDragLevel === "high") score -= 16;
+  if (missing.length) score -= Math.min(22, missing.length * 7);
+  return {
+    score: round(clampScore(score), 1),
+    label: fees.shareClassFeeModel?.label || candidate.shareClassFeeModel?.label || "费用/份额待核验",
+    evidence: [
+      Number.isFinite(oneYearCost) ? `每万元1年约${round(oneYearCost, 0)}元` : "",
+      feeImpact.holdingPeriodFit || "",
+      missing.length ? `缺${missing.slice(0, 2).join("/")}` : ""
+    ].filter(Boolean)
+  };
+}
+
+function scoreComputedFundScaleStability(candidate = {}) {
+  const scaleYi = getFundAnswerScaleYi(candidate);
+  const managers = extractPortfolioManagerEvidence(candidate, candidate.lastSnapshot || candidate);
+  const tenureYears = Math.max(0, ...managers.map(parsePortfolioManagerTenureYears).filter((value) => Number.isFinite(value)));
+  let score = 46;
+  if (Number.isFinite(scaleYi)) {
+    score += scaleYi >= 5 ? 22 : scaleYi >= 1 ? 12 : scaleYi >= 0.5 ? -8 : -24;
+  }
+  if (Number.isFinite(tenureYears) && tenureYears > 0) {
+    score += tenureYears >= 3 ? 14 : tenureYears >= 1 ? 7 : -4;
+  }
+  return {
+    score: round(clampScore(score), 1),
+    label: "规模/稳定性已计算",
+    evidence: [
+      Number.isFinite(scaleYi) ? `规模${round(scaleYi, 2)}亿` : "缺规模",
+      tenureYears ? `经理任期约${round(tenureYears, 1)}年` : ""
+    ].filter(Boolean)
+  };
+}
+
+function scoreComputedFundDataQuality(candidate = {}) {
+  const trend = candidate.trendProfile || {};
+  const risk = selectPortfolioQualityRiskPeriod(candidate);
+  const fees = candidate.fees || {};
+  const holdings = candidate.holdingsOutlook || candidate.actionability?.holdingsOutlook || buildHoldingsOutlookProfile(candidate);
+  let score = candidate.ok === false ? 10 : 42;
+  if (trend.ok) score += 18;
+  if (risk?.ok || Number.isFinite(finiteMetricNumber(risk?.sharpe)) || Number.isFinite(finiteMetricNumber(risk?.maxDrawdownPct))) score += 16;
+  if (holdings.hasHoldings) score += 12;
+  if (fees.shareClassFeeModel?.type && fees.shareClassFeeModel.type !== "unknown") score += 8;
+  if (candidate.valuationSourceAgreement?.status === "conflict") score -= 18;
+  if (!isPullbackTrendFreshEnough(candidate)) score -= 22;
+  return {
+    score: round(clampScore(score), 1),
+    label: score >= 70 ? "数据完整度较好" : score >= 45 ? "数据可用但需复核" : "数据不足",
+    evidence: [
+      trend.ok ? "净值走势已下钻" : "缺走势下钻",
+      holdings.hasHoldings ? "前十大持仓已下钻" : "缺前十大持仓",
+      fees.shareClassFeeModel?.type ? "费用份额已识别" : "缺费用份额"
+    ].filter(Boolean)
+  };
+}
+
+function collectComputedFundOpportunityBlockers(candidate = {}, dimensions = {}) {
+  const blockers = [];
+  if (candidate.ok === false) blockers.push("数据不足硬阻断");
+  if (!isPullbackTrendFreshEnough(candidate)) blockers.push("净值/走势过期");
+  if (hasThemeRetreatRisk(candidate) || hasStaleThemeCatchdownRisk(candidate) || getThemeMainForcePlaybookRiskWarnings(candidate).length) blockers.push("题材退潮或接盘风险");
+  if (candidate.trendProfile?.trendLabel === "extended_uptrend" || candidate.trendProfile?.entryBias === "wait_pullback") blockers.push("追涨或等待回撤");
+  if (dimensions.feeFit?.score < 35) blockers.push("费用缺口或拖累偏高");
+  if (dimensions.scaleStability?.score < 35) blockers.push("规模过小或稳定性不足");
+  if (dimensions.holdingsOutlook?.score < 35) blockers.push("持仓前景或承载证据不足");
+  return [...new Set(blockers)];
+}
+
+function buildComputedFundOpportunityKeyEvidence(candidate = {}, dimensions = {}) {
+  return Object.values(dimensions)
+    .flatMap((dimension) => normalizeStringArray(dimension?.evidence).slice(0, 2))
+    .filter(Boolean);
+}
+
+function buildComputedFundOpportunityNextStep(gate = "", blockers = []) {
+  if (blockers.length) return `先补证或0元观察：${blockers.slice(0, 3).join("；")}。`;
+  if (gate === "primary_review") return "进入主推荐复核：再由模型结合用户需求、仓位和市场快照做最终判断。";
+  if (gate === "backup_review") return "进入备选复核：等待买点、题材或费用证据进一步确认。";
+  return "只观察：固定代码指标未达到可买复核门槛。";
+}
+
 function isEarlyTurnSetupTrend(trend = {}) {
   const r5 = Number(trend.return5dPct);
   const r10 = Number(trend.return10dPct);
@@ -31178,6 +31468,7 @@ async function fetchFundResearchDigest(code, seed = {}) {
     ]
   };
   digest.actionability = buildFundActionabilitySignals(digest);
+  digest.computedOpportunityScorecard = buildFundComputedOpportunityScorecard(digest);
   return digest;
 }
 
@@ -39329,6 +39620,7 @@ export {
   buildFundReportChartGlossaryAnswer,
   buildFundPriorityPreferenceConfigPatch,
   buildFundPriorityPreferenceAnswer,
+  buildFundComputedOpportunityScorecard,
   buildMarketDataQuality,
   applyMarketSnapshotCacheFallback,
   buildThemeRadar,
