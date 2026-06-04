@@ -2581,8 +2581,8 @@ const requiredPatterns = [
     message: "portfolio customer action cards must explain buy, backup, avoid, sell, and data-block reasons with customer-friendly labels."
   },
   {
-    pattern: /function buildPortfolioStatusDirectConclusionLines[\s\S]{0,900}priorityOrder = \["sell",\s*"buy",\s*"wait",\s*"avoid",\s*"data"\][\s\S]{0,900}直接结论：[\s\S]{0,900}优先处理：/,
-    message: "portfolio status replies must start with a direct conclusion derived from customer action cards."
+    pattern: /(?=[\s\S]*function buildPortfolioStatusDirectConclusionLines[\s\S]{0,1100}isPortfolioCustomerCatchdownAvoidCard\(card\))(?=[\s\S]*function buildPortfolioStatusDirectConclusionLines[\s\S]{0,1300}\["sell",\s*"avoid",\s*"buy",\s*"wait",\s*"data"\])(?=[\s\S]*function buildPortfolioStatusDirectConclusionLines[\s\S]{0,1900}直接结论：[\s\S]{0,900}优先处理：)(?=[\s\S]*function buildPortfolioStatusDirectConclusionText[\s\S]{0,900}先按接盘风险0元观察[\s\S]{0,320}这不是低位启动)/,
+    message: "portfolio status replies must start with customer action cards and put catchdown-risk avoid items before buy-review items."
   },
   {
     pattern: /(?=[\s\S]*function buildPortfolioStatusDirectConclusionLines[\s\S]{0,600}buildPortfolioStatusConsensusDirectConclusion)(?=[\s\S]*function buildPortfolioStatusConsensusDirectConclusion[\s\S]{0,2200}多榜单交叉)/,

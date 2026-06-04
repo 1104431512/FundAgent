@@ -4399,6 +4399,48 @@ assert(directConclusionLines.includes("008327 东财通信C"), "direct conclusio
 assert(directConclusionLines.includes("优先处理：008327 东财通信C"), "direct conclusion must name the first actionable fund");
 assert(directConclusionLines.includes("为什么："), "direct conclusion must explain why the item matters");
 assert(directConclusionLines.includes("下一步："), "direct conclusion must show the next action");
+const catchdownFirstDirectConclusion = manager.buildPortfolioStatusDirectConclusionLines({
+  account: {
+    cash: 70132.17,
+    totalAsset: 100980.4,
+    positionWeightPct: 30.55,
+    riskBudget: { label: "回撤正常", drawdownFromPeakPct: -0.31, blockNewBuys: false }
+  },
+  managerRankings: {
+    customerActionDeck: {
+      cards: [
+        {
+          id: "buy",
+          title: "可买复核",
+          count: 1,
+          summary: "只放接近买点对象。",
+          nextStep: "先交叉确认，再小仓。",
+          items: [{ code: "012046", name: "大成医药健康C", action: "小仓试探复核", reason: "低位修复但规模偏小。", nextStep: "等净值下钻确认。" }]
+        },
+        {
+          id: "avoid",
+          title: "接盘风险优先",
+          count: 1,
+          summary: "先排除旧题材、退潮和主力撤离后的表面回调。",
+          nextStep: "必须等新鲜新闻/政策催化、主力资金回流、代表持仓止跌和基金低位温和转强同时出现。",
+          items: [{
+            code: "000202",
+            name: "光模块低位回调候选C",
+            action: "历史接盘冷却",
+            reason: "历史接盘亏损冷却：同主题主力撤离后的表面回调，不是低位启动。",
+            nextStep: "等主力资金回流、新鲜催化和代表持仓止跌后再复核。"
+          }]
+        }
+      ]
+    }
+  }
+}).join("\n");
+assert(
+  catchdownFirstDirectConclusion.includes("直接结论：000202 光模块低位回调候选C 先按接盘风险0元观察")
+    && catchdownFirstDirectConclusion.includes("这不是低位启动")
+    && !catchdownFirstDirectConclusion.split(/\r?\n/).slice(0, 4).join("\n").includes("012046 大成医药健康C"),
+  "direct portfolio status conclusion must put catchdown-risk avoid items before buy-review items on the first screen"
+);
 const compactPositionLines = manager.buildPortfolioPositionStatusLines([
   {
     code: "008327",

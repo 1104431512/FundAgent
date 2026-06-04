@@ -9948,7 +9948,12 @@ function buildPortfolioStatusDirectConclusionLines({ account = {}, managerRankin
   const deck = managerRankings.customerActionDeck || {};
   const cards = Array.isArray(deck.cards) ? deck.cards : [];
   const activeCards = cards.filter((card) => Number(card.count || 0) > 0);
-  const priorityOrder = ["sell", "buy", "wait", "avoid", "data"];
+  const catchdownAvoidCard = activeCards.find((card) =>
+    card.id === "avoid" && isPortfolioCustomerCatchdownAvoidCard(card)
+  );
+  const priorityOrder = catchdownAvoidCard
+    ? ["sell", "avoid", "buy", "wait", "data"]
+    : ["sell", "buy", "wait", "avoid", "data"];
   const selectedCard = priorityOrder
     .map((id) => activeCards.find((card) => card.id === id))
     .find(Boolean)
@@ -10006,6 +10011,9 @@ function buildPortfolioStatusDirectConclusionText(card = {}, item = null, contex
   if (action === "sell") return `${subject ? `${subject} ` : ""}先看卖出/减仓和回吐保护，新增买入让位给风控。`;
   if (action === "buy") return `${subject ? `${subject} ` : ""}进入买入复核，但仍按小仓、分批和触发条件执行。`;
   if (action === "wait") return `${subject ? `${subject} ` : ""}值得继续盯，但今天重点是等触发，不把观察对象包装成买点。`;
+  if (action === "avoid" && (isPortfolioCustomerCatchdownAvoidAction(item) || isPortfolioCustomerCatchdownAvoidCard(card))) {
+    return `${subject ? `${subject} ` : ""}先按接盘风险0元观察；这不是低位启动，必须等主力资金回流、新鲜催化和代表持仓止跌后再复核。`;
+  }
   if (action === "avoid") return `${subject ? `${subject} ` : ""}先回避或降级观察，等高位降温、回撤或证据补齐。`;
   if (action === "data") return `${subject ? `${subject} ` : ""}先补数据，净值、费率或持仓证据没齐前不给买入金额。`;
   return buildPortfolioStatusFallbackConclusionText(context);
