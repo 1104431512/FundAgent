@@ -63,6 +63,24 @@ assert(priorityPreferenceAnswer.includes("已生效：以后多基金推荐先�
 assert(priorityPreferenceAnswer.includes("排序口径：高夏普/低回撤优先"), "priority preference acknowledgement must echo the requested high-Sharpe priority");
 assert(priorityPreferenceAnswer.includes("结果榜：只写第1/2/3优先") && priorityPreferenceAnswer.includes("硬纪律：旧题材"), "priority preference acknowledgement must define short leaderboard output and stale-theme discipline");
 assert(priorityPreferenceAnswer.split(/\r?\n/).filter(Boolean).length <= 5, "priority preference acknowledgement must stay short and not become another verbose answer");
+const priorityPreferencePatch = manager.buildFundPriorityPreferenceConfigPatch("现在经理太啰嗦了，干巴巴的讲数据。我更想看到直接结果，按高夏普优先排");
+assert.equal(priorityPreferencePatch.fundAnswerDefaultSortPolicy.includes("高夏普/低回撤优先"), true, "priority preference patch must persist the requested high-Sharpe sort policy");
+assert.equal(priorityPreferencePatch.fundAnswerShortLeaderboardByDefault, true, "priority preference patch must persist short result-leaderboard mode");
+assert.equal(
+  manager.formatFundAnswerSortPolicy("", "", { config: { fundAnswerDefaultSortPolicy: "高夏普/低回撤优先，再看买点和费用。" } }),
+  "高夏普/低回撤优先，再看买点和费用。",
+  "fund sort policy formatter must use saved default policy when the user does not specify a temporary priority"
+);
+assert.equal(
+  manager.formatFundAnswerSortPolicy("", "买点成立度优先，其次看题材支撑。", { config: { fundAnswerDefaultSortPolicy: "高夏普/低回撤优先，再看买点和费用。" } }),
+  "高夏普/低回撤优先，再看买点和费用。",
+  "saved fund sort preference must override internal fallback policies in deterministic result leaderboards"
+);
+assert.equal(
+  manager.shouldUseFundAnswerShortLeaderboardMode("普通推荐几个基金", { workflow: "fund_recommendation", config: { fundAnswerShortLeaderboardByDefault: true } }),
+  true,
+  "saved short-leaderboard preference must make later recommendation answers stay result-first even without repeating the priority wording"
+);
 const normalizedUserPortfolios = manager.normalizeUserPortfolios([
   {
     userId: "admin",
@@ -7832,6 +7850,25 @@ assert.equal(
   holdingRealtimeWeakActionability.allocationBand,
   "0元观察",
   "realtime top-holding weakness must use zero-yuan observation instead of observation/probe wording"
+);
+const holdingRealtimeWeakSizing = manager.buildPortfolioPositionSizingRanking(
+  { account: { totalAsset: 100000, cash: 80000, positionWeightPct: 20, positions: [], riskBudget: { blockNewBuys: false } } },
+  [{
+    code: "000050",
+    name: "持仓走弱低位基金C",
+    status: "ready",
+    readinessScore: 92,
+    lastSnapshot: {
+      ...holdingRealtimeWeakSetupDigest,
+      actionability: holdingRealtimeWeakActionability
+    }
+  }]
+).items[0];
+assert(
+  holdingRealtimeWeakSizing?.action === "0元观察"
+    && holdingRealtimeWeakSizing?.facts?.includes("0元观察")
+    && !/试探仓|启动仓/.test(`${holdingRealtimeWeakSizing?.action || ""} ${holdingRealtimeWeakSizing?.reason || ""} ${(holdingRealtimeWeakSizing?.facts || []).join(" ")}`),
+  "position-sizing ranking must not turn realtime top-holding weakness back into a probe band even when readiness is high"
 );
 const staleCatchdownOnlyTheme = {
   id: "old_compute_catchdown",

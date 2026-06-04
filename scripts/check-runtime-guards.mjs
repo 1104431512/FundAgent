@@ -3029,6 +3029,14 @@ const requiredPatterns = [
     message: "position-sizing ranking must force 0-yuan observation when current theme support is missing."
   },
   {
+    pattern: /function buildPortfolioPositionSizingRankingItem[\s\S]{0,900}const actionabilityHardNoBuy = isPortfolioActionabilityHardNoBuy\(actionability\)[\s\S]{0,900}themeSupportGap,\s*[\r\n\s]*actionabilityHardNoBuy/,
+    message: "position-sizing ranking must preserve actionability zero-yuan hard blockers instead of reissuing probe bands."
+  },
+  {
+    pattern: /function resolvePortfolioSizingBand\(\{[\s\S]{0,260}actionabilityHardNoBuy[\s\S]{0,420}actionabilityHardNoBuy \|\| readinessScore < 45[\s\S]{0,900}动作评估已有硬阻断/,
+    message: "position-sizing band resolver must convert actionability hard blockers to zero-yuan observation."
+  },
+  {
     pattern: /还差5日\/10日刚转强证据/,
     message: "watchlist readiness gaps must expose missing early-turn evidence before buying."
   },
@@ -3591,6 +3599,18 @@ const requiredPatterns = [
   {
     pattern: /(?=[\s\S]*function buildFundPriorityPreferenceAnswer[\s\S]{0,700}已生效：以后多基金推荐先给结果)(?=[\s\S]*handleFundQaWorkflow[\s\S]{0,420}answer_priority_preference[\s\S]{0,220}buildFundPriorityPreferenceAnswer)/,
     message: "priority-output preference requests must get a deterministic short acknowledgement instead of another model-generated long answer."
+  },
+  {
+    pattern: /(?=[\s\S]*fundAnswerDefaultSortPolicy)(?=[\s\S]*fundAnswerShortLeaderboardByDefault)(?=[\s\S]*function saveConfigPatch[\s\S]{0,900}fundAnswerDefaultSortPolicy[\s\S]{0,900}fundAnswerShortLeaderboardByDefault)/,
+    message: "priority-output preferences must be saved in config instead of only acknowledged once."
+  },
+  {
+    pattern: /(?=[\s\S]*function buildFundPriorityPreferenceConfigPatch[\s\S]{0,420}fundAnswerDefaultSortPolicy[\s\S]{0,220}fundAnswerShortLeaderboardByDefault:\s*true)(?=[\s\S]*function persistFundPriorityPreference[\s\S]{0,500}saveConfigPatch\(patch\))(?=[\s\S]*handleFundQaWorkflow[\s\S]{0,420}answer_priority_preference[\s\S]{0,220}persistFundPriorityPreference)/,
+    message: "priority-output preference requests must persist the requested sort policy and short-leaderboard mode before replying."
+  },
+  {
+    pattern: /(?=[\s\S]*function formatFundAnswerSortPolicy[\s\S]{0,420}getConfiguredFundAnswerSortPolicy)(?=[\s\S]*function shouldUseFundAnswerShortLeaderboardMode[\s\S]{0,320}fundAnswerShortLeaderboardByDefault)(?=[\s\S]*recommendFundsWithModel[\s\S]{0,620}shouldUseFundAnswerShortLeaderboardMode)/,
+    message: "fund answers must read saved sort and short-leaderboard preferences for later recommendations."
   },
   {
     pattern: /isPullbackSetupDiscoveryAsk/,

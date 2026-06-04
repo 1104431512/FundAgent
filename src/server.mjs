@@ -91,6 +91,8 @@ const DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES = [
   "沟通纪律：只展示专业阶段、结论、证据和约束，不展示模型隐藏思考链。"
 ];
 const DEFAULT_PORTFOLIO_MANAGER_PROFILE = DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES.join("\n");
+const DEFAULT_FUND_ANSWER_SORT_POLICY = "买点成立度优先，其次看题材/主力支撑、风险收益质量和份额费用。";
+const DEFAULT_FUND_ANSWER_PRIORITY_SORT_POLICY = "高夏普/低回撤优先，再看买点、主力/新闻支撑、费用和持仓承载。";
 const PORTFOLIO_ACTIVE_ORDER_FINAL_STATUSES = new Set(["confirmed", "cancelled", "rejected", "settled"]);
 const REQUIRED_PORTFOLIO_MANAGER_PROFILE_LINES = [
   {
@@ -1003,6 +1005,7 @@ async function handleFundQaWorkflow({ message, userText, intent }) {
     return;
   }
   if (intent?.mode === "answer_priority_preference") {
+    persistFundPriorityPreference(userText);
     await replyToMessage(message.message_id, buildFundPriorityPreferenceAnswer(userText), { kind: "answer" });
     return;
   }
@@ -11486,11 +11489,13 @@ function buildPortfolioPositionSizingRankingItem(item = {}, account = {}) {
   const chase = resolvePortfolioChaseRiskEvidence(item);
   const fee = resolvePortfolioWatchFeeSuitabilityEvidence(item);
   const themeSupportGap = getPortfolioWatchThemeSupportGap(item);
+  const actionability = item.lastSnapshot?.actionability || item.actionability || {};
+  const actionabilityHardNoBuy = isPortfolioActionabilityHardNoBuy(actionability);
   const cashPct = Number(account.cashPct ?? (Number(account.totalAsset || 0) > 0 ? Number(account.cash || 0) / Number(account.totalAsset || 1) * 100 : NaN));
   const positionWeight = Number(account.positionWeightPct || 0);
   const blockNewBuys = Boolean(account.riskBudget?.blockNewBuys);
   const highChase = chase.shouldSurface || hasHighChaseTheme(item.lastSnapshot || item);
-  const executable = !blockNewBuys && !highChase && !fee.missingCritical && !themeSupportGap && readinessScore >= 55;
+  const executable = !blockNewBuys && !highChase && !fee.missingCritical && !themeSupportGap && !actionabilityHardNoBuy && readinessScore >= 55;
   const sizing = resolvePortfolioSizingBand({
     item,
     readinessScore,
@@ -11499,7 +11504,8 @@ function buildPortfolioPositionSizingRankingItem(item = {}, account = {}) {
     blockNewBuys,
     highChase,
     feeMissing: fee.missingCritical,
-    themeSupportGap
+    themeSupportGap,
+    actionabilityHardNoBuy
   });
   if (!sizing.shouldSurface) return null;
   const score = Math.max(0, Math.min(100,
@@ -11533,6 +11539,7 @@ function buildPortfolioPositionSizingRankingItem(item = {}, account = {}) {
         blockNewBuys ? "账户回撤预算拦截新增买入。" : "",
         highChase ? "追涨风险未解除，仓位应为0元观察。" : "",
         themeSupportGap || "",
+        actionabilityHardNoBuy ? "动作评估已判定为0元观察，不能由仓位榜重新包装成试探仓。" : "",
         fee.missingCritical ? "费用/份额关键证据未补齐，不能给买入仓位。" : ""
       ].filter(Boolean),
       gaps: [
@@ -11546,10 +11553,10 @@ function buildPortfolioPositionSizingRankingItem(item = {}, account = {}) {
   });
 }
 
-function resolvePortfolioSizingBand({ item = {}, readinessScore = 0, cashPct = null, positionWeight = 0, blockNewBuys = false, highChase = false, feeMissing = false, themeSupportGap = "" } = {}) {
-  if (blockNewBuys || highChase || feeMissing || themeSupportGap || readinessScore < 45) {
+function resolvePortfolioSizingBand({ item = {}, readinessScore = 0, cashPct = null, positionWeight = 0, blockNewBuys = false, highChase = false, feeMissing = false, themeSupportGap = "", actionabilityHardNoBuy = false } = {}) {
+  if (blockNewBuys || highChase || feeMissing || themeSupportGap || actionabilityHardNoBuy || readinessScore < 45) {
     return {
-      shouldSurface: Boolean(blockNewBuys || highChase || feeMissing || themeSupportGap || item.status === "ready" || readinessScore >= 45),
+      shouldSurface: Boolean(blockNewBuys || highChase || feeMissing || themeSupportGap || actionabilityHardNoBuy || item.status === "ready" || readinessScore >= 45),
       lowerPct: 0,
       upperPct: 0,
       label: "0元观察",
@@ -11560,6 +11567,8 @@ function resolvePortfolioSizingBand({ item = {}, readinessScore = 0, cashPct = n
           ? "追涨或高位风险未解除，不能用小仓试探替代风控。"
           : themeSupportGap
             ? "当前题材缺少主力/预热/低位轮动支撑，仓位必须保持0元观察。"
+          : actionabilityHardNoBuy
+            ? "动作评估已有硬阻断，本轮只做0元观察，不能由仓位榜重新给试探仓。"
           : feeMissing
             ? "费用/份额关键证据未补齐，买入前仓位必须为0。"
             : "准备度不足，暂时不能给试探仓。",
@@ -11587,6 +11596,19 @@ function resolvePortfolioSizingBand({ item = {}, readinessScore = 0, cashPct = n
       : "候选接近买点但证据未完全闭环，只允许小仓试探或继续等待。",
     nextStep: `若买入，目标仓位控制在${label}；先和买入准备、组合适配、费率适配交叉确认，确认失败则降为0元观察。`
   };
+}
+
+function isPortfolioActionabilityHardNoBuy(actionability = {}) {
+  if (!actionability || typeof actionability !== "object") return false;
+  const text = [
+    actionability.allocationBand,
+    actionability.action,
+    actionability.actionText,
+    actionability.blocker,
+    actionability.decisionBlocker,
+    actionability.decisiveEvidence
+  ].flat().filter(Boolean).join(" ");
+  return /0元观察|零元观察|系统(?:文本接盘风险拦截|当前题材支撑拦截|接盘风险拦截|当前题材雷达未确认|旧催化降级|题材退潮拦截|数据时效降级|持仓实时降级)|净值\/走势已过期|重新下钻复核|题材退潮|主力资金撤离|接盘风险|旧题材|历史热点|底层持仓|表面回调可能继续下探/.test(text);
 }
 
 function buildPortfolioQualityScoreRanking(watchlist = []) {
@@ -23527,7 +23549,7 @@ async function recommendFundsWithModel({ userText, intent, marketSnapshot }) {
   const marketEvidence = buildMarketEvidenceSummary(userText, marketSnapshot);
   const marketSnapshotForModel = compactMarketSnapshotForModel(marketSnapshot);
   const requestedResultSortPolicy = formatFundAnswerSortPolicy(userText);
-  const priorityLeaderboardMode = isFundAnswerPriorityLeaderboardRequest(userText);
+  const priorityLeaderboardMode = shouldUseFundAnswerShortLeaderboardMode(userText, { workflow: "fund_recommendation" });
   const portfolioWatchlistContext = await getFundWorkflowWatchlistContext(userText);
   const marketDeepDive = mergeFundWorkflowWatchlistIntoDeepDive(
     await fetchMarketDeepDive(userText, marketSnapshot, { forRecommendation: true }),
@@ -23660,7 +23682,7 @@ async function answerFundQuestionWithModel({ userText, intent, marketSnapshot })
   const marketEvidence = buildMarketEvidenceSummary(userText, marketSnapshot);
   const marketSnapshotForModel = compactMarketSnapshotForModel(marketSnapshot);
   const requestedResultSortPolicy = formatFundAnswerSortPolicy(userText);
-  const priorityLeaderboardMode = isFundAnswerPriorityLeaderboardRequest(userText);
+  const priorityLeaderboardMode = shouldUseFundAnswerShortLeaderboardMode(userText, { workflow: "fund_qa" });
   const portfolioWatchlistContext = await getFundWorkflowWatchlistContext(userText);
   const marketDeepDive = mergeFundWorkflowWatchlistIntoDeepDive(
     await fetchMarketDeepDive(userText, marketSnapshot, { forRecommendation: false }),
@@ -23983,7 +24005,8 @@ function buildStrictFundPriorityLeaderboardFallback({ text = "", workflow = "", 
 
 function shouldForceShortFundPriorityLeaderboard({ text = "", workflow = "", userText = "", evidence = null } = {}) {
   if (workflow === "conversation") return false;
-  if (!isFundAnswerPriorityLeaderboardRequest(userText)) return false;
+  const explicitPriorityAsk = isFundAnswerPriorityLeaderboardRequest(userText);
+  if (!explicitPriorityAsk && !shouldUseFundAnswerShortLeaderboardMode(userText, { workflow })) return false;
   if (!shouldRequireFundAnswerResultFirstRankingSummary({ text, workflow, userText, evidence })) return false;
   const body = String(text || "");
   const lines = body.split(/\r?\n+/).map((line) => line.trim()).filter(Boolean);
@@ -24144,9 +24167,34 @@ function isFundAnswerPriorityLeaderboardRequest(userText = "") {
   return /(?:按|以).{0,18}(?:优先|排序|排行|排名|口径)|(?:排序|排行|排名|优先级|首选顺序|结果榜)|(?:高夏普|高收益|长期收益|同类排名|低回撤|低波动|费用|费率|规模|流动性|基金经理|经理稳定|持仓前景|主力题材|主力资金|新闻逻辑).{0,10}优先|优先.{0,10}(?:高夏普|高收益|长期收益|同类排名|低回撤|低波动|费用|费率|规模|流动性|基金经理|经理稳定|持仓前景|主力题材|主力资金|新闻逻辑)|(?:高夏普|高收益|长期收益|同类排名|低回撤|低波动|规模|流动性|持仓前景).{0,10}(?:排前|排在前|先排)|(?:太啰嗦|啰嗦|干巴巴|直接给(?:我)?结果|先给(?:我)?结果|结果优先|少报数据|少讲数据|不要(?:再)?报数|不要(?:再)?堆数据|别(?:再)?报数据)/.test(prompt);
 }
 
-function formatFundAnswerSortPolicy(userText = "", fallback = "买点成立度优先，其次看题材/主力支撑、风险收益质量和份额费用。") {
+function shouldUseFundAnswerShortLeaderboardMode(userText = "", { workflow = "", config = null } = {}) {
+  if (workflow === "conversation") return false;
+  if (isFundAnswerPriorityLeaderboardRequest(userText)) return true;
+  const effective = config || getEffectiveConfig();
+  return Boolean(effective.fundAnswerShortLeaderboardByDefault);
+}
+
+function normalizeFundAnswerSortPolicyText(value, fallback = DEFAULT_FUND_ANSWER_SORT_POLICY) {
+  const text = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text ? text.slice(0, 260) : fallback;
+}
+
+function getConfiguredFundAnswerSortPolicy(fallback = DEFAULT_FUND_ANSWER_SORT_POLICY, config = null) {
+  const effective = config || getEffectiveConfig();
+  return normalizeFundAnswerSortPolicyText(effective.fundAnswerDefaultSortPolicy, fallback);
+}
+
+function formatFundAnswerSortPolicy(userText = "", fallback = "", options = {}) {
   const priorities = getRequestedFundAnswerSortPriorities(userText);
-  if (!priorities.length) return fallback;
+  const configuredPolicy = getConfiguredFundAnswerSortPolicy(DEFAULT_FUND_ANSWER_SORT_POLICY, options.config);
+  const hasCustomConfiguredPolicy = configuredPolicy && configuredPolicy !== DEFAULT_FUND_ANSWER_SORT_POLICY;
+  const fallbackPolicy = normalizeFundAnswerSortPolicyText(
+    hasCustomConfiguredPolicy ? configuredPolicy : (fallback || configuredPolicy),
+    DEFAULT_FUND_ANSWER_SORT_POLICY
+  );
+  if (!priorities.length) return fallbackPolicy;
   const labels = priorities.map((priority) => ({
     risk_adjusted_quality: "高夏普/低回撤优先",
     long_term_return: "长期收益和历史业绩优先",
@@ -24448,7 +24496,7 @@ function shouldRequireConciseFundResultAnswer({ text = "", workflow = "", userTe
   if (!shouldRequireFundAnswerResultFirstRankingSummary({ text, workflow, userText, evidence })) return false;
   const prompt = String(userText || "");
   return workflow === "fund_recommendation"
-    || isFundAnswerPriorityLeaderboardRequest(prompt)
+    || shouldUseFundAnswerShortLeaderboardMode(prompt, { workflow })
     || /排序|排行|优先|首选|备选|选哪个|比较|推荐|高夏普|高收益|同类排名|低回撤|低波动|费用优先|规模|流动性|基金经理|持仓前景|主力题材/.test(prompt)
     || getEvidenceFundCandidateCount(evidence) >= 2;
 }
@@ -24461,7 +24509,7 @@ function hasVerboseFundResultAnswer(text = "", { workflow = "", userText = "" } 
     .map((line) => line.trim())
     .filter(Boolean);
 
-  const priorityAsk = isFundAnswerPriorityLeaderboardRequest(userText);
+  const priorityAsk = isFundAnswerPriorityLeaderboardRequest(userText) || shouldUseFundAnswerShortLeaderboardMode(userText, { workflow });
   if (!priorityAsk && lines.length <= 10) return false;
   const lineLimit = priorityAsk ? 8 : 18;
   const detailLines = lines.slice(3);
@@ -24492,7 +24540,7 @@ function hasVerboseFundResultAnswer(text = "", { workflow = "", userText = "" } 
 }
 
 function hasDryMetricDominatedPriorityAnswer(text = "", { userText = "" } = {}) {
-  if (!isFundAnswerPriorityLeaderboardRequest(userText)) return false;
+  if (!isFundAnswerPriorityLeaderboardRequest(userText) && !shouldUseFundAnswerShortLeaderboardMode(userText)) return false;
   const lines = String(text || "")
     .split(/\r?\n+/)
     .map((line) => line.trim())
@@ -36443,7 +36491,9 @@ function getEffectiveConfig() {
     portfolioPushReceiveType: process.env.PORTFOLIO_PUSH_RECEIVE_TYPE || "chat_id",
     portfolioAutoBindLastChat: parseBoolean(process.env.PORTFOLIO_AUTO_BIND_LAST_CHAT, true),
     portfolioRiskProfile: process.env.PORTFOLIO_RISK_PROFILE || "balanced",
-    portfolioManagerProfile: process.env.PORTFOLIO_MANAGER_PROFILE || DEFAULT_PORTFOLIO_MANAGER_PROFILE
+    portfolioManagerProfile: process.env.PORTFOLIO_MANAGER_PROFILE || DEFAULT_PORTFOLIO_MANAGER_PROFILE,
+    fundAnswerDefaultSortPolicy: process.env.FUND_ANSWER_DEFAULT_SORT_POLICY || DEFAULT_FUND_ANSWER_SORT_POLICY,
+    fundAnswerShortLeaderboardByDefault: parseBoolean(process.env.FUND_ANSWER_SHORT_LEADERBOARD_BY_DEFAULT, false)
   };
 
   return normalizeEffectiveConfig({
@@ -36477,6 +36527,8 @@ function normalizeEffectiveConfig(config) {
   next.portfolioAutoBindLastChat = parseBoolean(next.portfolioAutoBindLastChat, true);
   next.portfolioRiskProfile = String(next.portfolioRiskProfile || "balanced").trim() || "balanced";
   next.portfolioManagerProfile = normalizePortfolioManagerProfile(next.portfolioManagerProfile);
+  next.fundAnswerDefaultSortPolicy = normalizeFundAnswerSortPolicyText(next.fundAnswerDefaultSortPolicy, DEFAULT_FUND_ANSWER_SORT_POLICY);
+  next.fundAnswerShortLeaderboardByDefault = parseBoolean(next.fundAnswerShortLeaderboardByDefault, false);
   return next;
 }
 
@@ -36509,7 +36561,9 @@ function getPublicConfig(config = getEffectiveConfig()) {
       portfolioPushReceiveType: config.portfolioPushReceiveType || "chat_id",
       portfolioAutoBindLastChat: String(Boolean(config.portfolioAutoBindLastChat)),
       portfolioRiskProfile: config.portfolioRiskProfile || "balanced",
-      portfolioManagerProfile: normalizePortfolioManagerProfile(config.portfolioManagerProfile)
+      portfolioManagerProfile: normalizePortfolioManagerProfile(config.portfolioManagerProfile),
+      fundAnswerDefaultSortPolicy: normalizeFundAnswerSortPolicyText(config.fundAnswerDefaultSortPolicy, DEFAULT_FUND_ANSWER_SORT_POLICY),
+      fundAnswerShortLeaderboardByDefault: String(Boolean(config.fundAnswerShortLeaderboardByDefault))
     },
     secrets: {
       feishuAppSecret: Boolean(config.feishuAppSecret),
@@ -36545,11 +36599,12 @@ function saveConfigPatch(patch) {
     "portfolioPushReceiveId",
     "portfolioPushReceiveType",
     "portfolioRiskProfile",
-    "portfolioManagerProfile"
+    "portfolioManagerProfile",
+    "fundAnswerDefaultSortPolicy"
   ];
   const numericFields = ["modelMaxOutputTokens", "replyMaxChars", "portfolioInitialCapital", "portfolioRetentionDays"];
   const zeroableNumericFields = ["modelHttpTimeoutMs"];
-  const booleanFields = ["modelResponsesStream", "portfolioEnabled", "portfolioAutoBindLastChat"];
+  const booleanFields = ["modelResponsesStream", "portfolioEnabled", "portfolioAutoBindLastChat", "fundAnswerShortLeaderboardByDefault"];
   const secretFields = ["feishuAppSecret", "feishuVerificationToken", "feishuEncryptKey", "modelApiKey"];
 
   for (const field of textFields) {
@@ -37553,13 +37608,29 @@ function isFundOutputPriorityPreferenceRequest(text) {
   return /(?:排序|排行|排名|优先|首选|结果榜|直接给(?:我)?结果|先给(?:我)?结果|结果优先|少报数据|少讲数据|不要(?:再)?报数|不要(?:再)?堆数据|别(?:再)?报数据|太啰嗦|啰嗦|干巴巴|高夏普|低回撤|低波动|同类排名|费用|费率|规模|流动性|基金经理|经理稳定|持仓前景|主力题材|主力资金|新闻逻辑)/.test(normalized);
 }
 
+function buildFundPriorityPreferenceConfigPatch(userText = "") {
+  const sortPolicy = formatFundAnswerSortPolicy(userText, DEFAULT_FUND_ANSWER_PRIORITY_SORT_POLICY);
+  return {
+    fundAnswerDefaultSortPolicy: sortPolicy,
+    fundAnswerShortLeaderboardByDefault: true
+  };
+}
+
+function persistFundPriorityPreference(userText = "") {
+  try {
+    const patch = buildFundPriorityPreferenceConfigPatch(userText);
+    return saveConfigPatch(patch);
+  } catch (error) {
+    console.error("[fund-priority-preference-save-error]", error);
+    recordError(error, { fundPriorityPreferenceSaveFailures: 1 });
+    return null;
+  }
+}
+
 function buildFundPriorityPreferenceAnswer(userText = "") {
-  const sortPolicy = formatFundAnswerSortPolicy(
-    userText,
-    "高夏普/低回撤优先，再看买点、主力/新闻支撑、费用和持仓承载。"
-  );
+  const sortPolicy = buildFundPriorityPreferenceConfigPatch(userText).fundAnswerDefaultSortPolicy;
   return normalizeUserFacingFundAnswer([
-    "已生效：以后多基金推荐先给结果，不先铺数据。",
+    "已生效：以后多基金推荐先给结果，不先铺数据；这个偏好已写入配置。",
     `排序口径：${sortPolicy}`,
     "固定结构：直接结论 -> 排序口径 -> 结果榜 -> 为什么这样排 -> 执行 -> 边界。",
     "结果榜：只写第1/2/3优先和一句人话理由；夏普、回撤、规模这类数字只在会改变动作时出现。",
@@ -38716,6 +38787,7 @@ export {
   buildFeishuImageCaption,
   buildFeishuImageSupplementText,
   buildFundReportChartGlossaryAnswer,
+  buildFundPriorityPreferenceConfigPatch,
   buildFundPriorityPreferenceAnswer,
   buildMarketDataQuality,
   buildThemeRadar,
@@ -38746,6 +38818,8 @@ export {
   evaluatePortfolioWatchReadiness,
   evaluatePortfolioWatchlistFreshness,
   evaluateFundAnswerQuality,
+  formatFundAnswerSortPolicy,
+  shouldUseFundAnswerShortLeaderboardMode,
   buildFundResultLeaderboardFallback,
   buildConciseFundResultAnswerFallback,
   buildFundReportDecisionReasonLines,
