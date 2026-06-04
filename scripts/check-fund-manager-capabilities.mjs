@@ -5466,6 +5466,9 @@ assert(staleGuardedReadyUpdate.reason.includes("系统时效验证降级"), "sta
 const readinessQueue = manager.buildPortfolioDecisionReadinessQueue([
   { code: "000010", name: "中证A500ETF联接C", status: "ready", priority: 1, reason: "低位回调", buyTriggers: ["温和转强"], riskNotes: ["不追涨"] }
 ], [verifiedSeedProfile]);
+assert.equal(readinessQueue[0].status, "ready", "model readiness queue must keep truly buy-ready candidates as ready");
+assert.equal(readinessQueue[0].rawStatus, "ready", "model readiness queue must preserve the original watchlist status for audit");
+assert(readinessQueue[0].actionPermission.includes("BUY/WATCH复核"), "model readiness queue must explicitly permit review only for candidates that pass the positive gate");
 assert.equal(readinessQueue[0].firstTrigger, "温和转强", "portfolio decision prompt must expose ready candidate triggers");
 assert(readinessQueue[0].readinessScore >= 85, "portfolio decision prompt must expose deterministic buy-preparation readiness scores");
 assert.equal(readinessQueue[0].readinessLabel, "买入准备充分", "portfolio decision prompt must expose readable readiness labels");
@@ -10124,6 +10127,10 @@ assert(
 );
 assert(
   catchdownMemoryReadinessQueue.find((item) => item.code === "000202")?.positiveRankingGate?.includes("接盘/追涨风险未解除")
+    && catchdownMemoryReadinessQueue.find((item) => item.code === "000202")?.status === "blocked"
+    && catchdownMemoryReadinessQueue.find((item) => item.code === "000202")?.rawStatus === "ready"
+    && catchdownMemoryReadinessQueue.find((item) => item.code === "000202")?.actionPermission.includes("0元观察")
+    && catchdownMemoryReadinessQueue.find((item) => item.code === "000202")?.firstTrigger.includes("不触发买入")
     && [
       catchdownMemoryReadinessQueue.find((item) => item.code === "000202")?.firstRisk,
       ...(catchdownMemoryReadinessQueue.find((item) => item.code === "000202")?.readinessGaps || [])
@@ -10211,8 +10218,12 @@ assert.equal(
 const staleCatchdownReadinessQueue = manager.buildPortfolioDecisionReadinessQueue(staleCatchdownBoardDb.watchlist);
 assert(
   staleCatchdownReadinessQueue[0]?.positiveRankingGate?.includes("接盘/追涨风险未解除")
+    && staleCatchdownReadinessQueue[0]?.status === "blocked"
+    && staleCatchdownReadinessQueue[0]?.rawStatus === "ready"
+    && staleCatchdownReadinessQueue[0]?.actionPermission.includes("0元观察")
+    && staleCatchdownReadinessQueue[0]?.firstTrigger.includes("不触发买入")
     && staleCatchdownReadinessQueue[0].firstRisk.includes("正向买入门禁拦截"),
-  "model readiness queue must carry a hard no-buy gate for stale-theme pullbacks instead of only exposing a high ready status"
+  "model readiness queue must carry a hard no-buy gate and blocked action permission for stale-theme pullbacks instead of exposing a high ready status"
 );
 assert(!(staleCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "000042"), "customer action deck must not place stale catchdown candidates in buy-review");
 assert((staleCatchdownBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000042"), "customer action deck must present stale catchdown candidates as no-buy/avoid items");

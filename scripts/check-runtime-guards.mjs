@@ -1553,8 +1553,12 @@ const requiredPatterns = [
     message: "positive portfolio ranking gates must block low-position pullbacks that lack main-force/catalyst confirmation."
   },
   {
-    pattern: /function buildPortfolioDecisionReadinessQueue[\s\S]{0,1200}resolvePortfolioPositiveWatchRankingGate[\s\S]{0,1200}positiveRankingGate/,
+    pattern: /function buildPortfolioDecisionReadinessQueue[\s\S]{0,900}resolvePortfolioPositiveWatchRankingGate[\s\S]{0,2400}positiveRankingGate/,
     message: "model readiness queues must carry the same positive-ranking no-buy gate so stale-theme pullbacks are not shown as merely high-readiness candidates."
+  },
+  {
+    pattern: /function buildPortfolioDecisionReadinessQueue[\s\S]{0,1600}rawStatus[\s\S]{0,260}actionPermission[\s\S]{0,180}0元观察[\s\S]{0,520}不触发买入/,
+    message: "model readiness queues must expose blocked raw-ready catchdown candidates as zero-yuan/no-buy items instead of buy triggers."
   },
   {
     pattern: /(?=[\s\S]*function buildPortfolioRankingCustomerActionDeck[\s\S]*hasMainForceBuy)(?=[\s\S]*主力预热复核优先)(?=[\s\S]*新闻来源\/时间[\s\S]{0,180}主力资金延续[\s\S]{0,180}0\.5%-1\.2%)/,

@@ -2184,9 +2184,9 @@ async function buildPortfolioDecisionWithModel({ account, marketSnapshot, heldPr
     "自选基金池联网资料：",
     JSON.stringify(compactWatchlistProfiles, null, 2),
     "",
-    "今日购买准备队列（系统复核后）：",
+    "今日购买准备与风险复核队列（系统复核后）：",
     JSON.stringify(buildPortfolioDecisionReadinessQueue(decisionWatchlist, watchlistProfiles), null, 2),
-    "要求：队列中的接近可买候选必须在 actions 中逐只给 BUY 或 WATCH/HOLD 理由；如果不买，要写清仍差的触发条件，不能忽略。",
+    "要求：队列中的 status=ready 且 actionPermission 允许 BUY/WATCH 复核的候选，必须在 actions 中逐只给 BUY 或 WATCH/HOLD 理由；status=blocked 或 actionPermission 写着0元观察的候选只能 WATCH，不能 BUY、小仓试探或写成可买；如果不买，要写清仍差的触发条件，不能忽略。",
     "",
     "系统确定性召回的低位/回调候选：",
     JSON.stringify((watchlistSeedCandidates || []).map(compactPortfolioSeedCandidateForModel), null, 2),
@@ -4132,29 +4132,48 @@ function buildPortfolioDecisionReadinessQueue(watchlist = [], profiles = []) {
     .filter((item) => ["ready", "waiting_pullback"].includes(item.status))
     .map((item) => {
       const profile = profileByCode.get(item.code) || item.lastSnapshot || null;
+      const displayItem = applyPortfolioWatchDisplayStatus({
+        ...item,
+        lastSnapshot: profile || item.lastSnapshot
+      });
       const readiness = evaluatePortfolioWatchReadiness(item, profile);
       const riskGate = resolvePortfolioPositiveWatchRankingGate({
         ...item,
+        ...displayItem,
         lastSnapshot: profile || item.lastSnapshot
       });
       const memoryWarnings = getPortfolioCatchdownLossMemoryWarnings(item, profile || item.lastSnapshot || {});
       const memoryBlocked = memoryWarnings.length > 0;
+      const noBuyBlocked = memoryBlocked || !riskGate.ok || displayItem.status === "blocked";
+      const queueStatus = noBuyBlocked ? "blocked" : displayItem.status || item.status;
+      const gateReason = memoryBlocked ? memoryWarnings[0] : riskGate.ok ? "" : riskGate.reason;
       return {
         code: item.code,
         name: item.name,
-        status: item.status,
+        status: queueStatus,
+        rawStatus: item.status,
+        statusText: noBuyBlocked ? "暂不买入" : formatPortfolioWatchStatus(queueStatus),
+        actionPermission: noBuyBlocked
+          ? "0元观察；不得BUY，不得小仓试探。"
+          : queueStatus === "ready"
+            ? "可进入BUY/WATCH复核，但仍需写清买入理由和风控边界。"
+            : "只能WATCH等待触发，不能直接BUY。",
         priority: item.priority,
         readinessScore: readiness.score,
-        readinessLabel: readiness.label,
+        readinessLabel: noBuyBlocked ? "门禁拦截" : readiness.label,
         reason: item.reason,
-        firstTrigger: item.buyTriggers?.[0] || "",
+        firstTrigger: noBuyBlocked
+          ? `不触发买入：${gateReason || "接盘/追涨风险未解除"}`
+          : item.buyTriggers?.[0] || "",
         firstRisk: memoryBlocked ? memoryWarnings[0] : riskGate.ok ? item.riskNotes?.[0] || "" : riskGate.reason,
         positionPlan: item.positionPlan || "",
         trendEvidence: profile ? formatPortfolioSeedVerifiedTrendEvidence(profile) : item.lastSnapshot?.trendSummary || "",
         readinessGaps: memoryBlocked
           ? mergeStringLists(memoryWarnings, riskGate.ok ? readiness.gaps : [riskGate.reason, ...readiness.gaps])
           : riskGate.ok ? readiness.gaps : mergeStringLists([riskGate.reason], readiness.gaps),
-        positiveRankingGate: memoryBlocked || !riskGate.ok ? "接盘/追涨风险未解除，不能进入买入准备或低位启动主推荐。" : "通过",
+        positiveRankingGate: noBuyBlocked
+          ? `接盘/追涨风险未解除，不能进入买入准备或低位启动主推荐。${gateReason ? ` ${gateReason}` : ""}`.trim()
+          : "通过",
         feeNotes: item.feeNotes || [],
         reviewDate: item.reviewDate || ""
       };
