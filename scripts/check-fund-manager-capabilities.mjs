@@ -1616,8 +1616,8 @@ assert(
   "generic result fallback must generate the first-screen direct conclusion, sort policy, and result board"
 );
 assert(
-  genericLeaderboardFallback.includes("按你的口径直接排前三"),
-  "generic result fallback must sound like a direct ranked decision instead of telling the user to read a metric report"
+  genericLeaderboardFallback.includes("按高夏普/低回撤优先直接排前三"),
+  "generic result fallback must name the requested priority in the direct conclusion instead of hiding behind a vague policy reference"
 );
 const genericFallbackResultLine = genericLeaderboardFallback.split(/\r?\n/).find((line) => line.startsWith("结果榜：")) || "";
 assert(
@@ -1625,8 +1625,9 @@ assert(
   "generic result fallback must actually rank the higher-Sharpe candidate first when the user asks for high-Sharpe priority"
 );
 assert(
-  /1\.\s*首选\s+000082/.test(genericFallbackResultLine) && /[；\n]\s*2\.\s*备选\s+\d{6}/.test(genericFallbackResultLine),
-  "generic result fallback must label the first buyable ranked fund as the first choice and later funds as backups"
+  /1\.\s*首选\s+000082[^；\n]+可小仓验证/.test(genericFallbackResultLine)
+    && /[；\n]\s*2\.\s*备选\s+\d{6}[^；\n]+先备选复核/.test(genericFallbackResultLine),
+  "generic result fallback must give small-starter permission only to the first choice and keep later funds as backups"
 );
 assert(
   !/结果榜：.*(?:夏普\s*\d|回撤-?\d|近20日|近60日)/.test(genericFallbackResultLine),
@@ -12125,6 +12126,10 @@ const highSharpeResultLine = highSharpePriorityFallback.split("\n").find((line) 
 assert(
   highSharpePriorityFallback.includes("排序口径：高夏普/低回撤优先"),
   "deterministic fallback must restate the user's requested high-Sharpe priority"
+);
+assert(
+  highSharpePriorityFallback.includes("直接结论：按高夏普/低回撤优先排完"),
+  "high-Sharpe priority fallback must name the requested ranking policy in the direct conclusion, not only in a later policy line"
 );
 assert(
   highSharpeResultLine.indexOf("000072") >= 0 && highSharpeResultLine.indexOf("000072") < highSharpeResultLine.indexOf("000071"),

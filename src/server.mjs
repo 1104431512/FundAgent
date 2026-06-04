@@ -24017,6 +24017,14 @@ function formatFundAnswerSortPolicy(userText = "", fallback = "买点成立度�
   return `${labels.join("，")}，再看买点、题材承载和费用。`;
 }
 
+function getFundAnswerPrimarySortLabel(sortPolicy = "") {
+  const first = String(sortPolicy || "")
+    .split(/[，,。；;]/)
+    .map((part) => part.trim())
+    .find(Boolean);
+  return first || "本次排序口径";
+}
+
 function getFundAnswerSortPolicyText(text = "") {
   const lines = String(text || "")
     .split(/\r?\n+/)
@@ -24681,10 +24689,11 @@ function buildFundResultLeaderboardFallback({ text = "", workflow = "", userText
   if (ranked.length < 2) return "";
 
   const sortPolicy = formatFundAnswerSortPolicy(userText, "风险收益质量优先，其次看买点、题材支撑和费用。");
+  const primarySortLabel = getFundAnswerPrimarySortLabel(sortPolicy);
   const blockedCount = ranked.filter((item) => isFundAnswerLeaderboardNoBuyCandidate(item.candidate)).length;
   const directLine = blockedCount === ranked.length
-    ? "直接结论：按你的口径排完后，前三名也只进复核榜，暂不直接买。"
-    : "直接结论：按你的口径直接排前三；第一名才有小仓验证资格，其余先做备选复核。";
+    ? `直接结论：按${primarySortLabel}排完，前三名也只进复核榜，暂不买。`
+    : `直接结论：按${primarySortLabel}直接排前三；只给第一名小仓验证资格，其余先备选。`;
   const resultLine = `结果榜：${ranked.map((item, index) =>
     `${index + 1}. ${formatFundAnswerLeaderboardCandidate(item.candidate, { sortPolicy, userText, rankIndex: index })}`
   ).join("；")}`;
@@ -24720,7 +24729,8 @@ function formatFundAnswerLeaderboardCandidate(candidate = {}, { sortPolicy = "",
   const blocked = isFundAnswerLeaderboardNoBuyCandidate(candidate);
   const reason = buildFundAnswerLeaderboardReason(candidate, { sortPolicy, userText, blocked });
   const role = buildFundAnswerLeaderboardRole(candidate, { blocked, rankIndex });
-  return `${role} ${label}：${reason}${blocked ? "，先0元复核" : "，可小仓验证"}`;
+  const action = blocked ? "先0元复核" : rankIndex === 0 ? "可小仓验证" : "先备选复核";
+  return `${role} ${label}：${reason}，${action}`;
 }
 
 function buildFundAnswerLeaderboardRole(candidate = {}, { blocked = false, rankIndex = 0 } = {}) {
@@ -25086,6 +25096,7 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
     userText
   ).slice(0, 3);
   const sortPolicy = formatFundAnswerSortPolicy(userText, "买点成立度优先，其次看题材/主力支撑、风险收益质量和份额费用。");
+  const primarySortLabel = getFundAnswerPrimarySortLabel(sortPolicy);
   const compactLeaderboardMode = isFundAnswerPriorityLeaderboardRequest(userText);
   const catchdownIssue = hasPullbackFallbackCatchdownIssue(issues);
   const catchdownWarnings = collectPullbackFallbackCatchdownWarnings(ranked.map((item) => item.candidate));
@@ -25128,7 +25139,7 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
   );
   if (compactLeaderboardMode) {
     return [
-      "直接结论：按你的口径排完，第一名才有小仓验证资格，其余只做备选复核。",
+      `直接结论：按${primarySortLabel}排完，只给第一名小仓验证资格，其余先备选。`,
       `排序口径：${sortPolicy}`,
       `结果榜：${resultLines.join("；")}`,
       buildFundAnswerLeaderboardWhyLine(userText),
@@ -25140,7 +25151,7 @@ function buildPullbackQualityFallbackAnswer({ userText, evidence, issues = [] })
     ].filter(Boolean).join("\n");
   }
   return [
-    "直接结论：按你的口径只排可进主推荐的候选，偏热或等待回撤的标的不进主榜。",
+    `直接结论：按${primarySortLabel}只排可进主推荐的候选，偏热或等待回撤的标的不进主榜。`,
     `排序口径：${sortPolicy}`,
     `结果榜：${resultLines.join("；")}`,
     "我对这条筛选把握度中等偏高，依据是下钻信号已经把主候选和观察池分开。",
