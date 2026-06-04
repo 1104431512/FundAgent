@@ -753,6 +753,10 @@ const requiredPatterns = [
     message: "fund answer quality must require the sort policy to follow user-specified priorities such as high-Sharpe or low-drawdown first."
   },
   {
+    pattern: /function extractCustomFundAnswerSortPriorityPhrases[\s\S]{0,3000}custom:\$\{phrase\}[\s\S]{0,3000}priority\.label/,
+    message: "fund answer quality must preserve custom xx-first ranking priorities instead of replacing them with a default policy."
+  },
+  {
     pattern: /(?=[\s\S]*function getRequestedFundAnswerSortPriorities[\s\S]*long_term_return)(?=[\s\S]*function getRequestedFundAnswerSortPriorities[\s\S]*size_liquidity)(?=[\s\S]*function getRequestedFundAnswerSortPriorities[\s\S]*holdings_outlook)(?=[\s\S]*function getFundAnswerPriorityScore[\s\S]*manager_stability)(?=[\s\S]*function buildFundAnswerHoldingsOutlookLeaderboardReason)/,
     message: "fund answer quality must support more customer ranking priorities than high-Sharpe, including return, size/liquidity, manager stability, and holdings outlook."
   },

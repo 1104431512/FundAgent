@@ -24243,11 +24243,47 @@ function hasFundAnswerSortPolicy(text = "") {
   return /排序口径|排序规则|优先级|按.{0,24}优先|高夏普优先|高收益优先|同类排名优先|低回撤优先|低波动优先|费用优先|规模.{0,8}优先|流动性.{0,8}优先|基金经理.{0,8}优先|经理稳定.{0,8}优先|持仓前景.{0,8}优先|主力.{0,12}优先|接盘风险优先|第[一二三四五12345]优先/.test(body);
 }
 
+function normalizeCustomFundAnswerSortPriorityPhrase(value = "") {
+  return String(value || "")
+    .replace(/[“”"'']/g, "")
+    .replace(/^\s*(?:按|以|按照|根据|依照|优先看|优先考虑)\s*/g, "")
+    .replace(/\s*(?:优先|排序|排行|排名|口径|排|来排|来排出来的)\s*$/g, "")
+    .replace(/[，,。；;：:\s]+/g, "")
+    .trim()
+    .slice(0, 18);
+}
+
+function isKnownFundAnswerSortPriorityPhrase(value = "") {
+  const text = normalizeIntentText(value);
+  return /高?夏普|夏普率|风险收益|收益风险|质量|高收益|长期收益|年化|历史业绩|业绩|回报|同类排名|同类排行|排名|排行|低回撤|控制回撤|抗跌|低波动|稳健|费用|费率|成本|申购费|销售服务费|份额|A类|C类|D类|I类|规模|流动性|清盘|基金经理|经理稳定|任期|管理人|持仓|前十大|十大持仓|行业前景|底层|重仓|主力|资金|题材|新闻|时事|催化|预热|板块|轮动|低位|回调|启动|追涨|接盘/.test(text);
+}
+
+function extractCustomFundAnswerSortPriorityPhrases(userText = "") {
+  const raw = String(userText || "");
+  const phrases = [];
+  const add = (value) => {
+    const phrase = normalizeCustomFundAnswerSortPriorityPhrase(value);
+    if (!phrase || phrase.length < 2) return;
+    if (/^(?:x+|xx|某个|某项|什么|哪个|哪项|这项|那项|结果|直接结果|数据|指标|口径|排序口径|默认|系统|优先|更好)$/i.test(phrase)) return;
+    if (isKnownFundAnswerSortPriorityPhrase(phrase)) return;
+    if (!phrases.includes(phrase)) phrases.push(phrase);
+  };
+  const patterns = [
+    /(?:按|以|按照|根据|依照)\s*([A-Za-z0-9\u4e00-\u9fa5/（）()]{1,18})\s*(?:优先|排序|排行|排名|口径)/g,
+    /([A-Za-z0-9\u4e00-\u9fa5/（）()]{2,18})\s*优先/g
+  ];
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(raw))) add(match[1]);
+  }
+  return phrases.slice(0, 3);
+}
+
 function getRequestedFundAnswerSortPriorities(userText = "") {
   const prompt = String(userText || "");
   const priorities = [];
-  const add = (id, pattern) => {
-    if (!priorities.some((item) => item.id === id)) priorities.push({ id, pattern });
+  const add = (id, pattern, label = "") => {
+    if (!priorities.some((item) => item.id === id)) priorities.push({ id, pattern, label });
   };
   if (/高夏普|夏普(?:率)?(?:高|好|优先)|风险收益|收益风险|质量(?:好|高|优先)|质量好一点/.test(prompt)) {
     add("risk_adjusted_quality", /高夏普|夏普|风险收益|收益风险|质量/);
@@ -24281,6 +24317,9 @@ function getRequestedFundAnswerSortPriorities(userText = "") {
   }
   if (/低位|回调|启动|准备启动|回调完成|不要追涨|不追涨|接盘/.test(prompt)) {
     add("entry_timing", /低位|回调|启动|追涨|接盘|买点|位置/);
+  }
+  for (const phrase of extractCustomFundAnswerSortPriorityPhrases(prompt)) {
+    add(`custom:${phrase}`, new RegExp(escapeRegExp(phrase)), `${phrase}优先`);
   }
   return priorities;
 }
@@ -24330,7 +24369,7 @@ function formatFundAnswerSortPolicy(userText = "", fallback = "", options = {}) 
     holdings_outlook: "持仓前景和行业承载优先",
     theme_capital: "主力资金和新闻逻辑优先",
     entry_timing: "回调完成和低位启动优先"
-  }[priority.id])).filter(Boolean);
+  }[priority.id] || priority.label)).filter(Boolean);
   return `${labels.join("，")}，再看买点、题材承载和费用。`;
 }
 

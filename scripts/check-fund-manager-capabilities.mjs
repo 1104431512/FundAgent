@@ -66,6 +66,34 @@ assert(priorityPreferenceAnswer.split(/\r?\n/).filter(Boolean).length <= 5, "pri
 const priorityPreferencePatch = manager.buildFundPriorityPreferenceConfigPatch("现在经理太啰嗦了，干巴巴的讲数据。我更想看到直接结果，按高夏普优先排");
 assert.equal(priorityPreferencePatch.fundAnswerDefaultSortPolicy.includes("高夏普/低回撤优先"), true, "priority preference patch must persist the requested high-Sharpe sort policy");
 assert.equal(priorityPreferencePatch.fundAnswerShortLeaderboardByDefault, true, "priority preference patch must persist short result-leaderboard mode");
+const customPriorityPreferencePatch = manager.buildFundPriorityPreferenceConfigPatch("以后推荐基金按红利防守优先给结果，少报数据");
+assert.equal(customPriorityPreferencePatch.fundAnswerDefaultSortPolicy.includes("红利防守优先"), true, "custom priority preference patch must preserve user phrasing instead of falling back to the default policy");
+assert.equal(customPriorityPreferencePatch.fundAnswerShortLeaderboardByDefault, true, "custom priority preference must also persist short result-leaderboard mode");
+assert.equal(
+  manager.formatFundAnswerSortPolicy("推荐几个基金，按红利防守优先", "买点成立度优先。"),
+  "红利防守优先，再看买点、题材承载和费用。",
+  "custom xx-first ranking requests must be reflected in the sort policy"
+);
+const customPriorityMismatchQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：可以分批买入。\n排序口径：高夏普/低回撤优先，再看买点和费用。\n结果榜：1. 000001 稳健基金C：风险收益更稳；2. 000005 红利基金C：先备选。",
+  workflow: "fund_recommendation",
+  userText: "推荐几个基金，按红利防守优先",
+  evidence: { marketDeepDive: { candidates: [{ code: "000001" }, { code: "000005" }] } }
+});
+assert(
+  customPriorityMismatchQuality.issues.includes("missing_requested_result_sort_policy"),
+  "fund answer quality must reject answers that replace a custom xx-first priority with another default policy"
+);
+const customPriorityMatchedQuality = manager.evaluateFundAnswerQuality({
+  text: "直接结论：可以分批买入。\n排序口径：红利防守优先，再看买点、题材承载和费用。\n结果榜：1. 000005 红利基金C：防守属性更贴合；2. 000001 稳健基金C：先备选复核。",
+  workflow: "fund_recommendation",
+  userText: "推荐几个基金，按红利防守优先",
+  evidence: { marketDeepDive: { candidates: [{ code: "000001" }, { code: "000005" }] } }
+});
+assert(
+  !customPriorityMatchedQuality.issues.includes("missing_requested_result_sort_policy"),
+  "fund answer quality must accept result boards that preserve a custom xx-first priority"
+);
 assert.equal(
   manager.formatFundAnswerSortPolicy("", "", { config: { fundAnswerDefaultSortPolicy: "高夏普/低回撤优先，再看买点和费用。" } }),
   "高夏普/低回撤优先，再看买点和费用。",
