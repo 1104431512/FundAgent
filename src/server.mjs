@@ -91,7 +91,7 @@ const DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES = [
   "沟通纪律：只展示专业阶段、结论、证据和约束，不展示模型隐藏思考链。"
 ];
 const DEFAULT_PORTFOLIO_MANAGER_PROFILE = DEFAULT_PORTFOLIO_MANAGER_PROFILE_LINES.join("\n");
-const DEFAULT_FUND_ANSWER_SORT_POLICY = "买点成立度优先，其次看题材/主力支撑、风险收益质量和份额费用。";
+const DEFAULT_FUND_ANSWER_SORT_POLICY = "风险收益质量优先：先看高夏普/低回撤，再看买点、主力/新闻支撑、费用和持仓承载。";
 const DEFAULT_FUND_ANSWER_PRIORITY_SORT_POLICY = "高夏普/低回撤优先，再看买点、主力/新闻支撑、费用和持仓承载。";
 const PORTFOLIO_ACTIVE_ORDER_FINAL_STATUSES = new Set(["confirmed", "cancelled", "rejected", "settled"]);
 const REQUIRED_PORTFOLIO_MANAGER_PROFILE_LINES = [
@@ -36756,7 +36756,7 @@ function getEffectiveConfig() {
     portfolioRiskProfile: process.env.PORTFOLIO_RISK_PROFILE || "balanced",
     portfolioManagerProfile: process.env.PORTFOLIO_MANAGER_PROFILE || DEFAULT_PORTFOLIO_MANAGER_PROFILE,
     fundAnswerDefaultSortPolicy: process.env.FUND_ANSWER_DEFAULT_SORT_POLICY || DEFAULT_FUND_ANSWER_SORT_POLICY,
-    fundAnswerShortLeaderboardByDefault: parseBoolean(process.env.FUND_ANSWER_SHORT_LEADERBOARD_BY_DEFAULT, false)
+    fundAnswerShortLeaderboardByDefault: parseBoolean(process.env.FUND_ANSWER_SHORT_LEADERBOARD_BY_DEFAULT, true)
   };
 
   return normalizeEffectiveConfig({
@@ -36791,7 +36791,7 @@ function normalizeEffectiveConfig(config) {
   next.portfolioRiskProfile = String(next.portfolioRiskProfile || "balanced").trim() || "balanced";
   next.portfolioManagerProfile = normalizePortfolioManagerProfile(next.portfolioManagerProfile);
   next.fundAnswerDefaultSortPolicy = normalizeFundAnswerSortPolicyText(next.fundAnswerDefaultSortPolicy, DEFAULT_FUND_ANSWER_SORT_POLICY);
-  next.fundAnswerShortLeaderboardByDefault = parseBoolean(next.fundAnswerShortLeaderboardByDefault, false);
+  next.fundAnswerShortLeaderboardByDefault = parseBoolean(next.fundAnswerShortLeaderboardByDefault, true);
   return next;
 }
 

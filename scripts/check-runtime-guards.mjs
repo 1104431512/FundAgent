@@ -737,6 +737,14 @@ const requiredPatterns = [
     message: "portfolio decision prompts must reduce numeric dumps and prioritize customer-readable trend logic."
   },
   {
+    pattern: {
+      test: (source) => source.includes('DEFAULT_FUND_ANSWER_SORT_POLICY = "风险收益质量优先：先看高夏普/低回撤')
+        && /FUND_ANSWER_SHORT_LEADERBOARD_BY_DEFAULT,\s*true/.test(source)
+        && /fundAnswerShortLeaderboardByDefault,\s*true\)/.test(source)
+    },
+    message: "fund recommendation defaults must be short result leaderboards ranked by risk-adjusted quality instead of verbose metric reports."
+  },
+  {
     pattern: /function evaluateFundAnswerQuality[\s\S]{0,3600}missing_result_sort_policy/,
     message: "fund answer quality must reject multi-candidate recommendations that omit a customer-readable sort policy."
   },

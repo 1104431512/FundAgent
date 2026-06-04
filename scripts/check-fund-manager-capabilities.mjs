@@ -20,6 +20,11 @@ assert(!serverSource.includes("uniqueCodes.slice(0, 6)"), "fund enrichment must 
 assert(serverSource.includes("FUND_ANALYSIS_ENRICHMENT_LIMIT") && serverSource.includes("PORTFOLIO_PROFILE_ENRICHMENT_LIMIT"), "fund enrichment limits must be configurable for analysis and portfolio-manager coverage");
 assert(/heldProfilesRaw[\s\S]{0,180}getPortfolioProfileEnrichmentLimit/.test(serverSource), "portfolio decisions must enrich held positions with the higher portfolio coverage limit");
 assert(/watchlistProfilesRaw[\s\S]{0,180}getPortfolioProfileEnrichmentLimit/.test(serverSource), "portfolio decisions must enrich watchlist candidates with the higher portfolio coverage limit");
+assert(
+  serverSource.includes("DEFAULT_FUND_ANSWER_SORT_POLICY = \"风险收益质量优先：先看高夏普/低回撤")
+    && /FUND_ANSWER_SHORT_LEADERBOARD_BY_DEFAULT,\s*true/.test(serverSource),
+  "fund recommendation defaults must be result-first and risk-adjusted instead of metric-report-first"
+);
 
 const setupQuery = "我想要找一个回调完成，到了低位，准备要启动的基金";
 const intent = await manager.classifyMessageIntent({
