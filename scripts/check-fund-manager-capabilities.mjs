@@ -7888,6 +7888,56 @@ assert(
     && !/持仓支撑复核|前景复核/.test(`${holdingRealtimeWeakOutlookItem?.action || ""} ${holdingRealtimeWeakOutlookItem?.reason || ""}`),
   "holdings-outlook ranking must not repackage weakening top-ten holdings or stale catchdown blockers as supportive holdings opportunities"
 );
+const holdingRealtimeWeakFeeWatch = {
+  code: "000050",
+  name: "持仓走弱低位基金C",
+  status: "ready",
+  readinessScore: 92,
+  shareClass: "C",
+  alternativeShareClasses: [
+    {
+      code: "000150",
+      name: "持仓走弱低位基金A",
+      shareClass: "A",
+      feeImpact: { oneYearCostPer10000: 18 },
+      feeNotes: ["A类每万1年约18元"]
+    }
+  ],
+  lastSnapshot: {
+    ...holdingRealtimeWeakSetupDigest,
+    actionability: holdingRealtimeWeakActionability,
+    fees: {
+      shareClass: "C",
+      shareClassFeeModel: {
+        type: "sales_service_fee",
+        label: "C类销售服务费模型",
+        selectionRule: "短中期战术持有优先C类，长期需比较A类"
+      },
+      feeImpact: {
+        oneYearCostPer10000: 45,
+        twoYearCostPer10000: 90
+      }
+    }
+  }
+};
+const holdingRealtimeWeakFeeRanking = manager.buildPortfolioFeeSuitabilityRanking([holdingRealtimeWeakFeeWatch]);
+const holdingRealtimeWeakFeeItem = holdingRealtimeWeakFeeRanking.items.find((item) => item.code === "000050");
+assert(
+  holdingRealtimeWeakFeeItem?.action === "费用选择不抵消接盘风险"
+    && holdingRealtimeWeakFeeItem?.status === "warning"
+    && /0元观察|主力资金回流|新鲜催化/.test(holdingRealtimeWeakFeeItem?.decision?.nextStep || "")
+    && !/份额对比复核|持有期适配复核|渠道可买复核/.test(`${holdingRealtimeWeakFeeItem?.action || ""} ${holdingRealtimeWeakFeeItem?.reason || ""}`),
+  "fee-suitability ranking must not turn cheaper share classes into buy-like reviews when catchdown risk gate is active"
+);
+const holdingRealtimeWeakReplacementRanking = manager.buildPortfolioReplacementChoiceRanking([holdingRealtimeWeakFeeWatch]);
+const holdingRealtimeWeakReplacementItem = holdingRealtimeWeakReplacementRanking.items.find((item) => item.code === "000050");
+assert(
+  holdingRealtimeWeakReplacementItem?.action === "替代优选不抵消接盘风险"
+    && holdingRealtimeWeakReplacementItem?.status === "warning"
+    && /0元观察|主力资金回流|新鲜催化|代表持仓止跌/.test(holdingRealtimeWeakReplacementItem?.decision?.nextStep || "")
+    && !/A\/C份额优选|同类低费替代|份额\/同类替代优选/.test(`${holdingRealtimeWeakReplacementItem?.action || ""} ${holdingRealtimeWeakReplacementItem?.reason || ""}`),
+  "replacement-choice ranking must not repackage stale-catchdown funds as cheaper alternative opportunities"
+);
 const staleCatchdownOnlyTheme = {
   id: "old_compute_catchdown",
   name: "旧算力回调",

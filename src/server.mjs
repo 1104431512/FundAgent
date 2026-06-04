@@ -13611,6 +13611,10 @@ function buildPortfolioFeeSuitabilityRanking(watchlist = []) {
 function buildPortfolioFeeSuitabilityRankingItem(item = {}) {
   const evidence = resolvePortfolioWatchFeeSuitabilityEvidence(item);
   if (!evidence.shouldSurface) return null;
+  const riskGate = resolvePortfolioPositiveWatchRankingGate(item);
+  if (!riskGate.ok) {
+    return buildPortfolioFeeSuitabilityRiskGateItem(item, evidence, riskGate);
+  }
   const readinessScore = Number(item.readinessScore || 0);
   const statusScore = item.status === "ready" ? 24 : item.status === "waiting_pullback" ? 14 : item.status === "watch" ? 6 : 0;
   const score = readinessScore
@@ -13655,6 +13659,39 @@ function buildPortfolioFeeSuitabilityRankingItem(item = {}) {
         : "按预计持有期比较 A/C/D/I、赎回费和可买渠道，再决定小仓试探或继续观察。"
     },
     status: evidence.missingCritical ? "warning" : evidence.highDrag ? "watch" : item.status || "watch"
+  });
+}
+
+function buildPortfolioFeeSuitabilityRiskGateItem(item = {}, evidence = {}, riskGate = {}) {
+  const facts = mergeStringLists(buildPortfolioFeeSuitabilityFacts(evidence), riskGate.facts || []).slice(0, 6);
+  return buildPortfolioRankingItem({
+    code: item.code,
+    name: item.name,
+    source: "费用/份额",
+    score: Math.min(49, Number(item.readinessScore || 0) + (evidence.alternativeCount ? 10 : 0)),
+    action: riskGate.hardCatchdown ? "费用选择不抵消接盘风险" : "费用选择不抵消追涨风险",
+    reason: riskGate.hardCatchdown
+      ? "A/C/D/I 份额和每万成本只解决买哪个壳，不能证明旧题材回调可以买；主力撤离或旧催化未刷新时先按接盘风险处理。"
+      : "费率更合适也不能覆盖当前位置偏热或追涨风险，先等降温再谈份额选择。",
+    facts,
+    decision: {
+      highlights: [
+        evidence.feeNotes?.[0] || evidence.feeDecisionRule || evidence.feeModel?.selectionRule || evidence.feeModel?.label || "费用证据已记录",
+        evidence.alternativeCount ? `已有 ${evidence.alternativeCount} 个替代份额，但只能作为后续复核材料。` : ""
+      ].filter(Boolean),
+      risks: [
+        riskGate.reason,
+        riskGate.hardCatchdown ? "低费率不等于低风险，也不能把0元观察改成试探仓。" : "费用优势不能替代追涨降温。"
+      ].filter(Boolean),
+      gaps: mergeStringLists(
+        riskGate.hardCatchdown ? ["缺主力资金回流", "缺新鲜新闻/政策/产业催化"] : ["缺追涨降温证据", "缺健康回撤"],
+        evidence.missingLabels?.length ? evidence.missingLabels.slice(0, 2).map((label) => `缺${label}`) : []
+      ).slice(0, 4),
+      nextStep: riskGate.hardCatchdown
+        ? `先保持0元观察；${riskGate.nextStep || "等主力资金回流、新鲜催化和代表持仓止跌后，再比较A/C/D/I份额。"}`
+        : (riskGate.nextStep || "先保持观察；追涨降温前，费率适配只记录证据，不给买入金额。")
+    },
+    status: "warning"
   });
 }
 
@@ -13788,6 +13825,10 @@ function buildPortfolioReplacementChoiceRanking(watchlist = []) {
 function buildPortfolioReplacementChoiceRankingItem(item = {}) {
   const evidence = resolvePortfolioReplacementChoiceEvidence(item);
   if (!evidence.shouldSurface) return null;
+  const riskGate = resolvePortfolioPositiveWatchRankingGate(item);
+  if (!riskGate.ok) {
+    return buildPortfolioReplacementChoiceRiskGateItem(item, evidence, riskGate);
+  }
   return buildPortfolioRankingItem({
     code: item.code,
     name: item.name,
@@ -13803,6 +13844,37 @@ function buildPortfolioReplacementChoiceRankingItem(item = {}) {
       nextStep: evidence.nextStep
     },
     status: evidence.status
+  });
+}
+
+function buildPortfolioReplacementChoiceRiskGateItem(item = {}, evidence = {}, riskGate = {}) {
+  return buildPortfolioRankingItem({
+    code: item.code,
+    name: item.name,
+    source: "替代优选",
+    score: Math.min(49, Number(evidence.score || 0)),
+    action: riskGate.hardCatchdown ? "替代优选不抵消接盘风险" : "替代优选不抵消追涨风险",
+    reason: riskGate.hardCatchdown
+      ? "同基金份额或低费替代只是在选产品壳，不能证明旧题材、主力撤离后的回调可以买。"
+      : "替代品更便宜或更清楚，也不能覆盖当前位置偏热或追涨风险。",
+    facts: mergeStringLists(evidence.facts || [], riskGate.facts || []).slice(0, 6),
+    decision: {
+      highlights: normalizeStringArray(evidence.highlights).slice(0, 2)
+        .map((line) => `${line}；但只能作为风险门禁解除后的产品选择材料。`),
+      risks: mergeStringLists(
+        [riskGate.reason],
+        evidence.risks || [],
+        [riskGate.hardCatchdown ? "替代品不能把0元观察变成买入机会。" : "替代品不能替代追涨降温。"]
+      ).slice(0, 4),
+      gaps: mergeStringLists(
+        riskGate.hardCatchdown ? ["缺主力资金回流", "缺新鲜新闻/政策/产业催化", "缺代表持仓止跌"] : ["缺追涨降温证据", "缺健康回撤"],
+        evidence.gaps || []
+      ).slice(0, 4),
+      nextStep: riskGate.hardCatchdown
+        ? `先保持0元观察；${riskGate.nextStep || "等主力资金回流、新鲜催化和代表持仓止跌后，再比较同基金份额或同类替代。"}`
+        : (riskGate.nextStep || "先降级观察；追涨降温前，替代优选只用于记录备选壳，不给买入金额。")
+    },
+    status: "warning"
   });
 }
 

@@ -4229,8 +4229,16 @@ const requiredPatterns = [
     message: "manager ranking boards must include a fee/share-class suitability lane with holding-period and per-10k cost evidence."
   },
   {
+    pattern: /function buildPortfolioFeeSuitabilityRankingItem[\s\S]{0,520}resolvePortfolioPositiveWatchRankingGate\(item\)[\s\S]{0,260}buildPortfolioFeeSuitabilityRiskGateItem[\s\S]*function buildPortfolioFeeSuitabilityRiskGateItem[\s\S]{0,900}费用选择不抵消接盘风险/,
+    message: "fee/share-class rankings must not turn A/C/D/I fee evidence into buy-like reviews when stale-catchdown or main-force withdrawal gates are active."
+  },
+  {
     pattern: /function buildPortfolioReplacementChoiceRanking[\s\S]{0,2600}替代优选榜[\s\S]{0,2600}A\/C\/D\/I[\s\S]{0,2600}同指数\/同题材/,
     message: "manager ranking boards must include a replacement-choice lane that compares same-fund share classes and same-exposure alternatives before buying."
+  },
+  {
+    pattern: /function buildPortfolioReplacementChoiceRankingItem[\s\S]{0,520}resolvePortfolioPositiveWatchRankingGate\(item\)[\s\S]{0,260}buildPortfolioReplacementChoiceRiskGateItem[\s\S]*function buildPortfolioReplacementChoiceRiskGateItem[\s\S]{0,900}替代优选不抵消接盘风险/,
+    message: "replacement-choice rankings must not repackage stale-catchdown funds as lower-cost alternative opportunities."
   },
   {
     pattern: /function buildPortfolioRankingCustomerDigest[\s\S]{0,3200}const buyReview = \[[\s\S]{0,900}\.\.\.themeMomentumItems\.filter[\s\S]{0,1200}hasPortfolioCustomerBuyBlocker/,
