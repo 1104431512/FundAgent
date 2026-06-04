@@ -21091,6 +21091,10 @@ function compactDataSourceCoverageForModel(coverage = null) {
     证据门槛: coverage.evidenceReadiness ? `${coverage.evidenceReadiness.score}分 ${coverage.evidenceReadiness.label}` : "",
     买入约束: String(coverage.evidenceReadiness?.actionText || "").slice(0, 56),
     数据阻塞: normalizeStringArray(coverage.evidenceReadiness?.blockers).slice(0, 2),
+    修复队列: (coverage.repairQueue || []).slice(0, 3).map((item) => [
+      item.priority || "",
+      item.title || ""
+    ].filter(Boolean).join("：")).filter(Boolean),
     已激活指标: activeEngines,
     缓存源: cachedSources,
     缺口源: missingSources
@@ -22205,6 +22209,9 @@ function buildMarketEvidenceSummary(userText, marketSnapshot) {
     }
     if (sourceCoverage.数据阻塞?.length) {
       lines.push(`- 数据阻塞：${sourceCoverage.数据阻塞.join("、")}。`);
+    }
+    if (sourceCoverage.修复队列?.length) {
+      lines.push(`- 数据修复优先级：${sourceCoverage.修复队列.slice(0, 3).join("；")}。`);
     }
     if (sourceCoverage.缓存源?.length) {
       lines.push(`- 缓存回退源：${sourceCoverage.缓存源.slice(0, 4).join("、")}；只能用于连续性计算，不能当作实时买点确认。`);
@@ -28760,12 +28767,25 @@ function buildDataSourceCoverageFromSnapshot(snapshot = null, options = {}) {
     historyStores,
     snapshotMeta
   });
+  const repairQueue = buildDataSourceRepairQueue({
+    totals,
+    sources,
+    boardCoverage,
+    fundCoverage,
+    newsCoverage,
+    indicatorEngines,
+    historyStores,
+    snapshotMeta,
+    evidenceReadiness,
+    stats
+  });
   return {
     generatedAt,
     summary: buildDataSourceCoverageSummary({ totals, boardCoverage, fundCoverage, newsCoverage, snapshotMeta, evidenceReadiness }),
     totals,
     snapshot: snapshotMeta,
     evidenceReadiness,
+    repairQueue,
     boardCoverage,
     fundCoverage,
     newsCoverage,
@@ -28946,6 +28966,219 @@ function buildDataSourceEvidenceReadiness(context = {}) {
       sampledSources: Number(totals.sampledSources || 0)
     }
   };
+}
+
+function buildDataSourceRepairQueue(context = {}) {
+  const totals = context.totals || {};
+  const sources = context.sources || [];
+  const board = context.boardCoverage || {};
+  const fund = context.fundCoverage || {};
+  const news = context.newsCoverage || {};
+  const engines = context.indicatorEngines || [];
+  const snapshot = context.snapshotMeta || {};
+  const readiness = context.evidenceReadiness || {};
+  const counters = context.stats?.counters || {};
+  const items = [];
+  const add = (item = {}) => {
+    const title = String(item.title || "").trim();
+    if (!title) return;
+    const id = item.id || normalizeIdFromText(title);
+    const previous = items.find((entry) => entry.id === id);
+    const next = {
+      id,
+      priority: item.priority || "medium",
+      priorityScore: Number(item.priorityScore || 50),
+      category: item.category || "数据源",
+      title,
+      reason: item.reason || "",
+      action: item.action || "",
+      impact: item.impact || "",
+      gate: item.gate || readiness.actionGate || "",
+      sourceIds: normalizeStringArray(item.sourceIds).slice(0, 6)
+    };
+    if (!previous) {
+      items.push(next);
+      return;
+    }
+    if (next.priorityScore > previous.priorityScore) {
+      Object.assign(previous, next);
+    }
+  };
+  const age = Number(snapshot.ageMinutes);
+  if (snapshot.refreshError) {
+    add({
+      id: "refresh_error",
+      priority: "critical",
+      priorityScore: 98,
+      category: "快照刷新",
+      title: "先处理市场快照刷新失败",
+      reason: snapshot.refreshError,
+      action: "复核公开数据 GET 重试记录、网络代理、接口限流和最近缓存回退。",
+      impact: "刷新失败时，经理只能输出观察和补源清单。"
+    });
+  }
+  if (snapshot.dataQualityLevel === "poor" || !Number.isFinite(age)) {
+    add({
+      id: "snapshot_quality",
+      priority: "critical",
+      priorityScore: 94,
+      category: "快照质量",
+      title: "重建可核验市场快照",
+      reason: snapshot.dataQualitySummary || "缺少可核验市场快照时间或质量过低。",
+      action: "重新抓取板块、基金排行、实时估值和新闻；成功后写入缓存。",
+      impact: "没有完整快照时不能给具体买点。"
+    });
+  } else if (age > 360) {
+    add({
+      id: "snapshot_stale",
+      priority: "high",
+      priorityScore: 86,
+      category: "快照时效",
+      title: "刷新过旧市场快照",
+      reason: `最近快照 ${snapshot.ageText || `${age}分钟前`}，不能当作实时买点证据。`,
+      action: "刷新覆盖报告或触发一次市场快照抓取。",
+      impact: "过旧快照只能支撑观察，不能支撑买入复核。"
+    });
+  }
+
+  const missingSources = sources.filter((source) => source.status === "missing");
+  const cachedSources = sources.filter((source) => source.status === "cached");
+  const needsConfigSources = sources.filter((source) => source.status === "needs_config");
+  if (missingSources.length) {
+    add({
+      id: "missing_sources",
+      priority: "critical",
+      priorityScore: 90,
+      category: "接口缺失",
+      title: "修复最近抓取缺失的接口",
+      reason: missingSources.slice(0, 3).map(formatDataSourceRepairSourceName).join("、"),
+      action: "查看接口返回、限流和解析逻辑；必要时增加备源或降级解析。",
+      impact: "缺失源会让模型误判为没有机会或硬凑旧题材。",
+      sourceIds: missingSources.map((source) => source.id)
+    });
+  }
+  if (cachedSources.length >= 3) {
+    add({
+      id: "cached_sources",
+      priority: "high",
+      priorityScore: 82,
+      category: "缓存回退",
+      title: "减少实时源缓存回退",
+      reason: `${cachedSources.length} 个接口使用缓存回退。`,
+      action: "优先恢复板块、新闻和实时估值的实时抓取；缓存只用于连续性计算。",
+      impact: "缓存回退不能当作实时买点确认。",
+      sourceIds: cachedSources.map((source) => source.id)
+    });
+  }
+  if (needsConfigSources.length) {
+    add({
+      id: "needs_config_sources",
+      priority: "high",
+      priorityScore: 78,
+      category: "授权配置",
+      title: "配置待授权实时源",
+      reason: needsConfigSources.slice(0, 3).map(formatDataSourceRepairSourceName).join("、"),
+      action: "配置对应环境变量或插件令牌，优先补基金级实时估值和实时搜索。",
+      impact: "授权源缺失会削弱实时性和候选召回。",
+      sourceIds: needsConfigSources.map((source) => source.id)
+    });
+  }
+
+  const candidateTotal = Object.values(fund.candidateCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+  const valuationCount = Number(fund.realtimeValuationCount || 0);
+  const freshValuationCount = Number(fund.freshRealtimeValuationCount || 0);
+  if (Number(board.observedBoards || 0) < 40 || Number(board.realtimeBoardFeeds || 0) < 8) {
+    add({
+      id: "board_coverage",
+      priority: "high",
+      priorityScore: 76,
+      category: "板块市场",
+      title: "修复板块四榜覆盖",
+      reason: `当前 ${board.observedBoards || 0} 个板块、${board.realtimeBoardFeeds || 0} 条实时榜。`,
+      action: "刷新概念/行业涨幅、跌幅、主力流入、主力流出四榜。",
+      impact: "板块覆盖不足会让轮动和主力宽度失真。"
+    });
+  }
+  if (candidateTotal < 48) {
+    add({
+      id: "fund_candidate_recall",
+      priority: "high",
+      priorityScore: 74,
+      category: "基金发现",
+      title: "扩展基金候选召回",
+      reason: `当前候选 ${candidateTotal} 只，容易把用户需求收窄到少数题材。`,
+      action: "补基金排行、主题搜索、榜单历史和代表基金关键词召回。",
+      impact: "候选池不足会导致推荐硬凑。"
+    });
+  }
+  if (valuationCount < 12 || freshValuationCount < Math.min(8, valuationCount)) {
+    add({
+      id: "realtime_valuation",
+      priority: "critical",
+      priorityScore: 88,
+      category: "基金估值",
+      title: "补齐基金实时估值",
+      reason: `实时估值 ${valuationCount} 条，新鲜 ${freshValuationCount} 条。`,
+      action: "优先恢复天天基金、Sina、HaoETF、养基宝基金级实时估值。",
+      impact: "实时估值不足时，买点温度必须降级。"
+    });
+  }
+  if (Number(news.fastNewsCount || 0) < 12 || Number(news.topTopicCount || 0) < 2) {
+    add({
+      id: "news_pulse",
+      priority: "high",
+      priorityScore: 72,
+      category: "新闻时事",
+      title: "刷新新闻题材脉冲",
+      reason: `快讯 ${news.fastNewsCount || 0} 条，题材脉冲 ${news.topTopicCount || 0} 个。`,
+      action: "刷新东方财富、财联社、新浪快讯，并复核题材关键词聚合。",
+      impact: "新闻不足时无法解释题材为什么动。"
+    });
+  }
+  const activeEngines = Number(totals.activeIndicatorEngines || engines.filter((item) => item.status === "active").length);
+  if (activeEngines < 8) {
+    add({
+      id: "indicator_samples",
+      priority: "medium",
+      priorityScore: 64,
+      category: "指标引擎",
+      title: "补齐固定代码指标样本",
+      reason: `活跃指标 ${activeEngines}/${totals.indicatorEngines || engines.length}。`,
+      action: "补市场宽度、板块轮动、新闻脉冲、风险收益、持仓前景和费用样本。",
+      impact: "指标样本不足时模型容易退回泛泛判断。"
+    });
+  }
+  const publicGetFailures = Number(counters.publicDataGetFailures || 0);
+  const publicGetRequests = Number(counters.publicDataGetRequests || 0);
+  const publicGetFailureRate = publicGetRequests > 0 ? publicGetFailures / publicGetRequests : 0;
+  if (publicGetFailures >= 3 && publicGetFailureRate >= 0.08) {
+    add({
+      id: "public_get_failures",
+      priority: publicGetFailureRate >= 0.18 ? "critical" : "high",
+      priorityScore: publicGetFailureRate >= 0.18 ? 89 : 70,
+      category: "抓取稳定性",
+      title: "排查公开数据 GET 失败率",
+      reason: `失败 ${publicGetFailures}/${publicGetRequests}，约 ${round(publicGetFailureRate * 100, 1)}%。`,
+      action: "查看重试记录、HTTP 状态、代理和接口限流；必要时提高备源覆盖。",
+      impact: "GET 失败率高会增加缓存回退和空快照。"
+    });
+  }
+
+  return items
+    .sort((a, b) => Number(b.priorityScore || 0) - Number(a.priorityScore || 0))
+    .slice(0, 8);
+}
+
+function formatDataSourceRepairSourceName(source = {}) {
+  return [source.provider, source.label].filter(Boolean).join("/") || source.id || "未知接口";
+}
+
+function normalizeIdFromText(text = "") {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80) || "item";
 }
 
 function readPortfolioDbForDataSourceCoverage() {
@@ -43267,6 +43500,7 @@ export {
   buildCachedFundResearchDigestFallback,
   buildDataSourceCoverageReport,
   buildDataSourceEvidenceReadiness,
+  buildDataSourceRepairQueue,
   buildMarketDataQuality,
   buildRealtimeFundValuationSignal,
   applyMarketSnapshotCacheFallback,

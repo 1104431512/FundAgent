@@ -149,7 +149,8 @@ const requiredPatterns = [
         && builder.includes("buildFundDataCoverage")
         && builder.includes("buildNewsDataCoverage")
         && builder.includes("buildDataProcessingEngineCoverage")
-        && builder.includes("buildDataSourceEvidenceReadiness");
+        && builder.includes("buildDataSourceEvidenceReadiness")
+        && builder.includes("buildDataSourceRepairQueue");
     },
     message: "market snapshots must attach deterministic data-source coverage covering source, board, fund, news, and indicator layers."
   },
@@ -167,6 +168,18 @@ const requiredPatterns = [
   },
   {
     test: (source) => {
+      const repairQueue = getFunctionSource(source, "buildDataSourceRepairQueue");
+      return repairQueue.includes("realtime_valuation")
+        && repairQueue.includes("news_pulse")
+        && repairQueue.includes("cached_sources")
+        && repairQueue.includes("needs_config_sources")
+        && repairQueue.includes("public_get_failures")
+        && repairQueue.includes("priorityScore");
+    },
+    message: "data-source coverage must compute a deterministic repair queue for missing, cached, stale, or weak evidence layers."
+  },
+  {
+    test: (source) => {
       const compact = getFunctionSource(source, "compactMarketSnapshotForModel");
       const compactCoverage = getFunctionSource(source, "compactDataSourceCoverageForModel");
       return compact.includes("数据源覆盖: compactDataSourceCoverageForModel")
@@ -177,7 +190,8 @@ const requiredPatterns = [
         && compactCoverage.includes("新闻覆盖")
         && compactCoverage.includes("指标引擎")
         && compactCoverage.includes("证据门槛")
-        && compactCoverage.includes("买入约束");
+        && compactCoverage.includes("买入约束")
+        && compactCoverage.includes("修复队列");
     },
     message: "compact model snapshots must carry Chinese data-source coverage instead of hiding interface health from the manager."
   },
@@ -188,6 +202,7 @@ const requiredPatterns = [
         && evidence.includes("数据源覆盖：")
         && evidence.includes("买入约束")
         && evidence.includes("数据阻塞")
+        && evidence.includes("数据修复优先级")
         && evidence.includes("缓存回退源")
         && evidence.includes("数据源缺口");
     },
@@ -198,8 +213,8 @@ const requiredPatterns = [
     message: "board market coverage must show concept/industry markets, four realtime board modes, and per-board metric fields."
   },
   {
-    pattern: /(?=[\s\S]*runtimeDataSourceCoverage)(?=[\s\S]*refreshDataSourcesBtn)(?=[\s\S]*renderRuntimeDataSourceCoverage)(?=[\s\S]*数据源覆盖)(?=[\s\S]*evidenceReadiness)(?=[\s\S]*买入门槛)(?=[\s\S]*证据门槛)/,
-    message: "admin runtime data-source page must visibly show source coverage, evidence readiness, and allow manual refresh."
+    pattern: /(?=[\s\S]*runtimeDataSourceCoverage)(?=[\s\S]*refreshDataSourcesBtn)(?=[\s\S]*renderRuntimeDataSourceCoverage)(?=[\s\S]*数据源覆盖)(?=[\s\S]*evidenceReadiness)(?=[\s\S]*repairQueue)(?=[\s\S]*买入门槛)(?=[\s\S]*证据门槛)(?=[\s\S]*修复队列)/,
+    message: "admin runtime data-source page must visibly show source coverage, evidence readiness, repair queue, and allow manual refresh."
   },
   {
     pattern: /(?=[\s\S]*公开GET重试)(?=[\s\S]*publicDataGetRequests)(?=[\s\S]*publicDataGetRetries)(?=[\s\S]*publicDataGetRetrySuccesses)(?=[\s\S]*publicDataGetFailures)/,

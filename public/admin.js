@@ -741,6 +741,7 @@ function renderRuntimeDataSourceCoverage(coverage = null, error = null) {
   const news = coverage.newsCoverage || {};
   const snapshot = coverage.snapshot || {};
   const readiness = coverage.evidenceReadiness || {};
+  const repairQueue = coverage.repairQueue || [];
   const sourceKinds = (news.sourceKinds || []).slice(0, 4).join("、") || "等待快讯源样本";
   const candidateTotal = Object.values(fund.candidateCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
   root.innerHTML = `
@@ -771,6 +772,12 @@ function renderRuntimeDataSourceCoverage(coverage = null, error = null) {
           ...(readiness.requiredRepairs || []).slice(0, 2),
           ...(readiness.strengths || []).slice(0, 1)
         ]
+      })}
+      ${renderDataSourceFocusCard({
+        title: "修复队列",
+        value: `${repairQueue.length || 0} 项`,
+        meta: repairQueue[0]?.title || "暂无高优先级修复项",
+        details: repairQueue.slice(0, 4).map((item) => `${item.priority || "medium"} · ${item.title || ""}：${item.action || item.reason || ""}`)
       })}
       ${renderDataSourceFocusCard({
         title: "板块市场",

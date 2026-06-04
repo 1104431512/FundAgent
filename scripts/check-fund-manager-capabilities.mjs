@@ -12699,6 +12699,20 @@ const noisyMarketSnapshot = {
       blockers: ["有 1 个接口使用缓存回退，不能当作实时买点确认。"],
       requiredRepairs: ["养基宝 等接口待授权配置。"]
     },
+    repairQueue: [
+      {
+        id: "needs_config_sources",
+        priority: "high",
+        title: "配置待授权实时源",
+        action: "配置对应环境变量或插件令牌，优先补基金级实时估值和实时搜索。"
+      },
+      {
+        id: "cached_sources",
+        priority: "high",
+        title: "减少实时源缓存回退",
+        action: "优先恢复板块、新闻和实时估值的实时抓取。"
+      }
+    ],
     sources: [
       { provider: "天天基金", label: "盘中估算净值", status: "available" },
       { provider: "新浪财经", label: "基金估值备源", status: "cached" },
@@ -12729,6 +12743,7 @@ assert(compactMarketSnapshot["数据源覆盖"].已激活指标.includes("市场
 assert.equal(compactMarketSnapshot["数据源覆盖"].证据门槛, "84分 可支撑买入复核", "compact data-source coverage must preserve deterministic evidence-readiness score");
 assert(compactMarketSnapshot["数据源覆盖"].买入约束.includes("允许进入逐基金买入复核"), "compact data-source coverage must preserve deterministic buy gate text");
 assert(compactMarketSnapshot["数据源覆盖"].数据阻塞.some((item) => item.includes("缓存回退")), "compact data-source coverage must preserve data blockers");
+assert(compactMarketSnapshot["数据源覆盖"].修复队列.some((item) => item.includes("配置待授权实时源")), "compact data-source coverage must preserve the deterministic data-source repair queue");
 assert(compactMarketSnapshot["数据源覆盖"].缓存源.includes("新浪财经/基金估值备源"), "compact data-source coverage must show cache fallback sources");
 assert(compactMarketSnapshot["数据源覆盖"].缺口源.includes("养基宝/基金搜索/实时估值（待授权）"), "compact data-source coverage must show missing or authorization-gated sources");
 assert(compactMarketSnapshot.themeRadar[0]["板块位置"] === "交易拥挤", "compact market snapshot must carry Chinese theme-stage labels");
@@ -12797,6 +12812,39 @@ const weakDataSourceReadiness = manager.buildDataSourceEvidenceReadiness({
 });
 assert.equal(weakDataSourceReadiness.actionGate, "data_repair_first", "weak data-source readiness must block model buy conclusions until sources are repaired");
 assert(weakDataSourceReadiness.blockers.some((item) => item.includes("实时估值")), "weak data-source readiness must explicitly identify missing realtime fund valuation coverage");
+const weakDataSourceRepairQueue = manager.buildDataSourceRepairQueue({
+  totals: {
+    externalSources: 16,
+    configuredSources: 9,
+    sampledSources: 2,
+    realtimeSources: 10,
+    realtimeUsableSources: 1,
+    indicatorEngines: 12,
+    activeIndicatorEngines: 1,
+    historyItems: 0
+  },
+  sources: [
+    { id: "eastmoney_board_coverage", status: "cached", provider: "东方财富", label: "概念/行业板块四榜" },
+    { id: "sina_fast_news", status: "missing", provider: "新浪财经", label: "7x24快讯备源" },
+    { id: "yangjibao_fund_search", status: "needs_config", provider: "养基宝", label: "基金搜索/实时估值" }
+  ],
+  boardCoverage: { observedBoards: 5, realtimeBoardFeeds: 4 },
+  fundCoverage: {
+    candidateCounts: { stockFunds: 4, hybridFunds: 1, indexFunds: 0, qdiiFunds: 0, preciousMetalFunds: 0 },
+    realtimeValuationCount: 0,
+    freshRealtimeValuationCount: 0
+  },
+  newsCoverage: { fastNewsCount: 0, topTopicCount: 0 },
+  indicatorEngines: [{ id: "marketBreadth", status: "active" }],
+  snapshotMeta: { dataQualityLevel: "poor", ageMinutes: 720 },
+  evidenceReadiness: weakDataSourceReadiness,
+  stats: { counters: { publicDataGetFailures: 4, publicDataGetRequests: 20 } }
+});
+assert(weakDataSourceRepairQueue.length >= 4, "weak data-source states must produce a concrete repair queue");
+assert(weakDataSourceRepairQueue[0].priorityScore >= weakDataSourceRepairQueue[weakDataSourceRepairQueue.length - 1].priorityScore, "data-source repair queue must be sorted by priority");
+assert(weakDataSourceRepairQueue.some((item) => item.id === "realtime_valuation" && item.title.includes("实时估值")), "data-source repair queue must prioritize missing realtime fund valuations");
+assert(weakDataSourceRepairQueue.some((item) => item.id === "needs_config_sources" && item.reason.includes("养基宝")), "data-source repair queue must surface authorization-gated realtime sources");
+assert(weakDataSourceRepairQueue.some((item) => item.id === "public_get_failures"), "data-source repair queue must surface high public GET failure rates");
 
 const selectedChartProfiles = manager.selectFundReportProfilesForAnswer([
   { code: "000001", name: "低位修复基金A", trendProfile: { series: [{ date: "2026-01-01", nav: 1 }, { date: "2026-01-02", nav: 1.01 }] } },
