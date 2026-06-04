@@ -32346,6 +32346,7 @@ function hasActionabilityMicroStarterSupport(digest = {}, trend = {}) {
   if (getThemeMainForcePlaybookRiskWarnings(digest).length) return false;
   if (getTextualCatchdownWarnings(digest).length) return false;
   if (getUnrefreshedMarketThemeWarnings(digest).length) return false;
+  if (getPortfolioActionableThemeSupportGap(digest)) return false;
   if (trend.entryBias === "avoid_now" || trend.trendLabel === "breakdown" || trend.trendLabel === "extended_uptrend") return false;
   if (!hasVerifiedThemeCarrierEvidence(digest)) return false;
   const lowBaseProbe = hasThemeLowBaseMicroStarterTrendSetup(trend);

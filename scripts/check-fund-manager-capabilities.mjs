@@ -7033,6 +7033,41 @@ assert(microStarterActionability.decisionBlocker.some((item) => item.includes("�
 const executableMicroStarterDigest = { ...microStarterDigest, actionability: microStarterActionability };
 assert.equal(manager.hasVerifiedThemeCarrierEvidence(executableMicroStarterDigest), true, "theme micro-starters must verify that top holdings or the vehicle itself carries the live theme");
 assert.equal(manager.hasPortfolioThemeMicroStarterSetup(executableMicroStarterDigest), true, "portfolio discipline must recognize main-capital/preheat low-position micro-starters");
+const staleThemeRefreshMicroStarterDigest = {
+  ...microStarterDigest,
+  code: "000059",
+  name: "旧雷达预热低位基金C",
+  marketThemeRefresh: {
+    fetchedAt: "2000-01-01T09:30:00+08:00",
+    matchedThemeNames: ["人工智能"],
+    supportSignals: ["人工智能旧题材雷达曾显示主力进场"],
+    dataBasis: ["旧题材雷达"]
+  }
+};
+const staleThemeRefreshMicroStarterGap = manager.getPortfolioActionableThemeSupportGap(staleThemeRefreshMicroStarterDigest);
+const staleThemeRefreshMicroStarterActionability = manager.buildFundActionabilitySignals(staleThemeRefreshMicroStarterDigest);
+assert(
+  staleThemeRefreshMicroStarterGap.includes("当前题材雷达已过期"),
+  "micro-starter fixture must expose the stale current-theme-radar gap"
+);
+assert(
+  ["wait", "avoid"].includes(staleThemeRefreshMicroStarterActionability.action),
+  "micro-starter actionability must not create buy/staged-buy permission from an expired theme radar"
+);
+assert(
+  !staleThemeRefreshMicroStarterActionability.allocationBand.includes("0.5%-2.5%")
+    && !staleThemeRefreshMicroStarterActionability.decisiveEvidence.some((item) => item.includes("只允许0.5%-2.5%试探仓")),
+  "expired theme-radar candidates must not keep micro-starter sizing or evidence after the support-gap guard"
+);
+assert(
+  staleThemeRefreshMicroStarterActionability.decisionBlocker.some((item) => item.includes("当前题材雷达已过期")),
+  "expired theme-radar candidates must explain that old main-force labels need a fresh radar refresh before any probe"
+);
+assert.equal(
+  manager.hasPortfolioThemeMicroStarterSetup({ ...staleThemeRefreshMicroStarterDigest, actionability: staleThemeRefreshMicroStarterActionability }),
+  false,
+  "portfolio discipline must reject micro-starters whose current theme radar has expired"
+);
 const noTraceMicroStarterDigest = {
   ...microStarterDigest,
   code: "000055",

@@ -333,6 +333,10 @@ const requiredPatterns = [
     message: "theme micro-starter logic must not override current-radar-unconfirmed old theme warnings."
   },
   {
+    pattern: /function hasActionabilityMicroStarterSupport[\s\S]{0,760}getPortfolioActionableThemeSupportGap\(digest\)/,
+    message: "theme micro-starter logic must pass the full current-theme support-gap guard before it can create tiny starter evidence."
+  },
+  {
     pattern: /function classifyPullbackSetupCandidateForSummary[\s\S]{0,900}getTextualCatchdownWarnings\(candidate\)\.length/,
     message: "pullback/setup candidate bucketing must demote text-only catchdown risks before deterministic fallback can recommend them."
   },
@@ -2621,7 +2625,7 @@ const requiredPatterns = [
     message: "portfolio theme micro-starter setup must block buy-like actions when representative-fund carrier evidence fails."
   },
   {
-    pattern: /function hasActionabilityMicroStarterSupport[\s\S]{0,900}hasStaleThemeCatchdownRisk[\s\S]{0,900}hasVerifiedThemeCarrierEvidence/,
+    pattern: /function hasActionabilityMicroStarterSupport[\s\S]{0,900}getPortfolioActionableThemeSupportGap[\s\S]{0,900}hasVerifiedThemeCarrierEvidence/,
     message: "fund actionability micro-starter support must reject stale-theme catchdown risk and require verified theme-carrier evidence."
   },
   {
