@@ -3585,6 +3585,10 @@ const requiredPatterns = [
     message: "pullback/setup routing must recognize launch-eve natural language such as 回调到位, 筑底, and 刚拐头."
   },
   {
+    pattern: /(?=[\s\S]*function isFundOutputPriorityPreferenceRequest[\s\S]{0,700}isFundAnswerPriorityLeaderboardRequest)(?=[\s\S]*hard_rule_priority_leaderboard_preference)(?=[\s\S]*answer_priority_preference)(?=[\s\S]*getFundQaSkillIds\(\["fund-recommendation"\]\))/,
+    message: "priority-output preference feedback such as high-Sharpe first or less metric dumping must route to fund QA instead of plain conversation."
+  },
+  {
     pattern: /isPullbackSetupDiscoveryAsk/,
     message: "pullback/setup routing must allow discovery verbs only after a setup intent is detected."
   },

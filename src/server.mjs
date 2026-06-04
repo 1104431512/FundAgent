@@ -37456,6 +37456,12 @@ function isUserPortfolioImportRequest(text) {
   return hasPosition && (hasCreate || hasUser) && !/(虚拟组合|经理自己|经理的持仓)/.test(normalized);
 }
 
+function isFundOutputPriorityPreferenceRequest(text) {
+  const normalized = normalizeIntentText(text);
+  if (!normalized || !isFundAnswerPriorityLeaderboardRequest(normalized)) return false;
+  return /(?:排序|排行|排名|优先|首选|结果榜|直接给(?:我)?结果|先给(?:我)?结果|结果优先|少报数据|少讲数据|不要(?:再)?报数|不要(?:再)?堆数据|别(?:再)?报数据|太啰嗦|啰嗦|干巴巴|高夏普|低回撤|低波动|同类排名|费用|费率|规模|流动性|基金经理|经理稳定|持仓前景|主力题材|主力资金|新闻逻辑)/.test(normalized);
+}
+
 function extractUserPortfolioId(text) {
   const raw = String(text || "");
   const patterns = [
@@ -37651,6 +37657,17 @@ async function classifyMessageIntent({ imageKeys = [], userText = "", messageTyp
       reason: "hard_rule_text_mentions_specific_fund_action",
       fundCodes,
       skillIds: getFundAnalysisSkillIds(asksCompare ? ["fund-comparison", "fund-synthesis"] : ["fund-synthesis"]),
+      messageType
+    };
+  }
+
+  if (isFundOutputPriorityPreferenceRequest(text)) {
+    return {
+      workflow: "fund_qa",
+      mode: "answer_priority_preference",
+      reason: "hard_rule_priority_leaderboard_preference",
+      fundCodes,
+      skillIds: getFundQaSkillIds(["fund-recommendation"]),
       messageType
     };
   }

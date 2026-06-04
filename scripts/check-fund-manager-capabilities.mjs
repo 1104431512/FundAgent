@@ -44,6 +44,20 @@ assert.equal(
   "text commands must recognize user-level holding imports"
 );
 assert.equal(manager.extractUserPortfolioId("建立用户“admin”的持仓情况"), "admin", "user holding import must parse quoted user ids");
+await assertIntent({
+  userText: "现在经理太啰嗦了，干巴巴的讲数据，我想直接看结果，按高夏普优先排",
+  expectedWorkflow: "fund_qa",
+  expectedReason: "hard_rule_priority_leaderboard_preference",
+  expectedMode: "answer_priority_preference",
+  requiredSkills: ["fund-recommendation", "fund-answer-quality"]
+});
+await assertIntent({
+  userText: "少报数据，直接给我结果，按低回撤优先",
+  expectedWorkflow: "fund_qa",
+  expectedReason: "hard_rule_priority_leaderboard_preference",
+  expectedMode: "answer_priority_preference",
+  requiredSkills: ["fund-recommendation", "fund-answer-quality"]
+});
 const normalizedUserPortfolios = manager.normalizeUserPortfolios([
   {
     userId: "admin",
