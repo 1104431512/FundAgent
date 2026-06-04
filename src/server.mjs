@@ -10893,7 +10893,10 @@ function getPortfolioPublicState(db = readPortfolioDb(), options = {}) {
 }
 
 function buildPortfolioRankingBoard(db = {}) {
-  const watchlist = getActivePortfolioWatchlist(db).map(summarizePortfolioWatchItem).filter(Boolean);
+  const watchlist = applyPortfolioCatchdownLossMemoryToWatchlist(
+    getActivePortfolioWatchlist(db).map(summarizePortfolioWatchItem).filter(Boolean),
+    db
+  );
   const positions = (db.account?.positions || []).map(summarizePortfolioPosition).filter(Boolean);
   const userPortfolios = summarizeUserPortfolios(db).filter(Boolean);
   const lists = [
@@ -12541,13 +12544,14 @@ function buildPortfolioStaleCatchdownRiskRanking(watchlist = []) {
 
 function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
   const evidence = resolvePortfolioChaseRiskEvidence(item);
-  if (!evidence.staleCatchdownRisk && !evidence.staleCatalystRisk && !evidence.staleThemeRefreshRisk && !evidence.themeRetreatRisk && !evidence.holdingRealtimeCatchdownRisk && !evidence.unsupportedHoldingThemeRisk && !evidence.lowSetupThemeSupportRisk) return null;
+  if (!evidence.staleCatchdownRisk && !evidence.staleCatalystRisk && !evidence.staleThemeRefreshRisk && !evidence.themeRetreatRisk && !evidence.holdingRealtimeCatchdownRisk && !evidence.unsupportedHoldingThemeRisk && !evidence.lowSetupThemeSupportRisk && !evidence.lossMemoryCatchdownRisk) return null;
   const theme = evidence.theme || {};
   const trend = evidence.trend || {};
   const staleCatalyst = evidence.staleCatalystRisk || theme.catalystProfile?.fresh === false;
   const retreatFacts = [
     evidence.holdingRealtimeWarning || "",
     evidence.holdingThemeSupportGap || "",
+    ...(evidence.lossMemoryWarnings || []),
     evidence.lowSetupThemeSupportRisk ? evidence.actionableThemeSupportGap : "",
     ...(evidence.holdingRealtimeFacts || []),
     ...(evidence.staleThemeRefreshWarnings || []),
@@ -12566,6 +12570,7 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
     + (evidence.themeRetreatRisk ? 18 : 0)
     + (evidence.holdingRealtimeCatchdownRisk ? 28 : 0)
     + (evidence.unsupportedHoldingThemeRisk ? 22 : 0)
+    + (evidence.lossMemoryCatchdownRisk ? 26 : 0)
     + (evidence.lowSetupThemeSupportRisk ? 24 : 0)
     + Math.min(18, Number(theme.capitalRetreatScore || 0) / 4)
   ));
@@ -12574,7 +12579,7 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
     name: item.name,
     source: "主力撤离拦截",
     score: round(score, 1),
-    action: evidence.holdingRealtimeCatchdownRisk ? "底层持仓接盘拦截" : evidence.staleThemeRefreshRisk ? "旧雷达接盘拦截" : staleCatalyst ? "旧催化接盘强拦截" : evidence.staleCatchdownRisk ? "退潮接盘强拦截" : evidence.themeRetreatRisk ? "主力撤离回避" : evidence.lowSetupThemeSupportRisk ? "低位无主力拦截" : "底层题材未确认拦截",
+    action: evidence.holdingRealtimeCatchdownRisk ? "底层持仓接盘拦截" : evidence.staleThemeRefreshRisk ? "旧雷达接盘拦截" : staleCatalyst ? "旧催化接盘强拦截" : evidence.staleCatchdownRisk ? "退潮接盘强拦截" : evidence.themeRetreatRisk ? "主力撤离回避" : evidence.lossMemoryCatchdownRisk ? "历史接盘冷却" : evidence.lowSetupThemeSupportRisk ? "低位无主力拦截" : "底层题材未确认拦截",
     reason: evidence.holdingRealtimeCatchdownRisk
       ? "前十大持仓盘中明显走弱，基金净值的回调修复可能只是跟跌前半段，不能直接当成启动买点。"
       : evidence.staleThemeRefreshRisk
@@ -12583,6 +12588,8 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
         ? "题材上涨逻辑停留在旧新闻/旧催化上，当前缺少新鲜主力进场证据，基金净值的回调修复不能直接当成启动买点。"
       : evidence.staleCatchdownRisk || evidence.themeRetreatRisk
         ? "题材资金已经退潮或主力撤离，基金净值的回调修复不能直接当成启动买点。"
+      : evidence.lossMemoryCatchdownRisk
+        ? "历史回测已经证明同主题低位反弹曾造成接盘亏损；当前没有主力资金回流、新鲜催化和代表持仓承载证明前，不能把回调完成当买点。"
       : evidence.lowSetupThemeSupportRisk
         ? "低位不等于启动；基金净值像回调完成，但当前缺少主力资金回流、新鲜新闻催化和题材雷达确认，先按接盘风险处理。"
       : "基金名字看起来宽泛，但前十大持仓已经暴露出明确底层题材；当前题材雷达没有同方向主力或新闻支撑，不能直接当成低位启动。",
@@ -12598,6 +12605,8 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
             ? "旧催化如果没有新资金接力，低位反弹很容易变成接盘。"
           : evidence.staleCatchdownRisk || evidence.themeRetreatRisk
             ? "容易买在旧题材反弹尾端，后续若主力不回流，回撤会明显放大。"
+          : evidence.lossMemoryCatchdownRisk
+            ? "历史同主题接盘已经出现亏损，不能只换一个基金代码继续试错。"
           : evidence.lowSetupThemeSupportRisk
             ? "只有低位和回调形态，没有主力/新闻/题材确认时，买入容易变成接旧题材弱反弹。"
           : "底层题材没有当前主力或新闻支撑，表面低位可能只是旧主线回落后的弱反弹。",
@@ -12607,6 +12616,7 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
       gaps: [
         "缺主力资金回流",
         evidence.unsupportedHoldingThemeRisk ? "缺同方向当前题材雷达确认" : "",
+        evidence.lossMemoryCatchdownRisk ? "缺历史接盘亏损后的再入场证明" : "",
         evidence.lowSetupThemeSupportRisk ? "低位形态缺主力资金回流确认" : "",
         evidence.staleThemeRefreshRisk ? "缺当前主力资金/新闻催化刷新" : "",
         staleCatalyst ? "缺新鲜新闻/政策/产业预热" : "缺新的新闻/政策/产业预热",
@@ -12619,6 +12629,8 @@ function buildPortfolioStaleCatchdownRiskRankingItem(item = {}) {
           ? "先0元观察；重新刷新主力资金、新闻催化和代表持仓走势，确认仍是当前主线后，才允许回到小仓复核。"
         : staleCatalyst || evidence.staleCatchdownRisk || evidence.themeRetreatRisk
           ? "只保留观察或降级，等主力回流、题材重新预热且基金低位温和转强后，再回到主力预热或买入准备榜。"
+        : evidence.lossMemoryCatchdownRisk
+          ? "先0元观察；同主题必须重新证明主力资金回流、新鲜新闻催化、代表持仓承载和费率核验齐备，才允许恢复0.5%-1.2%微型试探。"
         : evidence.lowSetupThemeSupportRisk
           ? "先0元观察；只有新鲜催化、主力资金回流、当前题材雷达确认和基金低位温和转强同时出现后，才允许恢复小仓复核。"
         : "先0元观察；等同方向板块出现主力净流入、新闻催化和代表持仓止跌后，再重新评估是否进入小仓复核。"
@@ -12637,6 +12649,7 @@ function resolvePortfolioPositiveWatchRankingGate(item = {}) {
     || evidence.staleCatalystRisk
     || evidence.themeRetreatRisk
     || evidence.unsupportedHoldingThemeRisk
+    || evidence.lossMemoryCatchdownRisk
     || evidence.lowSetupThemeSupportRisk
     || themeSupportGap
   );
@@ -12653,6 +12666,7 @@ function resolvePortfolioPositiveWatchRankingGate(item = {}) {
     themeSupportGap,
     evidence.holdingRealtimeWarning,
     evidence.holdingThemeSupportGap,
+    evidence.lossMemoryWarnings,
     evidence.actionableThemeSupportGap,
     evidence.staleThemeRefreshWarnings,
     evidence.staleCatalystWarnings,
@@ -12755,6 +12769,12 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
   const staleThemeRefreshWarnings = getStalePortfolioThemeRefreshWarnings(supportProfile);
   const staleThemeRefreshRisk = staleThemeRefreshWarnings.length > 0;
   const unsupportedHoldingThemeRisk = Boolean(holdingThemeSupportGap);
+  const lossMemoryWarnings = getPortfolioCatchdownLossMemoryWarnings(item, profile);
+  const lossMemoryCatchdownRisk = Boolean(
+    lossMemoryWarnings.length
+    && !hasFreshActionableThemeSupport(supportProfile)
+    && hasPortfolioLowSetupWithoutMainForceConfirmation(item, trend)
+  );
   const lowSetupThemeSupportRisk = Boolean(
     actionableThemeSupportGap
     && themes.length > 0
@@ -12770,6 +12790,7 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
   const hotEvidence = [
     holdingRealtimeProfile.warning || "",
     holdingThemeSupportGap || "",
+    lossMemoryWarnings[0] || "",
     lowSetupThemeSupportRisk ? `低位不等于启动：${actionableThemeSupportGap}` : "",
     staleThemeRefreshWarnings[0] || "",
     staleCatalystWarnings[0] || "",
@@ -12796,6 +12817,7 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
     staleThemeRefreshRisk ? 32 : 0,
     holdingRealtimeCatchdownRisk ? 36 : 0,
     unsupportedHoldingThemeRisk ? 32 : 0,
+    lossMemoryCatchdownRisk ? 36 : 0,
     lowSetupThemeSupportRisk ? 34 : 0,
     Number.isFinite(crowding) && crowding >= 55 ? 14 : Number.isFinite(crowding) && crowding >= 40 ? 8 : 0,
     /追涨|偏热|高位|拥挤|等待回撤/.test(text) ? 10 : 0
@@ -12809,10 +12831,12 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
     staleThemeRefreshRisk,
     holdingRealtimeCatchdownRisk,
     unsupportedHoldingThemeRisk,
+    lossMemoryCatchdownRisk,
     lowSetupThemeSupportRisk,
     holdingRealtimeWarning: holdingRealtimeProfile.warning,
     holdingRealtimeFacts: holdingRealtimeProfile.facts,
     holdingThemeSupportGap,
+    lossMemoryWarnings,
     actionableThemeSupportGap,
     themeRetreatWarnings,
     staleThemeWarnings,
@@ -12827,6 +12851,8 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
       ? "题材雷达快照已经过期，旧主力/旧新闻标签不能当成今天的买点。"
       : unsupportedHoldingThemeRisk
       ? "前十大持仓暴露出明确底层题材，但当前雷达没有同方向主力或新闻支撑。"
+      : lossMemoryCatchdownRisk
+      ? "历史同主题接盘亏损尚未解除冷却，必须先证明主力资金回流和新鲜催化。"
       : lowSetupThemeSupportRisk
       ? "低位不等于启动；没有主力资金回流、新鲜催化和当前题材确认前，回调先按接盘风险处理。"
       : staleCatchdownRisk
@@ -12839,8 +12865,16 @@ function resolvePortfolioChaseRiskEvidence(item = {}) {
     positionRisk: Number.isFinite(low120) && low120 > 80 ? "基金处在区间高位，不是低位启动。" : "",
     needsPullback: Number.isFinite(r20) && r20 > 12,
     needsLowPosition: Number.isFinite(low120) && low120 > 65 || Number.isFinite(low250) && low250 > 80,
-    needsCooling: holdingRealtimeCatchdownRisk || staleThemeRefreshRisk || unsupportedHoldingThemeRisk || lowSetupThemeSupportRisk || staleCatchdownRisk || staleCatalystRisk || themeRetreatRisk || Number.isFinite(crowding) && crowding >= 40 || theme.positionSignal === "high_chase_risk" || theme.stage === "crowded"
+    needsCooling: holdingRealtimeCatchdownRisk || staleThemeRefreshRisk || unsupportedHoldingThemeRisk || lossMemoryCatchdownRisk || lowSetupThemeSupportRisk || staleCatchdownRisk || staleCatalystRisk || themeRetreatRisk || Number.isFinite(crowding) && crowding >= 40 || theme.positionSignal === "high_chase_risk" || theme.stage === "crowded"
   };
+}
+
+function getPortfolioCatchdownLossMemoryWarnings(item = {}, profile = {}) {
+  return uniquePortfolioStringArray([
+    ...normalizeStringArray(item.catchdownLossMemoryWarnings),
+    ...normalizeStringArray(profile.catchdownLossMemoryWarnings),
+    ...normalizeStringArray(profile.seed?.catchdownLossMemoryWarnings)
+  ]).filter((warning) => /历史接盘亏损冷却|同主题.*接盘|同主题.*亏损/.test(warning));
 }
 
 function hasPortfolioLowSetupWithoutMainForceConfirmation(item = {}, trend = {}) {
@@ -13684,6 +13718,205 @@ function buildPortfolioOpportunityCostRanking(db = {}, watchlist = []) {
     nextAction: "下一步对接近买点但未执行的基金做复盘：小仓试探、主动降级、或写明下一次触发时间。",
     items
   });
+}
+
+const PORTFOLIO_CATCHDOWN_MEMORY_THEME_GROUPS = [
+  { id: "cpo_optical", label: "CPO/光模块/通信", terms: ["CPO", "光模块", "光通信", "通信", "新易盛", "中际旭创", "天孚通信", "东山精密"] },
+  { id: "ai_compute", label: "AI算力/服务器/液冷", terms: ["人工智能", "AI", "算力", "液冷", "服务器", "数据中心", "云计算"] },
+  { id: "semiconductor", label: "半导体/芯片", terms: ["半导体", "芯片", "科创芯片", "集成电路", "电子元件"] },
+  { id: "medicine", label: "医药/医疗/创新药", terms: ["医药", "医疗", "创新药", "医疗器械", "生物医药", "CXO"] },
+  { id: "consumer", label: "消费/食品饮料", terms: ["消费", "食品饮料", "白酒", "家电"] },
+  { id: "new_energy", label: "新能源/光伏/锂电", terms: ["新能源", "新能源车", "光伏", "锂电", "电池", "储能"] },
+  { id: "gold_metals", label: "黄金/贵金属/有色", terms: ["黄金", "贵金属", "白银", "有色", "金属"] },
+  { id: "hk_overseas", label: "港股/QDII/海外", terms: ["港股", "香港", "恒生", "QDII", "海外", "全球", "越南", "日本", "欧洲", "纳斯达克"] },
+  { id: "media_game", label: "传媒/游戏", terms: ["传媒", "游戏", "影视", "短剧"] },
+  { id: "robot", label: "机器人/智能制造", terms: ["机器人", "智能制造", "工业母机"] },
+  { id: "defense", label: "军工", terms: ["军工", "国防"] },
+  { id: "broker_finance", label: "券商/金融", terms: ["证券", "券商", "金融", "银行", "保险"] },
+  { id: "cyclical", label: "周期/资源", terms: ["煤炭", "钢铁", "化工", "资源", "周期"] }
+];
+
+function applyPortfolioCatchdownLossMemoryToWatchlist(watchlist = [], db = {}) {
+  const memories = buildPortfolioCatchdownLossMemories(db);
+  if (!memories.length) return watchlist;
+  return (watchlist || []).map((item) => {
+    const matches = memories.filter((memory) =>
+      isPortfolioWatchMatchedByCatchdownLossMemory(item, memory)
+      && shouldApplyPortfolioCatchdownLossMemoryToWatch(item)
+    );
+    if (!matches.length) return item;
+    const warnings = matches.map(formatPortfolioCatchdownLossMemoryWarning).filter(Boolean).slice(0, 3);
+    const memoryFacts = matches.map((memory) => memory.label).filter(Boolean).slice(0, 3);
+    return {
+      ...item,
+      catchdownLossMemoryWarnings: uniquePortfolioStringArray([
+        ...normalizeStringArray(item.catchdownLossMemoryWarnings),
+        ...warnings
+      ]).slice(0, 4),
+      riskNotes: uniquePortfolioStringArray([
+        ...normalizeStringArray(item.riskNotes),
+        ...warnings
+      ]).slice(0, 8),
+      readinessGaps: uniquePortfolioStringArray([
+        ...normalizeStringArray(item.readinessGaps),
+        "历史接盘亏损冷却：同主题重新证明主力资金回流、新鲜新闻催化和代表持仓承载前，不给买入金额。"
+      ]).slice(0, 8),
+      lastSnapshot: {
+        ...(item.lastSnapshot || {}),
+        catchdownLossMemoryWarnings: uniquePortfolioStringArray([
+          ...normalizeStringArray(item.lastSnapshot?.catchdownLossMemoryWarnings),
+          ...warnings
+        ]).slice(0, 4),
+        catchdownLossMemoryGroups: memoryFacts
+      }
+    };
+  });
+}
+
+function uniquePortfolioStringArray(values = []) {
+  return [...new Set(normalizeStringArray(values))];
+}
+
+function shouldApplyPortfolioCatchdownLossMemoryToWatch(item = {}) {
+  const profile = item.lastSnapshot || {};
+  const trend = profile.trendProfile || {};
+  const supportProfile = {
+    ...profile,
+    name: item.name || profile.name,
+    type: item.type || profile.type,
+    marketThemeRefresh: profile.marketThemeRefresh || item.marketThemeRefresh,
+    holdingThemeRefresh: profile.holdingThemeRefresh || item.holdingThemeRefresh,
+    matchedThemes: profile.matchedThemes || item.matchedThemes || [],
+    seed: {
+      ...(profile.seed || {}),
+      name: item.name || profile.seed?.name || profile.name,
+      matchedThemes: profile.seed?.matchedThemes || profile.matchedThemes || item.matchedThemes || [],
+      marketThemeRefresh: profile.seed?.marketThemeRefresh || item.seed?.marketThemeRefresh,
+      holdingThemeRefresh: profile.seed?.holdingThemeRefresh || item.seed?.holdingThemeRefresh
+    }
+  };
+  return !hasFreshActionableThemeSupport(supportProfile)
+    && hasPortfolioLowSetupWithoutMainForceConfirmation(item, trend);
+}
+
+function buildPortfolioCatchdownLossMemories(db = {}) {
+  const positions = Array.isArray(db.account?.positions) ? db.account.positions : [];
+  const transactions = getPortfolioDiagnosticTransactions(db);
+  const orders = getPortfolioDiagnosticOrders(db);
+  const runs = Array.isArray(db.runs) ? db.runs : [];
+  const watchlist = normalizePortfolioWatchlist(db.watchlist || []);
+  const losses = findPortfolioBacktestStaleCatchdownLossBuys({
+    positions,
+    transactions,
+    orders,
+    runs,
+    watchlist
+  });
+  const memories = [];
+  for (const loss of losses.slice(0, 6)) {
+    const evidenceText = collectPortfolioBacktestEvidenceForCode(loss.code, {
+      anchorDate: loss.date,
+      transactions,
+      orders,
+      runs,
+      watchlist
+    });
+    const groups = extractPortfolioCatchdownMemoryThemeGroups([
+      loss.name,
+      loss.retreatEvidence,
+      loss.lossEvidence,
+      evidenceText
+    ].filter(Boolean).join(" "));
+    if (!groups.length) continue;
+    memories.push({
+      code: loss.code,
+      name: loss.name || "",
+      date: loss.date || "",
+      lossPct: loss.lossPct,
+      estimatedLossAmount: loss.estimatedLossAmount,
+      retreatEvidence: loss.retreatEvidence || "",
+      groups,
+      label: groups.map((group) => group.label).join(" / ")
+    });
+  }
+  return memories;
+}
+
+function extractPortfolioCatchdownMemoryThemeGroups(text = "") {
+  const body = normalizeIntentText(text);
+  if (!body) return [];
+  return PORTFOLIO_CATCHDOWN_MEMORY_THEME_GROUPS
+    .filter((group) => group.terms.some((term) => body.includes(normalizeIntentText(term))))
+    .map((group) => ({ id: group.id, label: group.label, terms: group.terms }));
+}
+
+function isPortfolioWatchMatchedByCatchdownLossMemory(item = {}, memory = {}) {
+  const candidateGroups = extractPortfolioCatchdownMemoryThemeGroups(buildPortfolioCatchdownMemoryTextFromWatch(item));
+  if (!candidateGroups.length || !(memory.groups || []).length) return false;
+  const candidateIds = new Set(candidateGroups.map((group) => group.id));
+  return (memory.groups || []).some((group) => candidateIds.has(group.id));
+}
+
+function buildPortfolioCatchdownMemoryTextFromWatch(item = {}) {
+  const profile = item.lastSnapshot || {};
+  const themes = getCandidateThemeSignals({
+    ...profile,
+    name: item.name || profile.name,
+    type: item.type || profile.type,
+    matchedThemes: profile.matchedThemes || item.matchedThemes || [],
+    seed: {
+      ...(profile.seed || {}),
+      name: item.name || profile.seed?.name || profile.name,
+      matchedThemes: profile.seed?.matchedThemes || profile.matchedThemes || item.matchedThemes || []
+    }
+  });
+  const themeText = themes.flatMap((theme) => [
+    theme.id,
+    theme.name,
+    theme.newsLogic,
+    ...(theme.themeKeywords || []),
+    ...(theme.fundKeywords || []),
+    ...(theme.keywords || []),
+    ...(theme.leaderStocks || []),
+    ...(theme.boardNames || [])
+  ]);
+  const holdings = [
+    ...(Array.isArray(profile.topHoldings) ? profile.topHoldings : []),
+    ...(Array.isArray(profile.holdings?.topHoldings) ? profile.holdings.topHoldings : []),
+    ...(Array.isArray(profile.holdingsOutlook?.topHoldings) ? profile.holdingsOutlook.topHoldings : []),
+    ...(Array.isArray(profile.actionability?.holdingsOutlook?.topHoldings) ? profile.actionability.holdingsOutlook.topHoldings : [])
+  ].map((holding) => typeof holding === "string"
+    ? holding
+    : [holding.code, holding.name, holding.text, holding.theme].filter(Boolean).join(" "));
+  return [
+    item.code,
+    item.name,
+    item.reason,
+    item.candidateRole,
+    item.positionPlan,
+    ...(item.setupEvidence || []),
+    ...(item.buyTriggers || []),
+    ...(item.riskNotes || []),
+    ...(item.readinessGaps || []),
+    profile.code,
+    profile.name,
+    profile.type,
+    ...(profile.tags || []),
+    ...themeText,
+    ...holdings
+  ].filter(Boolean).join(" ");
+}
+
+function formatPortfolioCatchdownLossMemoryWarning(memory = {}) {
+  const loss = Number.isFinite(Number(memory.lossPct))
+    ? `历史同主题买入后浮亏${formatFallbackPct(memory.lossPct)}`
+    : Number.isFinite(Number(memory.estimatedLossAmount))
+      ? `历史同主题买入后亏损约${round(memory.estimatedLossAmount, 2)}元`
+      : "历史同主题买入后出现亏损";
+  const label = memory.label || "同主题";
+  const date = memory.date ? `${memory.date}` : "历史回测";
+  const evidence = memory.retreatEvidence ? `，当时证据为${memory.retreatEvidence}` : "";
+  return `历史接盘亏损冷却：${date} ${memory.code || ""} ${label}${evidence}，${loss}；同主题低位反弹必须先证明主力资金回流、新鲜催化和代表持仓承载。`;
 }
 
 function buildPortfolioSellRiskRanking(positions = []) {
@@ -15087,7 +15320,7 @@ function isPortfolioDecisionMatrixCatchdownRisk({ riskRef = null, nextStep = "",
   if (!riskText) return false;
   if (/stale_catchdown_risk/.test(riskText)) return true;
   if (isTextualCatchdownRiskSegment(riskText)) return true;
-  return /接盘|题材退潮|退潮|主力(?:资金)?撤离|资金撤离|旧新闻|旧催化|旧题材|旧雷达|历史热点|表面回调|低位不等于启动|低位无主力|缺主力资金回流|缺少当前主力进场|未被当前题材雷达确认/.test(riskText);
+  return /接盘|题材退潮|退潮|主力(?:资金)?撤离|资金撤离|旧新闻|旧催化|旧题材|旧雷达|历史热点|历史接盘冷却|历史接盘亏损冷却|同主题.*亏损|表面回调|低位不等于启动|低位无主力|缺主力资金回流|缺少当前主力进场|未被当前题材雷达确认/.test(riskText);
 }
 
 function buildPortfolioRankingDecisionMatrixVerdict({ action = "", hasHardRisk = false, hasDataBlock = false, hasSectorBlock = false, hasSoftDataConstraint = false, hasBuyReview = false, buyRef = null, sectorRef = null, riskRef = null, dataRef = null, nextStep = "" } = {}) {
@@ -18441,6 +18674,7 @@ function getPortfolioBacktestOpportunityCostRiskBlockReason(item = {}) {
     || evidence.staleCatalystRisk
     || evidence.themeRetreatRisk
     || evidence.unsupportedHoldingThemeRisk
+    || evidence.lossMemoryCatchdownRisk
     || evidence.lowSetupThemeSupportRisk
   );
   if (!hardOpportunityRisk && !riskGate.chaseOnly) return "";
@@ -37445,6 +37679,7 @@ export {
   buildPortfolioHeldPositionReviewActions,
   buildPortfolioHeldPositionReviewQueue,
   buildPortfolioBacktestDiagnostics,
+  buildPortfolioCatchdownLossMemories,
   buildPortfolioManagerPerformanceStats,
   buildPortfolioMarketSnapshotPrioritySeeds,
   buildPortfolioThemeOpportunitySeedCandidates,

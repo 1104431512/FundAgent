@@ -9167,6 +9167,167 @@ assert(
     && (lowOnlyNoMainForceBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000048"),
   "customer action deck must route low-only/no-main-force pullbacks to avoid, not buy-review"
 );
+const catchdownLossMemoryDb = manager.normalizePortfolioDb({
+  account: {
+    cash: 80000,
+    totalAsset: 100000,
+    positionWeightPct: 3,
+    positions: [{
+      code: "000201",
+      name: "光模块旧反弹基金C",
+      currentValue: 8700,
+      costAmount: 10000,
+      unrealizedPnlPct: -13
+    }]
+  },
+  transactions: [{
+    side: "BUY",
+    code: "000201",
+    name: "光模块旧反弹基金C",
+    date: "2026-05-20",
+    amount: 10000,
+    nav: 1
+  }],
+  runs: [{
+    date: "2026-05-20",
+    type: "decision",
+    status: "completed",
+    summary: "买入000201光模块旧反弹基金C，但题材退潮、主力撤离，存在接盘风险。",
+    actions: [{
+      action: "BUY",
+      code: "000201",
+      name: "光模块旧反弹基金C",
+      reason: "光模块低位反弹，但接盘风险未解除，主力撤离。",
+      riskControl: "题材退潮、主力撤离、接盘风险。"
+    }]
+  }],
+  watchlist: [{
+    code: "000202",
+    name: "光模块低位回调候选C",
+    status: "ready",
+    readinessScore: 90,
+    candidateRole: "低位回调完成候选",
+    setupEvidence: ["回调完成", "120日位置偏低"],
+    lastSnapshot: {
+      code: "000202",
+      name: "光模块低位回调候选C",
+      trendProfile: {
+        ok: true,
+        trendLabel: "pullback_complete",
+        entryBias: "buyable_now",
+        lowPositionPct120: 31,
+        lowPositionPct250: 44,
+        return5dPct: 1.2,
+        return10dPct: 1.8,
+        return20dPct: 2.6,
+        pullbackSetup: { signal: "pullback_complete", signalText: "回调完成" }
+      },
+      matchedThemes: [{
+        id: "optical_low_rebound",
+        name: "光模块低位反弹",
+        stage: "watch",
+        positionSignal: "acceptable_position",
+        leaderSignal: "watch",
+        capitalFollowScore: 42,
+        preheatScore: 36,
+        rotationScore: 38,
+        lowPositionScore: 48,
+        crowdingScore: 14,
+        newsLogic: "",
+        fundKeywords: ["光模块"]
+      }]
+    }
+  }, {
+    code: "000203",
+    name: "光模块主力回流候选C",
+    status: "ready",
+    readinessScore: 90,
+    candidateRole: "主力回流微型试探候选",
+    setupEvidence: ["低位温和转强", "主力资金回流"],
+    lastSnapshot: {
+      code: "000203",
+      name: "光模块主力回流候选C",
+      trendProfile: {
+        ok: true,
+        trendLabel: "pullback_complete",
+        entryBias: "buyable_now",
+        lowPositionPct120: 35,
+        lowPositionPct250: 48,
+        return5dPct: 1.4,
+        return10dPct: 2.2,
+        return20dPct: 4.1,
+        pullbackSetup: { signal: "pullback_complete", signalText: "回调完成" }
+      },
+      matchedThemes: [{
+        id: "optical_main_capital_return",
+        name: "光模块主力回流",
+        stage: "confirmation",
+        positionSignal: "main_capital_entering",
+        leaderSignal: "capital_entering",
+        capitalFollowScore: 72,
+        preheatScore: 64,
+        rotationScore: 55,
+        lowPositionScore: 52,
+        crowdingScore: 18,
+        avgMainNetInflowPct: 1.2,
+        newsLogic: "今日光模块主力资金净流入，产业订单预期重新升温，来源：题材雷达。",
+        catalystProfile: { fresh: true, score: 72, tags: ["主力资金回流"], summary: "今日主力资金回流", latestNewsTime: freshThemeRefreshAt },
+        fundKeywords: ["光模块"]
+      }],
+      topHoldings: ["300502 新易盛 光模块龙头", "300308 中际旭创 光通信龙头"],
+      holdingsOutlook: {
+        hasHoldings: true,
+        label: "前十大持仓承载光模块",
+        evidence: "前十大持仓包括新易盛、中际旭创，能承载光模块主线。",
+        matchedThemeHoldings: [{ name: "新易盛" }, { name: "中际旭创" }],
+        risks: []
+      },
+      actionability: {
+        holdingsOutlook: {
+          hasHoldings: true,
+          label: "前十大持仓承载光模块",
+          evidence: "前十大持仓包括新易盛、中际旭创，能承载光模块主线。",
+          matchedThemeHoldings: [{ name: "新易盛" }, { name: "中际旭创" }],
+          risks: []
+        }
+      },
+      marketThemeRefresh: {
+        source: "current_market_theme_radar",
+        refreshedAt: freshThemeRefreshAt,
+        noCurrentThemeMatch: false,
+        supportLabel: "光模块同方向有主力回流支撑",
+        supportSignals: ["当前题材雷达：主力资金回流", "新鲜产业催化"],
+        matchedThemeNames: ["光模块主力回流"]
+      }
+    }
+  }]
+});
+assert(
+  manager.buildPortfolioCatchdownLossMemories(catchdownLossMemoryDb).some((item) => item.groups?.some((group) => group.id === "cpo_optical")),
+  "catchdown loss memory must extract the loss-making theme from historical stale-catchdown buys"
+);
+const catchdownLossMemoryBoard = manager.buildPortfolioRankingBoard(catchdownLossMemoryDb);
+const catchdownMemoryRiskItem = catchdownLossMemoryBoard.lists.find((item) => item.id === "stale_catchdown_risk")?.items.find((item) => item.code === "000202");
+assert(
+  catchdownMemoryRiskItem?.action.includes("历史接盘冷却")
+    && catchdownMemoryRiskItem.reason.includes("历史回测")
+    && catchdownMemoryRiskItem.decision?.nextStep?.includes("0.5%-1.2%微型试探"),
+  "same-theme low pullbacks after stale-catchdown losses must be cooled until capital, catalyst, carrier, and fee evidence reopens review"
+);
+assert(
+  !catchdownLossMemoryBoard.lists.find((item) => item.id === "buy_preparation")?.items.some((item) => item.code === "000202")
+    && !catchdownLossMemoryBoard.lists.find((item) => item.id === "cash_redeployment")?.items.some((item) => item.code === "000202"),
+  "catchdown loss memory must block same-theme low pullbacks from buy-preparation and cash-redeployment lanes"
+);
+assert(
+  (catchdownLossMemoryBoard.customerActionDeck.cards.find((card) => card.id === "avoid")?.items || []).some((item) => item.code === "000202")
+    && !(catchdownLossMemoryBoard.customerActionDeck.cards.find((card) => card.id === "buy")?.items || []).some((item) => item.code === "000202"),
+  "customer action deck must show same-theme catchdown-loss memory as avoid, not buy"
+);
+assert(
+  !catchdownLossMemoryBoard.lists.find((item) => item.id === "stale_catchdown_risk")?.items.some((item) => item.code === "000203"),
+  "fresh main-capital/catalyst support must reopen same-theme review instead of being permanently blocked by old catchdown memory"
+);
 const staleCatchdownOpportunityCostFixture = {
   account: {
     cash: 90000,

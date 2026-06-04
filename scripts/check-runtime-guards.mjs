@@ -2257,6 +2257,22 @@ const requiredPatterns = [
     message: "stale catchdown loss diagnostics must require capital-flow recovery, catalyst logic, and holding-carrier validation before re-entry."
   },
   {
+    pattern: /applyPortfolioCatchdownLossMemoryToWatchlist/,
+    message: "portfolio ranking boards must convert stale-catchdown loss backtests into same-theme no-buy memory before ranking."
+  },
+  {
+    pattern: /buildPortfolioCatchdownLossMemories/,
+    message: "portfolio manager must extract stale-catchdown loss theme memory from historical buys."
+  },
+  {
+    pattern: /历史接盘亏损冷却/,
+    message: "stale-catchdown loss memory must be customer-readable and must not remain a hidden diagnostic."
+  },
+  {
+    pattern: /lossMemoryCatchdownRisk/,
+    message: "same-theme low pullbacks after stale-catchdown losses must participate in the hard catchdown gate."
+  },
+  {
     pattern: /主力预热错过回测[\s\S]{0,900}主力\/预热题材不能被普通等待吞掉[\s\S]{0,900}0\.5%-1\.2%微型试探/,
     message: "portfolio capability queue must turn missed main-capital/preheat opportunities into micro-starter or downgrade decisions."
   },
